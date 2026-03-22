@@ -34,8 +34,6 @@ open class TransactionCallbackTest(
         )
     }
 
-    // ── Single-layer: blocking ──────────────────────────────────────────
-
     @Test
     fun `onCommit fires after successful blocking transaction`(): Unit = runBlocking {
         var committed = false
@@ -92,8 +90,6 @@ open class TransactionCallbackTest(
         rolledBack.shouldBeFalse()
     }
 
-    // ── Single-layer: suspend ───────────────────────────────────────────
-
     @Test
     fun `onCommit fires after successful suspend transaction`(): Unit = runBlocking {
         var committed = false
@@ -131,8 +127,6 @@ open class TransactionCallbackTest(
         orm.exists<Visit>().shouldBeTrue()
     }
 
-    // ── Multiple callbacks ──────────────────────────────────────────────
-
     @Test
     fun `multiple callbacks execute in registration order`(): Unit = runBlocking {
         val order = mutableListOf<Int>()
@@ -156,8 +150,6 @@ open class TransactionCallbackTest(
         secondExecuted.shouldBeTrue()
         exception.message shouldBe "first"
     }
-
-    // ── Nesting: REQUIRED (joining) ─────────────────────────────────────
 
     @Test
     fun `joined REQUIRED onCommit deferred to outer commit`(): Unit = runBlocking {
@@ -192,8 +184,6 @@ open class TransactionCallbackTest(
         orm.exists<Visit>().shouldBeTrue()
     }
 
-    // ── Nesting: REQUIRES_NEW (independent) ─────────────────────────────
-
     @Test
     fun `REQUIRES_NEW inner onCommit fires independently of outer`(): Unit = runBlocking {
         var innerCommitted = false
@@ -226,8 +216,6 @@ open class TransactionCallbackTest(
         orm.exists<Visit>().shouldBeTrue()
     }
 
-    // ── Nesting: NESTED (savepoint, deferred to outer) ──────────────────
-
     @Test
     fun `NESTED onCommit deferred to outer commit`(): Unit = runBlocking {
         var innerCommitted = false
@@ -255,8 +243,6 @@ open class TransactionCallbackTest(
         innerCommitted.shouldBeFalse()
         orm.exists<Visit>().shouldBeTrue()
     }
-
-    // ── Suspend nesting ─────────────────────────────────────────────────
 
     @Test
     fun `suspend joined REQUIRED onCommit deferred to outer commit`(): Unit = runBlocking {
@@ -300,8 +286,6 @@ open class TransactionCallbackTest(
         orm.exists<Visit>().shouldBeFalse()
     }
 
-    // ── Suspend callbacks ──────────────────────────────────────────────
-
     @Test
     fun `suspend onCommit callback works in suspend transaction`(): Unit = runBlocking {
         var committed = false
@@ -330,8 +314,6 @@ open class TransactionCallbackTest(
         rolledBack.shouldBeTrue()
         orm.exists<Visit>().shouldBeTrue()
     }
-
-    // ── Database operations inside callbacks ────────────────────────────
 
     @Test
     fun `onCommit callback can perform database operations in blocking transaction`(): Unit = runBlocking {
@@ -372,8 +354,6 @@ open class TransactionCallbackTest(
         }
         visitExists.shouldBeFalse()
     }
-
-    // ── Rollback callback exception suppression ─────────────────────────
 
     @Test
     fun `rollback callback exception is suppressed under transaction exception`(): Unit = runBlocking {

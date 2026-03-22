@@ -764,9 +764,9 @@ Callbacks are tied to the **physical** transaction, not the logical scope. This 
    insert(user)
    ↓
    ┌─ transaction(REQUIRED) ──────────────────────┐
-   │  insert(order)                                │
-   │  onCommit { notify(order) }  ← deferred       │
-   └───────────────────────────────────────────────┘
+   │  insert(order)                               │
+   │  onCommit { notify(order) }  ← deferred      │
+   └──────────────────────────────────────────────┘
    ↓
    insert(payment)
    onCommit { sendReceipt() }     ← also deferred
