@@ -615,6 +615,329 @@ transaction {
 }
 ```
 
+### Transaction Callbacks
+
+Database transactions often need to trigger side effects, but only when the outcome is certain. Sending a confirmation email before the order is committed risks notifying a customer about an order that never persisted. Conversely, cleanup logic (releasing external locks, closing temporary resources) should run after a rollback, not during regular flow where it might mask the real failure.
+
+Storm's `onCommit` and `onRollback` callbacks solve this by letting you register logic that fires **after** the physical transaction completes. Callbacks are registered inside the transaction block but execute outside it, once the outcome is final.
+
+#### Basic Usage
+
+Register callbacks anywhere inside a `transaction` or `transactionBlocking` block:
+
+```kotlin
+transaction {
+    val order = orderRepository.insert(newOrder)
+    inventoryRepository.decrease(order.productId, order.quantity)
+
+    onCommit {
+        // Only runs after the transaction has successfully committed.
+        // The order and inventory changes are durable at this point.
+        emailService.sendOrderConfirmation(order)
+        eventBus.publish(OrderCreatedEvent(order.id))
+    }
+
+    onRollback {
+        // Only runs after the transaction has rolled back.
+        // No changes were persisted.
+        metrics.increment("orders.failed")
+    }
+}
+```
+
+Both variants work identically with `transactionBlocking`:
+
+```kotlin
+transactionBlocking {
+    cacheRepository.update(entry)
+
+    onCommit {
+        cache.invalidate(entry.key)  // Evict stale cache entry only after new data is durable
+    }
+}
+```
+
+#### When Callbacks Fire
+
+Callbacks are deferred until the transaction outcome is determined. The following table summarizes the trigger conditions:
+
+| Scenario | `onCommit` | `onRollback` |
+|----------|------------|--------------|
+| Block completes normally | Fires | Does not fire |
+| Block throws an exception | Does not fire | Fires |
+| `setRollbackOnly()` called, block completes | Does not fire | Fires |
+| Transaction timeout expires | Does not fire | Fires |
+| Commit itself throws (e.g., constraint violation during flush) | Does not fire | Fires |
+
+The key guarantee is that `onCommit` callbacks only execute when data is actually durable. If the commit itself fails for any reason, `onCommit` callbacks are skipped and `onRollback` callbacks run instead.
+
+This timeline shows the execution order for a successful transaction:
+
+```
+[BEGIN]
+   ↓
+   insert(order)
+   onCommit { sendEmail() }       ← registered, not yet executed
+   onRollback { logFailure() }    ← registered, not yet executed
+   ↓
+[COMMIT]                          ← transaction commits successfully
+   ↓
+   sendEmail()                    ← onCommit fires now
+                                     (onRollback is discarded)
+```
+
+And for a failed transaction:
+
+```
+[BEGIN]
+   ↓
+   insert(order)
+   onCommit { sendEmail() }       ← registered, not yet executed
+   onRollback { logFailure() }    ← registered, not yet executed
+   ↓
+   decreaseInventory()
+   ↓
+   ✗ exception thrown
+   ↓
+[ROLLBACK]                        ← transaction rolls back
+   ↓
+   logFailure()                   ← onRollback fires now
+                                     (onCommit is discarded)
+```
+
+#### Multiple Callbacks and Ordering
+
+You can register any number of callbacks. They execute in registration order, which makes it straightforward to reason about sequencing when multiple components register their own callbacks:
+
+```kotlin
+transaction {
+    val user = userRepository.insert(newUser)
+    val profile = profileRepository.insert(Profile(userId = user.id))
+
+    onCommit { searchIndex.addUser(user) }         // 1st
+    onCommit { cache.warm(user.id) }                // 2nd
+    onCommit { eventBus.publish(UserCreated(user)) } // 3rd
+}
+// After commit: searchIndex → cache → eventBus, in that order
+```
+
+#### Exception Handling in Callbacks
+
+If a callback throws, the remaining callbacks still execute. This prevents one failing callback from silently skipping others. The first exception is surfaced to the caller; any subsequent exceptions are attached as suppressed:
+
+```kotlin
+transaction {
+    orderRepository.insert(order)
+
+    onCommit { throw RuntimeException("email failed") }   // throws, but...
+    onCommit { cache.invalidate(order.productId) }         // ...still executes
+}
+// Caller sees RuntimeException("email failed")
+// cache.invalidate() ran successfully
+```
+
+When the transaction itself fails and a rollback callback also throws, the callback exception is added as suppressed to the original transaction exception:
+
+```kotlin
+try {
+    transaction {
+        onRollback { throw RuntimeException("cleanup failed") }
+        throw IllegalStateException("business error")
+    }
+} catch (e: IllegalStateException) {
+    // e.message == "business error"              ← primary exception
+    // e.suppressed[0].message == "cleanup failed" ← callback exception
+}
+```
+
+This design ensures that the root cause of a failure is never masked by callback errors.
+
+#### Propagation Interaction
+
+Callbacks are tied to the **physical** transaction, not the logical scope. This distinction matters when nesting transactions with different propagation modes.
+
+**Joining propagations (`REQUIRED`, `NESTED`, `SUPPORTS`, `MANDATORY`):** Callbacks registered in an inner scope are deferred to the outer physical transaction. They fire when the outermost transaction commits or rolls back. This is the correct behavior, because in a joined transaction, the inner scope's changes are not durable until the outer transaction commits.
+
+```
+[BEGIN outer]
+   ↓
+   insert(user)
+   ↓
+   ┌─ transaction(REQUIRED) ──────────────────────┐
+   │  insert(order)                               │
+   │  onCommit { notify(order) }  ← deferred      │
+   └──────────────────────────────────────────────┘
+   ↓
+   insert(payment)
+   onCommit { sendReceipt() }     ← also deferred
+   ↓
+[COMMIT outer]
+   ↓
+   notify(order)                  ← inner callback fires now
+   sendReceipt()                  ← outer callback fires now
+```
+
+A practical example: the inner service registers a callback, but it only fires when the outer transaction actually commits. If the outer transaction rolls back, the inner callback is discarded along with it:
+
+```kotlin
+// Outer transaction
+transaction {
+    userRepository.insert(user)
+
+    // Inner REQUIRED: joins the outer transaction
+    transaction(propagation = REQUIRED) {
+        orderRepository.insert(order)
+        onCommit { eventBus.publish(OrderCreated(order.id)) }
+    }
+    // At this point, the inner onCommit has NOT fired yet.
+    // The order is not yet durable.
+
+    paymentRepository.insert(payment)
+}
+// NOW the outer commits, and the inner's onCommit fires.
+```
+
+If the outer transaction rolls back (explicitly or via exception), the inner callback never fires:
+
+```kotlin
+transaction {
+    transaction(propagation = REQUIRED) {
+        orderRepository.insert(order)
+        onCommit { eventBus.publish(OrderCreated(order.id)) }
+    }
+
+    setRollbackOnly()  // Outer rolls back everything
+}
+// onCommit never fires. The order was never durable.
+```
+
+**`REQUIRES_NEW`:** Creates an independent physical transaction. Callbacks registered in the inner scope fire when the **inner** transaction completes, regardless of the outer transaction's outcome:
+
+```
+[BEGIN outer]
+   ↓
+   insert(user)
+   ↓
+   ~~~ outer suspended ~~~
+   ↓
+   [BEGIN inner]
+      ↓
+      insert(audit_log)
+      onCommit { notify() }
+      ↓
+   [COMMIT inner]
+      ↓
+      notify()                 ← fires immediately, inner is committed
+   ↓
+   ~~~ outer resumed ~~~
+   ↓
+[ROLLBACK outer]              ← does not affect inner's callbacks
+```
+
+This is especially useful for audit logging or event publishing that must survive regardless of the outer outcome:
+
+```kotlin
+transaction {
+    userRepository.insert(user)
+
+    transaction(propagation = REQUIRES_NEW) {
+        auditRepository.insert(AuditLog("User creation attempted"))
+        onCommit { auditMetrics.increment("audit.committed") }
+    }
+    // Inner onCommit has already fired here.
+
+    setRollbackOnly()  // Outer rolls back, but audit is committed and notified
+}
+```
+
+**`NESTED` (savepoint):** Shares the outer physical transaction. Even though the nested scope can roll back independently (to the savepoint), callbacks are deferred to the outer transaction. This is because savepoint changes only become durable when the outer transaction commits:
+
+```
+[BEGIN outer]
+   ↓
+   insert(order)
+   ↓
+   [SAVEPOINT]
+      ↓
+      insert(discount)
+      onCommit { notify() }   ← deferred to outer
+      ↓
+   [RELEASE SAVEPOINT]
+   ↓
+[COMMIT outer]
+   ↓
+   notify()                    ← fires now
+```
+
+The following table summarizes callback behavior across propagation modes:
+
+| Propagation | Callback scope | When callbacks fire |
+|-------------|---------------|---------------------|
+| `REQUIRED` | Deferred to outer | When outermost transaction commits/rolls back |
+| `REQUIRES_NEW` | Own scope | When inner transaction commits/rolls back |
+| `NESTED` | Deferred to outer | When outermost transaction commits/rolls back |
+| `SUPPORTS` | Deferred to outer (if tx exists) | When outermost transaction commits/rolls back |
+| `MANDATORY` | Deferred to outer | When outermost transaction commits/rolls back |
+| `NOT_SUPPORTED` | Own scope | When inner block completes/throws |
+| `NEVER` | Own scope | When inner block completes/throws |
+
+#### Common Patterns
+
+**Cache invalidation after write:**
+
+```kotlin
+transaction {
+    val updatedProduct = productRepository.update(product)
+
+    onCommit {
+        // Only evict after the update is durable.
+        // Evicting before commit risks serving stale data from the database
+        // while the cache is empty and the transaction hasn't committed yet.
+        productCache.evict(updatedProduct.id)
+    }
+}
+```
+
+**Event publishing:**
+
+```kotlin
+transaction {
+    val savedOrder = orderRepository.insert(order)
+    paymentRepository.insert(Payment(orderId = savedOrder.id, amount = total))
+
+    onCommit {
+        // Publish domain events only after all writes are durable.
+        // Subscribers can safely query the database for the new data.
+        eventBus.publish(OrderPlacedEvent(savedOrder.id, total))
+    }
+
+    onRollback {
+        // Track failed order attempts for monitoring
+        metrics.increment("orders.failed")
+        logger.warn("Order placement rolled back for customer ${order.customerId}")
+    }
+}
+```
+
+**Releasing external resources:**
+
+```kotlin
+transaction {
+    val lockToken = distributedLock.acquire("import-job")
+
+    onCommit {
+        distributedLock.release(lockToken)
+    }
+
+    onRollback {
+        distributedLock.release(lockToken)
+        cleanupPartialImport()
+    }
+
+    importService.runImport(data)
+}
+```
+
 ### Global Transaction Options
 
 Set defaults for all transactions:

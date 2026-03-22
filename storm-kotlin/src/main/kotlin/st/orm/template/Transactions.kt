@@ -20,6 +20,8 @@ import st.orm.core.spi.Providers.getTransactionTemplate
 import st.orm.core.spi.TransactionContext
 import st.orm.core.spi.TransactionTemplate
 import st.orm.template.TransactionIsolation.*
+import st.orm.template.TransactionPropagation.*
+import st.orm.template.impl.TransactionCallbacks
 import java.sql.Connection.*
 import java.util.concurrent.atomic.AtomicReference
 import kotlin.coroutines.AbstractCoroutineContextElement
@@ -56,24 +58,66 @@ fun <T> transactionBlocking(
     block: Transaction.() -> T,
 ): T {
     val options = localTransactionOptions.get() ?: globalTransactionOptions.get()
+    val resolvedPropagation = propagation ?: options.propagation
     val transactionTemplate = getTransactionTemplate(
-        propagation = propagation ?: options.propagation,
+        propagation = resolvedPropagation,
         isolation = isolation ?: options.isolation,
         timeoutSeconds = timeoutSeconds ?: options.timeoutSeconds,
         readOnly = readOnly ?: options.readOnly,
     )
     val contextHolder = transactionTemplate.contextHolder()
     contextHolder.get()?.let { existingCtx ->
-        return executeBlocking(transactionTemplate, existingCtx, block)
+        // An outer transaction context exists. Determine whether this scope joins it or owns a new physical tx.
+        val parentCallbacks = currentBlockingCallbacks.get()
+        if (resolvedPropagation.isJoining && parentCallbacks != null) {
+            // Joining: delegate callbacks to the outer holder; do not fire here.
+            return executeBlocking(transactionTemplate, existingCtx, parentCallbacks, block)
+        }
+        // REQUIRES_NEW / NOT_SUPPORTED or no parent callbacks: own lifecycle.
+        // contextHolder is managed by the outer scope; only currentBlockingCallbacks is ours.
+        val callbacks = TransactionCallbacks()
+        val previousCallbacks = currentBlockingCallbacks.get()
+        currentBlockingCallbacks.set(callbacks)
+        val outcome = try {
+            executeBlockingAndCapture(transactionTemplate, existingCtx, callbacks, block)
+        } catch (e: Throwable) {
+            // Restore before firing so callbacks see a clean state.
+            if (previousCallbacks == null) currentBlockingCallbacks.remove() else currentBlockingCallbacks.set(previousCallbacks)
+            try {
+                callbacks.fireRollbackBlocking()
+            } catch (callbackException: Throwable) {
+                e.addSuppressed(callbackException)
+            }
+            throw e
+        }
+        // Restore before firing so callbacks see a clean state.
+        if (previousCallbacks == null) currentBlockingCallbacks.remove() else currentBlockingCallbacks.set(previousCallbacks)
+        if (outcome.rollbackOnly) callbacks.fireRollbackBlocking() else callbacks.fireCommitBlocking()
+        return outcome.value
     }
-    val newContext = transactionTemplate.newContext(false).also {
-        contextHolder.set(it)
-    }
-    try {
-        return executeBlocking(transactionTemplate, newContext, block)
-    } finally {
+    // Outermost: we own the physical transaction.
+    val callbacks = TransactionCallbacks()
+    val previousCallbacks = currentBlockingCallbacks.get()
+    currentBlockingCallbacks.set(callbacks)
+    val newContext = transactionTemplate.newContext(false).also { contextHolder.set(it) }
+    val outcome = try {
+        executeBlockingAndCapture(transactionTemplate, newContext, callbacks, block)
+    } catch (e: Throwable) {
+        // Clean up transaction state before firing rollback callbacks.
         contextHolder.remove()
+        if (previousCallbacks == null) currentBlockingCallbacks.remove() else currentBlockingCallbacks.set(previousCallbacks)
+        try {
+            callbacks.fireRollbackBlocking()
+        } catch (callbackException: Throwable) {
+            e.addSuppressed(callbackException)
+        }
+        throw e
     }
+    // Clean up transaction state before firing callbacks.
+    contextHolder.remove()
+    if (previousCallbacks == null) currentBlockingCallbacks.remove() else currentBlockingCallbacks.set(previousCallbacks)
+    if (outcome.rollbackOnly) callbacks.fireRollbackBlocking() else callbacks.fireCommitBlocking()
+    return outcome.value
 }
 
 /**
@@ -98,7 +142,7 @@ fun <T> transactionBlocking(
  *                          - `REQUIRES_NEW`: suspend outer, start fresh
  *                          - `NESTED`: create JDBC savepoint
  * @param isolation         The isolation level for the transaction. Defaults to [TransactionIsolation.DEFAULT].
- * @param timeoutSeconds    The transaction timeout in seconds. If `null`, uses the provider’s default.
+ * @param timeoutSeconds    The transaction timeout in seconds. If `null`, uses the provider's default.
  * @param readOnly          Whether the transaction is read-only. Defaults to `false`.
  * @param block             The transactional logic to execute, with `this` bound to a [Transaction].
  * @return The result of executing [block].
@@ -115,39 +159,109 @@ suspend fun <T> transaction(
 ): T {
     val currentContext = currentCoroutineContext()
     val options = currentContext[Scoped]?.options ?: globalTransactionOptions.get()
+    val resolvedPropagation = propagation ?: options.propagation
     val transactionTemplate = getTransactionTemplate(
-        propagation = propagation ?: options.propagation,
+        propagation = resolvedPropagation,
         isolation = isolation ?: options.isolation,
         timeoutSeconds = timeoutSeconds ?: options.timeoutSeconds,
         readOnly = readOnly ?: options.readOnly,
     )
     // Already in a transaction: re-use it and ensure the ThreadLocal holder is visible on this thread.
     currentContext[TransactionKey]?.context?.let { existing ->
-        val elements = TransactionKey(existing) +
-            transactionTemplate.contextHolder().asContextElement(existing) +
-            localTransactionOptions.asContextElement(options) // Make the options available via the ThreadLocal in case the blocking variant is invoked from suspend context.
-        return withContext(currentContext + elements) {
-            execute(coroutineContext, transactionTemplate, existing, block)
+        val parentCallbacks = currentContext[CallbacksKey]?.callbacks
+        if (resolvedPropagation.isJoining && parentCallbacks != null) {
+            // Joining: delegate callbacks to the outer holder; do not fire here.
+            val elements = TransactionKey(existing) +
+                CallbacksKey(parentCallbacks) +
+                transactionTemplate.contextHolder().asContextElement(existing) +
+                currentBlockingCallbacks.asContextElement(parentCallbacks) +
+                localTransactionOptions.asContextElement(options)
+            return withContext(currentContext + elements) {
+                executeSuspend(coroutineContext, transactionTemplate, existing, parentCallbacks, block)
+            }
         }
+        // REQUIRES_NEW / NOT_SUPPORTED or no parent callbacks: own lifecycle.
+        val callbacks = TransactionCallbacks()
+        val elements = TransactionKey(existing) +
+            CallbacksKey(callbacks) +
+            transactionTemplate.contextHolder().asContextElement(existing) +
+            currentBlockingCallbacks.asContextElement(callbacks) +
+            localTransactionOptions.asContextElement(options)
+        // Fire callbacks AFTER withContext returns, so TransactionKey, CallbacksKey, and ThreadLocals are restored.
+        val outcome = try {
+            withContext(currentContext + elements) {
+                executeSuspendAndCapture(coroutineContext, transactionTemplate, existing, callbacks, block)
+            }
+        } catch (e: Throwable) {
+            try {
+                callbacks.fireRollback()
+            } catch (callbackException: Throwable) {
+                e.addSuppressed(callbackException)
+            }
+            throw e
+        }
+        if (outcome.rollbackOnly) callbacks.fireRollback() else callbacks.fireCommit()
+        return outcome.value
     }
     val newContext = transactionTemplate.newContext(true)
+    val callbacks = TransactionCallbacks()
     val elements = TransactionKey(newContext) +
+        CallbacksKey(callbacks) +
         transactionTemplate.contextHolder().asContextElement(newContext) + // Make the context available via the ThreadLocal.
+        currentBlockingCallbacks.asContextElement(callbacks) +
         localTransactionOptions.asContextElement(options) // Make the options available via the ThreadLocal in case the blocking variant is invoked from suspend context.
-    return withContext(currentContext + dispatcher + elements) {
-        // Potentially add limitedParallelism(1) here in the future.
-        // Just pass the elements, not the context, as the caller might have switched dispatchers. We just want to make
-        // the transaction context available to the caller's coroutine.
-        execute(coroutineContext, transactionTemplate, newContext, block)
+    // Fire callbacks AFTER withContext returns, so TransactionKey, CallbacksKey, and ThreadLocals are restored.
+    val outcome = try {
+        withContext(currentContext + dispatcher + elements) {
+            // Potentially add limitedParallelism(1) here in the future.
+            // Just pass the elements, not the context, as the caller might have switched dispatchers. We just want to make
+            // the transaction context available to the caller's coroutine.
+            executeSuspendAndCapture(coroutineContext, transactionTemplate, newContext, callbacks, block)
+        }
+    } catch (e: Throwable) {
+        try {
+            callbacks.fireRollback()
+        } catch (callbackException: Throwable) {
+            e.addSuppressed(callbackException)
+        }
+        throw e
     }
+    if (outcome.rollbackOnly) callbacks.fireRollback() else callbacks.fireCommit()
+    return outcome.value
 }
 
 private class TransactionKey(val context: TransactionContext) : AbstractCoroutineContextElement(Key) {
     companion object Key : CoroutineContext.Key<TransactionKey>
 }
 
+/**
+ * Coroutine context element that carries the [TransactionCallbacks] holder for the current physical transaction.
+ */
+private class CallbacksKey(val callbacks: TransactionCallbacks) : AbstractCoroutineContextElement(Key) {
+    companion object Key : CoroutineContext.Key<CallbacksKey>
+}
+
+/**
+ * Thread-local that carries the [TransactionCallbacks] holder for the current physical transaction (blocking path).
+ */
+private val currentBlockingCallbacks: ThreadLocal<TransactionCallbacks?> = ThreadLocal.withInitial { null }
+
+/**
+ * Returns `true` when this propagation joins an existing physical transaction rather than starting a new one.
+ */
+private val TransactionPropagation.isJoining: Boolean
+    get() = when (this) {
+        REQUIRED, SUPPORTS, MANDATORY, NESTED -> true
+        REQUIRES_NEW, NOT_SUPPORTED, NEVER -> false
+    }
+
+/**
+ * Captures the result and rollback-only status of a transaction execution.
+ */
+private class TransactionOutcome<T>(val value: T, val rollbackOnly: Boolean)
+
 private fun getTransactionTemplate(
-    propagation: TransactionPropagation = TransactionPropagation.REQUIRED,
+    propagation: TransactionPropagation = REQUIRED,
     isolation: TransactionIsolation? = null,
     timeoutSeconds: Int? = null,
     readOnly: Boolean = false,
@@ -167,37 +281,119 @@ private fun getTransactionTemplate(
     readOnly(readOnly)
 }
 
+/**
+ * Executes [block] inside the transaction and returns the result with the rollback-only status. Does not fire
+ * callbacks; the caller is responsible for cleanup and firing.
+ */
+private fun <T> executeBlockingAndCapture(
+    transactionTemplate: TransactionTemplate,
+    transactionContext: TransactionContext,
+    callbacks: TransactionCallbacks,
+    block: Transaction.() -> T,
+): TransactionOutcome<T> {
+    var rollbackOnly = false
+    val result = transactionTemplate.execute({ status ->
+        val transaction = object : Transaction {
+            override val isRollbackOnly: Boolean
+                get() = status.isRollbackOnly
+            override fun setRollbackOnly() {
+                status.setRollbackOnly()
+            }
+            override fun onCommit(callback: suspend () -> Unit) {
+                callbacks.addOnCommit(callback)
+            }
+            override fun onRollback(callback: suspend () -> Unit) {
+                callbacks.addOnRollback(callback)
+            }
+        }
+        block(transaction).also { rollbackOnly = status.isRollbackOnly }
+    }, transactionContext)
+    return TransactionOutcome(result, rollbackOnly)
+}
+
+/**
+ * Executes [block] inside the transaction, delegating callbacks to the provided [callbacks] holder.
+ * Used when joining an existing physical transaction (blocking path).
+ */
 private fun <T> executeBlocking(
     transactionTemplate: TransactionTemplate,
     transactionContext: TransactionContext,
+    callbacks: TransactionCallbacks,
     block: Transaction.() -> T,
 ): T = transactionTemplate.execute({ status ->
-    val tx = object : Transaction {
+    val transaction = object : Transaction {
         override val isRollbackOnly: Boolean
             get() = status.isRollbackOnly
         override fun setRollbackOnly() {
             status.setRollbackOnly()
         }
+        override fun onCommit(callback: suspend () -> Unit) {
+            callbacks.addOnCommit(callback)
+        }
+        override fun onRollback(callback: suspend () -> Unit) {
+            callbacks.addOnRollback(callback)
+        }
     }
-    block(tx)
+    block(transaction)
 }, transactionContext)
 
 /**
- * Execute the given [block] within a coroutine-friendly database transaction.
+ * Suspend variant: executes [block] inside the transaction and returns the result with the rollback-only status.
+ * Does not fire callbacks; the caller is responsible for cleanup and firing.
  */
-private fun <T> execute(
+private fun <T> executeSuspendAndCapture(
     context: CoroutineContext,
     transactionTemplate: TransactionTemplate,
     transactionContext: TransactionContext,
+    callbacks: TransactionCallbacks,
     block: suspend Transaction.() -> T,
-): T {
-    @Suppress("UNCHECKED_CAST")
-    return transactionTemplate.execute({ status ->
-        val tx = object : Transaction {
+): TransactionOutcome<T> {
+    var rollbackOnly = false
+    val result = transactionTemplate.execute({ status ->
+        val transaction = object : Transaction {
             override val isRollbackOnly: Boolean
                 get() = status.isRollbackOnly
             override fun setRollbackOnly() {
                 status.setRollbackOnly()
+            }
+            override fun onCommit(callback: suspend () -> Unit) {
+                callbacks.addOnCommit(callback)
+            }
+            override fun onRollback(callback: suspend () -> Unit) {
+                callbacks.addOnRollback(callback)
+            }
+        }
+        runBlocking(context) {
+            block(transaction)
+        }.also { rollbackOnly = status.isRollbackOnly }
+    }, transactionContext)
+    return TransactionOutcome(result, rollbackOnly)
+}
+
+/**
+ * Suspend variant: executes [block] inside the transaction, delegating callbacks to the provided [callbacks] holder.
+ * Used when joining an existing physical transaction.
+ */
+private fun <T> executeSuspend(
+    context: CoroutineContext,
+    transactionTemplate: TransactionTemplate,
+    transactionContext: TransactionContext,
+    callbacks: TransactionCallbacks,
+    block: suspend Transaction.() -> T,
+): T {
+    @Suppress("UNCHECKED_CAST")
+    return transactionTemplate.execute({ status ->
+        val transaction = object : Transaction {
+            override val isRollbackOnly: Boolean
+                get() = status.isRollbackOnly
+            override fun setRollbackOnly() {
+                status.setRollbackOnly()
+            }
+            override fun onCommit(callback: suspend () -> Unit) {
+                callbacks.addOnCommit(callback)
+            }
+            override fun onRollback(callback: suspend () -> Unit) {
+                callbacks.addOnRollback(callback)
             }
         }
         runBlocking(context) {
@@ -206,7 +402,7 @@ private fun <T> execute(
             //
             // Note: On pre-Java 24 virtual threads, runBlocking will pin the carrier thread for the entire duration of
             // the block, eliminating the scalability benefits of virtual threads.
-            block(tx)
+            block(transaction)
         }
     }, transactionContext)
 }

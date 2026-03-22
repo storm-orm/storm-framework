@@ -36,4 +36,43 @@ interface Transaction {
      * Marks the transaction as rollback-only, preventing any further commits.
      */
     fun setRollbackOnly()
+
+    /**
+     * Registers a callback that will be invoked after the physical transaction commits successfully.
+     *
+     * If this scope is joined to an outer transaction (e.g. via [TransactionPropagation.REQUIRED] or
+     * [TransactionPropagation.NESTED]), the callback is deferred to the outermost physical transaction's commit.
+     * [TransactionPropagation.REQUIRES_NEW] scopes fire their own callbacks independently.
+     *
+     * Multiple callbacks are executed in registration order. If a callback throws, remaining callbacks still execute;
+     * the first exception is surfaced with others added as suppressed.
+     *
+     * The callback accepts a `suspend` function, allowing both regular and suspend lambdas. When registered within a
+     * suspend [transaction], the callback executes in the enclosing coroutine context. When registered within a
+     * [transactionBlocking], the callback is bridged via `runBlocking` with an empty coroutine context.
+     *
+     * @param callback the callback to invoke after commit.
+     * @since 1.11
+     */
+    fun onCommit(callback: suspend () -> Unit)
+
+    /**
+     * Registers a callback that will be invoked after the physical transaction rolls back.
+     *
+     * Rollback may be triggered by an exception, [setRollbackOnly], or a timeout. If this scope is joined to an
+     * outer transaction (e.g. via [TransactionPropagation.REQUIRED] or [TransactionPropagation.NESTED]), the callback
+     * is deferred to the outermost physical transaction's rollback. [TransactionPropagation.REQUIRES_NEW] scopes fire
+     * their own callbacks independently.
+     *
+     * Multiple callbacks are executed in registration order. If a callback throws, remaining callbacks still execute;
+     * the first exception is surfaced with others added as suppressed.
+     *
+     * The callback accepts a `suspend` function, allowing both regular and suspend lambdas. When registered within a
+     * suspend [transaction], the callback executes in the enclosing coroutine context. When registered within a
+     * [transactionBlocking], the callback is bridged via `runBlocking` with an empty coroutine context.
+     *
+     * @param callback the callback to invoke after rollback.
+     * @since 1.11
+     */
+    fun onRollback(callback: suspend () -> Unit)
 }
