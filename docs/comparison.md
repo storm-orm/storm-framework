@@ -84,6 +84,7 @@ JPA (typically implemented by Hibernate) is the most widely used persistence fra
 ### When to Choose Storm
 
 - You want predictable, explicit database behavior
+- You want concise entity definitions with minimal boilerplate
 - N+1 queries have been a recurring problem
 - You prefer immutable data structures
 - You value simplicity over complexity
@@ -114,7 +115,7 @@ Spring Data JPA wraps JPA with a repository abstraction that derives query imple
 
 ### When to Choose Storm
 
-- You want stateless, immutable entities
+- You want stateless, immutable entities with minimal boilerplate
 - You prefer explicit query logic over naming conventions
 - You want to avoid JPA's complexity
 - You want a lightweight, minimal dependency footprint
@@ -145,7 +146,7 @@ MyBatis is a SQL mapper that gives you full control over every query. You write 
 
 ### When to Choose Storm
 
-- You want automatic entity mapping without XML
+- You want automatic entity mapping without XML and minimal boilerplate
 - You prefer type-safe queries over string SQL
 - You want relationships handled automatically
 - You value compile-time safety
@@ -204,7 +205,7 @@ JDBI is a lightweight SQL convenience library that sits just above JDBC. It hand
 
 ### When to Choose Storm
 
-- You want automatic entity mapping
+- You want automatic entity mapping with concise entity definitions
 - You need relationship handling
 - You prefer type-safe queries over raw SQL
 
@@ -257,10 +258,68 @@ Storm supports all seven standard propagation modes natively in its `transaction
 
 This means Storm's programmatic API can express patterns like audit logging (`REQUIRES_NEW`), defensive boundary enforcement (`MANDATORY`, `NEVER`), and non-transactional operations (`NOT_SUPPORTED`) directly in code, while Exposed requires Spring integration for these use cases. See [Transactions](transactions.md) for details and examples of each propagation mode.
 
+#### Transaction Callbacks
+
+Both frameworks allow running logic after a transaction commits or rolls back, but the APIs differ significantly.
+
+Storm provides `onCommit` and `onRollback` callbacks on the `Transaction` object. Callbacks accept suspend functions, execute in registration order, and are resilient to individual failures (remaining callbacks still run). When a callback is registered inside a joined scope (`REQUIRED`, `NESTED`), it is automatically deferred to the outermost physical transaction's commit or rollback, so it only fires when data is actually durable:
+
+```kotlin
+transaction {
+    orderRepository.insert(order)
+    onCommit { emailService.sendConfirmation(order) }  // Fires after physical commit
+}
+```
+
+Exposed uses a `StatementInterceptor` interface with lifecycle methods (`beforeCommit`, `afterCommit`, `beforeRollback`, `afterRollback`, among others) that is registered on the transaction via `registerInterceptor()`. Global interceptors can be registered via Java `ServiceLoader`. This approach is well suited for cross-cutting concerns that apply to many transactions:
+
+```kotlin
+transaction {
+    // Exposed: register an interceptor
+    registerInterceptor(object : StatementInterceptor {
+        override fun afterCommit(transaction: Transaction) {
+            emailService.sendConfirmation(order)
+        }
+    })
+    OrderTable.insert { it[id] = order.id }
+}
+```
+
+| Aspect | Storm | Exposed |
+|--------|-------|---------|
+| API style | Lambda (`onCommit { }`) | Interface (`StatementInterceptor`) |
+| Suspend support | Yes (JDBC) | R2DBC only (`SuspendStatementInterceptor`) |
+| Nested transaction behavior | Deferred to physical commit | Fires after savepoint release (data not yet durable) |
+| Callback isolation | Yes (remaining callbacks still run on failure) | No (exception propagates, skipping remaining interceptors) |
+| Global interceptors | No | Yes (via `ServiceLoader`) |
+| Additional hooks | No | `beforeCommit`, `beforeRollback`, `beforeExecution`, `afterExecution` |
+
+The most significant behavioral difference is with nested transactions. Exposed's `afterCommit` fires on the nested transaction's own "commit," which for savepoint-based nesting is just a savepoint release, not an actual database commit. If the outer transaction subsequently rolls back, the `afterCommit` callback will have already executed despite the data never becoming durable. Storm avoids this by deferring callbacks to the outermost physical transaction.
+
+Storm's callback isolation behavior (remaining callbacks still execute when one fails) follows the same approach as Spring's `TransactionSynchronization`, where post-commit and post-completion callbacks are invoked independently. Since callbacks fire after the transaction outcome is final, there is nothing to undo; silently skipping remaining side effects because of one failure would be worse than running them all and surfacing the first exception.
+
+Exposed's `StatementInterceptor` also provides hooks that Storm intentionally does not offer: `beforeCommit`, `beforeRollback`, and statement-level interceptors (`beforeExecution`, `afterExecution`). In Storm's stateless model, pre-commit logic belongs at the end of the `transaction { }` block itself, since there is no persistence context to flush or dirty state to reconcile before the commit. Statement-level observability is covered by Storm's [`@SqlLog`](sql-logging.md) annotation and `SqlCapture` test utility rather than a general interceptor mechanism.
+
+#### Schema Migration
+
+Exposed provides built-in schema management through its `SchemaUtils` utility. You can create tables, add missing columns, and generate migration statements programmatically:
+
+```kotlin
+transaction {
+    SchemaUtils.create(UsersTable, OrdersTable)           // CREATE TABLE IF NOT EXISTS
+    SchemaUtils.createMissingTablesAndColumns(UsersTable)  // ALTER TABLE ADD COLUMN ...
+    SchemaUtils.statementsRequiredToActualizeScheme()      // Returns DDL statements without executing
+}
+```
+
+This is convenient for prototyping and simple applications. For production use, JetBrains recommends pairing Exposed with a dedicated migration tool like Flyway or Liquibase, since `SchemaUtils` does not handle column removal, type changes, or data migration.
+
+Storm does not include schema management or migration utilities. Schema management is expected to be handled externally using tools like Flyway, Liquibase, or plain SQL scripts. Storm's [schema validation](validation.md) feature can verify at startup that entity definitions match the database schema, catching mismatches early without modifying the schema itself.
+
 ### When to Choose Storm
 
 - You need Kotlin and Java support
-- You want immutable entities without base class inheritance
+- You want concise, immutable entities without base class inheritance
 - You prefer annotation-based entity definitions
 - N+1 queries are a concern
 - You want relationships loaded automatically
@@ -298,7 +357,7 @@ Ktorm is a lightweight Kotlin ORM that uses entity interfaces and DSL-based tabl
 ### When to Choose Storm
 
 - You need Kotlin and Java support
-- You want immutable data classes, not interfaces
+- You want concise, immutable data classes instead of mutable interfaces
 - You prefer annotation-based definitions
 - N+1 prevention is important
 - You want automatic relationship loading
