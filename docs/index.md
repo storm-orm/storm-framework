@@ -8,6 +8,10 @@ import TabItem from '@theme/TabItem';
 
 # ST/ORM
 
+:::info Built for the AI Era
+Storm's immutable design, skills, and secure MCP schema access make it the ORM that AI coding tools get right consistently. Install with `npm install -g @storm-orm/cli`, then run `storm init` in your project. See [AI-Assisted Development](ai-setup.md).
+:::
+
 **Storm** is a modern, high-performance ORM for Kotlin 2.0+ and Java 21+, built around a powerful SQL template engine. It focuses on simplicity, type safety, and predictable performance through immutable models and compile-time metadata.
 
 **Key benefits:**

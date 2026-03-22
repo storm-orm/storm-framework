@@ -1,0 +1,32 @@
+{
+  "name": "@storm-orm/cli",
+  "version": "1.11.0",
+  "description": "Storm ORM - AI assistant configuration tool",
+  "type": "module",
+  "bin": {
+    "storm": "./storm.mjs"
+  },
+  "files": [
+    "storm.mjs"
+  ],
+  "keywords": [
+    "storm",
+    "orm",
+    "ai",
+    "llm",
+    "claude",
+    "cursor",
+    "copilot",
+    "windsurf"
+  ],
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/storm-orm/storm-framework.git",
+    "directory": "storm-cli"
+  },
+  "homepage": "https://orm.st",
+  "engines": {
+    "node": ">=18"
+  }
+}
