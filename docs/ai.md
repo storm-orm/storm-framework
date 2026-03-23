@@ -65,6 +65,8 @@ For each selected tool, Storm installs two types of AI context:
 | storm-query-java | Java QueryBuilder queries |
 | storm-sql-kotlin | Kotlin SQL Templates |
 | storm-sql-java | Java SQL Templates |
+| storm-json-kotlin / storm-json-java | JSON columns and JSON aggregation |
+| storm-serialization-kotlin / storm-serialization-java | Entity serialization for REST APIs (Ref handling) |
 | storm-migration | Write Flyway/Liquibase migration SQL |
 
 ### 3. Database connection (optional)
@@ -352,4 +354,4 @@ The verify-then-trust pattern closes that gap:
 3. **The AI runs the test.** If it passes, the code is correct by construction, verified by the same validation logic that Storm uses internally. If it fails, the error messages tell the AI exactly what to fix.
 4. **The test stays or goes.** Keep it as a regression test, or let the AI remove it once verified. Either way, the verification happened.
 
-No other ORM framework offers this combination: an AI-friendly data model that produces stable code, a schema-aware MCP server that gives the AI structural knowledge without exposing data, and built-in test tooling that lets the AI verify its own work through the framework rather than around it.
+This is the combination that makes it work: an AI-friendly data model that produces stable code, a schema-aware MCP server that gives the AI structural knowledge without exposing data, and built-in test tooling that lets the AI verify its own work through the framework rather than around it.

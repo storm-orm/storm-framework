@@ -16,6 +16,8 @@ Available Storm skills:
 - /storm-repository-kotlin or /storm-repository-java - Write repositories
 - /storm-query-kotlin or /storm-query-java - Write queries with the QueryBuilder
 - /storm-sql-kotlin or /storm-sql-java - Write SQL Templates
+- /storm-json-kotlin or /storm-json-java - JSON columns and JSON aggregation
+- /storm-serialization-kotlin or /storm-serialization-java - Entity serialization for REST APIs
 - /storm-migration - Write Flyway/Liquibase migration SQL
 
 When the user asks about Storm topics, suggest the relevant skill if they need detailed guidance.
