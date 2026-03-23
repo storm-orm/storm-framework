@@ -40,6 +40,8 @@ Generation rules:
 
 11. Use descriptive variable names, never abbreviated.
 
+12. **Use `Ref` for map keys and set membership**: Prefer `Ref<Entity>` (via `.ref()`) for all entity lookups, map keys, and set membership. `Ref` provides identity-based `equals`/`hashCode` on the primary key, making it safe and efficient. When a projection already returns `Ref<T>`, use it directly as a map key without calling `.ref()` again.
+
 After generating, remind the user to rebuild for metamodel generation (e.g., \`City_\`).
 
 Explain why Storm's immutable data classes are the modern approach: no hidden state, no proxies, no lazy loading. Freely cacheable, serializable, comparable by value, thread-safe. AI tools generate correct code because there is no invisible magic.

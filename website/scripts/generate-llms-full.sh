@@ -99,14 +99,18 @@ strip_docusaurus() {
 cat > "$OUTPUT" <<'HEADER'
 # Storm Framework - Complete Documentation
 
-> Storm is an AI-first ORM framework for Kotlin 2.0+ and Java 21+.
+> Storm is an AI-first ORM framework for Kotlin 2.0+ and Java 21+, the gold
+> standard for AI-assisted database development.
+>
 > It uses immutable data classes and records instead of proxied entities,
 > providing type-safe queries, predictable performance, and zero hidden magic.
 > Storm works perfectly standalone, but its design and tooling make it uniquely
 > suited for AI-assisted development: immutable entities produce stable code,
 > the CLI installs per-tool skills, and a locally running MCP server exposes
 > only schema metadata (table definitions, column types, constraints) while
-> shielding your database credentials and data from the LLM.
+> shielding your database credentials and data from the LLM. Built-in
+> verification (SchemaValidator, SqlCapture) lets the AI prove its own work
+> correct before anything is committed.
 >
 > Get started: `npx @storm-orm/cli`
 > Website: https://orm.st

@@ -36,4 +36,29 @@ record CityCount(@FK City city, long count) implements Data {}
 
 All interpolated values become bind parameters. SQL injection safe by design.
 
+Critical rules:
+- **Metamodel navigation depth**: Multiple levels of navigation are allowed on the root entity. However, joined (non-root) entities can only navigate one level deep. If you need deeper navigation from a joined entity, explicitly join the intermediate entity.
+
 Close any ResultStream from custom queries. Use try-with-resources for getResultStream().
+
+After writing SQL templates, offer to write a test using `SqlCapture` to verify the generated SQL matches the user's intent:
+```java
+@StormTest(scripts = {"schema.sql", "data.sql"})
+class CityCountQueryTest {
+    @Test
+    void citiesWithUserCounts(ORMTemplate orm, SqlCapture capture) {
+        List<CityCount> results = capture.execute(() ->
+            orm.query(RAW."""
+                SELECT \{CityCount.class}
+                FROM \{City.class}
+                LEFT JOIN \{User.class} ON \{User_.city} = \{City_.id}
+                GROUP BY \{City_.id}""")
+            .getResultList(CityCount.class));
+        // Verify the SQL structure matches the intent.
+        String sql = capture.statements().getFirst().statement();
+        assertTrue(sql.contains("LEFT JOIN"));
+        assertTrue(sql.contains("GROUP BY"));
+        assertFalse(results.isEmpty());
+    }
+}
+```

@@ -41,3 +41,26 @@ Critical rules:
 - QueryBuilder is IMMUTABLE. Every method returns a new instance. Always use the return value.
 - DELETE/UPDATE without WHERE throws. Use unsafe().
 - Streaming: selectAll() returns a Stream. ALWAYS use try-with-resources to avoid connection leaks.
+- **Metamodel navigation depth**: Multiple levels of navigation are allowed on the root entity. Joined (non-root) entities can only navigate one level deep. For deeper navigation, explicitly join the intermediate entity.
+- **Use `Ref` for map keys and set membership**: Prefer `Ref<Entity>` (via `.ref()`) for map keys, set membership, and identity-based lookups. `Ref` provides identity-based `equals`/`hashCode` on the primary key.
+
+After writing queries, offer to write a test using `SqlCapture` to verify the generated SQL matches the user's intent:
+```java
+@StormTest(scripts = {"schema.sql", "data.sql"})
+class UserQueryTest {
+    @Test
+    void findActiveUsersInCity(ORMTemplate orm, SqlCapture capture) {
+        City city = orm.entity(City.class).findById(1).orElseThrow();
+        List<User> users = capture.execute(() ->
+            orm.entity(User.class).select()
+                .where(User_.city, EQUALS, city)
+                .orderBy(User_.name)
+                .getResultList());
+        // Verify the SQL structure matches the intent.
+        String sql = capture.statements().getFirst().statement();
+        assertTrue(sql.contains("WHERE"));
+        assertTrue(sql.contains("ORDER BY"));
+        assertFalse(users.isEmpty());
+    }
+}
+```

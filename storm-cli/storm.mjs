@@ -1314,8 +1314,24 @@ async function setup() {
     }
   }
 
-  // Step 5: Register MCP, append schema rules, and install schema skills.
+  // Step 5: Register MCP, append schema rules, update .gitignore, and install schema skills.
   if (dbConfigured) {
+    // Add MCP config files to .gitignore (they contain machine-specific paths).
+    const gitignorePath = join(process.cwd(), '.gitignore');
+    const mcpIgnoreEntries = [];
+    for (const toolId of tools) {
+      const config = TOOL_CONFIGS[toolId];
+      if (config.mcpFile) mcpIgnoreEntries.push(config.mcpFile);
+    }
+    if (mcpIgnoreEntries.length > 0) {
+      let gitignore = existsSync(gitignorePath) ? readFileSync(gitignorePath, 'utf-8') : '';
+      const missing = mcpIgnoreEntries.filter(e => !gitignore.includes(e));
+      if (missing.length > 0) {
+        const block = '\n# Storm MCP (machine-specific paths)\n' + missing.join('\n') + '\n';
+        appendFileSync(gitignorePath, block);
+        appended.push('.gitignore');
+      }
+    }
     // Fetch schema rules and append to each tool's rules block.
     const schemaRules = await fetchSkill('storm-schema-rules');
     for (const toolId of tools) {
@@ -1356,15 +1372,17 @@ async function setup() {
     cleanStaleSkills(skillToolConfigs, installedSkillNames, skipped);
   }
 
-  // Summary.
+  const uniqueCreated  = [...new Set(created)];
+  const uniqueAppended = [...new Set(appended)];
+
   console.log();
-  if (created.length > 0) {
+  if (uniqueCreated.length > 0) {
     console.log(boltYellow('  Created:'));
-    created.forEach(f => console.log(boltYellow(`    + ${f}`)));
+    uniqueCreated.forEach(f => console.log(boltYellow(`    + ${f}`)));
   }
-  if (appended.length > 0) {
+  if (uniqueAppended.length > 0) {
     console.log(boltYellow('  Updated:'));
-    appended.forEach(f => console.log(boltYellow(`    ~ ${f}`)));
+    uniqueAppended.forEach(f => console.log(boltYellow(`    ~ ${f}`)));
   }
   if (skipped.length > 0) {
     console.log(dimText('  Skipped:'));

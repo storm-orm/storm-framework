@@ -42,3 +42,31 @@ Critical rules:
 - Multiple .where() calls are AND-combined.
 - DELETE/UPDATE without WHERE throws. Use unsafe().
 - Streaming: selectAll() returns a Flow with automatic cleanup.
+- **Metamodel navigation depth**: Multiple levels of navigation are allowed on the root entity. Joined (non-root) entities can only navigate one level deep. For deeper navigation, explicitly join the intermediate entity.
+- **Use `Ref` for map keys and set membership**: Prefer `Ref<Entity>` (via `.ref()`) for map keys, set membership, and identity-based lookups. `Ref` provides identity-based `equals`/`hashCode` on the primary key:
+  ```kotlin
+  val countMap: MutableMap<Ref<Cell>, MutableMap<String, Int>> = mutableMapOf()
+  countMap.getOrPut(candidate.cell.ref()) { mutableMapOf() }
+  ```
+
+After writing queries, offer to write a test using `SqlCapture` to verify the generated SQL matches the user's intent:
+```kotlin
+@StormTest(scripts = ["schema.sql", "data.sql"])
+class UserQueryTest {
+    @Test
+    fun findActiveUsersInCity(orm: ORMTemplate, capture: SqlCapture) {
+        val city = orm.findById<City>(1)!!
+        val users = capture.execute {
+            orm.entity(User::class).select()
+                .where((User_.city eq city) and (User_.active eq true))
+                .orderBy(User_.name)
+                .resultList
+        }
+        // Verify the SQL structure matches the intent.
+        val sql = capture.statements().first().statement()
+        assertContains(sql, "WHERE")
+        assertContains(sql, "ORDER BY")
+        assertFalse(users.isEmpty())
+    }
+}
+```

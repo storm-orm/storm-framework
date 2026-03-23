@@ -377,11 +377,14 @@ public final class SchemaValidator {
             return;  // No point checking columns if the table doesn't exist.
         }
         // 2-4. Column existence, type compatibility, nullability.
+        // Track all column names (including @DbIgnore) for the unmapped column check (step 9).
+        Set<String> mappedColumns = new TreeSet<>(String.CASE_INSENSITIVE_ORDER);
         for (Column column : model.declaredColumns()) {
+            String columnName = column.name();
+            mappedColumns.add(columnName);
             if (isIgnored(column, ignoredComponents)) {
                 continue;
             }
-            String columnName = column.name();
             Optional<DbColumn> dbColumn = schema.getColumn(tableName, columnName);
 
             if (dbColumn.isEmpty()) {
@@ -460,6 +463,11 @@ public final class SchemaValidator {
         // 8. Foreign key validation.
         if (requirePrimaryKey) {
             validateForeignKeys(type, model, schema, tableName, qualifiedTableName, ignoredComponents, errors);
+        }
+        // 9. Unmapped column check: detect NOT NULL columns without a default that are not mapped in the entity.
+        // Only applies to Entity types (projections intentionally select a subset of columns).
+        if (requirePrimaryKey) {
+            validateUnmappedColumns(type, schema, tableName, qualifiedTableName, mappedColumns, errors);
         }
     }
 
@@ -622,6 +630,37 @@ public final class SchemaValidator {
                     }
                 }
             }
+        }
+    }
+
+    /**
+     * Validates that the database table does not contain NOT NULL columns without a default value that are not mapped
+     * in the entity.
+     *
+     * <p>Such columns would cause INSERT failures at runtime because the database requires a value that Storm cannot
+     * provide. Columns that are nullable, have a default value, or are auto-incremented are safe to omit.</p>
+     *
+     * @param mappedColumns the set of entity-mapped column names (case-insensitive), collected during column validation.
+     */
+    private void validateUnmappedColumns(
+            @Nonnull Class<? extends Data> type,
+            @Nonnull DatabaseSchema schema,
+            @Nonnull String tableName,
+            @Nonnull String qualifiedTableName,
+            @Nonnull Set<String> mappedColumns,
+            @Nonnull List<SchemaValidationError> errors
+    ) {
+        for (DbColumn dbColumn : schema.getColumns(tableName)) {
+            if (mappedColumns.contains(dbColumn.columnName())) {
+                continue;  // Column is mapped in the entity.
+            }
+            // Skip columns that are safe to omit: nullable, has a default, or auto-incremented.
+            if (dbColumn.nullable() || dbColumn.hasDefault() || dbColumn.autoIncrement()) {
+                continue;
+            }
+            errors.add(new SchemaValidationError(type, ErrorKind.UNMAPPED_COLUMN,
+                    "Column '%s' in table '%s' is NOT NULL without a default value, but is not mapped in entity '%s'. Inserts will fail. If intentional, use @DbIgnore to suppress this check."
+                            .formatted(dbColumn.columnName(), qualifiedTableName, type.getSimpleName())));
         }
     }
 

@@ -1,6 +1,8 @@
 # Storm Framework
 
-> Storm is an AI-first ORM framework for Kotlin 2.0+ and Java 21+.
+> Storm is an AI-first ORM framework for Kotlin 2.0+ and Java 21+, the gold
+> standard for AI-assisted database development.
+>
 > It uses immutable data classes and records instead of proxied entities, providing
 > type-safe queries, predictable performance, and zero hidden magic. There is no
 > persistence context, no lazy loading, no proxy generation, and no entity state
@@ -12,8 +14,8 @@
 > installs per-tool skills for entity creation, queries, repositories, and
 > migrations. A locally running MCP server exposes only schema metadata (table
 > definitions, column types, constraints) while shielding your database
-> credentials and data from the LLM. Together, these
-> ensure that AI-assisted database development is safe, correct, and productive.
+> credentials and data from the LLM. Built-in verification (SchemaValidator,
+> SqlCapture) lets the AI prove its own work correct before anything is committed.
 >
 > Get started: `npx @storm-orm/cli`
 
@@ -323,3 +325,25 @@ Validation: storm-kotlin-validator
 7. **Use Ref<T> for deferred loading.** If you do not want Storm to eagerly load
    a related entity, wrap the FK type in Ref<T>. This loads only the foreign key
    value and defers the full entity fetch until you call fetch().
+
+8. **Use Ref<T> for map keys and set membership.** Prefer `Ref<Entity>` (via
+   `.ref()`) for map keys, set membership, and identity-based lookups. `Ref`
+   provides identity-based `equals`/`hashCode` on the primary key. Do not use
+   full entities as map keys (relies on data class equals over all fields) or
+   formatted strings for entity lookup. When a projection already returns
+   `Ref<T>`, use it directly without calling `.ref()` again.
+
+9. **Metamodel navigation depth.** Multiple levels of navigation are allowed on
+   the root entity of a query. However, joined (non-root) entities can only
+   navigate one level deep. For deeper navigation from a joined entity,
+   explicitly join the intermediate entity.
+
+10. **Use `t()` for parameter binding in lambdas (Kotlin, requires compiler
+    plugin).** Inside `.having {}` and other lambda expressions, use the `t()`
+    function to ensure proper parameter binding and SQL injection protection:
+    ```kotlin
+    // CORRECT
+    .having { "COUNT(DISTINCT ${t(column)}) = ${t(numTypes)}" }
+    // WRONG - raw interpolation bypasses parameter binding
+    .having { "COUNT(DISTINCT $column) = $numTypes" }
+    ```
