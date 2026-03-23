@@ -3,12 +3,12 @@
 import Tabs from '@theme/Tabs';
 import TabItem from '@theme/TabItem';
 
-Storm is an AI-first ORM, built to be **the gold standard for AI-assisted database development**. It works perfectly as a standalone framework, but its design and tooling make it uniquely suited for working with AI coding tools. Entities are plain data classes, queries are explicit SQL, and built-in verification lets the AI prove its own work correct before anything touches production.
+Storm is an AI-first ORM. Entities are plain Kotlin data classes or Java records. Queries are explicit SQL. Built-in verification lets AI validate its own work before anything touches production.
 
 :::caution Storm is not for vibe coding
 Database code affects data integrity, performance, and security. Generating it without understanding or verifying the result is not something Storm encourages.
 
-Everything in Storm's AI workflow is designed to keep you in control. `SchemaValidator` proves entities match the database. `SqlCapture` proves queries match the intent. `@StormTest` lets the AI run both checks in an isolated in-memory database before anything touches production. The AI generates code, then Storm verifies it. That is what AI-first means here.
+Storm keeps you in control. `ORMTemplate.validateSchema()` validates that entities match the database. `SqlCapture` validates that queries match the intent. `@StormTest` runs both checks in an isolated in-memory database before anything reaches production. The AI generates code, then Storm verifies it. That is what AI-first means here.
 
 Automated verification catches mistakes, but it does not replace understanding. Your data layer is not the place to let the codebase drift away from you.
 :::
@@ -73,11 +73,7 @@ For each selected tool, Storm installs two types of AI context:
 
 If you have a local development database running, Storm can set up a schema-aware MCP server. This gives your AI tool access to your actual database structure (table definitions, column types, foreign keys) without exposing credentials or data.
 
-The MCP server:
-- Runs locally on your machine
-- Exposes only schema metadata, never actual data
-- Stores credentials in `~/.storm/` (outside your project, outside the LLM's reach)
-- Supports PostgreSQL, MySQL, MariaDB, Oracle, SQL Server, SQLite, and H2
+The MCP server runs locally on your machine, exposes only schema metadata, and stores credentials in `~/.storm/` (outside your project, outside the LLM's reach). It supports PostgreSQL, MySQL, MariaDB, Oracle, SQL Server, SQLite, and H2.
 
 With the database connected, three additional skills become available:
 
@@ -130,30 +126,32 @@ Most AI coding tools support adding context through URLs or pasted text. Point y
 
 ## Why Storm Works Well With AI
 
-Traditional ORMs rely on mechanisms that are powerful but implicit: proxy objects that intercept field access behind the scenes, lazy loading that triggers queries at unpredictable moments, persistence contexts that track entity state across transaction boundaries, and cascading rules that propagate changes through the object graph. These features serve real purposes, but they make AI-assisted development harder, because the AI has to account for behavior that is not visible in the source code. Code that compiles and appears correct can still break at runtime because of invisible framework state.
+AI works better when framework behavior is explicit and visible in source code.
 
-Storm eliminates all of that. Entities are plain Kotlin data classes or Java records. There are no proxies, no managed state, no persistence context, and no lazy loading. Queries are explicit, and what you see in the source code is exactly what happens at runtime.
+Traditional ORMs rely on mechanisms that are powerful but implicit: proxy objects that intercept field access, lazy loading that triggers queries at unpredictable moments, persistence contexts that track entity state across transaction boundaries, and cascading rules that propagate changes through the object graph. These features serve real purposes, but they make AI-assisted development harder. The AI has to account for behavior that does not appear in the code. Code that compiles and looks correct can still break at runtime because of invisible framework state.
 
-| Design Choice | Why it helps AI |
-|---------------|-----------------|
-| **Immutable entities** | No hidden state transitions for the AI to track or miss |
-| **No proxies** | The entity class *is* the entity; no invisible bytecode transformations to account for |
-| **No persistence context** | No session scope, flush ordering, or detachment rules that require deep framework knowledge |
-| **Convention over configuration** | Fewer annotations and config files for the AI to keep consistent |
-| **Compile-time metamodel** | Type errors caught at build time, not at runtime; the AI gets immediate feedback |
-| **Secure schema access** | The MCP server gives AI tools structural database knowledge without exposing credentials or data |
+Storm eliminates all of that. Entities are plain Kotlin data classes or Java records. There are no proxies, no managed state, no persistence context, and no lazy loading. Queries are explicit, and what you see in the source code is exactly what happens at runtime. This makes Storm's behavior predictable for AI tools: the code is the complete picture.
+
+The design choices that matter most:
+
+- **Immutable entities.** No hidden state transitions for the AI to track or miss.
+- **No proxies.** The entity class is the entity. No invisible bytecode transformations to account for.
+- **No persistence context.** No session scope, flush ordering, or detachment rules that require deep framework knowledge.
+- **Convention over configuration.** Fewer annotations and config files for the AI to keep consistent.
+- **Compile-time metamodel.** Type errors caught at build time, not at runtime. The AI gets immediate feedback.
+- **Secure schema access.** The MCP server gives AI tools structural database knowledge without exposing credentials or data.
 
 Beyond the data model, Storm provides dedicated tooling for AI-assisted workflows:
 
 - **Skills** guide AI tools through specific tasks (entity creation, queries, repositories, migrations) with framework-aware conventions and rules.
-- **A locally running MCP server** gives AI tools access to your live database schema (table definitions, column types, constraints, foreign keys) without exposing credentials or data. The AI can inspect your actual database structure to generate entities that match, or validate entities it just created.
-- **Built-in verification** through `SchemaValidator` and `SqlCapture` lets the AI prove its own work correct. After generating entities, the AI can validate them against the database. After writing queries, it can capture and inspect the actual SQL. Both checks run in an isolated in-memory database through `@StormTest`, so the AI can verify before anything touches production.
+- **A locally running MCP server** gives AI tools access to your live database schema: table definitions, column types, constraints, and foreign keys. The AI can inspect your actual database structure to generate entities that match, or validate entities it just created.
+- **Built-in verification** through `ORMTemplate.validateSchema()` and `SqlCapture` lets the AI validate its own work. After generating entities, the AI can validate them against the database. After writing queries, it can capture and inspect the actual SQL. Both checks run in an isolated in-memory database through `@StormTest`, so verification happens before anything touches production. For dialect-specific code, `@StormTest` supports a static `dataSource()` factory method on the test class, allowing integration with Testcontainers to test against the actual target database.
 
 ---
 
 ## Schema-First and Entity-First
 
-With AI-assisted development, Storm fully supports both directions of working: starting from the database schema and generating entities to match, or starting from the entity model and generating the migration scripts to create the schema. Both approaches share the same development cycle; they just enter it at a different point.
+Storm fully supports both directions of working: starting from the database schema and generating entities to match, or starting from the entity model and generating the migration scripts to create the schema. Both approaches share the same development cycle; they just enter it at a different point.
 
 ```
             Entity-first                          Schema-first
@@ -175,19 +173,19 @@ With AI-assisted development, Storm fully supports both directions of working: s
         └─────────────────┘                   └─────────────────┘
 ```
 
-The AI is responsible for generating and updating code (entities, migrations, queries). Storm is responsible for validating correctness (`SchemaValidator`, `SqlCapture`). The cycle repeats whenever either side changes: a schema change triggers entity updates; an entity change triggers a new migration. `SchemaValidator` closes the loop by proving that entities and schema agree after every change.
+The AI generates and updates code (entities, migrations, queries). Storm validates correctness (`ORMTemplate.validateSchema()`, `SqlCapture`). The cycle repeats whenever either side changes: a schema change triggers entity updates; an entity change triggers a new migration. Schema validation closes the loop by proving that entities and schema agree after every change.
 
 ### Schema-first
 
 In a schema-first workflow, the database is the source of truth. The schema already exists (or is managed by a DBA), and entities need to match it.
 
-When the MCP server is configured, the AI has access to the live database through `list_tables` and `describe_table`. This gives it full visibility into table definitions, column types, constraints, and foreign key relationships, without exposing credentials or data.
+When the MCP server is configured, the AI has access to the live database through `list_tables` and `describe_table`. This gives it full visibility into table definitions, column types, constraints, and foreign key relationships.
 
 The AI workflow:
 
 1. **Inspect the schema.** The AI calls `list_tables` to discover tables, then `describe_table` for each relevant table.
 2. **Generate entities.** Based on the schema metadata and Storm's entity conventions (naming, `@PK`, `@FK`, `@UK`, nullability, `Ref<T>` for circular or self-references), the AI generates Kotlin data classes or Java records.
-3. **Validate.** The AI writes a temporary test that validates the generated entities against the database using `SchemaValidator`.
+3. **Validate.** The AI writes a temporary test that validates the generated entities against the database using `ORMTemplate.validateSchema()`.
 
 When the database schema evolves, the same flow applies: the AI inspects the changed tables, updates the affected entities, and re-validates.
 
@@ -199,11 +197,11 @@ The AI workflow:
 
 1. **Design entities.** The AI creates Kotlin data classes or Java records based on the domain model you describe.
 2. **Generate migration.** The AI writes a Flyway or Liquibase migration script that creates the tables, columns, constraints, and indexes to match the entity definitions, following Storm's naming conventions.
-3. **Validate.** The AI writes a temporary test that applies the migration to an H2 in-memory database and validates the entities against the resulting schema using `SchemaValidator`. This proves the entity definitions and the migration script are consistent with each other, before it ever touches the real database.
+3. **Validate.** The AI writes a temporary test that applies the migration to an H2 in-memory database and validates the entities against the resulting schema using `ORMTemplate.validateSchema()`. This confirms that the entity definitions and the migration script are consistent with each other, before anything touches the real database.
 
-### Verification with SchemaValidator
+### Verification with Schema Validation
 
-Both approaches converge on the same verification step. Storm's `SchemaValidator` checks entities against the database at the JDBC level, catching mismatches that are difficult to spot by inspection: type incompatibilities, nullability disagreements, missing constraints, unmapped NOT NULL columns, and more. The AI can validate only the specific entities it created or modified:
+Both approaches converge on the same verification step. `ORMTemplate.validateSchema()` checks entities against the database at the JDBC level, catching mismatches that are difficult to spot by inspection: type incompatibilities, nullability disagreements, missing constraints, unmapped NOT NULL columns, and more. The AI can validate only the specific entities it created or modified:
 
 <Tabs>
 <TabItem value="kotlin" label="Kotlin" default>
@@ -243,13 +241,13 @@ class EntitySchemaTest {
 </TabItem>
 </Tabs>
 
-In the schema-first case, `schema.sql` is the existing migration or DDL. In the entity-first case, it is the migration the AI just generated. Either way, `SchemaValidator` proves that entities and schema agree.
+In the schema-first case, `schema.sql` is the existing migration or DDL. In the entity-first case, it is the migration the AI just generated. Either way, schema validation confirms that entities and schema agree.
 
 ---
 
 ## Query Verification With SqlCapture
 
-The same pattern applies to queries. A query that compiles and runs without errors is not necessarily correct: the WHERE clause might filter on the wrong column, a JOIN might be missing, or an ORDER BY might not match the user's intent. After the AI writes a query (whether using the QueryBuilder, SQL Templates, or a repository method), it can write a test that captures the actual SQL Storm generates and verifies it matches the intended behavior.
+The same pattern applies to queries. A query that compiles and runs without errors is not necessarily correct: the WHERE clause might filter on the wrong column, a JOIN might be missing, or an ORDER BY might not match the user's intent. After the AI writes a query, it can write a test that captures the actual SQL Storm generates and verifies it matches the intended behavior.
 
 `SqlCapture` records every SQL statement, its operation type, and its bind parameters:
 
@@ -312,7 +310,7 @@ If the test fails, the AI has the actual SQL in the failure output and can corre
 
 ## Temporary Self-Verification Tests
 
-The verification tests the AI writes do not need to become part of your codebase. The AI can write a test, run it, and remove it again, all within a single conversation. This gives the AI a way to prove its own work correct without leaving behind test artifacts you did not ask for.
+The verification tests the AI writes do not need to become part of your codebase. The AI can write a test, run it, and remove it again, all within a single conversation. This gives the AI a way to validate its own work without leaving behind test artifacts you did not ask for.
 
 The workflow:
 
@@ -328,7 +326,7 @@ The workflow:
 3. **Fix (if needed).** If the test fails, the error messages tell the AI exactly what is wrong. It fixes the entities, queries, or migration and re-runs the test.
 4. **Clean up.** Once the test passes, the AI deletes the temporary test file (and any temporary SQL scripts it created). The verified code stays; the scaffolding goes.
 
-This works because `@StormTest` spins up an H2 in-memory database by default, executes the setup scripts, and tears everything down after the test. No external database, no persistent state, no side effects.
+This works because `@StormTest` spins up an H2 in-memory database by default, executes the setup scripts, and tears everything down after the test. No external database, no persistent state, no side effects. When the code under test uses dialect-specific SQL, define a static `dataSource()` factory method on the test class to provide a Testcontainers-backed `DataSource` for the target database instead of H2.
 
 You can also ask the AI to keep the test as a permanent regression test. The choice is yours, and the AI should ask.
 
@@ -336,22 +334,20 @@ You can also ask the AI to keep the test as a permanent regression test. The cho
 
 ## The Gold Standard: Verify, Then Trust
 
-This is what sets Storm apart as an AI-first ORM. The AI does not just generate code and hope for the best. It generates code, then proves it correct through Storm's own validation, before anything is committed.
+This is what makes Storm the gold standard for AI-assisted database development. The AI does not just generate code and hope for the best. It generates code, then validates it through Storm's own verification, before anything is committed.
 
 | Task | AI generates | Storm verifies |
 |------|-------------|-------------------|
-| **Entities (schema-first)** | Data classes/records from live schema | `SchemaValidator` checks types, nullability, constraints, unmapped columns |
-| **Entities (entity-first)** | Data classes/records + migration script | `SchemaValidator` confirms entity and migration agree |
+| **Entities (schema-first)** | Data classes/records from live schema | `validateSchema()` checks types, nullability, constraints, unmapped columns |
+| **Entities (entity-first)** | Data classes/records + migration script | `validateSchema()` confirms entity and migration agree |
 | **Queries** | QueryBuilder or SQL Template code | `SqlCapture` verifies the generated SQL matches the intended structure and parameters |
 | **Repositories** | Custom query methods | `SqlCapture` confirms each method produces the expected SQL |
 
-In most cases, the AI will generate correct code on the first attempt, because Storm's immutable entities, explicit queries, and convention-based naming leave little room for ambiguity. But "most cases" is not "all cases", and the difference between a good AI workflow and a great one is whether you can trust the result without reading every line.
-
-The verify-then-trust pattern closes that gap:
+Storm's immutable entities, explicit queries, and convention-based naming make AI-generated code straightforward to verify. The verify-then-trust pattern below closes the gap between "looks right" and "is right":
 
 1. **The AI generates code** using Storm's skills, documentation, and (when configured) live schema metadata from the MCP server.
-2. **The AI writes a focused test** that exercises exactly the code it just wrote, using `SchemaValidator` for entities or `SqlCapture` for queries.
+2. **The AI writes a focused test** that exercises exactly the code it just wrote, using `ORMTemplate.validateSchema()` for entities or `SqlCapture` for queries.
 3. **The AI runs the test.** If it passes, the code is correct by construction, verified by the same validation logic that Storm uses internally. If it fails, the error messages tell the AI exactly what to fix.
 4. **The test stays or goes.** Keep it as a regression test, or let the AI remove it once verified. Either way, the verification happened.
 
-This is the combination that makes it work: an AI-friendly data model that produces stable code, a schema-aware MCP server that gives the AI structural knowledge without exposing data, and built-in test tooling that lets the AI verify its own work through the framework rather than around it.
+This is the combination that makes it work: an AI-friendly data model that produces stable code, a schema-aware MCP server that gives the AI structural knowledge, and built-in test tooling that lets the AI verify its own work through the framework rather than around it.

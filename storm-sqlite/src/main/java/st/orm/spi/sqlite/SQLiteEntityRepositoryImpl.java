@@ -16,9 +16,11 @@
 package st.orm.spi.sqlite;
 
 import static java.util.function.Predicate.not;
+import static st.orm.GenerationStrategy.NONE;
 import static st.orm.core.template.SqlInterceptor.intercept;
 import static st.orm.core.template.TemplateString.combine;
 import static st.orm.core.template.TemplateString.raw;
+import static st.orm.core.template.Templates.table;
 import static st.orm.core.template.impl.StringTemplates.flatten;
 
 import jakarta.annotation.Nonnull;
@@ -31,6 +33,7 @@ import java.util.Date;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.stream.IntStream;
+import st.orm.Data;
 import st.orm.Entity;
 import st.orm.NoResultException;
 import st.orm.NonUniqueResultException;
@@ -43,6 +46,7 @@ import st.orm.core.template.Model;
 import st.orm.core.template.ORMTemplate;
 import st.orm.core.template.PreparedQuery;
 import st.orm.core.template.TemplateString;
+import st.orm.core.template.impl.JoinedEntityHelper;
 
 /**
  * Implementation of {@link EntityRepository} for SQLite.
@@ -57,18 +61,18 @@ public class SQLiteEntityRepositoryImpl<E extends Entity<ID>, ID>
         super(ormTemplate, model);
     }
 
-    private TemplateString getVersionString(@Nonnull Class<?> type, @Nonnull Column column) {
+    private TemplateString getVersionString(@Nonnull Class<? extends Data> type, @Nonnull Column column) {
         TemplateString columnName = TemplateString.of(column.qualifiedName(ormTemplate.dialect()));
         TemplateString updateExpression = switch (column.type()) {
             case Class<?> c when Integer.TYPE.isAssignableFrom(c)
                     || Long.TYPE.isAssignableFrom(c)
                     || Integer.class.isAssignableFrom(c)
                     || Long.class.isAssignableFrom(c)
-                    || BigInteger.class.isAssignableFrom(c) -> TemplateString.of("%s + 1".formatted(column.qualifiedName(ormTemplate.dialect())));
+                    || BigInteger.class.isAssignableFrom(c) -> raw("\0.\0 + 1", table(type), columnName);
             case Class<?> c when Instant.class.isAssignableFrom(c)
                     || Date.class.isAssignableFrom(c)
                     || Calendar.class.isAssignableFrom(c)
-                    || Timestamp.class.isAssignableFrom(c) -> TemplateString.of("CURRENT_TIMESTAMP");
+                    || Timestamp.class.isAssignableFrom(c) -> TemplateString.of(ormTemplate.dialect().currentTimestamp());
             default ->
                     throw new PersistenceException("Unsupported version type: %s.".formatted(column.type().getSimpleName()));
         };
@@ -204,6 +208,37 @@ public class SQLiteEntityRepositoryImpl<E extends Entity<ID>, ID>
         return batch.stream().map(Entity::id).toList();
     }
 
+    /**
+     * Overrides joined entity batch insert to use SQLite's {@code RETURNING} clause instead of
+     * {@code executeBatch()} followed by {@code getGeneratedKeys()}, which the SQLite JDBC driver
+     * does not support for batch operations.
+     *
+     * <p>Phase 1 (base table insert) uses a multi-value INSERT with {@code RETURNING} to retrieve
+     * generated keys. Phase 2 (extension table inserts) delegates to the standard
+     * {@link JoinedEntityHelper#insertExtensionTables} logic.</p>
+     */
+    @Override
+    protected List<ID> insertJoinedBatch(@Nonnull List<E> entities) {
+        if (generationStrategy == NONE) {
+            return super.insertJoinedBatch(entities);
+        }
+        // SQLite does not support getGeneratedKeys() after executeBatch().
+        // Use RETURNING clause for the base table insert instead.
+        assert primaryKeyColumns.size() == 1;
+        var primaryKeyColumn = primaryKeyColumns.getFirst();
+        String primaryKeyName = primaryKeyColumn.qualifiedName(ormTemplate.dialect());
+        // Phase 1: Base table INSERT with RETURNING.
+        var query = ormTemplate.query(raw("""
+            INSERT INTO \0
+            VALUES \0
+            RETURNING %s""".formatted(primaryKeyName), model.type(), entities))
+                .managed();
+        List<ID> ids = query.getResultList(model.primaryKeyType());
+        // Phase 2: Extension table INSERTs.
+        JoinedEntityHelper.insertExtensionTables(ormTemplate, model, entities, ids);
+        return ids;
+    }
+
     @Override
     public ID insertAndFetchId(@Nonnull E entity) {
         // SQLite does not support sequences.
@@ -212,7 +247,20 @@ public class SQLiteEntityRepositoryImpl<E extends Entity<ID>, ID>
 
     @Override
     public List<ID> insertAndFetchIds(@Nonnull Iterable<E> entities) {
-        // SQLite does not support sequences.
-        return super.insertAndFetchIds(entities);
+        if (generationStrategy == NONE) {
+            return super.insertAndFetchIds(entities);
+        }
+        // SQLite does not support getGeneratedKeys() after executeBatch().
+        // Use RETURNING clause for the batch insert instead.
+        entities.forEach(this::validateInsert);
+        assert primaryKeyColumns.size() == 1;
+        var primaryKeyColumn = primaryKeyColumns.getFirst();
+        String primaryKeyName = primaryKeyColumn.qualifiedName(ormTemplate.dialect());
+        var query = ormTemplate.query(raw("""
+            INSERT INTO \0
+            VALUES \0
+            RETURNING %s""".formatted(primaryKeyName), model.type(), entities))
+                .managed();
+        return query.getResultList(model.primaryKeyType());
     }
 }

@@ -96,9 +96,9 @@ The annotation accepts the following attributes:
 | Attribute  | Default                         | Description                                                                               |
 |------------|---------------------------------|-------------------------------------------------------------------------------------------|
 | `scripts`  | `{}`                            | Classpath SQL scripts to execute before tests run. Executed once per test class.           |
-| `url`      | `""`                            | JDBC URL. Defaults to an H2 in-memory database with a unique name derived from the class. |
-| `username` | `"sa"`                          | Database username.                                                                        |
-| `password` | `""`                            | Database password.                                                                        |
+| `url`      | `""`                            | JDBC URL. Defaults to an H2 in-memory database with a unique name derived from the class. Ignored when a static `dataSource()` factory method is present (see [DataSource Factory Method](#datasource-factory-method)). |
+| `username` | `"sa"`                          | Database username. Ignored when a static `dataSource()` factory method is present.        |
+| `password` | `""`                            | Database password. Ignored when a static `dataSource()` factory method is present.        |
 
 ### Parameter Injection
 
@@ -177,7 +177,9 @@ class ItemRepositoryTest {
 
 ### Using a Custom Database
 
-By default, `@StormTest` creates an H2 in-memory database. To test against a different database, specify a JDBC URL:
+By default, `@StormTest` creates an H2 in-memory database. This works well for dialect-agnostic logic, but H2 has its own SQL dialect. If your schema scripts or queries use database-specific syntax (for example, PostgreSQL's `SERIAL` type, MySQL's `AUTO_INCREMENT`, or Oracle's sequence syntax), they will not run against H2. In these cases, you need to test against the actual target database.
+
+To point `@StormTest` at a different database, specify a JDBC URL. Storm auto-detects the correct `SqlDialect` from the URL:
 
 ```java
 @StormTest(
@@ -190,6 +192,80 @@ class PostgresTest {
     // ...
 }
 ```
+
+This requires a running database instance at the given URL. For local development you can start one manually (the dialect modules include `docker-compose.yml` files as a reference), but for automated and CI testing, [Testcontainers](https://testcontainers.com/) is the recommended approach. Testcontainers starts a disposable Docker container before the test and tears it down afterwards, so tests remain self-contained and reproducible.
+
+### DataSource Factory Method
+
+Since `@StormTest` takes its URL as a compile-time annotation attribute, it cannot receive the dynamic URL that Testcontainers assigns at runtime. To solve this, define a static `dataSource()` method on the test class. When `StormExtension` finds this method, it uses the returned `DataSource` instead of creating one from the annotation's `url`, `username`, and `password` attributes. SQL scripts still execute against the returned `DataSource`, and all parameter injection (including `ORMTemplate`, `SqlCapture`, and `DataSource`) works as usual.
+
+<Tabs groupId="language">
+<TabItem value="kotlin" label="Kotlin" default>
+
+```kotlin
+@StormTest(scripts = ["/schema-postgres.sql", "/data.sql"])
+@Testcontainers
+class PostgresTest {
+
+    companion object {
+        @Container
+        val postgres = PostgreSQLContainer("postgres:latest")
+            .withDatabaseName("test")
+            .withUsername("test")
+            .withPassword("test")
+
+        @JvmStatic
+        fun dataSource(): DataSource {
+            val dataSource = PGSimpleDataSource()
+            dataSource.setUrl(postgres.jdbcUrl)
+            dataSource.user = postgres.username
+            dataSource.password = postgres.password
+            return dataSource
+        }
+    }
+
+    @Test
+    fun `should use PostgreSQL dialect`(orm: ORMTemplate) {
+        // orm is connected to the Testcontainers PostgreSQL instance,
+        // scripts have been executed, and parameter injection works as usual.
+    }
+}
+```
+
+</TabItem>
+<TabItem value="java" label="Java">
+
+```java
+@StormTest(scripts = {"/schema-postgres.sql", "/data.sql"})
+@Testcontainers
+class PostgresTest {
+
+    @Container
+    static PostgreSQLContainer<?> postgres = new PostgreSQLContainer<>("postgres:latest")
+            .withDatabaseName("test")
+            .withUsername("test")
+            .withPassword("test");
+
+    static DataSource dataSource() {
+        var dataSource = new PGSimpleDataSource();
+        dataSource.setUrl(postgres.getJdbcUrl());
+        dataSource.setUser(postgres.getUsername());
+        dataSource.setPassword(postgres.getPassword());
+        return dataSource;
+    }
+
+    @Test
+    void shouldUsePostgreSQLDialect(ORMTemplate orm) {
+        // orm is connected to the Testcontainers PostgreSQL instance,
+        // scripts have been executed, and parameter injection works as usual.
+    }
+}
+```
+
+</TabItem>
+</Tabs>
+
+The factory method must be static, take no arguments, and return a `DataSource`. Kotlin companion object methods are also supported.
 
 ---
 

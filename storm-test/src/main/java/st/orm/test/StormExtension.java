@@ -48,6 +48,12 @@ import st.orm.core.template.impl.SchemaValidator;
  *         {@code of(DataSource)} method (e.g., {@code ORMTemplate})</li>
  * </ul>
  *
+ * <p>By default, the extension creates an H2 in-memory database. To use a custom {@link DataSource} (for example, one
+ * backed by a Testcontainers-managed database), define a static {@code dataSource()} method on the test class that
+ * returns a {@link DataSource}. When present, this method takes precedence over the {@code url}, {@code username}, and
+ * {@code password} attributes of {@link StormTest}. SQL scripts specified in {@link StormTest#scripts()} are still
+ * executed against the returned {@link DataSource}.</p>
+ *
  * @since 1.9
  */
 public class StormExtension implements BeforeAllCallback, ParameterResolver {
@@ -61,10 +67,13 @@ public class StormExtension implements BeforeAllCallback, ParameterResolver {
         if (annotation == null) {
             return;
         }
-        String url = annotation.url().isEmpty()
-                ? "jdbc:h2:mem:" + context.getRequiredTestClass().getSimpleName() + ";DB_CLOSE_DELAY=-1"
-                : annotation.url();
-        DataSource dataSource = new SimpleDataSource(url, annotation.username(), annotation.password());
+        DataSource dataSource = findDataSourceFactory(context.getRequiredTestClass());
+        if (dataSource == null) {
+            String url = annotation.url().isEmpty()
+                    ? "jdbc:h2:mem:" + context.getRequiredTestClass().getSimpleName() + ";DB_CLOSE_DELAY=-1"
+                    : annotation.url();
+            dataSource = new SimpleDataSource(url, annotation.username(), annotation.password());
+        }
         if (annotation.scripts().length > 0) {
             try (Connection conn = dataSource.getConnection()) {
                 for (String script : annotation.scripts()) {
@@ -114,6 +123,38 @@ public class StormExtension implements BeforeAllCallback, ParameterResolver {
 
     private ExtensionContext.Store getStore(ExtensionContext context) {
         return context.getRoot().getStore(NAMESPACE);
+    }
+
+    // --- DataSource factory method resolution ---
+
+    /**
+     * Looks for a static {@code dataSource()} method on the test class. If found, invokes it and returns the result.
+     * This also checks for a Kotlin companion object with a {@code dataSource()} method.
+     *
+     * @return the {@link DataSource} returned by the factory method, or {@code null} if no such method exists.
+     */
+    private static DataSource findDataSourceFactory(Class<?> testClass) throws Exception {
+        // Check for a Java static method.
+        try {
+            Method method = testClass.getDeclaredMethod("dataSource");
+            if (Modifier.isStatic(method.getModifiers())
+                    && DataSource.class.isAssignableFrom(method.getReturnType())) {
+                method.setAccessible(true);
+                return (DataSource) method.invoke(null);
+            }
+        } catch (NoSuchMethodException ignored) {
+        }
+        // Check for a Kotlin companion object with a dataSource() method.
+        try {
+            Field companion = testClass.getField("Companion");
+            Object companionObject = companion.get(null);
+            Method method = companionObject.getClass().getMethod("dataSource");
+            if (DataSource.class.isAssignableFrom(method.getReturnType())) {
+                return (DataSource) method.invoke(companionObject);
+            }
+        } catch (NoSuchFieldException | NoSuchMethodException ignored) {
+        }
+        return null;
     }
 
     // --- Factory method resolution ---

@@ -41,6 +41,7 @@ import java.util.function.Supplier;
 import javax.sql.DataSource;
 import st.orm.Data;
 import st.orm.Entity;
+import st.orm.PersistenceException;
 import st.orm.Projection;
 import st.orm.Ref;
 import st.orm.StormConfig;
@@ -235,7 +236,7 @@ public final class Providers {
             try (Connection connection = ds.getConnection()) {
                 return connection.getMetaData().getDatabaseProductName();
             } catch (SQLException e) {
-                throw new st.orm.PersistenceException("Failed to determine database product name.", e);
+                throw new PersistenceException("Failed to determine database product name.", e);
             }
         });
     }
@@ -251,7 +252,7 @@ public final class Providers {
         try {
             return connection.getMetaData().getDatabaseProductName();
         } catch (SQLException e) {
-            throw new st.orm.PersistenceException("Failed to determine database product name.", e);
+            throw new PersistenceException("Failed to determine database product name.", e);
         }
     }
 

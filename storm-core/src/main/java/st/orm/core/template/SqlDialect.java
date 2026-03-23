@@ -28,7 +28,9 @@ import static st.orm.Operator.LESS_THAN_OR_EQUAL;
 import jakarta.annotation.Nonnull;
 import java.sql.PreparedStatement;
 import java.sql.SQLException;
+import java.sql.Timestamp;
 import java.util.ArrayList;
+import java.util.Calendar;
 import java.util.List;
 import java.util.Map;
 import java.util.SequencedMap;
@@ -165,7 +167,7 @@ public interface SqlDialect {
      *
      * <p>This method generalizes {@link #multiValueIn} to support all comparison operators when multiple columns are
      * involved (e.g., inline records or compound keys). The default implementation produces universally supported SQL.
-     * Dialects that support tuple comparison syntax (e.g., PostgreSQL, MySQL) can override this method to produce more
+     * Dialects that support tuple comparison syntax can override this method to produce more
      * compact SQL like {@code (a, b) > (?, ?)}.</p>
      *
      * <p>For comparison operators ({@code >}, {@code >=}, {@code <}, {@code <=}), the default implementation uses
@@ -354,7 +356,7 @@ public interface SqlDialect {
      * Sets a UUID parameter on the given prepared statement.
      *
      * <p>The default implementation sets the UUID as a string, which is compatible with databases that store UUIDs as
-     * character types. Dialects that support native UUID types (e.g., PostgreSQL) should override this method to use
+     * character types. Dialects that support native UUID types should override this method to use
      * {@link PreparedStatement#setObject(int, Object)}.</p>
      *
      * @param preparedStatement the prepared statement.
@@ -366,6 +368,26 @@ public interface SqlDialect {
     default void setParameter(@Nonnull PreparedStatement preparedStatement, int index,
                               @Nonnull UUID uuid) throws SQLException {
         preparedStatement.setString(index, uuid.toString());
+    }
+
+    /**
+     * Sets a {@link Timestamp} parameter on the given prepared statement.
+     *
+     * <p>The default implementation uses {@link PreparedStatement#setTimestamp(int, Timestamp, Calendar)}.
+     * Dialects where the JDBC driver does not store timestamps in a text-comparable format should override this
+     * method to bind the timestamp in a format that ensures round-trip consistency for optimistic lock
+     * comparisons.</p>
+     *
+     * @param preparedStatement the prepared statement.
+     * @param index the parameter index.
+     * @param timestamp the timestamp value.
+     * @param calendar the calendar to use for timezone conversion.
+     * @throws SQLException if a database access error occurs.
+     * @since 1.11
+     */
+    default void setParameter(@Nonnull PreparedStatement preparedStatement, int index,
+                              @Nonnull Timestamp timestamp, @Nonnull Calendar calendar) throws SQLException {
+        preparedStatement.setTimestamp(index, timestamp, calendar);
     }
 
     /**
@@ -383,9 +405,9 @@ public interface SqlDialect {
      * @since 1.9
      */
     enum SequenceDiscoveryStrategy {
-        /** Use {@code INFORMATION_SCHEMA.SEQUENCES} (H2, PostgreSQL, SQL Server). */
+        /** Use {@code INFORMATION_SCHEMA.SEQUENCES}. */
         INFORMATION_SCHEMA,
-        /** Use Oracle's {@code ALL_SEQUENCES} dictionary view. */
+        /** Use {@code ALL_SEQUENCES} dictionary view. */
         ALL_SEQUENCES,
         /** Sequences are not discoverable; skip sequence validation. */
         NONE
@@ -427,9 +449,8 @@ public interface SqlDialect {
     /**
      * Returns the strategy for discovering sequences in the database schema.
      *
-     * <p>The default strategy queries {@code INFORMATION_SCHEMA.SEQUENCES}, which works for H2, PostgreSQL, and
-     * SQL Server. Database dialects that use a different mechanism (e.g., Oracle's {@code ALL_SEQUENCES}) or do not
-     * support sequences at all (e.g., MySQL) should override this method.</p>
+     * <p>The default strategy queries {@code INFORMATION_SCHEMA.SEQUENCES}. Database dialects that use a different
+     * mechanism or do not support sequences at all should override this method.</p>
      *
      * @return the sequence discovery strategy.
      * @since 1.9
@@ -456,7 +477,7 @@ public interface SqlDialect {
     /**
      * Returns whether the database uses JDBC catalogs in place of schemas.
      *
-     * <p>Some databases (e.g., MySQL, MariaDB) do not support JDBC schemas. Instead, the database name is exposed as
+     * <p>Some databases do not support JDBC schemas. Instead, the database name is exposed as
      * the JDBC catalog. When this method returns {@code true}, schema validation will pass the entity's schema value as
      * the JDBC catalog parameter instead of the schema pattern.</p>
      *
@@ -506,6 +527,21 @@ public interface SqlDialect {
      */
     default boolean streamingRequiresTransaction() {
         return false;
+    }
+
+    /**
+     * Returns the SQL expression for the current timestamp.
+     *
+     * <p>The default implementation returns {@code CURRENT_TIMESTAMP}, which is the ANSI SQL standard. Dialects where
+     * the JDBC driver's timestamp format does not match the database's {@code CURRENT_TIMESTAMP} output should
+     * override this method to return an expression that produces a format compatible with the JDBC driver's parameter
+     * binding.</p>
+     *
+     * @return the SQL expression for the current timestamp.
+     * @since 1.11
+     */
+    default String currentTimestamp() {
+        return "CURRENT_TIMESTAMP";
     }
 
 }

@@ -1,0 +1,28 @@
+### H2 Settings ###
+spring:
+  test:
+    database:
+      replace: auto_configured
+
+  datasource:
+    url: jdbc:h2:mem:test;DB_CLOSE_DELAY=-1
+    driver-class-name: org.h2.Driver
+    username: sa
+    password:
+    hikari:
+      maximum-pool-size: 4
+
+  jpa:
+    hibernate:
+      ddl-auto: none
+    defer-datasource-initialization: true
+
+  sql:
+    init:
+      mode: always
+      continue-on-error: false
+
+logging:
+  level:
+    root: INFO
+    org.springframework: WARN

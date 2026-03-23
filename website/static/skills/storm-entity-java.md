@@ -31,13 +31,24 @@ Generation rules:
 
 6. NO COLLECTION FIELDS. Query the "many" side instead.
 
-7. Unique keys, embedded components, naming, enums, optimistic locking: same rules as Kotlin.
+7. Naming: camelCase to snake_case automatically. FK appends _id.
+   - For individual overrides: \`@DbTable("custom_name")\` / \`@DbColumn("custom_name")\`.
+   - For database-wide conventions (e.g., UPPER_CASE, prefixed tables like \`tbl_\`, or non-standard FK naming): configure a custom \`TableNameResolver\`, \`ColumnNameResolver\`, or \`ForeignKeyResolver\` via the \`TemplateDecorator\` on \`ORMTemplate.of()\` instead of annotating every entity. Example:
+     \`\`\`java
+     var orm = ORMTemplate.of(dataSource, decorator -> decorator
+         .withTableNameResolver(TableNameResolver.toUpperCase(TableNameResolver.DEFAULT))
+         .withColumnNameResolver(ColumnNameResolver.toUpperCase(ColumnNameResolver.DEFAULT)));
+     \`\`\`
+   - Resolvers are functional interfaces. Compose them with built-in decorators (\`toUpperCase\`) or write custom lambdas that receive \`RecordType\` (for tables) or \`RecordField\` (for columns) with full access to class/field metadata and annotations.
+   - Use \`@DbTable\`/\`@DbColumn\` only for exceptions to the global convention. If the entire database follows one pattern, a resolver handles it without any annotations.
 
-8. Java records are immutable. Consider Lombok \`@Builder(toBuilder = true)\` for copy-with-modification.
+8. Unique keys, embedded components, enums, optimistic locking: same rules as Kotlin.
 
-9. Use descriptive variable names, never abbreviated.
+9. Java records are immutable. Consider Lombok \`@Builder(toBuilder = true)\` for copy-with-modification.
 
-10. **Use `Ref` for map keys and set membership**: Prefer `Ref<Entity>` (via `.ref()`) for all entity lookups, map keys, and set membership. `Ref` provides identity-based `equals`/`hashCode` on the primary key, making it safe and efficient. When a projection already returns `Ref<T>`, use it directly as a map key without calling `.ref()` again.
+10. Use descriptive variable names, never abbreviated.
+
+11. **Use `Ref` for map keys and set membership**: Prefer `Ref<Entity>` (via `.ref()`) for all entity lookups, map keys, and set membership. `Ref` provides identity-based `equals`/`hashCode` on the primary key, making it safe and efficient. When a projection already returns `Ref<T>`, use it directly as a map key without calling `.ref()` again.
 
 After generating, remind the user to rebuild for metamodel generation.
 

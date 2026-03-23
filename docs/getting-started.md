@@ -51,7 +51,7 @@ For example:
 
 **3. Verify:**
 
-Storm's AI workflow includes built-in verification. The AI can run `SchemaValidator` to prove entities match the database and `SqlCapture` to inspect generated SQL, all in an isolated H2 test database before anything touches production.
+Storm's AI workflow includes built-in verification. The AI can run `ORMTemplate.validateSchema()` to prove entities match the database and `SqlCapture` to inspect generated SQL, all in an isolated H2 test database before anything touches production.
 
 See [AI-Assisted Development](ai.md) for the full setup guide, available skills, and MCP server configuration.
 

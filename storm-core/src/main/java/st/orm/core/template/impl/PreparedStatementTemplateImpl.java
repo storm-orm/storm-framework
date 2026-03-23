@@ -403,16 +403,16 @@ public final class PreparedStatementTemplateImpl implements PreparedStatementTem
                         }
                         case java.sql.Date d   -> preparedStatement.setDate(idx, d);
                         case Time t            -> preparedStatement.setTime(idx, t);
-                        case Timestamp ts      -> preparedStatement.setTimestamp(idx, ts, calendarSupplier.get());
+                        case Timestamp ts      -> dialect.setParameter(preparedStatement, idx, ts, calendarSupplier.get());
                         case UUID u            -> dialect.setParameter(preparedStatement, idx, u);
                         case Enum<?> e         -> preparedStatement.setString(idx, e.name());   // Enum handled by ORM layer.
                         // java.time using vendor-safe approach.
                         case LocalDate ld      -> preparedStatement.setDate(idx, java.sql.Date.valueOf(ld));
                         case LocalTime lt      -> preparedStatement.setTime(idx, java.sql.Time.valueOf(lt));
                         case LocalDateTime ldt -> preparedStatement.setTimestamp(idx, Timestamp.valueOf(ldt));
-                        case OffsetDateTime odt-> preparedStatement.setTimestamp(idx, Timestamp.from(odt.toInstant()), calendarSupplier.get());
-                        case ZonedDateTime zdt -> preparedStatement.setTimestamp(idx, Timestamp.from(zdt.toInstant()), calendarSupplier.get());
-                        case Instant inst      -> preparedStatement.setTimestamp(idx, Timestamp.from(inst), calendarSupplier.get());
+                        case OffsetDateTime odt-> dialect.setParameter(preparedStatement, idx, Timestamp.from(odt.toInstant()), calendarSupplier.get());
+                        case ZonedDateTime zdt -> dialect.setParameter(preparedStatement, idx, Timestamp.from(zdt.toInstant()), calendarSupplier.get());
+                        case Instant inst      -> dialect.setParameter(preparedStatement, idx, Timestamp.from(inst), calendarSupplier.get());
                         default                -> preparedStatement.setObject(idx, v);
                     }
                 }

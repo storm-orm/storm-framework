@@ -216,7 +216,7 @@ public class H2SqlDialect extends DefaultSqlDialect implements SqlDialect {
      */
     @Override
     public String limit(int offset, int limit) {
-        return "OFFSET %d LIMIT %d".formatted(offset, limit);
+        return "LIMIT %d OFFSET %d".formatted(limit, offset);
     }
 
     /**

@@ -18,7 +18,13 @@ package st.orm.spi.sqlite;
 import static java.util.stream.Collectors.toSet;
 
 import jakarta.annotation.Nonnull;
+import java.sql.PreparedStatement;
+import java.sql.SQLException;
+import java.sql.Timestamp;
+import java.text.SimpleDateFormat;
+import java.util.Calendar;
 import java.util.Set;
+import java.util.TimeZone;
 import java.util.regex.Pattern;
 import java.util.stream.Stream;
 import st.orm.PersistenceException;
@@ -224,6 +230,44 @@ public class SQLiteSqlDialect extends DefaultSqlDialect implements SqlDialect {
     @Override
     public ConstraintDiscoveryStrategy constraintDiscoveryStrategy() {
         return ConstraintDiscoveryStrategy.JDBC_METADATA;
+    }
+
+    /**
+     * Returns the SQL expression for the current timestamp.
+     *
+     * <p>SQLite stores timestamps as text. The standard {@code CURRENT_TIMESTAMP} produces
+     * {@code YYYY-MM-DD HH:MM:SS} (no fractional seconds), but the SQLite JDBC driver binds
+     * {@code Timestamp} parameters with fractional seconds. This mismatch causes optimistic lock
+     * comparisons to fail. Using {@code strftime} with {@code %f} includes fractional seconds,
+     * ensuring round-trip consistency between reads and writes.</p>
+     *
+     * @return the SQL expression for the current timestamp.
+     * @since 1.11
+     */
+    @Override
+    public String currentTimestamp() {
+        return "strftime('%Y-%m-%d %H:%M:%f', 'now')";
+    }
+
+    private static final String SQLITE_TIMESTAMP_FORMAT = "yyyy-MM-dd HH:mm:ss.SSS";
+
+    /**
+     * Binds a {@link Timestamp} parameter as a formatted text string.
+     *
+     * <p>The default SQLite JDBC driver stores timestamps as epoch milliseconds when using
+     * {@link PreparedStatement#setTimestamp}, which makes text-based comparisons with
+     * {@code strftime} or {@code CURRENT_TIMESTAMP} fail. This override formats the timestamp
+     * as a text string matching the output of {@link #currentTimestamp()}, ensuring that
+     * optimistic lock comparisons ({@code WHERE version = ?}) work correctly.</p>
+     *
+     * @since 1.11
+     */
+    @Override
+    public void setParameter(@Nonnull PreparedStatement preparedStatement, int index,
+                             @Nonnull Timestamp timestamp, @Nonnull Calendar calendar) throws SQLException {
+        SimpleDateFormat format = new SimpleDateFormat(SQLITE_TIMESTAMP_FORMAT);
+        format.setTimeZone(TimeZone.getTimeZone("UTC"));
+        preparedStatement.setString(index, format.format(timestamp));
     }
 
     /**

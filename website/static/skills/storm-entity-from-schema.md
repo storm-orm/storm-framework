@@ -28,6 +28,16 @@ Generation/update rules:
 - Use `@FK(constraint = false)` if a FK column intentionally has no FK constraint in the database.
 - Use `@UK(constraint = false)` if a unique field intentionally has no unique constraint in the database.
 
+Naming convention detection:
+- Before generating entities, analyze the database naming pattern across tables and columns.
+- If the database follows Storm's default convention (snake_case tables, snake_case columns, FK columns with _id suffix), no configuration is needed.
+- If the database follows a DIFFERENT but consistent convention (e.g., UPPER_CASE, PascalCase, prefixed tables like `tbl_`, non-standard FK naming), suggest a custom `TableNameResolver`, `ColumnNameResolver`, or `ForeignKeyResolver` via `TemplateDecorator` instead of annotating every entity with `@DbTable`/`@DbColumn`.
+- Resolvers are functional interfaces configured on `ORMTemplate.of()`:
+  Kotlin: `dataSource.orm { decorator -> decorator.withTableNameResolver { type -> ... } }`
+  Java: `ORMTemplate.of(dataSource, decorator -> decorator.withTableNameResolver(type -> ...))`
+- Built-in helpers: `TableNameResolver.toUpperCase(TableNameResolver.DEFAULT)`, `ColumnNameResolver.toUpperCase(...)`, `ForeignKeyResolver.toUpperCase(...)`. Custom lambdas receive `RecordType` (class, annotations, fields) or `RecordField` (name, type, annotations) for full flexibility.
+- Use `@DbTable`/`@DbColumn` only for tables/columns that deviate from the global convention. The goal is clean entities with minimal annotations.
+
 SQL type mapping (Kotlin): INTEGER->Int, BIGINT->Long, VARCHAR/TEXT->String, BOOLEAN->Boolean, DECIMAL->BigDecimal, DATE->LocalDate, TIMESTAMP->Instant, UUID->UUID
 SQL type mapping (Java): INTEGER->Integer(PK)/int, BIGINT->Long(PK)/long, VARCHAR/TEXT->String, BOOLEAN->Boolean/boolean, DECIMAL->BigDecimal, DATE->LocalDate, TIMESTAMP->Instant, UUID->UUID
 
