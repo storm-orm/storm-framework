@@ -6,6 +6,8 @@
     "storm-repository-kotlin",
     "storm-query-kotlin",
     "storm-sql-kotlin",
+    "storm-json-kotlin",
+    "storm-serialization-kotlin",
     "storm-migration"
   ],
   "schemaSkills": [

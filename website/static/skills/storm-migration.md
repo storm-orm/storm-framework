@@ -18,6 +18,16 @@ PK generation mapping:
 | SEQUENCE | CREATE SEQUENCE | N/A | CREATE SEQUENCE |
 | NONE | No generation | No generation | No generation |
 
+JSON column types per dialect:
+| Database | Column Type |
+|----------|-------------|
+| PostgreSQL | `JSONB` |
+| MySQL | `JSON` |
+| MariaDB | `JSON` |
+| Oracle | `JSON` |
+| MS SQL Server | `NVARCHAR(MAX)` |
+| H2 | `CLOB` |
+
 Tips:
 - FK constraints matching @FK annotations
 - UNIQUE constraints for @UK fields
@@ -25,6 +35,7 @@ Tips:
 - NOT NULL matching entity nullability
 - Enums as strings: VARCHAR. Ordinal: INTEGER.
 - @Version: INTEGER or TIMESTAMP
+- `@Json` fields: use the correct JSON column type for the target database (see table above)
 
 After writing a migration, rebuild the project for metamodel regeneration.
 

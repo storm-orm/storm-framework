@@ -6,6 +6,8 @@
     "storm-repository-java",
     "storm-query-java",
     "storm-sql-java",
+    "storm-json-java",
+    "storm-serialization-java",
     "storm-migration"
   ],
   "schemaSkills": [
