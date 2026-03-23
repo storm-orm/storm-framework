@@ -24,6 +24,7 @@ import st.orm.repository.RepositoryLookup
 import st.orm.template.impl.ORMTemplateImpl
 import java.sql.Connection
 import javax.sql.DataSource
+import kotlin.reflect.KClass
 
 /**
  * The primary entry point for Storm's ORM functionality in Kotlin, combining SQL template query construction with
@@ -113,7 +114,7 @@ interface ORMTemplate :
      * @throws st.orm.PersistenceException if the template does not support schema validation.
      * @since 1.9
      */
-    fun validateSchema(types: Iterable<Class<out Data>>): List<String>
+    fun validateSchema(vararg types: KClass<out Data>): List<String>
 
     /**
      * Validates all discovered types and throws if any errors are found.
@@ -136,7 +137,7 @@ interface ORMTemplate :
      * @throws st.orm.PersistenceException if validation fails or the template does not support schema validation.
      * @since 1.9
      */
-    fun validateSchemaOrThrow(types: Iterable<Class<out Data>>)
+    fun validateSchemaOrThrow(vararg types: KClass<out Data>)
 
     companion object {
         /**

@@ -28,51 +28,49 @@ open class SchemaValidationTest(
 
     @Test
     fun `validateSchema with City should return no errors`() {
-        val errors = orm.validateSchema(listOf(City::class.java))
+        val errors = orm.validateSchema(City::class)
         errors.shouldBeEmpty()
     }
 
     @Test
     fun `validateSchema with Owner should return no errors`() {
-        val errors = orm.validateSchema(listOf(Owner::class.java))
+        val errors = orm.validateSchema(Owner::class)
         errors.shouldBeEmpty()
     }
 
     @Test
     fun `validateSchema with Pet should return no errors`() {
-        val errors = orm.validateSchema(listOf(Pet::class.java))
+        val errors = orm.validateSchema(Pet::class)
         errors.shouldBeEmpty()
     }
 
     @Test
     fun `validateSchema with Vet should return no errors`() {
-        val errors = orm.validateSchema(listOf(Vet::class.java))
+        val errors = orm.validateSchema(Vet::class)
         errors.shouldBeEmpty()
     }
 
     @Test
     fun `validateSchema with PetType should return no errors`() {
-        val errors = orm.validateSchema(listOf(PetType::class.java))
+        val errors = orm.validateSchema(PetType::class)
         errors.shouldBeEmpty()
     }
 
     @Test
     fun `validateSchema with Visit should return no errors`() {
-        val errors = orm.validateSchema(listOf(Visit::class.java))
+        val errors = orm.validateSchema(Visit::class)
         errors.shouldBeEmpty()
     }
 
     @Test
     fun `validateSchema with multiple valid types should return no errors`() {
         val errors = orm.validateSchema(
-            listOf(
-                City::class.java,
-                Owner::class.java,
-                Pet::class.java,
-                PetType::class.java,
-                Vet::class.java,
-                Visit::class.java,
-            ),
+            City::class,
+            Owner::class,
+            Pet::class,
+            PetType::class,
+            Vet::class,
+            Visit::class,
         )
         errors.shouldBeEmpty()
     }
@@ -88,7 +86,7 @@ open class SchemaValidationTest(
 
     @Test
     fun `validateSchema with nonexistent table entity should return errors`() {
-        val errors = orm.validateSchema(listOf(NonExistentEntity::class.java))
+        val errors = orm.validateSchema(NonExistentEntity::class)
         errors.shouldNotBeEmpty()
     }
 
@@ -102,7 +100,7 @@ open class SchemaValidationTest(
 
     @Test
     fun `validateSchema with mismatched columns should return errors`() {
-        val errors = orm.validateSchema(listOf(CityMismatch::class.java))
+        val errors = orm.validateSchema(CityMismatch::class)
         errors.shouldNotBeEmpty()
     }
 
@@ -111,37 +109,24 @@ open class SchemaValidationTest(
     @Test
     fun `validateSchemaOrThrow with valid types should not throw`() {
         // Should complete without exception for valid entity types.
-        orm.validateSchemaOrThrow(listOf(City::class.java, Vet::class.java))
+        orm.validateSchemaOrThrow(City::class, Vet::class)
     }
 
     @Test
     fun `validateSchemaOrThrow with invalid type should throw PersistenceException`() {
         assertThrows<PersistenceException> {
-            orm.validateSchemaOrThrow(listOf(NonExistentEntity::class.java))
+            orm.validateSchemaOrThrow(NonExistentEntity::class)
         }
     }
 
     @Test
     fun `validateSchemaOrThrow with mixed valid and invalid types should throw`() {
         assertThrows<PersistenceException> {
-            orm.validateSchemaOrThrow(listOf(City::class.java, NonExistentEntity::class.java))
+            orm.validateSchemaOrThrow(City::class, NonExistentEntity::class)
         }
     }
 
-    // validateSchema with empty list
-
-    @Test
-    fun `validateSchema with empty list should return no errors`() {
-        val errors = orm.validateSchema(emptyList())
-        errors.shouldBeEmpty()
-    }
-
-    @Test
-    fun `validateSchemaOrThrow with empty list should not throw`() {
-        orm.validateSchemaOrThrow(emptyList())
-    }
-
-    // validateSchema on connection-backed template
+    // validateSchema with no args (zero varargs)
 
     @Test
     fun `validateSchema on connection-backed template should throw PersistenceException`() {
@@ -168,12 +153,12 @@ open class SchemaValidationTest(
 
     @Test
     fun `validateSchema with OwnerView projection should return no errors`() {
-        val errors = orm.validateSchema(listOf(OwnerView::class.java))
+        val errors = orm.validateSchema(OwnerView::class)
         errors.shouldBeEmpty()
     }
 
     @Test
     fun `validateSchemaOrThrow with OwnerView projection should not throw`() {
-        orm.validateSchemaOrThrow(listOf(OwnerView::class.java))
+        orm.validateSchemaOrThrow(OwnerView::class)
     }
 }

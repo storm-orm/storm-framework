@@ -88,11 +88,11 @@ class ORMTemplateImpl(private val core: st.orm.core.template.ORMTemplate) :
 
     override fun validateSchema(): List<String> = core.validateSchema()
 
-    override fun validateSchema(types: Iterable<Class<out Data>>): List<String> = core.validateSchema(types)
+    override fun validateSchema(vararg types: KClass<out Data>): List<String> = core.validateSchema(types.map { it.java })
 
     override fun validateSchemaOrThrow() = core.validateSchemaOrThrow()
 
-    override fun validateSchemaOrThrow(types: Iterable<Class<out Data>>) = core.validateSchemaOrThrow(types)
+    override fun validateSchemaOrThrow(vararg types: KClass<out Data>) = core.validateSchemaOrThrow(types.map { it.java })
 
     /**
      * Returns the repository for the given entity type.
