@@ -1,13 +1,10 @@
 {
   "skills": [
+    "storm-setup",
     "storm-docs",
-    "storm-entity-kotlin",
     "storm-entity-java",
-    "storm-repository-kotlin",
     "storm-repository-java",
-    "storm-query-kotlin",
     "storm-query-java",
-    "storm-sql-kotlin",
     "storm-sql-java",
     "storm-migration"
   ],

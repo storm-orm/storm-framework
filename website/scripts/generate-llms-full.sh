@@ -64,7 +64,7 @@ DOCS=(
   faq.md
   migration-from-jpa.md
   glossary.md
-  ai-setup.md
+  ai.md
   # API Reference
   api-kotlin.md
   api-java.md

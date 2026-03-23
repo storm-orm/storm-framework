@@ -316,7 +316,7 @@ async function checkbox({ message, choices }) {
         const label  = atCursor  ? boltYellow(choices[i].name) : choices[i].name;
         out += `\x1b[2K  ${prefix} ${check} ${label}\n`;
       }
-      out += `\x1b[2K${dimText('  Space to toggle, Enter to confirm')}`;
+      out += `\x1b[2K${dimText('  Space to toggle, Enter to confirm')}\n`;
       linesWritten = choices.length + 2;
       stdout.write(out);
     }
@@ -558,19 +558,10 @@ async function fetchRules() {
   }
 }
 
-async function fetchSchemaRules() {
-  try {
-    const res = await fetch(`${SKILLS_BASE_URL}/storm-schema-rules.md`);
-    if (!res.ok) throw new Error(`${res.status}`);
-    return await res.text();
-  } catch {
-    return null;
-  }
-}
 
-async function fetchSkillIndex() {
+async function fetchSkillIndex(language) {
   try {
-    const res = await fetch(`${SKILLS_BASE_URL}/index.json`);
+    const res = await fetch(`${SKILLS_BASE_URL}/index-${language}.json`);
     if (!res.ok) throw new Error(`${res.status}`);
     return await res.json();
   } catch {
@@ -1107,16 +1098,6 @@ function registerMcp(toolConfig, stormDir, created, appended) {
   (isNew ? created : appended).push(toolConfig.mcpFile);
 }
 
-async function installSchemaRules(toolConfig, created, appended) {
-  const schemaRules = await fetchSchemaRules();
-  if (!schemaRules) return;
-
-  // Install as a skill file so all tools learn about the MCP tools.
-  if (toolConfig.skillPath) {
-    const content = `${STORM_SKILL_MARKER} storm-schema-rules -->\n${schemaRules}`;
-    installSkill('storm-schema-rules', content, toolConfig, created);
-  }
-}
 
 // ─── Database setup ──────────────────────────────────────────────────────────
 
@@ -1225,8 +1206,11 @@ async function setup() {
   await printWelcome();
 
   // Step 1: Select AI tools.
+  console.log('  Storm installs rules and skills for your AI coding tools.');
+  console.log('  Select the tools you use in this project.');
+  console.log();
   const tools = await checkbox({
-    message: 'Select AI tools to configure',
+    message: 'Which AI tools do you use?',
     choices: [
       { name: 'Claude Code',     value: 'claude',   checked: true },
       { name: 'Cursor',          value: 'cursor' },
@@ -1241,6 +1225,24 @@ async function setup() {
     return;
   }
 
+  // Step 1b: Select language(s).
+  console.log();
+  console.log('  Storm provides language-specific skills for entity creation,');
+  console.log('  repositories, queries, and SQL templates.');
+  console.log();
+  const languages = await checkbox({
+    message: 'Which language(s) does this project use?',
+    choices: [
+      { name: 'Kotlin',                                  value: 'kotlin', checked: true },
+      { name: 'Java (requires --enable-preview on JDK 21)', value: 'java' },
+    ],
+  });
+
+  if (languages.length === 0) {
+    console.log(boltYellow('\nNo language selected. Run again when ready.'));
+    return;
+  }
+
   console.log();
 
   // Step 2: Fetch and install rules.
@@ -1249,13 +1251,16 @@ async function setup() {
   const skipped  = [];
 
   console.log(dimText('  Fetching content from https://orm.st...'));
-  const [stormRules, skillIndex] = await Promise.all([fetchRules(), fetchSkillIndex()]);
+  const fetchPromises = [fetchRules(), ...languages.map(l => fetchSkillIndex(l))];
+  const [stormRules, ...skillIndexes] = await Promise.all(fetchPromises);
   if (!stormRules) {
     console.log(boltYellow('\n  Could not fetch Storm rules from https://orm.st. Check your connection.'));
     return;
   }
-  const skillNames = skillIndex?.skills ?? [];
-  const schemaSkillNames = skillIndex?.schemaSkills ?? [];
+
+  // Merge skill lists from all selected languages (deduplicated).
+  const skillNames = [...new Set(skillIndexes.flatMap(idx => idx?.skills ?? []))];
+  const schemaSkillNames = [...new Set(skillIndexes.flatMap(idx => idx?.schemaSkills ?? []))];
 
   for (const toolId of tools) {
     const config = TOOL_CONFIGS[toolId];
@@ -1292,9 +1297,14 @@ async function setup() {
 
   if (mcpTools.length > 0) {
     console.log();
+    console.log('  Storm can connect to your local development database so AI tools');
+    console.log('  can read your schema (tables, columns, foreign keys) and generate');
+    console.log('  entities automatically. Credentials are stored locally and never');
+    console.log('  exposed to the AI.');
+    console.log();
     const connectDb = await confirm({
-      message: 'Connect to a local database for schema-aware assistance?',
-      defaultValue: false,
+      message: 'Connect to a local database?',
+      defaultValue: true,
     });
 
     if (connectDb) {
@@ -1304,12 +1314,28 @@ async function setup() {
     }
   }
 
-  // Step 5: Register MCP and install schema skills for each tool.
+  // Step 5: Register MCP, append schema rules, and install schema skills.
   if (dbConfigured) {
+    // Fetch schema rules and append to each tool's rules block.
+    const schemaRules = await fetchSkill('storm-schema-rules');
     for (const toolId of tools) {
       const config = TOOL_CONFIGS[toolId];
       registerMcp(config, stormDir, created, appended);
-      await installSchemaRules(config, created, appended);
+      if (config.rulesFile && schemaRules) {
+        const rulesPath = join(process.cwd(), config.rulesFile);
+        if (existsSync(rulesPath)) {
+          const existing = readFileSync(rulesPath, 'utf-8');
+          // Insert schema rules inside the STORM block if not already present.
+          if (!existing.includes('Database Schema Access')) {
+            const endMarker = existing.indexOf(MARKER_END);
+            if (endMarker !== -1) {
+              const updated = existing.substring(0, endMarker) + '\n' + schemaRules.replace(/^<!-- storm-managed: \S+ -->\n/, '') + '\n' + existing.substring(endMarker);
+              writeFileSync(rulesPath, updated);
+              appended.push(config.rulesFile);
+            }
+          }
+        }
+      }
     }
 
     // Fetch and install schema-dependent skills.
@@ -1359,7 +1385,7 @@ async function setup() {
   } else {
     console.log(`  ${boltYellow('Quick start:')} Your AI tools now know Storm's patterns and conventions.`);
   }
-  console.log(`  ${dimText('Learn more:')}   https://orm.st/ai-setup`);
+  console.log(`  ${dimText('Learn more:')}   https://orm.st/ai`);
   console.log();
 }
 
@@ -1381,7 +1407,7 @@ async function run() {
     --help, -h               Show this help message
     --version, -v            Show version
 
-  ${dimText('Learn more:')}  https://orm.st/ai-setup
+  ${dimText('Learn more:')}  https://orm.st/ai
 `);
     return;
   }
