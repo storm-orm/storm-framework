@@ -1852,52 +1852,53 @@ public class OracleEntityRepositoryTest {
 
     @BeforeEach
     void setUpBranchTables() throws SQLException {
-        try (Connection connection = dataSource.getConnection()) {
-            executeSafe(connection, "DROP TABLE version_long_entity");
-            connection.createStatement().execute("""
+        try (Connection connection = dataSource.getConnection();
+             var statement = connection.createStatement()) {
+            executeSafe(statement, "DROP TABLE version_long_entity");
+            statement.execute("""
                     CREATE TABLE version_long_entity (
                         id NUMBER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
                         name VARCHAR2(255),
                         version NUMBER(19) DEFAULT 0
                     )""");
-            connection.createStatement().execute("INSERT INTO version_long_entity (name) VALUES ('Alice')");
-            connection.createStatement().execute("INSERT INTO version_long_entity (name) VALUES ('Bob')");
+            statement.execute("INSERT INTO version_long_entity (name) VALUES ('Alice')");
+            statement.execute("INSERT INTO version_long_entity (name) VALUES ('Bob')");
 
-            executeSafe(connection, "DROP TABLE version_instant_entity");
-            connection.createStatement().execute("""
+            executeSafe(statement, "DROP TABLE version_instant_entity");
+            statement.execute("""
                     CREATE TABLE version_instant_entity (
                         id NUMBER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
                         name VARCHAR2(255),
                         version TIMESTAMP DEFAULT SYSTIMESTAMP
                     )""");
-            connection.createStatement().execute("INSERT INTO version_instant_entity (name) VALUES ('Alice')");
-            connection.createStatement().execute("INSERT INTO version_instant_entity (name) VALUES ('Bob')");
+            statement.execute("INSERT INTO version_instant_entity (name) VALUES ('Alice')");
+            statement.execute("INSERT INTO version_instant_entity (name) VALUES ('Bob')");
 
-            executeSafe(connection, "DROP TABLE non_autogen_entity");
-            connection.createStatement().execute("""
+            executeSafe(statement, "DROP TABLE non_autogen_entity");
+            statement.execute("""
                     CREATE TABLE non_autogen_entity (
                         id NUMBER PRIMARY KEY,
                         name VARCHAR2(255),
                         version NUMBER DEFAULT 0
                     )""");
-            connection.createStatement().execute("INSERT INTO non_autogen_entity (id, name) VALUES (1, 'First')");
-            connection.createStatement().execute("INSERT INTO non_autogen_entity (id, name) VALUES (2, 'Second')");
+            statement.execute("INSERT INTO non_autogen_entity (id, name) VALUES (1, 'First')");
+            statement.execute("INSERT INTO non_autogen_entity (id, name) VALUES (2, 'Second')");
 
-            executeSafe(connection, "DROP SEQUENCE seq_entity_id_seq");
-            executeSafe(connection, "DROP TABLE seq_entity");
-            connection.createStatement().execute("CREATE SEQUENCE seq_entity_id_seq START WITH 1 INCREMENT BY 1");
-            connection.createStatement().execute("""
+            executeSafe(statement, "DROP SEQUENCE seq_entity_id_seq");
+            executeSafe(statement, "DROP TABLE seq_entity");
+            statement.execute("CREATE SEQUENCE seq_entity_id_seq START WITH 1 INCREMENT BY 1");
+            statement.execute("""
                     CREATE TABLE seq_entity (
                         id NUMBER PRIMARY KEY,
                         name VARCHAR2(255)
                     )""");
-            connection.createStatement().execute("INSERT INTO seq_entity (id, name) VALUES (seq_entity_id_seq.NEXTVAL, 'Alpha')");
+            statement.execute("INSERT INTO seq_entity (id, name) VALUES (seq_entity_id_seq.NEXTVAL, 'Alpha')");
         }
     }
 
-    private void executeSafe(Connection connection, String sql) {
+    private void executeSafe(java.sql.Statement statement, String sql) {
         try {
-            connection.createStatement().execute(sql);
+            statement.execute(sql);
         } catch (SQLException ignore) {
         }
     }

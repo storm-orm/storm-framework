@@ -137,7 +137,7 @@ public class OracleSqlDialect extends DefaultSqlDialect implements SqlDialect {
     /**
      * Regex for single-quoted string literals in Oracle (escaped by doubling the single quote).
      */
-    private static final Pattern QUOTE_LITERAL_PATTERN = Pattern.compile("'(?:''|\\.|[^'])*'");
+    private static final Pattern QUOTE_LITERAL_PATTERN = Pattern.compile("'(?:''|\\\\.|[^'\\\\])*'");
 
     @Override
     public Pattern getQuoteLiteralPattern() {

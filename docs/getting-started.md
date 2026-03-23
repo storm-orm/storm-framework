@@ -18,31 +18,70 @@ The framework is organized around three core abstractions:
 
 These abstractions share a common principle: explicit behavior over implicit magic. Every query is visible in the source code. Every relationship is loaded when you ask for it. Every transaction boundary is declared, not inferred. This makes Storm applications straightforward to debug, profile, and reason about.
 
-## How Storm Differs from JPA
+## Choose Your Path
 
-If you are coming from JPA/Hibernate, the biggest shift is moving from mutable, proxy-backed entities with a managed lifecycle to stateless, immutable values. Storm has no persistence context, no first-level cache, no `EntityManager`, and no automatic change detection. This eliminates entire categories of bugs (LazyInitializationException, detached entity errors, unexpected flush ordering) while making performance predictable. For a detailed comparison, see the [Migration from JPA](migration-from-jpa.md) guide and the [Storm vs Other Frameworks](comparison.md) feature comparison.
+Storm supports two ways to get started. Pick the one that fits your workflow.
 
-## Step-by-Step Setup
+import Tabs from '@theme/Tabs';
+import TabItem from '@theme/TabItem';
 
-This guide is split into three steps. Follow them in order for the fastest path from zero to a working application.
+<Tabs>
+<TabItem value="ai" label="AI-Assisted" default>
 
-## 1. Installation
+### AI-Assisted Setup
+
+If you use an AI coding tool (Claude Code, Cursor, GitHub Copilot, Windsurf, or Codex), Storm provides rules, skills, and an optional database-aware MCP server that give the AI deep knowledge of Storm's conventions. The AI can generate entities from your schema, write queries, and verify its own work against a real database.
+
+**1. Install the Storm CLI and run it in your project:**
+
+```bash
+npx @storm-orm/cli init
+```
+
+The interactive setup configures your AI tool with Storm's rules and skills, and optionally connects it to your development database for schema-aware code generation.
+
+**2. Ask your AI tool to set up Storm:**
+
+Once `storm init` has configured your tool, you can ask it to add the right dependencies, create entities from your database tables, and write queries. The AI has access to Storm's full documentation and your database schema.
+
+For example:
+- "Add Storm to this project with Spring Boot and PostgreSQL"
+- "Create entities for the users and orders tables"
+- "Write a repository method that finds orders by status with pagination"
+
+**3. Verify:**
+
+Storm's AI workflow includes built-in verification. The AI can run `ORMTemplate.validateSchema()` to prove entities match the database and `SqlCapture` to inspect generated SQL, all in an isolated H2 test database before anything touches production.
+
+See [AI-Assisted Development](ai.md) for the full setup guide, available skills, and MCP server configuration.
+
+</TabItem>
+<TabItem value="manual" label="Manual">
+
+### Manual Setup
+
+Follow these three steps in order for the fastest path from zero to a working application.
+
+**1. Installation**
 
 Set up your project with the right dependencies, build flags, and optional modules.
 
 **[Go to Installation](installation.md)**
 
-## 2. First Entity
+**2. First Entity**
 
 Define your first entity, create an ORM template, and perform insert, read, update, and delete operations.
 
 **[Go to First Entity](first-entity.md)**
 
-## 3. First Query
+**3. First Query**
 
 Write custom queries, build repositories, stream results, and use the type-safe metamodel.
 
 **[Go to First Query](first-query.md)**
+
+</TabItem>
+</Tabs>
 
 ---
 

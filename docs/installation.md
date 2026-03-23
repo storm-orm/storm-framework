@@ -155,11 +155,13 @@ Storm works with any JDBC-compatible database out of the box. Dialect modules pr
 
 | Module | Database |
 |--------|----------|
+| `storm-oracle` | Oracle |
+| `storm-mssqlserver` | SQL Server |
 | `storm-postgresql` | PostgreSQL |
 | `storm-mysql` | MySQL |
 | `storm-mariadb` | MariaDB |
-| `storm-oracle` | Oracle |
-| `storm-mssqlserver` | SQL Server |
+| `storm-sqlite` | SQLite |
+| `storm-h2` | H2 |
 
 ```kotlin
 runtimeOnly("st.orm:storm-postgresql")
@@ -212,7 +214,7 @@ storm-foundation (base interfaces)
 └── storm-kotlin / storm-java21 (your primary dependency)
     ├── storm-kotlin-spring / storm-spring (Spring Framework)
     │   └── storm-kotlin-spring-boot-starter / storm-spring-boot-starter
-    ├── dialect modules (postgresql, mysql, mariadb, oracle, mssqlserver)
+    ├── dialect modules (postgresql, mysql, mariadb, oracle, mssqlserver, sqlite, h2)
     └── JSON modules (jackson2, jackson3, kotlinx-serialization)
 ```
 

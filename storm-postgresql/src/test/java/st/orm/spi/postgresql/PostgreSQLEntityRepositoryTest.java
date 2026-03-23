@@ -1981,8 +1981,9 @@ public class PostgreSQLEntityRepositoryTest {
 
     @BeforeEach
     void setUpBranchTables() throws SQLException {
-        try (Connection connection = dataSource.getConnection()) {
-            connection.createStatement().execute("""
+        try (Connection connection = dataSource.getConnection();
+             var statement = connection.createStatement()) {
+            statement.execute("""
                     DROP TABLE IF EXISTS version_long_entity CASCADE;
                     CREATE TABLE version_long_entity (
                         id serial PRIMARY KEY,
@@ -1992,7 +1993,7 @@ public class PostgreSQLEntityRepositoryTest {
                     INSERT INTO version_long_entity (name) VALUES ('Alice');
                     INSERT INTO version_long_entity (name) VALUES ('Bob');
                     """);
-            connection.createStatement().execute("""
+            statement.execute("""
                     DROP TABLE IF EXISTS version_instant_entity CASCADE;
                     CREATE TABLE version_instant_entity (
                         id serial PRIMARY KEY,
@@ -2002,7 +2003,7 @@ public class PostgreSQLEntityRepositoryTest {
                     INSERT INTO version_instant_entity (name) VALUES ('Alice');
                     INSERT INTO version_instant_entity (name) VALUES ('Bob');
                     """);
-            connection.createStatement().execute("""
+            statement.execute("""
                     DROP TABLE IF EXISTS pk_only_entity CASCADE;
                     CREATE TABLE pk_only_entity (
                         id integer PRIMARY KEY
@@ -2010,7 +2011,7 @@ public class PostgreSQLEntityRepositoryTest {
                     INSERT INTO pk_only_entity (id) VALUES (1);
                     INSERT INTO pk_only_entity (id) VALUES (2);
                     """);
-            connection.createStatement().execute("""
+            statement.execute("""
                     DROP TABLE IF EXISTS seq_entity CASCADE;
                     DROP SEQUENCE IF EXISTS seq_entity_id_seq;
                     CREATE SEQUENCE seq_entity_id_seq START WITH 1 INCREMENT BY 1;

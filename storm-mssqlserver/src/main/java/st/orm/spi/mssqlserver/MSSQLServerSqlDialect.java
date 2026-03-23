@@ -134,7 +134,7 @@ public class MSSQLServerSqlDialect extends DefaultSqlDialect implements SqlDiale
     /**
      * Regex for single-quoted string literals, handling both double single quotes and backslash escapes.
      */
-    private static final Pattern QUOTE_LITERAL_PATTERN = Pattern.compile("'(?:''|\\.|[^'])*'");
+    private static final Pattern QUOTE_LITERAL_PATTERN = Pattern.compile("'(?:''|\\\\.|[^'\\\\])*'");
 
     /**
      * Returns the pattern for string literals.

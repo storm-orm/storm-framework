@@ -16,11 +16,12 @@
 package st.orm.spi.mariadb;
 
 import java.util.function.Predicate;
+import st.orm.core.spi.EntityRepositoryProvider;
 import st.orm.core.spi.Provider;
 import st.orm.core.spi.SqlDialectProvider;
 
 /**
- * Provider filter to select the MariaDB entity repository provider.
+ * Provider filter to select the MariaDB dialect and entity repository providers.
  */
 public final class MariaDBProviderFilter implements Predicate<Provider> {
 
@@ -31,10 +32,12 @@ public final class MariaDBProviderFilter implements Predicate<Provider> {
 
     @Override
     public boolean test(Provider provider) {
-        if (!(provider instanceof SqlDialectProvider)) {
-            // Only filter providers that implement the SqlDialectProvider interface.
-            return true;
+        if (provider instanceof SqlDialectProvider) {
+            return provider instanceof MariaDBSqlDialectProviderImpl;
         }
-        return provider instanceof MariaDBEntityRepositoryProviderImpl;
+        if (provider instanceof EntityRepositoryProvider) {
+            return provider instanceof MariaDBEntityRepositoryProviderImpl;
+        }
+        return true;
     }
 }

@@ -58,6 +58,7 @@ import st.orm.core.spi.Providers;
 import st.orm.core.spi.QueryFactory;
 import st.orm.core.spi.RefFactory;
 import st.orm.core.spi.RefFactoryImpl;
+import st.orm.core.spi.SqlDialectProvider;
 import st.orm.core.spi.TransactionContext;
 import st.orm.core.spi.TransactionTemplate;
 import st.orm.core.template.ORMTemplate;
@@ -108,8 +109,20 @@ public final class PreparedStatementTemplateImpl implements PreparedStatementTem
     private PreparedStatementTemplateImpl(@Nonnull TransactionTemplate transactionTemplate,
                                           @Nonnull DataSource dataSource,
                                           @Nonnull StormConfig config) {
-        this(createDataSourceProcessor(dataSource, transactionTemplate, getSqlDialect(config)), dataSource,
-                ModelBuilder.newInstance(), TableAliasResolver.DEFAULT, null, transactionTemplate, config);
+        this(transactionTemplate, dataSource, config,
+                Providers.getSqlDialectProvider(Providers.getDatabaseProductName(dataSource)));
+    }
+
+    private PreparedStatementTemplateImpl(@Nonnull TransactionTemplate transactionTemplate,
+                                          @Nonnull DataSource dataSource,
+                                          @Nonnull StormConfig config,
+                                          @Nullable SqlDialectProvider matchedProvider) {
+        this(createDataSourceProcessor(dataSource, transactionTemplate,
+                        matchedProvider != null ? matchedProvider.getSqlDialect(config) : getSqlDialect(config)),
+                dataSource,
+                ModelBuilder.newInstance(), TableAliasResolver.DEFAULT,
+                matchedProvider != null ? matchedProvider.getProviderFilter() : null,
+                transactionTemplate, config);
     }
 
     public PreparedStatementTemplateImpl(@Nonnull Connection connection) {
@@ -123,8 +136,20 @@ public final class PreparedStatementTemplateImpl implements PreparedStatementTem
     private PreparedStatementTemplateImpl(@Nonnull TransactionTemplate transactionTemplate,
                                           @Nonnull Connection connection,
                                           @Nonnull StormConfig config) {
-        this(createConnectionProcessor(connection, transactionTemplate, getSqlDialect(config)), null,
-                ModelBuilder.newInstance(), TableAliasResolver.DEFAULT, null, transactionTemplate, config);
+        this(transactionTemplate, connection, config,
+                Providers.getSqlDialectProvider(Providers.getDatabaseProductName(connection)));
+    }
+
+    private PreparedStatementTemplateImpl(@Nonnull TransactionTemplate transactionTemplate,
+                                          @Nonnull Connection connection,
+                                          @Nonnull StormConfig config,
+                                          @Nullable SqlDialectProvider matchedProvider) {
+        this(createConnectionProcessor(connection, transactionTemplate,
+                        matchedProvider != null ? matchedProvider.getSqlDialect(config) : getSqlDialect(config)),
+                null,
+                ModelBuilder.newInstance(), TableAliasResolver.DEFAULT,
+                matchedProvider != null ? matchedProvider.getProviderFilter() : null,
+                transactionTemplate, config);
     }
 
     private PreparedStatementTemplateImpl(@Nonnull TemplateProcessor templateProcessor,
@@ -378,16 +403,16 @@ public final class PreparedStatementTemplateImpl implements PreparedStatementTem
                         }
                         case java.sql.Date d   -> preparedStatement.setDate(idx, d);
                         case Time t            -> preparedStatement.setTime(idx, t);
-                        case Timestamp ts      -> preparedStatement.setTimestamp(idx, ts, calendarSupplier.get());
+                        case Timestamp ts      -> dialect.setParameter(preparedStatement, idx, ts, calendarSupplier.get());
                         case UUID u            -> dialect.setParameter(preparedStatement, idx, u);
                         case Enum<?> e         -> preparedStatement.setString(idx, e.name());   // Enum handled by ORM layer.
                         // java.time using vendor-safe approach.
                         case LocalDate ld      -> preparedStatement.setDate(idx, java.sql.Date.valueOf(ld));
                         case LocalTime lt      -> preparedStatement.setTime(idx, java.sql.Time.valueOf(lt));
                         case LocalDateTime ldt -> preparedStatement.setTimestamp(idx, Timestamp.valueOf(ldt));
-                        case OffsetDateTime odt-> preparedStatement.setTimestamp(idx, Timestamp.from(odt.toInstant()), calendarSupplier.get());
-                        case ZonedDateTime zdt -> preparedStatement.setTimestamp(idx, Timestamp.from(zdt.toInstant()), calendarSupplier.get());
-                        case Instant inst      -> preparedStatement.setTimestamp(idx, Timestamp.from(inst), calendarSupplier.get());
+                        case OffsetDateTime odt-> dialect.setParameter(preparedStatement, idx, Timestamp.from(odt.toInstant()), calendarSupplier.get());
+                        case ZonedDateTime zdt -> dialect.setParameter(preparedStatement, idx, Timestamp.from(zdt.toInstant()), calendarSupplier.get());
+                        case Instant inst      -> dialect.setParameter(preparedStatement, idx, Timestamp.from(inst), calendarSupplier.get());
                         default                -> preparedStatement.setObject(idx, v);
                     }
                 }

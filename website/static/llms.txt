@@ -14,8 +14,8 @@
 > installs per-tool skills for entity creation, queries, repositories, and
 > migrations. A locally running MCP server exposes only schema metadata (table
 > definitions, column types, constraints) while shielding your database
-> credentials and data from the LLM. Built-in verification (SchemaValidator,
-> SqlCapture) lets the AI prove its own work correct before anything is committed.
+> credentials and data from the LLM. Built-in verification (validateSchema(),
+> SqlCapture) lets the AI validate its own work before anything is committed.
 >
 > Get started: `npx @storm-orm/cli`
 

@@ -32,7 +32,18 @@ Generation rules:
 
 7. Embedded components: Separate data class (no @PK, no Entity interface). Fields become parent table columns.
 
-8. Naming: camelCase to snake_case automatically. FK appends _id. Override with \`@DbTable\` / \`@DbColumn\`.
+8. Naming: camelCase to snake_case automatically. FK appends _id.
+   - For individual overrides: \`@DbTable("custom_name")\` / \`@DbColumn("custom_name")\`.
+   - For database-wide conventions (e.g., UPPER_CASE, prefixed tables like \`tbl_\`, or non-standard FK naming): configure a custom \`TableNameResolver\`, \`ColumnNameResolver\`, or \`ForeignKeyResolver\` via the \`TemplateDecorator\` on \`ORMTemplate.of()\` instead of annotating every entity. Example:
+     \`\`\`kotlin
+     val orm = dataSource.orm { decorator ->
+         decorator
+             .withTableNameResolver(TableNameResolver.toUpperCase(TableNameResolver.DEFAULT))
+             .withColumnNameResolver(ColumnNameResolver.toUpperCase(ColumnNameResolver.DEFAULT))
+     }
+     \`\`\`
+   - Resolvers are functional interfaces. Compose them with built-in decorators (\`toUpperCase\`) or write custom lambdas that receive \`RecordType\` (for tables) or \`RecordField\` (for columns) with full access to class/field metadata and annotations.
+   - Use \`@DbTable\`/\`@DbColumn\` only for exceptions to the global convention. If the entire database follows one pattern, a resolver handles it without any annotations.
 
 9. Enums: String by default. \`@DbEnum(ORDINAL)\` for integer.
 

@@ -109,7 +109,7 @@ cat > "$OUTPUT" <<'HEADER'
 > the CLI installs per-tool skills, and a locally running MCP server exposes
 > only schema metadata (table definitions, column types, constraints) while
 > shielding your database credentials and data from the LLM. Built-in
-> verification (SchemaValidator, SqlCapture) lets the AI prove its own work
+> verification (validateSchema(), SqlCapture) lets the AI validate its own work
 > correct before anything is committed.
 >
 > Get started: `npx @storm-orm/cli`

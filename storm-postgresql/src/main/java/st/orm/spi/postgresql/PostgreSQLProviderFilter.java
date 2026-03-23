@@ -16,11 +16,12 @@
 package st.orm.spi.postgresql;
 
 import java.util.function.Predicate;
+import st.orm.core.spi.EntityRepositoryProvider;
 import st.orm.core.spi.Provider;
 import st.orm.core.spi.SqlDialectProvider;
 
 /**
- * Provider filter to select the PostgreSQL entity repository provider.
+ * Provider filter to select the PostgreSQL dialect and entity repository providers.
  */
 public final class PostgreSQLProviderFilter implements Predicate<Provider> {
 
@@ -31,10 +32,12 @@ public final class PostgreSQLProviderFilter implements Predicate<Provider> {
 
     @Override
     public boolean test(Provider provider) {
-        if (!(provider instanceof SqlDialectProvider)) {
-            // Only filter providers that implement the SqlDialectProvider interface.
-            return true;
+        if (provider instanceof SqlDialectProvider) {
+            return provider instanceof PostgreSQLSqlDialectProviderImpl;
         }
-        return provider instanceof PostgreSQLEntityRepositoryProviderImpl;
+        if (provider instanceof EntityRepositoryProvider) {
+            return provider instanceof PostgreSQLEntityRepositoryProviderImpl;
+        }
+        return true;
     }
 }

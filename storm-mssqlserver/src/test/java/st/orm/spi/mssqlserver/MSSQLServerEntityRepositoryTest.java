@@ -1967,62 +1967,63 @@ public class MSSQLServerEntityRepositoryTest {
 
     @BeforeEach
     void setUpBranchTables() throws SQLException {
-        try (Connection connection = dataSource.getConnection()) {
-            executeSafe(connection, "DROP TABLE IF EXISTS version_long_entity");
-            connection.createStatement().execute("""
+        try (Connection connection = dataSource.getConnection();
+             var statement = connection.createStatement()) {
+            executeSafe(statement, "DROP TABLE IF EXISTS version_long_entity");
+            statement.execute("""
                     CREATE TABLE version_long_entity (
                         id int IDENTITY(1,1) PRIMARY KEY,
                         name varchar(255),
                         version bigint DEFAULT 0
                     )""");
-            connection.createStatement().execute("INSERT INTO version_long_entity (name) VALUES ('Alice')");
-            connection.createStatement().execute("INSERT INTO version_long_entity (name) VALUES ('Bob')");
+            statement.execute("INSERT INTO version_long_entity (name) VALUES ('Alice')");
+            statement.execute("INSERT INTO version_long_entity (name) VALUES ('Bob')");
 
-            executeSafe(connection, "DROP TABLE IF EXISTS version_instant_entity");
-            connection.createStatement().execute("""
+            executeSafe(statement, "DROP TABLE IF EXISTS version_instant_entity");
+            statement.execute("""
                     CREATE TABLE version_instant_entity (
                         id int IDENTITY(1,1) PRIMARY KEY,
                         name varchar(255),
                         version datetime2 DEFAULT CURRENT_TIMESTAMP
                     )""");
-            connection.createStatement().execute("INSERT INTO version_instant_entity (name) VALUES ('Alice')");
-            connection.createStatement().execute("INSERT INTO version_instant_entity (name) VALUES ('Bob')");
+            statement.execute("INSERT INTO version_instant_entity (name) VALUES ('Alice')");
+            statement.execute("INSERT INTO version_instant_entity (name) VALUES ('Bob')");
 
-            executeSafe(connection, "DROP TABLE IF EXISTS non_autogen_entity");
-            connection.createStatement().execute("""
+            executeSafe(statement, "DROP TABLE IF EXISTS non_autogen_entity");
+            statement.execute("""
                     CREATE TABLE non_autogen_entity (
                         id int PRIMARY KEY,
                         name varchar(255),
                         version int DEFAULT 0
                     )""");
-            connection.createStatement().execute("INSERT INTO non_autogen_entity (id, name) VALUES (1, 'First')");
-            connection.createStatement().execute("INSERT INTO non_autogen_entity (id, name) VALUES (2, 'Second')");
+            statement.execute("INSERT INTO non_autogen_entity (id, name) VALUES (1, 'First')");
+            statement.execute("INSERT INTO non_autogen_entity (id, name) VALUES (2, 'Second')");
 
-            executeSafe(connection, "DROP TABLE IF EXISTS seq_named_entity");
-            executeSafe(connection, "DROP SEQUENCE IF EXISTS seq_named_entity_id_seq");
-            connection.createStatement().execute("CREATE SEQUENCE seq_named_entity_id_seq START WITH 1 INCREMENT BY 1");
-            connection.createStatement().execute("""
+            executeSafe(statement, "DROP TABLE IF EXISTS seq_named_entity");
+            executeSafe(statement, "DROP SEQUENCE IF EXISTS seq_named_entity_id_seq");
+            statement.execute("CREATE SEQUENCE seq_named_entity_id_seq START WITH 1 INCREMENT BY 1");
+            statement.execute("""
                     CREATE TABLE seq_named_entity (
                         id int PRIMARY KEY DEFAULT (NEXT VALUE FOR seq_named_entity_id_seq),
                         name varchar(255)
                     )""");
-            connection.createStatement().execute(
+            statement.execute(
                     "INSERT INTO seq_named_entity (id, name) VALUES (NEXT VALUE FOR seq_named_entity_id_seq, 'Alpha')");
 
-            executeSafe(connection, "DROP TABLE IF EXISTS seq_empty_entity");
-            connection.createStatement().execute("""
+            executeSafe(statement, "DROP TABLE IF EXISTS seq_empty_entity");
+            statement.execute("""
                     CREATE TABLE seq_empty_entity (
                         id int IDENTITY(1,1) PRIMARY KEY,
                         name varchar(255)
                     )""");
-            connection.createStatement().execute("INSERT INTO seq_empty_entity (name) VALUES ('Alpha')");
-            connection.createStatement().execute("INSERT INTO seq_empty_entity (name) VALUES ('Beta')");
+            statement.execute("INSERT INTO seq_empty_entity (name) VALUES ('Alpha')");
+            statement.execute("INSERT INTO seq_empty_entity (name) VALUES ('Beta')");
         }
     }
 
-    private void executeSafe(Connection connection, String sql) {
+    private void executeSafe(java.sql.Statement statement, String sql) {
         try {
-            connection.createStatement().execute(sql);
+            statement.execute(sql);
         } catch (SQLException ignore) {
         }
     }

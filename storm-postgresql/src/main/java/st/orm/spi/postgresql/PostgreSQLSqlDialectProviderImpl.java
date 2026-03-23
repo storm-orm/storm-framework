@@ -16,7 +16,9 @@
 package st.orm.spi.postgresql;
 
 import jakarta.annotation.Nonnull;
+import java.util.function.Predicate;
 import st.orm.StormConfig;
+import st.orm.core.spi.Provider;
 import st.orm.core.spi.SqlDialectProvider;
 import st.orm.core.template.SqlDialect;
 
@@ -24,6 +26,16 @@ import st.orm.core.template.SqlDialect;
  * Implementation of {@link SqlDialectProvider} for PostgreSQL.
  */
 public class PostgreSQLSqlDialectProviderImpl implements SqlDialectProvider {
+
+    @Override
+    public boolean supports(@Nonnull String databaseProductName) {
+        return "PostgreSQL".equalsIgnoreCase(databaseProductName);
+    }
+
+    @Override
+    public Predicate<Provider> getProviderFilter() {
+        return PostgreSQLProviderFilter.INSTANCE;
+    }
 
     @Override
     public SqlDialect getSqlDialect(@Nonnull StormConfig config) {

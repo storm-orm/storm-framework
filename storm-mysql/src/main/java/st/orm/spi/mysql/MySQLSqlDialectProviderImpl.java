@@ -17,7 +17,9 @@ package st.orm.spi.mysql;
 
 
 import jakarta.annotation.Nonnull;
+import java.util.function.Predicate;
 import st.orm.StormConfig;
+import st.orm.core.spi.Provider;
 import st.orm.core.spi.SqlDialectProvider;
 import st.orm.core.template.SqlDialect;
 
@@ -25,6 +27,16 @@ import st.orm.core.template.SqlDialect;
  * Implementation of {@link SqlDialectProvider} for MySQL.
  */
 public class MySQLSqlDialectProviderImpl implements SqlDialectProvider {
+
+    @Override
+    public boolean supports(@Nonnull String databaseProductName) {
+        return "MySQL".equalsIgnoreCase(databaseProductName);
+    }
+
+    @Override
+    public Predicate<Provider> getProviderFilter() {
+        return MySQLProviderFilter.INSTANCE;
+    }
 
     @Override
     public SqlDialect getSqlDialect(@Nonnull StormConfig config) {

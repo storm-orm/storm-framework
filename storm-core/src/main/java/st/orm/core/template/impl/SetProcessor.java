@@ -32,6 +32,7 @@ import st.orm.Data;
 import st.orm.Metamodel;
 import st.orm.core.template.Column;
 import st.orm.core.template.Model;
+import st.orm.core.template.SqlDialect;
 import st.orm.core.template.SqlTemplateException;
 import st.orm.core.template.impl.Elements.Set;
 
@@ -165,7 +166,7 @@ final class SetProcessor implements ElementProcessor<Set> {
                 args.add(", ");
             } else {
                 compiler.setVersionAware();
-                var versionString = compileVersion(column.qualifiedName(dialect), column.type(), table.alias());
+                var versionString = compileVersion(column.qualifiedName(dialect), column.type(), table.alias(), dialect);
                 args.add(versionString);
                 args.add(", ");
             }
@@ -202,7 +203,7 @@ final class SetProcessor implements ElementProcessor<Set> {
                             );
                         }
                         compiler.setVersionAware();
-                        return compileVersion(column.qualifiedName(compiler.dialect()), column.type(), table.alias());
+                        return compileVersion(column.qualifiedName(compiler.dialect()), column.type(), table.alias(), compiler.dialect());
                     })
                     .collect(joining(", "));
             compiler.mapBindVars(bindVarsCount.getPlain());
@@ -218,9 +219,10 @@ final class SetProcessor implements ElementProcessor<Set> {
      * @param columnName the column name of the version column.
      * @param type the type of the version column.
      * @param alias the alias of the table.
+     * @param dialect the SQL dialect.
      * @return the version string for the version column.
      */
-    private static String compileVersion(@Nonnull String columnName, @Nonnull Class<?> type, @Nonnull String alias) {
+    private static String compileVersion(@Nonnull String columnName, @Nonnull Class<?> type, @Nonnull String alias, @Nonnull SqlDialect dialect) {
         String a = alias.isEmpty() ? "" : alias + ".";
         String value = switch (type) {
             case Class<?> c when
@@ -233,7 +235,7 @@ final class SetProcessor implements ElementProcessor<Set> {
                     Instant.class.isAssignableFrom(c)
                             || Date.class.isAssignableFrom(c)
                             || Calendar.class.isAssignableFrom(c)
-                            || Timestamp.class.isAssignableFrom(c) -> "CURRENT_TIMESTAMP";
+                            || Timestamp.class.isAssignableFrom(c) -> dialect.currentTimestamp();
             default -> columnName;
         };
         return "%s%s = %s".formatted(a, columnName, value);

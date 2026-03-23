@@ -1,0 +1,27 @@
+### SQLite Settings ###
+spring:
+  test:
+    database:
+      replace: auto_configured
+
+  datasource:
+    url: "jdbc:sqlite:file:testdb?mode=memory&cache=shared"
+    driver-class-name: org.sqlite.JDBC
+    hikari:
+      maximum-pool-size: 4
+
+  jpa:
+    database-platform: org.hibernate.community.dialect.SQLiteDialect
+    hibernate:
+      ddl-auto: none
+    defer-datasource-initialization: true
+
+  sql:
+    init:
+      mode: always
+      continue-on-error: false
+
+logging:
+  level:
+    root: INFO
+    org.springframework: WARN

@@ -27,6 +27,7 @@ import static java.util.stream.StreamSupport.stream;
 import jakarta.annotation.Nonnull;
 import jakarta.annotation.Nullable;
 import java.sql.Connection;
+import java.sql.SQLException;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
@@ -40,6 +41,7 @@ import java.util.function.Supplier;
 import javax.sql.DataSource;
 import st.orm.Data;
 import st.orm.Entity;
+import st.orm.PersistenceException;
 import st.orm.Projection;
 import st.orm.Ref;
 import st.orm.StormConfig;
@@ -215,6 +217,91 @@ public final class Providers {
                                             @Nonnull StormConfig config) {
         return Orderable.sort(SQL_DIALECT_PROVIDERS.get().stream())
                 .filter(filter)
+                .map(p -> p.getSqlDialect(config))
+                .findFirst()
+                .orElseThrow();
+    }
+
+    private static final ConcurrentMap<DataSource, String> DATABASE_PRODUCT_NAMES = new ConcurrentHashMap<>();
+
+    /**
+     * Returns the database product name for the given data source, caching the result per data source identity.
+     *
+     * @param dataSource the data source to inspect.
+     * @return the database product name.
+     * @since 1.11
+     */
+    public static String getDatabaseProductName(@Nonnull DataSource dataSource) {
+        return DATABASE_PRODUCT_NAMES.computeIfAbsent(dataSource, ds -> {
+            try (Connection connection = ds.getConnection()) {
+                return connection.getMetaData().getDatabaseProductName();
+            } catch (SQLException e) {
+                throw new PersistenceException("Failed to determine database product name.", e);
+            }
+        });
+    }
+
+    /**
+     * Returns the database product name for the given connection.
+     *
+     * @param connection the connection to inspect.
+     * @return the database product name.
+     * @since 1.11
+     */
+    public static String getDatabaseProductName(@Nonnull Connection connection) {
+        try {
+            return connection.getMetaData().getDatabaseProductName();
+        } catch (SQLException e) {
+            throw new PersistenceException("Failed to determine database product name.", e);
+        }
+    }
+
+    /**
+     * Returns the first dialect provider that supports the given database product name, or {@code null} if no
+     * specific provider matches (the default provider will be used as a fallback).
+     *
+     * @param databaseProductName the database product name.
+     * @return the matching dialect provider, or {@code null}.
+     * @since 1.11
+     */
+    public static @Nullable SqlDialectProvider getSqlDialectProvider(@Nonnull String databaseProductName) {
+        return Orderable.sort(SQL_DIALECT_PROVIDERS.get().stream())
+                .filter(p -> p.supports(databaseProductName))
+                .findFirst()
+                .orElse(null);
+    }
+
+    /**
+     * Returns the SQL dialect for the given data source by inspecting the database product name and selecting the
+     * appropriate dialect provider.
+     *
+     * @param dataSource the data source to inspect.
+     * @param config the Storm configuration to apply.
+     * @return the SQL dialect.
+     * @since 1.11
+     */
+    public static SqlDialect getSqlDialect(@Nonnull DataSource dataSource, @Nonnull StormConfig config) {
+        String productName = getDatabaseProductName(dataSource);
+        return Orderable.sort(SQL_DIALECT_PROVIDERS.get().stream())
+                .filter(p -> p.supports(productName))
+                .map(p -> p.getSqlDialect(config))
+                .findFirst()
+                .orElseThrow();
+    }
+
+    /**
+     * Returns the SQL dialect for the given connection by inspecting the database product name and selecting the
+     * appropriate dialect provider.
+     *
+     * @param connection the connection to inspect.
+     * @param config the Storm configuration to apply.
+     * @return the SQL dialect.
+     * @since 1.11
+     */
+    public static SqlDialect getSqlDialect(@Nonnull Connection connection, @Nonnull StormConfig config) {
+        String productName = getDatabaseProductName(connection);
+        return Orderable.sort(SQL_DIALECT_PROVIDERS.get().stream())
+                .filter(p -> p.supports(productName))
                 .map(p -> p.getSqlDialect(config))
                 .findFirst()
                 .orElseThrow();

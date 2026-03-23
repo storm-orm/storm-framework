@@ -131,16 +131,19 @@ Storm does not implement upsert logic in application code. Instead, it delegates
 
 | Database | SQL Strategy | Conflict Detection |
 |----------|--------------|--------------------|
-| PostgreSQL | `INSERT ... ON CONFLICT DO UPDATE` | Targets a specific unique constraint or index |
-| MySQL/MariaDB | `INSERT ... ON DUPLICATE KEY UPDATE` | Primary key or any unique constraint |
 | Oracle | `MERGE INTO ...` | Explicit match conditions |
 | MS SQL Server | `MERGE INTO ...` | Explicit match conditions |
+| PostgreSQL | `INSERT ... ON CONFLICT DO UPDATE` | Targets a specific unique constraint or index |
+| MySQL/MariaDB | `INSERT ... ON DUPLICATE KEY UPDATE` | Primary key or any unique constraint |
+| SQLite | `INSERT ... ON CONFLICT DO UPDATE` | Targets a specific unique constraint |
+| H2 | `MERGE INTO ...` | Explicit match conditions |
 
 ### Database-Specific Behavior
 
+- **Oracle**, **MS SQL Server**, and **H2** define upsert behavior through explicit match conditions in the `MERGE` statement, giving you control over how conflicts are detected.
 - **PostgreSQL** upserts target a specific conflict source (a unique constraint or index), making conflict resolution explicit and predictable. This is the most granular approach.
 - **MySQL/MariaDB** upserts trigger the update branch when an insert would violate the primary key **or any unique constraint**. When multiple unique constraints exist, the database decides which conflict applies. Be aware of this if your table has multiple unique constraints.
-- **Oracle** and **MS SQL Server** define upsert behavior through explicit match conditions in the `MERGE` statement, giving you control over how conflicts are detected.
+- **SQLite** uses the same `ON CONFLICT` syntax as PostgreSQL, targeting a specific unique constraint (available since SQLite 3.24).
 
 ## Failure Modes
 
@@ -149,9 +152,10 @@ Understanding how upserts fail helps you diagnose issues quickly and design your
 **Missing dialect dependency:** Upsert requires a database-specific dialect module (e.g., `storm-postgresql`, `storm-mysql`). If no dialect is on the classpath, Storm throws an `UnsupportedOperationException` at runtime when you call `upsert()`. The error message indicates that the current dialect does not support upsert operations. Add the appropriate dialect dependency to resolve this. See [Dialects](dialects.md) for the full list.
 
 **Missing unique constraint:** Upsert relies on database-level unique constraints to detect conflicts. If the table has no unique constraint (or the constraint does not cover the fields you expect), the behavior depends on the database:
+- **Oracle/MS SQL Server/H2:** The `MERGE` statement's match condition determines conflict detection. If the match condition references columns without a unique constraint, concurrent upserts may produce duplicates.
 - **PostgreSQL:** The `ON CONFLICT` clause references a specific constraint. If the constraint does not exist, the database returns a SQL error.
 - **MySQL/MariaDB:** Without any unique constraint, every row is treated as a new insert. No update branch is triggered, and duplicates accumulate silently.
-- **Oracle/MS SQL Server:** The `MERGE` statement's match condition determines conflict detection. If the match condition references columns without a unique constraint, concurrent upserts may produce duplicates.
+- **SQLite:** Behaves similarly to PostgreSQL. The `ON CONFLICT` clause references a specific constraint.
 
 In all cases, Storm does **not** fall back to a plain insert. It always generates the upsert SQL for the configured dialect. If the SQL fails at the database level, the exception propagates to the caller.
 
