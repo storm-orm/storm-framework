@@ -776,51 +776,52 @@ public class SQLiteEntityRepositoryTest {
 
     @BeforeEach
     void setUpBranchTables() throws SQLException {
-        try (Connection connection = dataSource.getConnection()) {
-            connection.createStatement().execute("""
+        try (Connection connection = dataSource.getConnection();
+             var statement = connection.createStatement()) {
+            statement.execute("""
                     DROP TABLE IF EXISTS version_long_entity;
                     """);
-            connection.createStatement().execute("""
+            statement.execute("""
                     CREATE TABLE version_long_entity (
                         id INTEGER PRIMARY KEY AUTOINCREMENT,
                         name VARCHAR(255),
                         version INTEGER DEFAULT 0
                     );
                     """);
-            connection.createStatement().execute("""
+            statement.execute("""
                     INSERT INTO version_long_entity (name) VALUES ('Alice');
                     """);
-            connection.createStatement().execute("""
+            statement.execute("""
                     INSERT INTO version_long_entity (name) VALUES ('Bob');
                     """);
-            connection.createStatement().execute("""
+            statement.execute("""
                     DROP TABLE IF EXISTS version_instant_entity;
                     """);
-            connection.createStatement().execute("""
+            statement.execute("""
                     CREATE TABLE version_instant_entity (
                         id INTEGER PRIMARY KEY AUTOINCREMENT,
                         name VARCHAR(255),
                         version TIMESTAMP DEFAULT (strftime('%Y-%m-%d %H:%M:%f', 'now'))
                     );
                     """);
-            connection.createStatement().execute("""
+            statement.execute("""
                     INSERT INTO version_instant_entity (name) VALUES ('Alice');
                     """);
-            connection.createStatement().execute("""
+            statement.execute("""
                     INSERT INTO version_instant_entity (name) VALUES ('Bob');
                     """);
-            connection.createStatement().execute("""
+            statement.execute("""
                     DROP TABLE IF EXISTS pk_only_entity;
                     """);
-            connection.createStatement().execute("""
+            statement.execute("""
                     CREATE TABLE pk_only_entity (
                         id INTEGER PRIMARY KEY
                     );
                     """);
-            connection.createStatement().execute("""
+            statement.execute("""
                     INSERT INTO pk_only_entity (id) VALUES (1);
                     """);
-            connection.createStatement().execute("""
+            statement.execute("""
                     INSERT INTO pk_only_entity (id) VALUES (2);
                     """);
         }
