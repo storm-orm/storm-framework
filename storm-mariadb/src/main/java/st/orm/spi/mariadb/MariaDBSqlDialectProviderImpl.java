@@ -16,8 +16,10 @@
 package st.orm.spi.mariadb;
 
 import jakarta.annotation.Nonnull;
+import java.util.function.Predicate;
 import st.orm.StormConfig;
 import st.orm.core.spi.Orderable.Before;
+import st.orm.core.spi.Provider;
 import st.orm.core.spi.SqlDialectProvider;
 import st.orm.core.template.SqlDialect;
 import st.orm.spi.mysql.MySQLSqlDialectProviderImpl;
@@ -27,6 +29,16 @@ import st.orm.spi.mysql.MySQLSqlDialectProviderImpl;
  */
 @Before(MySQLSqlDialectProviderImpl.class)
 public class MariaDBSqlDialectProviderImpl implements SqlDialectProvider {
+
+    @Override
+    public boolean supports(@Nonnull String databaseProductName) {
+        return "MariaDB".equalsIgnoreCase(databaseProductName);
+    }
+
+    @Override
+    public Predicate<Provider> getProviderFilter() {
+        return MariaDBProviderFilter.INSTANCE;
+    }
 
     @Override
     public SqlDialect getSqlDialect(@Nonnull StormConfig config) {

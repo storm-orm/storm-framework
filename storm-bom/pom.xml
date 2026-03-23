@@ -123,6 +123,16 @@
             </dependency>
             <dependency>
                 <groupId>st.orm</groupId>
+                <artifactId>storm-oracle</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>st.orm</groupId>
+                <artifactId>storm-mssqlserver</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>st.orm</groupId>
                 <artifactId>storm-postgresql</artifactId>
                 <version>${project.version}</version>
             </dependency>
@@ -138,12 +148,12 @@
             </dependency>
             <dependency>
                 <groupId>st.orm</groupId>
-                <artifactId>storm-oracle</artifactId>
+                <artifactId>storm-sqlite</artifactId>
                 <version>${project.version}</version>
             </dependency>
             <dependency>
                 <groupId>st.orm</groupId>
-                <artifactId>storm-mssqlserver</artifactId>
+                <artifactId>storm-h2</artifactId>
                 <version>${project.version}</version>
             </dependency>
             <dependency>

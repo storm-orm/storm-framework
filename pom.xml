@@ -52,10 +52,12 @@
         <module>storm-jackson3</module>
         <module>storm-kotlinx-serialization</module>
         <module>storm-oracle</module>
+        <module>storm-mssqlserver</module>
+        <module>storm-postgresql</module>
         <module>storm-mysql</module>
         <module>storm-mariadb</module>
-        <module>storm-postgresql</module>
-        <module>storm-mssqlserver</module>
+        <module>storm-sqlite</module>
+        <module>storm-h2</module>
         <module>storm-spring</module>
         <module>storm-java21</module>
         <module>storm-kotlin</module>

@@ -17,11 +17,12 @@ package st.orm.spi.mssqlserver;
 
 
 import java.util.function.Predicate;
+import st.orm.core.spi.EntityRepositoryProvider;
 import st.orm.core.spi.Provider;
 import st.orm.core.spi.SqlDialectProvider;
 
 /**
- * Provider filter to select the SQL Server entity repository provider.
+ * Provider filter to select the SQL Server dialect and entity repository providers.
  */
 public final class MSSQLServerProviderFilter implements Predicate<Provider> {
 
@@ -32,10 +33,12 @@ public final class MSSQLServerProviderFilter implements Predicate<Provider> {
 
     @Override
     public boolean test(Provider provider) {
-        if (!(provider instanceof SqlDialectProvider)) {
-            // Only filter providers that implement the SqlDialectProvider interface.
-            return true;
+        if (provider instanceof SqlDialectProvider) {
+            return provider instanceof MSSQLServerSqlDialectProviderImpl;
         }
-        return provider instanceof MSSQLServerEntityRepositoryProviderImpl;
+        if (provider instanceof EntityRepositoryProvider) {
+            return provider instanceof MSSQLServerEntityRepositoryProviderImpl;
+        }
+        return true;
     }
 }

@@ -13,7 +13,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package st.orm.spi.mariadb;
+package st.orm.spi.h2;
 
 import java.util.function.Predicate;
 import st.orm.core.spi.EntityRepositoryProvider;
@@ -21,22 +21,22 @@ import st.orm.core.spi.Provider;
 import st.orm.core.spi.SqlDialectProvider;
 
 /**
- * Provider filter to select the MariaDB dialect and entity repository providers.
+ * Provider filter to select the H2 dialect and entity repository providers.
  */
-public final class MariaDBProviderFilter implements Predicate<Provider> {
+public final class H2ProviderFilter implements Predicate<Provider> {
 
-    public static final MariaDBProviderFilter INSTANCE = new MariaDBProviderFilter();
+    public static final H2ProviderFilter INSTANCE = new H2ProviderFilter();
 
-    private MariaDBProviderFilter() {
+    private H2ProviderFilter() {
     }
 
     @Override
     public boolean test(Provider provider) {
         if (provider instanceof SqlDialectProvider) {
-            return provider instanceof MariaDBSqlDialectProviderImpl;
+            return provider instanceof H2SqlDialectProviderImpl;
         }
         if (provider instanceof EntityRepositoryProvider) {
-            return provider instanceof MariaDBEntityRepositoryProviderImpl;
+            return provider instanceof H2EntityRepositoryProviderImpl;
         }
         return true;
     }

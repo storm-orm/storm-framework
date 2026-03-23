@@ -13,7 +13,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package st.orm.spi.mariadb;
+package st.orm.spi.sqlite;
 
 import java.util.function.Predicate;
 import st.orm.core.spi.EntityRepositoryProvider;
@@ -21,22 +21,22 @@ import st.orm.core.spi.Provider;
 import st.orm.core.spi.SqlDialectProvider;
 
 /**
- * Provider filter to select the MariaDB dialect and entity repository providers.
+ * Provider filter to select the SQLite dialect and entity repository providers.
  */
-public final class MariaDBProviderFilter implements Predicate<Provider> {
+public final class SQLiteProviderFilter implements Predicate<Provider> {
 
-    public static final MariaDBProviderFilter INSTANCE = new MariaDBProviderFilter();
+    public static final SQLiteProviderFilter INSTANCE = new SQLiteProviderFilter();
 
-    private MariaDBProviderFilter() {
+    private SQLiteProviderFilter() {
     }
 
     @Override
     public boolean test(Provider provider) {
         if (provider instanceof SqlDialectProvider) {
-            return provider instanceof MariaDBSqlDialectProviderImpl;
+            return provider instanceof SQLiteSqlDialectProviderImpl;
         }
         if (provider instanceof EntityRepositoryProvider) {
-            return provider instanceof MariaDBEntityRepositoryProviderImpl;
+            return provider instanceof SQLiteEntityRepositoryProviderImpl;
         }
         return true;
     }

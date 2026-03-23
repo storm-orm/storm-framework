@@ -13,31 +13,32 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package st.orm.spi.mariadb;
+package st.orm.spi.sqlite;
 
+import jakarta.annotation.Nonnull;
 import java.util.function.Predicate;
-import st.orm.core.spi.EntityRepositoryProvider;
+import st.orm.StormConfig;
 import st.orm.core.spi.Provider;
 import st.orm.core.spi.SqlDialectProvider;
+import st.orm.core.template.SqlDialect;
 
 /**
- * Provider filter to select the MariaDB dialect and entity repository providers.
+ * Implementation of {@link SqlDialectProvider} for SQLite.
  */
-public final class MariaDBProviderFilter implements Predicate<Provider> {
+public class SQLiteSqlDialectProviderImpl implements SqlDialectProvider {
 
-    public static final MariaDBProviderFilter INSTANCE = new MariaDBProviderFilter();
-
-    private MariaDBProviderFilter() {
+    @Override
+    public boolean supports(@Nonnull String databaseProductName) {
+        return "SQLite".equalsIgnoreCase(databaseProductName);
     }
 
     @Override
-    public boolean test(Provider provider) {
-        if (provider instanceof SqlDialectProvider) {
-            return provider instanceof MariaDBSqlDialectProviderImpl;
-        }
-        if (provider instanceof EntityRepositoryProvider) {
-            return provider instanceof MariaDBEntityRepositoryProviderImpl;
-        }
-        return true;
+    public Predicate<Provider> getProviderFilter() {
+        return SQLiteProviderFilter.INSTANCE;
+    }
+
+    @Override
+    public SqlDialect getSqlDialect(@Nonnull StormConfig config) {
+        return new SQLiteSqlDialect(config);
     }
 }
