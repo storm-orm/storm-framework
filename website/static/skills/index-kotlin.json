@@ -1,0 +1,16 @@
+{
+  "skills": [
+    "storm-setup",
+    "storm-docs",
+    "storm-entity-kotlin",
+    "storm-repository-kotlin",
+    "storm-query-kotlin",
+    "storm-sql-kotlin",
+    "storm-migration"
+  ],
+  "schemaSkills": [
+    "storm-schema",
+    "storm-validate",
+    "storm-entity-from-schema"
+  ]
+}

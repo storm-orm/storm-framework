@@ -128,7 +128,6 @@ Storm's design principles align naturally with how AI coding tools operate:
 | Design Choice | Why it helps AI |
 |---------------|-----------------|
 | **Immutable entities** | No hidden state transitions for the AI to track or miss |
-| **Explicit SQL** | The generated SQL is visible and predictable; the AI can reason about queries directly |
 | **No proxies** | The entity class *is* the entity; no invisible bytecode transformations to account for |
 | **No persistence context** | No session scope, flush ordering, or detachment rules that require deep framework knowledge |
 | **Convention over configuration** | Fewer annotations and config files for the AI to keep consistent |

@@ -14,7 +14,7 @@
 > GitHub: https://github.com/storm-orm/storm-framework
 > License: Apache 2.0
 
-# Generated: 2026-03-22T21:20:08Z
+# Generated: 2026-03-23T08:27:40Z
 
 ========================================
 ## Source: index.md
@@ -23,7 +23,7 @@
 # ST/ORM
 
 > **Info:**
-Storm's immutable design, skills, and secure MCP schema access make it the ORM that AI coding tools get right consistently. Install with `npm install -g @storm-orm/cli`, then run `storm init` in your project. See [AI-Assisted Development](ai-setup.md).
+Storm's concise API, strict conventions, and absence of hidden complexity make it optimized for AI-assisted development. Combined with AI skills and secure schema access via MCP, AI coding tools generate correct Storm code consistently. Install with `npm install -g @storm-orm/cli` and run `storm init` in your project. See [AI-Assisted Development](ai.md).
 
 **Storm** is a modern, high-performance ORM for Kotlin 2.0+ and Java 21+, built around a powerful SQL template engine. It focuses on simplicity, type safety, and predictable performance through immutable models and compile-time metadata.
 
@@ -18449,7 +18449,7 @@ A window of query results from a scrolling operation. A `Window<R>` contains the
 
 
 ========================================
-## Source: ai-setup.md
+## Source: ai.md
 ========================================
 
 # AI-Assisted Development
@@ -18571,7 +18571,6 @@ Storm's design principles align naturally with how AI coding tools operate:
 | Design Choice | Why it helps AI |
 |---------------|-----------------|
 | **Immutable entities** | No hidden state transitions for the AI to track or miss |
-| **Explicit SQL** | The generated SQL is visible and predictable; the AI can reason about queries directly |
 | **No proxies** | The entity class *is* the entity; no invisible bytecode transformations to account for |
 | **No persistence context** | No session scope, flush ordering, or detachment rules that require deep framework knowledge |
 | **Convention over configuration** | Fewer annotations and config files for the AI to keep consistent |
