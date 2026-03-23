@@ -106,29 +106,29 @@ open class ORMTemplateTest(
 
     @Test
     fun `validateSchema should return empty for valid types`() {
-        val errors = orm.validateSchema(listOf(City::class.java))
+        val errors = orm.validateSchema(City::class)
         errors shouldHaveSize 0
     }
 
     @Test
     fun `validateSchema should return errors for invalid types`() {
-        @st.orm.DbTable("nonexistent_table")
-        data class NonExistentEntity(@st.orm.PK val id: Int = 0) : Entity<Int>
-        val errors = orm.validateSchema(listOf(NonExistentEntity::class.java))
+        @DbTable("nonexistent_table")
+        data class NonExistentEntity(@PK val id: Int = 0) : Entity<Int>
+        val errors = orm.validateSchema(NonExistentEntity::class)
         errors.size shouldBe 1
     }
 
     @Test
     fun `validateSchemaOrThrow should not throw for valid types`() {
-        orm.validateSchemaOrThrow(listOf(City::class.java))
+        orm.validateSchemaOrThrow(City::class)
     }
 
     @Test
     fun `validateSchemaOrThrow should throw for invalid types`() {
-        @st.orm.DbTable("nonexistent_table")
-        data class NonExistentEntity(@st.orm.PK val id: Int = 0) : Entity<Int>
+        @DbTable("nonexistent_table")
+        data class NonExistentEntity(@PK val id: Int = 0) : Entity<Int>
         assertThrows<PersistenceException> {
-            orm.validateSchemaOrThrow(listOf(NonExistentEntity::class.java))
+            orm.validateSchemaOrThrow(NonExistentEntity::class)
         }
     }
 

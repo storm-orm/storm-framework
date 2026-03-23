@@ -167,7 +167,7 @@ open class ORMTemplateFactoryTest(
 
     @Test
     fun `validateSchema should return list of errors or empty`() {
-        val errors = orm.validateSchema(listOf(City::class.java))
+        val errors = orm.validateSchema(City::class)
         // City should validate fine against H2
         errors shouldHaveSize 0
     }
