@@ -211,11 +211,11 @@ Both approaches converge on the same verification step. `ORMTemplate.validateSch
 class EntitySchemaTest {
     @Test
     fun validateNewEntities(orm: ORMTemplate) {
-        val errors = orm.validateSchema(listOf(
-            Order::class.java,
-            OrderLine::class.java,
-            Product::class.java
-        ))
+        val errors = orm.validateSchema(
+            Order::class,
+            OrderLine::class,
+            Product::class
+        )
         assertTrue(errors.isEmpty()) { "Schema validation errors: $errors" }
     }
 }

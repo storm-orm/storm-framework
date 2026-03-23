@@ -181,7 +181,7 @@ Both methods have overloads that accept specific types to validate:
 <TabItem value="kotlin" label="Kotlin" default>
 
 ```kotlin
-orm.validateSchema(listOf(User::class.java, Order::class.java))
+orm.validateSchema(User::class, Order::class)
 ```
 
 </TabItem>
