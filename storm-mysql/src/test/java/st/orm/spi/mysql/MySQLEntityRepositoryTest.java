@@ -1741,59 +1741,60 @@ public class MySQLEntityRepositoryTest {
 
     @BeforeEach
     void setUpBranchTables() throws SQLException {
-        try (Connection connection = dataSource.getConnection()) {
-            connection.createStatement().execute("""
+        try (Connection connection = dataSource.getConnection();
+             var statement = connection.createStatement()) {
+            statement.execute("""
                     DROP TABLE IF EXISTS version_long_entity;
                     """);
-            connection.createStatement().execute("""
+            statement.execute("""
                     CREATE TABLE version_long_entity (
                         id integer AUTO_INCREMENT PRIMARY KEY,
                         name varchar(255),
                         version bigint DEFAULT 0
                     );
                     """);
-            connection.createStatement().execute("""
+            statement.execute("""
                     INSERT INTO version_long_entity (name) VALUES ('Alice');
                     """);
-            connection.createStatement().execute("""
+            statement.execute("""
                     INSERT INTO version_long_entity (name) VALUES ('Bob');
                     """);
-            connection.createStatement().execute("""
+            statement.execute("""
                     DROP TABLE IF EXISTS version_instant_entity;
                     """);
-            connection.createStatement().execute("""
+            statement.execute("""
                     CREATE TABLE version_instant_entity (
                         id integer AUTO_INCREMENT PRIMARY KEY,
                         name varchar(255),
                         version timestamp DEFAULT CURRENT_TIMESTAMP
                     );
                     """);
-            connection.createStatement().execute("""
+            statement.execute("""
                     INSERT INTO version_instant_entity (name) VALUES ('Alice');
                     """);
-            connection.createStatement().execute("""
+            statement.execute("""
                     INSERT INTO version_instant_entity (name) VALUES ('Bob');
                     """);
-            connection.createStatement().execute("""
+            statement.execute("""
                     DROP TABLE IF EXISTS non_autogen_entity;
                     """);
-            connection.createStatement().execute("""
+            statement.execute("""
                     CREATE TABLE non_autogen_entity (
                         id integer PRIMARY KEY,
                         name varchar(255),
                         version integer DEFAULT 0
                     );
                     """);
-            connection.createStatement().execute("""
+            statement.execute("""
                     INSERT INTO non_autogen_entity (id, name) VALUES (1, 'First');
                     """);
-            connection.createStatement().execute("""
+            statement.execute("""
                     INSERT INTO non_autogen_entity (id, name) VALUES (2, 'Second');
                     """);
-            connection.createStatement().execute("""
+            statement.execute("""
                     DROP TABLE IF EXISTS seq_entity;
                     """);
-            connection.createStatement().execute("""
+            statement.execute("""
                     CREATE TABLE seq_entity (
                         id integer PRIMARY KEY,
                         name varchar(255)
