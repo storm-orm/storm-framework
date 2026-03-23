@@ -28,6 +28,7 @@ Key rules:
 6. DELETE/UPDATE without WHERE throws. Use \`unsafe()\` for intentional bulk ops.
 7. Spring Boot: define a \`RepositoryBeanFactoryPostProcessor\` with \`repositoryBasePackages\` to auto-register repos as beans.
 8. Pagination: \`page(0, 20)\` for offset-based. \`scroll(User_.id, 20)\` for keyset on large tables.
+9. **Use `Ref` for map keys and set membership**: Prefer `Ref<Entity>` (via `.ref()`) for map keys, set membership, and identity-based lookups. `Ref` provides identity-based `equals`/`hashCode` on the primary key. When a projection already returns `Ref<T>`, use it directly without calling `.ref()` again.
 
 CRUD examples:
 \`\`\`kotlin
@@ -37,3 +38,20 @@ orm update user.copy(name = "Alice Johnson")
 orm delete user
 orm.delete<User> { User_.city eq city }
 \`\`\`
+
+After writing repository methods, offer to write a test using `SqlCapture` to verify the generated SQL matches the user's intent:
+```kotlin
+@StormTest(scripts = ["schema.sql", "data.sql"])
+class UserRepositoryTest {
+    @Test
+    fun findByCity(orm: ORMTemplate, capture: SqlCapture) {
+        val userRepository = orm.repository<UserRepository>()
+        val city = orm.findById<City>(1)!!
+        val users = capture.execute { userRepository.findByCity(city) }
+        // Verify the SQL structure matches the intent.
+        val sql = capture.statements().first().statement()
+        assertContains(sql, "WHERE")
+        assertFalse(users.isEmpty())
+    }
+}
+```

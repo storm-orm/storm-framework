@@ -23,6 +23,10 @@ Generation/update rules:
 - CIRCULAR NOT SUPPORTED. Two tables referencing each other: one must use Ref<T>. Self-ref: always Ref<T>.
 - @UK for unique constraints. @Version for version columns (confirm with user).
 - When updating, preserve existing field order and custom annotations. Only add/modify what changed.
+- Use `@DbIgnore` on fields or types that should be excluded from schema validation.
+- Use `@PK(constraint = false)` if the table intentionally has no PK constraint in the database.
+- Use `@FK(constraint = false)` if a FK column intentionally has no FK constraint in the database.
+- Use `@UK(constraint = false)` if a unique field intentionally has no unique constraint in the database.
 
 SQL type mapping (Kotlin): INTEGER->Int, BIGINT->Long, VARCHAR/TEXT->String, BOOLEAN->Boolean, DECIMAL->BigDecimal, DATE->LocalDate, TIMESTAMP->Instant, UUID->UUID
 SQL type mapping (Java): INTEGER->Integer(PK)/int, BIGINT->Long(PK)/long, VARCHAR/TEXT->String, BOOLEAN->Boolean/boolean, DECIMAL->BigDecimal, DATE->LocalDate, TIMESTAMP->Instant, UUID->UUID

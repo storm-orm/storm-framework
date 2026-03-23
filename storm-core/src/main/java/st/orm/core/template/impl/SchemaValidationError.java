@@ -56,7 +56,9 @@ public record SchemaValidationError(
         /** A {@code @FK} field has a foreign key constraint that references a different table than expected. @since 1.10 */
         FOREIGN_KEY_MISMATCH,
         /** A {@code @FK} field does not have a matching foreign key constraint in the database. */
-        FOREIGN_KEY_MISSING(true);
+        FOREIGN_KEY_MISSING(true),
+        /** A database column is NOT NULL without a default value, but is not mapped in the entity. @since 1.10 */
+        UNMAPPED_COLUMN(true);
 
         private final boolean warning;
 

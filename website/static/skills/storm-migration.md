@@ -26,4 +26,19 @@ Tips:
 - Enums as strings: VARCHAR. Ordinal: INTEGER.
 - @Version: INTEGER or TIMESTAMP
 
-Workflow: migration first, then entity, then rebuild for metamodel.
+After writing a migration, rebuild the project for metamodel regeneration.
+
+After generating or updating entities and migrations, offer to write a temporary `@StormTest` to verify that the entities and migration are consistent:
+```kotlin
+@StormTest(scripts = ["V1__create_orders.sql"])
+class MigrationVerificationTest {
+    @Test
+    fun validateEntities(orm: ORMTemplate) {
+        val errors = orm.validateSchema(listOf(
+            Order::class.java,
+            OrderLine::class.java
+        ))
+        assertTrue(errors.isEmpty()) { "Schema validation errors: $errors" }
+    }
+}
+```

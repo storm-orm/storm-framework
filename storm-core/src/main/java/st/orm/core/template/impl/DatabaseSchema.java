@@ -49,6 +49,7 @@ public final class DatabaseSchema {
      * @param columnSize    the column size (precision for numeric types, length for character types).
      * @param nullable      whether the column allows NULL values.
      * @param autoIncrement whether the column is auto-incremented.
+     * @param hasDefault    whether the column has a default value defined.
      */
     public record DbColumn(
             @Nonnull String tableName,
@@ -57,7 +58,8 @@ public final class DatabaseSchema {
             @Nonnull String typeName,
             int columnSize,
             boolean nullable,
-            boolean autoIncrement
+            boolean autoIncrement,
+            boolean hasDefault
     ) {}
 
     /**
@@ -192,9 +194,11 @@ public final class DatabaseSchema {
                 boolean nullable = !"NO".equalsIgnoreCase(nullableStr);
                 String autoIncrementStr = columns.getString("IS_AUTOINCREMENT");
                 boolean autoIncrement = "YES".equalsIgnoreCase(autoIncrementStr);
+                String columnDef = columns.getString("COLUMN_DEF");
+                boolean hasDefault = columnDef != null;
 
                 columnsByTable.computeIfAbsent(tableName, k -> new ArrayList<>())
-                        .add(new DbColumn(tableName, columnName, dataType, typeName, columnSize, nullable, autoIncrement));
+                        .add(new DbColumn(tableName, columnName, dataType, typeName, columnSize, nullable, autoIncrement, hasDefault));
             }
         }
         // Discover primary keys, unique keys, and foreign keys using the dialect-provided strategy.
@@ -655,6 +659,20 @@ public final class DatabaseSchema {
         return columns.stream()
                 .filter(column -> column.columnName().equalsIgnoreCase(columnName))
                 .findFirst();
+    }
+
+    /**
+     * Returns all columns for the given table.
+     *
+     * @param tableName the table name (case-insensitive).
+     * @return the columns, or an empty list if the table is not found.
+     */
+    public List<DbColumn> getColumns(@Nonnull String tableName) {
+        List<DbColumn> columns = columnsByTable.get(tableName);
+        if (columns == null) {
+            return List.of();
+        }
+        return List.copyOf(columns);
     }
 
     /**
