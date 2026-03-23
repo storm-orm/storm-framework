@@ -141,7 +141,7 @@ public class H2SqlDialect extends DefaultSqlDialect implements SqlDialect {
      * Regex for single-quoted string literals, handling both doubled single quotes and backslash escapes.
      */
     private static final Pattern QUOTE_LITERAL_PATTERN = Pattern.compile(
-            "'(?:''|\\.|[^'])*'"
+            "'(?:''|\\\\.|[^'\\\\])*'"
     );
 
     /**
