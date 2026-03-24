@@ -51,7 +51,7 @@ class RepositoryTest {
                     }
                     val petRepository = repository<PetRepository>()
                     petRepository shouldNotBe null
-                    petRepository.findAll().toList().size shouldBe 3
+                    petRepository.findAll().size shouldBe 3
                 }
             }
         } finally {

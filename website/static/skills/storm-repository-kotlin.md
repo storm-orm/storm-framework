@@ -31,6 +31,75 @@ Key rules:
 7. Pagination: `page(0, 20)` for offset-based. `scroll(User_.id, 20)` for keyset on large tables.
 8. **Use `Ref` for map keys and set membership**: Prefer `Ref<Entity>` (via `.ref()`) for map keys, set membership, and identity-based lookups. `Ref` provides identity-based `equals`/`hashCode` on the primary key. When a projection already returns `Ref<T>`, use it directly without calling `.ref()` again.
 
+## CRUD Operations
+
+```kotlin
+// Insert (infix, returns inserted entity with generated ID)
+val user = orm insert User(email = "alice@example.com", name = "Alice", city = city)
+
+// Read
+val found: User? = orm.entity<User>().findById(user.id)    // nullable
+val fetched: User = orm.entity<User>().getById(user.id)     // throws NoResultException
+val alice: User? = orm.find { User_.name eq "Alice" }       // by predicate
+val all: List<User> = orm.findAll { User_.city eq city }     // list by predicate
+
+// Update (infix)
+orm update user.copy(name = "Alice Johnson")
+
+// Delete
+orm delete user
+orm.delete<User> { User_.city eq city }
+```
+
+## Upsert (insert or update)
+
+```kotlin
+orm upsert User(id = 1, email = "alice@example.com", name = "Alice", city = city)
+```
+
+## Ref-Based Operations
+
+```kotlin
+val ref: Ref<User> = user.ref()
+val found: User? = users.findByRef(ref)
+val fetched: User = users.getByRef(ref)
+users.deleteByRef(ref)
+orm deleteByRef ref   // infix
+```
+
+## Batch and Streaming
+
+```kotlin
+// Batch insert/update/delete with iterables
+orm insert listOf(user1, user2, user3)
+orm update listOf(user1, user2)
+orm delete listOf(user1, user2)
+
+// Flow-based streaming (suspending, with automatic resource cleanup)
+val allUsers: Flow<User> = users.selectAll()
+
+// Batch operations on Flow with chunk size
+users.insert(userFlow, chunkSize = 100)
+users.update(userFlow, chunkSize = 100)
+users.delete(userFlow, chunkSize = 100)
+```
+
+## Count, Exists, Delete by ID
+
+```kotlin
+val count: Long = users.count()
+val exists: Boolean = users.existsById(userId)
+users.deleteById(userId)
+users.deleteAll()   // deletes all entities
+```
+
+## Unique Key Lookups
+
+```kotlin
+val user: User? = users.findBy(User_.email, "alice@example.com")
+val user: User = users.getBy(User_.email, "alice@example.com")   // throws if not found
+```
+
 ## Framework-Specific Repository Registration
 
 Detect the project's framework from its build file and dependencies, then suggest the appropriate pattern:
@@ -56,7 +125,7 @@ fun Application.module() {
     routing {
         get("/users/{email}") {
             val users = call.repository<UserRepository>()
-            call.respond(users.findByEmail(call.parameters["email"]!!))
+            call.respond(users.findByEmail(call.parameters.getOrFail("email")))
         }
     }
 }
@@ -68,15 +137,6 @@ Create repositories directly from the `ORMTemplate`:
 val userRepository = orm.repository<UserRepository>()
 ```
 
-CRUD examples:
-```kotlin
-val user = orm insert User(email = "alice@example.com", name = "Alice", city = city)
-val found: User? = orm.find { User_.id eq user.id }
-orm update user.copy(name = "Alice Johnson")
-orm delete user
-orm.delete<User> { User_.city eq city }
-```
-
 After writing repository methods, offer to write a test using `SqlCapture` to verify the generated SQL matches the user's intent:
 ```kotlin
 @StormTest(scripts = ["schema.sql", "data.sql"])
@@ -84,9 +144,8 @@ class UserRepositoryTest {
     @Test
     fun findByCity(orm: ORMTemplate, capture: SqlCapture) {
         val userRepository = orm.repository<UserRepository>()
-        val city = orm.findById<City>(1)!!
+        val city = orm.entity<City>().getById(1)
         val users = capture.execute { userRepository.findByCity(city) }
-        // Verify the SQL structure matches the intent.
         val sql = capture.statements().first().statement()
         assertContains(sql, "WHERE")
         assertFalse(users.isEmpty())

@@ -12,30 +12,99 @@ Three query levels (suggest the simplest that works):
 | SQL Templates (/storm-sql-java) | CTEs, window functions, subqueries |
 
 Quick queries:
-\`\`\`java
+```java
 var users = orm.entity(User.class);
 Optional<User> user = users.select().where(User_.email, EQUALS, email).getOptionalResult();
 List<User> list = users.select().where(User_.city, EQUALS, city).getResultList();
 long count = users.count();
-\`\`\`
+```
 
 Compound filters:
-\`\`\`java
+```java
 List<User> result = users.select()
     .where(it -> it.where(User_.city, EQUALS, city)
             .and(it.where(User_.birthDate, LESS_THAN, LocalDate.of(2000, 1, 1))))
     .orderBy(User_.name)
     .getResultList();
-\`\`\`
+```
 
-Nested paths: \`User_.city.country.code\` with appropriate operator
-Ordering: \`.orderBy(User_.name)\`, \`.orderByDescending(User_.createdAt)\`
-Pagination: \`.page(0, 20)\` or \`.page(Pageable.ofSize(20).sortBy(User_.name))\`
-Scrolling (keyset): \`.scroll(User_.id, 20)\`
-Explicit joins: \`.innerJoin(UserRole.class).on(Role.class).where(UserRole_.user, EQUALS, user)\`
-Projection: \`.select(ProjectionType.class)\`
+Nested paths: `User_.city.country.code` with appropriate operator
+Ordering: `.orderBy(User_.name)`, `.orderByDescending(User_.createdAt)`
+Pagination: `.page(0, 20)` or `.page(Pageable.ofSize(20).sortBy(User_.name))`
+Scrolling (keyset): `.scroll(User_.id, 20)`
+Explicit joins: `.innerJoin(UserRole.class).on(Role.class).where(UserRole_.user, EQUALS, user)`
+Projection: `.select(ProjectionType.class)`
 
 Operators: EQUALS, NOT_EQUALS, LESS_THAN, LESS_THAN_OR_EQUAL, GREATER_THAN, GREATER_THAN_OR_EQUAL, LIKE, NOT_LIKE, IS_NULL, IS_NOT_NULL, IN, NOT_IN
+
+## Aggregation
+
+```java
+long count = orm.entity(Order.class).selectCount()
+    .where(Order_.status, EQUALS, Status.ACTIVE)
+    .getSingleResult();
+
+List<OrderSummary> totals = orm.entity(Order.class)
+    .select(OrderSummary.class)
+    .groupBy(Order_.status)
+    .having(Order_.amount, GREATER_THAN, 100)
+    .getResultList();
+```
+
+## Row Locking
+
+```java
+User user = orm.entity(User.class).select()
+    .where(User_.id, EQUALS, userId)
+    .forUpdate()         // SELECT ... FOR UPDATE
+    .getSingleResult();
+
+// Or shared lock
+    .forShare()          // SELECT ... FOR SHARE
+```
+
+## Distinct and Count
+
+```java
+List<City> uniqueCities = orm.entity(User.class)
+    .select(City.class)
+    .distinct()
+    .getResultList();
+
+long activeCount = orm.entity(User.class)
+    .selectCount()
+    .where(User_.active, EQUALS, true)
+    .getSingleResult();
+```
+
+## Ref-Based Queries
+
+```java
+// Query by ref
+User user = orm.entity(User.class).select()
+    .where(userRef)
+    .getSingleResult();
+
+// Query by multiple refs
+List<User> users = orm.entity(User.class).select()
+    .whereRef(userRefs)
+    .getResultList();
+
+// Select refs instead of full entities (lightweight)
+List<Ref<User>> refs = orm.entity(User.class).selectRef()
+    .where(User_.city, EQUALS, city)
+    .getResultList();
+```
+
+## Bulk DELETE/UPDATE
+
+```java
+// DELETE with WHERE (safe)
+orm.entity(User.class).delete().where(User_.active, EQUALS, false).executeUpdate();
+
+// DELETE/UPDATE without WHERE throws by default. Use unsafe() to confirm intent:
+orm.entity(User.class).delete().unsafe().executeUpdate();
+```
 
 Critical rules:
 - QueryBuilder is IMMUTABLE. Every method returns a new instance. Always use the return value.
@@ -56,7 +125,6 @@ class UserQueryTest {
                 .where(User_.city, EQUALS, city)
                 .orderBy(User_.name)
                 .getResultList());
-        // Verify the SQL structure matches the intent.
         String sql = capture.statements().getFirst().statement();
         assertTrue(sql.contains("WHERE"));
         assertTrue(sql.contains("ORDER BY"));

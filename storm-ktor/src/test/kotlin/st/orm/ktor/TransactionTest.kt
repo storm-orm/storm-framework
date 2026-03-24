@@ -49,7 +49,7 @@ class TransactionTest {
                 }
             }
             val pets = orm.entity(Pet::class)
-            pets.findAll().toList().size shouldBe 4
+            pets.findAll().size shouldBe 4
         } finally {
             dataSource.close()
         }
@@ -73,7 +73,7 @@ class TransactionTest {
                 // Expected.
             }
             val pets = orm.entity(Pet::class)
-            pets.findAll().toList().size shouldBe 3
+            pets.findAll().size shouldBe 3
         } finally {
             dataSource.close()
         }
@@ -86,7 +86,7 @@ class TransactionTest {
         try {
             val orm = ORMTemplate.of(dataSource)
             val pets = orm.entity(Pet::class)
-            pets.findAll().toList().size shouldBe 3
+            pets.findAll().size shouldBe 3
         } finally {
             dataSource.close()
         }

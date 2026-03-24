@@ -50,7 +50,7 @@ class StormPluginTest {
             val ormTemplate = ORMTemplate.of(dataSource)
             ormTemplate shouldNotBe null
             val petTypes = ormTemplate.entity(PetType::class)
-            petTypes.findAll().toList().size shouldBe 2
+            petTypes.findAll().size shouldBe 2
         } finally {
             dataSource.close()
         }
@@ -99,7 +99,7 @@ class StormPluginTest {
                     }
                     routing {
                         get("/count") {
-                            val count = orm.entity(PetType::class).findAll().toList().size
+                            val count = orm.entity(PetType::class).findAll().size
                             call.respondText(count.toString())
                         }
                     }
@@ -124,7 +124,7 @@ class StormPluginTest {
                     }
                     routing {
                         get("/call-orm") {
-                            val count = call.orm.entity(PetType::class).findAll().toList().size
+                            val count = call.orm.entity(PetType::class).findAll().size
                             call.respondText(count.toString())
                         }
                     }

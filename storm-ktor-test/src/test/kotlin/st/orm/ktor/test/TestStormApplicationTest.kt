@@ -22,7 +22,7 @@ class TestStormApplicationTest {
         scope.stormDataSource shouldNotBe null
         scope.stormOrm shouldNotBe null
         val pets = scope.stormOrm.entity(Pet::class)
-        pets.findAll().toList().size shouldBe 3
+        pets.findAll().size shouldBe 3
     }
 
     @Test
@@ -35,7 +35,7 @@ class TestStormApplicationTest {
             }
             routing {
                 get("/pets/count") {
-                    val count = call.application.orm.entity(Pet::class).findAll().toList().size
+                    val count = call.application.orm.entity(Pet::class).findAll().size
                     call.respondText(count.toString())
                 }
             }

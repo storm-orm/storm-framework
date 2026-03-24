@@ -57,7 +57,8 @@ val user = orm insert User(
 )
 
 // Read
-val found: User? = orm.find { User_.id eq user.id }
+val found: User? = orm.entity<User>().findById(user.id)
+val alice: User? = orm.find { User_.name eq "Alice" }
 val all: List<User> = orm.findAll { User_.city eq city }
 
 // Update
