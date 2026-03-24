@@ -16,7 +16,10 @@
 package st.orm.core.template.impl;
 
 import static java.util.Objects.requireNonNull;
+import static st.orm.StormConfig.ANSI_ESCAPING;
+import static st.orm.StormConfig.TEMPLATE_CACHE_SIZE;
 import static st.orm.core.spi.Providers.getSqlDialect;
+import static st.orm.core.spi.StormConfigHelper.*;
 import static st.orm.core.template.impl.ElementRouter.getElementProcessor;
 import static st.orm.core.template.impl.SqlInterceptorManager.intercept;
 
@@ -65,7 +68,7 @@ public final class SqlTemplateImpl implements SqlTemplate {
     /**
      * Config keys that affect the shape of generated SQL and must therefore be part of the template cache key.
      */
-    private static final Set<String> TEMPLATE_SHAPE_KEYS = Set.of(StormConfig.ANSI_ESCAPING);
+    private static final Set<String> TEMPLATE_SHAPE_KEYS = Set.of(ANSI_ESCAPING);
 
     record ElementNode(@Nonnull Element element, boolean synthetic) {}
 
@@ -120,7 +123,7 @@ public final class SqlTemplateImpl implements SqlTemplate {
         this.config = requireNonNull(config);
         this.templatePreparation = new TemplatePreparation(this, modelBuilder);
         this.keyGenerator = keyGenerator();
-        int templateCacheSize = Math.max(0, Integer.parseInt(config.getProperty(StormConfig.TEMPLATE_CACHE_SIZE, "2048")));
+        int templateCacheSize = Math.max(0, getInt(config, TEMPLATE_CACHE_SIZE, 2048));
         if (templateCacheSize == 0 || inlineParameters) {
             // We don't want to cache templates with inline parameters. No caching takes place if inline parameters are enabled.
             this.cache = null;

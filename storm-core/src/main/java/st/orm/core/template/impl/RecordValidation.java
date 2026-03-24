@@ -16,6 +16,7 @@
 package st.orm.core.template.impl;
 
 import static java.util.Optional.empty;
+import static st.orm.StormConfig.VALIDATION_RECORD_MODE;
 import static st.orm.core.spi.Providers.getORMConverter;
 import static st.orm.core.template.impl.RecordReflection.findPkField;
 import static st.orm.core.template.impl.RecordReflection.getRecordType;
@@ -135,7 +136,7 @@ final class RecordValidation {
      * @return the resolved record validation mode: {@code "none"}, {@code "warn"}, or {@code "fail"}.
      */
     private static String resolveRecordMode(@Nonnull StormConfig config) {
-        String recordMode = config.getProperty(StormConfig.VALIDATION_RECORD_MODE, null);
+        String recordMode = config.getProperty(VALIDATION_RECORD_MODE, null);
         if (recordMode != null) {
             return recordMode.trim();
         }

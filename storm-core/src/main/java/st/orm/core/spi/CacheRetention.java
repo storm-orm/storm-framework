@@ -15,6 +15,9 @@
  */
 package st.orm.core.spi;
 
+import static st.orm.StormConfig.ENTITY_CACHE_RETENTION;
+import static st.orm.core.spi.StormConfigHelper.getEnum;
+
 import jakarta.annotation.Nonnull;
 import st.orm.StormConfig;
 
@@ -50,7 +53,6 @@ public enum CacheRetention {
      */
     @Nonnull
     public static CacheRetention fromConfig(@Nonnull StormConfig config) {
-        return CacheRetention.valueOf(
-                config.getProperty(StormConfig.ENTITY_CACHE_RETENTION, "DEFAULT").trim().toUpperCase());
+        return getEnum(config, ENTITY_CACHE_RETENTION, CacheRetention.class, DEFAULT);
     }
 }
