@@ -56,17 +56,18 @@ For each selected tool, Storm installs two types of AI context:
 
 | Skill | Purpose |
 |-------|---------|
+| storm-setup | Configure dependencies (detects Spring Boot, Ktor, or standalone) |
 | storm-docs | Load full Storm documentation |
 | storm-entity-kotlin | Create Kotlin entities |
 | storm-entity-java | Create Java entities |
-| storm-repository-kotlin | Write Kotlin repositories |
+| storm-repository-kotlin | Write Kotlin repositories (framework-aware: Spring Boot, Ktor, standalone) |
 | storm-repository-java | Write Java repositories |
 | storm-query-kotlin | Kotlin QueryBuilder queries |
 | storm-query-java | Java QueryBuilder queries |
 | storm-sql-kotlin | Kotlin SQL Templates |
 | storm-sql-java | Java SQL Templates |
 | storm-json-kotlin / storm-json-java | JSON columns and JSON aggregation |
-| storm-serialization-kotlin / storm-serialization-java | Entity serialization for REST APIs (Ref handling) |
+| storm-serialization-kotlin / storm-serialization-java | Entity serialization for REST APIs (framework-aware content negotiation) |
 | storm-migration | Write Flyway/Liquibase migration SQL |
 
 ### 3. Database connection (optional)

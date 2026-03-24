@@ -402,7 +402,7 @@ data class User(
 Globally via `StormConfig` or system property:
 
 ```kotlin
-val config = StormConfig.of(mapOf("storm.update.dirty_check" to "VALUE"))
+val config = StormConfig.of(mapOf(UPDATE_DIRTY_CHECK to "VALUE"))
 ```
 
 ```bash
@@ -453,7 +453,7 @@ Storm enforces a **maximum number of UPDATE shapes per entity**. Once this limit
 **Configure via `StormConfig` or system property:**
 
 ```kotlin
-val config = StormConfig.of(mapOf("storm.update.max_shapes" to "10"))
+val config = StormConfig.of(mapOf(UPDATE_MAX_SHAPES to "10"))
 ```
 
 ```bash
@@ -491,9 +491,9 @@ For cache retention settings, see [Entity Cache Configuration](entity-cache.md#c
 ```kotlin
 // Via StormConfig
 val config = StormConfig.of(mapOf(
-    "storm.update.default_mode" to "FIELD",
-    "storm.update.dirty_check" to "VALUE",
-    "storm.update.max_shapes" to "10"
+    UPDATE_DEFAULT_MODE to "FIELD",
+    UPDATE_DIRTY_CHECK to "VALUE",
+    UPDATE_MAX_SHAPES to "10"
 ))
 val orm = ORMTemplate.of(dataSource, config)
 ```

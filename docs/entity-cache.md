@@ -213,7 +213,7 @@ The `default` mode retains entities for the duration of the transaction, which p
 Configure retention behavior via `StormConfig` or system property:
 
 ```kotlin
-val config = StormConfig.of(mapOf("storm.entity_cache.retention" to "light"))
+val config = StormConfig.of(mapOf(ENTITY_CACHE_RETENTION to "light"))
 val orm = ORMTemplate.of(dataSource, config)
 ```
 

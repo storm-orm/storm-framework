@@ -17,9 +17,11 @@ package st.orm.core.repository.impl;
 
 import static st.orm.DirtyCheck.INSTANCE;
 import static st.orm.DirtyCheck.VALUE;
+import static st.orm.StormConfig.*;
 import static st.orm.UpdateMode.ENTITY;
 import static st.orm.UpdateMode.FIELD;
 import static st.orm.UpdateMode.OFF;
+import static st.orm.core.spi.StormConfigHelper.*;
 
 import jakarta.annotation.Nonnull;
 import jakarta.annotation.Nullable;
@@ -119,12 +121,9 @@ public final class DirtySupport<E extends Entity<ID>, ID> {
 
     DirtySupport(@Nonnull Model<E, ID> model, @Nonnull StormConfig config) {
         this.model = model;
-        this.defaultUpdateMode = UpdateMode.valueOf(
-                config.getProperty("storm.update.default_mode", "ENTITY").trim().toUpperCase());
-        this.defaultDirtyCheck = DirtyCheck.valueOf(
-                config.getProperty("storm.update.dirty_check", "INSTANCE").trim().toUpperCase());
-        this.maxShapes = Math.max(1, Integer.parseInt(
-                config.getProperty("storm.update.max_shapes", "5")));
+        this.defaultUpdateMode = getEnum(config, UPDATE_DEFAULT_MODE, UpdateMode.class, UpdateMode.ENTITY);
+        this.defaultDirtyCheck = getEnum(config, UPDATE_DIRTY_CHECK, DirtyCheck.class, DirtyCheck.INSTANCE);
+        this.maxShapes = Math.max(1, getInt(config, UPDATE_MAX_SHAPES, 5));
         RecordType recordType = model.recordType();
         this.updateMode = getUpdateMode(recordType);
         this.dirtyCheck = getDirtyCheck(recordType);
@@ -148,7 +147,7 @@ public final class DirtySupport<E extends Entity<ID>, ID> {
         if (dynamicUpdate != null) {
             return dynamicUpdate.value();
         }
-        return UpdateMode.valueOf(config.getProperty("storm.update.default_mode", "ENTITY").trim().toUpperCase());
+        return getEnum(config, UPDATE_DEFAULT_MODE, UpdateMode.class, UpdateMode.ENTITY);
     }
 
     /**

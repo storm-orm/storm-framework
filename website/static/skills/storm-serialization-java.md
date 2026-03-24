@@ -4,7 +4,9 @@ Fetch https://orm.st/llms-full.txt for complete reference.
 
 This is about serializing entities for API responses (Jackson), not about JSON database columns (use /storm-json-java for that).
 
-Ask: whether entities have `Ref<T>` fields and whether they use Spring Boot.
+Ask: whether entities have `Ref<T>` fields.
+
+Detect the project's framework from its build file (pom.xml or build.gradle.kts): look for `storm-spring-boot-starter` or `spring-boot-starter` (Spring Boot) or neither (standalone). Adapt setup examples to the detected framework.
 
 ## When You Need the Storm Module
 

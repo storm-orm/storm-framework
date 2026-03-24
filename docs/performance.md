@@ -66,7 +66,7 @@ Or configure programmatically:
 
 ```java
 StormConfig config = StormConfig.of(Map.of(
-    "storm.template_cache.size", "4096"
+    TEMPLATE_CACHE_SIZE, "4096"
 ));
 ORMTemplate orm = ORMTemplate.of(dataSource, config);
 ```

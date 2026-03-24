@@ -41,7 +41,8 @@ class TypeIndexProcessor(
                 .forEach { clazz ->
                     val fqName = clazz.qualifiedName?.asString() ?: return@forEach
                     INDEXED_TYPES.forEach { typeFqName ->
-                        if (clazz.isSubtypeOfFqName(typeFqName)) {
+                        val allowInterfaces = typeFqName in INDEXED_INTERFACE_TYPES
+                        if (clazz.isSubtypeOfFqName(typeFqName, allowInterfaces)) {
                             indexEntries.getValue(typeFqName) += fqName
                         }
                     }
@@ -74,15 +75,25 @@ class TypeIndexProcessor(
     companion object {
         private const val INDEX_PACKAGE = "META-INF.storm"
 
-        private val INDEXED_TYPES = listOf(
+        private val INDEXED_CLASS_TYPES = setOf(
             "st.orm.Data",
             "st.orm.Converter",
         )
+
+        private val INDEXED_INTERFACE_TYPES = setOf(
+            "st.orm.repository.Repository",
+        )
+
+        private val INDEXED_TYPES = INDEXED_CLASS_TYPES + INDEXED_INTERFACE_TYPES
     }
 }
 
-private fun KSClassDeclaration.isSubtypeOfFqName(targetFqName: String): Boolean {
-    if (classKind != ClassKind.CLASS) return false
+private fun KSClassDeclaration.isSubtypeOfFqName(targetFqName: String, allowInterfaces: Boolean): Boolean {
+    when (classKind) {
+        ClassKind.CLASS -> {} // Always allowed.
+        ClassKind.INTERFACE -> if (!allowInterfaces) return false
+        else -> return false
+    }
     val selfFqName = qualifiedName?.asString() ?: return false
     if (selfFqName == targetFqName) return false
     return getAllSuperTypes().any { superType ->

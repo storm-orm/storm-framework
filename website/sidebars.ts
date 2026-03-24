@@ -18,6 +18,7 @@ const sidebars: SidebarsConfig = {
         'refs',
         'transactions',
         'spring-integration',
+        'ktor-integration',
         'dialects',
         'testing',
       ],

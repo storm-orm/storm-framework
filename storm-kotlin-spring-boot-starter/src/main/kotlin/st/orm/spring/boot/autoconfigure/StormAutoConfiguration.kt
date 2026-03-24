@@ -85,28 +85,28 @@ open class StormAutoConfiguration {
     private fun toStormConfig(properties: StormProperties): StormConfig {
         val map = mutableMapOf<String, String>()
         properties.update.defaultMode?.let {
-            map["storm.update.default_mode"] = it.trim().uppercase()
+            map[StormConfig.UPDATE_DEFAULT_MODE] = it.trim().uppercase()
         }
         properties.update.dirtyCheck?.let {
-            map["storm.update.dirty_check"] = it.trim().uppercase()
+            map[StormConfig.UPDATE_DIRTY_CHECK] = it.trim().uppercase()
         }
         properties.update.maxShapes?.let {
-            map["storm.update.max_shapes"] = it.toString()
+            map[StormConfig.UPDATE_MAX_SHAPES] = it.toString()
         }
         properties.entityCache.retention?.let {
-            map["storm.entity_cache.retention"] = it.trim()
+            map[StormConfig.ENTITY_CACHE_RETENTION] = it.trim()
         }
         properties.templateCache.size?.let {
-            map["storm.template_cache.size"] = it.toString()
+            map[StormConfig.TEMPLATE_CACHE_SIZE] = it.toString()
         }
         properties.ansiEscaping?.let {
-            map["storm.ansi_escaping"] = it.toString()
+            map[StormConfig.ANSI_ESCAPING] = it.toString()
         }
         properties.validation.recordMode?.let {
-            map["storm.validation.record_mode"] = it.trim()
+            map[StormConfig.VALIDATION_RECORD_MODE] = it.trim()
         }
         properties.validation.strict?.let {
-            map["storm.validation.strict"] = it.toString()
+            map[StormConfig.VALIDATION_STRICT] = it.toString()
         }
         return StormConfig.of(map)
     }

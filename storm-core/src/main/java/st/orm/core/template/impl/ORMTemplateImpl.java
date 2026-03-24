@@ -17,8 +17,10 @@ package st.orm.core.template.impl;
 
 import static java.lang.System.identityHashCode;
 import static java.lang.reflect.Proxy.newProxyInstance;
+import static st.orm.StormConfig.VALIDATION_STRICT;
 import static st.orm.core.spi.Providers.getEntityRepository;
 import static st.orm.core.spi.Providers.getProjectionRepository;
+import static st.orm.core.spi.StormConfigHelper.*;
 
 import jakarta.annotation.Nonnull;
 import jakarta.annotation.Nullable;
@@ -128,7 +130,7 @@ public final class ORMTemplateImpl extends QueryTemplateImpl implements ORMTempl
     }
 
     private boolean isStrictSchemaValidation() {
-        return Boolean.parseBoolean(config.getProperty("storm.validation.strict", "false"));
+        return getBoolean(config, VALIDATION_STRICT, false);
     }
 
     private SchemaValidator createSchemaValidator() {

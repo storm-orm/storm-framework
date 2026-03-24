@@ -5,7 +5,7 @@ Fetch https://orm.st/llms-full.txt for complete reference (see the Installation 
 Before suggesting dependencies, read the project's build file (pom.xml, build.gradle.kts, or build.gradle) to detect:
 - Build tool (Maven or Gradle)
 - Language and version (Kotlin version from kotlin plugin, Java version from sourceCompatibility/release)
-- Existing dependencies (Spring Boot, database driver, etc.)
+- Existing dependencies (Spring Boot, Ktor, database driver, etc.)
 - Fetch the latest Storm version from https://repo1.maven.org/maven2/st/orm/storm-bom/maven-metadata.xml
 
 Core dependencies:
@@ -29,6 +29,13 @@ Spring Boot:
 - Kotlin: `st.orm:storm-kotlin-spring-boot-starter`
 - Java: `st.orm:storm-spring-boot-starter`
 - These replace the core module and include auto-configuration
+- See https://orm.st/docs/spring-integration for full setup
+
+Ktor:
+- Kotlin: `st.orm:storm-ktor`
+- Optionally: `st.orm:storm-ktor-test` (test scope, for `testStormApplication` DSL)
+- Requires `com.zaxxer:HikariCP` for connection pooling (unless providing your own DataSource)
+- See https://orm.st/docs/ktor-integration for full setup
 
 Serialization (pick one if needed):
 - `st.orm:storm-kotlinx-serialization` for kotlinx-serialization

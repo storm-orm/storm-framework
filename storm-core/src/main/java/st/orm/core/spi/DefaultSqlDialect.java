@@ -15,9 +15,11 @@
  */
 package st.orm.core.spi;
 
-import static java.lang.Boolean.parseBoolean;
+
 import static java.util.stream.Collectors.joining;
 import static st.orm.Operator.EQUALS;
+import static st.orm.StormConfig.ANSI_ESCAPING;
+import static st.orm.core.spi.StormConfigHelper.getBoolean;
 
 import jakarta.annotation.Nonnull;
 import java.util.ArrayList;
@@ -42,7 +44,7 @@ public class DefaultSqlDialect implements SqlDialect {
     }
 
     public DefaultSqlDialect(@Nonnull StormConfig config) {
-        this.ansiEscaping = parseBoolean(config.getProperty("storm.ansi_escaping", "false"));
+        this.ansiEscaping = getBoolean(config, ANSI_ESCAPING, false);
     }
 
     /**

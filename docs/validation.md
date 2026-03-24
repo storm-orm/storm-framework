@@ -208,7 +208,7 @@ By default, warnings (type narrowing and nullability mismatches) do not cause va
 <TabItem value="kotlin" label="Kotlin" default>
 
 ```kotlin
-val config = StormConfig.of(mapOf("storm.validation.strict" to "true"))
+val config = StormConfig.of(mapOf(VALIDATION_STRICT to "true"))
 val orm = ORMTemplate.of(dataSource, config)
 orm.validateSchemaOrThrow()  // Warnings now cause failure
 ```
@@ -217,7 +217,7 @@ orm.validateSchemaOrThrow()  // Warnings now cause failure
 <TabItem value="java" label="Java">
 
 ```java
-var config = StormConfig.of(Map.of("storm.validation.strict", "true"));
+var config = StormConfig.of(Map.of(VALIDATION_STRICT, "true"));
 var orm = ORMTemplate.of(dataSource, config);
 orm.validateSchemaOrThrow();  // Warnings now cause failure
 ```

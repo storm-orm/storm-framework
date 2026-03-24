@@ -193,6 +193,20 @@ implementation("st.orm:storm-kotlin-spring-boot-starter")
 </TabItem>
 </Tabs>
 
+### Ktor Integration
+
+For Ktor applications, add the Ktor plugin module. It provides a `Storm` plugin that manages the DataSource lifecycle, reads HOCON configuration, and exposes the `ORMTemplate` through extension properties on `Application`, `ApplicationCall`, and `RoutingContext`. See [Ktor Integration](ktor-integration.md) for full setup details.
+
+```kotlin
+implementation("st.orm:storm-ktor")
+```
+
+For testing:
+
+```kotlin
+testImplementation("st.orm:storm-ktor-test")
+```
+
 ### JSON Support
 
 Storm supports storing and reading JSON-typed columns. Pick the module that matches your serialization library:
@@ -214,6 +228,8 @@ storm-foundation (base interfaces)
 └── storm-kotlin / storm-java21 (your primary dependency)
     ├── storm-kotlin-spring / storm-spring (Spring Framework)
     │   └── storm-kotlin-spring-boot-starter / storm-spring-boot-starter
+    ├── storm-ktor (Ktor)
+    │   └── storm-ktor-test (testing support)
     ├── dialect modules (postgresql, mysql, mariadb, oracle, mssqlserver, sqlite, h2)
     └── JSON modules (jackson2, jackson3, kotlinx-serialization)
 ```

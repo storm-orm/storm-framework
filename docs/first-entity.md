@@ -158,7 +158,7 @@ The `insertAndFetch` method sends an INSERT statement, retrieves the auto-genera
 
 ```kotlin
 // Find by ID
-val user: User? = orm.entity(User::class).findById(userId)
+val user: User? = orm.entity<User>().findById(userId)
 
 // Find by field value using the metamodel (requires storm-metamodel-processor)
 val user: User? = orm.find { User_.email eq "alice@example.com" }

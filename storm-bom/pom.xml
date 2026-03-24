@@ -166,6 +166,16 @@
                 <artifactId>storm-kotlin-spring-boot-starter</artifactId>
                 <version>${project.version}</version>
             </dependency>
+            <dependency>
+                <groupId>st.orm</groupId>
+                <artifactId>storm-ktor</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>st.orm</groupId>
+                <artifactId>storm-ktor-test</artifactId>
+                <version>${project.version}</version>
+            </dependency>
         </dependencies>
     </dependencyManagement>
 </project>

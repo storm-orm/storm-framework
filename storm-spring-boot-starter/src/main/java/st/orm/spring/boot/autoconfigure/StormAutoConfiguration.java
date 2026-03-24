@@ -90,31 +90,31 @@ public class StormAutoConfiguration {
         Map<String, String> map = new HashMap<>();
         var update = properties.getUpdate();
         if (update.getDefaultMode() != null) {
-            map.put("storm.update.default_mode", update.getDefaultMode().trim().toUpperCase());
+            map.put(StormConfig.UPDATE_DEFAULT_MODE, update.getDefaultMode().trim().toUpperCase());
         }
         if (update.getDirtyCheck() != null) {
-            map.put("storm.update.dirty_check", update.getDirtyCheck().trim().toUpperCase());
+            map.put(StormConfig.UPDATE_DIRTY_CHECK, update.getDirtyCheck().trim().toUpperCase());
         }
         if (update.getMaxShapes() != null) {
-            map.put("storm.update.max_shapes", update.getMaxShapes().toString());
+            map.put(StormConfig.UPDATE_MAX_SHAPES, update.getMaxShapes().toString());
         }
         var entityCache = properties.getEntityCache();
         if (entityCache.getRetention() != null) {
-            map.put("storm.entity_cache.retention", entityCache.getRetention().trim());
+            map.put(StormConfig.ENTITY_CACHE_RETENTION, entityCache.getRetention().trim());
         }
         var templateCache = properties.getTemplateCache();
         if (templateCache.getSize() != null) {
-            map.put("storm.template_cache.size", templateCache.getSize().toString());
+            map.put(StormConfig.TEMPLATE_CACHE_SIZE, templateCache.getSize().toString());
         }
         if (properties.getAnsiEscaping() != null) {
-            map.put("storm.ansi_escaping", properties.getAnsiEscaping().toString());
+            map.put(StormConfig.ANSI_ESCAPING, properties.getAnsiEscaping().toString());
         }
         var validation = properties.getValidation();
         if (validation.getRecordMode() != null) {
-            map.put("storm.validation.record_mode", validation.getRecordMode().trim());
+            map.put(StormConfig.VALIDATION_RECORD_MODE, validation.getRecordMode().trim());
         }
         if (validation.getStrict() != null) {
-            map.put("storm.validation.strict", validation.getStrict().toString());
+            map.put(StormConfig.VALIDATION_STRICT, validation.getStrict().toString());
         }
         return StormConfig.of(map);
     }
