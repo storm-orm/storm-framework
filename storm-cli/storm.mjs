@@ -5,7 +5,7 @@
 // Zero dependencies. Requires Node.js 18+.
 
 import { writeFileSync, appendFileSync, mkdirSync, existsSync, readFileSync, readdirSync, unlinkSync, rmdirSync, statSync } from 'fs';
-import { join, dirname } from 'path';
+import { basename, join, dirname } from 'path';
 import { homedir } from 'os';
 import { execSync } from 'child_process';
 
@@ -546,7 +546,7 @@ async function textInput({ message, defaultValue = '', mask = false }) {
 // ─── Content (fetched from orm.st at runtime) ───────────────────────────────
 
 const SKILLS_BASE_URL = 'https://orm.st/skills';
-const STORM_SKILL_MARKER = '<!-- storm-managed:';
+const STORM_SKILL_MARKER = '<!-- storm-managed: storm-docs -->';
 
 async function fetchRules() {
   try {
@@ -575,7 +575,7 @@ async function fetchSkill(name) {
     const res = await fetch(url);
     if (!res.ok) throw new Error(`${res.status}`);
     const content = await res.text();
-    return `${STORM_SKILL_MARKER} ${name} -->\n${content}`;
+    return content.trimEnd() + '\n\n' + STORM_SKILL_MARKER + '\n';
   } catch {
     return null;
   }
@@ -584,6 +584,7 @@ async function fetchSkill(name) {
 function installSkill(name, content, toolConfig, created) {
   const cwd = process.cwd();
   const fullPath = join(cwd, toolConfig.skillPath(name));
+  if (existsSync(fullPath) && readFileSync(fullPath, 'utf-8') === content) return;
   mkdirSync(dirname(fullPath), { recursive: true });
   writeFileSync(fullPath, content);
   created.push(toolConfig.skillPath(name));
@@ -621,8 +622,15 @@ function cleanStaleSkills(toolConfigs, installedSkillNames, skipped) {
         for (const candidate of candidates) {
           try {
             const content = readFileSync(candidate, 'utf-8');
-            const match = content.match(/^<!-- storm-managed: (\S+) -->/);
-            if (match && !installed.has(match[1])) {
+            const isStormManaged = content.trimEnd().endsWith(STORM_SKILL_MARKER)
+              || /^<!-- storm-managed: \S+ -->/.test(content);
+            if (!isStormManaged) continue;
+
+            // Derive skill name from path.
+            const name = candidate.endsWith('SKILL.md')
+              ? basename(dirname(candidate))
+              : basename(candidate).replace(/\.(instructions\.)?md$/, '');
+            if (!installed.has(name)) {
               unlinkSync(candidate);
               // Remove empty parent directory for nested layout.
               const parentDir = dirname(candidate);
@@ -632,7 +640,7 @@ function cleanStaleSkills(toolConfigs, installedSkillNames, skipped) {
                   if (remaining.length === 0) rmdirSync(parentDir);
                 } catch {}
               }
-              skipped.push(`${match[1]} (removed, no longer available)`);
+              skipped.push(`${name} (removed, no longer available)`);
             }
           } catch {}
         }
@@ -1334,7 +1342,7 @@ async function update() {
             if (!existing.includes('Database Schema Access')) {
               const endMarker = existing.indexOf(MARKER_END);
               if (endMarker !== -1) {
-                const updated = existing.substring(0, endMarker) + '\n' + schemaRules.replace(/^<!-- storm-managed: \S+ -->\n/, '') + '\n' + existing.substring(endMarker);
+                const updated = existing.substring(0, endMarker) + '\n' + schemaRules.replace('\n' + STORM_SKILL_MARKER, '') + '\n' + existing.substring(endMarker);
                 writeFileSync(rulesPath, updated);
                 if (!appended.includes(config.rulesFile)) appended.push(config.rulesFile);
               }
@@ -1420,8 +1428,13 @@ async function updateMcp() {
     console.log(boltYellow('  Updated:'));
     appended.forEach(f => console.log(boltYellow(`    ~ ${f}`)));
   }
-  console.log();
-  console.log(bold('  MCP configuration updated.'));
+  if (created.length > 0 || appended.length > 0) {
+    console.log();
+    console.log(bold('  MCP configuration updated.'));
+  } else {
+    const toolNames = tools.map(t => TOOL_CONFIGS[t]?.name).filter(Boolean).join(', ');
+    console.log(dimText(`  MCP already configured for ${toolNames}. No changes needed.`));
+  }
   console.log();
 }
 
@@ -1570,7 +1583,7 @@ async function setup() {
           if (!existing.includes('Database Schema Access')) {
             const endMarker = existing.indexOf(MARKER_END);
             if (endMarker !== -1) {
-              const updated = existing.substring(0, endMarker) + '\n' + schemaRules.replace(/^<!-- storm-managed: \S+ -->\n/, '') + '\n' + existing.substring(endMarker);
+              const updated = existing.substring(0, endMarker) + '\n' + schemaRules.replace('\n' + STORM_SKILL_MARKER, '') + '\n' + existing.substring(endMarker);
               writeFileSync(rulesPath, updated);
               appended.push(config.rulesFile);
             }
