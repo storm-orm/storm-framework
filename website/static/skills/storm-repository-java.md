@@ -2,7 +2,9 @@ Help the user write a Storm repository using Java.
 
 Fetch https://orm.st/llms-full.txt for complete reference.
 
-Ask: which entity, what custom queries, using Spring Boot?
+Ask: which entity, what custom queries?
+
+Detect the project's framework from its build file (pom.xml or build.gradle.kts): look for `storm-spring-boot-starter` or `spring-boot-starter` (Spring Boot) or neither (standalone). Use the detected framework to suggest the appropriate repository registration pattern.
 
 \`\`\`java
 interface UserRepository extends EntityRepository<User, Integer> {

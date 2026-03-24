@@ -41,10 +41,17 @@ public class TypeIndexProcessor extends AbstractProcessor {
     private Elements elements;
     private Filer filer;
 
-    private static final Set<String> INDEXED_TYPES = Set.of(
+    private static final Set<String> INDEXED_CLASS_TYPES = Set.of(
             "st.orm.Data",
             "st.orm.Converter"
     );
+    private static final Set<String> INDEXED_INTERFACE_TYPES = Set.of(
+            "st.orm.repository.Repository"
+    );
+    private static final Set<String> INDEXED_TYPES = new LinkedHashSet<>() {{
+        addAll(INDEXED_CLASS_TYPES);
+        addAll(INDEXED_INTERFACE_TYPES);
+    }};
 
     private static final String INDEX_DIR = "META-INF/storm/";
     private final Map<String, TypeMirror> indexedTypeMirrors = new LinkedHashMap<>();
@@ -81,7 +88,8 @@ public class TypeIndexProcessor extends AbstractProcessor {
             for (Map.Entry<String, TypeMirror> entry : indexedTypeMirrors.entrySet()) {
                 String typeFqName = entry.getKey();
                 TypeMirror targetType = entry.getValue();
-                if (isSubtypeOf(typeElement, targetType)) {
+                boolean allowInterfaces = INDEXED_INTERFACE_TYPES.contains(typeFqName);
+                if (isSubtypeOf(typeElement, targetType, allowInterfaces)) {
                     indexEntries.get(typeFqName).add(fqcn);
                 }
             }
@@ -97,8 +105,13 @@ public class TypeIndexProcessor extends AbstractProcessor {
         return false; // Do not claim any annotations.
     }
 
-    private boolean isSubtypeOf(TypeElement type, TypeMirror target) {
-        if (type.getKind() != ElementKind.CLASS) {
+    private boolean isSubtypeOf(TypeElement type, TypeMirror target, boolean allowInterfaces) {
+        ElementKind kind = type.getKind();
+        if (kind == ElementKind.CLASS) {
+            // Classes are always allowed.
+        } else if (kind == ElementKind.INTERFACE && allowInterfaces) {
+            // Interfaces are allowed only for certain indexed types (e.g., Repository).
+        } else {
             return false;
         }
         TypeMirror a = types.erasure(type.asType());

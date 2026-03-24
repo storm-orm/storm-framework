@@ -65,7 +65,7 @@ public final class SqlTemplateImpl implements SqlTemplate {
     /**
      * Config keys that affect the shape of generated SQL and must therefore be part of the template cache key.
      */
-    private static final Set<String> TEMPLATE_SHAPE_KEYS = Set.of("storm.ansi_escaping");
+    private static final Set<String> TEMPLATE_SHAPE_KEYS = Set.of(StormConfig.ANSI_ESCAPING);
 
     record ElementNode(@Nonnull Element element, boolean synthetic) {}
 
@@ -120,7 +120,7 @@ public final class SqlTemplateImpl implements SqlTemplate {
         this.config = requireNonNull(config);
         this.templatePreparation = new TemplatePreparation(this, modelBuilder);
         this.keyGenerator = keyGenerator();
-        int templateCacheSize = Math.max(0, Integer.parseInt(config.getProperty("storm.template_cache.size", "2048")));
+        int templateCacheSize = Math.max(0, Integer.parseInt(config.getProperty(StormConfig.TEMPLATE_CACHE_SIZE, "2048")));
         if (templateCacheSize == 0 || inlineParameters) {
             // We don't want to cache templates with inline parameters. No caching takes place if inline parameters are enabled.
             this.cache = null;

@@ -3,7 +3,7 @@ import TabItem from '@theme/TabItem';
 
 # Configuration
 
-Storm can be configured through `StormConfig`, system properties, or Spring Boot's `application.yml`. These properties control runtime behavior for features like dirty checking and entity caching. All properties have sensible defaults, so **configuration is optional**. Storm works out of the box without any configuration.
+Storm can be configured through `StormConfig`, system properties, Spring Boot's `application.yml`, or Ktor's `application.conf`. These properties control runtime behavior for features like dirty checking and entity caching. All properties have sensible defaults, so **configuration is optional**. Storm works out of the box without any configuration.
 
 ---
 
@@ -17,7 +17,7 @@ Storm can be configured through `StormConfig`, system properties, or Spring Boot
 | `storm.entity_cache.retention` | `default` | Cache retention mode: `default` or `light` |
 | `storm.template_cache.size` | `2048` | Maximum number of compiled templates to cache |
 | `storm.validation.record_mode` | `fail` | Record validation mode: `fail`, `warn`, or `none` |
-| `storm.validation.schema_mode` | `none` | Schema validation mode: `none`, `warn`, or `fail` (Spring Boot only) |
+| `storm.validation.schema_mode` | `none` | Schema validation mode: `none`, `warn`, or `fail` (Spring Boot and Ktor) |
 | `storm.validation.strict` | `false` | Treat schema validation warnings as errors |
 | `storm.validation.interpolation_mode` | `warn` | Interpolation safety mode: `warn`, `fail`, or `none` (see [Interpolation Safety](#interpolation-safety)) |
 | `st.orm.scrollable.maxSize` | `1000` | Maximum window size allowed in a serialized cursor (system property only) |
@@ -44,9 +44,9 @@ java -Dstorm.update.default_mode=FIELD \
 
 ```kotlin
 val config = StormConfig.of(mapOf(
-    "storm.update.default_mode" to "FIELD",
-    "storm.entity_cache.retention" to "light",
-    "storm.template_cache.size" to "4096"
+    UPDATE_DEFAULT_MODE to "FIELD",
+    ENTITY_CACHE_RETENTION to "light",
+    TEMPLATE_CACHE_SIZE to "4096"
 ))
 
 val orm = ORMTemplate.of(dataSource, config)
@@ -60,9 +60,9 @@ val orm = dataSource.orm(config)
 
 ```java
 var config = StormConfig.of(Map.of(
-    "storm.update.default_mode", "FIELD",
-    "storm.entity_cache.retention", "light",
-    "storm.template_cache.size", "4096"
+    UPDATE_DEFAULT_MODE, "FIELD",
+    ENTITY_CACHE_RETENTION, "light",
+    TEMPLATE_CACHE_SIZE, "4096"
 ));
 
 var orm = ORMTemplate.of(dataSource, config);
@@ -93,6 +93,32 @@ storm:
 ```
 
 The Spring Boot Starter binds these properties and builds a `StormConfig` that is passed to the `ORMTemplate` factory. Values not set in YAML fall back to system properties and then to built-in defaults. See [Spring Integration](spring-integration.md#configuration-via-applicationyml) for details.
+
+**In Ktor's `application.conf`** (requires `storm-ktor`):
+
+```hocon
+storm {
+    ansiEscaping = false
+    update {
+        defaultMode = "ENTITY"
+        dirtyCheck = "INSTANCE"
+        maxShapes = 5
+    }
+    entityCache {
+        retention = "default"
+    }
+    templateCache {
+        size = 2048
+    }
+    validation {
+        recordMode = "fail"
+        schemaMode = "none"
+        strict = false
+    }
+}
+```
+
+The Storm Ktor plugin reads these properties and builds a `StormConfig` that is passed to the `ORMTemplate` factory. HOCON supports environment variable substitution with `${?VAR_NAME}` syntax. See [Ktor Integration](ktor-integration.md#configuration) for details.
 
 ---
 

@@ -491,6 +491,49 @@ class QueryCountTest {
 
 ---
 
+## Ktor Testing
+
+The `storm-ktor-test` module provides a `testStormApplication` function that combines Storm's H2 setup with Ktor's `testApplication` builder. It creates an in-memory database, executes SQL scripts, and exposes a `StormTestScope` with `stormDataSource`, `stormOrm`, and `stormSqlCapture`.
+
+```kotlin
+@Test
+fun `GET users returns list`() = testStormApplication(
+    scripts = listOf("/schema.sql", "/data.sql"),
+) { scope ->
+    application {
+        install(Storm) { dataSource = scope.stormDataSource }
+        routing { userRoutes() }
+    }
+
+    client.get("/users").apply {
+        assertEquals(HttpStatusCode.OK, status)
+    }
+}
+```
+
+You can also combine the existing `@StormTest` annotation with Ktor's `testApplication` for a more concise setup:
+
+```kotlin
+@StormTest(scripts = ["/schema.sql", "/data.sql"])
+class UserRouteTest {
+
+    @Test
+    fun `users endpoint returns data`(dataSource: DataSource) = testApplication {
+        application {
+            install(Storm) { this.dataSource = dataSource }
+            routing { userRoutes() }
+        }
+        client.get("/users").apply {
+            assertEquals(HttpStatusCode.OK, status)
+        }
+    }
+}
+```
+
+See [Ktor Integration](ktor-integration.md#testing) for more details.
+
+---
+
 ## Tips
 
 1. **Keep SQL scripts small and focused.** Each test class should set up only the tables and data it needs. This keeps tests fast and independent.

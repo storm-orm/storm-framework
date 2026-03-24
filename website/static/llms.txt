@@ -36,6 +36,7 @@ License: Apache 2.0
 - [Refs](https://orm.st/refs)
 - [Transactions](https://orm.st/transactions)
 - [Spring Integration](https://orm.st/spring-integration)
+- [Ktor Integration](https://orm.st/ktor-integration)
 - [Database Dialects](https://orm.st/dialects)
 - [Testing](https://orm.st/testing)
 - [Converters](https://orm.st/converters)
@@ -270,10 +271,24 @@ Java (Maven):
 </dependency>
 ```
 
+### Ktor Integration
+
+Kotlin (Gradle):
+```kotlin
+dependencies {
+    implementation(platform("st.orm:storm-bom:1.11.0"))
+    implementation("st.orm:storm-kotlin")
+    implementation("st.orm:storm-ktor")
+    runtimeOnly("st.orm:storm-core")
+    kotlinCompilerPluginClasspath("st.orm:storm-compiler-plugin-2.0")
+}
+```
+
 ### Available Modules
 
 Core: storm-core, storm-kotlin, storm-java21
 Spring: storm-spring, storm-kotlin-spring, storm-spring-boot-starter, storm-kotlin-spring-boot-starter
+Ktor: storm-ktor, storm-ktor-test
 JSON: storm-jackson2, storm-jackson3, storm-kotlinx-serialization
 Dialects: storm-postgresql, storm-mysql, storm-mariadb, storm-oracle, storm-mssqlserver
 Build: storm-bom, storm-compiler-plugin-2.0, storm-compiler-plugin-2.1

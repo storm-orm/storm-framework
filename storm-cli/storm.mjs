@@ -1200,6 +1200,231 @@ async function setupDatabase() {
   return stormDir;
 }
 
+// ─── Update (non-interactive) ────────────────────────────────────────────────
+
+function detectConfiguredTools() {
+  const cwd = process.cwd();
+  const tools = [];
+  for (const [id, config] of Object.entries(TOOL_CONFIGS)) {
+    // A tool is "configured" if its rules file or any skill directory exists.
+    if (config.rulesFile && existsSync(join(cwd, config.rulesFile))) {
+      tools.push(id);
+    } else if (config.skillDirs) {
+      for (const dir of config.skillDirs) {
+        if (existsSync(join(cwd, dir))) { tools.push(id); break; }
+      }
+    }
+  }
+  return tools;
+}
+
+function detectConfiguredLanguages(toolConfigs) {
+  const cwd = process.cwd();
+  const languages = new Set();
+  for (const config of toolConfigs) {
+    if (!config.skillDirs) continue;
+    for (const dir of config.skillDirs) {
+      const fullDir = join(cwd, dir);
+      if (!existsSync(fullDir)) continue;
+      let entries;
+      try { entries = readdirSync(fullDir); } catch { continue; }
+      for (const entry of entries) {
+        // Check storm-managed skill markers for language suffixes.
+        const filePath = join(fullDir, entry);
+        const candidates = [];
+        try {
+          const stat = statSync(filePath);
+          if (stat.isFile()) candidates.push(filePath);
+          else if (stat.isDirectory()) {
+            const nested = join(filePath, 'SKILL.md');
+            if (existsSync(nested)) candidates.push(nested);
+          }
+        } catch { continue; }
+        for (const candidate of candidates) {
+          try {
+            const content = readFileSync(candidate, 'utf-8');
+            const match = content.match(/^<!-- storm-managed: (\S+) -->/);
+            if (match) {
+              const name = match[1];
+              if (name.endsWith('-kotlin')) languages.add('kotlin');
+              if (name.endsWith('-java')) languages.add('java');
+            }
+          } catch {}
+        }
+      }
+    }
+  }
+  return [...languages];
+}
+
+async function update() {
+  const tools = detectConfiguredTools();
+  if (tools.length === 0) {
+    console.log(boltYellow('\n  No configured AI tools found. Run `storm init` first.\n'));
+    return;
+  }
+
+  const toolConfigs = tools.map(t => TOOL_CONFIGS[t]);
+  const skillToolConfigs = toolConfigs.filter(c => c.skillPath);
+
+  // Detect languages from existing installed skills.
+  let languages = detectConfiguredLanguages(skillToolConfigs);
+  if (languages.length === 0) {
+    // Fallback: if we can't detect languages, fetch both indexes and use whichever has skills.
+    languages = ['kotlin', 'java'];
+  }
+
+  console.log(dimText(`  Tools:     ${tools.map(t => TOOL_CONFIGS[t].name).join(', ')}`));
+  console.log(dimText(`  Languages: ${languages.join(', ')}`));
+  console.log();
+
+  // Fetch rules and skill indexes.
+  console.log(dimText('  Fetching content from https://orm.st...'));
+  const fetchPromises = [fetchRules(), ...languages.map(l => fetchSkillIndex(l))];
+  const [stormRules, ...skillIndexes] = await Promise.all(fetchPromises);
+  if (!stormRules) {
+    console.log(boltYellow('\n  Could not fetch Storm rules from https://orm.st. Check your connection.\n'));
+    return;
+  }
+
+  const created  = [];
+  const appended = [];
+  const skipped  = [];
+
+  // Update rules blocks.
+  for (const toolId of tools) {
+    const config = TOOL_CONFIGS[toolId];
+    if (!config || !config.rulesFile) continue;
+    installRulesBlock(join(process.cwd(), config.rulesFile), stormRules, created, appended);
+  }
+
+  // Merge skill lists from all selected languages (deduplicated).
+  const skillNames = [...new Set(skillIndexes.flatMap(idx => idx?.skills ?? []))];
+  const schemaSkillNames = [...new Set(skillIndexes.flatMap(idx => idx?.schemaSkills ?? []))];
+  const installedSkillNames = [];
+
+  // Fetch and install skills.
+  if (skillToolConfigs.length > 0) {
+    console.log(dimText('  Fetching skills from https://orm.st...'));
+    const fetchedSkills = new Map();
+    for (const skillName of skillNames) {
+      const content = await fetchSkill(skillName);
+      if (!content) { skipped.push(skillName + ' (fetch failed)'); continue; }
+      fetchedSkills.set(skillName, content);
+      installedSkillNames.push(skillName);
+    }
+
+    for (const config of skillToolConfigs) {
+      for (const [name, content] of fetchedSkills) {
+        installSkill(name, content, config, created);
+      }
+    }
+
+    // Also update schema-dependent skills if database is configured.
+    const stormDir = join(homedir(), '.storm');
+    const connectionPath = join(stormDir, 'connection.json');
+    if (existsSync(connectionPath)) {
+      const schemaRules = await fetchSkill('storm-schema-rules');
+      for (const toolId of tools) {
+        const config = TOOL_CONFIGS[toolId];
+        if (config.rulesFile && schemaRules) {
+          const rulesPath = join(process.cwd(), config.rulesFile);
+          if (existsSync(rulesPath)) {
+            const existing = readFileSync(rulesPath, 'utf-8');
+            if (!existing.includes('Database Schema Access')) {
+              const endMarker = existing.indexOf(MARKER_END);
+              if (endMarker !== -1) {
+                const updated = existing.substring(0, endMarker) + '\n' + schemaRules.replace(/^<!-- storm-managed: \S+ -->\n/, '') + '\n' + existing.substring(endMarker);
+                writeFileSync(rulesPath, updated);
+                if (!appended.includes(config.rulesFile)) appended.push(config.rulesFile);
+              }
+            }
+          }
+        }
+      }
+
+      for (const skillName of schemaSkillNames) {
+        const content = await fetchSkill(skillName);
+        if (!content) { skipped.push(skillName + ' (fetch failed)'); continue; }
+        installedSkillNames.push(skillName);
+        for (const config of skillToolConfigs) {
+          installSkill(skillName, content, config, created);
+        }
+      }
+    }
+
+    // Remove stale skills.
+    cleanStaleSkills(skillToolConfigs, installedSkillNames, skipped);
+  }
+
+  const uniqueCreated  = [...new Set(created)];
+  const uniqueAppended = [...new Set(appended)];
+
+  console.log();
+  if (uniqueCreated.length > 0) {
+    console.log(boltYellow('  Created:'));
+    uniqueCreated.forEach(f => console.log(boltYellow(`    + ${f}`)));
+  }
+  if (uniqueAppended.length > 0) {
+    console.log(boltYellow('  Updated:'));
+    uniqueAppended.forEach(f => console.log(boltYellow(`    ~ ${f}`)));
+  }
+  if (skipped.length > 0) {
+    console.log(dimText('  Skipped:'));
+    skipped.forEach(f => console.log(dimText(`    - ${f}`)));
+  }
+  console.log();
+  console.log(bold('  Skills and rules updated.'));
+  console.log();
+}
+
+// ─── MCP (non-interactive re-register) ──────────────────────────────────────
+
+async function updateMcp() {
+  const stormDir = join(homedir(), '.storm');
+  const connectionPath = join(stormDir, 'connection.json');
+
+  if (!existsSync(connectionPath)) {
+    // No existing connection; fall back to interactive setup.
+    console.log(dimText('  No existing database connection found. Starting setup...'));
+    console.log();
+    const result = await setupDatabase();
+    if (!result) return;
+  }
+
+  // Re-register MCP for all configured tools.
+  const tools = detectConfiguredTools();
+  if (tools.length === 0) {
+    console.log(boltYellow('\n  No configured AI tools found. Run `storm init` first.\n'));
+    return;
+  }
+
+  const created = [];
+  const appended = [];
+  for (const toolId of tools) {
+    const config = TOOL_CONFIGS[toolId];
+    if (!config.mcpFormat) continue;
+    if (config.mcpFormat === 'codex' && existsSync(join(process.cwd(), '.codex'))) {
+      registerMcp(config, stormDir, created, appended);
+    } else if (config.mcpFile) {
+      registerMcp(config, stormDir, created, appended);
+    }
+  }
+
+  console.log();
+  if (created.length > 0) {
+    console.log(boltYellow('  Created:'));
+    created.forEach(f => console.log(boltYellow(`    + ${f}`)));
+  }
+  if (appended.length > 0) {
+    console.log(boltYellow('  Updated:'));
+    appended.forEach(f => console.log(boltYellow(`    ~ ${f}`)));
+  }
+  console.log();
+  console.log(bold('  MCP configuration updated.'));
+  console.log();
+}
+
 // ─── Main flow ───────────────────────────────────────────────────────────────
 
 async function setup() {
@@ -1419,7 +1644,8 @@ async function run() {
 
   ${dimText('Usage:')}
     storm init               Configure rules, skills, and database (default)
-    storm mcp                Reconfigure database connection
+    storm update             Update rules and skills (non-interactive)
+    storm mcp                Re-register MCP servers for configured tools
 
   ${dimText('Options:')}
     --help, -h               Show this help message
@@ -1435,36 +1661,10 @@ async function run() {
     return;
   }
 
-  if (command === 'mcp') {
-    // Standalone database reconfiguration.
-    const stormDir = await setupDatabase();
-    if (!stormDir) return;
-
-    // Re-register MCP for tools that have config files in this project.
-    const created = [];
-    const appended = [];
-    for (const [, config] of Object.entries(TOOL_CONFIGS)) {
-      if (!config.mcpFile) continue;
-      const mcpPath = join(process.cwd(), config.mcpFile);
-      // Only update tools already configured in this project.
-      if (config.mcpFormat === 'codex' && existsSync(join(process.cwd(), '.codex'))) {
-        registerMcp(config, stormDir, created, appended);
-      } else if (existsSync(mcpPath)) {
-        registerMcp(config, stormDir, created, appended);
-      }
-    }
-
-    console.log();
-    console.log(boltYellow('  Created:'));
-    console.log(boltYellow('    + ~/.storm/connection.json'));
-    console.log(boltYellow('    + ~/.storm/mcp-server.mjs'));
-    if (appended.length > 0) {
-      console.log(boltYellow('  Updated:'));
-      appended.forEach(f => console.log(boltYellow(`    ~ ${f}`)));
-    }
-    console.log();
-    console.log(bold("  Database connection updated."));
-    console.log();
+  if (command === 'update') {
+    await update();
+  } else if (command === 'mcp') {
+    await updateMcp();
   } else {
     await setup();
   }

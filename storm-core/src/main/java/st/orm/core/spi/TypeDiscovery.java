@@ -22,12 +22,14 @@ import java.net.URL;
 import java.util.*;
 import st.orm.Converter;
 import st.orm.Data;
+import st.orm.core.repository.Repository;
 
 public final class TypeDiscovery {
 
     private static final String INDEX_DIRECTORY = "META-INF/storm/";
     private static final String DATA_TYPE = "st.orm.Data";
     private static final String CONVERTER_TYPE = "st.orm.Converter";
+    private static final String REPOSITORY_TYPE = "st.orm.repository.Repository";
 
     private TypeDiscovery() {
     }
@@ -45,6 +47,17 @@ public final class TypeDiscovery {
     public static List<Class<? extends Converter<?, ?>>> getConverterTypes() {
         //noinspection unchecked
         return (List<Class<? extends Converter<?, ?>>>) (Object) loadTypes(CONVERTER_TYPE, Converter.class);
+    }
+
+    /**
+     * Returns all discovered subtypes of st.orm.repository.Repository based on the index file.
+     *
+     * <p>The index is generated at compile time by the Storm metamodel processor (annotation processor or KSP).
+     * It contains all interfaces in the user's project that extend {@code EntityRepository} or
+     * {@code ProjectionRepository}.</p>
+     */
+    public static List<Class<? extends Repository>> getRepositoryTypes() {
+        return loadTypes(REPOSITORY_TYPE, Repository.class);
     }
 
     private static <T> List<Class<? extends T>> loadTypes(String typeFqName, Class<T> expectedType) {

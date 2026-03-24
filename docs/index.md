@@ -221,7 +221,8 @@ If you are a tech lead or architect evaluating Storm for a production system, th
 
 1. [Storm vs Other Frameworks](comparison.md) -- feature-level comparison across frameworks
 2. [Spring Integration](spring-integration.md) -- Spring Boot auto-configuration, repository scanning, DI
-3. [Batch Processing and Streaming](batch-streaming.md) -- bulk operations and large dataset handling
+3. [Ktor Integration](ktor-integration.md) -- Ktor plugin, HOCON configuration, coroutine-native transactions
+4. [Batch Processing and Streaming](batch-streaming.md) -- bulk operations and large dataset handling
 4. [Testing](testing.md) -- JUnit 5 integration, statement capture, and test isolation
 5. [Configuration](configuration.md) -- runtime tuning, dirty checking modes, cache retention
 6. [Database Dialects](dialects.md) -- database-specific optimizations
@@ -230,7 +231,7 @@ If you are a tech lead or architect evaluating Storm for a production system, th
 
 Storm is focused on being a great ORM and SQL template engine. It intentionally does not include:
 
-- **Schema migration or DDL generation.** Storm does not create, alter, or drop tables. Use [Flyway](https://flywaydb.org/) or [Liquibase](https://www.liquibase.com/) for schema versioning and migrations.
+- **Schema migration or DDL generation.** Storm does not automatically create, alter, or drop tables at runtime. With Storm's [AI integration](/ai), your coding assistant can read your database schema and generate Flyway or Liquibase migration scripts on demand. For schema versioning, use [Flyway](https://flywaydb.org/) or [Liquibase](https://www.liquibase.com/).
 - **Second-level cache.** Storm's entity cache is transaction-scoped and cleared on commit. For cross-transaction caching, use Spring's `@Cacheable` or a dedicated cache layer like Caffeine or Redis.
 - **Lazy loading proxies.** Entities are plain records with no proxies. Related entities are loaded eagerly in a single query via JOINs. For deferred loading, use [Refs](refs.md) to explicitly control when related data is fetched.
 

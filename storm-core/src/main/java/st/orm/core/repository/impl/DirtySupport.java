@@ -120,11 +120,11 @@ public final class DirtySupport<E extends Entity<ID>, ID> {
     DirtySupport(@Nonnull Model<E, ID> model, @Nonnull StormConfig config) {
         this.model = model;
         this.defaultUpdateMode = UpdateMode.valueOf(
-                config.getProperty("storm.update.default_mode", "ENTITY").trim().toUpperCase());
+                config.getProperty(StormConfig.UPDATE_DEFAULT_MODE, "ENTITY").trim().toUpperCase());
         this.defaultDirtyCheck = DirtyCheck.valueOf(
-                config.getProperty("storm.update.dirty_check", "INSTANCE").trim().toUpperCase());
+                config.getProperty(StormConfig.UPDATE_DIRTY_CHECK, "INSTANCE").trim().toUpperCase());
         this.maxShapes = Math.max(1, Integer.parseInt(
-                config.getProperty("storm.update.max_shapes", "5")));
+                config.getProperty(StormConfig.UPDATE_MAX_SHAPES, "5")));
         RecordType recordType = model.recordType();
         this.updateMode = getUpdateMode(recordType);
         this.dirtyCheck = getDirtyCheck(recordType);
@@ -148,7 +148,7 @@ public final class DirtySupport<E extends Entity<ID>, ID> {
         if (dynamicUpdate != null) {
             return dynamicUpdate.value();
         }
-        return UpdateMode.valueOf(config.getProperty("storm.update.default_mode", "ENTITY").trim().toUpperCase());
+        return UpdateMode.valueOf(config.getProperty(StormConfig.UPDATE_DEFAULT_MODE, "ENTITY").trim().toUpperCase());
     }
 
     /**

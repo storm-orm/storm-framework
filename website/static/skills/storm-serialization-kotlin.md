@@ -4,7 +4,9 @@ Fetch https://orm.st/llms-full.txt for complete reference.
 
 This is about serializing entities for API responses or caching (Jackson, kotlinx.serialization), not about JSON database columns (use /storm-json-kotlin for that).
 
-Ask: which serialization library (Jackson or kotlinx.serialization), whether entities have `Ref<T>` fields, and whether they use Spring Boot or Redis caching.
+Ask: which serialization library (Jackson or kotlinx.serialization), whether entities have `Ref<T>` fields.
+
+Detect the project's framework from its build file (pom.xml or build.gradle.kts): look for `storm-kotlin-spring-boot-starter` or `spring-boot-starter` (Spring Boot), `storm-ktor` or `ktor-server-core` (Ktor), or neither (standalone). Adapt setup examples to the detected framework.
 
 ## When You Need the Storm Module
 
@@ -26,6 +28,24 @@ Spring Boot auto-detects Module beans:
 class JacksonConfig {
     @Bean
     fun stormModule(): StormModule = StormModule()
+}
+```
+
+Ktor Content Negotiation with Jackson:
+```kotlin
+install(ContentNegotiation) {
+    jackson {
+        registerModule(StormModule())
+    }
+}
+```
+
+Ktor Content Negotiation with kotlinx.serialization:
+```kotlin
+install(ContentNegotiation) {
+    json(Json {
+        serializersModule = StormSerializersModule()
+    })
 }
 ```
 

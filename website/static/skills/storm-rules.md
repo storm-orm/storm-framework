@@ -4,6 +4,19 @@ This project uses the [Storm ORM framework](https://orm.st) for database access.
 Storm is a modern SQL Template and ORM for Kotlin 2.0+ and Java 21+, built around
 immutable data classes and records instead of proxied entities.
 
+### Framework Detection
+
+Before suggesting dependencies, patterns, or configuration, detect which framework the project uses by examining the build file and existing dependencies:
+
+- **Spring Boot**: build file contains `storm-kotlin-spring-boot-starter`, `storm-spring-boot-starter`, `spring-boot-starter`, or `@SpringBootApplication` in the codebase.
+- **Ktor**: build file contains `storm-ktor`, `ktor-server-core`, or `io.ktor` dependencies.
+- **Standalone**: neither Spring Boot nor Ktor detected. The project uses Storm directly with `ORMTemplate.of(dataSource)`.
+
+Adapt your suggestions to the detected framework:
+- **Spring Boot**: use `@Transactional`, constructor injection, `application.yml` for config.
+- **Ktor**: use `install(Storm)` plugin, `transaction { }` blocks, `application.conf` (HOCON) for config, `call.orm` for route access.
+- **Standalone**: use `DataSource.orm` or `ORMTemplate.of(dataSource)`, programmatic `transaction { }` blocks.
+
 If the project does not yet have Storm dependencies in its build file (pom.xml,
 build.gradle.kts), use /storm-setup to help the user configure their project.
 Detect the project's Kotlin or Java version from the build file to recommend the

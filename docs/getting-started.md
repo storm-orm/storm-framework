@@ -46,6 +46,7 @@ Once `storm init` has configured your tool, you can ask it to add the right depe
 
 For example:
 - "Add Storm to this project with Spring Boot and PostgreSQL"
+- "Set up Storm with Ktor and PostgreSQL"
 - "Create entities for the users and orders tables"
 - "Write a repository method that finds orders by status with pagination"
 

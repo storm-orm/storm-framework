@@ -42,7 +42,7 @@ public class DefaultSqlDialect implements SqlDialect {
     }
 
     public DefaultSqlDialect(@Nonnull StormConfig config) {
-        this.ansiEscaping = parseBoolean(config.getProperty("storm.ansi_escaping", "false"));
+        this.ansiEscaping = parseBoolean(config.getProperty(StormConfig.ANSI_ESCAPING, "false"));
     }
 
     /**

@@ -135,7 +135,7 @@ final class RecordValidation {
      * @return the resolved record validation mode: {@code "none"}, {@code "warn"}, or {@code "fail"}.
      */
     private static String resolveRecordMode(@Nonnull StormConfig config) {
-        String recordMode = config.getProperty("storm.validation.record_mode", null);
+        String recordMode = config.getProperty(StormConfig.VALIDATION_RECORD_MODE, null);
         if (recordMode != null) {
             return recordMode.trim();
         }

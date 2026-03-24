@@ -51,6 +51,6 @@ public enum CacheRetention {
     @Nonnull
     public static CacheRetention fromConfig(@Nonnull StormConfig config) {
         return CacheRetention.valueOf(
-                config.getProperty("storm.entity_cache.retention", "DEFAULT").trim().toUpperCase());
+                config.getProperty(StormConfig.ENTITY_CACHE_RETENTION, "DEFAULT").trim().toUpperCase());
     }
 }

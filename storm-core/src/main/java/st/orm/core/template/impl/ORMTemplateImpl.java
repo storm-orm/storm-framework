@@ -128,7 +128,7 @@ public final class ORMTemplateImpl extends QueryTemplateImpl implements ORMTempl
     }
 
     private boolean isStrictSchemaValidation() {
-        return Boolean.parseBoolean(config.getProperty("storm.validation.strict", "false"));
+        return Boolean.parseBoolean(config.getProperty(StormConfig.VALIDATION_STRICT, "false"));
     }
 
     private SchemaValidator createSchemaValidator() {

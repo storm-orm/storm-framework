@@ -32,8 +32,8 @@ import java.util.Map;
  * <p>Programmatic configuration:</p>
  * <pre>{@code
  * StormConfig config = StormConfig.of(Map.of(
- *     "storm.update.default_mode", "FIELD",
- *     "storm.update.max_shapes", "10"
+ *     StormConfig.UPDATE_DEFAULT_MODE, "FIELD",
+ *     StormConfig.UPDATE_MAX_SHAPES, "10"
  * ));
  * ORMTemplate orm = ORMTemplate.of(dataSource, config);
  * }</pre>
@@ -44,6 +44,27 @@ import java.util.Map;
  * @since 1.9
  */
 public final class StormConfig {
+
+    /** Default update mode for entities without {@code @DynamicUpdate}. Values: ENTITY, FIELD, OFF. */
+    public static final String UPDATE_DEFAULT_MODE = "storm.update.default_mode";
+    /** Default dirty check strategy. Values: INSTANCE, VALUE. */
+    public static final String UPDATE_DIRTY_CHECK = "storm.update.dirty_check";
+    /** Maximum UPDATE shapes before fallback to full-row update. */
+    public static final String UPDATE_MAX_SHAPES = "storm.update.max_shapes";
+    /** Cache retention mode. Values: default, light. */
+    public static final String ENTITY_CACHE_RETENTION = "storm.entity_cache.retention";
+    /** Maximum number of compiled templates to cache. */
+    public static final String TEMPLATE_CACHE_SIZE = "storm.template_cache.size";
+    /** Whether to use ANSI escaping for identifiers. */
+    public static final String ANSI_ESCAPING = "storm.ansi_escaping";
+    /** Record validation mode. Values: fail, warn, none. */
+    public static final String VALIDATION_RECORD_MODE = "storm.validation.record_mode";
+    /** Schema validation mode. Values: none, warn, fail. */
+    public static final String VALIDATION_SCHEMA_MODE = "storm.validation.schema_mode";
+    /** Whether to treat schema validation warnings as errors. */
+    public static final String VALIDATION_STRICT = "storm.validation.strict";
+    /** Interpolation safety mode. Values: warn, fail, none. */
+    public static final String VALIDATION_INTERPOLATION_MODE = "storm.validation.interpolation_mode";
 
     private static final StormConfig DEFAULTS = new StormConfig(Map.of());
 
