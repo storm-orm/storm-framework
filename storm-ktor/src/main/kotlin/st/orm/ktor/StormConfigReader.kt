@@ -17,6 +17,16 @@ package st.orm.ktor
 
 import io.ktor.server.application.Application
 import st.orm.StormConfig
+import st.orm.StormConfig.ANSI_ESCAPING
+import st.orm.StormConfig.ENTITY_CACHE_RETENTION
+import st.orm.StormConfig.TEMPLATE_CACHE_SIZE
+import st.orm.StormConfig.UPDATE_DEFAULT_MODE
+import st.orm.StormConfig.UPDATE_DIRTY_CHECK
+import st.orm.StormConfig.UPDATE_MAX_SHAPES
+import st.orm.StormConfig.VALIDATION_INTERPOLATION_MODE
+import st.orm.StormConfig.VALIDATION_RECORD_MODE
+import st.orm.StormConfig.VALIDATION_SCHEMA_MODE
+import st.orm.StormConfig.VALIDATION_STRICT
 
 /**
  * Reads Storm configuration properties from the application's HOCON configuration and converts them to a
@@ -51,26 +61,34 @@ import st.orm.StormConfig
 internal fun readStormConfig(application: Application): StormConfig {
     val config = application.environment.config
     val properties = mutableMapOf<String, String>()
-
-    fun read(stormKey: String, vararg hoconKeys: String) {
-        for (hoconKey in hoconKeys) {
-            config.propertyOrNull(hoconKey)?.getString()?.let {
-                properties[stormKey] = it
-                return
-            }
-        }
+    val keys = listOf(
+        UPDATE_DEFAULT_MODE,
+        UPDATE_DIRTY_CHECK,
+        UPDATE_MAX_SHAPES,
+        ENTITY_CACHE_RETENTION,
+        TEMPLATE_CACHE_SIZE,
+        ANSI_ESCAPING,
+        VALIDATION_RECORD_MODE,
+        VALIDATION_SCHEMA_MODE,
+        VALIDATION_STRICT,
+        VALIDATION_INTERPOLATION_MODE,
+    )
+    for (key in keys) {
+        // Try camelCase (HOCON convention) first, then snake_case (Storm convention).
+        val hoconKey = snakeToCamel(key)
+        val value = config.propertyOrNull(hoconKey)?.getString()
+            ?: config.propertyOrNull(key)?.getString()
+            ?: continue
+        properties[key] = value
     }
-
-    read(StormConfig.UPDATE_DEFAULT_MODE, "storm.update.defaultMode", "storm.update.default_mode")
-    read(StormConfig.UPDATE_DIRTY_CHECK, "storm.update.dirtyCheck", "storm.update.dirty_check")
-    read(StormConfig.UPDATE_MAX_SHAPES, "storm.update.maxShapes", "storm.update.max_shapes")
-    read(StormConfig.ENTITY_CACHE_RETENTION, "storm.entityCache.retention", "storm.entity_cache.retention")
-    read(StormConfig.TEMPLATE_CACHE_SIZE, "storm.templateCache.size", "storm.template_cache.size")
-    read(StormConfig.ANSI_ESCAPING, "storm.ansiEscaping", "storm.ansi_escaping")
-    read(StormConfig.VALIDATION_RECORD_MODE, "storm.validation.recordMode", "storm.validation.record_mode")
-    read(StormConfig.VALIDATION_SCHEMA_MODE, "storm.validation.schemaMode", "storm.validation.schema_mode")
-    read(StormConfig.VALIDATION_STRICT, "storm.validation.strict")
-    read(StormConfig.VALIDATION_INTERPOLATION_MODE, "storm.validation.interpolationMode", "storm.validation.interpolation_mode")
-
     return StormConfig.of(properties)
+}
+
+/**
+ * Converts a dotted snake_case Storm property key to dotted camelCase for HOCON lookup.
+ *
+ * Example: `storm.entity_cache.retention` becomes `storm.entityCache.retention`.
+ */
+private fun snakeToCamel(key: String): String = key.split('.').joinToString(".") { segment ->
+    segment.replace(Regex("_([a-z])")) { it.groupValues[1].uppercase() }
 }

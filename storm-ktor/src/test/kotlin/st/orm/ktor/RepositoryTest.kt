@@ -104,6 +104,29 @@ class RepositoryTest {
     }
 
     @Test
+    fun `forEach iterates registered repositories`() {
+        val dataSource = createTestDataSource()
+        initializeSchema(dataSource)
+        try {
+            testApplication {
+                application {
+                    install(Storm) {
+                        this.dataSource = dataSource
+                    }
+                    val registry = stormRepositories {
+                        register(PetRepository::class)
+                    }
+                    val types = mutableListOf<String>()
+                    registry.forEach { type, _ -> types.add(type.simpleName!!) }
+                    types shouldBe listOf("PetRepository")
+                }
+            }
+        } finally {
+            dataSource.close()
+        }
+    }
+
+    @Test
     fun `repository throws when no registry configured`() {
         val dataSource = createTestDataSource()
         try {

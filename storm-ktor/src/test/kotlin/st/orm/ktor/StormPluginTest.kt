@@ -4,7 +4,12 @@ import com.zaxxer.hikari.HikariConfig
 import com.zaxxer.hikari.HikariDataSource
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.shouldNotBe
+import io.ktor.client.request.get
+import io.ktor.http.HttpStatusCode
 import io.ktor.server.application.install
+import io.ktor.server.response.respondText
+import io.ktor.server.routing.get
+import io.ktor.server.routing.routing
 import io.ktor.server.testing.testApplication
 import org.junit.jupiter.api.Test
 import st.orm.ktor.model.PetType
@@ -83,6 +88,56 @@ class StormPluginTest {
     }
 
     @Test
+    fun `RoutingContext orm extension works in routes`() {
+        val dataSource = createTestDataSource()
+        initializeSchema(dataSource)
+        try {
+            testApplication {
+                application {
+                    install(Storm) {
+                        this.dataSource = dataSource
+                    }
+                    routing {
+                        get("/count") {
+                            val count = orm.entity(PetType::class).findAll().toList().size
+                            call.respondText(count.toString())
+                        }
+                    }
+                }
+                val response = client.get("/count")
+                response.status shouldBe HttpStatusCode.OK
+            }
+        } finally {
+            dataSource.close()
+        }
+    }
+
+    @Test
+    fun `ApplicationCall orm extension works in routes`() {
+        val dataSource = createTestDataSource()
+        initializeSchema(dataSource)
+        try {
+            testApplication {
+                application {
+                    install(Storm) {
+                        this.dataSource = dataSource
+                    }
+                    routing {
+                        get("/call-orm") {
+                            val count = call.orm.entity(PetType::class).findAll().toList().size
+                            call.respondText(count.toString())
+                        }
+                    }
+                }
+                val response = client.get("/call-orm")
+                response.status shouldBe HttpStatusCode.OK
+            }
+        } finally {
+            dataSource.close()
+        }
+    }
+
+    @Test
     fun `schema validation warn mode does not throw`() {
         val dataSource = createTestDataSource()
         initializeSchema(dataSource)
@@ -98,6 +153,55 @@ class StormPluginTest {
             }
         } finally {
             dataSource.close()
+        }
+    }
+
+    @Test
+    fun `schema validation fail mode does not throw on valid schema`() {
+        val dataSource = createTestDataSource()
+        initializeSchema(dataSource)
+        try {
+            testApplication {
+                application {
+                    install(Storm) {
+                        this.dataSource = dataSource
+                        schemaValidation = "fail"
+                    }
+                    orm shouldNotBe null
+                }
+            }
+        } finally {
+            dataSource.close()
+        }
+    }
+
+    @Test
+    fun `unknown schema validation mode does not throw`() {
+        val dataSource = createTestDataSource()
+        try {
+            testApplication {
+                application {
+                    install(Storm) {
+                        this.dataSource = dataSource
+                        schemaValidation = "invalid"
+                    }
+                    orm shouldNotBe null
+                }
+            }
+        } finally {
+            dataSource.close()
+        }
+    }
+
+    @Test
+    fun `stormDataSource throws when plugin not installed`() = testApplication {
+        application {
+            try {
+                stormDataSource
+                throw AssertionError("Expected IllegalStateException")
+            } catch (expected: IllegalStateException) {
+                expected.message shouldBe "Storm plugin is not installed. Call install(Storm) in your application module."
+            }
         }
     }
 }
