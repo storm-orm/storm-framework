@@ -36,9 +36,9 @@ fun <E : Entity<*>> E.ref(): Ref<E> = Ref.of(this)
  *
  * Usage:
  * ```kotlin
- * val titleRef = ref<Title>(tconst)
+ * val myEntityRef = refById<MyEntity>(id)
  * ```
  *
- * Requires `import st.orm.template.ref`.
+ * Requires `import st.orm.template.refById`.
  */
-inline fun <reified T : Data> ref(id: Any): Ref<T> = Ref.of(T::class.java, id)
+inline fun <reified T : Data> refById(id: Any): Ref<T> = Ref.of(T::class.java, id)

@@ -128,7 +128,7 @@ orm.delete(User_.city eq city)
 val ref: Ref<User> = user.ref()            // import st.orm.template.ref
 
 // Create a Ref from a type and ID (no entity instance needed)
-val ref: Ref<Title> = ref<Title>(tconst)   // import st.orm.template.ref
+val ref: Ref<Title> = refById<Title>(tconst)   // import st.orm.template.refById
 
 // Or via repository
 val ref: Ref<User> = users.ref(user)
