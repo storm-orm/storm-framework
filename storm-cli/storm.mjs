@@ -190,16 +190,29 @@ function ringGlow(x, y, now) {
 // --- Matrix rain (demo mode) ---
 
 let demoMode = false;
-const matrixDrops = [];
+const matrixColumns = [];
+const MATRIX_MARGIN = 12;
+
+function newDrop() {
+  return {
+    y: -1 - Math.random() * artHeight * 0.6,
+    speed: 0.06 + Math.random() * 0.14,
+    trailLength: 3 + Math.floor(Math.random() * 7),
+  };
+}
 
 function initMatrixRain() {
-  matrixDrops.length = 0;
-  for (let x = 0; x < artWidth; x++) {
-    matrixDrops.push({
-      y: Math.random() * artHeight * 1.5 - artHeight,
-      speed: 0.09 + Math.random() * 0.12,
-      trailLength: 4 + Math.floor(Math.random() * 7),
-    });
+  matrixColumns.length = 0;
+  const totalWidth = artWidth + 2 * MATRIX_MARGIN;
+  for (let x = 0; x < totalWidth; x++) {
+    const drops = [];
+    const count = 1 + Math.floor(Math.random() * 3);
+    for (let i = 0; i < count; i++) {
+      const drop = newDrop();
+      drop.y = Math.random() * artHeight * 2 - artHeight;
+      drops.push(drop);
+    }
+    matrixColumns.push(drops);
   }
 }
 
@@ -211,27 +224,35 @@ function matrixGlyph(x, y, now) {
 }
 
 function updateMatrixRain() {
-  for (const drop of matrixDrops) {
-    drop.y += drop.speed;
-    if (drop.y - drop.trailLength > artHeight + 3) {
-      drop.y = -1 - Math.random() * artHeight * 0.4;
-      drop.speed = 0.08 + Math.random() * 0.12;
-      drop.trailLength = 3 + Math.floor(Math.random() * 6);
+  for (const drops of matrixColumns) {
+    for (const drop of drops) {
+      drop.y += drop.speed;
+      if (drop.y - drop.trailLength > artHeight + 3) {
+        drop.y = -1 - Math.random() * artHeight * 0.6;
+        drop.speed = 0.06 + Math.random() * 0.14;
+        drop.trailLength = 3 + Math.floor(Math.random() * 7);
+      }
     }
   }
 }
 
 function matrixIntensityAt(x, y) {
-  const drop = matrixDrops[x];
-  if (!drop) return 0;
-  const dist = drop.y - y;
-  if (dist < -0.5 || dist > drop.trailLength) return 0;
-  const t = Math.max(0, dist) / drop.trailLength;
-  if (dist < 0.5) return 5;
-  if (t < 0.15) return 4;
-  if (t < 0.35) return 3;
-  if (t < 0.6) return 2;
-  return 1;
+  const drops = matrixColumns[x];
+  if (!drops) return 0;
+  let best = 0;
+  for (const drop of drops) {
+    const dist = drop.y - y;
+    if (dist < -0.5 || dist > drop.trailLength) continue;
+    const t = Math.max(0, dist) / drop.trailLength;
+    let intensity;
+    if (dist < 0.5) intensity = 5;
+    else if (t < 0.15) intensity = 4;
+    else if (t < 0.35) intensity = 3;
+    else if (t < 0.6) intensity = 2;
+    else intensity = 1;
+    if (intensity > best) best = intensity;
+  }
+  return best;
 }
 
 function matrixColor(intensity) {
@@ -240,6 +261,14 @@ function matrixColor(intensity) {
   if (intensity === 3) return BOLD + BOLT_WARM;
   if (intensity === 4) return BOLD + BOLT_HOT;
   return BOLD + BOLT_WHITE;
+}
+
+function matrixDbColor(intensity) {
+  if (intensity === 1) return '\x1b[38;5;244m';
+  if (intensity === 2) return '\x1b[38;5;245m';
+  if (intensity === 3) return '\x1b[38;5;247m';
+  if (intensity === 4) return '\x1b[38;5;248m';
+  return '\x1b[38;5;249m';
 }
 
 // --- Text overlay ---
@@ -258,7 +287,7 @@ const INIT_TEXT_LINES = [
   `${BOLD}${BOLT_HOT}\u2022${WHITE} Install Storm rules and skills${RESET}`,
   `${BOLD}${BOLT_HOT}\u2022${WHITE} Storm MCP for database awareness and validation (optional)${RESET}`,
   '',
-  `${GRAY}Press Enter to select tools...${RESET}`,
+  `${GRAY}Press Enter to select tools${RESET}`,
 ];
 
 const DEMO_TEXT_LINES = [
@@ -282,24 +311,33 @@ function renderFrame(now) {
 
   if (demoMode) updateMatrixRain();
 
+  const startX = demoMode ? -MATRIX_MARGIN : 0;
+  const endX   = demoMode ? artWidth + MATRIX_MARGIN : artWidth;
+
   for (let y = 0; y < artHeight; y++) {
     let out = '';
-    for (let x = 0; x < artWidth; x++) {
-      if (!hasBody(x, y)) {
+    for (let x = startX; x < endX; x++) {
+      const inArt = x >= 0 && x < artWidth;
+      if (!inArt || !hasBody(x, y)) {
         if (demoMode) {
-          const mi = matrixIntensityAt(x, y);
-          if (mi >= 4)     out += '\x1b[38;5;237m' + matrixGlyph(x, y, now) + RESET;
-          else if (mi >= 2) out += '\x1b[38;5;235m' + matrixGlyph(x, y, now) + RESET;
-          else              out += '\x1b[38;5;233m' + matrixGlyph(x, y, now) + RESET;
+          const mx = x + MATRIX_MARGIN;
+          const mi = matrixIntensityAt(mx, y);
+          if (mi >= 4)     out += '\x1b[38;5;237m' + matrixGlyph(mx, y, now) + RESET;
+          else if (mi >= 2) out += '\x1b[38;5;235m' + matrixGlyph(mx, y, now) + RESET;
+          else              out += '\x1b[38;5;233m' + matrixGlyph(mx, y, now) + RESET;
         } else out += ' ';
         continue;
       }
       if (demoMode) {
-        const mi = matrixIntensityAt(x, y);
-        const ch = hasBolt(x, y) ? '#' : '@';
-        if (mi >= 3) out += matrixColor(mi) + matrixGlyph(x, y, now) + RESET;
-        else if (mi > 0) out += matrixColor(mi) + ch + RESET;
-        else              out += dbColor(y, false) + ch + RESET;
+        const mx = x + MATRIX_MARGIN;
+        const mi = matrixIntensityAt(mx, y);
+        if (hasBolt(x, y)) {
+          if (mi >= 3) out += matrixColor(mi) + matrixGlyph(mx, y, now) + RESET;
+          else if (mi > 0) out += matrixColor(mi) + '#' + RESET;
+          else              out += dbColor(y, false) + '#' + RESET;
+        } else {
+          out += dbColor(y, false) + '@' + RESET;
+        }
       } else {
         if (hasBolt(x, y))  out += boltColorCode(x, y, now) + '#' + RESET;
         else                 out += dbColor(y, ringGlow(x, y, now)) + '@' + RESET;
