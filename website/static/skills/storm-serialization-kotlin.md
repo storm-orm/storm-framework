@@ -1,7 +1,4 @@
 Help the user serialize Storm entities to JSON for REST APIs using Kotlin.
-
-Fetch https://orm.st/llms-full.txt for complete reference.
-
 This is about serializing entities for API responses or caching (Jackson, kotlinx.serialization), not about JSON database columns (use /storm-json-kotlin for that).
 
 Ask: which serialization library (Jackson or kotlinx.serialization), whether entities have `Ref<T>` fields.

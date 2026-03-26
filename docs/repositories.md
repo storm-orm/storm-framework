@@ -58,8 +58,8 @@ val user = orm insert User(
 
 // Read
 val found: User? = orm.entity<User>().findById(user.id)
-val alice: User? = orm.find { User_.name eq "Alice" }
-val all: List<User> = orm.findAll { User_.city eq city }
+val alice: User? = orm.find(User_.name eq "Alice")
+val all: List<User> = orm.findAll(User_.city eq city)
 
 // Update
 orm update user.copy(name = "Alice Johnson")
@@ -68,7 +68,7 @@ orm update user.copy(name = "Alice Johnson")
 orm delete user
 
 // Delete by condition
-orm.delete<User> { User_.city eq city }
+orm.delete<User>(User_.city eq city)
 
 // Delete all
 orm.deleteAll<User>()
@@ -474,7 +474,7 @@ interface UserRepository : EntityRepository<User, Int> {
 
     // Custom query method
     fun findByEmail(email: String): User? =
-        find { User_.email eq email }
+        find(User_.email eq email)
 
     // Custom query with multiple conditions
     fun findByNameInCity(name: String, city: City): List<User> =

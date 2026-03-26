@@ -272,7 +272,7 @@ Query separately:
 val users = orm.findAll<User>()
 
 // Batch fetch roles and group by user
-val rolesByUser = orm.findAll { UserRole_.user inList users }
+val rolesByUser = orm.findAll(UserRole_.user inList users)
     .groupBy({ it.user }, { it.role })
 ```
 

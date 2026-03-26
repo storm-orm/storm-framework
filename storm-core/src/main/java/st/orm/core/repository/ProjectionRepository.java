@@ -430,25 +430,6 @@ public interface ProjectionRepository<P extends Projection<ID>, ID> extends Repo
     // Stream based methods.
 
     /**
-     * Returns a stream of all projections of the type supported by this repository. Each element in the stream represents
-     * a projection in the database, encapsulating all relevant data as mapped by the projection model.
-     *
-     * <p>The resulting stream is lazily loaded, meaning that the projections are only retrieved from the database as they
-     * are consumed by the stream. This approach is efficient and minimizes the memory footprint, especially when
-     * dealing with large volumes of projections.</p>
-     *
-     * <p><strong>Note:</strong> Calling this method does trigger the execution of the underlying query, so it should
-     * only be invoked when the query is intended to run. Since the stream holds resources open while in use, it must be
-     * closed after usage to prevent resource leaks. As the stream is {@code AutoCloseable}, it is recommended to use it
-     * within a {@code try-with-resources} block.</p>
-     *
-     * @return a stream of all projections of the type supported by this repository.
-     * @throws PersistenceException if the selection operation fails due to underlying database issues, such as
-     *                              connectivity.
-     */
-    Stream<P> selectAll();
-
-    /**
      * Retrieves a stream of projections based on their primary keys.
      *
      * <p>This method executes queries in batches, depending on the number of primary keys in the specified ids stream.

@@ -113,7 +113,7 @@ public interface UserRepository extends JpaRepository<User, Long> {
 interface UserRepository : EntityRepository<User, Long> {
 
     fun findByEmail(email: String): User? =
-        find { User_.email eq email }
+        find(User_.email eq email)
 
     fun findByCity(city: City): List<User> =
         select()
@@ -122,7 +122,7 @@ interface UserRepository : EntityRepository<User, Long> {
             .resultList
 
     fun findRecentUsers(since: LocalDateTime): List<User> =
-        findAll { User_.createdAt gt since }
+        findAll(User_.createdAt gt since)
 }
 ```
 
@@ -195,10 +195,10 @@ public interface UserRepository extends JpaRepository<User, Long> {
 interface UserRepository : EntityRepository<User, Long> {
 
     fun findByEmail(email: String): User? =
-        find { User_.email eq email }
+        find(User_.email eq email)
 
     fun findByCity(city: City): List<User> =
-        findAll { User_.city eq city }
+        findAll(User_.city eq city)
 }
 ```
 
@@ -243,7 +243,7 @@ Optional<User> findByEmail(@Param("email") String email);
 ```kotlin
 // Storm
 fun findByEmail(email: String): User? =
-    find { User_.email eq email }
+    find(User_.email eq email)
 ```
 
 </TabItem>
@@ -281,7 +281,7 @@ return em.createQuery(cq).getResultList();
 
 ```kotlin
 // Storm
-orm.findAll { User_.city eq city }
+orm.findAll(User_.city eq city)
 ```
 
 </TabItem>
@@ -355,7 +355,7 @@ private List<Order> orders;
 
 Storm approach (query the "many" side):
 ```kotlin
-val orders = orm.findAll { Order_.user eq user }
+val orders = orm.findAll(Order_.user eq user)
 ```
 
 ## Transaction Migration
@@ -504,7 +504,7 @@ data class CustomerProfile(
 // Storm repository (new)
 interface CustomerProfileRepository : EntityRepository<CustomerProfile, Long> {
     fun findByCustomerId(customerId: Long): CustomerProfile? =
-        find { CustomerProfile_.customerId eq customerId }
+        find(CustomerProfile_.customerId eq customerId)
 }
 
 // Service that uses both
@@ -642,7 +642,7 @@ Storm intentionally does not support collection fields on entities. This is a de
 val orders = user.orders  // Not supported
 
 // Right approach
-val orders = orm.findAll { Order_.user eq user }
+val orders = orm.findAll(Order_.user eq user)
 ```
 
 ## Schema Validation

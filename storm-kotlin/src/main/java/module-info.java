@@ -5,7 +5,7 @@ module storm.kotlin {
     exports st.orm.repository;
     exports st.orm.template.impl to kotlin.reflect;
     requires java.sql;
-    requires jakarta.persistence;
+    requires static jakarta.persistence;
     requires jakarta.annotation;
     requires kotlin.reflect;
     requires kotlin.stdlib;

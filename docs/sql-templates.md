@@ -476,11 +476,11 @@ Storm caches compiled templates to eliminate even this small overhead on repeate
 
 ```kotlin
 // First execution: full compilation + binding
-userRepository.find { User_.email eq "alice@example.com" }
+userRepository.find(User_.email eq "alice@example.com")
 
 // Subsequent executions: cache hit, binding only
-userRepository.find { User_.email eq "bob@example.com" }
-userRepository.find { User_.email eq "charlie@example.com" }
+userRepository.find(User_.email eq "bob@example.com")
+userRepository.find(User_.email eq "charlie@example.com")
 ```
 
 This applies to all Storm operations. Repository methods like `findAll()`, `insert()`, and `update()` benefit from the same caching mechanism. Once a query pattern has been compiled, repeated use across your application reuses the cached compilation.

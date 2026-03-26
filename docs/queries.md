@@ -38,10 +38,10 @@ For simple queries, use methods directly on the ORM template:
 
 ```kotlin
 // Find single entity with predicate
-val user: User? = orm.find { User_.email eq email }
+val user: User? = orm.find(User_.email eq email)
 
 // Find all matching
-val users: List<User> = orm.findAll { User_.city eq city }
+val users: List<User> = orm.findAll(User_.city eq city)
 
 // Find by field value
 val user: User? = orm.findBy(User_.email, email)
@@ -94,10 +94,10 @@ val users = orm.entity(User::class)
 val user: User? = users.findById(userId)
 
 // Find with predicate
-val user: User? = users.find { User_.email eq email }
+val user: User? = users.find(User_.email eq email)
 
 // Find all matching
-val usersInCity: List<User> = users.findAll { User_.city eq city }
+val usersInCity: List<User> = users.findAll(User_.city eq city)
 
 // Count
 val count: Long = users.count()
@@ -148,14 +148,14 @@ Combine conditions with `and` and `or`:
 
 ```kotlin
 // AND condition
-val users = orm.findAll {
+val users = orm.findAll(
     (User_.city eq city) and (User_.birthDate less LocalDate.of(2000, 1, 1))
-}
+)
 
 // OR condition
-val users = orm.findAll {
+val users = orm.findAll(
     (User_.role eq adminRole) or (User_.role eq superUserRole)
-}
+)
 
 // Complex conditions
 val users = orm.entity(User::class)
@@ -186,9 +186,9 @@ val users = orm.entity(User::class)
 | `notInList` | NOT IN (list) |
 
 ```kotlin
-val users = orm.findAll { User_.email like "%@example.com" }
-val users = orm.findAll { User_.deletedAt.isNull() }
-val users = orm.findAll { User_.role inList listOf(adminRole, userRole) }
+val users = orm.findAll(User_.email like "%@example.com")
+val users = orm.findAll(User_.deletedAt.isNull())
+val users = orm.findAll(User_.role inList listOf(adminRole, userRole))
 ```
 
 </TabItem>
@@ -845,7 +845,7 @@ When you expect at most one matching row, use `find` (Kotlin, returns `null` if 
 <TabItem value="kotlin" label="Kotlin" default>
 
 ```kotlin
-val user: User? = orm.find { User_.email eq email }
+val user: User? = orm.find(User_.email eq email)
 ```
 
 </TabItem>

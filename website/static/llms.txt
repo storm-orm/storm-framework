@@ -110,6 +110,31 @@ record User(@PK Integer id,
 - `@DbColumn("name")` - Override the default column name.
 - `@Inline` - Embeds fields of a nested type directly into the parent table.
 
+### Composite Primary Keys
+
+For join/junction tables, wrap key columns in a separate data class with raw types only — never `@FK`, entity types, or `Ref<T>` inside the PK class. Declare `@FK` fields on the entity with `@Persist(insertable = false, updatable = false)`.
+
+```kotlin
+data class UserRolePk(val userId: Int, val roleId: Int)
+
+data class UserRole(
+    @PK(generation = NONE) val id: UserRolePk,
+    @FK @Persist(insertable = false, updatable = false) val user: User,
+    @FK @Persist(insertable = false, updatable = false) val role: Role
+) : Entity<UserRolePk>
+```
+
+### Primary Key as Foreign Key
+
+For dependent one-to-one relationships or extension tables, use both `@PK` and `@FK` on the same field:
+
+```kotlin
+data class UserProfile(
+    @PK(generation = NONE) @FK val user: User,
+    val bio: String?
+) : Entity<User>
+```
+
 ### CRUD Operations
 
 Kotlin:
@@ -129,7 +154,7 @@ orm update city.copy(population = 160_000)
 orm delete city
 
 // Find with predicate
-val users: List<User> = orm.findAll { User_.city.name eq "Sunnyvale" }
+val users: List<User> = orm.findAll(User_.city.name eq "Sunnyvale")
 ```
 
 Java:
@@ -160,7 +185,7 @@ List<User> users = orm.entity(User.class).select()
 Kotlin:
 ```kotlin
 interface UserRepository : EntityRepository<User, Int> {
-    fun findByCityName(name: String) = findAll { User_.city.name eq name }
+    fun findByCityName(name: String) = findAll(User_.city.name eq name)
 }
 val userRepository = orm.repository<UserRepository>()
 ```
@@ -293,7 +318,7 @@ JSON: storm-jackson2, storm-jackson3, storm-kotlinx-serialization
 Dialects: storm-postgresql, storm-mysql, storm-mariadb, storm-oracle, storm-mssqlserver
 Build: storm-bom, storm-compiler-plugin-2.0, storm-compiler-plugin-2.1
 Metamodel: storm-metamodel-processor (Java), storm-metamodel-ksp (Kotlin)
-Testing: storm-test
+Testing: storm-test, storm-h2 (test runtime), com.h2database:h2 (test runtime — required, storm-h2 declares it as provided)
 Validation: storm-kotlin-validator
 
 ## Critical Gotchas
@@ -318,14 +343,14 @@ Validation: storm-kotlin-validator
    fields. Relationships are modeled from the child side using @FK. To get a
    user's orders, query from Order with a filter on User.
 
-4. **Close Java Streams from selectAll().** In Java, `selectAll()` returns a
+4. **Close Java Streams.** In Java, `select().getResultStream()` returns a
    Stream backed by a database cursor. Always use try-with-resources:
    ```java
-   try (Stream<User> stream = users.selectAll().getResultStream()) {
+   try (Stream<User> stream = users.select().getResultStream()) {
        stream.forEach(System.out::println);
    }
    ```
-   In Kotlin, `selectAll()` returns a Flow which handles cleanup automatically.
+   In Kotlin, `select().resultFlow` returns a Flow which handles cleanup automatically.
 
 5. **DELETE/UPDATE without WHERE throws by default.** To prevent accidental bulk
    operations, Storm throws if you omit a WHERE clause. Use `unsafe()` if you

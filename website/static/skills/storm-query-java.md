@@ -1,6 +1,22 @@
 Help the user write Storm queries using Java.
 
-Fetch https://orm.st/llms-full.txt for complete reference.
+**Important:** Storm can run on top of JPA, but when writing queries, always use Storm's own QueryBuilder and operator-based predicates — not JPQL, `CriteriaBuilder`, or `EntityManager.createQuery()`.
+
+## Key Imports
+
+```java
+import st.orm.core.template.QueryBuilder;         // Query builder
+import st.orm.Operator;                           // EQUALS, NOT_EQUALS, LIKE, IN, IS_NULL, etc.
+import static st.orm.Operator.*;                  // Static import for operator constants
+import st.orm.Metamodel;                          // Generated metamodel fields (User_, City_, etc.)
+import st.orm.Ref;                                // Lazy-loaded reference
+import st.orm.Page;                               // Offset-based pagination result
+import st.orm.Pageable;                           // Pagination request
+import st.orm.Scrollable;                         // Keyset scrolling cursor
+import st.orm.Window;                             // Keyset scrolling result
+```
+
+The `Operator` enum is in `st.orm` and contains: `EQUALS`, `NOT_EQUALS`, `LESS_THAN`, `LESS_THAN_OR_EQUAL`, `GREATER_THAN`, `GREATER_THAN_OR_EQUAL`, `LIKE`, `NOT_LIKE`, `IS_NULL`, `IS_NOT_NULL`, `IS_TRUE`, `IS_FALSE`, `IN`, `NOT_IN`, `BETWEEN`.
 
 Ask what data they need, filters, ordering, or pagination.
 
@@ -28,11 +44,13 @@ List<User> result = users.select()
     .getResultList();
 ```
 
+Entity comparison: `.where(User_.city, EQUALS, city)` compares by FK — pass the entity directly, don't extract the ID.
 Nested paths: `User_.city.country.code` with appropriate operator
 Ordering: `.orderBy(User_.name)`, `.orderByDescending(User_.createdAt)`
+Limit/Offset: `.limit(10)`, `.offset(20)`
 Pagination: `.page(0, 20)` or `.page(Pageable.ofSize(20).sortBy(User_.name))`
 Scrolling (keyset): `.scroll(User_.id, 20)`
-Explicit joins: `.innerJoin(UserRole.class).on(Role.class).where(UserRole_.user, EQUALS, user)`
+Explicit joins: `.innerJoin(Entity.class).on(OtherEntity.class)`, `.leftJoin(Entity.class).on(OtherEntity.class)`, `.rightJoin(Entity.class).on(OtherEntity.class)`
 Projection: `.select(ProjectionType.class)`
 
 Operators: EQUALS, NOT_EQUALS, LESS_THAN, LESS_THAN_OR_EQUAL, GREATER_THAN, GREATER_THAN_OR_EQUAL, LIKE, NOT_LIKE, IS_NULL, IS_NOT_NULL, IN, NOT_IN
@@ -96,6 +114,35 @@ List<Ref<User>> refs = orm.entity(User.class).selectRef()
     .getResultList();
 ```
 
+## Subqueries (EXISTS / NOT EXISTS)
+
+```java
+// WHERE EXISTS — filter entities that have related data
+List<Owner> ownersWithPets = orm.entity(Owner.class)
+    .select()
+    .whereExists(it -> it.subquery(Pet.class))
+    .getResultList();
+
+// WHERE NOT EXISTS
+List<Owner> ownersWithoutPets = orm.entity(Owner.class)
+    .select()
+    .whereNotExists(it -> it.subquery(Pet.class))
+    .getResultList();
+```
+
+## Compound Predicates (where with WhereBuilder)
+
+For complex WHERE clauses with AND/OR grouping:
+
+```java
+List<User> users = orm.entity(User.class)
+    .select()
+    .where(it -> it.where(User_.active, EQUALS, true)
+            .and(it.where(User_.email, IS_NOT_NULL))
+            .or(it.where(User_.role, EQUALS, "admin")))
+    .getResultList();
+```
+
 ## Bulk DELETE/UPDATE
 
 ```java
@@ -106,14 +153,37 @@ orm.entity(User.class).delete().where(User_.active, EQUALS, false).executeUpdate
 orm.entity(User.class).delete().unsafe().executeUpdate();
 ```
 
+**Always prefer entity/metamodel-based QueryBuilder methods over SQL template strings.** Only fall back to template strings when QueryBuilder cannot express the query (e.g., database-specific functions). When you do use template strings, use `RAW."""..."""` (Java string templates with `--enable-preview`) — never use `TemplateString.raw()`.
+
+Operators: `EQUALS`, `NOT_EQUALS`, `LESS_THAN`, `LESS_THAN_OR_EQUAL`, `GREATER_THAN`, `GREATER_THAN_OR_EQUAL`, `LIKE`, `NOT_LIKE`, `IS_NULL`, `IS_NOT_NULL`, `IS_TRUE`, `IS_FALSE`, `IN`, `NOT_IN`, `BETWEEN`
+
+The `EQUALS` operator accepts both entities and `Ref<T>`. When you have an entity, use it directly — no need to convert to a `Ref` first.
+
+## Result Retrieval
+
+QueryBuilder terminals:
+- `.getResultList()` → `List<R>`
+- `.getSingleResult()` → `R` (throws `NoResultException` if empty, `NonUniqueResultException` if multiple)
+- `.getOptionalResult()` → `Optional<R>`
+- `.getResultCount()` → `long`
+- `.getResultStream()` → `Stream<R>` (lazy, **must** close with try-with-resources)
+- `.page(pageNumber, pageSize)` → `Page<R>` (offset-based pagination)
+- `.scroll(size)` → `MappedWindow<R, T>` (keyset scrolling, better for large tables)
+- `.executeUpdate()` → `int` (for DELETE/UPDATE)
+
 Critical rules:
 - QueryBuilder is IMMUTABLE. Every method returns a new instance. Always use the return value.
-- DELETE/UPDATE without WHERE throws. Use unsafe().
-- Streaming: selectAll() returns a Stream. ALWAYS use try-with-resources to avoid connection leaks.
+- DELETE/UPDATE without WHERE throws. Use `unsafe()`.
+- Streaming: `select().getResultStream()` returns a `Stream`. ALWAYS use try-with-resources to avoid connection leaks.
 - **Metamodel navigation depth**: Multiple levels of navigation are allowed on the root entity. Joined (non-root) entities can only navigate one level deep. For deeper navigation, explicitly join the intermediate entity.
 - **Use `Ref` for map keys and set membership**: Prefer `Ref<Entity>` (via `.ref()`) for map keys, set membership, and identity-based lookups. `Ref` provides identity-based `equals`/`hashCode` on the primary key.
 
-After writing queries, offer to write a test using `SqlCapture` to verify the generated SQL matches the user's intent:
+## Verification
+
+After writing queries, write a test using `@StormTest` and `SqlCapture` to verify that schema, generated SQL, and intent are aligned.
+
+Tell the user what you are doing and why: explain that `SqlCapture` records every SQL statement Storm generates. The goal is not to test Storm itself, but to verify that the query produces the result the user intended — correct tables joined, correct columns filtered, correct ordering, correct number of statements. This is Storm's verify-then-trust pattern.
+
 ```java
 @StormTest(scripts = {"schema.sql", "data.sql"})
 class UserQueryTest {
@@ -125,10 +195,15 @@ class UserQueryTest {
                 .where(User_.city, EQUALS, city)
                 .orderBy(User_.name)
                 .getResultList());
-        String sql = capture.statements().getFirst().statement();
-        assertTrue(sql.contains("WHERE"));
-        assertTrue(sql.contains("ORDER BY"));
+        // Verify intent: single query, only active users in the given city, ordered by name.
+        assertEquals(1, capture.count(Operation.SELECT));
         assertFalse(users.isEmpty());
+        assertTrue(users.stream().allMatch(u -> u.city().equals(city) && u.active()));
     }
 }
 ```
+
+Run the test. Show the user the captured SQL and explain how it aligns with the intended behavior. If a query produces unexpected SQL or the right approach is unclear, ask the user for feedback before changing the query.
+
+
+The test can be temporary — verify and remove, or keep as a regression test. Ask the user which they prefer.

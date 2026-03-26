@@ -197,11 +197,6 @@ public final class ProjectionRepositoryImpl<P extends Projection<ID>, ID> implem
     }
 
     @Override
-    public Stream<P> selectAll() {
-        return core.selectAll();
-    }
-
-    @Override
     public Stream<P> selectById(@Nonnull Stream<ID> ids) {
         return core.selectById(ids);
     }

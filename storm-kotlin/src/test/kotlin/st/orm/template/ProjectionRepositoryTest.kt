@@ -198,7 +198,7 @@ open class ProjectionRepositoryTest(
     @Test
     fun `selectAllRef should return flow of all refs`(): Unit = runBlocking {
         val repo = orm.projection(OwnerView::class)
-        val refs = repo.selectAllRef().toList()
+        val refs = repo.selectRef().resultFlow.toList()
         refs shouldHaveSize 10
     }
 
@@ -207,7 +207,7 @@ open class ProjectionRepositoryTest(
     @Test
     fun `selectAll should return flow of all owner views`(): Unit = runBlocking {
         val repo = orm.projection(OwnerView::class)
-        repo.selectAll().count() shouldBe 10
+        repo.select().resultFlow.count() shouldBe 10
     }
 
     @Test
@@ -366,7 +366,7 @@ open class ProjectionRepositoryTest(
     fun `select with predicate should return flow of matching owner views`(): Unit = runBlocking {
         val repo = orm.projection(OwnerView::class)
         val firstNamePath = metamodel<OwnerView, String>(repo.model, "first_name")
-        val count = repo.select(firstNamePath eq "Betty").count()
+        val count = repo.select().where(firstNamePath eq "Betty").resultFlow.count()
         count shouldBe 1
     }
 
@@ -415,7 +415,7 @@ open class ProjectionRepositoryTest(
     fun `selectRef with predicate should return flow of refs`(): Unit = runBlocking {
         val repo = orm.projection(OwnerView::class)
         val firstNamePath = metamodel<OwnerView, String>(repo.model, "first_name")
-        val count = repo.selectRef(firstNamePath eq "Betty").count()
+        val count = repo.selectRef().where(firstNamePath eq "Betty").resultFlow.count()
         count shouldBe 1
     }
 
@@ -429,7 +429,7 @@ open class ProjectionRepositoryTest(
 
     @Test
     fun `orm selectAll reified should return all owner views as flow`(): Unit = runBlocking {
-        orm.selectAll<OwnerView>().count() shouldBe 10
+        orm.select<OwnerView>().resultFlow.count() shouldBe 10
     }
 
     @Test
@@ -440,7 +440,7 @@ open class ProjectionRepositoryTest(
 
     @Test
     fun `orm selectAllRef reified should return all owner view refs as flow`(): Unit = runBlocking {
-        orm.selectAllRef<OwnerView>().count() shouldBe 10
+        orm.selectRef<OwnerView>().resultFlow.count() shouldBe 10
     }
 
     @Test
@@ -515,7 +515,7 @@ open class ProjectionRepositoryTest(
     @Test
     fun `orm select with predicate should return matching flow`(): Unit = runBlocking {
         val firstNamePath = metamodel<OwnerView, String>(orm.projection(OwnerView::class).model, "first_name")
-        val count = orm.select<OwnerView>(firstNamePath eq "Betty").count()
+        val count = orm.select<OwnerView>().where(firstNamePath eq "Betty").resultFlow.count()
         count shouldBe 1
     }
 
@@ -730,7 +730,7 @@ open class ProjectionRepositoryTest(
     fun `select with direct PredicateBuilder should return flow`(): Unit = runBlocking {
         val repo = orm.projection(OwnerView::class)
         val firstNamePath = metamodel<OwnerView, String>(repo.model, "first_name")
-        val count = repo.select(firstNamePath eq "Betty").count()
+        val count = repo.select().where(firstNamePath eq "Betty").resultFlow.count()
         count shouldBe 1
     }
 
@@ -738,7 +738,7 @@ open class ProjectionRepositoryTest(
     fun `selectRef with direct PredicateBuilder should return flow of refs`(): Unit = runBlocking {
         val repo = orm.projection(OwnerView::class)
         val firstNamePath = metamodel<OwnerView, String>(repo.model, "first_name")
-        val count = repo.selectRef(firstNamePath eq "Betty").count()
+        val count = repo.selectRef().where(firstNamePath eq "Betty").resultFlow.count()
         count shouldBe 1
     }
 
@@ -1255,7 +1255,7 @@ open class ProjectionRepositoryTest(
     fun `select with WhereBuilder predicate should return matching flow`(): Unit = runBlocking {
         val repo = orm.projection(OwnerView::class)
         val lastNamePath = metamodel<OwnerView, String>(repo.model, "last_name")
-        val count = repo.select(lastNamePath eq "Davis").count()
+        val count = repo.select().where(lastNamePath eq "Davis").resultFlow.count()
         count shouldBe 2
     }
 
@@ -1263,7 +1263,7 @@ open class ProjectionRepositoryTest(
     fun `selectRef with WhereBuilder predicate should return matching refs as flow`(): Unit = runBlocking {
         val repo = orm.projection(OwnerView::class)
         val lastNamePath = metamodel<OwnerView, String>(repo.model, "last_name")
-        val refs = repo.selectRef(lastNamePath eq "Davis").toList()
+        val refs = repo.selectRef().where(lastNamePath eq "Davis").resultFlow.toList()
         refs shouldHaveSize 2
     }
 
@@ -1299,7 +1299,7 @@ open class ProjectionRepositoryTest(
     @Test
     fun `selectAllRef should return all projection refs as flow`(): Unit = runBlocking {
         val repo = orm.projection(OwnerView::class)
-        val count = repo.selectAllRef().count()
+        val count = repo.selectRef().resultFlow.count()
         count shouldBe 10
     }
 
@@ -1407,7 +1407,7 @@ open class ProjectionRepositoryTest(
     @Test
     fun `selectAll should return all projections as flow`(): Unit = runBlocking {
         val repo = orm.projection(OwnerView::class)
-        val count = repo.selectAll().count()
+        val count = repo.select().resultFlow.count()
         count shouldBe 10
     }
 
@@ -1544,7 +1544,7 @@ open class ProjectionRepositoryTest(
         val repo = orm.projection(OwnerView::class)
         val lastNamePath = metamodel<OwnerView, String>(repo.model, "last_name")
         val predicate = lastNamePath eq "Davis"
-        val count = repo.select(predicate).count()
+        val count = repo.select().where(predicate).resultFlow.count()
         count shouldBe 2
     }
 
@@ -1553,7 +1553,7 @@ open class ProjectionRepositoryTest(
         val repo = orm.projection(OwnerView::class)
         val lastNamePath = metamodel<OwnerView, String>(repo.model, "last_name")
         val predicate = lastNamePath eq "Davis"
-        val refs = repo.selectRef(predicate).toList()
+        val refs = repo.selectRef().where(predicate).resultFlow.toList()
         refs shouldHaveSize 2
     }
 
@@ -1789,7 +1789,7 @@ open class ProjectionRepositoryTest(
     @Test
     fun `selectAllRef flow should return all refs`(): Unit = runBlocking {
         val repo = orm.projection(OwnerView::class)
-        val refs = repo.selectAllRef().toList()
+        val refs = repo.selectRef().resultFlow.toList()
         refs shouldHaveSize 10
         refs.forEach { it.shouldNotBeNull() }
     }

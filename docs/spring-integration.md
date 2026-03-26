@@ -159,7 +159,7 @@ Define repositories:
 interface UserRepository : EntityRepository<User, Int> {
 
     fun findByEmail(email: String): User? =
-        find { User_.email eq email }
+        find(User_.email eq email)
 }
 ```
 

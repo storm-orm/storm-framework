@@ -721,7 +721,7 @@ public class EntityRepositoryIntegrationTest {
     public void testSelectAll() {
         var orm = ORMTemplate.of(dataSource);
         var cities = orm.entity(City.class);
-        try (var stream = cities.selectAll()) {
+        try (var stream = cities.select().getResultStream()) {
             long count = stream.count();
             assertEquals(cities.count(), count);
         }

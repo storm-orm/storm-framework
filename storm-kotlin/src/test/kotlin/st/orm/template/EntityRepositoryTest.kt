@@ -270,7 +270,7 @@ open class EntityRepositoryTest(
     fun `delete with whereBuilder predicate should delete matching entities`() {
         val repo = orm.entity(Vet::class)
         val firstNamePath = metamodel<Vet, String>(repo.model, "first_name")
-        val deleted = repo.delete(firstNamePath eq "James")
+        val deleted = repo.delete().where(firstNamePath eq "James").executeUpdate()
         deleted shouldBe 1
         repo.count() shouldBe 5
     }
@@ -354,7 +354,7 @@ open class EntityRepositoryTest(
     fun `select with PredicateBuilder should return flow`(): Unit = runBlocking {
         val repo = orm.entity(City::class)
         val namePath = metamodel<City, String>(repo.model, "name")
-        val count = repo.select(namePath eq "Madison").count()
+        val count = repo.select().where(namePath eq "Madison").resultFlow.count()
         count shouldBe 1
     }
 
@@ -362,7 +362,7 @@ open class EntityRepositoryTest(
     fun `selectRef with PredicateBuilder should return flow of refs`(): Unit = runBlocking {
         val repo = orm.entity(City::class)
         val namePath = metamodel<City, String>(repo.model, "name")
-        val count = repo.selectRef(namePath eq "Madison").count()
+        val count = repo.selectRef().where(namePath eq "Madison").resultFlow.count()
         count shouldBe 1
     }
 
@@ -370,101 +370,101 @@ open class EntityRepositoryTest(
     fun `delete with PredicateBuilder directly should delete matching`() {
         val repo = orm.entity(Vet::class)
         val firstNamePath = metamodel<Vet, String>(repo.model, "first_name")
-        val deleted = repo.delete(firstNamePath eq "James")
+        val deleted = repo.delete().where(firstNamePath eq "James").executeUpdate()
         deleted shouldBe 1
     }
 
     // EntityRepository: lambda predicate-based find/get/select/selectRef/count/exists/delete
 
     @Test
-    fun `findAll with lambda predicate should filter entities`() {
+    fun `findAll with predicate should filter entities`() {
         val cities = orm.entity(City::class)
         val namePath = metamodel<City, String>(cities.model, "name")
-        val result = cities.findAll { namePath eq "Madison" }
+        val result = cities.findAll(namePath eq "Madison")
         result shouldHaveSize 1
     }
 
     @Test
-    fun `find with lambda predicate should return matching entity`() {
+    fun `find with predicate should return matching entity`() {
         val cities = orm.entity(City::class)
         val namePath = metamodel<City, String>(cities.model, "name")
-        val city = cities.find { namePath eq "Madison" }
+        val city = cities.find(namePath eq "Madison")
         city.shouldNotBeNull()
         city.name shouldBe "Madison"
     }
 
     @Test
-    fun `get with lambda predicate should return matching entity`() {
+    fun `get with predicate should return matching entity`() {
         val cities = orm.entity(City::class)
         val namePath = metamodel<City, String>(cities.model, "name")
-        val city = cities.get { namePath eq "Madison" }
+        val city = cities.get(namePath eq "Madison")
         city.name shouldBe "Madison"
     }
 
     @Test
-    fun `findAllRef with lambda predicate should return refs`() {
+    fun `findAllRef with predicate should return refs`() {
         val cities = orm.entity(City::class)
         val namePath = metamodel<City, String>(cities.model, "name")
-        val refs = cities.findAllRef { namePath eq "Madison" }
+        val refs = cities.findAllRef(namePath eq "Madison")
         refs shouldHaveSize 1
     }
 
     @Test
-    fun `findRef with lambda predicate should return ref`() {
+    fun `findRef with predicate should return ref`() {
         val cities = orm.entity(City::class)
         val namePath = metamodel<City, String>(cities.model, "name")
-        val ref = cities.findRef { namePath eq "Madison" }
+        val ref = cities.findRef(namePath eq "Madison")
         ref.shouldNotBeNull()
     }
 
     @Test
-    fun `getRef with lambda predicate should return ref`() {
+    fun `getRef with predicate should return ref`() {
         val cities = orm.entity(City::class)
         val namePath = metamodel<City, String>(cities.model, "name")
-        val ref = cities.getRef { namePath eq "Madison" }
+        val ref = cities.getRef(namePath eq "Madison")
         ref.shouldNotBeNull()
     }
 
     @Test
-    fun `select with lambda predicate should return flow`(): Unit = runBlocking {
+    fun `select with where should return flow`(): Unit = runBlocking {
         val cities = orm.entity(City::class)
         val namePath = metamodel<City, String>(cities.model, "name")
-        val count = cities.select { namePath eq "Madison" }.count()
+        val count = cities.select().where(namePath eq "Madison").resultFlow.count()
         count shouldBe 1
     }
 
     @Test
-    fun `selectRef with lambda predicate should return flow of refs`(): Unit = runBlocking {
+    fun `selectRef with where should return flow of refs`(): Unit = runBlocking {
         val cities = orm.entity(City::class)
         val namePath = metamodel<City, String>(cities.model, "name")
-        val count = cities.selectRef { namePath eq "Madison" }.count()
+        val count = cities.selectRef().where(namePath eq "Madison").resultFlow.count()
         count shouldBe 1
     }
 
     @Test
-    fun `count with lambda predicate should count matching entities`() {
+    fun `count with predicate should count matching entities`() {
         val cities = orm.entity(City::class)
         val namePath = metamodel<City, String>(cities.model, "name")
-        val count = cities.count { namePath eq "Madison" }
+        val count = cities.count(namePath eq "Madison")
         count shouldBe 1
     }
 
     @Test
-    fun `exists with lambda predicate should return true for match`() {
+    fun `exists with predicate should return true for match`() {
         val cities = orm.entity(City::class)
         val namePath = metamodel<City, String>(cities.model, "name")
-        cities.exists { namePath eq "Madison" } shouldBe true
+        cities.exists(namePath eq "Madison") shouldBe true
     }
 
     @Test
-    fun `exists with lambda predicate should return false for no match`() {
+    fun `exists with predicate should return false for no match`() {
         val cities = orm.entity(City::class)
         val namePath = metamodel<City, String>(cities.model, "name")
-        cities.exists { namePath eq "NonExistent" } shouldBe false
+        cities.exists(namePath eq "NonExistent") shouldBe false
     }
 
     @Test
-    fun `delete with lambda predicate should delete matching`() {
+    fun `delete with block DSL predicate should delete matching`() {
         val vets = orm.entity(Vet::class)
         val firstNamePath = metamodel<Vet, String>(vets.model, "first_name")
         val deleted = vets.delete { firstNamePath eq "James" }
@@ -645,7 +645,7 @@ open class EntityRepositoryTest(
     @Test
     fun `orm delete reified with PredicateBuilder should delete matching`() {
         val firstNamePath = metamodel<Vet, String>(orm.entity(Vet::class).model, "first_name")
-        val deleted = orm.delete<Vet>(firstNamePath eq "James")
+        val deleted = orm.delete(firstNamePath eq "James")
         deleted shouldBe 1
     }
 
@@ -974,7 +974,7 @@ open class EntityRepositoryTest(
     @Test
     fun `selectAllRef should return all entity refs as flow`(): Unit = runBlocking {
         val repo = orm.entity(City::class)
-        val count = repo.selectAllRef().count()
+        val count = repo.selectRef().resultFlow.count()
         count shouldBe 6
     }
 
@@ -1251,7 +1251,7 @@ open class EntityRepositoryTest(
     @Test
     fun `selectAll should return all entities as flow`(): Unit = runBlocking {
         val repo = orm.entity(City::class)
-        val count = repo.selectAll().count()
+        val count = repo.select().resultFlow.count()
         count shouldBe 6
     }
 
@@ -1486,7 +1486,7 @@ open class EntityRepositoryTest(
         window.content shouldHaveSize 3
     }
 
-    // EntityRepository: Scroll with lambda predicate
+    // EntityRepository: Scroll with predicate
 
     @Test
     fun `entity scroll with key and lambda predicate should filter results`() {
@@ -1642,7 +1642,7 @@ open class EntityRepositoryTest(
     fun `delete with PredicateBuilder should delete matching entities`() {
         val repo = orm.entity(Visit::class)
         val idPath = metamodel<Visit, Int>(repo.model, "id")
-        val deleted = repo.delete(idPath eq 1)
+        val deleted = repo.delete().where(idPath eq 1).executeUpdate()
         deleted shouldBe 1
     }
 

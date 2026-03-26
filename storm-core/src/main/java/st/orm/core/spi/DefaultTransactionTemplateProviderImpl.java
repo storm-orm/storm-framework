@@ -18,7 +18,6 @@ package st.orm.core.spi;
 import static java.util.Optional.empty;
 
 import jakarta.annotation.Nonnull;
-import jakarta.persistence.PersistenceException;
 import java.lang.reflect.Method;
 import java.lang.reflect.Proxy;
 import java.sql.Connection;
@@ -26,6 +25,7 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.Optional;
 import st.orm.Entity;
+import st.orm.PersistenceException;
 import st.orm.core.spi.Orderable.AfterAny;
 
 @AfterAny

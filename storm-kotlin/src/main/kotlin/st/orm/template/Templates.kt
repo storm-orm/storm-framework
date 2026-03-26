@@ -15,7 +15,6 @@
  */
 package st.orm.template
 
-import jakarta.persistence.EntityManager
 import st.orm.*
 import st.orm.core.template.impl.Elements
 import st.orm.core.template.impl.Elements.ObjectExpression
@@ -39,8 +38,8 @@ import kotlin.reflect.KClass
  * tables, aliases, and more.
  *
  * Additionally, the `Templates` interface provides methods to create [ORMTemplate]
- * instances for use with different data sources like JPA's [EntityManager], JDBC's [DataSource], or
- * [Connection].
+ * instances for use with different data sources like JDBC's [DataSource] or [Connection], or
+ * JPA's `EntityManager` (see `JpaTemplate`).
  *
  * ## Using Templates
  *

@@ -75,7 +75,7 @@ data class OrderWithItems(
 
 fun findOrderWithItems(orderId: Long): OrderWithItems? {
     val order = orm.entity(Order::class).findById(orderId) ?: return null
-    val lineItems = orm.entity(LineItem::class).findAll { LineItem_.order eq order }
+    val lineItems = orm.entity(LineItem::class).findAll(LineItem_.order eq order)
     return OrderWithItems(order, lineItems)
 }
 ```
@@ -261,11 +261,11 @@ interface CustomerRepository : EntityRepository<Customer, Int> {
 
     /** Find only non-deleted customers. */
     fun findActive(): List<Customer> =
-        findAll { Customer_.deletedAt.isNull() }
+        findAll(Customer_.deletedAt.isNull())
 
     /** Find a non-deleted customer by ID. */
     fun findActiveOrNull(customerId: Int): Customer? =
-        find { (Customer_.id eq customerId) and Customer_.deletedAt.isNull() }
+        find((Customer_.id eq customerId) and Customer_.deletedAt.isNull())
 
     /** Soft-delete a customer by setting the deletedAt timestamp. */
     fun softDelete(customer: Customer): Customer {

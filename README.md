@@ -57,21 +57,20 @@ data class User(
     @FK val city: City
 ) : Entity<Int>
 
-// DSL—query nested properties like city.name in one go
-val users = orm.findAll { User_.city.name eq "Sunnyvale" }
+// Type-safe predicates — query nested properties like city.name in one go
+val users = orm.findAll(User_.city.name eq "Sunnyvale")
 
-// Custom repository—inherits all CRUD operations, add your own queries
+// Custom repository — inherits all CRUD operations, add your own queries
 interface UserRepository : EntityRepository<User, Int> {
-    fun findByCityName(name: String) = findAll { User_.city.name eq name }
+    fun findByCityName(name: String) = findAll(User_.city.name eq name)
 }
 val users = userRepository.findByCityName("Sunnyvale")
 
-// Query Builder for more complex operations
-val users = orm.entity(User::class)
-    .select()
-    .where(User_.city.name eq "Sunnyvale")
-    .orderBy(User_.name)
-    .resultList
+// Block DSL — build queries with where, orderBy, joins, pagination
+val users = userRepository.select {
+    where(User_.city.name eq "Sunnyvale")
+    orderBy(User_.name)
+}.resultList
 
 // SQL Template for full control; parameterized by default, SQL injection safe
 val users = orm.query { """
@@ -85,7 +84,7 @@ Full coroutine support with `Flow` for streaming and programmatic transactions:
 
 ```kotlin
 // Streaming with Flow
-val users: Flow<User> = orm.entity(User::class).selectAll()
+val users: Flow<User> = orm.entity(User::class).select().resultFlow
 users.collect { user -> println(user.name) }
 
 // Programmatic transactions

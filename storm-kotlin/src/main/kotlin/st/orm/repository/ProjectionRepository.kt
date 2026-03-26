@@ -69,6 +69,28 @@ interface ProjectionRepository<P, ID : Any> : Repository where P : Projection<ID
     fun select(): QueryBuilder<P, P, ID>
 
     /**
+     * Constructs a SELECT query using a block-based DSL.
+     *
+     * A [PredicateBuilder] returned as the block's last expression is automatically applied as a WHERE clause,
+     * so `select { path eq value }` is equivalent to `select { where(path eq value) }`.
+     *
+     * ```kotlin
+     * interface OwnerViewRepository : ProjectionRepository<OwnerView, Int> {
+     *     fun findByCity(city: City): List<OwnerView> = select {
+     *         where(OwnerView_.city eq city)
+     *         orderBy(OwnerView_.lastName)
+     *     }.resultList
+     * }
+     * ```
+     */
+    @Suppress("UNCHECKED_CAST")
+    fun select(block: SqlScope<P, P, ID>.() -> Any?): QueryBuilder<P, P, ID> {
+        val scope = SqlScope(select())
+        scope.applyResult(scope.block())
+        return scope.builder
+    }
+
+    /**
      * Creates a new query builder for the projection type managed by this repository.
      *
      * @return a new query builder for the projection type.
@@ -357,27 +379,6 @@ interface ProjectionRepository<P, ID : Any> : Repository where P : Projection<ID
     //
 
     /**
-     * Returns a stream of all projections of the type supported by this repository. Each element in the stream represents
-     * a projection in the database, encapsulating all relevant data as mapped by the projection model.
-     *
-     *
-     * The resulting stream is lazily loaded, meaning that the projections are only retrieved from the database as they
-     * are consumed by the stream. This approach is efficient and minimizes the memory footprint, especially when
-     * dealing with large volumes of projections.
-     *
-     *
-     * **Note:** Calling this method does trigger the execution of the underlying query, so it should
-     * only be invoked when the query is intended to run. Since the stream holds resources open while in use, it must be
-     * closed after usage to prevent resource leaks. As the stream is `AutoCloseable`, it is recommended to use it
-     * within a `try-with-resources` block.
-     *
-     * @return a stream of all projections of the type supported by this repository.
-     * @throws st.orm.PersistenceException if the selection operation fails due to underlying database issues, such as
-     * connectivity.
-     */
-    fun selectAll(): Flow<P>
-
-    /**
      * Retrieves a stream of projections based on their primary keys.
      *
      *
@@ -573,21 +574,6 @@ interface ProjectionRepository<P, ID : Any> : Repository where P : Projection<ID
      * @return a list containing all entities.
      */
     fun findAllRef(): List<Ref<P>> = selectRef().resultList
-
-    /**
-     * Retrieves all entities of type [P] from the repository.
-     *
-     * The resulting sequence is lazily loaded, meaning that the entities are only retrieved from the database as they
-     * are consumed by the sequence. This approach is efficient and minimizes the memory footprint, especially when
-     * dealing with large volumes of entities.
-     *
-     * Note: Calling this method does trigger the execution of the underlying
-     * query, so it should only be invoked when the query is intended to run. Since the sequence holds resources open
-     * while in use, it must be closed after usage to prevent resource leaks.
-     *
-     * @return a sequence containing all entities.
-     */
-    fun selectAllRef(): Flow<Ref<P>> = selectRef().resultFlow
 
     /**
      * Retrieves an optional entity of type [P] based on a single field and its value.
@@ -901,35 +887,11 @@ interface ProjectionRepository<P, ID : Any> : Repository where P : Projection<ID
     fun findAll(predicate: PredicateBuilder<P, *, *>): List<P> = select().where(predicate).resultList
 
     /**
-     * Retrieves projections of type [P] matching the specified predicate lambda.
-     *
-     * Example:
-     * ```kotlin
-     * val owners = ownerViews.findAll { OwnerView_.lastName eq "Davis" }
-     * ```
-     *
-     * @return a list of matching projections.
-     */
-    fun findAll(predicate: () -> PredicateBuilder<P, *, *>): List<P> = findAll(predicate())
-
-    /**
      * Retrieves entities of type [P] matching the specified predicate.
      *
      * @return a list of matching entities.
      */
     fun findAllRef(predicate: PredicateBuilder<P, *, *>): List<Ref<P>> = selectRef().where(predicate).resultList
-
-    /**
-     * Retrieves projection references of type [P] matching the specified predicate lambda.
-     *
-     * Example:
-     * ```kotlin
-     * val ownerRefs = ownerViews.findAllRef { OwnerView_.lastName eq "Davis" }
-     * ```
-     *
-     * @return a list of matching projection references.
-     */
-    fun findAllRef(predicate: () -> PredicateBuilder<P, *, *>): List<Ref<P>> = findAllRef(predicate())
 
     /**
      * Retrieves an optional entity of type [P] matching the specified predicate.
@@ -942,19 +904,6 @@ interface ProjectionRepository<P, ID : Any> : Repository where P : Projection<ID
     ): P? = select().where(predicate).optionalResult
 
     /**
-     * Retrieves an optional projection of type [P] matching the specified predicate lambda.
-     * Returns null if no matching projection is found.
-     *
-     * Example:
-     * ```kotlin
-     * val owner = ownerViews.find { OwnerView_.lastName eq "Davis" }
-     * ```
-     *
-     * @return the matching projection, or null if none found.
-     */
-    fun find(predicate: () -> PredicateBuilder<P, *, *>): P? = find(predicate())
-
-    /**
      * Retrieves an optional entity of type [P] matching the specified predicate.
      * Returns a ref with a null value if no matching entity is found.
      *
@@ -963,19 +912,6 @@ interface ProjectionRepository<P, ID : Any> : Repository where P : Projection<ID
     fun findRef(
         predicate: PredicateBuilder<P, *, *>,
     ): Ref<P>? = selectRef().where(predicate).optionalResult
-
-    /**
-     * Retrieves an optional projection reference of type [P] matching the specified predicate lambda.
-     * Returns null if no matching projection is found.
-     *
-     * Example:
-     * ```kotlin
-     * val ownerRef = ownerViews.findRef { OwnerView_.lastName eq "Davis" }
-     * ```
-     *
-     * @return the matching projection reference, or null if none found.
-     */
-    fun findRef(predicate: () -> PredicateBuilder<P, *, *>): Ref<P>? = findRef(predicate())
 
     /**
      * Retrieves a single entity of type [P] matching the specified predicate.
@@ -990,21 +926,6 @@ interface ProjectionRepository<P, ID : Any> : Repository where P : Projection<ID
     ): P = select().where(predicate).singleResult
 
     /**
-     * Retrieves a single projection of type [P] matching the specified predicate lambda.
-     * Throws an exception if no projection or more than one projection is found.
-     *
-     * Example:
-     * ```kotlin
-     * val owner = ownerViews.get { OwnerView_.lastName eq "Davis" }
-     * ```
-     *
-     * @return the matching projection.
-     * @throws st.orm.NoResultException if there is no result.
-     * @throws st.orm.NonUniqueResultException if more than one result.
-     */
-    fun get(predicate: () -> PredicateBuilder<P, *, *>): P = get(predicate())
-
-    /**
      * Retrieves a single entity of type [P] matching the specified predicate.
      * Throws an exception if no entity or more than one entity is found.
      *
@@ -1015,85 +936,6 @@ interface ProjectionRepository<P, ID : Any> : Repository where P : Projection<ID
     fun getRef(
         predicate: PredicateBuilder<P, *, *>,
     ): Ref<P> = selectRef().where(predicate).singleResult
-
-    /**
-     * Retrieves a single projection reference of type [P] matching the specified predicate lambda.
-     * Throws an exception if no projection or more than one projection is found.
-     *
-     * Example:
-     * ```kotlin
-     * val ownerRef = ownerViews.getRef { OwnerView_.lastName eq "Davis" }
-     * ```
-     *
-     * @return the matching projection reference.
-     * @throws st.orm.NoResultException if there is no result.
-     * @throws st.orm.NonUniqueResultException if more than one result.
-     */
-    fun getRef(predicate: () -> PredicateBuilder<P, *, *>): Ref<P> = getRef(predicate())
-
-    /**
-     * Retrieves entities of type [P] matching the specified predicate.
-     *
-     * The resulting sequence is lazily loaded, meaning that the entities are only retrieved from the database as they
-     * are consumed by the sequence. This approach is efficient and minimizes the memory footprint, especially when
-     * dealing with large volumes of entities.
-     *
-     * Note: Calling this method does trigger the execution of the underlying
-     * query, so it should only be invoked when the query is intended to run. Since the sequence holds resources open
-     * while in use, it must be closed after usage to prevent resource leaks.
-     *
-     * @return a sequence of matching entities.
-     */
-    fun select(
-        predicate: PredicateBuilder<P, *, *>,
-    ): Flow<P> = select().where(predicate).resultFlow
-
-    /**
-     * Retrieves projections of type [P] matching the specified predicate lambda as a flow.
-     *
-     * The resulting flow is lazily loaded, meaning that the projections are only retrieved from the database as they
-     * are consumed by the flow.
-     *
-     * Example:
-     * ```kotlin
-     * val owners = ownerViews.select { OwnerView_.lastName eq "Davis" }
-     * ```
-     *
-     * @return a flow of matching projections.
-     */
-    fun select(predicate: () -> PredicateBuilder<P, *, *>): Flow<P> = select(predicate())
-
-    /**
-     * Retrieves entities of type [P] matching the specified predicate.
-     *
-     * The resulting sequence is lazily loaded, meaning that the entities are only retrieved from the database as they
-     * are consumed by the sequence. This approach is efficient and minimizes the memory footprint, especially when
-     * dealing with large volumes of entities.
-     *
-     * Note: Calling this method does trigger the execution of the underlying
-     * query, so it should only be invoked when the query is intended to run. Since the sequence holds resources open
-     * while in use, it must be closed after usage to prevent resource leaks.
-     *
-     * @return a sequence of matching entities.
-     */
-    fun selectRef(
-        predicate: PredicateBuilder<P, *, *>,
-    ): Flow<Ref<P>> = selectRef().where(predicate).resultFlow
-
-    /**
-     * Retrieves projection references of type [P] matching the specified predicate lambda as a flow.
-     *
-     * The resulting flow is lazily loaded, meaning that the projections are only retrieved from the database as they
-     * are consumed by the flow.
-     *
-     * Example:
-     * ```kotlin
-     * val ownerRefs = ownerViews.selectRef { OwnerView_.lastName eq "Davis" }
-     * ```
-     *
-     * @return a flow of matching projection references.
-     */
-    fun selectRef(predicate: () -> PredicateBuilder<P, *, *>): Flow<Ref<P>> = selectRef(predicate())
 
     /**
      * Counts entities of type [P] matching the specified field and value.
@@ -1130,18 +972,6 @@ interface ProjectionRepository<P, ID : Any> : Repository where P : Projection<ID
     ): Long = selectCount().where(predicate).singleResult
 
     /**
-     * Counts projections of type [P] matching the specified predicate lambda.
-     *
-     * Example:
-     * ```kotlin
-     * val count = ownerViews.count { OwnerView_.lastName eq "Davis" }
-     * ```
-     *
-     * @return the count of matching projections.
-     */
-    fun count(predicate: () -> PredicateBuilder<P, *, *>): Long = count(predicate())
-
-    /**
      * Checks if entities of type [P] matching the specified field and value exists.
      *
      * @param field metamodel reference of the entity field.
@@ -1174,18 +1004,6 @@ interface ProjectionRepository<P, ID : Any> : Repository where P : Projection<ID
     fun exists(
         predicate: PredicateBuilder<P, *, *>,
     ): Boolean = selectCount().where(predicate).singleResult > 0
-
-    /**
-     * Checks if projections of type [P] matching the specified predicate lambda exist.
-     *
-     * Example:
-     * ```kotlin
-     * val hasDavis = ownerViews.exists { OwnerView_.lastName eq "Davis" }
-     * ```
-     *
-     * @return true if any matching projections exist, false otherwise.
-     */
-    fun exists(predicate: () -> PredicateBuilder<P, *, *>): Boolean = exists(predicate())
 
     /**
      * Returns a page of projections using offset-based pagination.

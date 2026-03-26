@@ -243,34 +243,34 @@ public class JpaIntegrationTest {
 
     @Test
     void ormTemplate_of_entityManager_basic() {
-        ORMTemplate orm = ORMTemplate.of(entityManager);
+        ORMTemplate orm = JpaTemplate.ORM(entityManager);
         assertNotNull(orm);
     }
 
     @Test
     void ormTemplate_of_entityManager_withConfig() {
         StormConfig config = StormConfig.of(Map.of());
-        ORMTemplate orm = ORMTemplate.of(entityManager, config);
+        ORMTemplate orm = JpaTemplate.ORM(entityManager, config);
         assertNotNull(orm);
         assertEquals(config, orm.config());
     }
 
     @Test
     void ormTemplate_of_entityManager_withDecorator() {
-        ORMTemplate orm = ORMTemplate.of(entityManager, t -> t);
+        ORMTemplate orm = JpaTemplate.ORM(entityManager, t -> t);
         assertNotNull(orm);
     }
 
     @Test
     void ormTemplate_of_entityManager_withDecorator_customTableNameResolver() {
-        ORMTemplate orm = ORMTemplate.of(entityManager, t -> t.withTableNameResolver(null));
+        ORMTemplate orm = JpaTemplate.ORM(entityManager, t -> t.withTableNameResolver(null));
         assertNotNull(orm);
     }
 
     @Test
     void ormTemplate_of_entityManager_withConfigAndDecorator() {
         StormConfig config = StormConfig.of(Map.of());
-        ORMTemplate orm = ORMTemplate.of(entityManager, config, t -> t);
+        ORMTemplate orm = JpaTemplate.ORM(entityManager, config, t -> t);
         assertNotNull(orm);
         assertEquals(config, orm.config());
     }
@@ -279,14 +279,14 @@ public class JpaIntegrationTest {
     void ormTemplate_of_entityManager_decoratorMustReturnSameType() {
         // Decorator that returns a non-JpaTemplateImpl should throw.
         assertThrows(st.orm.PersistenceException.class, () ->
-                ORMTemplate.of(entityManager, t -> new TemplateDecoratorStub()));
+                JpaTemplate.ORM(entityManager, t -> new TemplateDecoratorStub()));
     }
 
     @Test
     void ormTemplate_of_entityManager_configAndDecorator_decoratorMustReturnSameType() {
         StormConfig config = StormConfig.of(Map.of());
         assertThrows(st.orm.PersistenceException.class, () ->
-                ORMTemplate.of(entityManager, config, t -> new TemplateDecoratorStub()));
+                JpaTemplate.ORM(entityManager, config, t -> new TemplateDecoratorStub()));
     }
 
     @Test

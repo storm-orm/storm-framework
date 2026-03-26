@@ -60,8 +60,32 @@ class RepositoryTest {
     }
 
     @Test
-    fun `register by package does not crash when no index exists`() {
+    fun `register no-arg discovers repositories from type index`() {
         val dataSource = createTestDataSource()
+        initializeSchema(dataSource)
+        try {
+            testApplication {
+                application {
+                    install(Storm) {
+                        this.dataSource = dataSource
+                    }
+                    stormRepositories {
+                        register()
+                    }
+                    val petRepository = repository<PetRepository>()
+                    petRepository shouldNotBe null
+                    petRepository.findAll().size shouldBe 3
+                }
+            }
+        } finally {
+            dataSource.close()
+        }
+    }
+
+    @Test
+    fun `register by package discovers repositories from type index`() {
+        val dataSource = createTestDataSource()
+        initializeSchema(dataSource)
         try {
             testApplication {
                 application {
@@ -71,6 +95,9 @@ class RepositoryTest {
                     stormRepositories {
                         register("st.orm.ktor.model")
                     }
+                    val petRepository = repository<PetRepository>()
+                    petRepository shouldNotBe null
+                    petRepository.findAll().size shouldBe 3
                 }
             }
         } finally {

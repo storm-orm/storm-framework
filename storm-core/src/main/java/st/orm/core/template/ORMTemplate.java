@@ -16,7 +16,6 @@
 package st.orm.core.template;
 
 import jakarta.annotation.Nonnull;
-import jakarta.persistence.EntityManager;
 import java.sql.Connection;
 import java.util.List;
 import java.util.function.UnaryOperator;
@@ -28,7 +27,6 @@ import st.orm.StormConfig;
 import st.orm.core.repository.EntityRepository;
 import st.orm.core.repository.ProjectionRepository;
 import st.orm.core.repository.RepositoryLookup;
-import st.orm.core.template.impl.JpaTemplateImpl;
 import st.orm.core.template.impl.PreparedStatementTemplateImpl;
 import st.orm.mapping.TemplateDecorator;
 
@@ -96,7 +94,7 @@ public interface ORMTemplate extends QueryTemplate, RepositoryLookup {
      * confirmation message and returns an empty list.</p>
      *
      * <p>This method requires a DataSource-backed template. Templates created from a raw
-     * {@link Connection} or {@link jakarta.persistence.EntityManager} do not support schema validation.</p>
+     * {@link Connection} or {@code EntityManager} do not support schema validation.</p>
      *
      * @return the list of validation error messages (empty on success).
      * @throws PersistenceException if the template does not support schema validation.
@@ -113,7 +111,7 @@ public interface ORMTemplate extends QueryTemplate, RepositoryLookup {
      * confirmation message and returns an empty list.</p>
      *
      * <p>This method requires a DataSource-backed template. Templates created from a raw
-     * {@link Connection} or {@link jakarta.persistence.EntityManager} do not support schema validation.</p>
+     * {@link Connection} or {@code EntityManager} do not support schema validation.</p>
      *
      * @param types the entity and projection types to validate.
      * @return the list of validation error messages (empty on success).
@@ -128,7 +126,7 @@ public interface ORMTemplate extends QueryTemplate, RepositoryLookup {
      * Validates all discovered types and throws if any errors are found.
      *
      * <p>This method requires a DataSource-backed template. Templates created from a raw
-     * {@link Connection} or {@link jakarta.persistence.EntityManager} do not support schema validation.</p>
+     * {@link Connection} or {@code EntityManager} do not support schema validation.</p>
      *
      * @throws PersistenceException if validation fails or the template does not support schema validation.
      * @since 1.9
@@ -141,7 +139,7 @@ public interface ORMTemplate extends QueryTemplate, RepositoryLookup {
      * Validates the specified types and throws if any errors are found.
      *
      * <p>This method requires a DataSource-backed template. Templates created from a raw
-     * {@link Connection} or {@link jakarta.persistence.EntityManager} do not support schema validation.</p>
+     * {@link Connection} or {@code EntityManager} do not support schema validation.</p>
      *
      * @param types the entity and projection types to validate.
      * @throws PersistenceException if validation fails or the template does not support schema validation.
@@ -149,59 +147,6 @@ public interface ORMTemplate extends QueryTemplate, RepositoryLookup {
      */
     default void validateSchemaOrThrow(@Nonnull Iterable<Class<? extends Data>> types) {
         throw new PersistenceException("Schema validation is not supported by this template.");
-    }
-
-    /**
-     * Returns an {@link ORMTemplate} for use with JPA.
-     *
-     * <p>This method creates an ORM repository template using the provided {@link EntityManager}.
-     * It allows you to perform database operations using JPA in a type-safe manner.
-     *
-     * <p>Example usage:
-     * <pre>{@code
-     * EntityManager entityManager = ...;
-     * ORMTemplate orm = Templates.ORM(entityManager);
-     * List<MyTable> otherTables = orm.query(RAW."""
-     *         SELECT \{MyTable.class}
-     *         FROM \{MyTable.class}
-     *         WHERE \{MyTable_.name} = \{"ABC"}""")
-     *     .getResultList(MyTable.class);
-     * }</pre>
-     *
-     * @param entityManager the {@link EntityManager} to use for database operations; must not be {@code null}.
-     * @return an {@link ORMTemplate} configured for use with JPA.
-     */
-    static ORMTemplate of(@Nonnull EntityManager entityManager) {
-        return new JpaTemplateImpl(entityManager).toORM();
-    }
-
-    /**
-     * Returns an {@link ORMTemplate} for use with JPA.
-     *
-     * <p>This method creates an ORM repository template using the provided {@link EntityManager}.
-     * It allows you to perform database operations using JPA in a type-safe manner.
-     *
-     * <p>Example usage:
-     * <pre>{@code
-     * EntityManager entityManager = ...;
-     * ORMTemplate orm = Templates.ORM(entityManager);
-     * List<MyTable> otherTables = orm.query(RAW."""
-     *         SELECT \{MyTable.class}
-     *         FROM \{MyTable.class}
-     *         WHERE \{MyTable_.name} = \{"ABC"}""")
-     *     .getResultList(MyTable.class);
-     * }</pre>
-     *
-     * @param entityManager the {@link EntityManager} to use for database operations; must not be {@code null}.
-     * @return an {@link ORMTemplate} configured for use with JPA.
-     */
-    static ORMTemplate of(@Nonnull EntityManager entityManager, @Nonnull UnaryOperator<TemplateDecorator> decorator) {
-        var template = new JpaTemplateImpl(entityManager);
-        var decorated = decorator.apply(template);
-        if (!(decorated instanceof JpaTemplateImpl)) {
-            throw new PersistenceException("Decorator must return the same template type.");
-        }
-        return ((JpaTemplateImpl) decorated).toORM();
     }
 
     /**
@@ -315,36 +260,6 @@ public interface ORMTemplate extends QueryTemplate, RepositoryLookup {
             throw new PersistenceException("Decorator must return the same template type.");
         }
         return ((PreparedStatementTemplateImpl) decorated).toORM();
-    }
-
-    /**
-     * Returns an {@link ORMTemplate} for use with JPA, configured with the provided {@link StormConfig}.
-     *
-     * @param entityManager the {@link EntityManager} to use for database operations; must not be {@code null}.
-     * @param config the Storm configuration to apply; must not be {@code null}.
-     * @return an {@link ORMTemplate} configured for use with JPA.
-     */
-    static ORMTemplate of(@Nonnull EntityManager entityManager, @Nonnull StormConfig config) {
-        return new JpaTemplateImpl(entityManager, config).toORM();
-    }
-
-    /**
-     * Returns an {@link ORMTemplate} for use with JPA, configured with the provided {@link StormConfig} and a custom
-     * template decorator.
-     *
-     * @param entityManager the {@link EntityManager} to use for database operations; must not be {@code null}.
-     * @param config the Storm configuration to apply; must not be {@code null}.
-     * @param decorator a function that transforms the {@link TemplateDecorator} to customize template processing.
-     * @return an {@link ORMTemplate} configured for use with JPA.
-     */
-    static ORMTemplate of(@Nonnull EntityManager entityManager, @Nonnull StormConfig config,
-                          @Nonnull UnaryOperator<TemplateDecorator> decorator) {
-        var template = new JpaTemplateImpl(entityManager, config);
-        var decorated = decorator.apply(template);
-        if (!(decorated instanceof JpaTemplateImpl)) {
-            throw new PersistenceException("Decorator must return the same template type.");
-        }
-        return ((JpaTemplateImpl) decorated).toORM();
     }
 
     /**

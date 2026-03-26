@@ -32,7 +32,7 @@ data class User(
 ) : Entity<Int>
 
 // Query with type-safe access to nested fields throughout the entire entity graph
-val users = orm.findAll { User_.city.country.code eq "US" }
+val users = orm.findAll(User_.city.country.code eq "US")
 
 // Result: fully populated User with City and Country included
 users.forEach { println("${it.name} lives in ${it.city.name}, ${it.city.country.name}") }
@@ -68,7 +68,7 @@ data class User(
 When you query a `User`, the related `City` is automatically loaded:
 
 ```kotlin
-val user = orm.find { User_.id eq userId }
+val user = orm.find(User_.id eq userId)
 println(user?.city.name)  // City is already loaded
 ```
 
@@ -146,7 +146,7 @@ Storm does not store collections on the "one" side of a relationship. Instead, q
 
 ```kotlin
 // Find all users in a city
-val usersInCity: List<User> = orm.findAll { User_.city eq city }
+val usersInCity: List<User> = orm.findAll(User_.city eq city)
 ```
 
 </TabItem>
@@ -191,11 +191,11 @@ Query through the join entity:
 
 ```kotlin
 // Find all roles for a user
-val userRoles: List<UserRole> = orm.findAll { UserRole_.user eq user }
+val userRoles: List<UserRole> = orm.findAll(UserRole_.user eq user)
 val roles: List<Role> = userRoles.map { it.role }
 
 // Find all users with a specific role
-val userRoles: List<UserRole> = orm.findAll { UserRole_.role eq role }
+val userRoles: List<UserRole> = orm.findAll(UserRole_.role eq role)
 val users: List<User> = userRoles.map { it.user }
 ```
 

@@ -180,7 +180,7 @@ data class Pet(
     @FK @Contextual val owner: Ref<Owner>?,
 ) : Entity<Int>
 
-val pet = orm.get { Pet_.id eq 1 }
+val pet = orm.get(Pet_.id eq 1)
 val json = Json { serializersModule = StormSerializers }
     .encodeToString(pet)
 // {"id":1,"name":"Leo","owner":1}
@@ -217,7 +217,7 @@ When the application calls `fetch()` on a ref before serialization, the referenc
 <TabItem value="kotlin" label="Kotlin" default>
 
 ```kotlin
-val pet = orm.get { Pet_.id eq 1 }
+val pet = orm.get(Pet_.id eq 1)
 pet.owner?.fetch()  // Load the owner into the ref
 
 val json = Json { serializersModule = StormSerializers }
@@ -266,7 +266,7 @@ data class PetWithProjectionOwner(
     @FK @Contextual val owner: Ref<OwnerSummary>?,
 ) : Entity<Int>
 
-val pet = orm.get { PetWithProjectionOwner_.id eq 1 }
+val pet = orm.get(PetWithProjectionOwner_.id eq 1)
 pet.owner?.fetch()
 
 val json = Json { serializersModule = StormSerializers }

@@ -1,7 +1,4 @@
 Help the user serialize Storm entities to JSON for REST APIs using Java.
-
-Fetch https://orm.st/llms-full.txt for complete reference.
-
 This is about serializing entities for API responses (Jackson), not about JSON database columns (use /storm-json-java for that).
 
 Ask: whether entities have `Ref<T>` fields.

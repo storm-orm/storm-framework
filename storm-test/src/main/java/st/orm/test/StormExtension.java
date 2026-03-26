@@ -75,9 +75,10 @@ public class StormExtension implements BeforeAllCallback, ParameterResolver {
             dataSource = new SimpleDataSource(url, annotation.username(), annotation.password());
         }
         if (annotation.scripts().length > 0) {
+            Class<?> testClass = context.getRequiredTestClass();
             try (Connection conn = dataSource.getConnection()) {
                 for (String script : annotation.scripts()) {
-                    String sql = readScript(script);
+                    String sql = readScript(testClass, script);
                     executeScript(conn, sql);
                 }
             }
@@ -125,8 +126,6 @@ public class StormExtension implements BeforeAllCallback, ParameterResolver {
         return context.getRoot().getStore(NAMESPACE);
     }
 
-    // --- DataSource factory method resolution ---
-
     /**
      * Looks for a static {@code dataSource()} method on the test class. If found, invokes it and returns the result.
      * This also checks for a Kotlin companion object with a {@code dataSource()} method.
@@ -156,8 +155,6 @@ public class StormExtension implements BeforeAllCallback, ParameterResolver {
         }
         return null;
     }
-
-    // --- Factory method resolution ---
 
     private static boolean hasFactoryMethod(Class<?> type) {
         // Check for a Java static interface/class method.
@@ -195,13 +192,32 @@ public class StormExtension implements BeforeAllCallback, ParameterResolver {
         return of.invoke(companion, dataSource);
     }
 
-    // --- Script execution ---
-
-    private static String readScript(String path) {
-        try (InputStream is = StormExtension.class.getResourceAsStream(path)) {
-            if (is == null) {
-                throw new IllegalArgumentException("Script not found on classpath: " + path);
+    /**
+     * Resolves and reads a script from the classpath. Script path resolution follows conventions similar to Spring's
+     * {@code @Sql} annotation:
+     * <ul>
+     *     <li>Paths prefixed with {@code classpath:} are resolved from the classpath root.</li>
+     *     <li>Absolute paths (starting with {@code /}) are resolved from the classpath root.</li>
+     *     <li>Relative paths (no prefix, no leading {@code /}) are resolved relative to the test class.</li>
+     * </ul>
+     */
+    private static String readScript(Class<?> testClass, String path) {
+        InputStream is;
+        if (path.startsWith("classpath:")) {
+            String classpathPath = path.substring("classpath:".length());
+            if (!classpathPath.startsWith("/")) {
+                classpathPath = "/" + classpathPath;
             }
+            is = testClass.getResourceAsStream(classpathPath);
+        } else {
+            // Absolute paths (starting with /) resolve from classpath root.
+            // Relative paths resolve relative to the test class package.
+            is = testClass.getResourceAsStream(path);
+        }
+        if (is == null) {
+            throw new IllegalArgumentException("Script not found on classpath: " + path);
+        }
+        try (is) {
             return new String(is.readAllBytes(), StandardCharsets.UTF_8);
         } catch (IOException e) {
             throw new UncheckedIOException(e);

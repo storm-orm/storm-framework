@@ -1,7 +1,4 @@
 Help the user write Storm SQL Templates using Java.
-
-Fetch https://orm.st/llms-full.txt for complete reference.
-
 Ask what query they need and why QueryBuilder does not suffice.
 
 When to use SQL Templates: complex joins, subqueries, CTEs, window functions, DB-specific syntax, UNION/INTERSECT.
@@ -41,7 +38,12 @@ Critical rules:
 
 Close any ResultStream from custom queries. Use try-with-resources for getResultStream().
 
-After writing SQL templates, offer to write a test using `SqlCapture` to verify the generated SQL matches the user's intent:
+## Verification
+
+After writing SQL templates, write a test using `@StormTest` and `SqlCapture` to verify that schema, generated SQL, and intent are aligned.
+
+Tell the user what you are doing and why: explain that `SqlCapture` records every SQL statement Storm generates. The goal is not to test Storm itself, but to verify that the SQL template produces the result the user intended — correct tables joined, correct grouping, correct aggregation. This is Storm's verify-then-trust pattern.
+
 ```java
 @StormTest(scripts = {"schema.sql", "data.sql"})
 class CityCountQueryTest {
@@ -54,11 +56,14 @@ class CityCountQueryTest {
                 LEFT JOIN \{User.class} ON \{User_.city} = \{City_.id}
                 GROUP BY \{City_.id}""")
             .getResultList(CityCount.class));
-        // Verify the SQL structure matches the intent.
-        String sql = capture.statements().getFirst().statement();
-        assertTrue(sql.contains("LEFT JOIN"));
-        assertTrue(sql.contains("GROUP BY"));
+        // Verify intent: one row per city, each with a user count.
         assertFalse(results.isEmpty());
+        assertTrue(results.stream().allMatch(r -> r.count() >= 0));
     }
 }
 ```
+
+Run the test. Show the user the captured SQL and explain how it aligns with the intended behavior. If a query produces unexpected SQL or the right approach is unclear, ask the user for feedback before changing the query.
+
+
+The test can be temporary — verify and remove, or keep as a regression test. Ask the user which they prefer.

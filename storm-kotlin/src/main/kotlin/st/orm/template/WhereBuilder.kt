@@ -49,6 +49,7 @@ import st.orm.template.TemplateString.Companion.raw
  * @see QueryBuilder.where
  * @see PredicateBuilder
  */
+@SqlDsl
 interface WhereBuilder<T : Data, R, ID> : SubqueryTemplate {
 
     /**

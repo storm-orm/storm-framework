@@ -19,7 +19,6 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.asFlow
 import kotlinx.coroutines.flow.fold
 import kotlinx.coroutines.flow.map
-import kotlinx.coroutines.stream.consumeAsFlow
 import st.orm.*
 import st.orm.repository.ProjectionRepository
 import st.orm.template.*
@@ -90,8 +89,6 @@ class ProjectionRepositoryImpl<P, ID : Any>(
     override fun findAllById(ids: Iterable<ID>): List<P> = core.findAllById(ids)
 
     override fun findAllByRef(refs: Iterable<Ref<P>>): List<P> = core.findAllByRef(refs)
-
-    override fun selectAll(): Flow<P> = core.selectAll().consumeAsFlow()
 
     override fun selectById(ids: Flow<ID>): Flow<P> = ids.chunked(core.defaultChunkSize)
         .flatMapConcat { core.findAllById(it).asFlow() }
