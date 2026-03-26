@@ -98,6 +98,26 @@
             </dependency>
             <dependency>
                 <groupId>st.orm</groupId>
+                <artifactId>storm-compiler-plugin-2.0</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>st.orm</groupId>
+                <artifactId>storm-compiler-plugin-2.1</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>st.orm</groupId>
+                <artifactId>storm-compiler-plugin-2.2</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>st.orm</groupId>
+                <artifactId>storm-compiler-plugin-2.3</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>st.orm</groupId>
                 <artifactId>storm-metamodel-ksp</artifactId>
                 <version>${project.version}</version>
             </dependency>

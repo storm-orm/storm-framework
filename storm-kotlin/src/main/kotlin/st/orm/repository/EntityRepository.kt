@@ -225,6 +225,28 @@ interface EntityRepository<E, ID : Any> : Repository where E : Entity<ID> {
     fun select(): QueryBuilder<E, E, ID>
 
     /**
+     * Constructs a SELECT query using a block-based DSL.
+     *
+     * A [PredicateBuilder] returned as the block's last expression is automatically applied as a WHERE clause,
+     * so `select { path eq value }` is equivalent to `select { where(path eq value) }`.
+     *
+     * ```kotlin
+     * interface UserRepository : EntityRepository<User, Int> {
+     *     fun findActive(): List<User> = select {
+     *         where(User_.active eq true)
+     *         orderBy(User_.name)
+     *     }.resultList
+     * }
+     * ```
+     */
+    @Suppress("UNCHECKED_CAST")
+    fun select(block: SqlScope<E, E, ID>.() -> Any?): QueryBuilder<E, E, ID> {
+        val scope = SqlScope(select())
+        scope.applyResult(scope.block())
+        return scope.builder
+    }
+
+    /**
      * Creates a new query builder for the entity type managed by this repository.
      *
      * @return a new query builder for the entity type.
@@ -295,6 +317,29 @@ interface EntityRepository<E, ID : Any> : Repository where E : Entity<ID> {
      * @return a new query builder for the entity type.
      */
     fun delete(): QueryBuilder<E, *, ID>
+
+    /**
+     * Constructs and executes a DELETE statement using a block-based DSL.
+     *
+     * A [PredicateBuilder] returned as the block's last expression is automatically applied as a WHERE clause,
+     * so `delete { path eq value }` is equivalent to `delete { where(path eq value) }`.
+     *
+     * ```kotlin
+     * interface UserRepository : EntityRepository<User, Int> {
+     *     fun deleteInactive(): Int = delete {
+     *         where(User_.active eq false)
+     *     }
+     * }
+     * ```
+     *
+     * @return the number of rows deleted.
+     */
+    @Suppress("UNCHECKED_CAST")
+    fun delete(block: SqlScope<E, Any?, ID>.() -> Any?): Int {
+        val scope = SqlScope(delete() as QueryBuilder<E, Any?, ID>)
+        scope.applyResult(scope.block())
+        return scope.builder.executeUpdate()
+    }
 
     // Base methods.
 
@@ -902,25 +947,6 @@ interface EntityRepository<E, ID : Any> : Repository where E : Entity<ID> {
     fun deleteByRef(refs: Iterable<Ref<E>>)
 
     /**
-     * Returns a flow of all entities of the type supported by this repository. Each element in the flow represents
-     * an entity in the database, encapsulating all relevant data as mapped by the entity model.
-     *
-     * The resulting flow is lazily loaded, meaning that the entities are only retrieved from the database as they
-     * are consumed by the flow. This approach is efficient and minimizes the memory footprint, especially when
-     * dealing with large volumes of entities.
-     *
-     * **Note:** Calling this method does trigger the execution of the underlying
-     * query, so it should only be invoked when the query is intended to run. Since the flow holds resources open
-     * while in use, it must be closed after usage to prevent resource leaks. As the flow is `AutoCloseable`, it
-     * is recommended to use it within a `try-with-resources` block.
-     *
-     * @return a flow of all entities of the type supported by this repository.
-     * @throws st.orm.PersistenceException if the selection operation fails due to underlying database issues, such as
-     * connectivity.
-     */
-    fun selectAll(): Flow<E>
-
-    /**
      * Retrieves a flow of entities based on their primary keys.
      *
      * This method executes queries in batches, depending on the number of primary keys in the specified ids flow.
@@ -1469,21 +1495,6 @@ interface EntityRepository<E, ID : Any> : Repository where E : Entity<ID> {
     fun findAllRef(): List<Ref<E>> = selectRef().resultList
 
     /**
-     * Retrieves all entities of type [E] from the repository.
-     *
-     * The resulting sequence is lazily loaded, meaning that the entities are only retrieved from the database as they
-     * are consumed by the sequence. This approach is efficient and minimizes the memory footprint, especially when
-     * dealing with large volumes of entities.
-     *
-     * Note: Calling this method does trigger the execution of the underlying
-     * query, so it should only be invoked when the query is intended to run. Since the sequence holds resources open
-     * while in use, it must be closed after usage to prevent resource leaks.
-     *
-     * @return a sequence containing all entities.
-     */
-    fun selectAllRef(): Flow<Ref<E>> = selectRef().resultFlow
-
-    /**
      * Retrieves an optional entity of type [E] based on a single field and its value.
      * Returns null if no matching entity is found.
      *
@@ -1795,35 +1806,11 @@ interface EntityRepository<E, ID : Any> : Repository where E : Entity<ID> {
     fun findAll(predicate: PredicateBuilder<E, *, *>): List<E> = select().where(predicate).resultList
 
     /**
-     * Retrieves entities of type [E] matching the specified predicate lambda.
-     *
-     * Example:
-     * ```kotlin
-     * val entities = repository.findAll { Entity_.active eq true }
-     * ```
-     *
-     * @return a list of matching entities.
-     */
-    fun findAll(predicate: () -> PredicateBuilder<E, *, *>): List<E> = findAll(predicate())
-
-    /**
      * Retrieves entities of type [E] matching the specified predicate.
      *
      * @return a list of matching entities.
      */
     fun findAllRef(predicate: PredicateBuilder<E, *, *>): List<Ref<E>> = selectRef().where(predicate).resultList
-
-    /**
-     * Retrieves entity references of type [E] matching the specified predicate lambda.
-     *
-     * Example:
-     * ```kotlin
-     * val refs = repository.findAllRef { Entity_.active eq true }
-     * ```
-     *
-     * @return a list of matching entity references.
-     */
-    fun findAllRef(predicate: () -> PredicateBuilder<E, *, *>): List<Ref<E>> = findAllRef(predicate())
 
     /**
      * Retrieves an optional entity of type [E] matching the specified predicate.
@@ -1836,19 +1823,6 @@ interface EntityRepository<E, ID : Any> : Repository where E : Entity<ID> {
     ): E? = select().where(predicate).optionalResult
 
     /**
-     * Retrieves an optional entity of type [E] matching the specified predicate lambda.
-     * Returns null if no matching entity is found.
-     *
-     * Example:
-     * ```kotlin
-     * val entity = repository.find { Entity_.name eq "Storm" }
-     * ```
-     *
-     * @return an optional entity, or null if none found.
-     */
-    fun find(predicate: () -> PredicateBuilder<E, *, *>): E? = find(predicate())
-
-    /**
      * Retrieves an optional entity of type [E] matching the specified predicate.
      * Returns a ref with a null value if no matching entity is found.
      *
@@ -1857,19 +1831,6 @@ interface EntityRepository<E, ID : Any> : Repository where E : Entity<ID> {
     fun findRef(
         predicate: PredicateBuilder<E, *, *>,
     ): Ref<E>? = selectRef().where(predicate).optionalResult
-
-    /**
-     * Retrieves an optional entity reference of type [E] matching the specified predicate lambda.
-     * Returns null if no matching entity is found.
-     *
-     * Example:
-     * ```kotlin
-     * val ref = repository.findRef { Entity_.name eq "Storm" }
-     * ```
-     *
-     * @return an optional entity reference, or null if none found.
-     */
-    fun findRef(predicate: () -> PredicateBuilder<E, *, *>): Ref<E>? = findRef(predicate())
 
     /**
      * Retrieves a single entity of type [E] matching the specified predicate.
@@ -1884,21 +1845,6 @@ interface EntityRepository<E, ID : Any> : Repository where E : Entity<ID> {
     ): E = select().where(predicate).singleResult
 
     /**
-     * Retrieves a single entity of type [E] matching the specified predicate lambda.
-     * Throws an exception if no entity or more than one entity is found.
-     *
-     * Example:
-     * ```kotlin
-     * val entity = repository.get { Entity_.name eq "Storm" }
-     * ```
-     *
-     * @return the matching entity.
-     * @throws st.orm.NoResultException if there is no result.
-     * @throws st.orm.NonUniqueResultException if more than one result.
-     */
-    fun get(predicate: () -> PredicateBuilder<E, *, *>): E = get(predicate())
-
-    /**
      * Retrieves a single entity of type [E] matching the specified predicate.
      * Throws an exception if no entity or more than one entity is found.
      *
@@ -1909,85 +1855,6 @@ interface EntityRepository<E, ID : Any> : Repository where E : Entity<ID> {
     fun getRef(
         predicate: PredicateBuilder<E, *, *>,
     ): Ref<E> = selectRef().where(predicate).singleResult
-
-    /**
-     * Retrieves a single entity reference of type [E] matching the specified predicate lambda.
-     * Throws an exception if no entity or more than one entity is found.
-     *
-     * Example:
-     * ```kotlin
-     * val ref = repository.getRef { Entity_.name eq "Storm" }
-     * ```
-     *
-     * @return the matching entity reference.
-     * @throws st.orm.NoResultException if there is no result.
-     * @throws st.orm.NonUniqueResultException if more than one result.
-     */
-    fun getRef(predicate: () -> PredicateBuilder<E, *, *>): Ref<E> = getRef(predicate())
-
-    /**
-     * Retrieves entities of type [E] matching the specified predicate.
-     *
-     * The resulting sequence is lazily loaded, meaning that the entities are only retrieved from the database as they
-     * are consumed by the sequence. This approach is efficient and minimizes the memory footprint, especially when
-     * dealing with large volumes of entities.
-     *
-     * Note: Calling this method does trigger the execution of the underlying
-     * query, so it should only be invoked when the query is intended to run. Since the sequence holds resources open
-     * while in use, it must be closed after usage to prevent resource leaks.
-     *
-     * @return a sequence of matching entities.
-     */
-    fun select(
-        predicate: PredicateBuilder<E, *, *>,
-    ): Flow<E> = select().where(predicate).resultFlow
-
-    /**
-     * Retrieves entities of type [E] matching the specified predicate lambda as a flow.
-     *
-     * The resulting flow is lazily loaded, meaning that the entities are only retrieved from the database as they
-     * are consumed by the flow.
-     *
-     * Example:
-     * ```kotlin
-     * val entities = repository.select { Entity_.active eq true }
-     * ```
-     *
-     * @return a flow of matching entities.
-     */
-    fun select(predicate: () -> PredicateBuilder<E, *, *>): Flow<E> = select(predicate())
-
-    /**
-     * Retrieves entities of type [E] matching the specified predicate.
-     *
-     * The resulting sequence is lazily loaded, meaning that the entities are only retrieved from the database as they
-     * are consumed by the sequence. This approach is efficient and minimizes the memory footprint, especially when
-     * dealing with large volumes of entities.
-     *
-     * Note: Calling this method does trigger the execution of the underlying
-     * query, so it should only be invoked when the query is intended to run. Since the sequence holds resources open
-     * while in use, it must be closed after usage to prevent resource leaks.
-     *
-     * @return a sequence of matching entities.
-     */
-    fun selectRef(
-        predicate: PredicateBuilder<E, *, *>,
-    ): Flow<Ref<E>> = selectRef().where(predicate).resultFlow
-
-    /**
-     * Retrieves entity references of type [E] matching the specified predicate lambda as a flow.
-     *
-     * The resulting flow is lazily loaded, meaning that the entities are only retrieved from the database as they
-     * are consumed by the flow.
-     *
-     * Example:
-     * ```kotlin
-     * val refs = repository.selectRef { Entity_.active eq true }
-     * ```
-     *
-     * @return a flow of matching entity references.
-     */
-    fun selectRef(predicate: () -> PredicateBuilder<E, *, *>): Flow<Ref<E>> = selectRef(predicate())
 
     /**
      * Counts entities of type [E] matching the specified field and value.
@@ -2024,18 +1891,6 @@ interface EntityRepository<E, ID : Any> : Repository where E : Entity<ID> {
     ): Long = selectCount().where(predicate).singleResult
 
     /**
-     * Counts entities of type [E] matching the specified predicate lambda.
-     *
-     * Example:
-     * ```kotlin
-     * val count = repository.count { Entity_.active eq true }
-     * ```
-     *
-     * @return the count of matching entities.
-     */
-    fun count(predicate: () -> PredicateBuilder<E, *, *>): Long = count(predicate())
-
-    /**
      * Checks if entities of type [E] matching the specified field and value exists.
      *
      * @param field metamodel reference of the entity field.
@@ -2068,18 +1923,6 @@ interface EntityRepository<E, ID : Any> : Repository where E : Entity<ID> {
     fun exists(
         predicate: PredicateBuilder<E, *, *>,
     ): Boolean = selectCount().where(predicate).singleResult > 0
-
-    /**
-     * Checks if entities of type [E] matching the specified predicate lambda exist.
-     *
-     * Example:
-     * ```kotlin
-     * val hasActive = repository.exists { Entity_.active eq true }
-     * ```
-     *
-     * @return true if any matching entities exist, false otherwise.
-     */
-    fun exists(predicate: () -> PredicateBuilder<E, *, *>): Boolean = exists(predicate())
 
     /**
      * Deletes entities of type [E] matching the specified field and value.
@@ -2128,26 +1971,6 @@ interface EntityRepository<E, ID : Any> : Repository where E : Entity<ID> {
         field: Metamodel<E, V>,
         values: Iterable<Ref<V>>,
     ): Int = delete().whereRef(field, values).executeUpdate()
-
-    /**
-     * Deletes entities of type [E] matching the specified predicate.
-     *
-     * @param predicate Lambda to build the WHERE clause.
-     * @return the number of entities deleted.
-     */
-    fun delete(predicate: PredicateBuilder<E, *, *>): Int = delete().where(predicate).executeUpdate()
-
-    /**
-     * Deletes entities of type [E] matching the specified predicate lambda.
-     *
-     * Example:
-     * ```kotlin
-     * val count = repository.delete { Entity_.active eq false }
-     * ```
-     *
-     * @return the number of entities deleted.
-     */
-    fun delete(predicate: () -> PredicateBuilder<E, *, *>): Int = delete(predicate())
 
     /**
      * Returns a page of entities using offset-based pagination.

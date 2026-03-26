@@ -19,6 +19,8 @@ import jakarta.annotation.Nonnull;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.Query;
 import java.util.function.Predicate;
+import java.util.function.UnaryOperator;
+import st.orm.PersistenceException;
 import st.orm.StormConfig;
 import st.orm.core.spi.Provider;
 import st.orm.core.template.impl.JpaTemplateImpl;
@@ -64,6 +66,23 @@ public interface JpaTemplate extends TemplateDecorator {
     }
 
     /**
+     * Creates a new ORM template for the given entity manager, with a custom template decorator.
+     *
+     * @param entityManager the entity manager.
+     * @param decorator a function that transforms the {@link TemplateDecorator} to customize template processing.
+     * @return the ORM template.
+     */
+    static ORMTemplate ORM(@Nonnull EntityManager entityManager,
+                           @Nonnull UnaryOperator<TemplateDecorator> decorator) {
+        var template = new JpaTemplateImpl(entityManager);
+        var decorated = decorator.apply(template);
+        if (!(decorated instanceof JpaTemplateImpl)) {
+            throw new PersistenceException("Decorator must return the same template type.");
+        }
+        return ((JpaTemplateImpl) decorated).toORM();
+    }
+
+    /**
      * Creates a new ORM template for the given entity manager, configured with the provided {@link StormConfig}.
      *
      * @param entityManager the entity manager.
@@ -72,6 +91,25 @@ public interface JpaTemplate extends TemplateDecorator {
      */
     static ORMTemplate ORM(@Nonnull EntityManager entityManager, @Nonnull StormConfig config) {
         return new JpaTemplateImpl(entityManager, config).toORM();
+    }
+
+    /**
+     * Creates a new ORM template for the given entity manager, configured with the provided {@link StormConfig}
+     * and a custom template decorator.
+     *
+     * @param entityManager the entity manager.
+     * @param config the Storm configuration to apply.
+     * @param decorator a function that transforms the {@link TemplateDecorator} to customize template processing.
+     * @return the ORM template.
+     */
+    static ORMTemplate ORM(@Nonnull EntityManager entityManager, @Nonnull StormConfig config,
+                           @Nonnull UnaryOperator<TemplateDecorator> decorator) {
+        var template = new JpaTemplateImpl(entityManager, config);
+        var decorated = decorator.apply(template);
+        if (!(decorated instanceof JpaTemplateImpl)) {
+            throw new PersistenceException("Decorator must return the same template type.");
+        }
+        return ((JpaTemplateImpl) decorated).toORM();
     }
 
     /**

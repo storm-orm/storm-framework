@@ -101,7 +101,7 @@ The selected update mode controls:
 In `OFF` mode, Storm bypasses dirty checking entirely. Every call to `update()` generates a full UPDATE statement that writes all columns, regardless of whether values have actually changed.
 
 ```kotlin
-val user = orm.find { User_.id eq 1 }
+val user = orm.find(User_.id eq 1)
 val updatedUser = user.copy(name = "New Name")
 
 // Always generates: UPDATE user SET email=?, name=?, city_id=? WHERE id=?
@@ -144,7 +144,7 @@ userRepository.update(users.map { processUser(it) })
 - If **any field changed**: A full-row UPDATE is executed (all columns are written)
 
 ```kotlin
-val user = orm.get { User_.id eq 1 }  // Storm observes: {id=1, email="a@b.com", name="Alice"}
+val user = orm.get(User_.id eq 1)  // Storm observes: {id=1, email="a@b.com", name="Alice"}
 
 // Scenario 1: No changes
 orm update user  // No SQL executed - entity unchanged
@@ -163,7 +163,7 @@ When multiple entities of the same type are updated in a transaction, JDBC can b
 
 ```kotlin
 // All updates have identical SQL shape - JDBC batches them
-val users = userRepository.findAll { User_.city eq city }
+val users = userRepository.findAll(User_.city eq city)
 userRepository.update(users.map { it.copy(lastLogin = now()) })
 ```
 
@@ -174,7 +174,7 @@ userRepository.update(users.map { it.copy(lastLogin = now()) })
 **Read-modify-write patterns:** When you load an entity and pass it back to update without modifications, ENTITY mode skips the UPDATE entirely.
 
 ```kotlin
-val user = orm.get { User_.id eq userId }
+val user = orm.get(User_.id eq userId)
 
 // No changes made - UPDATE is skipped
 orm update user
@@ -201,7 +201,7 @@ orm update updated
 `FIELD` mode provides the most granular control. Storm compares each field individually and generates UPDATE statements that include only the columns that actually changed. Like ENTITY mode, if no fields changed, Storm skips the UPDATE entirely.
 
 ```kotlin
-val user = orm.get { User_.id eq 1 }  // {id=1, email="a@b.com", name="Alice", bio="...", settings="..."}
+val user = orm.get(User_.id eq 1)  // {id=1, email="a@b.com", name="Alice", bio="...", settings="..."}
 
 // Only name changed
 val updated = user.copy(name = "Bob")
@@ -221,7 +221,7 @@ orm update updated2
 ```kotlin
 // Article has 20 columns including large 'content' field
 // But we're only updating the view count
-val article = orm.find { Article_.id eq articleId }
+val article = orm.find(Article_.id eq articleId)
 orm update article.copy(viewCount = article.viewCount + 1)
 // UPDATE article SET view_count=? WHERE id=?
 // The large 'content' column is NOT written
@@ -561,7 +561,7 @@ Dirty checking determines *what to update*. Optimistic locking determines *wheth
 
 ```kotlin
 // This does NOT prevent lost updates:
-val user = orm.find { User_.id eq 1 }
+val user = orm.find(User_.id eq 1)
 // ... another transaction modifies the same user ...
 orm update user.copy(name = "New Name")  // May overwrite other transaction's changes!
 
@@ -582,8 +582,8 @@ orm update user.copy(name = "New Name")
 Storm tracks which entity types are affected by each mutation so it can selectively invalidate observed state. For template-based updates (using `orm update entity`), Storm knows the entity type and only clears observed state of that type. However, when you execute raw SQL mutations without entity type information, Storm cannot determine which entities may have been affected. Rather than risk stale comparisons that could silently skip a necessary UPDATE, Storm clears all observed state in the current transaction:
 
 ```kotlin
-val user = orm.get { User_.id eq 1 }     // Storm observes User state
-val city = orm.get { City_.id eq 100 }   // Storm observes City state
+val user = orm.get(User_.id eq 1)     // Storm observes User state
+val city = orm.get(City_.id eq 100)   // Storm observes City state
 
 // Raw SQL mutation - Storm clears all observed state
 orm.execute("UPDATE user SET name = 'Changed' WHERE id = 1")
@@ -608,7 +608,7 @@ data class User(
     @Embedded val address: Address
 ) : Entity<Int>
 
-val user = orm.find { User_.id eq 1 }
+val user = orm.find(User_.id eq 1)
 // With FIELD mode: only changed columns in Address are updated
 orm update user.copy(address = user.address.copy(city = "New City"))
 // UPDATE user SET city=? WHERE id=?

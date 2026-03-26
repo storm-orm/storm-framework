@@ -1,4 +1,4 @@
-Fetch the Storm ORM documentation from https://orm.st/llms-full.txt and use it as context for the current conversation.
+Load the Storm ORM documentation and use it as context for the current conversation. The Storm skills already contain the core API reference, patterns, and conventions needed for development.
 
 After loading, briefly confirm what was loaded and offer to help with Storm development tasks such as:
 - Defining entities and relationships

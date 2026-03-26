@@ -45,28 +45,26 @@ process.on('exit', () => process.stdout.write(SHOW_CURSOR));
 // ─── Welcome screen ─────────────────────────────────────────────────────────
 
 const BODY_SOURCE = `
-
-
-          @@@@@@@@@@@@@@@@@@@@
-      @@@@                    @@@@
-     @@@                #       @@@
-     @@@@@            ###      @@@@
-     @@@@@@@@@@@@@@  ###  @@@@@@@@@
-      @@@@@@@@@@@@  ###  @@@@@@@@@
-     @   @@@@@@@@  ###  @@@@@@@   @
-     @@@@        ####          @@@@
-     @@@@@@@@@  ####      @@@@@@@@@
-      @@@@@@@  ##########  @@@@@@@
-     @     @@ #########   @@@     @
-     @@@@@        ####        @@@@@
-     @@@@@@@@@@  ####  @@@@@@@@@@@@
-      @@@@@@@@@ ###  @@@@@@@@@@@@@
-         @@@@@ ###  @@@@@@@@@@@
-              ###
-             ##
+     @@@@@@@@@@@@@@@@@@@@
+ @@@@                    @@@@
+@@@                #       @@@
+@@@@@            ###      @@@@
+@@@@@@@@@@@@@@  ###  @@@@@@@@@
+ @@@@@@@@@@@@  ###  @@@@@@@@@
+@   @@@@@@@@  ###  @@@@@@@   @
+@@@@        ####          @@@@
+@@@@@@@@@  ####      @@@@@@@@@
+ @@@@@@@  ##########  @@@@@@@
+@     @@ #########   @@@     @
+@@@@@        ####        @@@@@
+@@@@@@@@@@  ####  @@@@@@@@@@@@
+ @@@@@@@@@ ###  @@@@@@@@@@@@@
+    @@@@@ ###  @@@@@@@@@@@
+         ###
+        ##
 `.trimEnd();
 
-const bodyLines   = BODY_SOURCE.split('\n');
+const bodyLines   = BODY_SOURCE.replace(/^\n/, '').split('\n');
 const artWidth    = Math.max(...bodyLines.map(s => s.length));
 const artHeight   = bodyLines.length;
 const paddedLines = Array.from({ length: artHeight }, (_, i) =>
@@ -189,6 +187,61 @@ function ringGlow(x, y, now) {
   return false;
 }
 
+// --- Matrix rain (demo mode) ---
+
+let demoMode = false;
+const matrixDrops = [];
+
+function initMatrixRain() {
+  matrixDrops.length = 0;
+  for (let x = 0; x < artWidth; x++) {
+    matrixDrops.push({
+      y: Math.random() * artHeight * 1.5 - artHeight,
+      speed: 0.09 + Math.random() * 0.12,
+      trailLength: 4 + Math.floor(Math.random() * 7),
+    });
+  }
+}
+
+const MATRIX_GLYPHS = 'ｦｧｨｩｪｫｬｭｮｯｰｱｲｳｴｵｶｷｸｹｺｻｼｽｾｿﾀﾁﾂﾃﾄﾅﾆﾇﾈﾉﾊﾋﾌﾍﾎﾏﾐﾑﾒﾓﾔﾕﾖﾗﾘﾙﾚﾛﾜﾝ';
+
+function matrixGlyph(x, y, now) {
+  const idx = (x * 17 + y * 31 + Math.floor(now / 80)) % MATRIX_GLYPHS.length;
+  return MATRIX_GLYPHS[idx];
+}
+
+function updateMatrixRain() {
+  for (const drop of matrixDrops) {
+    drop.y += drop.speed;
+    if (drop.y - drop.trailLength > artHeight + 3) {
+      drop.y = -1 - Math.random() * artHeight * 0.4;
+      drop.speed = 0.08 + Math.random() * 0.12;
+      drop.trailLength = 3 + Math.floor(Math.random() * 6);
+    }
+  }
+}
+
+function matrixIntensityAt(x, y) {
+  const drop = matrixDrops[x];
+  if (!drop) return 0;
+  const dist = drop.y - y;
+  if (dist < -0.5 || dist > drop.trailLength) return 0;
+  const t = Math.max(0, dist) / drop.trailLength;
+  if (dist < 0.5) return 5;
+  if (t < 0.15) return 4;
+  if (t < 0.35) return 3;
+  if (t < 0.6) return 2;
+  return 1;
+}
+
+function matrixColor(intensity) {
+  if (intensity === 1) return DIM + BOLT_BASE;
+  if (intensity === 2) return BOLD + BOLT_BASE;
+  if (intensity === 3) return BOLD + BOLT_WARM;
+  if (intensity === 4) return BOLD + BOLT_HOT;
+  return BOLD + BOLT_WHITE;
+}
+
 // --- Text overlay ---
 
 function stripAnsi(s) { return s.replace(/\x1b\[[0-9;]*m/g, ''); }
@@ -198,15 +251,27 @@ function centerLine(line, cols) {
   return ' '.repeat(pad) + line;
 }
 
-const textLines = [
+const INIT_TEXT_LINES = [
   '',
   `${GRAY}Bootstrap your project for Storm ORM${RESET}`,
   '',
-  `${BOLD}${BOLT_HOT}\u2022${WHITE} Configure Storm rules${RESET}`,
-  `${BOLD}${BOLT_HOT}\u2022${WHITE} Install Storm skills${RESET}`,
+  `${BOLD}${BOLT_HOT}\u2022${WHITE} Install Storm rules and skills${RESET}`,
+  `${BOLD}${BOLT_HOT}\u2022${WHITE} Storm MCP for database awareness and validation (optional)${RESET}`,
   '',
   `${GRAY}Press Enter to select tools...${RESET}`,
 ];
+
+const DEMO_TEXT_LINES = [
+  '',
+  `${GRAY}Storm Fu - Training Program${RESET}`,
+  '',
+  `${BOLD}${BOLT_HOT}\u2022${WHITE} Live demo of building an app with the Storm AI workflow${RESET}`,
+  `${BOLD}${BOLT_HOT}\u2022${WHITE} Storm MCP enables database awareness and validation${RESET}`,
+  '',
+  `${GRAY}Press Enter to follow the white rabbit${RESET}`,
+];
+
+let activeTextLines = INIT_TEXT_LINES;
 
 // --- Render ---
 
@@ -215,17 +280,35 @@ function renderFrame(now) {
   const rows = process.stdout.rows    || 40;
   const rendered = [];
 
+  if (demoMode) updateMatrixRain();
+
   for (let y = 0; y < artHeight; y++) {
     let out = '';
     for (let x = 0; x < artWidth; x++) {
-      if (!hasBody(x, y)) { out += ' '; continue; }
-      if (hasBolt(x, y))  out += boltColorCode(x, y, now) + '#' + RESET;
-      else                 out += dbColor(y, ringGlow(x, y, now)) + '@' + RESET;
+      if (!hasBody(x, y)) {
+        if (demoMode) {
+          const mi = matrixIntensityAt(x, y);
+          if (mi >= 4)     out += '\x1b[38;5;237m' + matrixGlyph(x, y, now) + RESET;
+          else if (mi >= 2) out += '\x1b[38;5;235m' + matrixGlyph(x, y, now) + RESET;
+          else              out += '\x1b[38;5;233m' + matrixGlyph(x, y, now) + RESET;
+        } else out += ' ';
+        continue;
+      }
+      if (demoMode) {
+        const mi = matrixIntensityAt(x, y);
+        const ch = hasBolt(x, y) ? '#' : '@';
+        if (mi >= 3) out += matrixColor(mi) + matrixGlyph(x, y, now) + RESET;
+        else if (mi > 0) out += matrixColor(mi) + ch + RESET;
+        else              out += dbColor(y, false) + ch + RESET;
+      } else {
+        if (hasBolt(x, y))  out += boltColorCode(x, y, now) + '#' + RESET;
+        else                 out += dbColor(y, ringGlow(x, y, now)) + '@' + RESET;
+      }
     }
     if (out.trim().length > 0) rendered.push(centerLine(out, cols));
   }
 
-  for (const tl of textLines) rendered.push(centerLine(tl, cols));
+  for (const tl of activeTextLines) rendered.push(centerLine(tl, cols));
 
   const topPad   = Math.max(0, Math.floor((rows - rendered.length) / 3));
   const blankLine = ' '.repeat(cols);
@@ -238,8 +321,14 @@ function renderFrame(now) {
   return frame;
 }
 
-async function printWelcome() {
-  nextStrike = Date.now() + Math.random() * 100;
+async function printWelcome(customTextLines) {
+  activeTextLines = customTextLines || INIT_TEXT_LINES;
+  demoMode = customTextLines === DEMO_TEXT_LINES;
+  if (demoMode) {
+    initMatrixRain();
+  } else {
+    nextStrike = Date.now() + Math.random() * 100;
+  }
   process.stdout.write(HIDE_CURSOR + CLEAR);
 
   const onResize = () => process.stdout.write(CLEAR);
@@ -247,10 +336,12 @@ async function printWelcome() {
 
   const timer = setInterval(() => {
     const now = Date.now();
-    if (!strikeActive && now > nextStrike) startStrike(now);
-    if (strikeActive && now > strikeStart + strikeDuration) {
-      strikeActive = false;
-      scheduleStrike(now);
+    if (!demoMode) {
+      if (!strikeActive && now > nextStrike) startStrike(now);
+      if (strikeActive && now > strikeStart + strikeDuration) {
+        strikeActive = false;
+        scheduleStrike(now);
+      }
     }
     process.stdout.write(HOME);
     process.stdout.write(renderFrame(now));
@@ -543,13 +634,43 @@ async function textInput({ message, defaultValue = '', mask = false }) {
   });
 }
 
+// ─── Project config (.storm.json) ────────────────────────────────────────────
+
+const CONFIG_FILE = '.storm.json';
+
+function readProjectConfig() {
+  const configPath = join(process.cwd(), CONFIG_FILE);
+  try {
+    return JSON.parse(readFileSync(configPath, 'utf-8'));
+  } catch {
+    return null;
+  }
+}
+
+function writeProjectConfig(tools, languages) {
+  const configPath = join(process.cwd(), CONFIG_FILE);
+  writeFileSync(configPath, JSON.stringify({ tools, languages }, null, 2) + '\n');
+}
+
 // ─── Content (fetched from orm.st at runtime) ───────────────────────────────
 
 const SKILLS_BASE_URL = 'https://orm.st/skills';
 const STORM_SKILL_MARKER = '<!-- storm-managed: storm-docs -->';
 
+// --dev <dir> flag: read skills from a local directory instead of orm.st.
+let devSkillsDir = null;
+{
+  const devIdx = process.argv.indexOf('--dev');
+  if (devIdx !== -1 && process.argv[devIdx + 1]) {
+    devSkillsDir = process.argv[devIdx + 1];
+  }
+}
+
 async function fetchRules() {
   try {
+    if (devSkillsDir) {
+      return readFileSync(join(devSkillsDir, 'storm-rules.md'), 'utf-8');
+    }
     const res = await fetch(`${SKILLS_BASE_URL}/storm-rules.md`);
     if (!res.ok) throw new Error(`${res.status}`);
     return await res.text();
@@ -561,6 +682,9 @@ async function fetchRules() {
 
 async function fetchSkillIndex(language) {
   try {
+    if (devSkillsDir) {
+      return JSON.parse(readFileSync(join(devSkillsDir, `index-${language}.json`), 'utf-8'));
+    }
     const res = await fetch(`${SKILLS_BASE_URL}/index-${language}.json`);
     if (!res.ok) throw new Error(`${res.status}`);
     return await res.json();
@@ -569,9 +693,28 @@ async function fetchSkillIndex(language) {
   }
 }
 
+const DEV_SETUP_APPEND = `
+
+## Development Mode
+
+This project uses a local (unpublished) version of Storm. Add \`mavenLocal()\` as the first repository in Gradle so it resolves Storm artifacts from the local Maven cache (\`~/.m2/repository\`):
+
+\`\`\`kotlin
+repositories {
+    mavenLocal()
+    mavenCentral()
+}
+\`\`\`
+`;
+
 async function fetchSkill(name) {
-  const url = `${SKILLS_BASE_URL}/${name}.md`;
   try {
+    if (devSkillsDir) {
+      let content = readFileSync(join(devSkillsDir, `${name}.md`), 'utf-8');
+      if (name === 'storm-setup') content = content.trimEnd() + '\n' + DEV_SETUP_APPEND;
+      return content.trimEnd() + '\n\n' + STORM_SKILL_MARKER + '\n';
+    }
+    const url = `${SKILLS_BASE_URL}/${name}.md`;
     const res = await fetch(url);
     if (!res.ok) throw new Error(`${res.status}`);
     const content = await res.text();
@@ -1109,79 +1252,85 @@ function registerMcp(toolConfig, stormDir, created, appended) {
 
 // ─── Database setup ──────────────────────────────────────────────────────────
 
-async function setupDatabase() {
+async function setupDatabase(preConfigured) {
   const stormDir = join(homedir(), '.storm');
   const connectionPath = join(stormDir, 'connection.json');
 
-  // Check for existing config.
-  if (existsSync(connectionPath)) {
-    try {
-      const existing = JSON.parse(readFileSync(connectionPath, 'utf-8'));
-      console.log(dimText(`  Current connection: ${existing.dialect}://${existing.host || ''}${existing.port ? ':' + existing.port : ''}/${existing.database}`));
-      console.log();
-      const reconfigure = await confirm({ message: 'Reconfigure?', defaultValue: false });
-      if (!reconfigure) return stormDir;
-      console.log();
-    } catch {}
-  }
-
-  const dialect = await select({
-    message: 'Database dialect',
-    choices: [
-      { name: 'PostgreSQL',  value: 'postgresql' },
-      { name: 'MySQL',       value: 'mysql' },
-      { name: 'MariaDB',     value: 'mariadb' },
-      { name: 'Oracle',      value: 'oracle' },
-      { name: 'SQL Server',  value: 'mssqlserver' },
-      { name: 'SQLite',      value: 'sqlite' },
-      { name: 'H2',          value: 'h2' },
-    ],
-  });
-
-  const dialectConfig = DIALECTS[dialect];
   let connection;
 
-  if (dialectConfig.fileBased) {
-    const database = await textInput({ message: 'Database file path' });
-    if (!database) {
-      console.log(boltYellow('\n  Database file path is required.'));
-      return null;
-    }
-    connection = { dialect, database };
+  if (preConfigured) {
+    // Non-interactive: use the provided connection details directly.
+    connection = preConfigured;
   } else {
-    if (dialect === 'h2') {
-      console.log(dimText('  Note: Requires H2 running with PG wire protocol (-pgPort)'));
-    }
-    if (dialect === 'oracle') {
-      console.log(dimText('  Note: Uses oracledb thin mode (no Oracle Client required)'));
-    }
-
-    const defaultPort = String(dialectConfig.defaultPort);
-    const host     = await textInput({ message: 'Host',     defaultValue: 'localhost' });
-    const port     = await textInput({ message: 'Port',     defaultValue: defaultPort });
-    const database = await textInput({ message: 'Database' });
-    const username = await textInput({ message: 'Username', defaultValue: 'storm' });
-    const password = await textInput({ message: 'Password', mask: true });
-
-    if (!database) {
-      console.log(boltYellow('\n  Database name is required.'));
-      return null;
+    // Interactive: prompt the user.
+    if (existsSync(connectionPath)) {
+      try {
+        const existing = JSON.parse(readFileSync(connectionPath, 'utf-8'));
+        console.log(dimText(`  Current connection: ${existing.dialect}://${existing.host || ''}${existing.port ? ':' + existing.port : ''}/${existing.database}`));
+        console.log();
+        const reconfigure = await confirm({ message: 'Reconfigure?', defaultValue: false });
+        if (!reconfigure) return stormDir;
+        console.log();
+      } catch {}
     }
 
-    connection = {
-      dialect,
-      host: host || 'localhost',
-      port: parseInt(port || defaultPort, 10),
-      database,
-      username: username || 'storm',
-      password: password || '',
-    };
+    const dialect = await select({
+      message: 'Database dialect',
+      choices: [
+        { name: 'PostgreSQL',  value: 'postgresql' },
+        { name: 'MySQL',       value: 'mysql' },
+        { name: 'MariaDB',     value: 'mariadb' },
+        { name: 'Oracle',      value: 'oracle' },
+        { name: 'SQL Server',  value: 'mssqlserver' },
+        { name: 'SQLite',      value: 'sqlite' },
+        { name: 'H2',          value: 'h2' },
+      ],
+    });
+
+    const dialectConfig = DIALECTS[dialect];
+
+    if (dialectConfig.fileBased) {
+      const database = await textInput({ message: 'Database file path' });
+      if (!database) {
+        console.log(boltYellow('\n  Database file path is required.'));
+        return null;
+      }
+      connection = { dialect, database };
+    } else {
+      if (dialect === 'h2') {
+        console.log(dimText('  Note: Requires H2 running with PG wire protocol (-pgPort)'));
+      }
+      if (dialect === 'oracle') {
+        console.log(dimText('  Note: Uses oracledb thin mode (no Oracle Client required)'));
+      }
+
+      const defaultPort = String(dialectConfig.defaultPort);
+      const host     = await textInput({ message: 'Host',     defaultValue: 'localhost' });
+      const port     = await textInput({ message: 'Port',     defaultValue: defaultPort });
+      const database = await textInput({ message: 'Database' });
+      const username = await textInput({ message: 'Username', defaultValue: 'storm' });
+      const password = await textInput({ message: 'Password', mask: true });
+
+      if (!database) {
+        console.log(boltYellow('\n  Database name is required.'));
+        return null;
+      }
+
+      connection = {
+        dialect,
+        host: host || 'localhost',
+        port: parseInt(port || defaultPort, 10),
+        database,
+        username: username || 'storm',
+        password: password || '',
+      };
+    }
   }
 
   // Install driver.
-  const driverPackage = dialectConfig.driver;
+  const driverPackage = DIALECTS[connection.dialect].driver;
   console.log();
-  console.log(dimText(`  Installing ${dialectConfig.name} driver...`));
+  console.log(dimText(`  Installing ${DIALECTS[connection.dialect].name} driver...`));
 
   mkdirSync(stormDir, { recursive: true });
 
@@ -1266,7 +1415,9 @@ function detectConfiguredLanguages(toolConfigs) {
 }
 
 async function update() {
-  const tools = detectConfiguredTools();
+  const projectConfig = readProjectConfig();
+
+  const tools = projectConfig?.tools ?? detectConfiguredTools();
   if (tools.length === 0) {
     console.log(boltYellow('\n  No configured AI tools found. Run `storm init` first.\n'));
     return;
@@ -1275,10 +1426,12 @@ async function update() {
   const toolConfigs = tools.map(t => TOOL_CONFIGS[t]);
   const skillToolConfigs = toolConfigs.filter(c => c.skillPath);
 
-  // Detect languages from existing installed skills.
-  let languages = detectConfiguredLanguages(skillToolConfigs);
+  // Use persisted language choice, fall back to detection from skill markers, then both.
+  let languages = projectConfig?.languages;
+  if (!languages || languages.length === 0) {
+    languages = detectConfiguredLanguages(skillToolConfigs);
+  }
   if (languages.length === 0) {
-    // Fallback: if we can't detect languages, fetch both indexes and use whichever has skills.
     languages = ['kotlin', 'java'];
   }
 
@@ -1287,7 +1440,7 @@ async function update() {
   console.log();
 
   // Fetch rules and skill indexes.
-  console.log(dimText('  Fetching content from https://orm.st...'));
+  console.log(dimText(`  Fetching content from ${devSkillsDir ? devSkillsDir : 'https://orm.st'}...`));
   const fetchPromises = [fetchRules(), ...languages.map(l => fetchSkillIndex(l))];
   const [stormRules, ...skillIndexes] = await Promise.all(fetchPromises);
   if (!stormRules) {
@@ -1313,7 +1466,7 @@ async function update() {
 
   // Fetch and install skills.
   if (skillToolConfigs.length > 0) {
-    console.log(dimText('  Fetching skills from https://orm.st...'));
+    console.log(dimText(`  Fetching skills from ${devSkillsDir ? devSkillsDir : 'https://orm.st'}...`));
     const fetchedSkills = new Map();
     for (const skillName of skillNames) {
       const content = await fetchSkill(skillName);
@@ -1481,6 +1634,16 @@ async function setup() {
     return;
   }
 
+  // Persist tool and language choices so `storm update` can use them.
+  writeProjectConfig(tools, languages);
+
+  // Add .storm.json to .gitignore (machine-specific config).
+  const gitignorePath = join(process.cwd(), '.gitignore');
+  let gitignore = existsSync(gitignorePath) ? readFileSync(gitignorePath, 'utf-8') : '';
+  if (!gitignore.includes(CONFIG_FILE)) {
+    appendFileSync(gitignorePath, `\n# Storm config (machine-specific)\n${CONFIG_FILE}\n`);
+  }
+
   console.log();
 
   // Step 2: Fetch and install rules.
@@ -1488,7 +1651,7 @@ async function setup() {
   const appended = [];
   const skipped  = [];
 
-  console.log(dimText('  Fetching content from https://orm.st...'));
+  console.log(dimText(`  Fetching content from ${devSkillsDir ? devSkillsDir : 'https://orm.st'}...`));
   const fetchPromises = [fetchRules(), ...languages.map(l => fetchSkillIndex(l))];
   const [stormRules, ...skillIndexes] = await Promise.all(fetchPromises);
   if (!stormRules) {
@@ -1512,7 +1675,7 @@ async function setup() {
   const fetchedSkills = new Map();
 
   if (skillToolConfigs.length > 0) {
-    console.log(dimText('  Fetching skills from https://orm.st...'));
+    console.log(dimText(`  Fetching skills from ${devSkillsDir ? devSkillsDir : 'https://orm.st'}...`));
     for (const skillName of skillNames) {
       const content = await fetchSkill(skillName);
       if (!content) { skipped.push(skillName + ' (fetch failed)'); continue; }
@@ -1645,6 +1808,209 @@ async function setup() {
   console.log();
 }
 
+// ─── Demo ─────────────────────────────────────────────────────────────────────
+
+async function demo() {
+  await printWelcome(DEMO_TEXT_LINES);
+
+  // Step 1: Select AI tool.
+  console.log('  Storm Demo creates a Kotlin project in this empty directory and');
+  console.log('  installs a skill that guides your AI tool to build a web application');
+  console.log('  demonstrating Storm ORM using the public IMDB dataset.');
+  console.log();
+  const tool = await select({
+    message: 'Which AI tool will you use?',
+    choices: [
+      { name: 'Claude Code',     value: 'claude' },
+      { name: 'Cursor',          value: 'cursor' },
+      { name: 'GitHub Copilot',  value: 'copilot' },
+      { name: 'Windsurf',        value: 'windsurf' },
+    ],
+  });
+
+  // Step 2: Check if directory is empty (ignoring hidden files/directories).
+  const cwd = process.cwd();
+  const entries = readdirSync(cwd).filter(e => !e.startsWith('.'));
+  if (entries.length > 0) {
+    console.log();
+    console.log(boltYellow('  This directory is not empty.'));
+    console.log(dimText('  Storm Demo requires an empty directory. Create a new directory and'));
+    console.log(dimText('  run storm demo from there.'));
+    console.log();
+    return;
+  }
+
+  const tools = [tool];
+  const config = TOOL_CONFIGS[tool];
+  const created = [];
+  const appended = [];
+  const skipped = [];
+
+  // Step 3: Fetch rules, Kotlin skill index, and demo skill index.
+  console.log();
+  console.log(dimText(`  Fetching content from ${devSkillsDir ? devSkillsDir : 'https://orm.st'}...`));
+  const [stormRules, skillIndex, demoIndex] = await Promise.all([
+    fetchRules(),
+    fetchSkillIndex('kotlin'),
+    fetchSkillIndex('demo'),
+  ]);
+
+  if (!stormRules) {
+    console.log(boltYellow('\n  Could not fetch Storm rules from https://orm.st. Check your connection.'));
+    return;
+  }
+
+  const skillNames = skillIndex?.skills ?? [];
+  const demoSkillNames = demoIndex?.skills ?? [];
+
+  // Step 4: Install rules block.
+  if (config.rulesFile) {
+    installRulesBlock(join(cwd, config.rulesFile), stormRules, created, appended);
+  }
+
+  // Step 5: Fetch and install Kotlin skills + demo skills.
+  const installedSkillNames = [];
+  if (config.skillPath) {
+    console.log(dimText(`  Fetching skills from ${devSkillsDir ? devSkillsDir : 'https://orm.st'}...`));
+    const fetchedSkills = new Map();
+    for (const skillName of [...skillNames, ...demoSkillNames]) {
+      const content = await fetchSkill(skillName);
+      if (!content) { skipped.push(skillName + ' (fetch failed)'); continue; }
+      fetchedSkills.set(skillName, content);
+      installedSkillNames.push(skillName);
+    }
+    for (const [name, content] of fetchedSkills) {
+      installSkill(name, content, config, created);
+    }
+  }
+
+  // Step 6: Choose database and set up MCP server.
+  const dialect = await select({
+    message: 'Which database?',
+    choices: [
+      { name: 'PostgreSQL',  value: 'postgresql' },
+      { name: 'MySQL',       value: 'mysql' },
+      { name: 'MariaDB',     value: 'mariadb' },
+      { name: 'Oracle',      value: 'oracle' },
+      { name: 'SQL Server',  value: 'mssqlserver' },
+      { name: 'SQLite',      value: 'sqlite' },
+      { name: 'H2',          value: 'h2' },
+    ],
+  });
+  const dialectInfo = DIALECTS[dialect] || DIALECTS.postgresql;
+  let demoConnection;
+  if (dialectInfo.fileBased) {
+    demoConnection = { dialect, database: 'imdb.db' };
+  } else {
+    demoConnection = {
+      dialect,
+      host: 'localhost',
+      port: dialectInfo.defaultPort,
+      database: 'imdb',
+      username: 'storm',
+      password: 'storm',
+    };
+  }
+
+  console.log(dimText('  Setting up MCP server for database schema access...'));
+  const stormDir = await setupDatabase(demoConnection);
+  const dbConfigured = stormDir !== null;
+
+  if (dbConfigured) {
+    // Register MCP for the selected tool.
+    registerMcp(config, stormDir, created, appended);
+
+    // Add MCP config file to .gitignore.
+    if (config.mcpFile) {
+      const gitignorePath = join(cwd, '.gitignore');
+      let gitignore = existsSync(gitignorePath) ? readFileSync(gitignorePath, 'utf-8') : '';
+      if (!gitignore.includes(config.mcpFile)) {
+        appendFileSync(gitignorePath, `\n# Storm MCP (machine-specific paths)\n${config.mcpFile}\n`);
+      }
+    }
+
+    // Fetch and install schema rules into the rules block.
+    const schemaRules = await fetchSkill('storm-schema-rules');
+    if (config.rulesFile && schemaRules) {
+      const rulesPath = join(cwd, config.rulesFile);
+      if (existsSync(rulesPath)) {
+        const existing = readFileSync(rulesPath, 'utf-8');
+        if (!existing.includes('Database Schema Access')) {
+          const endMarker = existing.indexOf(MARKER_END);
+          if (endMarker !== -1) {
+            const updated = existing.substring(0, endMarker) + '\n' + schemaRules.replace('\n' + STORM_SKILL_MARKER, '') + '\n' + existing.substring(endMarker);
+            writeFileSync(rulesPath, updated);
+            appended.push(config.rulesFile);
+          }
+        }
+      }
+    }
+
+    // Fetch and install schema-dependent skills.
+    const schemaSkillNames = skillIndex?.schemaSkills ?? [];
+    if (config.skillPath) {
+      for (const skillName of schemaSkillNames) {
+        const content = await fetchSkill(skillName);
+        if (!content) { skipped.push(skillName + ' (fetch failed)'); continue; }
+        installSkill(skillName, content, config, created);
+        installedSkillNames.push(skillName);
+      }
+    }
+  }
+
+  // Step 7: Write project config and .gitignore.
+  writeProjectConfig(tools, ['kotlin']);
+
+  const gitignorePath = join(cwd, '.gitignore');
+  if (!existsSync(gitignorePath)) {
+    writeFileSync(gitignorePath, `# Storm config (machine-specific)\n${CONFIG_FILE}\n`);
+    created.push('.gitignore');
+  } else {
+    let gitignore = readFileSync(gitignorePath, 'utf-8');
+    if (!gitignore.includes(CONFIG_FILE)) {
+      appendFileSync(gitignorePath, `\n# Storm config (machine-specific)\n${CONFIG_FILE}\n`);
+    }
+  }
+
+  // Step 8: Clean stale skills.
+  if (config.skillPath) {
+    cleanStaleSkills([config], installedSkillNames, skipped);
+  }
+
+  // Summary.
+  const uniqueCreated  = [...new Set(created)];
+  const uniqueAppended = [...new Set(appended)];
+
+  console.log();
+  if (uniqueCreated.length > 0) {
+    console.log(boltYellow('  Created:'));
+    uniqueCreated.forEach(f => console.log(boltYellow(`    + ${f}`)));
+  }
+  if (uniqueAppended.length > 0) {
+    console.log(boltYellow('  Updated:'));
+    uniqueAppended.forEach(f => console.log(boltYellow(`    ~ ${f}`)));
+  }
+  if (skipped.length > 0) {
+    console.log(dimText('  Skipped:'));
+    skipped.forEach(f => console.log(dimText(`    - ${f}`)));
+  }
+
+  // Instructions.
+  console.log();
+  console.log(bold("  You're all set!"));
+  console.log();
+  if (tool === 'claude') {
+    console.log(`  Start ${boltYellow('Claude Code')} in this directory and type:`);
+    console.log();
+    console.log(`    ${bold('/storm-demo')}`);
+  } else {
+    console.log(`  Open this directory in ${boltYellow(config.name)} and ask:`);
+    console.log();
+    console.log(`    ${bold('Run the Storm demo')}`);
+  }
+  console.log();
+}
+
 // ─── Entry ───────────────────────────────────────────────────────────────────
 
 async function run() {
@@ -1657,12 +2023,14 @@ async function run() {
 
   ${dimText('Usage:')}
     storm init               Configure rules, skills, and database (default)
+    storm demo               Create a demo project in an empty directory
     storm update             Update rules and skills (non-interactive)
     storm mcp                Re-register MCP servers for configured tools
 
   ${dimText('Options:')}
     --help, -h               Show this help message
     --version, -v            Show version
+    --dev <dir>              Read skills from a local directory instead of orm.st
 
   ${dimText('Learn more:')}  https://orm.st/ai
 `);
@@ -1678,6 +2046,8 @@ async function run() {
     await update();
   } else if (command === 'mcp') {
     await updateMcp();
+  } else if (command === 'demo') {
+    await demo();
   } else {
     await setup();
   }

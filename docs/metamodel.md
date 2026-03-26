@@ -81,10 +81,10 @@ Once the metamodel is generated, you use the `_` suffixed classes in place of st
 
 ```kotlin
 // Type-safe field reference
-val users = orm.findAll { User_.email eq email }
+val users = orm.findAll(User_.email eq email)
 
 // Type-safe access to nested fields throughout the entire entity graph
-val users = orm.findAll { User_.city.country.code eq "US" }
+val users = orm.findAll(User_.city.country.code eq "US")
 
 // Multiple conditions
 val users = orm.entity(User::class)

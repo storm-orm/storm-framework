@@ -82,6 +82,7 @@ typealias TemplateBuilder = TemplateContext.() -> String
  * @see TemplateBuilder
  * @see TemplateString
  */
+@SqlDsl
 interface TemplateContext {
 
     /**

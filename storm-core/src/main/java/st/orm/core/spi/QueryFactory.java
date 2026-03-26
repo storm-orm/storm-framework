@@ -60,7 +60,7 @@ public interface QueryFactory {
 
     /**
      * Returns the {@link DataSource} backing this factory, or {@code null} if the factory was created from a raw
-     * {@link java.sql.Connection} or JPA {@link jakarta.persistence.EntityManager}.
+     * {@link java.sql.Connection} or JPA {@code EntityManager}.
      *
      * @return the data source, or {@code null}.
      * @since 1.9

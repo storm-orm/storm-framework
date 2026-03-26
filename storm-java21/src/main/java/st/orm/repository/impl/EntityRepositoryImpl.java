@@ -320,16 +320,6 @@ public final class EntityRepositoryImpl<E extends Entity<ID>, ID> implements Ent
     }
 
     @Override
-    public Stream<E> selectAll() {
-        return core.selectAll();
-    }
-
-    @Override
-    public Stream<Ref<E>> selectAllRef() {
-        return selectRef().getResultStream();
-    }
-
-    @Override
     public Stream<E> selectById(@Nonnull Stream<ID> ids) {
         return core.selectById(ids);
     }

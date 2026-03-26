@@ -358,10 +358,10 @@ public class RepositoryPreparedStatementIntegrationTest {
     @Test
     public void testUpdateList() {
         var repository = ORMTemplate.of(dataSource).entity(Vet.class);
-        try (var stream1 = repository.selectAll()) {
+        try (var stream1 = repository.select().getResultStream()) {
             var list1 = stream1.toList();
             repository.update(list1);
-            try (var stream2 = repository.selectAll()) {
+            try (var stream2 = repository.select().getResultStream()) {
                 var list2 = stream2.toList();
                 assertEquals(list1, list2);
             }
@@ -675,7 +675,7 @@ public class RepositoryPreparedStatementIntegrationTest {
 
     @Test
     public void testSelectNullOwnerRef() {
-        try (var stream = ORMTemplate.of(dataSource).entity(PetWithNullableOwnerRef.class).selectAll()) {
+        try (var stream = ORMTemplate.of(dataSource).entity(PetWithNullableOwnerRef.class).select().getResultStream()) {
             var pet = stream.filter(p -> p.name().equals("Sly")).findFirst().orElseThrow();
             assertNull(pet.owner());
         }
@@ -1240,7 +1240,7 @@ public class RepositoryPreparedStatementIntegrationTest {
     @Test
     public void deleteBatch() {
         var repo = ORMTemplate.of(dataSource).entity(Visit.class);
-        try (var stream = repo.selectAll()) {
+        try (var stream = repo.select().getResultStream()) {
             repo.delete(stream);
         }
         assertEquals(0, repo.count());
@@ -1249,7 +1249,7 @@ public class RepositoryPreparedStatementIntegrationTest {
     @Test
     public void deleteRefBatch() {
         var repo = ORMTemplate.of(dataSource).entity(Visit.class);
-        try (var stream = repo.selectAll().map(Ref::of)) {
+        try (var stream = repo.select().getResultStream().map(Ref::of)) {
             repo.deleteByRef(stream);
         }
         assertEquals(0, repo.count());

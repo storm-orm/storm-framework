@@ -418,7 +418,7 @@ Storm does not store collections on entities. This is intentional: collection fi
 
 ```kotlin
 // Instead of user.orders (not supported)
-val orders = orm.findAll { Order_.user eq user }
+val orders = orm.findAll(Order_.user eq user)
 ```
 
 ### Why doesn't Storm support lazy loading?

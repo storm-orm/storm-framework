@@ -19,7 +19,6 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.asFlow
 import kotlinx.coroutines.flow.fold
 import kotlinx.coroutines.flow.map
-import kotlinx.coroutines.stream.consumeAsFlow
 import st.orm.Data
 import st.orm.Entity
 import st.orm.Metamodel
@@ -153,8 +152,6 @@ class EntityRepositoryImpl<E, ID : Any>(
     override fun delete(entities: Iterable<E>) = core.delete(entities)
 
     override fun deleteByRef(refs: Iterable<Ref<E>>) = core.deleteByRef(refs)
-
-    override fun selectAll(): Flow<E> = core.selectAll().consumeAsFlow()
 
     override fun selectById(ids: Flow<ID>): Flow<E> = ids.chunked(core.defaultChunkSize)
         .flatMapConcat { core.findAllById(it).asFlow() }

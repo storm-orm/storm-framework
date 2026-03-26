@@ -23,10 +23,10 @@ The simplest way to enable SQL logging is to annotate the repository interface i
 interface UserRepository : EntityRepository<User, Int> {
 
     fun findByEmail(email: String): User? =
-        find { User_.email eq email }
+        find(User_.email eq email)
 
     fun findActiveUsers(): List<User> =
-        findAll { User_.active eq true }
+        findAll(User_.active eq true)
 }
 ```
 
@@ -75,12 +75,12 @@ interface OrderRepository : EntityRepository<Order, Int> {
 
     // No logging
     fun findById(id: Int): Order? =
-        find { Order_.id eq id }
+        find(Order_.id eq id)
 
     // Logged
     @SqlLog
     fun findExpiredOrders(cutoff: LocalDate): List<Order> =
-        findAll { Order_.expiresAt lt cutoff }
+        findAll(Order_.expiresAt lt cutoff)
 }
 ```
 
@@ -124,7 +124,7 @@ Setting `inlineParameters = true` replaces the `?` placeholders with the actual 
 interface UserRepository : EntityRepository<User, Int> {
 
     fun findByEmail(email: String): User? =
-        find { User_.email eq email }
+        find(User_.email eq email)
 }
 ```
 

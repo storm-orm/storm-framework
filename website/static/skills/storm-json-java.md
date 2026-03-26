@@ -1,7 +1,4 @@
 Help the user work with JSON columns in Storm entities using Java.
-
-Fetch https://orm.st/llms-full.txt for complete reference.
-
 Ask: what data they want to store as JSON and whether they need JSON aggregation.
 
 ## JSON Columns

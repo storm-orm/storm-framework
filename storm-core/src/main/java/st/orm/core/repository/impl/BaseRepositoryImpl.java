@@ -436,27 +436,6 @@ abstract class BaseRepositoryImpl<E extends Data, ID> implements Repository {
     // Stream based methods. These methods operate in multiple batches.
 
     /**
-     * Returns a stream of all entities of the type supported by this repository. Each element in the stream represents
-     * an entity in the database, encapsulating all relevant data as mapped by the entity model.
-     *
-     * <p>The resulting stream is lazily loaded, meaning that the entities are only retrieved from the database as they
-     * are consumed by the stream. This approach is efficient and minimizes the memory footprint, especially when
-     * dealing with large volumes of entities.</p>
-     *
-     * <p><strong>Note:</strong> Calling this method does trigger the execution of the underlying query, so it should
-     * only be invoked when the query is intended to run. Since the stream holds resources open while in use, it must be
-     * closed after usage to prevent resource leaks. As the stream is {@code AutoCloseable}, it is recommended to use it
-     * within a {@code try-with-resources} block.</p>
-     *
-     * @return a stream of all entities of the type supported by this repository.
-     * @throws PersistenceException if the selection operation fails due to underlying database issues, such as
-     *                              connectivity.
-     */
-    public Stream<E> selectAll() {
-        return select().getResultStream();
-    }
-
-    /**
      * Retrieves a stream of entities based on their primary keys.
      *
      * <p>This method executes queries in batches, depending on the number of primary keys in the specified ids stream.

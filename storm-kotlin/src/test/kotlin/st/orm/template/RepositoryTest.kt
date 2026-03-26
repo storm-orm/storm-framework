@@ -358,7 +358,7 @@ open class RepositoryTest(
     fun `select with predicate should return flow of matching cities`(): Unit = runBlocking {
         val repo = orm.entity(City::class)
         val namePath = metamodel<City, String>(repo.model, "name")
-        val count = repo.select(namePath eq "Madison").count()
+        val count = repo.select().where(namePath eq "Madison").resultFlow.count()
         count shouldBe 1
     }
 
@@ -480,7 +480,7 @@ open class RepositoryTest(
     @Test
     fun `selectAll should return flow of all cities`(): Unit = runBlocking {
         val repo = orm.entity(City::class)
-        repo.selectAll().count() shouldBe 6
+        repo.select().resultFlow.count() shouldBe 6
     }
 
     // Flow operations: selectAllRef
@@ -488,7 +488,7 @@ open class RepositoryTest(
     @Test
     fun `selectAllRef should return flow of all city refs`(): Unit = runBlocking {
         val repo = orm.entity(City::class)
-        repo.selectAllRef().count() shouldBe 6
+        repo.selectRef().resultFlow.count() shouldBe 6
     }
 
     // Flow operations: selectById
@@ -679,7 +679,7 @@ open class RepositoryTest(
 
     @Test
     fun `orm selectAll reified should return all cities as flow`(): Unit = runBlocking {
-        orm.selectAll<City>().count() shouldBe 6
+        orm.select<City>().resultFlow.count() shouldBe 6
     }
 
     @Test
@@ -771,7 +771,7 @@ open class RepositoryTest(
     @Test
     fun `orm select with predicate should return matching flow`(): Unit = runBlocking {
         val namePath = metamodel<City, String>(orm.entity(City::class).model, "name")
-        val count = orm.select<City>(namePath eq "Madison").count()
+        val count = orm.select<City>().where(namePath eq "Madison").resultFlow.count()
         count shouldBe 1
     }
 
@@ -867,7 +867,7 @@ open class RepositoryTest(
     @Test
     fun `selectAll within suspend transaction should work`(): Unit = runBlocking {
         transaction {
-            orm.entity(City::class).selectAll().count() shouldBe 6
+            orm.entity(City::class).select().resultFlow.count() shouldBe 6
         }
     }
 
@@ -875,7 +875,7 @@ open class RepositoryTest(
     fun `selectByRef within suspend transaction should work`(): Unit = runBlocking {
         transaction {
             val repo = orm.entity(City::class)
-            val refs = repo.selectAllRef()
+            val refs = repo.selectRef().resultFlow
             repo.selectByRef(refs).count() shouldBe 6
         }
     }
@@ -902,7 +902,7 @@ open class RepositoryTest(
     @Test
     fun `selectAllRef should be consumable as list`(): Unit = runBlocking {
         val repo = orm.entity(City::class)
-        val refs = repo.selectAllRef().toList()
+        val refs = repo.selectRef().resultFlow.toList()
         refs shouldHaveSize 6
     }
 
@@ -954,7 +954,7 @@ open class RepositoryTest(
     fun `visit selectAll flow should return 14`(): Unit = runBlocking {
         // data.sql inserts exactly 14 visits (ids 1-14).
         val repo = orm.entity(Visit::class)
-        repo.selectAll().count() shouldBe 14
+        repo.select().resultFlow.count() shouldBe 14
     }
 
     // Entity repository count and exists consistency
@@ -1006,7 +1006,7 @@ open class RepositoryTest(
     fun `selectRef with predicate should return flow of matching refs`(): Unit = runBlocking {
         val repo = orm.entity(City::class)
         val namePath = metamodel<City, String>(repo.model, "name")
-        val count = repo.selectRef(namePath eq "Madison").count()
+        val count = repo.selectRef().where(namePath eq "Madison").resultFlow.count()
         count shouldBe 1
     }
 
@@ -1044,7 +1044,7 @@ open class RepositoryTest(
     @Test
     fun `orm selectRef with predicate should return flow of matching refs`(): Unit = runBlocking {
         val namePath = metamodel<City, String>(orm.entity(City::class).model, "name")
-        val count = orm.selectRef<City>(namePath eq "Madison").count()
+        val count = orm.selectRef<City>().where(namePath eq "Madison").resultFlow.count()
         count shouldBe 1
     }
 
@@ -1054,7 +1054,7 @@ open class RepositoryTest(
     fun `orm delete with predicate should remove matching cities`() {
         val city = orm insert City(name = "ToDeleteByPredicate")
         val namePath = metamodel<City, String>(orm.entity(City::class).model, "name")
-        val deleted = orm.delete<City>(namePath eq "ToDeleteByPredicate")
+        val deleted = orm.delete(namePath eq "ToDeleteByPredicate")
         deleted shouldBe 1
         orm.entity(City::class).findById(city.id).shouldBeNull()
     }
@@ -1073,7 +1073,7 @@ open class RepositoryTest(
 
     @Test
     fun `orm selectAllRef should return flow of all city refs`(): Unit = runBlocking {
-        orm.selectAllRef<City>().count() shouldBe 6
+        orm.selectRef<City>().resultFlow.count() shouldBe 6
     }
 
     @Test
@@ -1317,7 +1317,7 @@ open class RepositoryTest(
     fun `select with direct PredicateBuilder should return flow`(): Unit = runBlocking {
         val repo = orm.entity(City::class)
         val namePath = metamodel<City, String>(repo.model, "name")
-        val cities = repo.select(namePath eq "Madison").toList()
+        val cities = repo.select().where(namePath eq "Madison").resultFlow.toList()
         cities shouldHaveSize 1
         cities.first().name shouldBe "Madison"
     }
@@ -1326,7 +1326,7 @@ open class RepositoryTest(
     fun `selectRef with direct PredicateBuilder should return flow of refs`(): Unit = runBlocking {
         val repo = orm.entity(City::class)
         val namePath = metamodel<City, String>(repo.model, "name")
-        val refs = repo.selectRef(namePath eq "Madison").toList()
+        val refs = repo.selectRef().where(namePath eq "Madison").resultFlow.toList()
         refs shouldHaveSize 1
     }
 
@@ -1349,7 +1349,7 @@ open class RepositoryTest(
         val repo = orm.entity(Vet::class)
         repo.insert(Vet(firstName = "Temp", lastName = "VetToDelete"))
         val firstNamePath = metamodel<Vet, String>(repo.model, "first_name")
-        val deleted = repo.delete(firstNamePath eq "Temp")
+        val deleted = repo.delete().where(firstNamePath eq "Temp").executeUpdate()
         deleted shouldBe 1
     }
 

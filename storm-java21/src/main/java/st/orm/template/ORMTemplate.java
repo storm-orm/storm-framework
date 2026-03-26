@@ -16,7 +16,6 @@
 package st.orm.template;
 
 import jakarta.annotation.Nonnull;
-import jakarta.persistence.EntityManager;
 import java.sql.Connection;
 import java.util.List;
 import java.util.function.UnaryOperator;
@@ -38,9 +37,9 @@ import st.orm.template.impl.ORMTemplateImpl;
  * {@link RepositoryLookup} (for obtaining type-safe {@link EntityRepository} and {@link ProjectionRepository}
  * instances). It is the central interface from which all database operations originate.</p>
  *
- * <p>Instances are created using the static factory methods {@link #of(jakarta.persistence.EntityManager)},
- * {@link #of(javax.sql.DataSource)}, or {@link #of(java.sql.Connection)}, or via the convenience methods
- * in the {@link Templates} class.</p>
+ * <p>Instances are created using the static factory methods {@link #of(javax.sql.DataSource)} or
+ * {@link #of(java.sql.Connection)}, or via the convenience methods in the {@link Templates} class.
+ * For JPA-based usage, see {@code JpaTemplate}.</p>
  *
  * <h2>Example</h2>
  * <pre>{@code
@@ -98,7 +97,7 @@ public interface ORMTemplate extends QueryTemplate, RepositoryLookup {
      * confirmation message and returns an empty list.</p>
      *
      * <p>This method requires a DataSource-backed template. Templates created from a raw
-     * {@link Connection} or {@link EntityManager} do not support schema validation.</p>
+     * {@link Connection} or {@code EntityManager} do not support schema validation.</p>
      *
      * @return the list of validation error messages (empty on success).
      * @throws st.orm.PersistenceException if the template does not support schema validation.
@@ -113,7 +112,7 @@ public interface ORMTemplate extends QueryTemplate, RepositoryLookup {
      * confirmation message and returns an empty list.</p>
      *
      * <p>This method requires a DataSource-backed template. Templates created from a raw
-     * {@link Connection} or {@link EntityManager} do not support schema validation.</p>
+     * {@link Connection} or {@code EntityManager} do not support schema validation.</p>
      *
      * @param types the entity and projection types to validate.
      * @return the list of validation error messages (empty on success).
@@ -126,7 +125,7 @@ public interface ORMTemplate extends QueryTemplate, RepositoryLookup {
      * Validates all discovered types and throws if any errors are found.
      *
      * <p>This method requires a DataSource-backed template. Templates created from a raw
-     * {@link Connection} or {@link EntityManager} do not support schema validation.</p>
+     * {@link Connection} or {@code EntityManager} do not support schema validation.</p>
      *
      * @throws st.orm.PersistenceException if validation fails or the template does not support schema validation.
      * @since 1.9
@@ -137,37 +136,13 @@ public interface ORMTemplate extends QueryTemplate, RepositoryLookup {
      * Validates the specified types and throws if any errors are found.
      *
      * <p>This method requires a DataSource-backed template. Templates created from a raw
-     * {@link Connection} or {@link EntityManager} do not support schema validation.</p>
+     * {@link Connection} or {@code EntityManager} do not support schema validation.</p>
      *
      * @param types the entity and projection types to validate.
      * @throws st.orm.PersistenceException if validation fails or the template does not support schema validation.
      * @since 1.9
      */
     void validateSchemaOrThrow(@Nonnull Iterable<Class<? extends Data>> types);
-
-    /**
-     * Returns an {@link ORMTemplate} for use with JPA.
-     *
-     * <p>This method creates an ORM repository template using the provided {@link EntityManager}.
-     * It allows you to perform database operations using JPA in a type-safe manner.
-     *
-     * <p>Example usage:
-     * <pre>{@code
-     * EntityManager entityManager = ...;
-     * ORMTemplate orm = ORMTemplate.of(entityManager);
-     * List<MyTable> otherTables = orm.query(RAW."""
-     *         SELECT \{MyTable.class}
-     *         FROM \{MyTable.class}
-     *         WHERE \{MyTable_.name} = \{"ABC"}""")
-     *     .getResultList(MyTable.class);
-     * }</pre>
-     *
-     * @param entityManager the {@link EntityManager} to use for database operations; must not be {@code null}.
-     * @return an {@link ORMTemplate} configured for use with JPA.
-     */
-    static ORMTemplate of(@Nonnull EntityManager entityManager) {
-        return new ORMTemplateImpl(st.orm.core.template.ORMTemplate.of(entityManager));
-    }
 
     /**
      * Returns an {@link ORMTemplate} for use with JDBC.
@@ -221,21 +196,6 @@ public interface ORMTemplate extends QueryTemplate, RepositoryLookup {
     }
 
     /**
-     * Returns an {@link ORMTemplate} for use with JPA, with a custom template decorator.
-     *
-     * <p>This method creates an ORM repository template using the provided {@link EntityManager} and applies
-     * the specified decorator to customize template processing behavior.
-     *
-     * @param entityManager the {@link EntityManager} to use for database operations; must not be {@code null}.
-     * @param decorator a function that transforms the {@link TemplateDecorator} to customize template processing.
-     * @return an {@link ORMTemplate} configured for use with JPA.
-     */
-    static ORMTemplate of(@Nonnull EntityManager entityManager, @Nonnull UnaryOperator<TemplateDecorator> decorator) {
-        return new ORMTemplateImpl(st.orm.core.template.ORMTemplate.of(entityManager, decorator));
-
-    }
-
-    /**
      * Returns an {@link ORMTemplate} for use with JDBC, with a custom template decorator.
      *
      * <p>This method creates an ORM repository template using the provided {@link DataSource} and applies
@@ -263,31 +223,6 @@ public interface ORMTemplate extends QueryTemplate, RepositoryLookup {
      */
     static ORMTemplate of(@Nonnull Connection connection, @Nonnull UnaryOperator<TemplateDecorator> decorator) {
         return new ORMTemplateImpl(st.orm.core.template.ORMTemplate.of(connection, decorator));
-    }
-
-    /**
-     * Returns an {@link ORMTemplate} for use with JPA, configured with the provided {@link StormConfig}.
-     *
-     * @param entityManager the {@link EntityManager} to use for database operations; must not be {@code null}.
-     * @param config the Storm configuration to apply; must not be {@code null}.
-     * @return an {@link ORMTemplate} configured for use with JPA.
-     */
-    static ORMTemplate of(@Nonnull EntityManager entityManager, @Nonnull StormConfig config) {
-        return new ORMTemplateImpl(st.orm.core.template.ORMTemplate.of(entityManager, config));
-    }
-
-    /**
-     * Returns an {@link ORMTemplate} for use with JPA, configured with the provided {@link StormConfig} and a custom
-     * template decorator.
-     *
-     * @param entityManager the {@link EntityManager} to use for database operations; must not be {@code null}.
-     * @param config the Storm configuration to apply; must not be {@code null}.
-     * @param decorator a function that transforms the {@link TemplateDecorator} to customize template processing.
-     * @return an {@link ORMTemplate} configured for use with JPA.
-     */
-    static ORMTemplate of(@Nonnull EntityManager entityManager, @Nonnull StormConfig config,
-                          @Nonnull UnaryOperator<TemplateDecorator> decorator) {
-        return new ORMTemplateImpl(st.orm.core.template.ORMTemplate.of(entityManager, config, decorator));
     }
 
     /**

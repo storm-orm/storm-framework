@@ -306,7 +306,7 @@ Even without transaction-level caching, Storm preserves entity identity within a
 
 ```kotlin
 // Even at READ_COMMITTED in a read-write transaction:
-val orders = orderRepository.findAll { Order_.status eq "pending" }
+val orders = orderRepository.findAll(Order_.status eq "pending")
 
 // If order1 and order2 have the same customer, they share the instance
 val customer1 = orders[0].customer.fetch()
@@ -355,7 +355,7 @@ When navigating relationships, `Ref.fetch()` automatically uses the cache:
 ```kotlin
 transaction {
     // Load orders with their users
-    val orders = orderRepository.findAll { Order_.status eq "pending" }
+    val orders = orderRepository.findAll(Order_.status eq "pending")
 
     // If multiple orders share the same user, only one query per unique user
     orders.forEach { order ->

@@ -22,7 +22,6 @@ import static st.orm.SelectMode.NESTED;
 
 import jakarta.annotation.Nonnull;
 import jakarta.annotation.Nullable;
-import jakarta.persistence.EntityManager;
 import java.sql.Connection;
 import java.util.Arrays;
 import java.util.Calendar;
@@ -71,8 +70,8 @@ import st.orm.core.template.impl.Subqueryable;
  * tables, aliases, and more.
  *
  * <p>Additionally, the {@code Templates} interface provides methods to create {@link ORMTemplate}
- * instances for use with different data sources like JPA's {@link EntityManager}, JDBC's {@link DataSource}, or
- * {@link Connection}.
+ * instances for use with different data sources like JDBC's {@link DataSource} or {@link Connection}, or
+ * JPA's {@code EntityManager} (see {@link JpaTemplate}).
  *
  * <h2>Using Templates</h2>
  *

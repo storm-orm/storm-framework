@@ -15,30 +15,17 @@
  */
 package st.orm.template
 
-import st.orm.Data
-import st.orm.Entity
-import st.orm.Ref
-
 /**
- * Creates a [Ref] for the entity.
+ * Marker annotation for Storm's block-based SQL DSL.
  *
- * Usage:
- * ```kotlin
- * val myEntityRef = myEntity.ref()
- * ```
+ * When two implicit receivers within the same block are annotated with this marker, the compiler hides the outer
+ * receiver inside the inner block, preventing accidental scope leaking. For example, inside a `whereBuilder { }`
+ * lambda nested within a `select { }` block, methods like `orderBy` or `limit` from the outer [SqlScope] are not
+ * accessible without an explicit `this@select` qualifier.
  *
- * Requires `import st.orm.template.ref`.
+ * Applied to: [SqlScope], [WhereBuilder], [SubqueryTemplate], [TemplateContext].
+ *
+ * @see SqlScope
  */
-fun <E : Entity<*>> E.ref(): Ref<E> = Ref.of(this)
-
-/**
- * Creates a [Ref] from a type and primary key value, without needing an entity instance.
- *
- * Usage:
- * ```kotlin
- * val titleRef = ref<Title>(tconst)
- * ```
- *
- * Requires `import st.orm.template.ref`.
- */
-inline fun <reified T : Data> ref(id: Any): Ref<T> = Ref.of(T::class.java, id)
+@DslMarker
+annotation class SqlDsl

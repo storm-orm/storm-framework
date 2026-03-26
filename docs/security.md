@@ -20,7 +20,7 @@ The most important security property of Storm is that **all values are parameter
 
 ```kotlin
 // The 'email' value is sent as a JDBC parameter, not interpolated into SQL.
-val user = userRepository.find { User_.email eq email }
+val user = userRepository.find(User_.email eq email)
 ```
 
 Generated SQL:

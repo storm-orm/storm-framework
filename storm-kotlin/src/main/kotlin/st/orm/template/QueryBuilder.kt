@@ -1149,3 +1149,209 @@ fun <T : Data, V> Metamodel<T, V>.isNull(): PredicateBuilder<T, T, *> = create(t
  * Infix functions to create a predicate to check if a field is not null.
  */
 fun <T : Data, V> Metamodel<T, V>.isNotNull(): PredicateBuilder<T, T, *> = create(this, IS_NOT_NULL, emptyList())
+
+// Block-based query DSL
+
+/**
+ * A mutable scope for constructing queries using [QueryBuilder] methods in a block-based style, similar to
+ * [buildList] or [buildMap].
+ *
+ * Each call inside the block (such as [where], [orderBy], [limit]) updates the internal builder state, removing
+ * the need to chain method calls or capture return values.
+ *
+ * ## Example
+ * ```kotlin
+ * orm.select<User> {
+ *     where(User_.name eq "Alice")
+ *     orderBy(User_.email)
+ *     limit(10)
+ * }.resultList
+ * ```
+ *
+ * @param T the entity type being queried.
+ * @param R the result type of the query.
+ * @param ID the primary key type.
+ */
+@SqlDsl
+class SqlScope<T : Data, R, ID : Any> @PublishedApi internal constructor(
+    @PublishedApi internal var builder: QueryBuilder<T, R, ID>,
+) {
+    /** Adds a WHERE clause using a predicate built with metamodel infix operators (e.g., `User_.name eq "Alice"`). */
+    fun where(predicate: PredicateBuilder<T, *, *>) {
+        builder = builder.where(predicate)
+    }
+
+    /** Adds a WHERE clause matching a metamodel path to value(s) using an [Operator]. */
+    fun <V> where(path: Metamodel<T, V>, operator: Operator, vararg value: V) {
+        builder = builder.where(path, operator, *value)
+    }
+
+    /** Adds a WHERE clause matching a metamodel path to a data record. */
+    fun <V : Data> where(path: Metamodel<T, V>, record: V) {
+        builder = builder.where(path, record)
+    }
+
+    /** Adds a WHERE clause matching a metamodel path to a [Ref]. */
+    fun <V : Data> where(path: Metamodel<T, V>, ref: Ref<V>) {
+        builder = builder.where(path, ref)
+    }
+
+    /** Adds a WHERE clause matching a primary key. */
+    fun where(id: ID) {
+        builder = builder.where(id)
+    }
+
+    /** Adds a WHERE clause matching a [Ref]. */
+    fun where(ref: Ref<T>) {
+        builder = builder.where(ref)
+    }
+
+    /** Adds a WHERE clause matching a record. */
+    fun where(record: T) {
+        builder = builder.where(record)
+    }
+
+    /** Adds a WHERE clause using a SQL template expression (e.g., `where { "${t(User_.score)} > ${t(100)}" }`). */
+    fun where(template: TemplateBuilder) {
+        builder = builder.where(template)
+    }
+
+    /** Adds a WHERE clause for any entity type (e.g., a joined entity). */
+    fun whereAny(predicate: PredicateBuilder<*, *, *>) {
+        builder = builder.whereAny(predicate)
+    }
+
+    /** Adds a WHERE clause using a [WhereBuilder] for compound predicates with `and`/`or`. */
+    fun whereBuilder(predicate: WhereBuilder<T, R, ID>.() -> PredicateBuilder<T, *, *>) {
+        builder = builder.whereBuilder(predicate)
+    }
+
+    /** Adds a WHERE EXISTS clause with the given subquery. */
+    fun whereExists(subquery: QueryBuilder<*, *, *>) {
+        builder = builder.whereExists(subquery)
+    }
+
+    /** Adds a WHERE NOT EXISTS clause with the given subquery. */
+    fun whereNotExists(subquery: QueryBuilder<*, *, *>) {
+        builder = builder.whereNotExists(subquery)
+    }
+
+    /** Adds an INNER JOIN with automatic ON resolution between [relation] and [on]. */
+    fun innerJoin(relation: KClass<out Data>, on: KClass<out Data>) {
+        builder = builder.innerJoin(relation).on(on)
+    }
+
+    /** Adds a LEFT JOIN with automatic ON resolution between [relation] and [on]. */
+    fun leftJoin(relation: KClass<out Data>, on: KClass<out Data>) {
+        builder = builder.leftJoin(relation).on(on)
+    }
+
+    /** Adds a RIGHT JOIN with automatic ON resolution between [relation] and [on]. */
+    fun rightJoin(relation: KClass<out Data>, on: KClass<out Data>) {
+        builder = builder.rightJoin(relation).on(on)
+    }
+
+    /** Adds a CROSS JOIN for [relation]. */
+    fun crossJoin(relation: KClass<out Data>) {
+        builder = builder.crossJoin(relation)
+    }
+
+    /** Adds a GROUP BY clause for the specified metamodel path(s). */
+    fun groupBy(vararg path: Metamodel<T, *>) {
+        builder = builder.groupBy(*path)
+    }
+
+    /** Adds a GROUP BY clause using a SQL template expression. */
+    fun groupBy(template: TemplateBuilder) {
+        builder = builder.groupBy(template)
+    }
+
+    /** Adds a HAVING clause matching a metamodel path to value(s) using an [Operator]. */
+    fun <V> having(path: Metamodel<T, V>, operator: Operator, vararg value: V) {
+        builder = builder.having(path, operator, *value)
+    }
+
+    /** Adds a HAVING clause using a SQL template expression (e.g., `having { "COUNT(*) > ${t(5)}" }`). */
+    fun having(template: TemplateBuilder) {
+        builder = builder.having(template)
+    }
+
+    /** Adds an ORDER BY clause (ascending) for the specified metamodel path(s). */
+    fun orderBy(vararg path: Metamodel<T, *>) {
+        builder = builder.orderBy(*path)
+    }
+
+    /** Adds an ORDER BY clause (descending) for the specified metamodel path(s). */
+    fun orderByDescending(vararg path: Metamodel<T, *>) {
+        builder = builder.orderByDescending(*path)
+    }
+
+    /** Adds an ORDER BY clause (ascending) for any entity type (e.g., a joined entity). */
+    fun orderByAny(vararg path: Metamodel<*, *>) {
+        builder = builder.orderByAny(*path)
+    }
+
+    /** Adds an ORDER BY clause (descending) for any entity type (e.g., a joined entity). */
+    fun orderByDescendingAny(vararg path: Metamodel<*, *>) {
+        builder = builder.orderByDescendingAny(*path)
+    }
+
+    /** Adds an ORDER BY clause using a SQL template expression. */
+    fun orderBy(template: TemplateBuilder) {
+        builder = builder.orderBy(template)
+    }
+
+    /** Adds a LIMIT clause restricting the maximum number of results. */
+    fun limit(limit: Int) {
+        builder = builder.limit(limit)
+    }
+
+    /** Adds an OFFSET clause skipping the first [offset] results. */
+    fun offset(offset: Int) {
+        builder = builder.offset(offset)
+    }
+
+    /** Marks the query as SELECT DISTINCT. */
+    fun distinct() {
+        builder = builder.distinct()
+    }
+
+    /** Allows DELETE/UPDATE without a WHERE clause (Storm rejects this by default). */
+    fun unsafe() {
+        builder = builder.unsafe()
+    }
+
+    /** Locks the selected rows for reading (SELECT ... FOR SHARE). */
+    fun forShare() {
+        builder = builder.forShare()
+    }
+
+    /** Locks the selected rows for writing (SELECT ... FOR UPDATE). */
+    fun forUpdate() {
+        builder = builder.forUpdate()
+    }
+
+    /** Appends raw SQL to the query using a template expression. */
+    fun append(template: TemplateBuilder) {
+        builder = builder.append(template)
+    }
+
+    /**
+     * Handles the block's return value: a [PredicateBuilder] is automatically applied as a WHERE clause,
+     * while any other non-[Unit] value indicates a programming error.
+     *
+     * This allows the shorthand `select { path eq value }` as equivalent to `select { where(path eq value) }`.
+     */
+    @Suppress("UNCHECKED_CAST")
+    @PublishedApi
+    internal fun applyResult(result: Any?) {
+        when (result) {
+            is PredicateBuilder<*, *, *> -> where(result as PredicateBuilder<T, *, *>)
+            is Unit, null -> {}
+            else -> throw IllegalStateException(
+                "The query block returned a ${result::class.simpleName} value that was not applied. " +
+                    "Did you forget to wrap it in a method call such as where()?",
+            )
+        }
+    }
+}

@@ -50,6 +50,13 @@ public @interface StormTest {
 
     /**
      * Classpath SQL scripts to execute before tests run. Scripts are executed once per test class.
+     *
+     * <p>Path resolution follows conventions similar to Spring's {@code @Sql}:</p>
+     * <ul>
+     *     <li>{@code "schema.sql"} — resolved relative to the test class package.</li>
+     *     <li>{@code "/schema.sql"} — resolved from the classpath root.</li>
+     *     <li>{@code "classpath:schema.sql"} — resolved from the classpath root.</li>
+     * </ul>
      */
     String[] scripts() default {};
 

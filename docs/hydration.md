@@ -428,7 +428,7 @@ When a cache hit occurs, Storm skips the entire construction process for that en
 
 ```kotlin
 // Query returns 1000 users, but only 50 unique cities
-val users = userRepository.findAll { User_.city eq city }
+val users = userRepository.findAll(User_.city eq city)
 ```
 
 Without early lookup, Storm would construct 1000 `City` objects and then deduplicate. With early lookup:

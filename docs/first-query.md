@@ -16,15 +16,15 @@ The simplest way to query is with predicate methods directly on the ORM template
 val users = orm.entity(User::class)
 
 // Find all users in a city
-val usersInCity: List<User> = users.findAll { User_.city eq city }
+val usersInCity: List<User> = users.findAll(User_.city eq city)
 
 // Find a single user by email
-val user: User? = users.find { User_.email eq "alice@example.com" }
+val user: User? = users.find(User_.email eq "alice@example.com")
 
 // Combine conditions with and / or
-val results: List<User> = users.findAll {
+val results: List<User> = users.findAll(
     (User_.city eq city) and (User_.name like "A%")
-}
+)
 
 // Check existence
 val exists: Boolean = users.existsById(userId)
@@ -78,7 +78,7 @@ For domain-specific queries that you will reuse, define a custom repository inte
 interface UserRepository : EntityRepository<User, Int> {
 
     fun findByEmail(email: String): User? =
-        find { User_.email eq email }
+        find(User_.email eq email)
 
     fun findByNameInCity(name: String, city: City): List<User> =
         findAll((User_.city eq city) and (User_.name eq name))

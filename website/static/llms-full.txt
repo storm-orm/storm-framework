@@ -74,21 +74,20 @@ data class User(
     @FK val city: City
 ) : Entity<Int>
 
-// DSL—query nested properties like city.name in one go
-val users = orm.findAll { User_.city.name eq "Sunnyvale" }
+// Type-safe predicates — query nested properties like city.name in one go
+val users = orm.findAll(User_.city.name eq "Sunnyvale")
 
-// Custom repository—inherits all CRUD operations, add your own queries
+// Custom repository — inherits all CRUD operations, add your own queries
 interface UserRepository : EntityRepository<User, Int> {
-    fun findByCityName(name: String) = findAll { User_.city.name eq name }
+    fun findByCityName(name: String) = findAll(User_.city.name eq name)
 }
 val users = userRepository.findByCityName("Sunnyvale")
 
-// Query Builder for more complex operations
-val users = orm.entity(User::class)
-    .select()
-    .where(User_.city.name eq "Sunnyvale")
-    .orderBy(User_.name)
-    .resultList
+// Block DSL — build queries with where, orderBy, joins, pagination
+val users = userRepository.select {
+    where(User_.city.name eq "Sunnyvale")
+    orderBy(User_.name)
+}.resultList
 
 // SQL Template for full control; parameterized by default, SQL injection safe
 val users = orm.query { """
@@ -102,7 +101,7 @@ Full coroutine support with `Flow` for streaming and programmatic transactions:
 
 ```kotlin
 // Streaming with Flow
-val users: Flow<User> = orm.entity(User::class).selectAll()
+val users: Flow<User> = orm.entity(User::class).select().resultFlow
 users.collect { user -> println(user.name) }
 
 // Programmatic transactions
@@ -612,7 +611,7 @@ Storm automatically appends `_id` to foreign key column names. See [Entities](en
 
 ## Create the ORM Template
 
-The `ORMTemplate` is the central entry point for all database operations. It is thread-safe and typically created once at application startup (or provided as a Spring bean). You can create one from a JDBC `DataSource`, `Connection`, or JPA `EntityManager`.
+The `ORMTemplate` is the central entry point for all database operations. It is thread-safe and typically created once at application startup (or provided as a Spring bean). You can create one from a JDBC `DataSource` or `Connection`.
 
 [Kotlin]
 
@@ -624,9 +623,6 @@ val orm = dataSource.orm
 
 // From a Connection
 val orm = connection.orm
-
-// From a JPA EntityManager
-val orm = entityManager.orm
 ```
 
 [Java]
@@ -639,9 +635,6 @@ var orm = ORMTemplate.of(dataSource);
 
 // From a Connection
 var orm = ORMTemplate.of(connection);
-
-// From a JPA EntityManager
-var orm = ORMTemplate.of(entityManager);
 ```
 If you are using Spring Boot with one of the starter modules, the `ORMTemplate` bean is created automatically. See [Spring Integration](spring-integration.md) for details.
 
@@ -695,7 +688,7 @@ The `insertAndFetch` method sends an INSERT statement, retrieves the auto-genera
 val user: User? = orm.entity(User::class).findById(userId)
 
 // Find by field value using the metamodel (requires storm-metamodel-processor)
-val user: User? = orm.find { User_.email eq "alice@example.com" }
+val user: User? = orm.find(User_.email eq "alice@example.com")
 ```
 
 [Java]
@@ -804,15 +797,15 @@ The simplest way to query is with predicate methods directly on the ORM template
 val users = orm.entity(User::class)
 
 // Find all users in a city
-val usersInCity: List<User> = users.findAll { User_.city eq city }
+val usersInCity: List<User> = users.findAll(User_.city eq city)
 
 // Find a single user by email
-val user: User? = users.find { User_.email eq "alice@example.com" }
+val user: User? = users.find(User_.email eq "alice@example.com")
 
 // Combine conditions with and / or
-val results: List<User> = users.findAll {
+val results: List<User> = users.findAll(
     (User_.city eq city) and (User_.name like "A%")
-}
+)
 
 // Check existence
 val exists: Boolean = users.existsById(userId)
@@ -860,13 +853,13 @@ For domain-specific queries that you will reuse, define a custom repository inte
 interface UserRepository : EntityRepository<User, Int> {
 
     fun findByEmail(email: String): User? =
-        find { User_.email eq email }
+        find(User_.email eq email)
 
     fun findByNameInCity(name: String, city: City): List<User> =
         findAll((User_.city eq city) and (User_.name eq name))
 
     fun streamByCity(city: City): Flow<User> =
-        select { User_.city eq city }
+        select { User_.city eq city }.resultFlow
 }
 
 // Get the repository from the ORM template
@@ -977,7 +970,7 @@ For large result sets, streaming avoids loading all rows into memory at once. Ro
 Kotlin uses `Flow`, which provides automatic resource management through structured concurrency:
 
 ```kotlin
-val users: Flow<User> = orm.entity(User::class).selectAll()
+val users: Flow<User> = orm.entity(User::class).select().resultFlow
 
 // Process each row
 users.collect { user -> println(user.name) }
@@ -991,7 +984,7 @@ val emails: List<String> = users.map { it.email }.toList()
 Java uses `Stream`, which holds an open database cursor. Always close streams to release resources:
 
 ```java
-try (Stream<User> users = orm.entity(User.class).selectAll()) {
+try (Stream<User> users = orm.entity(User.class).select().getResultStream()) {
     List<String> emails = users.map(User::email).toList();
 }
 ```
@@ -1238,7 +1231,9 @@ Use `NONE` when:
 
 ## Composite Primary Keys
 
-For join tables or entities whose identity is defined by a combination of columns, wrap the key fields in a separate data class and annotate it with `@PK`. Storm treats all fields in the composite key class as part of the primary key.
+For join tables or entities whose identity is defined by a combination of columns, wrap the key fields in a separate data class and annotate the entity field with `@PK(generation = NONE)`. Storm treats all fields in the composite key class as part of the primary key. The PK class is implicitly `@Inline` — its fields become columns in the parent table.
+
+**Important:** The composite PK class must contain only raw column types (`Int`, `String`, etc.). Never place `@FK`, entity types, or `Ref<T>` inside the PK class — this causes model initialization errors. Instead, declare `@FK` fields on the entity itself with `@Persist(insertable = false, updatable = false)` so that Storm loads the related entities via JOIN without duplicating column values on insert/update.
 
 [Kotlin]
 
@@ -1249,9 +1244,9 @@ data class UserRolePk(
 )
 
 data class UserRole(
-    @PK val userRolePk: UserRolePk,
-    @FK val user: User,
-    @FK val role: Role
+    @PK(generation = NONE) val id: UserRolePk,
+    @FK @Persist(insertable = false, updatable = false) val user: User,
+    @FK @Persist(insertable = false, updatable = false) val role: Role
 ) : Entity<UserRolePk>
 ```
 
@@ -1260,9 +1255,9 @@ data class UserRole(
 ```java
 record UserRolePk(int userId, int roleId) {}
 
-record UserRole(@PK UserRolePk userRolePk,
-                @Nonnull @FK User user,
-                @Nonnull @FK Role role
+record UserRole(@PK(generation = NONE) UserRolePk id,
+                @Nonnull @FK @Persist(insertable = false, updatable = false) User user,
+                @Nonnull @FK @Persist(insertable = false, updatable = false) Role role
 ) implements Entity<UserRolePk> {}
 ```
 ---
@@ -1352,6 +1347,8 @@ When a column is not annotated with `@UK` but becomes unique in a specific query
 ## Embedded Components
 
 Embedded components group related fields into a reusable data class without creating a separate database table. The component's fields are stored as columns in the parent entity's table. This is useful for value objects like addresses, coordinates, or monetary amounts that appear in multiple entities.
+
+Inlining is implicit — `@Inline` never needs to be specified explicitly on embedded component fields. Storm automatically inlines any non-entity, non-`@FK` data class or record field. When `@Inline` is used explicitly, the field must be an inline (embedded) type, not a scalar or entity.
 
 [Kotlin]
 
@@ -1958,7 +1955,7 @@ val exists = ownerViews.existsById(1)
 val allOwners = ownerViews.findAll()
 
 // Fetch all as a lazy stream
-ownerViews.selectAll().forEach { owner ->
+ownerViews.select().resultFlow.collect { owner ->
     println(owner.firstName)
 }
 ```
@@ -1982,7 +1979,7 @@ boolean exists = ownerViews.existsById(1);
 List<OwnerView> allOwners = ownerViews.findAll();
 
 // Fetch all as a stream (must close)
-try (Stream<OwnerView> owners = ownerViews.selectAll()) {
+try (Stream<OwnerView> owners = ownerViews.select().getResultStream()) {
     owners.forEach(o -> System.out.println(o.firstName()));
 }
 ```
@@ -2204,7 +2201,7 @@ Use `@DbColumn` to map fields to columns with different names.
 | `existsById(id)` | Check if projection exists |
 | `findAll()` | Fetch all as a list |
 | `findAllById(ids)` | Fetch multiple by IDs |
-| `selectAll()` | Lazy Flow of all projections |
+| `select().resultFlow` | Lazy Flow of all projections |
 | `selectById(ids)` | Lazy Flow by IDs |
 | `select()` | Query builder for filtering |
 | `selectCount()` | Query builder for counting |
@@ -2350,7 +2347,7 @@ data class User(
 ) : Entity<Int>
 
 // Query with type-safe access to nested fields throughout the entire entity graph
-val users = orm.findAll { User_.city.country.code eq "US" }
+val users = orm.findAll(User_.city.country.code eq "US")
 
 // Result: fully populated User with City and Country included
 users.forEach { println("${it.name} lives in ${it.city.name}, ${it.city.country.name}") }
@@ -2385,7 +2382,7 @@ data class User(
 When you query a `User`, the related `City` is automatically loaded:
 
 ```kotlin
-val user = orm.find { User_.id eq userId }
+val user = orm.find(User_.id eq userId)
 println(user?.city.name)  // City is already loaded
 ```
 
@@ -2451,7 +2448,7 @@ Storm does not store collections on the "one" side of a relationship. Instead, q
 
 ```kotlin
 // Find all users in a city
-val usersInCity: List<User> = orm.findAll { User_.city eq city }
+val usersInCity: List<User> = orm.findAll(User_.city eq city)
 ```
 
 [Java]
@@ -2478,23 +2475,23 @@ data class UserRolePk(
 )
 
 data class UserRole(
-    @PK val userRolePk: UserRolePk,
+    @PK(generation = NONE) val id: UserRolePk,
     @FK @Persist(insertable = false, updatable = false) val user: User,
     @FK @Persist(insertable = false, updatable = false) val role: Role
 ) : Entity<UserRolePk>
 ```
 
-The `@Persist(insertable = false, updatable = false)` annotation indicates that the FK columns overlap with the composite PK columns. The FK fields are used to load the related entities, but the column values come from the PK during insert/update operations.
+The composite PK class contains only raw column types — never `@FK`, entity types, or `Ref<T>`. The `@FK` fields on the entity use `@Persist(insertable = false, updatable = false)` because their columns overlap with the PK columns. The FK fields are used to load the related entities via JOIN, but the column values come from the PK during insert/update operations.
 
 Query through the join entity:
 
 ```kotlin
 // Find all roles for a user
-val userRoles: List<UserRole> = orm.findAll { UserRole_.user eq user }
+val userRoles: List<UserRole> = orm.findAll(UserRole_.user eq user)
 val roles: List<Role> = userRoles.map { it.role }
 
 // Find all users with a specific role
-val userRoles: List<UserRole> = orm.findAll { UserRole_.role eq role }
+val userRoles: List<UserRole> = orm.findAll(UserRole_.role eq role)
 val users: List<User> = userRoles.map { it.user }
 ```
 
@@ -2513,13 +2510,13 @@ val roles: List<Role> = orm.entity(Role::class)
 ```java
 record UserRolePk(int userId, int roleId) {}
 
-record UserRole(@PK UserRolePk userRolePk,
+record UserRole(@PK(generation = NONE) UserRolePk id,
                 @Nonnull @FK @Persist(insertable = false, updatable = false) User user,
                 @Nonnull @FK @Persist(insertable = false, updatable = false) Role role
 ) implements Entity<UserRolePk> {}
 ```
 
-The `@Persist(insertable = false, updatable = false)` annotation indicates that the FK columns overlap with the composite PK columns. The FK fields are used to load the related entities, but the column values come from the PK during insert/update operations.
+The composite PK record contains only raw column types — never `@FK`, entity types, or `Ref<T>`. The `@FK` fields on the entity use `@Persist(insertable = false, updatable = false)` because their columns overlap with the PK columns. The FK fields are used to load the related entities via JOIN, but the column values come from the PK during insert/update operations.
 
 Query through the join entity:
 
@@ -2920,8 +2917,8 @@ val user = orm insert User(
 )
 
 // Read
-val found: User? = orm.find { User_.id eq user.id }
-val all: List<User> = orm.findAll { User_.city eq city }
+val found: User? = orm.find(User_.id eq user.id)
+val all: List<User> = orm.findAll(User_.city eq city)
 
 // Update
 orm update user.copy(name = "Alice Johnson")
@@ -2930,7 +2927,7 @@ orm update user.copy(name = "Alice Johnson")
 orm delete user
 
 // Delete by condition
-orm.delete<User> { User_.city eq city }
+orm.delete(User_.city eq city)
 
 // Delete all
 orm.deleteAll<User>()
@@ -2986,7 +2983,7 @@ Storm uses dirty checking to determine which columns to include in the UPDATE st
 For result sets that may be large, streaming avoids loading all rows into memory at once. Kotlin's `Flow` provides automatic resource management through structured concurrency: the underlying database cursor and connection are released when the flow completes or is cancelled, without requiring explicit cleanup.
 
 ```kotlin
-val users: Flow<User> = userRepository.selectAll()
+val users: Flow<User> = userRepository.select().resultFlow
 val count = users.count()
 
 // Collect to list
@@ -2998,7 +2995,7 @@ val userList: List<User> = users.toList()
 Java streams over database results hold open a database cursor and connection. You must close the stream explicitly, either with try-with-resources or by calling `close()`. Failing to close the stream leaks database connections.
 
 ```java
-try (Stream<User> users = userRepository.selectAll()) {
+try (Stream<User> users = userRepository.select().getResultStream()) {
     List<Integer> userIds = users.map(User::id).toList();
 }
 ```
@@ -3250,7 +3247,7 @@ Refs are lightweight identifiers that carry only the record type and primary key
 
 ```kotlin
 // Select refs (lightweight identifiers)
-val refs: Flow<Ref<User>> = userRepository.selectAllRef()
+val refs: Flow<Ref<User>> = userRepository.selectRef().getResultStream()
 
 // Select by refs
 val users: Flow<User> = userRepository.selectByRef(refs)
@@ -3262,7 +3259,7 @@ Ref operations in Java return `Stream` objects that must be closed. Refs carry o
 
 ```java
 // Select refs (lightweight identifiers)
-try (Stream<Ref<User>> refs = userRepository.selectAllRef()) {
+try (Stream<Ref<User>> refs = userRepository.selectRef().getResultStream()) {
     // Process refs
 }
 
@@ -3287,7 +3284,7 @@ interface UserRepository : EntityRepository<User, Int> {
 
     // Custom query method
     fun findByEmail(email: String): User? =
-        find { User_.email eq email }
+        find(User_.email eq email)
 
     // Custom query with multiple conditions
     fun findByNameInCity(name: String, city: City): List<User> =
@@ -3443,10 +3440,10 @@ For simple queries, use methods directly on the ORM template:
 
 ```kotlin
 // Find single entity with predicate
-val user: User? = orm.find { User_.email eq email }
+val user: User? = orm.find(User_.email eq email)
 
 // Find all matching
-val users: List<User> = orm.findAll { User_.city eq city }
+val users: List<User> = orm.findAll(User_.city eq city)
 
 // Find by field value
 val user: User? = orm.findBy(User_.email, email)
@@ -3493,10 +3490,10 @@ val users = orm.entity(User::class)
 val user: User? = users.findById(userId)
 
 // Find with predicate
-val user: User? = users.find { User_.email eq email }
+val user: User? = users.find(User_.email eq email)
 
 // Find all matching
-val usersInCity: List<User> = users.findAll { User_.city eq city }
+val usersInCity: List<User> = users.findAll(User_.city eq city)
 
 // Count
 val count: Long = users.count()
@@ -3541,14 +3538,14 @@ Combine conditions with `and` and `or`:
 
 ```kotlin
 // AND condition
-val users = orm.findAll {
+val users = orm.findAll(
     (User_.city eq city) and (User_.birthDate less LocalDate.of(2000, 1, 1))
-}
+)
 
 // OR condition
-val users = orm.findAll {
+val users = orm.findAll(
     (User_.role eq adminRole) or (User_.role eq superUserRole)
-}
+)
 
 // Complex conditions
 val users = orm.entity(User::class)
@@ -3579,9 +3576,9 @@ val users = orm.entity(User::class)
 | `notInList` | NOT IN (list) |
 
 ```kotlin
-val users = orm.findAll { User_.email like "%@example.com" }
-val users = orm.findAll { User_.deletedAt.isNull() }
-val users = orm.findAll { User_.role inList listOf(adminRole, userRole) }
+val users = orm.findAll(User_.email like "%@example.com")
+val users = orm.findAll(User_.deletedAt.isNull())
+val users = orm.findAll(User_.role inList listOf(adminRole, userRole))
 ```
 
 [Java]
@@ -3904,10 +3901,10 @@ List<City> cities = orm.entity(User.class)
 
 [Kotlin]
 
-For large result sets, use `selectAll()` or `select()` which return a Kotlin `Flow<T>`. Rows are fetched lazily from the database as you collect, so memory usage stays constant regardless of result set size. Flow also handles resource cleanup automatically when collection completes or is cancelled.
+For large result sets, use `select().resultFlow` which returns a Kotlin `Flow<T>`. Rows are fetched lazily from the database as you collect, so memory usage stays constant regardless of result set size. Flow also handles resource cleanup automatically when collection completes or is cancelled.
 
 ```kotlin
-val users: Flow<User> = orm.entity(User::class).selectAll()
+val users: Flow<User> = orm.entity(User::class).select().resultFlow
 
 // Process each
 users.collect { user -> process(user) }
@@ -3924,7 +3921,7 @@ val count: Int = users.count()
 Java streams hold an open database cursor and JDBC resources. Unlike Kotlin's `Flow` (which handles cleanup automatically), Java `Stream` results must be explicitly closed. Always wrap them in a try-with-resources block to prevent connection leaks.
 
 ```java
-try (Stream<User> users = orm.entity(User.class).selectAll()) {
+try (Stream<User> users = orm.entity(User.class).select().getResultStream()) {
     List<String> emails = users.map(User::email).toList();
 }
 ```
@@ -4158,7 +4155,7 @@ When you expect at most one matching row, use `find` (Kotlin, returns `null` if 
 [Kotlin]
 
 ```kotlin
-val user: User? = orm.find { User_.email eq email }
+val user: User? = orm.find(User_.email eq email)
 ```
 
 [Java]
@@ -4664,10 +4661,10 @@ Once the metamodel is generated, you use the `_` suffixed classes in place of st
 
 ```kotlin
 // Type-safe field reference
-val users = orm.findAll { User_.email eq email }
+val users = orm.findAll(User_.email eq email)
 
 // Type-safe access to nested fields throughout the entire entity graph
-val users = orm.findAll { User_.city.country.code eq "US" }
+val users = orm.findAll(User_.city.country.code eq "US")
 
 // Multiple conditions
 val users = orm.entity(User::class)
@@ -5332,7 +5329,7 @@ When you need the full referenced entity, call `fetch()`. This triggers a databa
 [Kotlin]
 
 ```kotlin
-val user = orm.get { User_.id eq userId }
+val user = orm.get(User_.id eq userId)
 val city: City = user.city.fetch()  // Loads from database
 ```
 
@@ -5584,7 +5581,7 @@ data class Report(
 ) : Entity<Int>
 
 // Later, when you need the author
-val report = orm.find { Report_.id eq reportId }
+val report = orm.find(Report_.id eq reportId)
 if (needsAuthorInfo) {
     val author = report?.author?.fetch()
 }
@@ -6856,7 +6853,7 @@ template.setTimeout(30);  // 30 seconds
 template.setReadOnly(true);
 
 List<User> users = template.execute(status -> {
-    return orm.entity(User.class).selectAll().getResultList();
+    return orm.entity(User.class).select().getResultList();
 });
 ```
 
@@ -6881,28 +6878,6 @@ try (Connection connection = dataSource.getConnection()) {
 }
 ```
 
-### JPA EntityManager
-
-Storm can coexist with JPA in the same application. This is useful when migrating from JPA to Storm gradually, or when you want to use Storm for specific operations (like bulk inserts or complex queries) while keeping JPA for others. Storm can create an `ORMTemplate` directly from a JPA `EntityManager`, sharing the same underlying connection and transaction.
-
-```java
-@Service
-public class HybridService {
-
-    @PersistenceContext
-    private EntityManager entityManager;
-
-    @Transactional
-    public void processWithBothOrms(User user) {
-        // Use Storm for efficient bulk operations
-        var orm = ORMTemplate.of(entityManager);
-        orm.entity(User.class).insert(user);
-
-        // JPA and Storm share the same transaction
-        entityManager.flush();
-    }
-}
-```
 ---
 
 ## Important Notes
@@ -7073,7 +7048,7 @@ Define repositories:
 interface UserRepository : EntityRepository<User, Int> {
 
     fun findByEmail(email: String): User? =
-        find { User_.email eq email }
+        find(User_.email eq email)
 }
 ```
 
@@ -7460,21 +7435,6 @@ This gives you:
 - Transaction integration between Spring and Storm
 - Repository auto-discovery and injection
 
-## JPA Entity Manager
-
-Storm can create an `ORMTemplate` from a JPA `EntityManager`, which lets you use Storm queries within existing JPA transactions and services. This is particularly useful during incremental [migration from JPA](migration-from-jpa.md), where you can convert one repository or query at a time without changing your transaction management strategy.
-
-```java
-@PersistenceContext
-private EntityManager entityManager;
-
-@Transactional
-public void doWork() {
-    var orm = ORMTemplate.of(entityManager);
-    // Use orm alongside existing JPA code
-}
-```
-
 ## Transaction Propagation
 
 When `@EnableTransactionIntegration` is active, Storm's programmatic transactions participate in Spring's transaction propagation. This means a `transaction` or `transactionBlocking` block checks for an existing Spring-managed transaction before starting a new one. If a transaction already exists, the block joins it. If not, it creates a new independent transaction.
@@ -7797,9 +7757,14 @@ Add `storm-test` as a test dependency.
 testImplementation("st.orm:storm-test")
 ```
 
-The module uses H2 as its default in-memory database. To use H2, add it as a test dependency if it is not already present:
+The module uses H2 as its default in-memory database. Both the Storm H2 dialect and the H2 JDBC driver are required as test dependencies (`storm-h2` declares H2 as `provided`, so it must be added explicitly):
 
 ```xml
+<dependency>
+    <groupId>st.orm</groupId>
+    <artifactId>storm-h2</artifactId>
+    <scope>test</scope>
+</dependency>
 <dependency>
     <groupId>com.h2database</groupId>
     <artifactId>h2</artifactId>
@@ -8722,7 +8687,7 @@ Query separately:
 val users = orm.findAll<User>()
 
 // Batch fetch roles and group by user
-val rolesByUser = orm.findAll { UserRole_.user inList users }
+val rolesByUser = orm.findAll(UserRole_.user inList users)
     .groupBy({ it.user }, { it.role })
 ```
 
@@ -10505,7 +10470,7 @@ data class Pet(
     @FK @Contextual val owner: Ref<Owner>?,
 ) : Entity<Int>
 
-val pet = orm.get { Pet_.id eq 1 }
+val pet = orm.get(Pet_.id eq 1)
 val json = Json { serializersModule = StormSerializers }
     .encodeToString(pet)
 // {"id":1,"name":"Leo","owner":1}
@@ -10536,7 +10501,7 @@ When the application calls `fetch()` on a ref before serialization, the referenc
 [Kotlin]
 
 ```kotlin
-val pet = orm.get { Pet_.id eq 1 }
+val pet = orm.get(Pet_.id eq 1)
 pet.owner?.fetch()  // Load the owner into the ref
 
 val json = Json { serializersModule = StormSerializers }
@@ -10579,7 +10544,7 @@ data class PetWithProjectionOwner(
     @FK @Contextual val owner: Ref<OwnerSummary>?,
 ) : Entity<Int>
 
-val pet = orm.get { PetWithProjectionOwner_.id eq 1 }
+val pet = orm.get(PetWithProjectionOwner_.id eq 1)
 pet.owner?.fetch()
 
 val json = Json { serializersModule = StormSerializers }
@@ -11112,7 +11077,7 @@ Streams returned by Storm must be closed after use. Use `.use {}` (Kotlin) or tr
 Kotlin uses `Flow` for streaming, which provides automatic resource cleanup through structured concurrency. When the Flow completes or the coroutine is cancelled, database cursors and connections are released without explicit cleanup code.
 
 ```kotlin
-val users: Flow<User> = orm.entity(User::class).selectAll()
+val users: Flow<User> = orm.entity(User::class).select().resultFlow
 
 // Process one at a time -- only one row in memory
 users.collect { user ->
@@ -11134,19 +11099,19 @@ Java uses `Stream` for streaming. Unlike Kotlin's Flow, Java streams do not have
 
 ```java
 // Process one at a time
-try (Stream<User> users = orm.entity(User.class).selectAll()) {
+try (Stream<User> users = orm.entity(User.class).select().getResultStream()) {
     users.forEach(user -> processUser(user));
 }
 
 // Transform and collect
-try (Stream<User> users = orm.entity(User.class).selectAll()) {
+try (Stream<User> users = orm.entity(User.class).select().getResultStream()) {
     List<String> emails = users
         .map(User::email)
         .toList();
 }
 
 // Count without loading all entities
-try (Stream<User> users = orm.entity(User.class).selectAll()) {
+try (Stream<User> users = orm.entity(User.class).select().getResultStream()) {
     long count = users.count();
 }
 ```
@@ -11179,7 +11144,7 @@ When you need to read and update rows as part of a single atomic operation, wrap
 
 ```kotlin
 transaction {
-    val users: Flow<User> = orm.selectAll<User>()
+    val users: Flow<User> = orm.select<User>().resultFlow
     users.collect { user ->
         // Process within the same transaction
         orm update user.copy(processed = true)
@@ -11866,11 +11831,11 @@ Storm caches compiled templates to eliminate even this small overhead on repeate
 
 ```kotlin
 // First execution: full compilation + binding
-userRepository.find { User_.email eq "alice@example.com" }
+userRepository.find(User_.email eq "alice@example.com")
 
 // Subsequent executions: cache hit, binding only
-userRepository.find { User_.email eq "bob@example.com" }
-userRepository.find { User_.email eq "charlie@example.com" }
+userRepository.find(User_.email eq "bob@example.com")
+userRepository.find(User_.email eq "charlie@example.com")
 ```
 
 This applies to all Storm operations. Repository methods like `findAll()`, `insert()`, and `update()` benefit from the same caching mechanism. Once a query pattern has been compiled, repeated use across your application reuses the cached compilation.
@@ -12561,7 +12526,7 @@ When a cache hit occurs, Storm skips the entire construction process for that en
 
 ```kotlin
 // Query returns 1000 users, but only 50 unique cities
-val users = userRepository.findAll { User_.city eq city }
+val users = userRepository.findAll(User_.city eq city)
 ```
 
 Without early lookup, Storm would construct 1000 `City` objects and then deduplicate. With early lookup:
@@ -12587,7 +12552,7 @@ The interner only retains entities while your code uses them. Once released, the
 
 ```kotlin
 // Safe for large result sets - processed entities don't accumulate
-orderRepository.selectAll().collect { order ->
+orderRepository.select().resultFlow.collect { order ->
     process(order)
     // order can be cleaned up after this iteration
 }
@@ -12852,7 +12817,7 @@ The selected update mode controls:
 In `OFF` mode, Storm bypasses dirty checking entirely. Every call to `update()` generates a full UPDATE statement that writes all columns, regardless of whether values have actually changed.
 
 ```kotlin
-val user = orm.find { User_.id eq 1 }
+val user = orm.find(User_.id eq 1)
 val updatedUser = user.copy(name = "New Name")
 
 // Always generates: UPDATE user SET email=?, name=?, city_id=? WHERE id=?
@@ -12895,7 +12860,7 @@ userRepository.update(users.map { processUser(it) })
 - If **any field changed**: A full-row UPDATE is executed (all columns are written)
 
 ```kotlin
-val user = orm.get { User_.id eq 1 }  // Storm observes: {id=1, email="a@b.com", name="Alice"}
+val user = orm.get(User_.id eq 1)  // Storm observes: {id=1, email="a@b.com", name="Alice"}
 
 // Scenario 1: No changes
 orm update user  // No SQL executed - entity unchanged
@@ -12914,7 +12879,7 @@ When multiple entities of the same type are updated in a transaction, JDBC can b
 
 ```kotlin
 // All updates have identical SQL shape - JDBC batches them
-val users = userRepository.findAll { User_.city eq city }
+val users = userRepository.findAll(User_.city eq city)
 userRepository.update(users.map { it.copy(lastLogin = now()) })
 ```
 
@@ -12925,7 +12890,7 @@ userRepository.update(users.map { it.copy(lastLogin = now()) })
 **Read-modify-write patterns:** When you load an entity and pass it back to update without modifications, ENTITY mode skips the UPDATE entirely.
 
 ```kotlin
-val user = orm.get { User_.id eq userId }
+val user = orm.get(User_.id eq userId)
 
 // No changes made - UPDATE is skipped
 orm update user
@@ -12952,7 +12917,7 @@ orm update updated
 `FIELD` mode provides the most granular control. Storm compares each field individually and generates UPDATE statements that include only the columns that actually changed. Like ENTITY mode, if no fields changed, Storm skips the UPDATE entirely.
 
 ```kotlin
-val user = orm.get { User_.id eq 1 }  // {id=1, email="a@b.com", name="Alice", bio="...", settings="..."}
+val user = orm.get(User_.id eq 1)  // {id=1, email="a@b.com", name="Alice", bio="...", settings="..."}
 
 // Only name changed
 val updated = user.copy(name = "Bob")
@@ -12972,7 +12937,7 @@ orm update updated2
 ```kotlin
 // Article has 20 columns including large 'content' field
 // But we're only updating the view count
-val article = orm.find { Article_.id eq articleId }
+val article = orm.find(Article_.id eq articleId)
 orm update article.copy(viewCount = article.viewCount + 1)
 // UPDATE article SET view_count=? WHERE id=?
 // The large 'content' column is NOT written
@@ -13306,7 +13271,7 @@ Dirty checking determines *what to update*. Optimistic locking determines *wheth
 
 ```kotlin
 // This does NOT prevent lost updates:
-val user = orm.find { User_.id eq 1 }
+val user = orm.find(User_.id eq 1)
 // ... another transaction modifies the same user ...
 orm update user.copy(name = "New Name")  // May overwrite other transaction's changes!
 
@@ -13327,8 +13292,8 @@ orm update user.copy(name = "New Name")
 Storm tracks which entity types are affected by each mutation so it can selectively invalidate observed state. For template-based updates (using `orm update entity`), Storm knows the entity type and only clears observed state of that type. However, when you execute raw SQL mutations without entity type information, Storm cannot determine which entities may have been affected. Rather than risk stale comparisons that could silently skip a necessary UPDATE, Storm clears all observed state in the current transaction:
 
 ```kotlin
-val user = orm.get { User_.id eq 1 }     // Storm observes User state
-val city = orm.get { City_.id eq 100 }   // Storm observes City state
+val user = orm.get(User_.id eq 1)     // Storm observes User state
+val city = orm.get(City_.id eq 100)   // Storm observes City state
 
 // Raw SQL mutation - Storm clears all observed state
 orm.execute("UPDATE user SET name = 'Changed' WHERE id = 1")
@@ -13353,7 +13318,7 @@ data class User(
     @Embedded val address: Address
 ) : Entity<Int>
 
-val user = orm.find { User_.id eq 1 }
+val user = orm.find(User_.id eq 1)
 // With FIELD mode: only changed columns in Address are updated
 orm update user.copy(address = user.address.copy(city = "New City"))
 // UPDATE user SET city=? WHERE id=?
@@ -13773,7 +13738,7 @@ Even without transaction-level caching, Storm preserves entity identity within a
 
 ```kotlin
 // Even at READ_COMMITTED in a read-write transaction:
-val orders = orderRepository.findAll { Order_.status eq "pending" }
+val orders = orderRepository.findAll(Order_.status eq "pending")
 
 // If order1 and order2 have the same customer, they share the instance
 val customer1 = orders[0].customer.fetch()
@@ -13822,7 +13787,7 @@ When navigating relationships, `Ref.fetch()` automatically uses the cache:
 ```kotlin
 transaction {
     // Load orders with their users
-    val orders = orderRepository.findAll { Order_.status eq "pending" }
+    val orders = orderRepository.findAll(Order_.status eq "pending")
 
     // If multiple orders share the same user, only one query per unique user
     orders.forEach { order ->
@@ -14713,10 +14678,10 @@ The simplest way to enable SQL logging is to annotate the repository interface i
 interface UserRepository : EntityRepository<User, Int> {
 
     fun findByEmail(email: String): User? =
-        find { User_.email eq email }
+        find(User_.email eq email)
 
     fun findActiveUsers(): List<User> =
-        findAll { User_.active eq true }
+        findAll(User_.active eq true)
 }
 ```
 
@@ -14759,12 +14724,12 @@ interface OrderRepository : EntityRepository<Order, Int> {
 
     // No logging
     fun findById(id: Int): Order? =
-        find { Order_.id eq id }
+        find(Order_.id eq id)
 
     // Logged
     @SqlLog
     fun findExpiredOrders(cutoff: LocalDate): List<Order> =
-        findAll { Order_.expiresAt lt cutoff }
+        findAll(Order_.expiresAt lt cutoff)
 }
 ```
 
@@ -14802,7 +14767,7 @@ Setting `inlineParameters = true` replaces the `?` placeholders with the actual 
 interface UserRepository : EntityRepository<User, Int> {
 
     fun findByEmail(email: String): User? =
-        find { User_.email eq email }
+        find(User_.email eq email)
 }
 ```
 
@@ -15097,7 +15062,7 @@ The most important security property of Storm is that **all values are parameter
 
 ```kotlin
 // The 'email' value is sent as a JDBC parameter, not interpolated into SQL.
-val user = userRepository.find { User_.email eq email }
+val user = userRepository.find(User_.email eq email)
 ```
 
 Generated SQL:
@@ -16290,7 +16255,7 @@ data class OrderWithItems(
 
 fun findOrderWithItems(orderId: Long): OrderWithItems? {
     val order = orm.entity(Order::class).findById(orderId) ?: return null
-    val lineItems = orm.entity(LineItem::class).findAll { LineItem_.order eq order }
+    val lineItems = orm.entity(LineItem::class).findAll(LineItem_.order eq order)
     return OrderWithItems(order, lineItems)
 }
 ```
@@ -16452,11 +16417,11 @@ interface CustomerRepository : EntityRepository<Customer, Int> {
 
     /** Find only non-deleted customers. */
     fun findActive(): List<Customer> =
-        findAll { Customer_.deletedAt.isNull() }
+        findAll(Customer_.deletedAt.isNull())
 
     /** Find a non-deleted customer by ID. */
     fun findActiveOrNull(customerId: Int): Customer? =
-        find { (Customer_.id eq customerId) and Customer_.deletedAt.isNull() }
+        find((Customer_.id eq customerId) and Customer_.deletedAt.isNull())
 
     /** Soft-delete a customer by setting the deletedAt timestamp. */
     fun softDelete(customer: Customer): Customer {
@@ -17540,7 +17505,7 @@ Storm does not store collections on entities. This is intentional: collection fi
 
 ```kotlin
 // Instead of user.orders (not supported)
-val orders = orm.findAll { Order_.user eq user }
+val orders = orm.findAll(Order_.user eq user)
 ```
 
 ### Why doesn't Storm support lazy loading?
@@ -17607,7 +17572,7 @@ Yes. Storm adds minimal overhead on top of JDBC. There are no runtime proxies, n
 Loading millions of rows into a `List` consumes proportional memory and delays processing until the entire result set is fetched. Streaming processes rows one at a time as the database returns them, keeping memory usage constant regardless of result set size. In Kotlin, Storm exposes streams as `Flow`, which integrates naturally with coroutines.
 
 ```kotlin
-val users: Flow<User> = orm.entity(User::class).selectAll()
+val users: Flow<User> = orm.entity(User::class).select().resultFlow
 users.collect { processUser(it) }
 ```
 
@@ -17689,14 +17654,14 @@ Storm's Java streams are backed by a JDBC `ResultSet`, which is tied to the data
 ```java
 // Wrong: stream closed before consumption
 Stream<User> getUsers() {
-    try (var users = orm.entity(User.class).selectAll()) {
+    try (var users = orm.entity(User.class).select().getResultStream()) {
         return users;  // Stream is closed when method returns
     }
 }
 
 // Right: consume within the block
 List<User> getUsers() {
-    try (var users = orm.entity(User.class).selectAll()) {
+    try (var users = orm.entity(User.class).select().getResultStream()) {
         return users.toList();
     }
 }
@@ -17865,7 +17830,7 @@ public interface UserRepository extends JpaRepository<User, Long> {
 interface UserRepository : EntityRepository<User, Long> {
 
     fun findByEmail(email: String): User? =
-        find { User_.email eq email }
+        find(User_.email eq email)
 
     fun findByCity(city: City): List<User> =
         select()
@@ -17874,7 +17839,7 @@ interface UserRepository : EntityRepository<User, Long> {
             .resultList
 
     fun findRecentUsers(since: LocalDateTime): List<User> =
-        findAll { User_.createdAt gt since }
+        findAll(User_.createdAt gt since)
 }
 ```
 
@@ -17941,10 +17906,10 @@ public interface UserRepository extends JpaRepository<User, Long> {
 interface UserRepository : EntityRepository<User, Long> {
 
     fun findByEmail(email: String): User? =
-        find { User_.email eq email }
+        find(User_.email eq email)
 
     fun findByCity(city: City): List<User> =
-        findAll { User_.city eq city }
+        findAll(User_.city eq city)
 }
 ```
 
@@ -17983,7 +17948,7 @@ Optional<User> findByEmail(@Param("email") String email);
 ```kotlin
 // Storm
 fun findByEmail(email: String): User? =
-    find { User_.email eq email }
+    find(User_.email eq email)
 ```
 
 [Java]
@@ -18015,7 +17980,7 @@ return em.createQuery(cq).getResultList();
 
 ```kotlin
 // Storm
-orm.findAll { User_.city eq city }
+orm.findAll(User_.city eq city)
 ```
 
 [Java]
@@ -18084,7 +18049,7 @@ private List<Order> orders;
 
 Storm approach (query the "many" side):
 ```kotlin
-val orders = orm.findAll { Order_.user eq user }
+val orders = orm.findAll(Order_.user eq user)
 ```
 
 ## Transaction Migration
@@ -18226,7 +18191,7 @@ data class CustomerProfile(
 // Storm repository (new)
 interface CustomerProfileRepository : EntityRepository<CustomerProfile, Long> {
     fun findByCustomerId(customerId: Long): CustomerProfile? =
-        find { CustomerProfile_.customerId eq customerId }
+        find(CustomerProfile_.customerId eq customerId)
 }
 
 // Service that uses both
@@ -18359,7 +18324,7 @@ Storm intentionally does not support collection fields on entities. This is a de
 val orders = user.orders  // Not supported
 
 // Right approach
-val orders = orm.findAll { Order_.user eq user }
+val orders = orm.findAll(Order_.user eq user)
 ```
 
 ## Schema Validation
@@ -18421,7 +18386,7 @@ A plain data class or record (without implementing `Entity`) that is embedded wi
 A set of companion classes (e.g., `User_`, `City_`) generated at compile time by Storm's KSP processor (Kotlin) or annotation processor (Java). The metamodel provides type-safe references to entity fields for use in queries, predicates, and ordering. See [Metamodel](metamodel.md).
 
 **ORM Template**
-The central entry point for all Storm database operations (`ORMTemplate`). Created from a JDBC `DataSource`, `Connection`, or JPA `EntityManager`, it is thread-safe and typically instantiated once at application startup. It provides access to entity repositories, query builders, and SQL template execution. See [First Entity](first-entity.md#create-the-orm-template).
+The central entry point for all Storm database operations (`ORMTemplate`). Created from a JDBC `DataSource` or `Connection`, it is thread-safe and typically instantiated once at application startup. It provides access to entity repositories, query builders, and SQL template execution. See [First Entity](first-entity.md#create-the-orm-template).
 
 **Projection**
 A read-only data class or record that implements the `Projection<ID>` interface. Projections represent database views or complex query results defined via `@ProjectionQuery`. Unlike entities, projections only support read operations. See [Projections](projections.md).
@@ -18651,7 +18616,7 @@ Storm's Kotlin API provides first-class coroutine support. Query results can be 
 
 ```kotlin
 // Streaming with Flow
-val users: Flow<User> = orm.entity(User::class).selectAll()
+val users: Flow<User> = orm.entity(User::class).select().resultFlow
 users.collect { processUser(it) }
 
 // Suspending transaction

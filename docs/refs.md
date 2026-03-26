@@ -51,7 +51,7 @@ When you need the full referenced entity, call `fetch()`. This triggers a databa
 <TabItem value="kotlin" label="Kotlin" default>
 
 ```kotlin
-val user = orm.get { User_.id eq userId }
+val user = orm.get(User_.id eq userId)
 val city: City = user.city.fetch()  // Loads from database
 ```
 
@@ -338,7 +338,7 @@ data class Report(
 ) : Entity<Int>
 
 // Later, when you need the author
-val report = orm.find { Report_.id eq reportId }
+val report = orm.find(Report_.id eq reportId)
 if (needsAuthorInfo) {
     val author = report?.author?.fetch()
 }

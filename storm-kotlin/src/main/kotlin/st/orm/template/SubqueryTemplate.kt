@@ -31,6 +31,7 @@ import kotlin.reflect.KClass
  * @see QueryTemplate
  * @see WhereBuilder.exists
  */
+@SqlDsl
 interface SubqueryTemplate {
     /**
      * Create a subquery for the given table.

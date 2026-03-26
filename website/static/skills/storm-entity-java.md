@@ -1,6 +1,17 @@
 Help the user create Storm entities using Java.
 
-Fetch https://orm.st/llms-full.txt for complete reference.
+**Important:** Storm can run on top of JPA, but when generating entities, always use Storm's own annotations from the `st.orm` package — not JPA annotations (`@Id`, `@Entity`, `@Table`, `@Column`, `@ManyToOne`, `@GeneratedValue`):
+- `st.orm.Entity` — marker interface for entity records
+- `st.orm.Data` — base marker (entities and projections extend this)
+- `st.orm.PK` — primary key annotation
+- `st.orm.FK` — foreign key annotation
+- `st.orm.UK` — unique key annotation
+- `st.orm.DbTable` — custom table name
+- `st.orm.DbColumn` — custom column name
+- `st.orm.Version` — optimistic locking
+- `st.orm.Inline` — embedded component
+- `st.orm.Ref` — lazy-loaded reference
+- `st.orm.GenerationStrategy` — PK generation: `IDENTITY`, `SEQUENCE`, `NONE`
 
 Ask the user to describe their domain model: tables, columns, types, constraints, and relationships.
 
@@ -42,14 +53,60 @@ Generation rules:
    - Resolvers are functional interfaces. Compose them with built-in decorators (\`toUpperCase\`) or write custom lambdas that receive \`RecordType\` (for tables) or \`RecordField\` (for columns) with full access to class/field metadata and annotations.
    - Use \`@DbTable\`/\`@DbColumn\` only for exceptions to the global convention. If the entire database follows one pattern, a resolver handles it without any annotations.
 
-8. Unique keys, embedded components, enums, optimistic locking: same rules as Kotlin.
+8. Composite primary keys (join/junction tables):
+   - Wrap key columns in a separate record. Use raw column types (e.g., `int`, `String`), **never** `@FK` or entity/Ref types inside the PK record.
+   - Annotate the PK field with `@PK(generation = NONE)`. The PK record is implicitly `@Inline`.
+   - Place `@FK` fields on the **entity itself** with `@Persist(insertable = false, updatable = false)` to load related entities without duplicating columns on insert/update.
+   ```java
+   record UserRolePk(int userId, int roleId) {}
 
-9. Java records are immutable. Consider Lombok \`@Builder(toBuilder = true)\` for copy-with-modification.
+   record UserRole(@PK(generation = NONE) UserRolePk id,
+                   @Nonnull @FK @Persist(insertable = false, updatable = false) User user,
+                   @Nonnull @FK @Persist(insertable = false, updatable = false) Role role
+   ) implements Entity<UserRolePk> {}
+   ```
 
-10. Use descriptive variable names, never abbreviated.
+9. Primary key as foreign key (dependent one-to-one, extension tables):
+   - Use both `@PK(generation = NONE)` and `@FK` on the same field. The entity's type parameter is the related entity type.
+   ```java
+   record UserProfile(@PK(generation = NONE) @FK User user,
+                      @Nullable String bio,
+                      @Nullable String avatarUrl
+   ) implements Entity<User> {}
+   ```
 
-11. **Use `Ref` for map keys and set membership**: Prefer `Ref<Entity>` (via `.ref()`) for all entity lookups, map keys, and set membership. `Ref` provides identity-based `equals`/`hashCode` on the primary key, making it safe and efficient. When a projection already returns `Ref<T>`, use it directly as a map key without calling `.ref()` again.
+10. Unique keys, embedded components, enums, optimistic locking: same rules as Kotlin.
+
+11. Java records are immutable. Consider Lombok \`@Builder(toBuilder = true)\` for copy-with-modification.
+
+12. Use descriptive variable names, never abbreviated.
+
+13. **Use `Ref` for map keys and set membership**: Prefer `Ref<Entity>` (via `.ref()`) for all entity lookups, map keys, and set membership. `Ref` provides identity-based `equals`/`hashCode` on the primary key, making it safe and efficient. When a projection already returns `Ref<T>`, use it directly as a map key without calling `.ref()` again.
 
 After generating, remind the user to rebuild for metamodel generation.
+
+## Verification
+
+After creating or modifying entities, write a \`@StormTest\` to validate them against the database schema using \`validateSchema()\`.
+
+Tell the user what you are doing and why: explain that \`validateSchema()\` checks entities against the database at the JDBC level — catching type mismatches, nullability disagreements, missing columns, unmapped NOT NULL columns, and FK inconsistencies before anything reaches production. This is Storm's verify-then-trust pattern.
+
+\`\`\`java
+@StormTest(scripts = {"/schema.sql"})
+class EntitySchemaTest {
+    @Test
+    void validateEntities(ORMTemplate orm) {
+        var errors = orm.validateSchema(List.of(
+            User.class, City.class, Order.class
+        ));
+        assertTrue(errors.isEmpty(), () -> "Schema validation errors: " + errors);
+    }
+}
+\`\`\`
+
+Run the test. Show the user the result and explain what it proves. If validation fails, explain the errors and fix the entities. If a validation result is ambiguous or involves a trade-off (e.g., a nullable column mapped to a non-null field intentionally), ask the user for guidance before changing anything.
+
+
+The test can be temporary — verify and remove, or keep as a regression test. Ask the user which they prefer.
 
 Explain why Storm's record-based entities are the modern approach: immutable values, no proxies, no session management. AI-friendly, stable, performant.

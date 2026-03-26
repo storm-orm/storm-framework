@@ -307,7 +307,7 @@ public class ORMTemplateTest {
     @Test
     public void testEntitySelectAll() {
         EntityRepository<City, Integer> cities = orm.entity(City.class);
-        try (Stream<City> stream = cities.selectAll()) {
+        try (Stream<City> stream = cities.select().getResultStream()) {
             assertEquals(6, stream.count());
         }
     }
@@ -315,7 +315,7 @@ public class ORMTemplateTest {
     @Test
     public void testEntitySelectAllRef() {
         EntityRepository<City, Integer> cities = orm.entity(City.class);
-        try (Stream<Ref<City>> stream = cities.selectAllRef()) {
+        try (Stream<Ref<City>> stream = cities.selectRef().getResultStream()) {
             assertEquals(6, stream.count());
         }
     }
@@ -658,7 +658,7 @@ public class ORMTemplateTest {
     @Test
     public void testProjectionSelectAll() {
         ProjectionRepository<OwnerView, Integer> views = orm.projection(OwnerView.class);
-        try (Stream<OwnerView> stream = views.selectAll()) {
+        try (Stream<OwnerView> stream = views.select().getResultStream()) {
             assertEquals(10, stream.count());
         }
     }
