@@ -9,7 +9,7 @@ import { basename, join, dirname } from 'path';
 import { homedir } from 'os';
 import { execSync } from 'child_process';
 
-const VERSION = '1.11.0';
+const VERSION = '1.11.1';
 
 // ─── ANSI ────────────────────────────────────────────────────────────────────
 
