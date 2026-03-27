@@ -333,7 +333,6 @@ function renderFrame(now) {
         const mi = matrixIntensityAt(mx, y);
         if (hasBolt(x, y)) {
           if (mi >= 3) out += matrixColor(mi) + matrixGlyph(mx, y, now) + RESET;
-          else if (mi > 0) out += matrixColor(mi) + '#' + RESET;
           else              out += dbColor(y, false) + '#' + RESET;
         } else {
           out += dbColor(y, false) + '@' + RESET;

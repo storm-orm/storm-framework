@@ -13,6 +13,7 @@ import org.springframework.test.context.ContextConfiguration
 import org.springframework.test.context.jdbc.Sql
 import org.springframework.test.context.junit.jupiter.SpringExtension
 import st.orm.PersistenceException
+import st.orm.core.spi.TransactionContext
 import st.orm.repository.countAll
 import st.orm.template.impl.CoroutineAwareConnectionProviderImpl
 import st.orm.template.model.City
@@ -30,8 +31,6 @@ open class ConnectionProviderTest(
     @Autowired val orm: ORMTemplate,
     @Autowired val dataSource: DataSource,
 ) {
-
-    // Connection acquisition without transaction
 
     @Test
     fun `getConnection without transaction should return new connection`() {
@@ -52,8 +51,6 @@ open class ConnectionProviderTest(
         connection.isClosed.shouldBeTrue()
     }
 
-    // Connection within transaction
-
     @Test
     fun `getConnection within transaction should reuse transaction connection`(): Unit = runBlocking {
         transactionBlocking {
@@ -72,40 +69,69 @@ open class ConnectionProviderTest(
         }
     }
 
-    // ConcurrencyDetector
+    private fun stubContext(): TransactionContext = object : TransactionContext {
+        override fun entityCache(entityType: Class<out st.orm.Entity<*>>, retention: st.orm.core.spi.CacheRetention) = throw UnsupportedOperationException()
+        override fun getEntityCache(entityType: Class<out st.orm.Entity<*>>) = throw UnsupportedOperationException()
+        override fun findEntityCache(entityType: Class<out st.orm.Entity<*>>) = null
+        override fun clearAllEntityCaches() {}
+        override fun <T : Any?> getDecorator(resourceType: Class<T>): TransactionContext.Decorator<T> = TransactionContext.Decorator { it }
+    }
 
     @Test
-    fun `ConcurrencyDetector beforeAccess and afterAccess on same thread should succeed`() {
+    fun `ConcurrencyDetector beforeAccess and afterAccess with same context should succeed`() {
         val connection = dataSource.connection
+        val context = stubContext()
         try {
-            CoroutineAwareConnectionProviderImpl.ConcurrencyDetector.beforeAccess(connection)
-            CoroutineAwareConnectionProviderImpl.ConcurrencyDetector.afterAccess(connection)
+            CoroutineAwareConnectionProviderImpl.ConcurrencyDetector.beforeAccess(connection, context)
+            CoroutineAwareConnectionProviderImpl.ConcurrencyDetector.afterAccess(connection, context)
         } finally {
             connection.close()
         }
     }
 
     @Test
-    fun `ConcurrencyDetector should allow nested access on same thread`() {
+    fun `ConcurrencyDetector should allow nested access with same context`() {
         val connection = dataSource.connection
+        val context = stubContext()
         try {
-            CoroutineAwareConnectionProviderImpl.ConcurrencyDetector.beforeAccess(connection)
-            CoroutineAwareConnectionProviderImpl.ConcurrencyDetector.beforeAccess(connection)
-            CoroutineAwareConnectionProviderImpl.ConcurrencyDetector.afterAccess(connection)
-            CoroutineAwareConnectionProviderImpl.ConcurrencyDetector.afterAccess(connection)
+            CoroutineAwareConnectionProviderImpl.ConcurrencyDetector.beforeAccess(connection, context)
+            CoroutineAwareConnectionProviderImpl.ConcurrencyDetector.beforeAccess(connection, context)
+            CoroutineAwareConnectionProviderImpl.ConcurrencyDetector.afterAccess(connection, context)
+            CoroutineAwareConnectionProviderImpl.ConcurrencyDetector.afterAccess(connection, context)
         } finally {
             connection.close()
         }
     }
 
     @Test
-    fun `ConcurrencyDetector should detect concurrent access from different threads`() {
+    fun `ConcurrencyDetector should allow same context from different thread`() {
         val connection = dataSource.connection
+        val context = stubContext()
         try {
-            CoroutineAwareConnectionProviderImpl.ConcurrencyDetector.beforeAccess(connection)
+            CoroutineAwareConnectionProviderImpl.ConcurrencyDetector.beforeAccess(connection, context)
+            CoroutineAwareConnectionProviderImpl.ConcurrencyDetector.afterAccess(connection, context)
+            // Same context, different thread — simulates virtual thread migration.
+            val thread = Thread {
+                CoroutineAwareConnectionProviderImpl.ConcurrencyDetector.beforeAccess(connection, context)
+                CoroutineAwareConnectionProviderImpl.ConcurrencyDetector.afterAccess(connection, context)
+            }
+            thread.start()
+            thread.join()
+        } finally {
+            connection.close()
+        }
+    }
+
+    @Test
+    fun `ConcurrencyDetector should detect concurrent access from different contexts`() {
+        val connection = dataSource.connection
+        val context1 = stubContext()
+        val context2 = stubContext()
+        try {
+            CoroutineAwareConnectionProviderImpl.ConcurrencyDetector.beforeAccess(connection, context1)
             var caughtException: Throwable? = null
             val thread = Thread {
-                CoroutineAwareConnectionProviderImpl.ConcurrencyDetector.beforeAccess(connection)
+                CoroutineAwareConnectionProviderImpl.ConcurrencyDetector.beforeAccess(connection, context2)
             }
             thread.setUncaughtExceptionHandler { _, throwable -> caughtException = throwable }
             thread.start()
@@ -113,7 +139,7 @@ open class ConnectionProviderTest(
             assertThrows<PersistenceException> {
                 caughtException?.let { throw it }
             }
-            CoroutineAwareConnectionProviderImpl.ConcurrencyDetector.afterAccess(connection)
+            CoroutineAwareConnectionProviderImpl.ConcurrencyDetector.afterAccess(connection, context1)
         } finally {
             connection.close()
         }
@@ -122,9 +148,10 @@ open class ConnectionProviderTest(
     @Test
     fun `ConcurrencyDetector afterAccess on unknown connection should be no-op`() {
         val connection = dataSource.connection
+        val context = stubContext()
         try {
             // afterAccess on a connection never registered should not throw
-            CoroutineAwareConnectionProviderImpl.ConcurrencyDetector.afterAccess(connection)
+            CoroutineAwareConnectionProviderImpl.ConcurrencyDetector.afterAccess(connection, context)
         } finally {
             connection.close()
         }
