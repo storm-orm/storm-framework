@@ -37,7 +37,7 @@ class CoroutineAwareConnectionProviderImpl : ConnectionProvider {
             require(context is JdbcTransactionContext) { "Transaction context must be of type JdbcTransactionContext." }
             validateState()
             val connection = context.getConnection(dataSource)
-            ConcurrencyDetector.beforeAccess(connection)
+            ConcurrencyDetector.beforeAccess(connection, context)
             return connection
         }
         // If no programmatic transaction is active, obtain a new connection from the data source.
@@ -50,7 +50,7 @@ class CoroutineAwareConnectionProviderImpl : ConnectionProvider {
             if (context.currentConnection() == connection) {
                 // If this connection is the current transaction connection, do not close it. It will be closed when the
                 // outermost transaction ends.
-                ConcurrencyDetector.afterAccess(connection)
+                ConcurrencyDetector.afterAccess(connection, context)
                 return
             }
         }
@@ -111,8 +111,13 @@ class CoroutineAwareConnectionProviderImpl : ConnectionProvider {
     }
 
     /**
-     * Detects concurrent access to transaction-scoped connections. Note that the same thread can access the same
-     * connection multiple times.
+     * Detects concurrent access to transaction-scoped connections.
+     *
+     * Ownership is tracked by transaction context identity rather than thread identity, because coroutines may resume
+     * on a different virtual thread after suspension (especially with OpenTelemetry or other javaagent instrumentation
+     * that wraps dispatched tasks).
+     *
+     * The same context can access the same connection multiple times (re-entrancy).
      */
     object ConcurrencyDetector {
         private class ConnectionIdentity(connection: Connection, queue: ReferenceQueue<Connection>) : WeakReference<Connection>(connection, queue) {
@@ -121,7 +126,7 @@ class CoroutineAwareConnectionProviderImpl : ConnectionProvider {
             override fun equals(other: Any?) = other is ConnectionIdentity && this.get() === other.get() && this.get() != null
         }
 
-        private data class Owner(var thread: Thread? = null, var depth: Int = 0)
+        private data class Owner(var context: TransactionContext? = null, var depth: Int = 0)
         private val queue = ReferenceQueue<Connection>()
         private val owners = ConcurrentHashMap<ConnectionIdentity, Owner>()
 
@@ -132,33 +137,31 @@ class CoroutineAwareConnectionProviderImpl : ConnectionProvider {
             }
         }
 
-        fun beforeAccess(connection: Connection) {
+        fun beforeAccess(connection: Connection, context: TransactionContext) {
             reap()
             val key = ConnectionIdentity(connection, queue)
             val owner = owners.computeIfAbsent(key) { Owner() }
-            val t = Thread.currentThread()
             synchronized(owner) {
-                when (owner.thread) {
+                when (owner.context) {
                     null -> {
-                        owner.thread = t
+                        owner.context = context
                         owner.depth = 1
                     }
-                    t -> owner.depth++
+                    context -> owner.depth++
                     else -> throw PersistenceException("Concurrent access on $connection.")
                 }
             }
         }
 
-        fun afterAccess(connection: Connection) {
+        fun afterAccess(connection: Connection, context: TransactionContext) {
             reap()
             val key = ConnectionIdentity(connection, queue)
             val owner = owners[key] ?: return
-            val t = Thread.currentThread()
             var clear = false
             synchronized(owner) {
-                if (owner.thread !== t) return
+                if (owner.context !== context) return
                 if (--owner.depth == 0) {
-                    owner.thread = null
+                    owner.context = null
                     clear = true
                 }
             }
