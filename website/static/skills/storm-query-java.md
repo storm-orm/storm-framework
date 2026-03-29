@@ -20,19 +20,51 @@ The `Operator` enum is in `st.orm` and contains: `EQUALS`, `NOT_EQUALS`, `LESS_T
 
 Ask what data they need, filters, ordering, or pagination.
 
-Three query levels (suggest the simplest that works):
-| Approach | Best for |
-|----------|----------|
-| findById / select().where() | Simple lookups |
-| QueryBuilder (fluent chain) | Most application queries |
-| SQL Templates (/storm-sql-java) | CTEs, window functions, subqueries |
+## API Design: Builder Methods vs Convenience Methods
 
-Quick queries:
+Repository/entity methods fall into two categories:
+
+**Builder methods** return `QueryBuilder` for composable, chainable queries. They never execute immediately:
+- `select()`, `select(predicate)` -- build SELECT queries
+- `selectRef()`, `selectRef(predicate)` -- build SELECT queries returning Refs
+- `selectCount()` -- build COUNT queries
+- `delete()`, `delete(predicate)` -- build DELETE queries
+
+Terminal operations: `.getResultList()`, `.getSingleResult()`, `.getOptionalResult()`, `.getResultStream()`, `.getResultCount()`, `.page()`, `.scroll()`, `.executeUpdate()`
+
+**Convenience methods** execute immediately and return results directly:
+- `findById()`, `findByRef()`, `findAll()`, `findAllRef()`, `findBy()`, `findAllBy()`, `getById()`, `getByRef()`, `getBy()`, `count()`, `exists()`, `remove()`, `removeById()`, `removeByRef()`, `removeAll()`, `removeAllBy()`, `page()`, `pageRef()`, `scroll()`
+
+The `delete`/`remove` distinction: `remove` operates on entities or ids you already have (immediate execution). `delete` builds a query to find and delete rows by criteria (returns `QueryBuilder`).
+
+Prefer the simplest approach that works. Three query levels, from simplest to most powerful:
+
+| Level | Approach | Best for |
+|-------|----------|----------|
+| 1 | Convenience methods (`findBy`, `findAllBy`, `removeAllBy`, `countBy`, `existsBy`) | Simple lookups and operations |
+| 2 | Builder with predicate (`select(predicate)`, `delete(predicate)`) or chained (`select().where()`) | Most application queries needing ordering, pagination, or joins |
+| 3 | SQL Templates (/storm-sql-java) | CTEs, window functions, database-specific features |
+
+**Level 1 — Convenience methods** (execute immediately, no terminal needed):
 ```java
 var users = orm.entity(User.class);
-Optional<User> user = users.select().where(User_.email, EQUALS, email).getOptionalResult();
-List<User> list = users.select().where(User_.city, EQUALS, city).getResultList();
+Optional<User> user = users.findBy(User_.email, email);
+List<User> list = users.findAllBy(User_.city, city);
 long count = users.count();
+```
+
+**Level 2 — Builder** (returns `QueryBuilder`, chain terminal + ordering/pagination):
+```java
+// With predicate shorthand
+List<User> list = users.select(it -> it.where(User_.city, EQUALS, city))
+    .orderBy(User_.name)
+    .getResultList();
+
+// Or equivalently, chained with .where()
+List<User> list = users.select()
+    .where(User_.city, EQUALS, city)
+    .orderBy(User_.name)
+    .getResultList();
 ```
 
 Compound filters:
@@ -145,12 +177,17 @@ List<User> users = orm.entity(User.class)
 
 ## Bulk DELETE/UPDATE
 
+`delete()` is a builder method that returns `QueryBuilder`. Call `.executeUpdate()` to execute:
+
 ```java
-// DELETE with WHERE (safe)
+// DELETE with WHERE (safe) -- builder returns QueryBuilder, terminal executes
 orm.entity(User.class).delete().where(User_.active, EQUALS, false).executeUpdate();
 
 // DELETE/UPDATE without WHERE throws by default. Use unsafe() to confirm intent:
 orm.entity(User.class).delete().unsafe().executeUpdate();
+
+// Convenience method: removeAll() executes immediately (calls unsafe() internally)
+users.removeAll();
 ```
 
 **Always prefer entity/metamodel-based QueryBuilder methods over SQL template strings.** Only fall back to template strings when QueryBuilder cannot express the query (e.g., database-specific functions). When you do use template strings, use `RAW."""..."""` (Java string templates with `--enable-preview`) — never use `TemplateString.raw()`.
@@ -174,7 +211,7 @@ QueryBuilder terminals:
 Critical rules:
 - QueryBuilder is IMMUTABLE. Every method returns a new instance. Always use the return value.
 - DELETE/UPDATE without WHERE throws. Use `unsafe()`.
-- Streaming: `select().getResultStream()` returns a `Stream`. ALWAYS use try-with-resources to avoid connection leaks.
+- Streaming: `select().getResultStream()` returns a `Stream`. ALWAYS use try-with-resources to avoid connection leaks. There are no `selectBy` methods that return Stream directly -- always use `select()` (optionally with predicate) and then `.getResultStream()`.
 - **Metamodel navigation depth**: Multiple levels of navigation are allowed on the root entity. Joined (non-root) entities can only navigate one level deep. For deeper navigation, explicitly join the intermediate entity.
 - **Use `Ref` for map keys and set membership**: Prefer `Ref<Entity>` (via `.ref()`) for map keys, set membership, and identity-based lookups. `Ref` provides identity-based `equals`/`hashCode` on the primary key.
 

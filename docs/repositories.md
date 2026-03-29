@@ -46,7 +46,7 @@ EntityRepository<User, Integer> userRepository = orm.entity(User.class);
 <Tabs groupId="language">
 <TabItem value="kotlin" label="Kotlin" default>
 
-All CRUD operations use the entity's primary key (marked with `@PK`) for identity. Insert returns the entity with any database-generated fields populated (such as auto-increment IDs). Update and delete match by primary key. Query methods accept metamodel-based filter expressions that compile to parameterized WHERE clauses.
+All CRUD operations use the entity's primary key (marked with `@PK`) for identity. Insert returns the entity with any database-generated fields populated (such as auto-increment IDs). Update and remove match by primary key. Query methods accept metamodel-based filter expressions that compile to parameterized WHERE clauses.
 
 ```kotlin
 // Create
@@ -64,14 +64,17 @@ val all: List<User> = orm.findAll(User_.city eq city)
 // Update
 orm update user.copy(name = "Alice Johnson")
 
-// Delete
-orm delete user
+// Remove
+orm remove user
 
-// Delete by condition
-orm.delete<User>(User_.city eq city)
+// Remove by condition
+orm.removeBy(User_.city, city)
 
-// Delete all
-orm.deleteAll<User>()
+// Remove by predicate
+orm.removeAll(User_.active eq false)
+
+// Remove all
+orm.removeAll<User>()
 
 // Delete all (builder approach, requires unsafe() to confirm intent)
 orm.entity(User::class).delete().unsafe().executeUpdate()
@@ -102,11 +105,11 @@ userRepository.update(new User(
     user.id(), "alice@example.com", "Alice Johnson", user.birthDate(), user.city()
 ));
 
-// Delete
-userRepository.delete(user);
+// Remove
+userRepository.remove(user);
 
-// Delete all
-userRepository.deleteAll();
+// Remove all
+userRepository.removeAll();
 
 // Delete all (builder approach, requires unsafe() to confirm intent)
 userRepository.delete().unsafe().executeUpdate();
@@ -116,7 +119,7 @@ userRepository.delete().unsafe().executeUpdate();
 </Tabs>
 
 :::warning Safety Check
-Storm rejects DELETE and UPDATE queries that have no WHERE clause, throwing a `PersistenceException`. This prevents accidental bulk deletions, which is especially important because `QueryBuilder` is immutable and a lost `where()` return value would silently drop the filter. Call `unsafe()` to opt out of this check when you intentionally want to affect all rows. The `deleteAll()` convenience method calls `unsafe()` internally.
+Storm rejects DELETE and UPDATE queries that have no WHERE clause, throwing a `PersistenceException`. This prevents accidental bulk deletions, which is especially important because `QueryBuilder` is immutable and a lost `where()` return value would silently drop the filter. Call `unsafe()` to opt out of this check when you intentionally want to affect all rows. The `removeAll()` convenience method calls `unsafe()` internally.
 :::
 
 Storm uses dirty checking to determine which columns to include in the UPDATE statement. See [Dirty Checking](dirty-checking.md) for configuration details.

@@ -95,7 +95,7 @@ val user = userRepository.findByEmail("alice@example.com")
 val usersInCity = userRepository.findByNameInCity("Alice", city)
 ```
 
-Custom repositories inherit all built-in CRUD operations (`insert`, `findById`, `update`, `delete`, etc.) from `EntityRepository`. You only add methods for domain-specific queries.
+Custom repositories inherit all built-in CRUD operations (`insert`, `findById`, `update`, `remove`, etc.) from `EntityRepository`. You only add methods for domain-specific queries.
 
 </TabItem>
 <TabItem value="java" label="Java">

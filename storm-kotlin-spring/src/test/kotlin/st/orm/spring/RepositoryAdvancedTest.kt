@@ -14,11 +14,11 @@ import org.springframework.test.context.TestConstructor.AutowireMode.ALL
 import org.springframework.test.context.jdbc.Sql
 import st.orm.PersistenceException
 import st.orm.repository.countAll
-import st.orm.repository.delete
-import st.orm.repository.deleteAll
 import st.orm.repository.exists
 import st.orm.repository.findAll
 import st.orm.repository.insert
+import st.orm.repository.remove
+import st.orm.repository.removeAll
 import st.orm.repository.update
 import st.orm.spring.model.City
 import st.orm.spring.model.Pet
@@ -186,26 +186,26 @@ class RepositoryAdvancedTest(
      */
 
     @Test
-    fun `delete should remove a specific visit`() {
+    fun `remove should remove a specific visit`() {
         val visit = visitRepository.findById(1)
         visit.shouldNotBeNull()
 
-        orm delete visit
+        orm remove visit
 
         visitRepository.findById(1) shouldBe null
         visitRepository.count() shouldBe 13
     }
 
     @Test
-    fun `deleteAll should remove all visits`() {
-        orm.deleteAll<Visit>()
+    fun `removeAll should remove all visits`() {
+        orm.removeAll<Visit>()
         visitRepository.count() shouldBe 0
         visitRepository.exists() shouldBe false
     }
 
     @Test
-    fun `deleteAll should not affect other entity types`() {
-        orm.deleteAll<Visit>()
+    fun `removeAll should not affect other entity types`() {
+        orm.removeAll<Visit>()
         orm.countAll<City>() shouldBe 6
         orm.countAll<PetType>() shouldBe 6
     }

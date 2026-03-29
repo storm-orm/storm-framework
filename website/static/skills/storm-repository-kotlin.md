@@ -53,7 +53,7 @@ val users = orm.entity(User::class)
 
 Key rules:
 1. ALL query methods have EXPLICIT BODIES. Storm does NOT derive queries from method names.
-2. Inherited CRUD: insert, update, delete, findById, findBy(Key), count, existsById, page, scroll.
+2. Inherited CRUD: insert, update, remove, removeById, removeByRef, removeAll, findById, findBy(Key), count, existsById, page, scroll.
 3. Descriptive variable names: `val users = orm.entity(User::class)`, not `val repo`.
 4. QueryBuilder is IMMUTABLE. Always chain or capture the return value (or use the `select { }` DSL which handles this automatically).
 5. Streaming: `select().resultFlow` returns a `Flow` with automatic resource cleanup.
@@ -61,6 +61,74 @@ Key rules:
 7. Pagination: `page(0, 20)` for offset-based. `scroll(User_.id, 20)` for keyset on large tables.
 8. **Prefer entity/metamodel-based methods over templates.** For joins, use `innerJoin(Entity::class, OnEntity::class)` in the block DSL, or `.innerJoin(Entity::class).on(OnEntity::class)` in the chained API. Only fall back to template lambdas when QueryBuilder cannot express the query.
 9. **Use `Ref` for map keys and set membership**: Prefer `Ref<Entity>` (via `.ref()`) for map keys, set membership, and identity-based lookups. `Ref` provides identity-based `equals`/`hashCode` on the primary key. When a projection already returns `Ref<T>`, use it directly without calling `.ref()` again.
+
+## API Design: Prefer the Simplest Approach
+
+Four levels, from simplest to most powerful — always prefer the simplest that works:
+
+| Level | Approach | Best for |
+|-------|----------|----------|
+| 1 | Convenience methods (`find`, `findAll`, `removeAll`, `count`, `exists`) | Simple lookups and operations |
+| 2 | Builder with predicate (`select(predicate)`, `delete(predicate)`) | Filtered queries needing ordering, pagination, or joins |
+| 3 | Block DSL (`select { }`, `delete { }`) | Complex queries with multiple joins and conditions |
+| 4 | SQL Templates (/storm-sql-kotlin) | CTEs, window functions, database-specific features |
+
+**Level 1 — Convenience methods** execute immediately and return results directly:
+- **Read:** `findById()`, `findByRef()`, `findAll()`, `findAllRef()`, `findAll(predicate)`, `findAllById()`, `findAllByRef()`, `findBy(key, value)`, `findAllBy(field, value)`, `findRefBy(...)`, `findAllRefBy(...)`
+- **Read (throw):** `getById()`, `getByRef()`, `getBy(key, value)`
+- **Exists/Count:** `count()`, `count(predicate)`, `exists()`, `exists(predicate)`, `existsById()`, `existsByRef()`, `countBy(field, value)`
+- **Write:** `insert()`, `insertAndFetch()`, `update()`, `updateAndFetch()`, `upsert()`, `upsertAndFetch()`
+- **Remove:** `remove(entity)`, `removeById(id)`, `removeByRef(ref)`, `removeAll()`, `removeAll(predicate)`, `removeAllBy(field, value)`, `remove(Iterable)`, `removeByRef(Iterable)`, `remove(Flow)`, `removeByRef(Flow)`
+- **Pagination:** `page()`, `pageRef()`, `scroll()`
+
+**Level 2 — Builder with predicate** returns `QueryBuilder` for chaining ordering, pagination, or joins:
+```kotlin
+users.select(User_.city eq city)
+    .orderBy(User_.name)
+    .resultList
+
+users.delete(User_.active eq false)
+    .executeUpdate()
+```
+
+Alternatively, use `select()` chained with `.where()` — equivalent, just a style preference:
+```kotlin
+users.select()
+    .where(User_.city eq city)
+    .orderBy(User_.name)
+    .resultList
+```
+
+**Level 3 — Block DSL** for complex queries with multiple joins and conditions:
+```kotlin
+users.select {
+    where(User_.active eq true)
+    orderBy(User_.name)
+}.resultList
+
+users.delete {
+    where(User_.score less 10)
+}.executeUpdate()
+```
+
+Terminal operations: `.resultList`, `.singleResult`, `.optionalResult`, `.resultFlow`, `.resultStream`, `.resultCount`, `.page()`, `.scroll()`, `.executeUpdate()`
+
+The `find`/`get` distinction: `find` returns nullable (no result = null), `get` throws `NoResultException`.
+
+The `delete`/`remove` distinction: `remove` operates on entities or ids you already have (immediate execution). `delete` builds a query to find and delete rows by criteria (returns `QueryBuilder`):
+```kotlin
+// remove — you have the entity/id, execute immediately
+users.remove(user)
+users.removeById(42)
+users.removeAll()
+
+// remove — with predicate (convenience, executes immediately)
+val removed: Int = users.removeAll(User_.active eq false)
+
+// delete — build a query with filtering (returns QueryBuilder)
+users.delete(User_.active eq false).executeUpdate()
+users.delete { where(User_.score less 10) }.executeUpdate()
+```
 
 ## CRUD Operations
 
@@ -86,10 +154,10 @@ val updated: User = users.updateAndFetch(user.copy(name = "Alice Johnson"))
 orm upsert User(id = 1, email = "alice@example.com", name = "Alice", city = city)
 val upserted: User = users.upsertAndFetch(User(id = 1, email = "alice@example.com", name = "Alice", city = city))
 
-// Delete
-orm delete user
-users.deleteById(userId)
-users.deleteByRef(userRef)
+// Remove
+orm remove user
+users.removeById(userId)
+users.removeByRef(userRef)
 ```
 
 ## ORMTemplate Convenience Functions
@@ -110,15 +178,15 @@ val user: User? = orm.findBy(User_.email, "alice@example.com")
 val user: User = orm.getBy(User_.email, "alice@example.com")
 val cityUsers: List<User> = orm.findAllBy(User_.city, city)
 
-// Streaming
+// Streaming (use select() builder + resultFlow terminal)
 val allFlow: Flow<User> = orm.select<User>().resultFlow
-val cityFlow: Flow<User> = orm.selectBy(User_.city, city)
+val cityFlow: Flow<User> = orm.select(User_.city eq city).resultFlow
 
 // Ref variants
 val refs: List<Ref<User>> = orm.findAllRef<User>()
 
-// Delete with predicate
-orm.delete(User_.city eq city)
+// Remove by field
+orm.removeBy(User_.city, city)
 ```
 
 ## Ref-Based Operations
@@ -140,11 +208,11 @@ val ref: Ref<User> = users.unload(user)
 // Lookup by Ref
 val found: User? = users.findByRef(ref)
 val fetched: User = users.getByRef(ref)
-users.deleteByRef(ref)
-orm deleteByRef ref   // infix
+users.removeByRef(ref)
+orm removeByRef ref   // infix
 
 // Batch Ref operations
-users.deleteByRef(listOf(ref1, ref2, ref3))
+users.removeByRef(listOf(ref1, ref2, ref3))
 val entities: List<User> = users.findAllByRef(listOf(ref1, ref2))
 ```
 
@@ -175,6 +243,8 @@ val activeCount: Long = users.count(User_.active eq true)
 // Exists by predicate
 val hasActive: Boolean = users.exists(User_.active eq true)
 
+// Remove by predicate
+val removed: Int = users.removeAll(User_.active eq false)
 ```
 
 These accept a `PredicateBuilder` built with infix operators. Use parentheses — not braces — for predicates. Braces are reserved for the block DSL (see below).
@@ -195,8 +265,8 @@ val cityUsers: List<User> = users.findAllBy(User_.city, city)
 val count: Long = users.countBy(User_.city, city)
 val exists: Boolean = users.existsBy(User_.email, "alice@example.com")
 
-// Delete by field
-val deleted: Int = users.deleteAllBy(User_.city, city)
+// Remove by field
+val deleted: Int = users.removeAllBy(User_.city, city)
 ```
 
 All field-based methods also accept `Ref<V>` as the value parameter for FK lookups.
@@ -204,10 +274,10 @@ All field-based methods also accept `Ref<V>` as the value parameter for FK looku
 ## Batch Operations
 
 ```kotlin
-// Batch insert/update/delete with iterables
+// Batch insert/update/remove with iterables
 orm insert listOf(user1, user2, user3)
 orm update listOf(user1, user2)
-orm delete listOf(user1, user2)
+orm remove listOf(user1, user2)
 
 // With fetch (returns inserted/updated entities with generated values)
 val inserted: List<User> = users.insertAndFetch(listOf(user1, user2))
@@ -224,22 +294,23 @@ val upserted: List<User> = users.upsertAndFetch(listOf(user1, user2))
 Use Kotlin `Flow` for memory-efficient processing of large datasets:
 
 ```kotlin
-// Stream all entities lazily
+// Stream all entities lazily (builder method + terminal)
 val allUsers: Flow<User> = users.select().resultFlow
 
-// Stream by IDs or Refs
-val selected: Flow<User> = users.selectById(idFlow)
-val selected: Flow<User> = users.selectByRef(refFlow)
-val selected: Flow<User> = users.selectById(idFlow, chunkSize = 500)
+// Stream with filter (builder method + terminal)
+val activeUsers: Flow<User> = users.select(User_.active eq true).resultFlow
 
 // Count via Flow
 val count: Long = users.countById(idFlow)
 val count: Long = users.countByRef(refFlow, chunkSize = 500)
 
-// Batch insert/update/delete via Flow (suspending)
+// Batch insert/update/remove via Flow (suspending)
 users.insert(userFlow, batchSize = 100)
 users.update(userFlow, batchSize = 100)
-users.delete(userFlow, batchSize = 100)
+users.remove(userFlow, batchSize = 100)
+
+// Remove by Ref via Flow
+users.removeByRef(refFlow, batchSize = 100)
 
 // Insert via Flow with fetch (returns Flow of results)
 val insertedFlow: Flow<User> = users.insertAndFetch(userFlow)
@@ -248,15 +319,15 @@ val idFlow: Flow<Int> = users.insertAndFetchIds(userFlow, batchSize = 500)
 
 Flow operations are lazy — entities are retrieved/processed as consumed. Use `batchSize`/`chunkSize` to control how many items are sent to the database per batch. Default batch size is used when omitted.
 
-## Count, Exists, Delete
+## Count, Exists, Remove
 
 ```kotlin
 val count: Long = users.count()
 val exists: Boolean = users.existsById(userId)
 val existsByRef: Boolean = users.existsByRef(userRef)
-users.deleteById(userId)
-users.deleteByRef(userRef)
-users.deleteAll()   // deletes all entities
+users.removeById(userId)
+users.removeByRef(userRef)
+users.removeAll()   // removes all entities
 ```
 
 ## Pagination and Scrolling
@@ -356,24 +427,31 @@ orm.transaction {
 
 ## Block-Based Query DSL
 
-Repository methods can use the `select { }` / `delete { }` DSL for building queries. A `PredicateBuilder` returned as the block's last expression is automatically applied as a WHERE clause, so `select { path eq value }` is equivalent to `select { where(path eq value) }`:
+Repository methods can use the `select { }` / `delete { }` DSL for building queries. Both are **builder methods** that return `QueryBuilder` -- they never execute immediately. Inside the block, use scope methods like `where()`, `orderBy()`, `limit()` to construct the query. Then call a terminal operation to execute:
 
 ```kotlin
 interface UserRepository : EntityRepository<User, Int> {
-    // Predicate shorthand (auto-applied as WHERE)
-    fun findActive(): List<User> = select { User_.active eq true }.resultList
+    fun findActive(): List<User> = select { where(User_.active eq true) }.resultList
 
-    // Explicit where — equivalent, use when combining with other clauses
     fun findActiveByCity(city: City): List<User> = select {
         where((User_.active eq true) and (User_.address.city eq city))
         orderBy(User_.name)
     }.resultList
 
-    fun deleteInactive(): Int = delete { User_.active eq false }
+    fun deleteInactive(): Int = delete { where(User_.active eq false) }.executeUpdate()
 }
 ```
 
-The `select { }` block returns a `QueryBuilder`, so you pick the terminal: `.resultList`, `.singleResult`, `.optionalResult`, `.scroll(20)`, `.page(0, 20)`, `.resultFlow`, `.resultCount`.
+Both `select { }` and `delete { }` return a `QueryBuilder`, so you pick the terminal: `.resultList`, `.singleResult`, `.optionalResult`, `.scroll(20)`, `.page(0, 20)`, `.resultFlow`, `.resultCount` (for select), or `.executeUpdate()` (for delete).
+
+Predicate variants also return `QueryBuilder`:
+```kotlin
+// select(predicate) returns QueryBuilder
+users.select(User_.active eq true).resultList
+
+// delete(predicate) returns QueryBuilder
+users.delete(User_.active eq false).executeUpdate()
+```
 
 Standalone usage on `ORMTemplate`:
 ```kotlin

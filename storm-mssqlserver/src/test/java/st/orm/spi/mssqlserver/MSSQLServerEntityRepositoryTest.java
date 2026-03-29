@@ -2292,7 +2292,7 @@ public class MSSQLServerEntityRepositoryTest {
     public void testUuidDelete() {
         var repo = PreparedStatementTemplate.ORM(dataSource).entity(ApiKey.class);
         long before = repo.count();
-        repo.delete(repo.getById(DEFAULT_KEY_ID));
+        repo.remove(repo.getById(DEFAULT_KEY_ID));
         assertEquals(before - 1, repo.count());
     }
 }

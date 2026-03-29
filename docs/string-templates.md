@@ -55,7 +55,7 @@ Add the Storm compiler plugin to your Kotlin compiler configuration. The plugin 
 | 2.2.x | `storm-compiler-plugin-2.2` |
 | 2.3.x | `storm-compiler-plugin-2.3` |
 
-The artifact version matches the Storm version (e.g., `1.11.0`).
+The artifact version matches the Storm version (e.g., `@@STORM_VERSION@@`).
 
 <Tabs groupId="build">
 <TabItem value="gradle" label="Gradle (Kotlin DSL)" default>

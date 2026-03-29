@@ -71,8 +71,7 @@ interface ProjectionRepository<P, ID : Any> : Repository where P : Projection<ID
     /**
      * Constructs a SELECT query using a block-based DSL.
      *
-     * A [PredicateBuilder] returned as the block's last expression is automatically applied as a WHERE clause,
-     * so `select { path eq value }` is equivalent to `select { where(path eq value) }`.
+     * The block uses scope methods (e.g., `where`, `orderBy`, `limit`) to construct the query.
      *
      * ```kotlin
      * interface OwnerViewRepository : ProjectionRepository<OwnerView, Int> {
@@ -83,12 +82,20 @@ interface ProjectionRepository<P, ID : Any> : Repository where P : Projection<ID
      * }
      * ```
      */
-    @Suppress("UNCHECKED_CAST")
     fun select(block: SqlScope<P, P, ID>.() -> Any?): QueryBuilder<P, P, ID> {
         val scope = SqlScope(select())
-        scope.applyResult(scope.block())
+        scope.validateResult(scope.block())
         return scope.builder
     }
+
+    /**
+     * Constructs a SELECT query filtered by the given predicate.
+     *
+     * ```kotlin
+     * ownerViewRepository.select(OwnerView_.city eq city).resultList
+     * ```
+     */
+    fun select(predicate: PredicateBuilder<P, *, *>): QueryBuilder<P, P, ID> = select().where(predicate)
 
     /**
      * Creates a new query builder for the projection type managed by this repository.
@@ -119,6 +126,17 @@ interface ProjectionRepository<P, ID : Any> : Repository where P : Projection<ID
      * @since 1.3
      */
     fun selectRef(): QueryBuilder<P, Ref<P>, ID>
+
+    /**
+     * Constructs a SELECT query for refs, filtered by the given predicate.
+     *
+     * ```kotlin
+     * ownerViewRepository.selectRef(OwnerView_.city eq city).resultList
+     * ```
+     *
+     * @since 1.3
+     */
+    fun selectRef(predicate: PredicateBuilder<P, *, *>): QueryBuilder<P, Ref<P>, ID> = selectRef().where(predicate)
 
     /**
      * Creates a new query builder for the custom `selectType` and custom `template` for the select clause.
@@ -379,132 +397,6 @@ interface ProjectionRepository<P, ID : Any> : Repository where P : Projection<ID
     //
 
     /**
-     * Retrieves a stream of projections based on their primary keys.
-     *
-     *
-     * This method executes queries in batches, depending on the number of primary keys in the specified ids stream.
-     * This optimization aims to reduce the overhead of executing multiple queries and efficiently retrieve projections.
-     * The batching strategy enhances performance, particularly when dealing with large sets of primary keys.
-     *
-     *
-     * The resulting stream is lazily loaded, meaning that the projections are only retrieved from the database as they
-     * are consumed by the stream. This approach is efficient and minimizes the memory footprint, especially when
-     * dealing with large volumes of projections.
-     *
-     *
-     * **Note:** Calling this method does trigger the execution of the underlying query, so it should
-     * only be invoked when the query is intended to run. Since the stream holds resources open while in use, it must be
-     * closed after usage to prevent resource leaks. As the stream is `AutoCloseable`, it is recommended to use it
-     * within a `try-with-resources` block.
-     *
-     * @param ids a stream of projection IDs to retrieve from the repository.
-     * @return a stream of projections corresponding to the provided primary keys. The order of projections in the stream is
-     * not guaranteed to match the order of ids in the input stream. If an id does not correspond to any projection
-     * in the database, it will simply be skipped, and no corresponding projection will be included in the returned
-     * stream. If the same projection is requested multiple times, it may be included in the stream multiple times
-     * if it is part of a separate batch.
-     * @throws st.orm.PersistenceException if the selection operation fails due to underlying database issues, such as
-     * connectivity.
-     */
-    fun selectById(ids: Flow<ID>): Flow<P>
-
-    /**
-     * Retrieves a stream of projections based on their primary keys.
-     *
-     *
-     * This method executes queries in batches, depending on the number of primary keys in the specified ids stream.
-     * This optimization aims to reduce the overhead of executing multiple queries and efficiently retrieve projections.
-     * The batching strategy enhances performance, particularly when dealing with large sets of primary keys.
-     *
-     *
-     * The resulting stream is lazily loaded, meaning that the projections are only retrieved from the database as they
-     * are consumed by the stream. This approach is efficient and minimizes the memory footprint, especially when
-     * dealing with large volumes of projections.
-     *
-     *
-     * **Note:** Calling this method does trigger the execution of the underlying query, so it should
-     * only be invoked when the query is intended to run. Since the stream holds resources open while in use, it must be
-     * closed after usage to prevent resource leaks. As the stream is `AutoCloseable`, it is recommended to use it
-     * within a `try-with-resources` block.
-     *
-     * @param refs a stream of refs to retrieve from the repository.
-     * @return a stream of projections corresponding to the provided primary keys. The order of projections in the stream is
-     * not guaranteed to match the order of ids in the input stream. If an id does not correspond to any projection
-     * in the database, it will simply be skipped, and no corresponding projection will be included in the returned
-     * stream. If the same projection is requested multiple times, it may be included in the stream multiple times
-     * if it is part of a separate batch.
-     * @throws st.orm.PersistenceException if the selection operation fails due to underlying database issues, such as
-     * connectivity.
-     */
-    fun selectByRef(refs: Flow<Ref<P>>): Flow<P>
-
-    /**
-     * Retrieves a stream of projections based on their primary keys.
-     *
-     *
-     * This method executes queries in batches, with the batch size determined by the provided parameter. This
-     * optimization aims to reduce the overhead of executing multiple queries and efficiently retrieve projections. The
-     * batching strategy enhances performance, particularly when dealing with large sets of primary keys.
-     *
-     *
-     * The resulting stream is lazily loaded, meaning that the projections are only retrieved from the database as they
-     * are consumed by the stream. This approach is efficient and minimizes the memory footprint, especially when
-     * dealing with large volumes of projections.
-     *
-     *
-     * **Note:** Calling this method does trigger the execution of the underlying query, so it should
-     * only be invoked when the query is intended to run. Since the stream holds resources open while in use, it must be
-     * closed after usage to prevent resource leaks. As the stream is `AutoCloseable`, it is recommended to use it
-     * within a `try-with-resources` block.
-     *
-     * @param ids a stream of projection IDs to retrieve from the repository.
-     * @param chunkSize the number of primary keys to include in each batch. This parameter determines the size of the
-     * batches used to execute the selection operation. A larger batch size can improve performance, especially when
-     * dealing with large sets of primary keys.
-     * @return a stream of projections corresponding to the provided primary keys. The order of projections in the stream is
-     * not guaranteed to match the order of ids in the input stream. If an id does not correspond to any projection in the
-     * database, it will simply be skipped, and no corresponding projection will be included in the returned stream. If the
-     * same projection is requested multiple times, it may be included in the stream multiple times if it is part of a
-     * separate batch.
-     * @throws st.orm.PersistenceException if the selection operation fails due to underlying database issues, such as
-     * connectivity.
-     */
-    fun selectById(ids: Flow<ID>, chunkSize: Int): Flow<P>
-
-    /**
-     * Retrieves a stream of projections based on their primary keys.
-     *
-     *
-     * This method executes queries in batches, with the batch size determined by the provided parameter. This
-     * optimization aims to reduce the overhead of executing multiple queries and efficiently retrieve projections. The
-     * batching strategy enhances performance, particularly when dealing with large sets of primary keys.
-     *
-     *
-     * The resulting stream is lazily loaded, meaning that the projections are only retrieved from the database as they
-     * are consumed by the stream. This approach is efficient and minimizes the memory footprint, especially when
-     * dealing with large volumes of projections.
-     *
-     *
-     * **Note:** Calling this method does trigger the execution of the underlying query, so it should
-     * only be invoked when the query is intended to run. Since the stream holds resources open while in use, it must be
-     * closed after usage to prevent resource leaks. As the stream is `AutoCloseable`, it is recommended to use it
-     * within a `try-with-resources` block.
-     *
-     * @param refs a stream of refs to retrieve from the repository.
-     * @param chunkSize the number of primary keys to include in each batch. This parameter determines the size of the
-     * batches used to execute the selection operation. A larger batch size can improve performance, especially when
-     * dealing with large sets of primary keys.
-     * @return a stream of projections corresponding to the provided primary keys. The order of projections in the stream is
-     * not guaranteed to match the order of refs in the input stream. If an id does not correspond to any projection in the
-     * database, it will simply be skipped, and no corresponding projection will be included in the returned stream. If the
-     * same projection is requested multiple times, it may be included in the stream multiple times if it is part of a
-     * separate batch.
-     * @throws st.orm.PersistenceException if the selection operation fails due to underlying database issues, such as
-     * connectivity.
-     */
-    fun selectByRef(refs: Flow<Ref<P>>, chunkSize: Int): Flow<P>
-
-    /**
      * Counts the number of projections identified by the provided stream of IDs using the default batch size.
      *
      *
@@ -569,9 +461,9 @@ interface ProjectionRepository<P, ID : Any> : Repository where P : Projection<ID
     // Kotlin specific DSL
 
     /**
-     * Retrieves all entities of type [P] from the repository.
+     * Returns a list of refs to all projections of type [P] from the repository.
      *
-     * @return a list containing all entities.
+     * @return a list containing refs to all projections.
      */
     fun findAllRef(): List<Ref<P>> = selectRef().resultList
 
@@ -607,24 +499,6 @@ interface ProjectionRepository<P, ID : Any> : Repository where P : Projection<ID
 
     /**
      * Retrieves entities of type [P] matching a single field and a single value.
-     * Returns an empty sequence if no entities are found.
-     *
-     * The resulting sequence is lazily loaded, meaning that the entities are only retrieved from the database as they
-     * are consumed by the sequence. This approach is efficient and minimizes the memory footprint, especially when
-     * dealing with large volumes of entities.
-     *
-     * Note: Calling this method does trigger the execution of the underlying
-     * query, so it should only be invoked when the query is intended to run. Since the sequence holds resources open
-     * while in use, it must be closed after usage to prevent resource leaks.
-     *
-     * @param field metamodel reference of the entity field.
-     * @param value the value to match against.
-     * @return a sequence of matching entities.
-     */
-    fun <V> selectBy(field: Metamodel<P, V>, value: V): Flow<P> = select().where(field, EQUALS, value).resultFlow
-
-    /**
-     * Retrieves entities of type [P] matching a single field and a single value.
      * Returns an empty list if no entities are found.
      *
      * @param field metamodel reference of the entity field.
@@ -632,24 +506,6 @@ interface ProjectionRepository<P, ID : Any> : Repository where P : Projection<ID
      * @return a list of matching entities.
      */
     fun <V : Data> findAllBy(field: Metamodel<P, V>, value: Ref<V>): List<P> = select().where(field, value).resultList
-
-    /**
-     * Retrieves entities of type [P] matching a single field and a single value.
-     * Returns an empty sequence if no entities are found.
-     *
-     * The resulting sequence is lazily loaded, meaning that the entities are only retrieved from the database as they
-     * are consumed by the sequence. This approach is efficient and minimizes the memory footprint, especially when
-     * dealing with large volumes of entities.
-     *
-     * Note: Calling this method does trigger the execution of the underlying
-     * query, so it should only be invoked when the query is intended to run. Since the sequence holds resources open
-     * while in use, it must be closed after usage to prevent resource leaks.
-     *
-     * @param field metamodel reference of the entity field.
-     * @param value the value to match against.
-     * @return a sequence of matching entities.
-     */
-    fun <V : Data> selectBy(field: Metamodel<P, V>, value: Ref<V>): Flow<P> = select().where(field, value).resultFlow
 
     /**
      * Retrieves entities of type [P] matching a single field against multiple values.
@@ -663,24 +519,6 @@ interface ProjectionRepository<P, ID : Any> : Repository where P : Projection<ID
 
     /**
      * Retrieves entities of type [P] matching a single field against multiple values.
-     * Returns an empty sequence if no entities are found.
-     *
-     * The resulting sequence is lazily loaded, meaning that the entities are only retrieved from the database as they
-     * are consumed by the sequence. This approach is efficient and minimizes the memory footprint, especially when
-     * dealing with large volumes of entities.
-     *
-     * Note: Calling this method does trigger the execution of the underlying
-     * query, so it should only be invoked when the query is intended to run. Since the sequence holds resources open
-     * while in use, it must be closed after usage to prevent resource leaks.
-     *
-     * @param field metamodel reference of the entity field.
-     * @param values Iterable of values to match against.
-     * @return at sequence of matching entities.
-     */
-    fun <V> selectBy(field: Metamodel<P, V>, values: Iterable<V>): Flow<P> = select().where(field, IN, values).resultFlow
-
-    /**
-     * Retrieves entities of type [P] matching a single field against multiple values.
      * Returns an empty list if no entities are found.
      *
      * @param field metamodel reference of the entity field.
@@ -688,16 +526,6 @@ interface ProjectionRepository<P, ID : Any> : Repository where P : Projection<ID
      * @return a list of matching entities.
      */
     fun <V : Data> findAllByRef(field: Metamodel<P, V>, values: Iterable<Ref<V>>): List<P> = select().whereRef(field, values).resultList
-
-    /**
-     * Retrieves entities of type [P] matching a single field against multiple values.
-     * Returns an empty sequence if no entities are found.
-     *
-     * @param field metamodel reference of the entity field.
-     * @param values Iterable of values to match against.
-     * @return a sequence of matching entities.
-     */
-    fun <V : Data> selectByRef(field: Metamodel<P, V>, values: Iterable<Ref<V>>): Flow<P> = select().whereRef(field, values).resultFlow
 
     /**
      * Retrieves exactly one entity of type [P] based on a single field and its value.
@@ -755,24 +583,6 @@ interface ProjectionRepository<P, ID : Any> : Repository where P : Projection<ID
 
     /**
      * Retrieves entities of type [P] matching a single field and a single value.
-     * Returns an empty sequence if no entities are found.
-     *
-     * The resulting sequence is lazily loaded, meaning that the entities are only retrieved from the database as they
-     * are consumed by the sequence. This approach is efficient and minimizes the memory footprint, especially when
-     * dealing with large volumes of entities.
-     *
-     * Note: Calling this method does trigger the execution of the underlying
-     * query, so it should only be invoked when the query is intended to run. Since the sequence holds resources open
-     * while in use, it must be closed after usage to prevent resource leaks.
-     *
-     * @param field metamodel reference of the entity field.
-     * @param value the value to match against.
-     * @return a sequence of matching entities.
-     */
-    fun <V> selectRefBy(field: Metamodel<P, V>, value: V): Flow<Ref<P>> = selectRef().where(field, EQUALS, value).resultFlow
-
-    /**
-     * Retrieves entities of type [P] matching a single field and a single value.
      * Returns an empty list if no entities are found.
      *
      * @param field metamodel reference of the entity field.
@@ -780,24 +590,6 @@ interface ProjectionRepository<P, ID : Any> : Repository where P : Projection<ID
      * @return a list of matching entities.
      */
     fun <V : Data> findAllRefBy(field: Metamodel<P, V>, value: Ref<V>): List<Ref<P>> = selectRef().where(field, value).resultList
-
-    /**
-     * Retrieves entities of type [P] matching a single field and a single value.
-     * Returns an empty sequence if no entities are found.
-     *
-     * The resulting sequence is lazily loaded, meaning that the entities are only retrieved from the database as they
-     * are consumed by the sequence. This approach is efficient and minimizes the memory footprint, especially when
-     * dealing with large volumes of entities.
-     *
-     * Note: Calling this method does trigger the execution of the underlying
-     * query, so it should only be invoked when the query is intended to run. Since the sequence holds resources open
-     * while in use, it must be closed after usage to prevent resource leaks.
-     *
-     * @param field metamodel reference of the entity field.
-     * @param value the value to match against.
-     * @return a sequence of matching entities.
-     */
-    fun <V : Data> selectRefBy(field: Metamodel<P, V>, value: Ref<V>): Flow<Ref<P>> = selectRef().where(field, value).resultFlow
 
     /**
      * Retrieves entities of type [P] matching a single field against multiple values.
@@ -811,24 +603,6 @@ interface ProjectionRepository<P, ID : Any> : Repository where P : Projection<ID
 
     /**
      * Retrieves entities of type [P] matching a single field against multiple values.
-     * Returns an empty sequence if no entities are found.
-     *
-     * The resulting sequence is lazily loaded, meaning that the entities are only retrieved from the database as they
-     * are consumed by the sequence. This approach is efficient and minimizes the memory footprint, especially when
-     * dealing with large volumes of entities.
-     *
-     * Note: Calling this method does trigger the execution of the underlying
-     * query, so it should only be invoked when the query is intended to run. Since the sequence holds resources open
-     * while in use, it must be closed after usage to prevent resource leaks.
-     *
-     * @param field metamodel reference of the entity field.
-     * @param values Iterable of values to match against.
-     * @return a sequence of matching entities.
-     */
-    fun <V> selectRefBy(field: Metamodel<P, V>, values: Iterable<V>): Flow<Ref<P>> = selectRef().where(field, IN, values).resultFlow
-
-    /**
-     * Retrieves entities of type [P] matching a single field against multiple values.
      * Returns an empty list if no entities are found.
      *
      * @param field metamodel reference of the entity field.
@@ -836,24 +610,6 @@ interface ProjectionRepository<P, ID : Any> : Repository where P : Projection<ID
      * @return a list of matching entities.
      */
     fun <V : Data> findAllRefByRef(field: Metamodel<P, V>, values: Iterable<Ref<V>>): List<Ref<P>> = selectRef().whereRef(field, values).resultList
-
-    /**
-     * Retrieves entities of type [P] matching a single field against multiple values.
-     * Returns an empty sequence if no entities are found.
-     *
-     * The resulting sequence is lazily loaded, meaning that the entities are only retrieved from the database as they
-     * are consumed by the sequence. This approach is efficient and minimizes the memory footprint, especially when
-     * dealing with large volumes of entities.
-     *
-     * Note: Calling this method does trigger the execution of the underlying
-     * query, so it should only be invoked when the query is intended to run. Since the sequence holds resources open
-     * while in use, it must be closed after usage to prevent resource leaks.
-     *
-     * @param field metamodel reference of the entity field.
-     * @param values Iterable of values to match against.
-     * @return a sequence of matching entities.
-     */
-    fun <V : Data> selectRefByRef(field: Metamodel<P, V>, values: Iterable<Ref<V>>): Flow<Ref<P>> = selectRef().whereRef(field, values).resultFlow
 
     /**
      * Retrieves exactly one entity of type [P] based on a single field and its value.
@@ -1034,6 +790,30 @@ interface ProjectionRepository<P, ID : Any> : Repository where P : Projection<ID
      * @since 1.10
      */
     fun page(pageable: Pageable): Page<P>
+
+    /**
+     * Returns a page of projection refs using offset-based pagination.
+     *
+     * Page numbers are zero-based: pass `0` for the first page.
+     *
+     * @param pageNumber the zero-based page index.
+     * @param pageSize the maximum number of refs per page.
+     * @return a page containing the ref results and pagination metadata.
+     * @since 1.10
+     */
+    fun pageRef(pageNumber: Int, pageSize: Int): Page<Ref<P>>
+
+    /**
+     * Returns a page of projection refs using offset-based pagination.
+     *
+     * This method executes two queries: a `SELECT COUNT(*)` to determine the total number of projections, and
+     * a query with OFFSET and LIMIT to fetch the refs for the requested page.
+     *
+     * @param pageable the pagination request specifying page number and page size.
+     * @return a page containing the ref results and pagination metadata.
+     * @since 1.10
+     */
+    fun pageRef(pageable: Pageable): Page<Ref<P>>
 
     /**
      * Executes a scroll request from a [Scrollable] token, typically obtained from

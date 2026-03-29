@@ -197,23 +197,6 @@ inline fun <reified T : Data, V> RepositoryLookup.findAllBy(field: Metamodel<T, 
 
 /**
  * Retrieves records of type [T] matching a single field and a single value.
- * Returns an empty stream if no records are found.
- *
- * [T] must be either an Entity or Projection type.
- *
- * @param field metamodel reference of the record field.
- * @param value the value to match against.
- * @return stream of matching records.
- */
-@Suppress("UNCHECKED_CAST")
-inline fun <reified T : Data, V> RepositoryLookup.selectBy(field: Metamodel<T, V>, value: V): Flow<T> = if (T::class.isSubclassOf(Entity::class)) {
-    (entity(T::class as KClass<Entity<Any>>) as EntityRepository<Entity<*>, *>).select().where(field as Metamodel<Entity<*>, V>, EQUALS, value).resultFlow as Flow<T>
-} else {
-    (projection(T::class as KClass<Projection<Any>>) as ProjectionRepository<Projection<*>, *>).select().where(field as Metamodel<Projection<*>, V>, EQUALS, value).resultFlow as Flow<T>
-}
-
-/**
- * Retrieves records of type [T] matching a single field and a single value.
  * Returns an empty list if no records are found.
  *
  * [T] must be either an Entity or Projection type.
@@ -227,23 +210,6 @@ inline fun <reified T : Data, V : Data> RepositoryLookup.findAllBy(field: Metamo
     (entity(T::class as KClass<Entity<Any>>) as EntityRepository<Entity<*>, *>).select().where(field as Metamodel<Entity<*>, V>, value).resultList as List<T>
 } else {
     (projection(T::class as KClass<Projection<Any>>) as ProjectionRepository<Projection<*>, *>).select().where(field as Metamodel<Projection<*>, V>, value).resultList as List<T>
-}
-
-/**
- * Retrieves records of type [T] matching a single field and a single value.
- * Returns an empty stream if no records are found.
- *
- * [T] must be either an Entity or Projection type.
- *
- * @param field metamodel reference of the record field.
- * @param value the value to match against.
- * @return stream of matching records.
- */
-@Suppress("UNCHECKED_CAST")
-inline fun <reified T : Data, V : Data> RepositoryLookup.selectBy(field: Metamodel<T, V>, value: Ref<V>): Flow<T> = if (T::class.isSubclassOf(Entity::class)) {
-    (entity(T::class as KClass<Entity<Any>>) as EntityRepository<Entity<*>, *>).select().where(field as Metamodel<Entity<*>, V>, value).resultFlow as Flow<T>
-} else {
-    (projection(T::class as KClass<Projection<Any>>) as ProjectionRepository<Projection<*>, *>).select().where(field as Metamodel<Projection<*>, V>, value).resultFlow as Flow<T>
 }
 
 /**
@@ -265,23 +231,6 @@ inline fun <reified T : Data, V> RepositoryLookup.findAllBy(field: Metamodel<T, 
 
 /**
  * Retrieves records of type [T] matching a single field against multiple values.
- * Returns an empty stream if no records are found.
- *
- * [T] must be either an Entity or Projection type.
- *
- * @param field metamodel reference of the record field.
- * @param values Iterable of values to match against.
- * @return stream of matching records.
- */
-@Suppress("UNCHECKED_CAST")
-inline fun <reified T : Data, V> RepositoryLookup.selectBy(field: Metamodel<T, V>, values: Iterable<V>): Flow<T> = if (T::class.isSubclassOf(Entity::class)) {
-    (entity(T::class as KClass<Entity<Any>>) as EntityRepository<Entity<*>, *>).select().where(field as Metamodel<Entity<*>, V>, IN, values).resultFlow as Flow<T>
-} else {
-    (projection(T::class as KClass<Projection<Any>>) as ProjectionRepository<Projection<*>, *>).select().where(field as Metamodel<Projection<*>, V>, IN, values).resultFlow as Flow<T>
-}
-
-/**
- * Retrieves records of type [T] matching a single field against multiple values.
  * Returns an empty list if no records are found.
  *
  * [T] must be either an Entity or Projection type.
@@ -295,23 +244,6 @@ inline fun <reified T : Data, V : Data> RepositoryLookup.findAllByRef(field: Met
     (entity(T::class as KClass<Entity<Any>>) as EntityRepository<Entity<*>, *>).select().whereRef(field as Metamodel<Entity<*>, V>, values).resultList as List<T>
 } else {
     (projection(T::class as KClass<Projection<Any>>) as ProjectionRepository<Projection<*>, *>).select().whereRef(field as Metamodel<Projection<*>, V>, values).resultList as List<T>
-}
-
-/**
- * Retrieves records of type [T] matching a single field against multiple values.
- * Returns an empty stream if no records are found.
- *
- * [T] must be either an Entity or Projection type.
- *
- * @param field metamodel reference of the record field.
- * @param values Iterable of values to match against.
- * @return stream of matching records.
- */
-@Suppress("UNCHECKED_CAST")
-inline fun <reified T : Data, V : Data> RepositoryLookup.selectByRef(field: Metamodel<T, V>, values: Iterable<Ref<V>>): Flow<T> = if (T::class.isSubclassOf(Entity::class)) {
-    (entity(T::class as KClass<Entity<Any>>) as EntityRepository<Entity<*>, *>).select().whereRef(field as Metamodel<Entity<*>, V>, values).resultFlow as Flow<T>
-} else {
-    (projection(T::class as KClass<Projection<Any>>) as ProjectionRepository<Projection<*>, *>).select().whereRef(field as Metamodel<Projection<*>, V>, values).resultFlow as Flow<T>
 }
 
 /**
@@ -399,21 +331,6 @@ inline fun <reified T : Data, V> RepositoryLookup.findAllRefBy(field: Metamodel<
 
 /**
  * Retrieves entities of type [T] matching a single field and a single value.
- * Returns an empty stream if no entities are found.
- *
- * @param field metamodel reference of the entity field.
- * @param value the value to match against.
- * @return stream of matching entities.
- */
-@Suppress("UNCHECKED_CAST")
-inline fun <reified T : Data, V> RepositoryLookup.selectRefBy(field: Metamodel<T, V>, value: V): Flow<Ref<T>> = if (T::class.isSubclassOf(Entity::class)) {
-    (entity(T::class as KClass<Entity<Any>>) as EntityRepository<Entity<*>, *>).selectRef().where(field as Metamodel<Entity<*>, V>, EQUALS, value).resultFlow as Flow<Ref<T>>
-} else {
-    (projection(T::class as KClass<Projection<Any>>) as ProjectionRepository<Projection<*>, *>).selectRef().where(field as Metamodel<Projection<*>, V>, EQUALS, value).resultFlow as Flow<Ref<T>>
-}
-
-/**
- * Retrieves entities of type [T] matching a single field and a single value.
  * Returns an empty list if no entities are found.
  *
  * @param field metamodel reference of the entity field.
@@ -425,21 +342,6 @@ inline fun <reified T : Data, V : Data> RepositoryLookup.findAllRefBy(field: Met
     (entity(T::class as KClass<Entity<Any>>) as EntityRepository<Entity<*>, *>).selectRef().where(field as Metamodel<Entity<*>, V>, value).resultList as List<Ref<T>>
 } else {
     (projection(T::class as KClass<Projection<Any>>) as ProjectionRepository<Projection<*>, *>).selectRef().where(field as Metamodel<Projection<*>, V>, value).resultList as List<Ref<T>>
-}
-
-/**
- * Retrieves entities of type [T] matching a single field and a single value.
- * Returns an empty stream if no entities are found.
- *
- * @param field metamodel reference of the entity field.
- * @param value the value to match against.
- * @return stream of matching entities.
- */
-@Suppress("UNCHECKED_CAST")
-inline fun <reified T : Data, V : Data> RepositoryLookup.selectRefBy(field: Metamodel<T, V>, value: Ref<V>): Flow<Ref<T>> = if (T::class.isSubclassOf(Entity::class)) {
-    (entity(T::class as KClass<Entity<Any>>) as EntityRepository<Entity<*>, *>).selectRef().where(field as Metamodel<Entity<*>, V>, value).resultFlow as Flow<Ref<T>>
-} else {
-    (projection(T::class as KClass<Projection<Any>>) as ProjectionRepository<Projection<*>, *>).selectRef().where(field as Metamodel<Projection<*>, V>, value).resultFlow as Flow<Ref<T>>
 }
 
 /**
@@ -459,21 +361,6 @@ inline fun <reified T : Data, V> RepositoryLookup.findAllRefBy(field: Metamodel<
 
 /**
  * Retrieves entities of type [T] matching a single field against multiple values.
- * Returns an empty stream if no entities are found.
- *
- * @param field metamodel reference of the entity field.
- * @param values Iterable of values to match against.
- * @return stream of matching entities.
- */
-@Suppress("UNCHECKED_CAST")
-inline fun <reified T : Data, V> RepositoryLookup.selectRefBy(field: Metamodel<T, V>, values: Iterable<V>): Flow<Ref<T>> = if (T::class.isSubclassOf(Entity::class)) {
-    (entity(T::class as KClass<Entity<Any>>) as EntityRepository<Entity<*>, *>).selectRef().where(field as Metamodel<Entity<*>, V>, IN, values).resultFlow as Flow<Ref<T>>
-} else {
-    (projection(T::class as KClass<Projection<Any>>) as ProjectionRepository<Projection<*>, *>).selectRef().where(field as Metamodel<Projection<*>, V>, IN, values).resultFlow as Flow<Ref<T>>
-}
-
-/**
- * Retrieves entities of type [T] matching a single field against multiple values.
  * Returns an empty list if no entities are found.
  *
  * @param field metamodel reference of the entity field.
@@ -485,21 +372,6 @@ inline fun <reified T : Data, V : Data> RepositoryLookup.findAllRefByRef(field: 
     (entity(T::class as KClass<Entity<Any>>) as EntityRepository<Entity<*>, *>).selectRef().whereRef(field as Metamodel<Entity<*>, V>, values).resultList as List<Ref<T>>
 } else {
     (projection(T::class as KClass<Projection<Any>>) as ProjectionRepository<Projection<*>, *>).selectRef().whereRef(field as Metamodel<Projection<*>, V>, values).resultList as List<Ref<T>>
-}
-
-/**
- * Retrieves entities of type [T] matching a single field against multiple values.
- * Returns an empty stream if no entities are found.
- *
- * @param field metamodel reference of the entity field.
- * @param values Iterable of values to match against.
- * @return stream of matching entities.
- */
-@Suppress("UNCHECKED_CAST")
-inline fun <reified T : Data, V : Data> RepositoryLookup.selectRefByRef(field: Metamodel<T, V>, values: Iterable<Ref<V>>): Flow<Ref<T>> = if (T::class.isSubclassOf(Entity::class)) {
-    (entity(T::class as KClass<Entity<Any>>) as EntityRepository<Entity<*>, *>).selectRef().whereRef(field as Metamodel<Entity<*>, V>, values).resultFlow as Flow<Ref<T>>
-} else {
-    (projection(T::class as KClass<Projection<Any>>) as ProjectionRepository<Projection<*>, *>).selectRef().whereRef(field as Metamodel<Projection<*>, V>, values).resultFlow as Flow<Ref<T>>
 }
 
 /**
@@ -825,60 +697,46 @@ inline fun <reified T> RepositoryLookup.delete(): QueryBuilder<T, *, *>
         where T : Data, T : Entity<*> = entity<T>().delete()
 
 /**
- * Deletes entities of type [T] matching the specified predicate.
+ * Removes an entity of type [T] from the repository.
  *
- * The entity type is inferred from the predicate:
- * ```kotlin
- * orm.delete(User_.active eq false)
- * ```
- *
- * @return the number of entities deleted.
+ * @param entity The entity to remove.
  */
-inline fun <reified T : Entity<*>> RepositoryLookup.delete(
-    predicate: PredicateBuilder<T, *, *>,
-): Int = entity<T>().delete().where(predicate).executeUpdate()
+inline infix fun <reified T : Entity<*>> RepositoryLookup.remove(entity: T) = entity<T>().remove(entity)
 
 /**
- * Deletes an entity of type [T] from the repository.
+ * Removes multiple entities of type [T] from the repository.
  *
- * @param entity The entity to delete.
+ * @param entity List of entities to remove.
  */
-inline infix fun <reified T : Entity<*>> RepositoryLookup.delete(entity: T) = entity<T>().delete(entity)
+inline infix fun <reified T : Entity<*>> RepositoryLookup.remove(entity: Iterable<T>) = entity<T>().remove(entity)
 
 /**
- * Deletes multiple entities of type [T] from the repository.
+ * Removes multiple entities of type [T] from the repository.
  *
- * @param entity List of entities to delete.
+ * @param entity Flow of entities to remove.
  */
-inline infix fun <reified T : Entity<*>> RepositoryLookup.delete(entity: Iterable<T>) = entity<T>().delete(entity)
+suspend inline infix fun <reified T : Entity<*>> RepositoryLookup.remove(entity: Flow<T>) = entity<T>().remove(entity)
 
 /**
- * Deletes multiple entities of type [T] from the repository.
+ * Removes an entity of type [T] from the repository.
  *
- * @param entity Flow of entities to delete.
+ * @param ref The entity to remove.
  */
-suspend inline infix fun <reified T : Entity<*>> RepositoryLookup.delete(entity: Flow<T>) = entity<T>().delete(entity)
+inline infix fun <reified T : Entity<*>> RepositoryLookup.removeByRef(ref: Ref<T>) = entity<T>().removeByRef(ref)
 
 /**
- * Deletes an entity of type [T] from the repository.
+ * Removes multiple entities of type [T] from the repository.
  *
- * @param ref The entity to delete.
+ * @param refs List of entities to remove.
  */
-inline infix fun <reified T : Entity<*>> RepositoryLookup.deleteByRef(ref: Ref<T>) = entity<T>().deleteByRef(ref)
+inline infix fun <reified T : Entity<*>> RepositoryLookup.removeByRef(refs: Iterable<Ref<T>>) = entity<T>().removeByRef(refs)
 
 /**
- * Deletes multiple entities of type [T] from the repository.
+ * Removes multiple entities of type [T] from the repository.
  *
- * @param refs List of entities to delete.
+ * @param refs Flow of entities to remove.
  */
-inline infix fun <reified T : Entity<*>> RepositoryLookup.deleteByRef(refs: Iterable<Ref<T>>) = entity<T>().deleteByRef(refs)
-
-/**
- * Deletes multiple entities of type [T] from the repository.
- *
- * @param refs Flow of entities to delete.
- */
-suspend inline infix fun <reified T : Entity<*>> RepositoryLookup.deleteByRef(refs: Flow<Ref<T>>) = entity<T>().deleteByRef(refs)
+suspend inline infix fun <reified T : Entity<*>> RepositoryLookup.removeByRef(refs: Flow<Ref<T>>) = entity<T>().removeByRef(refs)
 
 /**
  * Updates an entity of type [T] in the repository.
@@ -905,67 +763,73 @@ inline infix fun <reified T : Entity<*>> RepositoryLookup.update(entities: Itera
 inline infix fun <reified T : Entity<*>> RepositoryLookup.update(entities: Flow<T>): Flow<T> = entity<T>().updateAndFetch(entities)
 
 /**
- * Retrieves all records of type [T] from the repository.
+ * Removes all entities of type [T] from the repository.
  *
- * [T] must be either an Entity or Projection type.
- *
- * @return list containing all records.
+ * @return Unit
  */
-inline fun <reified T : Entity<*>> RepositoryLookup.deleteAll() = entity<T>().deleteAll()
+inline fun <reified T : Entity<*>> RepositoryLookup.removeAll() = entity<T>().removeAll()
 
 /**
- * Deletes entities of type [T] matching the specified ID field and its value.
+ * Removes entities of type [T] matching the specified predicate.
+ *
+ * @param predicate Lambda to build the WHERE clause.
+ * @return the number of entities removed.
+ */
+inline fun <reified T : Entity<*>> RepositoryLookup.removeAll(predicate: PredicateBuilder<T, *, *>): Int = entity<T>().removeAll(predicate)
+
+/**
+ * Removes entities of type [T] matching the specified ID field and its value.
  *
  * @param field metamodel reference of the ID field.
  * @param value the ID value to match against.
- * @return the number of entities deleted (0 or 1).
+ * @return the number of entities removed (0 or 1).
  */
-inline fun <reified T : Entity<ID>, ID : Any> RepositoryLookup.deleteBy(field: Metamodel<T, ID>, value: ID): Int = entity<T>().delete().where(field, EQUALS, value).executeUpdate()
+inline fun <reified T : Entity<ID>, ID : Any> RepositoryLookup.removeBy(field: Metamodel<T, ID>, value: ID): Int = entity<T>().delete().where(field, EQUALS, value).executeUpdate()
 
 /**
- * Deletes entities of type [T] matching the specified ID field and its value.
+ * Removes entities of type [T] matching the specified ID field and its value.
  *
  * @param field metamodel reference of the ID field.
  * @param value the ID value to match against.
- * @return the number of entities deleted (0 or 1).
+ * @return the number of entities removed (0 or 1).
  */
-inline fun <reified T : Entity<*>> RepositoryLookup.deleteBy(field: Metamodel<T, T>, value: Ref<T>): Int = entity<T>().delete().where(field, value).executeUpdate()
+inline fun <reified T : Entity<*>> RepositoryLookup.removeBy(field: Metamodel<T, T>, value: Ref<T>): Int = entity<T>().delete().where(field, value).executeUpdate()
 
 /**
- * Deletes entities of type [T] matching the specified field and value.
+ * Removes entities of type [T] matching the specified field and value.
  *
  * @param field metamodel reference of the entity field.
  * @param value the value to match against.
- * @return the number of entities deleted.
+ * @return the number of entities removed.
  */
-inline fun <reified T : Entity<*>, V> RepositoryLookup.deleteAllBy(field: Metamodel<T, V>, value: V): Int = entity<T>().delete().where(field, EQUALS, value).executeUpdate()
+inline fun <reified T : Entity<*>, V> RepositoryLookup.removeAllBy(field: Metamodel<T, V>, value: V): Int = entity<T>().delete().where(field, EQUALS, value).executeUpdate()
 
 /**
- * Deletes entities of type [T] matching the specified field and referenced value.
+ * Removes entities of type [T] matching the specified field and referenced value.
  *
  * @param field metamodel reference of the entity field.
  * @param value the referenced value to match against.
- * @return the number of entities deleted.
+ * @return the number of entities removed.
  */
-inline fun <reified T : Entity<*>, V : Data> RepositoryLookup.deleteAllBy(field: Metamodel<T, V>, value: Ref<V>): Int = entity<T>().delete().where(field, value).executeUpdate()
+inline fun <reified T : Entity<*>, V : Data> RepositoryLookup.removeAllBy(field: Metamodel<T, V>, value: Ref<V>): Int = entity<T>().delete().where(field, value).executeUpdate()
 
 /**
- * Deletes entities of type [T] matching the specified field against multiple values.
+ * Removes entities of type [T] matching the specified field against multiple values.
  *
  * @param field metamodel reference of the entity field.
  * @param values Iterable of values to match against.
- * @return the number of entities deleted.
+ * @return the number of entities removed.
  */
-inline fun <reified T : Entity<*>, V> RepositoryLookup.deleteAllBy(field: Metamodel<T, V>, values: Iterable<V>): Int = entity<T>().delete().where(field, IN, values).executeUpdate()
+inline fun <reified T : Entity<*>, V> RepositoryLookup.removeAllBy(field: Metamodel<T, V>, values: Iterable<V>): Int = entity<T>().delete().where(field, IN, values).executeUpdate()
 
 /**
- * Deletes entities of type [T] matching the specified field against multiple referenced values.
+ * Removes entities of type [T] matching the specified field against multiple referenced values.
  *
  * @param field metamodel reference of the entity field.
  * @param values Iterable of referenced values to match against.
- * @return the number of entities deleted.
+ * @return the number of entities removed.
  */
-inline fun <reified T, V> RepositoryLookup.deleteAllByRef(
+inline fun <reified T, V> RepositoryLookup.removeAllByRef(
     field: Metamodel<T, V>,
     values: Iterable<Ref<V>>,
 ): Int where T : Entity<*>, V : Data = entity<T>().delete().whereRef(field, values).executeUpdate()

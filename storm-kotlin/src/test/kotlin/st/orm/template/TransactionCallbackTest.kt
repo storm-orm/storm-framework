@@ -12,8 +12,8 @@ import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.test.context.ContextConfiguration
 import org.springframework.test.context.jdbc.Sql
 import org.springframework.test.context.junit.jupiter.SpringExtension
-import st.orm.repository.deleteAll
 import st.orm.repository.exists
+import st.orm.repository.removeAll
 import st.orm.template.TransactionPropagation.*
 import st.orm.template.model.Visit
 
@@ -38,7 +38,7 @@ open class TransactionCallbackTest(
     fun `onCommit fires after successful blocking transaction`(): Unit = runBlocking {
         var committed = false
         transactionBlocking {
-            orm.deleteAll<Visit>()
+            orm.removeAll<Visit>()
             onCommit { committed = true }
         }
         committed.shouldBeTrue()
@@ -50,7 +50,7 @@ open class TransactionCallbackTest(
         var rolledBack = false
         assertThrows<IllegalStateException> {
             transactionBlocking {
-                orm.deleteAll<Visit>()
+                orm.removeAll<Visit>()
                 onRollback { rolledBack = true }
                 throw IllegalStateException("boom")
             }
@@ -63,7 +63,7 @@ open class TransactionCallbackTest(
     fun `onRollback fires after setRollbackOnly in blocking transaction`(): Unit = runBlocking {
         var rolledBack = false
         transactionBlocking {
-            orm.deleteAll<Visit>()
+            orm.removeAll<Visit>()
             onRollback { rolledBack = true }
             setRollbackOnly()
         }
@@ -94,7 +94,7 @@ open class TransactionCallbackTest(
     fun `onCommit fires after successful suspend transaction`(): Unit = runBlocking {
         var committed = false
         transaction {
-            orm.deleteAll<Visit>()
+            orm.removeAll<Visit>()
             onCommit { committed = true }
         }
         committed.shouldBeTrue()
@@ -106,7 +106,7 @@ open class TransactionCallbackTest(
         var rolledBack = false
         assertThrows<IllegalStateException> {
             transaction {
-                orm.deleteAll<Visit>()
+                orm.removeAll<Visit>()
                 onRollback { rolledBack = true }
                 throw IllegalStateException("boom")
             }
@@ -119,7 +119,7 @@ open class TransactionCallbackTest(
     fun `onRollback fires after setRollbackOnly in suspend transaction`(): Unit = runBlocking {
         var rolledBack = false
         transaction {
-            orm.deleteAll<Visit>()
+            orm.removeAll<Visit>()
             onRollback { rolledBack = true }
             setRollbackOnly()
         }
@@ -156,7 +156,7 @@ open class TransactionCallbackTest(
         var innerCommitted = false
         transactionBlocking {
             transactionBlocking(REQUIRED) {
-                orm.deleteAll<Visit>()
+                orm.removeAll<Visit>()
                 onCommit { innerCommitted = true }
             }
             // Inner has returned, but callbacks should not have fired yet (deferred to outer).
@@ -173,7 +173,7 @@ open class TransactionCallbackTest(
         var outerRolledBack = false
         transactionBlocking {
             transactionBlocking(REQUIRED) {
-                orm.deleteAll<Visit>()
+                orm.removeAll<Visit>()
                 onCommit { innerCommitted = true }
             }
             onRollback { outerRolledBack = true }
@@ -189,7 +189,7 @@ open class TransactionCallbackTest(
         var innerCommitted = false
         transactionBlocking {
             transactionBlocking(REQUIRES_NEW) {
-                orm.deleteAll<Visit>()
+                orm.removeAll<Visit>()
                 onCommit { innerCommitted = true }
             }
             // Inner has its own physical tx: callbacks fire immediately after inner returns.
@@ -205,7 +205,7 @@ open class TransactionCallbackTest(
         var outerCommitted = false
         transactionBlocking {
             transactionBlocking(REQUIRES_NEW) {
-                orm.deleteAll<Visit>()
+                orm.removeAll<Visit>()
                 onRollback { innerRolledBack = true }
                 setRollbackOnly()
             }
@@ -221,7 +221,7 @@ open class TransactionCallbackTest(
         var innerCommitted = false
         transactionBlocking {
             transactionBlocking(NESTED) {
-                orm.deleteAll<Visit>()
+                orm.removeAll<Visit>()
                 onCommit { innerCommitted = true }
             }
             innerCommitted.shouldBeFalse()
@@ -235,7 +235,7 @@ open class TransactionCallbackTest(
         var innerCommitted = false
         transactionBlocking {
             transactionBlocking(NESTED) {
-                orm.deleteAll<Visit>()
+                orm.removeAll<Visit>()
                 onCommit { innerCommitted = true }
             }
             setRollbackOnly()
@@ -249,7 +249,7 @@ open class TransactionCallbackTest(
         var innerCommitted = false
         transaction {
             transaction(propagation = REQUIRED) {
-                orm.deleteAll<Visit>()
+                orm.removeAll<Visit>()
                 onCommit { innerCommitted = true }
             }
             innerCommitted.shouldBeFalse()
@@ -263,7 +263,7 @@ open class TransactionCallbackTest(
         var innerCommitted = false
         transaction {
             transaction(propagation = REQUIRED) {
-                orm.deleteAll<Visit>()
+                orm.removeAll<Visit>()
                 onCommit { innerCommitted = true }
             }
             setRollbackOnly()
@@ -277,7 +277,7 @@ open class TransactionCallbackTest(
         var innerCommitted = false
         transaction {
             transaction(propagation = REQUIRES_NEW) {
-                orm.deleteAll<Visit>()
+                orm.removeAll<Visit>()
                 onCommit { innerCommitted = true }
             }
             innerCommitted.shouldBeTrue()
@@ -290,7 +290,7 @@ open class TransactionCallbackTest(
     fun `suspend onCommit callback works in suspend transaction`(): Unit = runBlocking {
         var committed = false
         transaction {
-            orm.deleteAll<Visit>()
+            orm.removeAll<Visit>()
             onCommit {
                 kotlinx.coroutines.delay(1) // Verify suspend is actually supported
                 committed = true
@@ -304,7 +304,7 @@ open class TransactionCallbackTest(
     fun `suspend onRollback callback works in suspend transaction`(): Unit = runBlocking {
         var rolledBack = false
         transaction {
-            orm.deleteAll<Visit>()
+            orm.removeAll<Visit>()
             onRollback {
                 kotlinx.coroutines.delay(1) // Verify suspend is actually supported
                 rolledBack = true
@@ -319,7 +319,7 @@ open class TransactionCallbackTest(
     fun `onCommit callback can perform database operations in blocking transaction`(): Unit = runBlocking {
         var visitExists = false
         transactionBlocking {
-            orm.deleteAll<Visit>()
+            orm.removeAll<Visit>()
             onCommit {
                 // After commit, the transaction context is cleaned up. DB operations use auto-commit.
                 visitExists = orm.exists<Visit>()
@@ -332,7 +332,7 @@ open class TransactionCallbackTest(
     fun `onCommit callback can perform database operations in suspend transaction`(): Unit = runBlocking {
         var visitExists = false
         transaction {
-            orm.deleteAll<Visit>()
+            orm.removeAll<Visit>()
             onCommit {
                 // After commit, the transaction context is cleaned up. DB operations use auto-commit.
                 visitExists = orm.exists<Visit>()
@@ -345,7 +345,7 @@ open class TransactionCallbackTest(
     fun `onCommit callback can start new transaction`(): Unit = runBlocking {
         var visitExists = false
         transaction {
-            orm.deleteAll<Visit>()
+            orm.removeAll<Visit>()
             onCommit {
                 transaction {
                     visitExists = orm.exists<Visit>()

@@ -112,8 +112,8 @@ class RepositoryProxyTest(
     }
 
     @Test
-    fun `proxied repository deleteAll should remove all entities`() {
-        visitRepository.deleteAll()
+    fun `proxied repository removeAll should remove all entities`() {
+        visitRepository.removeAll()
         visitRepository.count() shouldBe 0
     }
 

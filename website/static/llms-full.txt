@@ -296,7 +296,7 @@ Set up your project with the right dependencies, build flags, and optional modul
 
 ## 2. First Entity
 
-Define your first entity, create an ORM template, and perform insert, read, update, and delete operations.
+Define your first entity, create an ORM template, and perform insert, read, update, and remove operations.
 
 **[Go to First Entity](first-entity.md)**
 
@@ -720,18 +720,18 @@ val updatedUser = orm update user.copy(name = "Alice Johnson")
 ```java
 users.update(new User(user.id(), user.email(), "Alice Johnson", user.city()));
 ```
-## Delete a Record
+## Remove a Record
 
 [Kotlin]
 
 ```kotlin
-orm delete user
+orm remove user
 ```
 
 [Java]
 
 ```java
-users.delete(user);
+users.remove(user);
 ```
 ## Transactions
 
@@ -771,7 +771,7 @@ You have now seen the core workflow:
 
 1. Define entities as data classes or records with `@PK` and `@FK` annotations
 2. Create an `ORMTemplate` from a `DataSource`
-3. Use `insert`, `findById`, `update`, and `delete` for basic CRUD
+3. Use `insert`, `findById`, `update`, and `remove` for basic CRUD
 
 ## Next Steps
 
@@ -870,7 +870,7 @@ val user = userRepository.findByEmail("alice@example.com")
 val usersInCity = userRepository.findByNameInCity("Alice", city)
 ```
 
-Custom repositories inherit all built-in CRUD operations (`insert`, `findById`, `update`, `delete`, etc.) from `EntityRepository`. You only add methods for domain-specific queries.
+Custom repositories inherit all built-in CRUD operations (`insert`, `findById`, `update`, `remove`, etc.) from `EntityRepository`. You only add methods for domain-specific queries.
 
 [Java]
 
@@ -1097,7 +1097,7 @@ record User(@PK Integer id,
 
 ## Entity Interface
 
-Implementing the `Entity<ID>` interface is optional but required for using `EntityRepository` with built-in CRUD operations. The type parameter specifies the primary key type. Without this interface, you can still use Storm's SQL template features and query builder, but you lose the convenience methods like `findById`, `insert`, `update`, and `delete`. If you only need read access, consider using `Projection<ID>` instead (see [Projections](projections.md)).
+Implementing the `Entity<ID>` interface is optional but required for using `EntityRepository` with built-in CRUD operations. The type parameter specifies the primary key type. Without this interface, you can still use Storm's SQL template features and query builder, but you lose the convenience methods like `findById`, `insert`, `update`, and `remove`. If you only need read access, consider using `Projection<ID>` instead (see [Projections](projections.md)).
 
 Storm also supports polymorphic entity hierarchies using sealed interfaces. A sealed interface extending `Entity` can define multiple record subtypes, enabling Single-Table or Joined Table inheritance with compile-time exhaustive pattern matching. See [Polymorphism](polymorphism.md) for details.
 
@@ -1771,7 +1771,7 @@ The optional `value` parameter documents why the mismatch is acceptable. When pl
 # Projections
 ## What Are Projections?
 
-Projections are **read-only** data structures that represent database views or complex queries defined via `@ProjectionQuery`. Like entities, they are plain Kotlin data classes or Java records with no proxies and no bytecode manipulation. Unlike entities, projections support only read operations: no insert, update, or delete.
+Projections are **read-only** data structures that represent database views or complex queries defined via `@ProjectionQuery`. Like entities, they are plain Kotlin data classes or Java records with no proxies and no bytecode manipulation. Unlike entities, projections support only read operations: no insert, update, or remove.
 
 ```
 ┌─────────────────────────────────────────────────────────────────────┐
@@ -1919,7 +1919,7 @@ This is useful for aggregations, complex joins, or mapping database views.
 
 ### Getting a ProjectionRepository
 
-Obtain a `ProjectionRepository` from the ORM template. This is the read-only counterpart to `EntityRepository`. It provides find, select, count, and existence-check operations, but no insert, update, or delete.
+Obtain a `ProjectionRepository` from the ORM template. This is the read-only counterpart to `EntityRepository`. It provides find, select, count, and existence-check operations, but no insert, update, or remove.
 
 [Kotlin]
 
@@ -2041,8 +2041,8 @@ val ids = listOf(1, 2, 3)
 val owners = ownerViews.findAllById(ids)
 
 // Flow-based batch fetching (lazy evaluation)
-val idFlow = flowOf(1, 2, 3, 4, 5)
-ownerViews.selectById(idFlow).collect { owner ->
+val allOwners: Flow<OwnerView> = ownerViews.select().resultFlow
+allOwners.collect { owner ->
     // Process each owner
 }
 ```
@@ -2054,8 +2054,8 @@ ownerViews.selectById(idFlow).collect { owner ->
 List<Integer> ids = List.of(1, 2, 3);
 List<OwnerView> owners = ownerViews.findAllById(ids);
 
-// Stream-based batch fetching (must close)
-try (Stream<OwnerView> stream = ownerViews.selectById(ids.stream())) {
+// Stream-based fetching (must close)
+try (Stream<OwnerView> stream = ownerViews.select().getResultStream()) {
     stream.forEach(owner -> {
         // Process each owner
     });
@@ -2202,11 +2202,10 @@ Use `@DbColumn` to map fields to columns with different names.
 | `findAll()` | Fetch all as a list |
 | `findAllById(ids)` | Fetch multiple by IDs |
 | `select().resultFlow` | Lazy Flow of all projections |
-| `selectById(ids)` | Lazy Flow by IDs |
 | `select()` | Query builder for filtering |
 | `selectCount()` | Query builder for counting |
 
-Note: Unlike `EntityRepository`, there are no `insert`, `update`, `delete`, or `upsert` methods. Projections are read-only.
+Note: Unlike `EntityRepository`, there are no `insert`, `update`, `remove`, or `upsert` methods. Projections are read-only.
 
 ---
 
@@ -2923,14 +2922,14 @@ val all: List<User> = orm.findAll(User_.city eq city)
 // Update
 orm update user.copy(name = "Alice Johnson")
 
-// Delete
-orm delete user
+// Remove
+orm remove user
 
-// Delete by condition
-orm.delete(User_.city eq city)
+// Remove by field
+orm.removeBy(User_.city, city)
 
-// Delete all
-orm.deleteAll<User>()
+// Remove all
+orm.removeAll<User>()
 
 // Delete all (builder approach, requires unsafe() to confirm intent)
 orm.entity(User::class).delete().unsafe().executeUpdate()
@@ -2960,17 +2959,17 @@ userRepository.update(new User(
     user.id(), "alice@example.com", "Alice Johnson", user.birthDate(), user.city()
 ));
 
-// Delete
-userRepository.delete(user);
+// Remove
+userRepository.remove(user);
 
-// Delete all
-userRepository.deleteAll();
+// Remove all
+userRepository.removeAll();
 
 // Delete all (builder approach, requires unsafe() to confirm intent)
 userRepository.delete().unsafe().executeUpdate();
 ```
 > **Warning:**
-Storm rejects DELETE and UPDATE queries that have no WHERE clause, throwing a `PersistenceException`. This prevents accidental bulk deletions, which is especially important because `QueryBuilder` is immutable and a lost `where()` return value would silently drop the filter. Call `unsafe()` to opt out of this check when you intentionally want to affect all rows. The `deleteAll()` convenience method calls `unsafe()` internally.
+Storm rejects DELETE and UPDATE queries that have no WHERE clause, throwing a `PersistenceException`. This prevents accidental bulk deletions, which is especially important because `QueryBuilder` is immutable and a lost `where()` return value would silently drop the filter. Call `unsafe()` to opt out of this check when you intentionally want to affect all rows. The `removeAll()` convenience method calls `unsafe()` internally.
 
 Storm uses dirty checking to determine which columns to include in the UPDATE statement. See [Dirty Checking](dirty-checking.md) for configuration details.
 
@@ -3246,11 +3245,11 @@ Refs are lightweight identifiers that carry only the record type and primary key
 [Kotlin]
 
 ```kotlin
-// Select refs (lightweight identifiers)
-val refs: Flow<Ref<User>> = userRepository.selectRef().getResultStream()
+// Select refs (lightweight identifiers, builder method + terminal)
+val refs: Flow<Ref<User>> = userRepository.selectRef().resultFlow
 
-// Select by refs
-val users: Flow<User> = userRepository.selectByRef(refs)
+// Find all by refs (convenience method, executes immediately)
+val users: List<User> = userRepository.findAllByRef(refList)
 ```
 
 [Java]
@@ -3258,16 +3257,14 @@ val users: Flow<User> = userRepository.selectByRef(refs)
 Ref operations in Java return `Stream` objects that must be closed. Refs carry only the primary key and record type, making them suitable for batch operations where loading full records would be wasteful.
 
 ```java
-// Select refs (lightweight identifiers)
+// Select refs (lightweight identifiers, builder method + terminal)
 try (Stream<Ref<User>> refs = userRepository.selectRef().getResultStream()) {
     // Process refs
 }
 
-// Select by refs
+// Find all by refs (convenience method, executes immediately)
 List<Ref<User>> refList = ...;
-try (Stream<User> users = userRepository.selectByRef(refList.stream())) {
-    // Process users
-}
+List<User> users = userRepository.findAllByRef(refList);
 ```
 ---
 
@@ -5637,7 +5634,7 @@ Use `transaction` for coroutine code:
 
 ```kotlin
 transaction {
-    orm.deleteAll<Visit>()
+    orm.removeAll<Visit>()
     orm insert User(email = "alice@example.com", name = "Alice")
     // Commits automatically on success, rolls back on exception
 }
@@ -5665,7 +5662,7 @@ Use `transactionBlocking` for synchronous code:
 
 ```kotlin
 transactionBlocking {
-    orm.deleteAll<Visit>()
+    orm.removeAll<Visit>()
     orm insert User(email = "alice@example.com", name = "Alice")
     // Commits automatically on success, rolls back on exception
 }
@@ -6190,7 +6187,7 @@ Long-running transactions hold database locks and consume connection pool resour
 
 ```kotlin
 transaction(timeoutSeconds = 30) {
-    orm.deleteAll<Visit>()
+    orm.removeAll<Visit>()
     delay(35_000)  // Will cause timeout
 }
 ```
@@ -6212,7 +6209,7 @@ Sometimes you need to abort a transaction based on a runtime condition rather th
 
 ```kotlin
 transaction {
-    orm.deleteAll<Visit>()
+    orm.removeAll<Visit>()
 
     if (someCondition) {
         setRollbackOnly()  // Mark for rollback
@@ -6565,14 +6562,14 @@ When you need different transaction settings for a specific section of code with
 withTransactionOptions(timeoutSeconds = 60) {
     transaction {
         // Uses 60 second timeout
-        orm.deleteAll<Visit>()
+        orm.removeAll<Visit>()
     }
 }
 
 withTransactionOptionsBlocking(isolation = SERIALIZABLE) {
     transactionBlocking {
         // Uses SERIALIZABLE isolation
-        orm.deleteAll<Visit>()
+        orm.removeAll<Visit>()
     }
 }
 ```
@@ -7024,7 +7021,7 @@ fun processUsers() {
 
     transactionBlocking {
         // Participates in Spring transaction
-        orm.deleteAll<Visit>()
+        orm.removeAll<Visit>()
     }
 }
 ```
@@ -9096,8 +9093,8 @@ pets.insert(Cat(name = "Bella", indoor = true))
 // Update
 pets.update(Cat(id = 1, name = "Sir Whiskers", indoor = true))
 
-// Delete
-pets.delete(somePet)
+// Remove
+pets.remove(somePet)
 ```
 
 [Java]
@@ -9120,8 +9117,8 @@ pets.insert(new Cat(null, "Bella", true));
 // Update
 pets.update(new Cat(1, "Sir Whiskers", true));
 
-// Delete
-pets.delete(somePet);
+// Remove
+pets.remove(somePet);
 ```
 ### Generated SQL
 
@@ -9419,8 +9416,8 @@ pets.insert(Cat(name = "Bella", indoor = true))
 // Update a Cat - updates both base and extension tables
 pets.update(Cat(id = 1, name = "Sir Whiskers", indoor = true))
 
-// Delete - deletes from extension table first, then base table
-pets.delete(somePet)
+// Remove - deletes from extension table first, then base table
+pets.remove(somePet)
 ```
 
 [Java]
@@ -9437,8 +9434,8 @@ pets.insert(new Cat(null, "Bella", true));
 // Update a Cat - updates both base and extension tables
 pets.update(new Cat(1, "Sir Whiskers", true));
 
-// Delete - deletes from extension table first, then base table
-pets.delete(somePet);
+// Remove - deletes from extension table first, then base table
+pets.remove(somePet);
 ```
 ### Generated SQL
 
@@ -9596,7 +9593,7 @@ Type changes require a transactional context for atomicity, since the operation 
 
 ### Batch Operations
 
-Storm supports batch operations with mixed subtypes. You can pass a list containing different concrete subtypes to `insert()`, `update()`, or `delete()`, and Storm handles them correctly.
+Storm supports batch operations with mixed subtypes. You can pass a list containing different concrete subtypes to `insert()`, `update()`, or `remove()`, and Storm handles them correctly.
 
 [Kotlin]
 
@@ -9611,8 +9608,8 @@ pets.insert(listOf(
 // Update mixed subtypes
 pets.update(listOf(updatedCat, updatedDog))
 
-// Delete mixed subtypes
-pets.delete(listOf(someCat, someDog))
+// Remove mixed subtypes
+pets.remove(listOf(someCat, someDog))
 ```
 
 [Java]
@@ -9628,8 +9625,8 @@ pets.insert(List.of(
 // Update mixed subtypes
 pets.update(List.of(updatedCat, updatedDog));
 
-// Delete mixed subtypes
-pets.delete(List.of(someCat, someDog));
+// Remove mixed subtypes
+pets.remove(List.of(someCat, someDog));
 ```
 For the base table, Storm issues a single batch statement covering all entities regardless of subtype. For extension tables, Storm partitions the entities by subtype and issues a separate batch statement per extension table. This means a batch insert of 2 Cats and 1 Dog results in one batch INSERT into the `pet` base table (3 rows), one batch INSERT into the `cat` extension table (2 rows), and one batch INSERT into the `dog` extension table (1 row).
 
@@ -10954,7 +10951,7 @@ Database performance often degrades when applications issue many individual SQL 
 
 ## Batch Processing
 
-When you pass a list of entities to Storm's insert, update, delete, or upsert methods, Storm automatically uses JDBC batch statements. The framework groups rows together and sends them to the database in a single round-trip, rather than issuing one statement per entity.
+When you pass a list of entities to Storm's insert, update, remove, or upsert methods, Storm automatically uses JDBC batch statements. The framework groups rows together and sends them to the database in a single round-trip, rather than issuing one statement per entity.
 
 ### Batch Insert
 
@@ -11003,23 +11000,23 @@ List<User> updatedUsers = users.stream()
 
 orm.entity(User.class).update(updatedUsers);
 ```
-### Batch Delete
+### Batch Remove
 
-Batch deletes remove multiple entities in a single round-trip. Storm generates a batched DELETE using each entity's primary key.
+Batch removes delete multiple entities in a single round-trip. Storm generates a batched DELETE using each entity's primary key.
 
 [Kotlin]
 
 ```kotlin
-orm delete users
+orm remove users
 
-// Or delete all entities of a type
-orm.deleteAll<User>()
+// Or remove all entities of a type
+orm.removeAll<User>()
 ```
 
 [Java]
 
 ```java
-orm.entity(User.class).delete(users);
+orm.entity(User.class).remove(users);
 ```
 ### Batch Upsert
 
@@ -11446,7 +11443,7 @@ orm.query(RAW."""
 
 The `Data` interface marks a record or data class as eligible for Storm's SQL generation. Without this marker, Storm treats the type as a plain container and expects you to write all SQL manually. With it, template expressions like `${MyType::class}` in a SELECT clause expand into the full column list, and the same expression in a FROM clause generates the table name with appropriate joins for `@FK` fields.
 
-Use `Data` for query-specific result types that do not need full repository support (insert, update, delete). If you need CRUD operations, use `Entity` or `Projection` instead, which extend `Data`.
+Use `Data` for query-specific result types that do not need full repository support (insert, update, remove). If you need CRUD operations, use `Entity` or `Projection` instead, which extend `Data`.
 
 [Kotlin]
 
@@ -13515,7 +13512,6 @@ transaction {
 This applies to:
 - `findById()` / `getById()`
 - `findByRef()` / `getByRef()`
-- `selectById()` / `selectByRef()`
 
 ### Ref Resolution
 
@@ -15083,7 +15079,7 @@ SELECT ... FROM "user" WHERE "email" = ?
 ```
 This applies to all Storm APIs, including:
 
-- Repository methods (`find`, `findAll`, `select`, `insert`, `update`, `delete`)
+- Repository methods (`find`, `findAll`, `select`, `insert`, `update`, `remove`, `delete`)
 - Query builder operations (`.where()`, `.set()`, `.values()`)
 - SQL templates with embedded expressions
 
@@ -16039,7 +16035,7 @@ storm:
 
 ## Batch Operations
 
-Batch operations group multiple SQL statements into a single JDBC round-trip. Storm automatically uses JDBC batching when you pass collections to `insert`, `update`, `delete`, or `upsert`.
+Batch operations group multiple SQL statements into a single JDBC round-trip. Storm automatically uses JDBC batching when you pass collections to `insert`, `update`, `remove`, or `upsert`.
 
 ### Performance Characteristics
 
@@ -17450,18 +17446,18 @@ userRepository.delete()
     .where(User_.city, EQUALS, city)
     .executeUpdate();
 ```
-If you genuinely need to delete all rows from a table, use the `deleteAll()` convenience method:
+If you genuinely need to delete all rows from a table, use the `removeAll()` convenience method:
 
 [Kotlin]
 
 ```kotlin
-userRepository.deleteAll()
+userRepository.removeAll()
 ```
 
 [Java]
 
 ```java
-userRepository.deleteAll();
+userRepository.removeAll();
 ```
 Alternatively, you can use the builder approach and call `unsafe()` to opt out of the safety check:
 
@@ -17476,7 +17472,7 @@ userRepository.delete().unsafe().executeUpdate()
 ```java
 userRepository.delete().unsafe().executeUpdate();
 ```
-The `unsafe()` method signals that the absence of a WHERE clause is intentional. Without it, Storm assumes the missing WHERE clause is a mistake. The `deleteAll()` convenience method calls `unsafe()` internally.
+The `unsafe()` method signals that the absence of a WHERE clause is intentional. Without it, Storm assumes the missing WHERE clause is a mistake. The `removeAll()` convenience method calls `unsafe()` internally.
 
 ### Can I use database-specific functions?
 
@@ -18365,7 +18361,7 @@ This page defines key terms used throughout the Storm documentation.
 The process of determining which fields of an entity have changed since it was last read from the database. Storm compares the current entity state against the observed state stored in the transaction context. Only changed columns are included in the UPDATE statement. Because entities are immutable, dirty checking is fast and requires no bytecode manipulation. See [Dirty Checking](dirty-checking.md).
 
 **Entity**
-A Kotlin data class or Java record that implements the `Entity<ID>` interface and maps to a database table. Entities support full CRUD operations (insert, update, delete) through repositories. They are stateless and immutable, with no proxies or hidden state. See [Entities](entities.md).
+A Kotlin data class or Java record that implements the `Entity<ID>` interface and maps to a database table. Entities support full CRUD operations (insert, update, remove) through repositories. They are stateless and immutable, with no proxies or hidden state. See [Entities](entities.md).
 
 **Entity Cache**
 A transaction-scoped cache that stores entities by primary key during a transaction. It avoids redundant database round-trips, skips repeated object construction during hydration, preserves object identity within a transaction, and tracks observed state for dirty checking. The cache is automatically cleared on commit or rollback. See [Entity Cache](entity-cache.md).

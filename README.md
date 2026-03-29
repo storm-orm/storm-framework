@@ -143,7 +143,7 @@ Storm provides a Bill of Materials (BOM) for centralized version management. Imp
         <dependency>
             <groupId>st.orm</groupId>
             <artifactId>storm-bom</artifactId>
-            <version>1.11.0</version>
+            <version>@@STORM_VERSION@@</version>
             <type>pom</type>
             <scope>import</scope>
         </dependency>
@@ -155,7 +155,7 @@ Storm provides a Bill of Materials (BOM) for centralized version management. Imp
 
 ```kotlin
 dependencies {
-    implementation(platform("st.orm:storm-bom:1.11.0"))
+    implementation(platform("st.orm:storm-bom:@@STORM_VERSION@@"))
 }
 ```
 
@@ -165,7 +165,7 @@ With the BOM imported, add Storm modules without specifying versions:
 
 ```kotlin
 dependencies {
-    implementation(platform("st.orm:storm-bom:1.11.0"))
+    implementation(platform("st.orm:storm-bom:@@STORM_VERSION@@"))
     implementation("st.orm:storm-kotlin")
     runtimeOnly("st.orm:storm-core")
     // Use storm-compiler-plugin-2.0 for Kotlin 2.0.x, -2.1 for 2.1.x, etc.

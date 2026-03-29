@@ -78,12 +78,12 @@ open class PolymorphicTest(
     }
 
     @Test
-    fun `delete animal`() {
+    fun `remove animal`() {
         val animals = orm.entity(Animal::class)
         animals.insert(Cat(name = "Temp", indoor = false))
         val before = animals.count()
         val result = animals.select().resultList
-        animals.delete(result.last())
+        animals.remove(result.last())
         animals.count() shouldBe before - 1
     }
 
@@ -236,21 +236,21 @@ open class PolymorphicTest(
     }
 
     @Test
-    fun `delete joined animal`() {
+    fun `remove joined animal`() {
         val animals = orm.entity(JoinedAnimal::class)
         animals.insert(JoinedCat(name = "Temp", indoor = false))
         val before = animals.count()
         val result = animals.select().resultList
-        animals.delete(result.last())
+        animals.remove(result.last())
         animals.count() shouldBe before - 1
     }
 
     @Test
-    fun `deleteById joined animal`() {
+    fun `removeById joined animal`() {
         val animals = orm.entity(JoinedAnimal::class)
         val id = animals.insertAndFetchId(JoinedDog(name = "TempDog", weight = 10))
         val before = animals.count()
-        animals.deleteById(id)
+        animals.removeById(id)
         animals.count() shouldBe before - 1
     }
 
@@ -380,32 +380,32 @@ open class PolymorphicTest(
     }
 
     @Test
-    fun `delete nodsc animal`() {
+    fun `remove nodsc animal`() {
         val animals = orm.entity(NodscAnimal::class)
         animals.insert(NodscCat(name = "Temp", indoor = false))
         val before = animals.count()
         val result = animals.select().resultList
-        animals.delete(result.last())
+        animals.remove(result.last())
         animals.count() shouldBe before - 1
     }
 
     @Test
-    fun `delete nodsc bird`() {
+    fun `remove nodsc bird`() {
         val animals = orm.entity(NodscAnimal::class)
         animals.insert(NodscBird(name = "TempBird"))
         val before = animals.count()
         val result = animals.select().resultList
         result.last().shouldBeInstanceOf<NodscBird>()
-        animals.delete(result.last())
+        animals.remove(result.last())
         animals.count() shouldBe before - 1
     }
 
     @Test
-    fun `deleteById nodsc animal`() {
+    fun `removeById nodsc animal`() {
         val animals = orm.entity(NodscAnimal::class)
         val id = animals.insertAndFetchId(NodscDog(name = "TempDog", weight = 10))
         val before = animals.count()
-        animals.deleteById(id)
+        animals.removeById(id)
         animals.count() shouldBe before - 1
     }
 
@@ -510,7 +510,7 @@ open class PolymorphicTest(
     }
 
     @Test
-    fun `batch delete joined animals`(): Unit = runBlocking {
+    fun `batch remove joined animals`(): Unit = runBlocking {
         transaction {
             val animals = orm.entity(JoinedAnimal::class)
             animals.insert(
@@ -523,13 +523,13 @@ open class PolymorphicTest(
             val result = animals.select().resultList
             val cat = result[result.size - 2]
             val dog = result[result.size - 1]
-            animals.delete(listOf(cat, dog))
+            animals.remove(listOf(cat, dog))
             animals.count() shouldBe before - 2
         }
     }
 
     @Test
-    fun `batch deleteByRef joined animals`() {
+    fun `batch removeByRef joined animals`() {
         val animals = orm.entity(JoinedAnimal::class)
         val ids = animals.insertAndFetchIds(
             listOf(
@@ -539,7 +539,7 @@ open class PolymorphicTest(
         )
         val before = animals.count()
         val refs = ids.map { id -> Ref.of(JoinedAnimal::class.java, id) }
-        animals.deleteByRef(refs)
+        animals.removeByRef(refs)
         animals.count() shouldBe before - 2
     }
 
@@ -624,7 +624,7 @@ open class PolymorphicTest(
     }
 
     @Test
-    fun `batch delete nodsc animals`(): Unit = runBlocking {
+    fun `batch remove nodsc animals`(): Unit = runBlocking {
         transaction {
             val animals = orm.entity(NodscAnimal::class)
             animals.insert(
@@ -639,7 +639,7 @@ open class PolymorphicTest(
             val cat = result[result.size - 3]
             val dog = result[result.size - 2]
             val bird = result[result.size - 1]
-            animals.delete(listOf(cat, dog, bird))
+            animals.remove(listOf(cat, dog, bird))
             animals.count() shouldBe before - 3
         }
     }
@@ -697,12 +697,12 @@ open class PolymorphicTest(
     }
 
     @Test
-    fun `delete integer discriminator animal`() {
+    fun `remove integer discriminator animal`() {
         val animals = orm.entity(IntDiscAnimal::class)
         animals.insert(IntDiscCat(name = "Temp", indoor = false))
         val before = animals.count()
         val result = animals.select().resultList
-        animals.delete(result.last())
+        animals.remove(result.last())
         animals.count() shouldBe before - 1
     }
 
@@ -759,12 +759,12 @@ open class PolymorphicTest(
     }
 
     @Test
-    fun `delete char discriminator animal`() {
+    fun `remove char discriminator animal`() {
         val animals = orm.entity(CharDiscAnimal::class)
         animals.insert(CharDiscCat(name = "Temp", indoor = false))
         val before = animals.count()
         val result = animals.select().resultList
-        animals.delete(result.last())
+        animals.remove(result.last())
         animals.count() shouldBe before - 1
     }
 
@@ -809,14 +809,14 @@ open class PolymorphicTest(
     }
 
     @Test
-    fun `delete comment`() {
+    fun `remove comment`() {
         val comments = orm.entity(Comment::class)
 
         @Suppress("UNCHECKED_CAST")
         val postRef = Ref.of(Post::class.java, 1) as Ref<Commentable>
         comments.insert(Comment(text = "To delete", target = postRef))
         val before = comments.count()
-        comments.deleteById(before.toInt())
+        comments.removeById(before.toInt())
         comments.count() shouldBe before - 1
     }
 
@@ -1022,7 +1022,7 @@ open class PolymorphicTest(
     }
 
     @Test
-    fun `batch delete single table animals`() {
+    fun `batch remove single table animals`() {
         val animals = orm.entity(Animal::class)
         animals.insert(
             listOf(
@@ -1034,7 +1034,7 @@ open class PolymorphicTest(
         val result = animals.select().resultList
         val cat = result[result.size - 2]
         val dog = result[result.size - 1]
-        animals.delete(listOf(cat, dog))
+        animals.remove(listOf(cat, dog))
         animals.count() shouldBe before - 2
     }
 }

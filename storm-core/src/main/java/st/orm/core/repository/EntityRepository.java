@@ -147,11 +147,11 @@ import st.orm.core.template.TemplateString;
  *
  * <h3>Delete</h3>
  *
- * <p>Delete user in the database. The repository also supports updates for multiple entries in batch mode by passing a
- * list entities or primary keys. Alternatively, deletion can be executed in using a stream of entities.
+ * <p>Remove user from the database. The repository also supports removals for multiple entries in batch mode by passing a
+ * list entities or primary keys. Alternatively, removal can be executed using a stream of entities.
  * <pre>{@code
  * User user = ...;
- * userRepository.delete(user);
+ * userRepository.remove(user);
  * }</pre>
  *
  * <p>Also here, the QueryBuilder can be used to create specialized statement, for instance, to delete all users where
@@ -491,55 +491,55 @@ public interface EntityRepository<E extends Entity<ID>, ID> extends Repository {
     E upsertAndFetch(@Nonnull E entity);
 
     /**
-     * Deletes an entity from the database.
+     * Removes an entity from the database.
      *
      * <p>This method removes an existing entity from the database. The entity must exist in the database; if it does
-     * not, a {@link PersistenceException} is thrown. Unlike {@link #deleteById} and {@link #deleteByRef}, this method
+     * not, a {@link PersistenceException} is thrown. Unlike {@link #removeById} and {@link #removeByRef}, this method
      * is strict rather than idempotent, because possessing the full entity implies the caller expects it to exist.</p>
      *
-     * @param entity the entity to delete. The entity must exist in the database and should be correctly identified by
+     * @param entity the entity to remove. The entity must exist in the database and should be correctly identified by
      *               its primary key.
-     * @throws PersistenceException if the deletion operation fails. Reasons for failure might include the entity not
+     * @throws PersistenceException if the removal operation fails. Reasons for failure might include the entity not
      *                              being found in the database, violations of database constraints, connectivity
      *                              issues, or if the entity parameter is null.
      */
-    void delete(@Nonnull E entity);
+    void remove(@Nonnull E entity);
 
     /**
-     * Deletes an entity from the database based on its primary key.
+     * Removes an entity from the database based on its primary key.
      *
      * <p>This method ensures the entity with the given primary key is removed from the database. If the entity does
      * not exist, the operation completes successfully without error (idempotent behavior).</p>
      *
-     * @param id the primary key of the entity to delete.
-     * @throws PersistenceException if the deletion operation fails due to violations of database constraints,
+     * @param id the primary key of the entity to remove.
+     * @throws PersistenceException if the removal operation fails due to violations of database constraints,
      *                              connectivity issues, or if the id parameter is null.
      */
-    void deleteById(@Nonnull ID id);
+    void removeById(@Nonnull ID id);
 
     /**
-     * Deletes an entity from the database by its reference.
+     * Removes an entity from the database by its reference.
      *
      * <p>This method ensures the entity identified by the given reference is removed from the database. If the entity
      * does not exist, the operation completes successfully without error (idempotent behavior).</p>
      *
-     * @param ref the reference to the entity to delete.
-     * @throws PersistenceException if the deletion operation fails due to violations of database constraints,
+     * @param ref the reference to the entity to remove.
+     * @throws PersistenceException if the removal operation fails due to violations of database constraints,
      *                              connectivity issues, or if the ref parameter is null.
      */
-    void deleteByRef(@Nonnull Ref<E> ref);
+    void removeByRef(@Nonnull Ref<E> ref);
 
     /**
-     * Deletes all entities from the database.
+     * Removes all entities from the database.
      *
-     * <p>This method performs a bulk deletion operation, removing all instances of the entities managed by this
+     * <p>This method performs a bulk removal operation, removing all instances of the entities managed by this
      * repository from the database.</p>
      *
-     * @throws PersistenceException if the bulk deletion operation fails. Failure can occur for several reasons,
+     * @throws PersistenceException if the bulk removal operation fails. Failure can occur for several reasons,
      *                              including but not limited to database access issues, transaction failures, or
-     *                              underlying database constraints that prevent the deletion of certain records.
+     *                              underlying database constraints that prevent the removal of certain records.
      */
-    void deleteAll();
+    void removeAll();
 
     // Singular findBy methods.
 
@@ -747,6 +747,23 @@ public interface EntityRepository<E extends Entity<ID>, ID> extends Repository {
      *                              connectivity.
      */
     List<E> findAll();
+
+    /**
+     * Returns a list of refs to all entities of the type supported by this repository. Each element in the list
+     * represents a lightweight reference to an entity in the database, containing only the primary key.
+     *
+     * <p>This method is useful when you need to retrieve all entity identifiers without loading the full entity data.
+     * The complete entity can be fetched on demand by calling {@link Ref#fetch()} on any of the returned refs.</p>
+     *
+     * <p><strong>Note:</strong> While this method is more memory-efficient than {@link #findAll()} since it only
+     * loads primary keys, loading all refs into memory at once can still be memory-intensive for very large tables.</p>
+     *
+     * @return a list of refs to all entities of the type supported by this repository.
+     * @throws PersistenceException if the selection operation fails due to underlying database issues, such as
+     *                              connectivity.
+     * @since 1.3
+     */
+    List<Ref<E>> findAllRef();
 
     /**
      * Retrieves a list of entities based on their primary keys.
@@ -961,148 +978,34 @@ public interface EntityRepository<E extends Entity<ID>, ID> extends Repository {
     List<E> upsertAndFetch(@Nonnull Iterable<E> entities);
 
     /**
-     * Deletes a collection of entities from the database in batches.
+     * Removes a collection of entities from the database in batches.
      *
      * <p>This method processes the provided entities in batches to optimize performance when handling larger collections,
      * reducing database overhead. For each entity in the collection, the method removes the corresponding record from
-     * the database, if it exists. Batch processing ensures efficient handling of deletions, particularly for large data sets.</p>
+     * the database, if it exists. Batch processing ensures efficient handling of removals, particularly for large data sets.</p>
      *
-     * @param entities an iterable collection of entities to be deleted. Each entity in the collection must be non-null
-     *                 and represent a valid database record for deletion.
-     * @throws PersistenceException if the deletion operation fails due to database issues, such as connectivity problems
+     * @param entities an iterable collection of entities to be removed. Each entity in the collection must be non-null
+     *                 and represent a valid database record for removal.
+     * @throws PersistenceException if the removal operation fails due to database issues, such as connectivity problems
      *                              or constraints violations.
      */
-    void delete(@Nonnull Iterable<E> entities);
+    void remove(@Nonnull Iterable<E> entities);
 
     /**
-     * Deletes a collection of entities from the database in batches.
+     * Removes a collection of entities from the database in batches.
      *
      * <p>This method processes the provided entities in batches to optimize performance when handling larger collections,
      * reducing database overhead. For each entity in the collection, the method removes the corresponding record from
-     * the database, if it exists. Batch processing ensures efficient handling of deletions, particularly for large data sets.</p>
+     * the database, if it exists. Batch processing ensures efficient handling of removals, particularly for large data sets.</p>
      *
-     * @param refs an iterable collection of entities to be deleted. Each entity in the collection must be non-null
-     *             and represent a valid database record for deletion.
-     * @throws PersistenceException if the deletion operation fails due to database issues, such as connectivity problems
+     * @param refs an iterable collection of entities to be removed. Each entity in the collection must be non-null
+     *             and represent a valid database record for removal.
+     * @throws PersistenceException if the removal operation fails due to database issues, such as connectivity problems
      *                              or constraints violations.
      */
-    void deleteByRef(@Nonnull Iterable<Ref<E>> refs);
+    void removeByRef(@Nonnull Iterable<Ref<E>> refs);
 
     // Stream based methods.
-
-    /**
-     * Retrieves a stream of entities based on their primary keys.
-     *
-     * <p>This method executes queries in batches, depending on the number of primary keys in the specified ids stream.
-     * This optimization aims to reduce the overhead of executing multiple queries and efficiently retrieve entities.
-     * The batching strategy enhances performance, particularly when dealing with large sets of primary keys.</p>
-     *
-     * <p>The resulting stream is lazily loaded, meaning that the entities are only retrieved from the database as they
-     * are consumed by the stream. This approach is efficient and minimizes the memory footprint, especially when
-     * dealing with large volumes of entities.</p>
-     *
-     * <p><strong>Note:</strong> Calling this method does trigger the execution of the underlying
-     * query, so it should only be invoked when the query is intended to run. Since the stream holds resources open
-     * while in use, it must be closed after usage to prevent resource leaks. As the stream is {@code AutoCloseable}, it
-     * is recommended to use it within a {@code try-with-resources} block.</p>
-     *
-     * @param ids a stream of entity IDs to retrieve from the repository.
-     * @return a stream of entities corresponding to the provided primary keys. The order of entities in the stream is
-     *         not guaranteed to match the order of ids in the input stream. If an id does not correspond to any entity
-     *         in the database, it will simply be skipped, and no corresponding entity will be included in the returned
-     *         stream. If the same entity is requested multiple times, it may be included in the stream multiple times
-     *         if it is part of a separate batch.
-     * @throws PersistenceException if the selection operation fails due to underlying database issues, such as
-     *                              connectivity.
-     */
-    Stream<E> selectById(@Nonnull Stream<ID> ids);
-
-    /**
-     * Retrieves a stream of entities based on their primary keys.
-     *
-     * <p>This method executes queries in batches, depending on the number of primary keys in the specified ids stream.
-     * This optimization aims to reduce the overhead of executing multiple queries and efficiently retrieve entities.
-     * The batching strategy enhances performance, particularly when dealing with large sets of primary keys.</p>
-     *
-     * <p>The resulting stream is lazily loaded, meaning that the entities are only retrieved from the database as they
-     * are consumed by the stream. This approach is efficient and minimizes the memory footprint, especially when
-     * dealing with large volumes of entities.</p>
-     *
-     * <p><strong>Note:</strong> Calling this method does trigger the execution of the underlying
-     * query, so it should only be invoked when the query is intended to run. Since the stream holds resources open
-     * while in use, it must be closed after usage to prevent resource leaks. As the stream is {@code AutoCloseable}, it
-     * is recommended to use it within a {@code try-with-resources} block.</p>
-     *
-     * @param refs a stream of refs to retrieve from the repository.
-     * @return a stream of entities corresponding to the provided primary keys. The order of entities in the stream is
-     *         not guaranteed to match the order of ids in the input stream. If an id does not correspond to any entity
-     *         in the database, it will simply be skipped, and no corresponding entity will be included in the returned
-     *         stream. If the same entity is requested multiple times, it may be included in the stream multiple times
-     *         if it is part of a separate batch.
-     * @throws PersistenceException if the selection operation fails due to underlying database issues, such as
-     *                              connectivity.
-     */
-    Stream<E> selectByRef(@Nonnull Stream<Ref<E>> refs);
-
-    /**
-     * Retrieves a stream of entities based on their primary keys.
-     *
-     * <p>This method executes queries in batches, with the batch size determined by the provided parameter. This
-     * optimization aims to reduce the overhead of executing multiple queries and efficiently retrieve entities. The
-     * batching strategy enhances performance, particularly when dealing with large sets of primary keys.</p>
-     *
-     * <p>The resulting stream is lazily loaded, meaning that the entities are only retrieved from the database as they
-     * are consumed by the stream. This approach is efficient and minimizes the memory footprint, especially when
-     * dealing with large volumes of entities.</p>
-     *
-     * <p><strong>Note:</strong> Calling this method does trigger the execution of the underlying
-     * query, so it should only be invoked when the query is intended to run. Since the stream holds resources open
-     * while in use, it must be closed after usage to prevent resource leaks. As the stream is {@code AutoCloseable}, it
-     * is recommended to use it within a {@code try-with-resources} block.</p>
-     *
-     * @param ids a stream of entity IDs to retrieve from the repository.
-     * @param chunkSize the number of primary keys to include in each batch. This parameter determines the size of the
-     *                  batches used to execute the selection operation. A larger batch size can improve performance, especially when
-     *                  dealing with large sets of primary keys.
-     * @return a stream of entities corresponding to the provided primary keys. The order of entities in the stream is
-     * not guaranteed to match the order of refs in the input stream. If an id does not correspond to any entity in the
-     * database, it will simply be skipped, and no corresponding entity will be included in the returned stream. If the
-     * same entity is requested multiple times, it may be included in the stream multiple times if it is part of a
-     * separate batch.
-     * @throws PersistenceException if the selection operation fails due to underlying database issues, such as
-     *                              connectivity.
-     */
-    Stream<E> selectById(@Nonnull Stream<ID> ids, int chunkSize);
-
-    /**
-     * Retrieves a stream of entities based on their primary keys.
-     *
-     * <p>This method executes queries in batches, with the batch size determined by the provided parameter. This
-     * optimization aims to reduce the overhead of executing multiple queries and efficiently retrieve entities. The
-     * batching strategy enhances performance, particularly when dealing with large sets of primary keys.</p>
-     *
-     * <p>The resulting stream is lazily loaded, meaning that the entities are only retrieved from the database as they
-     * are consumed by the stream. This approach is efficient and minimizes the memory footprint, especially when
-     * dealing with large volumes of entities.</p>
-     *
-     * <p><strong>Note:</strong> Calling this method does trigger the execution of the underlying
-     * query, so it should only be invoked when the query is intended to run. Since the stream holds resources open
-     * while in use, it must be closed after usage to prevent resource leaks. As the stream is {@code AutoCloseable}, it
-     * is recommended to use it within a {@code try-with-resources} block.</p>
-     *
-     * @param refs a stream of refs to retrieve from the repository.
-     * @param chunkSize the number of primary keys to include in each batch. This parameter determines the size of the
-     *                  batches used to execute the selection operation. A larger batch size can improve performance, especially when
-     *                  dealing with large sets of primary keys.
-     * @return a stream of entities corresponding to the provided primary keys. The order of entities in the stream is
-     * not guaranteed to match the order of refs in the input stream. If an id does not correspond to any entity in the
-     * database, it will simply be skipped, and no corresponding entity will be included in the returned stream. If the
-     * same entity is requested multiple times, it may be included in the stream multiple times if it is part of a
-     * separate batch.
-     * @throws PersistenceException if the selection operation fails due to underlying database issues, such as
-     *                              connectivity.
-     */
-    Stream<E> selectByRef(@Nonnull Stream<Ref<E>> refs, int chunkSize);
 
     /**
      * Counts the number of entities identified by the provided stream of IDs using the default batch size.
@@ -1292,68 +1195,68 @@ public interface EntityRepository<E extends Entity<ID>, ID> extends Repository {
     void upsert(@Nonnull Stream<E> entities, int batchSize);
 
     /**
-     * Deletes a stream of entities from the database in batches.
+     * Removes a stream of entities from the database in batches.
      *
      * <p>This method processes the provided stream of entities in batches to optimize performance for larger
-     * data sets, reducing database overhead during deletion. For each entity in the stream, the method removes
+     * data sets, reducing database overhead during removal. For each entity in the stream, the method removes
      * the corresponding record from the database, if it exists. Batch processing allows efficient handling
-     * of deletions, particularly for large collections of entities.</p>
+     * of removals, particularly for large collections of entities.</p>
      *
-     * @param entities a stream of entities to be deleted. Each entity in the stream must be non-null and represent
-     *                 a valid database record for deletion.
-     * @throws PersistenceException if the deletion operation fails due to database issues, such as connectivity problems
+     * @param entities a stream of entities to be removed. Each entity in the stream must be non-null and represent
+     *                 a valid database record for removal.
+     * @throws PersistenceException if the removal operation fails due to database issues, such as connectivity problems
      *                              or constraints violations.
      */
-    void delete(@Nonnull Stream<E> entities);
+    void remove(@Nonnull Stream<E> entities);
 
     /**
-     * Deletes a stream of entities from the database in configurable batch sizes.
+     * Removes a stream of entities from the database in configurable batch sizes.
      *
      * <p>This method processes the provided stream of entities in batches, with the size of each batch specified
-     * by the `batchSize` parameter. This allows for control over the number of entities deleted in each database
+     * by the `batchSize` parameter. This allows for control over the number of entities removed in each database
      * operation, optimizing performance and memory usage based on system requirements. For each entity in the
      * stream, the method removes the corresponding record from the database, if it exists.</p>
      *
-     * @param entities a stream of entities to be deleted. Each entity in the stream must be non-null and represent
-     *                 a valid database record for deletion.
+     * @param entities a stream of entities to be removed. Each entity in the stream must be non-null and represent
+     *                 a valid database record for removal.
      * @param batchSize the number of entities to process in each batch. Larger batch sizes may improve performance
      *                  but require more memory, while smaller batch sizes may reduce memory usage but increase
      *                  the number of database operations.
-     * @throws PersistenceException if the deletion operation fails due to database issues, such as connectivity problems
+     * @throws PersistenceException if the removal operation fails due to database issues, such as connectivity problems
      *                              or constraints violations.
      */
-    void delete(@Nonnull Stream<E> entities, int batchSize);
+    void remove(@Nonnull Stream<E> entities, int batchSize);
 
     /**
-     * Deletes a stream of entities from the database in batches.
+     * Removes a stream of entities from the database in batches.
      *
      * <p>This method processes the provided stream of entities in batches to optimize performance for larger
-     * data sets, reducing database overhead during deletion. For each entity in the stream, the method removes
+     * data sets, reducing database overhead during removal. For each entity in the stream, the method removes
      * the corresponding record from the database, if it exists. Batch processing allows efficient handling
-     * of deletions, particularly for large collections of entities.</p>
+     * of removals, particularly for large collections of entities.</p>
      *
-     * @param refs a stream of entities to be deleted. Each entity in the stream must be non-null and represent
-     *             a valid database record for deletion.
-     * @throws PersistenceException if the deletion operation fails due to database issues, such as connectivity problems
+     * @param refs a stream of entities to be removed. Each entity in the stream must be non-null and represent
+     *             a valid database record for removal.
+     * @throws PersistenceException if the removal operation fails due to database issues, such as connectivity problems
      *                              or constraints violations.
      */
-    void deleteByRef(@Nonnull Stream<Ref<E>> refs);
+    void removeByRef(@Nonnull Stream<Ref<E>> refs);
 
     /**
-     * Deletes a stream of entities from the database in configurable batch sizes.
+     * Removes a stream of entities from the database in configurable batch sizes.
      *
      * <p>This method processes the provided stream of entities in batches, with the size of each batch specified
-     * by the `batchSize` parameter. This allows for control over the number of entities deleted in each database
+     * by the `batchSize` parameter. This allows for control over the number of entities removed in each database
      * operation, optimizing performance and memory usage based on system requirements. For each entity in the
      * stream, the method removes the corresponding record from the database, if it exists.</p>
      *
-     * @param refs a stream of entities to be deleted. Each entity in the stream must be non-null and represent
-     *              valid database record for deletion.
+     * @param refs a stream of entities to be removed. Each entity in the stream must be non-null and represent
+     *              valid database record for removal.
      * @param batchSize the number of entities to process in each batch. Larger batch sizes may improve performance
      *                  but require more memory, while smaller batch sizes may reduce memory usage but increase
      *                  the number of database operations.
-     * @throws PersistenceException if the deletion operation fails due to database issues, such as connectivity problems
+     * @throws PersistenceException if the removal operation fails due to database issues, such as connectivity problems
      *                              or constraints violations.
      */
-    void deleteByRef(@Nonnull Stream<Ref<E>> refs, int batchSize);
+    void removeByRef(@Nonnull Stream<Ref<E>> refs, int batchSize);
 }

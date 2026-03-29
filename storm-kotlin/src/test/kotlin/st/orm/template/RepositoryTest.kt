@@ -104,38 +104,38 @@ open class RepositoryTest(
     // EntityRepository CRUD: delete
 
     @Test
-    fun `delete entity should remove city`() {
+    fun `remove entity should remove city`() {
         val repo = orm.entity(City::class)
         val city = repo.insertAndFetch(City(name = "ToDelete"))
-        repo.delete(city)
+        repo.remove(city)
         repo.findById(city.id).shouldBeNull()
     }
 
     @Test
-    fun `deleteById should remove city by primary key`() {
+    fun `removeById should remove city by primary key`() {
         val repo = orm.entity(City::class)
         val city = repo.insertAndFetch(City(name = "DeleteById"))
-        repo.deleteById(city.id)
+        repo.removeById(city.id)
         repo.findById(city.id).shouldBeNull()
     }
 
     @Test
-    fun `deleteByRef should remove city by ref`() {
+    fun `removeByRef should remove city by ref`() {
         val repo = orm.entity(City::class)
         val city = repo.insertAndFetch(City(name = "DeleteByRef"))
         val ref = repo.ref(city)
-        repo.deleteByRef(ref)
+        repo.removeByRef(ref)
         repo.findById(city.id).shouldBeNull()
     }
 
     @Test
-    fun `deleteAll should remove all pet types`() {
+    fun `removeAll should remove all pet types`() {
         val visitRepo = orm.entity(Visit::class)
         val petRepo = orm.entity(Pet::class)
-        visitRepo.deleteAll()
-        petRepo.deleteAll()
+        visitRepo.removeAll()
+        petRepo.removeAll()
         val repo = orm.entity(PetType::class)
-        repo.deleteAll()
+        repo.removeAll()
         repo.count() shouldBe 0
     }
 
@@ -385,6 +385,25 @@ open class RepositoryTest(
     }
 
     @Test
+    fun `removeAll with predicate should remove matching cities`() {
+        val repo = orm.entity(City::class)
+        repo.insertAndFetch(City(name = "RemovePredicateA"))
+        repo.insertAndFetch(City(name = "RemovePredicateB"))
+        val namePath = metamodel<City, String>(repo.model, "name")
+        val removed = repo.removeAll(namePath like "RemovePredicate%")
+        removed shouldBe 2
+        repo.exists(namePath like "RemovePredicate%") shouldBe false
+    }
+
+    @Test
+    fun `removeAll with predicate should return zero when no match`() {
+        val repo = orm.entity(City::class)
+        val namePath = metamodel<City, String>(repo.model, "name")
+        val removed = repo.removeAll(namePath eq "NonExistent")
+        removed shouldBe 0
+    }
+
+    @Test
     fun `findAllRef with predicate should return refs of matching cities`() {
         val repo = orm.entity(City::class)
         val namePath = metamodel<City, String>(repo.model, "name")
@@ -435,10 +454,10 @@ open class RepositoryTest(
     }
 
     @Test
-    fun `delete iterable should remove multiple cities`() {
+    fun `remove iterable should remove multiple cities`() {
         val repo = orm.entity(City::class)
         val inserted = repo.insertAndFetch(listOf(City(name = "DelA"), City(name = "DelB")))
-        repo.delete(inserted)
+        repo.remove(inserted)
         inserted.forEach { repo.findById(it.id).shouldBeNull() }
     }
 
@@ -459,11 +478,11 @@ open class RepositoryTest(
     }
 
     @Test
-    fun `deleteByRef iterable should remove cities by refs`() {
+    fun `removeByRef iterable should remove cities by refs`() {
         val repo = orm.entity(City::class)
         val inserted = repo.insertAndFetch(listOf(City(name = "RefDelA"), City(name = "RefDelB")))
         val refs = inserted.map { repo.ref(it) }
-        repo.deleteByRef(refs)
+        repo.removeByRef(refs)
         inserted.forEach { repo.findById(it.id).shouldBeNull() }
     }
 
@@ -489,56 +508,6 @@ open class RepositoryTest(
     fun `selectAllRef should return flow of all city refs`(): Unit = runBlocking {
         val repo = orm.entity(City::class)
         repo.selectRef().resultFlow.count() shouldBe 6
-    }
-
-    // Flow operations: selectById
-
-    @Test
-    fun `selectById with flow of ids should return matching cities`(): Unit = runBlocking {
-        val repo = orm.entity(City::class)
-        val ids = flowOf(1, 2, 3)
-        val cities = repo.selectById(ids).toList()
-        cities shouldHaveSize 3
-    }
-
-    @Test
-    fun `selectById with custom chunk size should return matching cities`(): Unit = runBlocking {
-        val repo = orm.entity(City::class)
-        val ids = flowOf(1, 2, 3, 4, 5, 6)
-        val cities = repo.selectById(ids, 2).toList()
-        cities shouldHaveSize 6
-    }
-
-    @Test
-    fun `selectById with empty flow should return empty flow`(): Unit = runBlocking {
-        val repo = orm.entity(City::class)
-        val cities = repo.selectById(emptyFlow()).toList()
-        cities.shouldBeEmpty()
-    }
-
-    // Flow operations: selectByRef
-
-    @Test
-    fun `selectByRef with flow of refs should return matching cities`(): Unit = runBlocking {
-        val repo = orm.entity(City::class)
-        val refs = flowOf(repo.ref(1), repo.ref(2))
-        val cities = repo.selectByRef(refs).toList()
-        cities shouldHaveSize 2
-    }
-
-    @Test
-    fun `selectByRef with custom chunk size should return matching cities`(): Unit = runBlocking {
-        val repo = orm.entity(City::class)
-        val refs = (1..6).map { repo.ref(it) }.asFlow()
-        val cities = repo.selectByRef(refs, 3).toList()
-        cities shouldHaveSize 6
-    }
-
-    @Test
-    fun `selectByRef with empty flow should return empty flow`(): Unit = runBlocking {
-        val repo = orm.entity(City::class)
-        val cities = repo.selectByRef(emptyFlow()).toList()
-        cities.shouldBeEmpty()
     }
 
     // Flow operations: countById
@@ -634,20 +603,20 @@ open class RepositoryTest(
     // Flow operations: batch delete
 
     @Test
-    fun `delete flow should remove entities`(): Unit = runBlocking {
+    fun `remove flow should remove entities`(): Unit = runBlocking {
         val repo = orm.entity(City::class)
         val inserted = repo.insertAndFetch(listOf(City(name = "FDelA"), City(name = "FDelB")))
         val flow = inserted.asFlow()
-        repo.delete(flow)
+        repo.remove(flow)
         inserted.forEach { repo.findById(it.id).shouldBeNull() }
     }
 
     @Test
-    fun `deleteByRef flow should remove entities by ref`(): Unit = runBlocking {
+    fun `removeByRef flow should remove entities by ref`(): Unit = runBlocking {
         val repo = orm.entity(City::class)
         val inserted = repo.insertAndFetch(listOf(City(name = "FRefDelA"), City(name = "FRefDelB")))
         val refs = inserted.map { repo.ref(it) }.asFlow()
-        repo.deleteByRef(refs)
+        repo.removeByRef(refs)
         inserted.forEach { repo.findById(it.id).shouldBeNull() }
     }
 
@@ -704,17 +673,17 @@ open class RepositoryTest(
     }
 
     @Test
-    fun `orm delete infix should remove entity`() {
+    fun `orm remove infix should remove entity`() {
         val city = orm insert City(name = "InfixDelete")
-        orm delete city
+        orm remove city
         orm.entity(City::class).findById(city.id).shouldBeNull()
     }
 
     @Test
-    fun `orm deleteAll reified should remove all entities`() {
-        orm.deleteAll<Visit>()
-        orm.deleteAll<Pet>()
-        orm.deleteAll<PetType>()
+    fun `orm removeAll reified should remove all entities`() {
+        orm.removeAll<Visit>()
+        orm.removeAll<Pet>()
+        orm.removeAll<PetType>()
         orm.entity(PetType::class).count() shouldBe 0
     }
 
@@ -795,6 +764,23 @@ open class RepositoryTest(
     }
 
     @Test
+    fun `orm removeAll with predicate should remove matching entities`() {
+        orm.entity(City::class).insertAndFetch(City(name = "OrmRemoveA"))
+        orm.entity(City::class).insertAndFetch(City(name = "OrmRemoveB"))
+        val namePath = metamodel<City, String>(orm.entity(City::class).model, "name")
+        val removed = orm.removeAll<City>(namePath like "OrmRemove%")
+        removed shouldBe 2
+        orm.exists<City>(namePath like "OrmRemove%") shouldBe false
+    }
+
+    @Test
+    fun `orm removeAll with predicate should return zero when no match`() {
+        val namePath = metamodel<City, String>(orm.entity(City::class).model, "name")
+        val removed = orm.removeAll<City>(namePath eq "Nonexistent")
+        removed shouldBe 0
+    }
+
+    @Test
     fun `orm findAllRef with predicate should return refs`() {
         val namePath = metamodel<City, String>(orm.entity(City::class).model, "name")
         val refs = orm.findAllRef<City>(namePath eq "Madison")
@@ -819,9 +805,9 @@ open class RepositoryTest(
     }
 
     @Test
-    fun `orm delete iterable should remove entities`() {
+    fun `orm remove iterable should remove entities`() {
         val inserted = orm insert listOf(City(name = "DelBatchA"), City(name = "DelBatchB"))
-        orm delete inserted
+        orm remove inserted
         inserted.forEach { orm.entity(City::class).findById(it.id).shouldBeNull() }
     }
 
@@ -872,20 +858,11 @@ open class RepositoryTest(
     }
 
     @Test
-    fun `selectByRef within suspend transaction should work`(): Unit = runBlocking {
-        transaction {
-            val repo = orm.entity(City::class)
-            val refs = repo.selectRef().resultFlow
-            repo.selectByRef(refs).count() shouldBe 6
-        }
-    }
-
-    @Test
-    fun `insert and delete within suspend transaction should work`(): Unit = runBlocking {
+    fun `insert and remove within suspend transaction should work`(): Unit = runBlocking {
         transaction {
             val repo = orm.entity(City::class)
             val city = repo.insertAndFetch(City(name = "TxCity"))
-            repo.delete(city)
+            repo.remove(city)
             repo.findById(city.id).shouldBeNull()
         }
     }
@@ -1048,13 +1025,13 @@ open class RepositoryTest(
         count shouldBe 1
     }
 
-    // RepositoryLookup: delete with predicate
+    // RepositoryLookup: removeAll with predicate
 
     @Test
-    fun `orm delete with predicate should remove matching cities`() {
+    fun `orm removeAll with predicate should remove matching cities`() {
         val city = orm insert City(name = "ToDeleteByPredicate")
         val namePath = metamodel<City, String>(orm.entity(City::class).model, "name")
-        val deleted = orm.delete(namePath eq "ToDeleteByPredicate")
+        val deleted = orm.removeAll(namePath eq "ToDeleteByPredicate")
         deleted shouldBe 1
         orm.entity(City::class).findById(city.id).shouldBeNull()
     }
@@ -1062,10 +1039,10 @@ open class RepositoryTest(
     // RepositoryLookup: deleteByRef
 
     @Test
-    fun `orm deleteByRef should remove city by ref`() {
+    fun `orm removeByRef should remove city by ref`() {
         val city = orm insert City(name = "ToDeleteByOrmRef")
         val ref = orm.entity(City::class).ref(city)
-        orm deleteByRef ref
+        orm removeByRef ref
         orm.entity(City::class).findById(city.id).shouldBeNull()
     }
 
@@ -1166,26 +1143,6 @@ open class RepositoryTest(
         repo.existsBy(namePath, "NonExistent") shouldBe false
     }
 
-    // EntityRepository: selectBy with Metamodel
-
-    @Test
-    fun `selectBy with field and value should return matching entities as flow`(): Unit = runBlocking {
-        val repo = orm.entity(City::class)
-        val namePath = metamodel<City, String>(repo.model, "name")
-        val cities = repo.selectBy(namePath, "Madison").toList()
-        cities shouldHaveSize 1
-        cities.first().name shouldBe "Madison"
-    }
-
-    @Test
-    fun `selectBy with field and iterable values should return matching entities as flow`(): Unit = runBlocking {
-        val repo = orm.entity(City::class)
-        val namePath = metamodel<City, String>(repo.model, "name")
-        val cities = repo.selectBy(namePath, listOf("Madison", "Windsor", "Monona")).toList()
-        cities shouldHaveSize 3
-        cities.map { it.name } shouldContainExactlyInAnyOrder listOf("Madison", "Windsor", "Monona")
-    }
-
     // EntityRepository: findRefBy/getRefBy with Metamodel
 
     @Test
@@ -1229,34 +1186,26 @@ open class RepositoryTest(
         }
     }
 
-    @Test
-    fun `selectRefBy with field and value should return matching refs as flow`(): Unit = runBlocking {
-        val repo = orm.entity(City::class)
-        val namePath = metamodel<City, String>(repo.model, "name")
-        val refs = repo.selectRefBy(namePath, "Madison").toList()
-        refs shouldHaveSize 1
-    }
-
     // EntityRepository: deleteAllBy with Metamodel
 
     @Test
-    fun `deleteAllBy with field and value should delete matching entities`() {
+    fun `removeAllBy with field and value should remove matching entities`() {
         // data.sql: Vet(id=1, 'James', 'Carter') has no vet_specialty entries, safe to delete.
         // After deleting 1 of 6 vets, 5 remain.
         val repo = orm.entity(Vet::class)
         val firstNamePath = metamodel<Vet, String>(repo.model, "first_name")
-        val deleted = repo.deleteAllBy(firstNamePath, "James")
+        val deleted = repo.removeAllBy(firstNamePath, "James")
         deleted shouldBe 1
         repo.count() shouldBe 5
     }
 
     @Test
-    fun `deleteAllBy with field and iterable values should delete matching entities`() {
+    fun `removeAllBy with field and iterable values should remove matching entities`() {
         // data.sql: Vet(id=1, 'James') and Vet(id=6, 'Sharon') have no vet_specialty entries.
         // After deleting 2 of 6 vets, 4 remain.
         val repo = orm.entity(Vet::class)
         val firstNamePath = metamodel<Vet, String>(repo.model, "first_name")
-        val deleted = repo.deleteAllBy(firstNamePath, listOf("James", "Sharon"))
+        val deleted = repo.removeAllBy(firstNamePath, listOf("James", "Sharon"))
         deleted shouldBe 2
         repo.count() shouldBe 4
     }
@@ -1377,30 +1326,12 @@ open class RepositoryTest(
     }
 
     @Test
-    fun `selectBy with field and Ref should return matching entities as flow`(): Unit = runBlocking {
-        val repo = orm.entity(Owner::class)
-        val cityPath = metamodel<Owner, City>(repo.model, "city_id")
-        val cityRef: Ref<City> = Ref.of(City::class.java, 2)
-        val owners = repo.selectBy(cityPath, cityRef).toList()
-        owners shouldHaveSize 4
-    }
-
-    @Test
     fun `findAllByRef with field and Ref iterable should return matching entities`() {
         // data.sql: City 2 (Madison) has 4 owners, City 5 (Monona) has 2 owners (Jean, Jeff). Total: 6.
         val repo = orm.entity(Owner::class)
         val cityPath = metamodel<Owner, City>(repo.model, "city_id")
         val cityRefs = listOf(Ref.of(City::class.java, 2), Ref.of(City::class.java, 5))
         val owners = repo.findAllByRef(cityPath, cityRefs)
-        owners shouldHaveSize 6
-    }
-
-    @Test
-    fun `selectByRef with field and Ref iterable should return matching entities as flow`(): Unit = runBlocking {
-        val repo = orm.entity(Owner::class)
-        val cityPath = metamodel<Owner, City>(repo.model, "city_id")
-        val cityRefs = listOf(Ref.of(City::class.java, 2), Ref.of(City::class.java, 5))
-        val owners = repo.selectByRef(cityPath, cityRefs).toList()
         owners shouldHaveSize 6
     }
 
@@ -1459,15 +1390,6 @@ open class RepositoryTest(
     }
 
     @Test
-    fun `selectRefBy with field and Ref should return refs as flow`(): Unit = runBlocking {
-        val repo = orm.entity(Owner::class)
-        val cityPath = metamodel<Owner, City>(repo.model, "city_id")
-        val cityRef: Ref<City> = Ref.of(City::class.java, 2)
-        val refs = repo.selectRefBy(cityPath, cityRef).toList()
-        refs shouldHaveSize 4
-    }
-
-    @Test
     fun `findAllRefByRef with field and Ref iterable should return refs`() {
         val repo = orm.entity(Owner::class)
         val cityPath = metamodel<Owner, City>(repo.model, "city_id")
@@ -1477,16 +1399,7 @@ open class RepositoryTest(
     }
 
     @Test
-    fun `selectRefByRef with field and Ref iterable should return refs as flow`(): Unit = runBlocking {
-        val repo = orm.entity(Owner::class)
-        val cityPath = metamodel<Owner, City>(repo.model, "city_id")
-        val cityRefs = listOf(Ref.of(City::class.java, 2), Ref.of(City::class.java, 5))
-        val refs = repo.selectRefByRef(cityPath, cityRefs).toList()
-        refs shouldHaveSize 6
-    }
-
-    @Test
-    fun `deleteAllBy with field and Ref should delete matching entities`() {
+    fun `removeAllBy with field and Ref should remove matching entities`() {
         val repo = orm.entity(City::class)
         val city = repo.insertAndFetch(City(name = "RefDeleteCity"))
         val ownerRepo = orm.entity(Owner::class)
@@ -1501,11 +1414,11 @@ open class RepositoryTest(
         )
         val cityPath = metamodel<Owner, City>(ownerRepo.model, "city_id")
         val cityRef: Ref<City> = Ref.of(City::class.java, city.id)
-        ownerRepo.deleteAllBy(cityPath, cityRef) shouldBe 1
+        ownerRepo.removeAllBy(cityPath, cityRef) shouldBe 1
     }
 
     @Test
-    fun `deleteAllByRef with field and Ref iterable should delete matching entities`() {
+    fun `removeAllByRef with field and Ref iterable should remove matching entities`() {
         val repo = orm.entity(City::class)
         val city1 = repo.insertAndFetch(City(name = "RefDelCity1"))
         val city2 = repo.insertAndFetch(City(name = "RefDelCity2"))
@@ -1530,6 +1443,6 @@ open class RepositoryTest(
         )
         val cityPath = metamodel<Owner, City>(ownerRepo.model, "city_id")
         val cityRefs = listOf(Ref.of(City::class.java, city1.id), Ref.of(City::class.java, city2.id))
-        ownerRepo.deleteAllByRef(cityPath, cityRefs) shouldBe 2
+        ownerRepo.removeAllByRef(cityPath, cityRefs) shouldBe 2
     }
 }

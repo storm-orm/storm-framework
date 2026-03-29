@@ -16,7 +16,7 @@ The main Java API module. It provides the `ORMTemplate` entry point, repository 
 <dependency>
     <groupId>st.orm</groupId>
     <artifactId>storm-java21</artifactId>
-    <version>1.11.0</version>
+    <version>@@STORM_VERSION@@</version>
 </dependency>
 ```
 
@@ -44,7 +44,7 @@ Spring Framework integration for Java. Provides `RepositoryBeanFactoryPostProces
 <dependency>
     <groupId>st.orm</groupId>
     <artifactId>storm-spring</artifactId>
-    <version>1.11.0</version>
+    <version>@@STORM_VERSION@@</version>
 </dependency>
 ```
 
@@ -58,7 +58,7 @@ Spring Boot auto-configuration for Java. Automatically creates an `ORMTemplate` 
 <dependency>
     <groupId>st.orm</groupId>
     <artifactId>storm-spring-boot-starter</artifactId>
-    <version>1.11.0</version>
+    <version>@@STORM_VERSION@@</version>
 </dependency>
 ```
 
@@ -83,7 +83,7 @@ The `storm-metamodel-processor` annotation processor generates type-safe metamod
 <dependency>
     <groupId>st.orm</groupId>
     <artifactId>storm-metamodel-processor</artifactId>
-    <version>1.11.0</version>
+    <version>@@STORM_VERSION@@</version>
     <scope>provided</scope>
 </dependency>
 ```

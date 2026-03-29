@@ -95,17 +95,21 @@ class EntityRepositoryImpl<E, ID : Any>(
 
     override fun upsertAndFetch(entity: E): E = core.upsertAndFetch(entity)
 
-    override fun delete(entity: E) = core.delete(entity)
+    override fun remove(entity: E) = core.remove(entity)
 
-    override fun deleteById(id: ID) = core.deleteById(id)
+    override fun removeById(id: ID) = core.removeById(id)
 
-    override fun deleteByRef(ref: Ref<E>) = core.deleteByRef(ref)
+    override fun removeByRef(ref: Ref<E>) = core.removeByRef(ref)
 
-    override fun deleteAll() = core.deleteAll()
+    override fun removeAll() = core.removeAll()
 
     override fun page(pageNumber: Int, pageSize: Int): Page<E> = core.page(pageNumber, pageSize)
 
     override fun page(pageable: Pageable): Page<E> = core.page(pageable)
+
+    override fun pageRef(pageNumber: Int, pageSize: Int): Page<Ref<E>> = core.pageRef(pageNumber, pageSize)
+
+    override fun pageRef(pageable: Pageable): Page<Ref<E>> = core.pageRef(pageable)
 
     override fun scroll(scrollable: Scrollable<E>): Window<E> = Window.of(select().scroll(scrollable))
 
@@ -149,21 +153,9 @@ class EntityRepositoryImpl<E, ID : Any>(
 
     override fun upsertAndFetch(entities: Iterable<E>): List<E> = core.upsertAndFetch(entities)
 
-    override fun delete(entities: Iterable<E>) = core.delete(entities)
+    override fun remove(entities: Iterable<E>) = core.remove(entities)
 
-    override fun deleteByRef(refs: Iterable<Ref<E>>) = core.deleteByRef(refs)
-
-    override fun selectById(ids: Flow<ID>): Flow<E> = ids.chunked(core.defaultChunkSize)
-        .flatMapConcat { core.findAllById(it).asFlow() }
-
-    override fun selectByRef(refs: Flow<Ref<E>>): Flow<E> = refs.chunked(core.defaultChunkSize)
-        .flatMapConcat { core.findAllByRef(it).asFlow() }
-
-    override fun selectById(ids: Flow<ID>, chunkSize: Int): Flow<E> = ids.chunked(chunkSize)
-        .flatMapConcat { core.findAllById(it).asFlow() }
-
-    override fun selectByRef(refs: Flow<Ref<E>>, chunkSize: Int): Flow<E> = refs.chunked(chunkSize)
-        .flatMapConcat { core.findAllByRef(it).asFlow() }
+    override fun removeByRef(refs: Iterable<Ref<E>>) = core.removeByRef(refs)
 
     override suspend fun countById(ids: Flow<ID>): Long = ids.chunked(core.defaultChunkSize)
         .map { chunk -> core.countById(chunk.stream()) }
@@ -241,15 +233,15 @@ class EntityRepositoryImpl<E, ID : Any>(
     override fun upsertAndFetch(entities: Flow<E>, batchSize: Int): Flow<E> = entities.chunked(batchSize)
         .flatMapConcat { core.upsertAndFetch(it).asFlow() }
 
-    override suspend fun delete(entities: Flow<E>) = entities.chunked(core.defaultBatchSize)
-        .collect { core.delete(it) }
+    override suspend fun remove(entities: Flow<E>) = entities.chunked(core.defaultBatchSize)
+        .collect { core.remove(it) }
 
-    override suspend fun delete(entities: Flow<E>, batchSize: Int) = entities.chunked(batchSize)
-        .collect { core.delete(it) }
+    override suspend fun remove(entities: Flow<E>, batchSize: Int) = entities.chunked(batchSize)
+        .collect { core.remove(it) }
 
-    override suspend fun deleteByRef(refs: Flow<Ref<E>>) = refs.chunked(core.defaultBatchSize)
-        .collect { core.deleteByRef(it) }
+    override suspend fun removeByRef(refs: Flow<Ref<E>>) = refs.chunked(core.defaultBatchSize)
+        .collect { core.removeByRef(it) }
 
-    override suspend fun deleteByRef(refs: Flow<Ref<E>>, batchSize: Int) = refs.chunked(batchSize)
-        .collect { core.deleteByRef(it) }
+    override suspend fun removeByRef(refs: Flow<Ref<E>>, batchSize: Int) = refs.chunked(batchSize)
+        .collect { core.removeByRef(it) }
 }

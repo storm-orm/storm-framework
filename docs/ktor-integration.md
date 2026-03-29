@@ -13,7 +13,7 @@ Add the Storm Ktor module alongside your core Storm dependencies:
 
 ```kotlin
 dependencies {
-    implementation(platform("st.orm:storm-bom:1.11.0"))
+    implementation(platform("st.orm:storm-bom:@@STORM_VERSION@@"))
 
     implementation("st.orm:storm-kotlin")
     implementation("st.orm:storm-ktor")
@@ -637,7 +637,7 @@ fun Application.module() {
         delete("/users/{id}") {
             val id = call.parameters.getOrFail("id").toInt()
             transaction {
-                call.orm.entity<User>().deleteById(id)
+                call.orm.entity<User>().removeById(id)
             }
             call.respond(HttpStatusCode.NoContent)
         }

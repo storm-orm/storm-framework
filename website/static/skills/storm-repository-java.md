@@ -47,7 +47,7 @@ interface UserRepository extends EntityRepository<User, Integer> {
 
 Key rules:
 1. ALL query methods have EXPLICIT BODIES with `default` keyword. Storm does NOT derive queries from method names.
-2. Inherited CRUD: insert, insertAndFetch, update, delete, findById, getById, findBy(Key), count, existsById, page, scroll.
+2. Inherited CRUD: insert, insertAndFetch, update, remove, removeById, removeByRef, removeAll, findById, getById, findBy(Key), findAll, findAllRef, count, existsById, page, pageRef, scroll.
 3. Descriptive variable names: `var users = orm.entity(User.class)`, not `var repo`.
 4. QueryBuilder is IMMUTABLE. Always chain or capture the return value.
 5. Streaming: `select().getResultStream()` returns a `Stream`. ALWAYS use try-with-resources to avoid connection leaks.
@@ -55,6 +55,50 @@ Key rules:
 7. Pagination: `page(0, 20)` for offset-based. `scroll(scrollable)` for keyset on large tables.
 8. **Prefer entity/metamodel-based methods over templates.** Use `.innerJoin(Entity.class).on(OtherEntity.class)` for joins unless it cannot be expressed with entity classes. Only fall back to template lambdas when QueryBuilder cannot express the query.
 9. **Use `Ref` for map keys and set membership**: Prefer `Ref<Entity>` (via `.ref()`) for map keys, set membership, and identity-based lookups. `Ref` provides identity-based `equals`/`hashCode` on the primary key.
+
+## API Design: Prefer the Simplest Approach
+
+Three levels, from simplest to most powerful — always prefer the simplest that works:
+
+| Level | Approach | Best for |
+|-------|----------|----------|
+| 1 | Convenience methods (`findBy`, `findAllBy`, `removeAllBy`, `countBy`, `existsBy`) | Simple lookups and operations |
+| 2 | Builder with predicate (`select(predicate)`, `delete(predicate)`) or chained (`select().where()`) | Most application queries needing ordering, pagination, or joins |
+| 3 | SQL Templates (/storm-sql-java) | CTEs, window functions, database-specific features |
+
+**Level 1 — Convenience methods** execute immediately and return results directly:
+- **Read:** `findById()`, `findByRef()`, `findAll()`, `findAllRef()`, `findAllById()`, `findAllByRef()`, `findBy(key, value)`, `findAllBy(field, value)`, `findRefBy(...)`, `findAllRefBy(...)`
+- **Read (throw):** `getById()`, `getByRef()`, `getBy(key, value)`
+- **Exists/Count:** `count()`, `exists()`, `existsById()`, `existsByRef()`, `countBy(field, value)`
+- **Write:** `insert()`, `insertAndFetch()`, `update()`, `updateAndFetch()`, `upsert()`, `upsertAndFetch()`
+- **Remove:** `remove(entity)`, `removeById(id)`, `removeByRef(ref)`, `removeAll()`, `removeAllBy(field, value)`, `remove(Iterable)`, `removeByRef(Iterable)`, `remove(Stream)`, `removeByRef(Stream)`
+- **Pagination:** `page()`, `pageRef()`, `scroll()`
+
+**Level 2 — Builder** returns `QueryBuilder` for chaining ordering, pagination, or joins:
+```java
+// With predicate shorthand
+users.select(it -> it.where(User_.city, EQUALS, city))
+    .orderBy(User_.name).getResultList();
+
+// Or equivalently, chained with .where()
+users.select().where(User_.city, EQUALS, city)
+    .orderBy(User_.name).getResultList();
+```
+
+Terminal operations: `.getResultList()`, `.getSingleResult()`, `.getOptionalResult()`, `.getResultStream()`, `.getResultCount()`, `.page()`, `.scroll()`, `.executeUpdate()`
+
+The `find`/`get` distinction: `find` returns `Optional` (no result = empty), `get` throws `NoResultException`.
+
+The `delete`/`remove` distinction: `remove` operates on entities or ids you already have (immediate execution). `delete` builds a query to find and delete rows by criteria (returns `QueryBuilder`):
+```java
+// remove — you have the entity/id, execute immediately
+users.remove(user);
+users.removeById(42);
+users.removeAll();
+
+// delete — build a query with filtering
+users.delete().where(User_.active, EQUALS, false).executeUpdate();
+```
 
 ## CRUD Operations
 
@@ -81,11 +125,11 @@ users.upsert(new User(1, "alice@example.com", "Alice", city));
 User upserted = users.upsertAndFetch(new User(1, "alice@example.com", "Alice", city));
 int id = users.upsertAndFetchId(new User(1, "alice@example.com", "Alice", city));
 
-// Delete
-users.delete(user);
-users.deleteById(user.id());
-users.deleteByRef(userRef);
-users.deleteAll();
+// Remove
+users.remove(user);
+users.removeById(user.id());
+users.removeByRef(userRef);
+users.removeAll();
 ```
 
 Java records are immutable. For convenient copy-with-modification, consider Lombok `@Builder(toBuilder = true)` or define a `with` method.
@@ -117,20 +161,20 @@ Ref<User> ref = users.unload(user);
 // Lookup by Ref
 Optional<User> found = users.findByRef(ref);
 User fetched = users.getByRef(ref);
-users.deleteByRef(ref);
+users.removeByRef(ref);
 
 // Batch Ref operations
-users.deleteByRef(List.of(ref1, ref2, ref3));
+users.removeByRef(List.of(ref1, ref2, ref3));
 List<User> entities = users.findAllByRef(List.of(ref1, ref2));
 ```
 
 ## Batch Operations
 
 ```java
-// Batch insert/update/delete with iterables
+// Batch insert/update/remove with iterables
 users.insert(List.of(user1, user2, user3));
 users.update(List.of(user1, user2));
-users.delete(List.of(user1, user2));
+users.remove(List.of(user1, user2));
 
 // With fetch (returns inserted/updated entities with generated values)
 List<User> inserted = users.insertAndFetch(List.of(user1, user2));
@@ -152,45 +196,47 @@ List<User> found = users.findAllByRef(List.of(ref1, ref2));
 Use Java `Stream` for memory-efficient processing of large datasets. **ALWAYS use try-with-resources** to avoid connection leaks:
 
 ```java
-// Stream all entities lazily
+// Stream all entities lazily (builder method + terminal)
 try (Stream<User> stream = users.select().getResultStream()) {
     stream.forEach(System.out::println);
 }
 
-// Stream by IDs or Refs
-try (Stream<User> stream = users.selectById(idStream)) { ... }
-try (Stream<User> stream = users.selectByRef(refStream)) { ... }
-try (Stream<User> stream = users.selectById(idStream, chunkSize)) { ... }
+// Stream with filter (builder method + terminal)
+try (Stream<User> stream = users.select()
+        .where(User_.active, EQUALS, true)
+        .getResultStream()) {
+    stream.forEach(System.out::println);
+}
 
 // Count via Stream
 long count = users.countById(idStream);
 long count = users.countByRef(refStream, chunkSize);
 
-// Batch insert/update/delete via Stream
+// Batch insert/update/remove via Stream
 users.insert(userStream);
 users.insert(userStream, batchSize);
 users.update(userStream);
 users.update(userStream, batchSize);
-users.delete(userStream);
-users.delete(userStream, batchSize);
+users.remove(userStream);
+users.remove(userStream, batchSize);
 users.upsert(userStream);
 users.upsert(userStream, batchSize);
-users.deleteByRef(refStream);
-users.deleteByRef(refStream, batchSize);
+users.removeByRef(refStream);
+users.removeByRef(refStream, batchSize);
 ```
 
 Stream operations are lazy — entities are retrieved/processed as consumed. Use `batchSize`/`chunkSize` to control how many items are sent to the database per batch.
 
-## Count, Exists, Delete
+## Count, Exists, Remove
 
 ```java
 long count = users.count();
 boolean exists = users.exists();
 boolean exists = users.existsById(userId);
 boolean exists = users.existsByRef(userRef);
-users.deleteById(userId);
-users.deleteByRef(userRef);
-users.deleteAll();
+users.removeById(userId);
+users.removeByRef(userRef);
+users.removeAll();
 ```
 
 ## Pagination and Scrolling

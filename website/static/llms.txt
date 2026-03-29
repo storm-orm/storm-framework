@@ -150,8 +150,8 @@ val found: City? = orm.findById<City>(city.id)
 // Update
 orm update city.copy(population = 160_000)
 
-// Delete
-orm delete city
+// Remove
+orm remove city
 
 // Find with predicate
 val users: List<User> = orm.findAll(User_.city.name eq "Sunnyvale")
@@ -171,8 +171,8 @@ Optional<City> found = cities.findById(city.id());
 // Update
 cities.update(new City(city.id(), "Sunnyvale", 160_000));
 
-// Delete
-cities.delete(city);
+// Remove
+cities.remove(city);
 
 // Query
 List<User> users = orm.entity(User.class).select()
@@ -337,7 +337,7 @@ Validation: storm-kotlin-validator
 
 2. **No lazy loading, no proxies, no persistence context.** Entities are plain
    records/data classes. There is no managed state, no dirty tracking, no
-   automatic flush. You explicitly call insert/update/delete.
+   automatic flush. You explicitly call insert/update/remove.
 
 3. **No collection fields on entities.** Storm entities cannot have List<Child>
    fields. Relationships are modeled from the child side using @FK. To get a
@@ -356,7 +356,7 @@ Validation: storm-kotlin-validator
    operations, Storm throws if you omit a WHERE clause. Use `unsafe()` if you
    intentionally want to affect all rows:
    ```kotlin
-   orm.entity(User::class).delete().unsafe().execute() // Deletes all users
+   orm.entity(User::class).delete().unsafe().executeUpdate() // Deletes all users
    ```
 
 6. **FK nullability determines JOIN type.** A non-nullable @FK produces INNER JOIN;

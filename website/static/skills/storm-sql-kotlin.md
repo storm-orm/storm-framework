@@ -1,9 +1,22 @@
 Help the user write Storm SQL Templates using Kotlin.
 Ask what query they need and why QueryBuilder does not suffice.
 
-**Always prefer the QueryBuilder and metamodel-based API first** (/storm-query-kotlin). SQL Templates are a fallback for queries that QueryBuilder cannot express: complex joins, subqueries, CTEs, window functions, DB-specific syntax, UNION/INTERSECT.
+**SQL Templates should only be used when there is no code-based alternative.** Regular joins, filtering, ordering, and pagination are all expressible through the QueryBuilder API (/storm-query-kotlin). The most common use case for SQL Templates is when a **custom return type** is needed — typically for aggregates where the result shape differs from any entity or projection.
 
 Even inside SQL Templates, **use metamodel references wherever possible** (e.g., `${User_.email}` instead of hardcoding column names). This keeps queries type-safe and refactor-proof.
+
+## When to use SQL Templates
+
+- Aggregate queries with custom result types (e.g., `GROUP BY` with `COUNT`, `SUM`, `AVG`)
+- Window functions (`ROW_NUMBER`, `RANK`, `LAG`, `LEAD`)
+- CTEs (`WITH` clauses)
+- `UNION` / `INTERSECT` / `EXCEPT`
+- Database-specific syntax not covered by QueryBuilder
+
+**Do NOT use SQL Templates for:**
+- Regular joins — use `innerJoin()`, `leftJoin()`, etc. on QueryBuilder
+- Filtering — use `where()` with metamodel predicates
+- Ordering, pagination, scrolling — use `orderBy()`, `page()`, `scroll()`
 
 Requires the Storm compiler plugin. With the compiler plugin, use standard Kotlin `${}` interpolation inside a lambda — the plugin automatically wraps all interpolations for safe parameter binding:
 
@@ -27,10 +40,25 @@ Template elements:
 - `${column(User_.email)}`: explicit column with alias
 - `${unsafe("raw sql")}`: raw SQL (use with caution)
 
-The Data interface marks types for SQL generation without CRUD:
+## Aggregate example — the primary use case
+
+Define a custom `Data` type for the result shape, then use a SQL Template for the aggregate:
+
 ```kotlin
-data class CityCount(val city: City, val count: Long) : Data
+// Custom result type — not an entity, just a data carrier
+data class CityUserCount(val city: City, val userCount: Long) : Data
+
+// Use select() with custom return type + minimal SQL template for the aggregate only
+val cityCounts = orm.entity(City::class)
+    .select(CityUserCount::class) { "${City::class}, COUNT(*)" }
+    .leftJoin(User::class).on(City::class)
+    .groupBy(City_.id)
+    .resultList
 ```
+
+The join, grouping, and result retrieval are all code-based. Only the `COUNT(*)` aggregate — which QueryBuilder cannot express — uses a SQL template fragment. This keeps the template to the absolute minimum.
+
+The `Data` interface marks types for SQL generation without CRUD. It tells Storm how to map the result columns to the record fields.
 
 All interpolated values become bind parameters. SQL injection safe by design.
 
@@ -70,7 +98,7 @@ class CityCountQueryTest {
     fun citiesWithUserCounts(orm: ORMTemplate, capture: SqlCapture) {
         val results = capture.execute {
             orm.query { """
-                SELECT ${CityCount::class}
+                SELECT ${City::class}, COUNT(*)
                 FROM ${City::class}
                 LEFT JOIN ${User::class} ON ${User_.city} = ${City_.id}
                 GROUP BY ${City_.id}

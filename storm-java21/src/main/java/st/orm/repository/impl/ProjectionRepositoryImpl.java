@@ -187,6 +187,11 @@ public final class ProjectionRepositoryImpl<P extends Projection<ID>, ID> implem
     }
 
     @Override
+    public List<Ref<P>> findAllRef() {
+        return core.findAllRef();
+    }
+
+    @Override
     public List<P> findAllById(@Nonnull Iterable<ID> ids) {
         return core.findAllById(ids);
     }

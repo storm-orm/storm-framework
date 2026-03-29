@@ -387,6 +387,10 @@ abstract class BaseRepositoryImpl<E extends Data, ID> implements Repository {
         return select().getResultList();
     }
 
+    public List<Ref<E>> findAllRef() {
+        return selectRef().getResultList();
+    }
+
     /**
      * Retrieves a list of entities based on their primary keys.
      *

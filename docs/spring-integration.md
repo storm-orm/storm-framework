@@ -18,7 +18,7 @@ The starter modules provide zero-configuration setup: an `ORMTemplate` bean is c
 
 ```kotlin
 // Gradle (Kotlin DSL)
-implementation("st.orm:storm-kotlin-spring-boot-starter:1.11.0")
+implementation("st.orm:storm-kotlin-spring-boot-starter:@@STORM_VERSION@@")
 ```
 
 ```xml
@@ -26,7 +26,7 @@ implementation("st.orm:storm-kotlin-spring-boot-starter:1.11.0")
 <dependency>
     <groupId>st.orm</groupId>
     <artifactId>storm-kotlin-spring-boot-starter</artifactId>
-    <version>1.11.0</version>
+    <version>@@STORM_VERSION@@</version>
 </dependency>
 ```
 
@@ -38,13 +38,13 @@ implementation("st.orm:storm-kotlin-spring-boot-starter:1.11.0")
 <dependency>
     <groupId>st.orm</groupId>
     <artifactId>storm-spring-boot-starter</artifactId>
-    <version>1.11.0</version>
+    <version>@@STORM_VERSION@@</version>
 </dependency>
 ```
 
 ```kotlin
 // Gradle (Kotlin DSL)
-implementation("st.orm:storm-spring-boot-starter:1.11.0")
+implementation("st.orm:storm-spring-boot-starter:@@STORM_VERSION@@")
 ```
 
 </TabItem>
@@ -59,7 +59,7 @@ If you prefer manual configuration, or need to customize the setup beyond what t
 
 ```kotlin
 // Gradle (Kotlin DSL)
-implementation("st.orm:storm-kotlin-spring:1.11.0")
+implementation("st.orm:storm-kotlin-spring:@@STORM_VERSION@@")
 ```
 
 ```xml
@@ -67,7 +67,7 @@ implementation("st.orm:storm-kotlin-spring:1.11.0")
 <dependency>
     <groupId>st.orm</groupId>
     <artifactId>storm-kotlin-spring</artifactId>
-    <version>1.11.0</version>
+    <version>@@STORM_VERSION@@</version>
 </dependency>
 ```
 
@@ -79,13 +79,13 @@ implementation("st.orm:storm-kotlin-spring:1.11.0")
 <dependency>
     <groupId>st.orm</groupId>
     <artifactId>storm-spring</artifactId>
-    <version>1.11.0</version>
+    <version>@@STORM_VERSION@@</version>
 </dependency>
 ```
 
 ```kotlin
 // Gradle (Kotlin DSL)
-implementation("st.orm:storm-spring:1.11.0")
+implementation("st.orm:storm-spring:@@STORM_VERSION@@")
 ```
 
 </TabItem>
@@ -135,7 +135,7 @@ fun processUsers() {
 
     transactionBlocking {
         // Participates in Spring transaction
-        orm.deleteAll<Visit>()
+        orm.removeAll<Visit>()
     }
 }
 ```

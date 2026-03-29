@@ -102,18 +102,18 @@ public class EntityRepositoryValidationIntegrationTest {
     // Delete validation: PK must be set
 
     @Test
-    public void testDeleteWithDefaultPkThrows() {
+    public void testRemoveWithDefaultPkThrows() {
         var orm = ORMTemplate.of(dataSource);
         var cities = orm.entity(City.class);
         // Deleting a city with PK=0 (default) should fail validation.
         assertThrows(PersistenceException.class,
-                () -> cities.delete(City.builder().id(0).name("No PK Delete").build()));
+                () -> cities.remove(City.builder().id(0).name("No PK Delete").build()));
     }
 
     // Non-auto-generated PK: VetSpecialty uses @PK(generation = NONE)
 
     @Test
-    public void testNonAutoGenPkInsertAndDelete() {
+    public void testNonAutoGenPkInsertAndRemove() {
         var orm = ORMTemplate.of(dataSource);
         var vetSpecialties = orm.entity(VetSpecialty.class);
         // VetSpecialty has @PK(generation = NONE) with compound key.
@@ -124,7 +124,7 @@ public class EntityRepositoryValidationIntegrationTest {
         VetSpecialty fetched = vetSpecialties.getById(pk);
         assertNotNull(fetched);
         // Delete it.
-        vetSpecialties.delete(new VetSpecialty(pk));
+        vetSpecialties.remove(new VetSpecialty(pk));
     }
 
     @Test
@@ -164,7 +164,7 @@ public class EntityRepositoryValidationIntegrationTest {
     }
 
     @Test
-    public void testDeleteWithStaleVersionThrows() {
+    public void testRemoveWithStaleVersionThrows() {
         var orm = ORMTemplate.of(dataSource);
         var owners = orm.entity(Owner.class);
         Owner owner = owners.getById(1);
@@ -172,7 +172,7 @@ public class EntityRepositoryValidationIntegrationTest {
         owners.update(owner.toBuilder().firstName("Updated").build());
         // Deleting with stale version should throw PersistenceException.
         assertThrows(PersistenceException.class,
-                () -> owners.delete(owner));
+                () -> owners.remove(owner));
     }
 
     // InsertAndFetch
@@ -215,11 +215,11 @@ public class EntityRepositoryValidationIntegrationTest {
     // Delete non-existent entity throws
 
     @Test
-    public void testDeleteNonExistentEntityThrows() {
+    public void testRemoveNonExistentEntityThrows() {
         var orm = ORMTemplate.of(dataSource);
         var cities = orm.entity(City.class);
         assertThrows(PersistenceException.class,
-                () -> cities.delete(City.builder().id(99999).name("NonExistent").build()));
+                () -> cities.remove(City.builder().id(99999).name("NonExistent").build()));
     }
 
     // Batch insert with auto-gen PK
@@ -266,13 +266,13 @@ public class EntityRepositoryValidationIntegrationTest {
     // Batch delete
 
     @Test
-    public void testBatchDelete() {
+    public void testBatchRemove() {
         var orm = ORMTemplate.of(dataSource);
         var cities = orm.entity(City.class);
         var id1 = cities.insertAndFetchId(City.builder().name("TempDel1").build());
         var id2 = cities.insertAndFetchId(City.builder().name("TempDel2").build());
         long before = cities.count();
-        cities.delete(List.of(
+        cities.remove(List.of(
                 City.builder().id(id1).name("TempDel1").build(),
                 City.builder().id(id2).name("TempDel2").build()
         ));
@@ -306,7 +306,7 @@ public class EntityRepositoryValidationIntegrationTest {
     // Callback on delete operations
 
     @Test
-    public void testDeleteCallbacksWithBatch() {
+    public void testRemoveCallbacksWithBatch() {
         List<String> beforeLog = new ArrayList<>();
         List<String> afterLog = new ArrayList<>();
         var orm = ORMTemplate.of(dataSource).withEntityCallback(new EntityCallback<City>() {
@@ -323,7 +323,7 @@ public class EntityRepositoryValidationIntegrationTest {
         var cities = orm.entity(City.class);
         var id1 = cities.insertAndFetchId(City.builder().name("DelCbA").build());
         var id2 = cities.insertAndFetchId(City.builder().name("DelCbB").build());
-        cities.delete(Stream.of(
+        cities.remove(Stream.of(
                 City.builder().id(id1).name("DelCbA").build(),
                 City.builder().id(id2).name("DelCbB").build()
         ));
@@ -507,13 +507,13 @@ public class EntityRepositoryValidationIntegrationTest {
     // Stream-based delete
 
     @Test
-    public void testStreamBasedDelete() {
+    public void testStreamBasedRemove() {
         var orm = ORMTemplate.of(dataSource);
         var cities = orm.entity(City.class);
         var id1 = cities.insertAndFetchId(City.builder().name("StreamDel1").build());
         var id2 = cities.insertAndFetchId(City.builder().name("StreamDel2").build());
         long before = cities.count();
-        cities.delete(Stream.of(
+        cities.remove(Stream.of(
                 City.builder().id(id1).name("StreamDel1").build(),
                 City.builder().id(id2).name("StreamDel2").build()
         ));
@@ -799,21 +799,21 @@ public class EntityRepositoryValidationIntegrationTest {
     }
 
     @Test
-    public void testJoinedInheritanceDelete() {
+    public void testJoinedInheritanceRemove() {
         var orm = ORMTemplate.of(dataSource);
         var joinedAnimals = orm.entity(st.orm.core.model.polymorphic.JoinedAnimal.class);
         var dog = new st.orm.core.model.polymorphic.JoinedDog(null, "DeleteDog", 30);
         Integer id = joinedAnimals.insertAndFetchId(dog);
-        joinedAnimals.delete(new st.orm.core.model.polymorphic.JoinedDog(id, "DeleteDog", 30));
+        joinedAnimals.remove(new st.orm.core.model.polymorphic.JoinedDog(id, "DeleteDog", 30));
     }
 
     @Test
-    public void testJoinedInheritanceBatchDelete() {
+    public void testJoinedInheritanceBatchRemove() {
         var orm = ORMTemplate.of(dataSource);
         var joinedAnimals = orm.entity(st.orm.core.model.polymorphic.JoinedAnimal.class);
         Integer id1 = joinedAnimals.insertAndFetchId(new st.orm.core.model.polymorphic.JoinedCat(null, "BD Cat1", true));
         Integer id2 = joinedAnimals.insertAndFetchId(new st.orm.core.model.polymorphic.JoinedDog(null, "BD Dog1", 15));
-        joinedAnimals.delete(Stream.of(
+        joinedAnimals.remove(Stream.of(
                 new st.orm.core.model.polymorphic.JoinedCat(id1, "BD Cat1", true),
                 new st.orm.core.model.polymorphic.JoinedDog(id2, "BD Dog1", 15)
         ));

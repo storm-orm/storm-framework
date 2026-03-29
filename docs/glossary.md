@@ -8,7 +8,7 @@ This page defines key terms used throughout the Storm documentation.
 The process of determining which fields of an entity have changed since it was last read from the database. Storm compares the current entity state against the observed state stored in the transaction context. Only changed columns are included in the UPDATE statement. Because entities are immutable, dirty checking is fast and requires no bytecode manipulation. See [Dirty Checking](dirty-checking.md).
 
 **Entity**
-A Kotlin data class or Java record that implements the `Entity<ID>` interface and maps to a database table. Entities support full CRUD operations (insert, update, delete) through repositories. They are stateless and immutable, with no proxies or hidden state. See [Entities](entities.md).
+A Kotlin data class or Java record that implements the `Entity<ID>` interface and maps to a database table. Entities support full CRUD operations (insert, update, remove) through repositories. They are stateless and immutable, with no proxies or hidden state. See [Entities](entities.md).
 
 **Entity Cache**
 A transaction-scoped cache that stores entities by primary key during a transaction. It avoids redundant database round-trips, skips repeated object construction during hydration, preserves object identity within a transaction, and tracks observed state for dirty checking. The cache is automatically cleared on commit or rollback. See [Entity Cache](entity-cache.md).

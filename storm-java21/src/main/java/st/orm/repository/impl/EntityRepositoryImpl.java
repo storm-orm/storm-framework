@@ -168,23 +168,23 @@ public final class EntityRepositoryImpl<E extends Entity<ID>, ID> implements Ent
     }
 
     @Override
-    public void delete(@Nonnull E entity) {
-        core.delete(entity);
+    public void remove(@Nonnull E entity) {
+        core.remove(entity);
     }
 
     @Override
-    public void deleteById(@Nonnull ID id) {
-        core.deleteById(id);
+    public void removeById(@Nonnull ID id) {
+        core.removeById(id);
     }
 
     @Override
-    public void deleteByRef(@Nonnull Ref<E> ref) {
-        core.deleteByRef(ref);
+    public void removeByRef(@Nonnull Ref<E> ref) {
+        core.removeByRef(ref);
     }
 
     @Override
-    public void deleteAll() {
-        core.deleteAll();
+    public void removeAll() {
+        core.removeAll();
     }
 
     @Override
@@ -237,6 +237,16 @@ public final class EntityRepositoryImpl<E extends Entity<ID>, ID> implements Ent
     @Override
     public Page<E> page(@Nonnull Pageable pageable) {
         return core.page(pageable);
+    }
+
+    @Override
+    public Page<Ref<E>> pageRef(int pageNumber, int pageSize) {
+        return core.pageRef(pageNumber, pageSize);
+    }
+
+    @Override
+    public Page<Ref<E>> pageRef(@Nonnull Pageable pageable) {
+        return core.pageRef(pageable);
     }
 
     @Override
@@ -310,33 +320,13 @@ public final class EntityRepositoryImpl<E extends Entity<ID>, ID> implements Ent
     }
 
     @Override
-    public void delete(@Nonnull Iterable<E> entities) {
-        core.delete(entities);
+    public void remove(@Nonnull Iterable<E> entities) {
+        core.remove(entities);
     }
 
     @Override
-    public void deleteByRef(@Nonnull Iterable<Ref<E>> refs) {
-        core.deleteByRef(refs);
-    }
-
-    @Override
-    public Stream<E> selectById(@Nonnull Stream<ID> ids) {
-        return core.selectById(ids);
-    }
-
-    @Override
-    public Stream<E> selectByRef(@Nonnull Stream<Ref<E>> refs) {
-        return core.selectByRef(refs);
-    }
-
-    @Override
-    public Stream<E> selectById(@Nonnull Stream<ID> ids, int chunkSize) {
-        return core.selectById(ids, chunkSize);
-    }
-
-    @Override
-    public Stream<E> selectByRef(@Nonnull Stream<Ref<E>> refs, int chunkSize) {
-        return core.selectByRef(refs, chunkSize);
+    public void removeByRef(@Nonnull Iterable<Ref<E>> refs) {
+        core.removeByRef(refs);
     }
 
     @Override
@@ -400,23 +390,23 @@ public final class EntityRepositoryImpl<E extends Entity<ID>, ID> implements Ent
     }
 
     @Override
-    public void delete(@Nonnull Stream<E> entities) {
-        core.delete(entities);
+    public void remove(@Nonnull Stream<E> entities) {
+        core.remove(entities);
     }
 
     @Override
-    public void delete(@Nonnull Stream<E> entities, int batchSize) {
-        core.delete(entities, batchSize);
+    public void remove(@Nonnull Stream<E> entities, int batchSize) {
+        core.remove(entities, batchSize);
     }
 
     @Override
-    public void deleteByRef(@Nonnull Stream<Ref<E>> refs) {
-        core.deleteByRef(refs);
+    public void removeByRef(@Nonnull Stream<Ref<E>> refs) {
+        core.removeByRef(refs);
     }
 
     @Override
-    public void deleteByRef(@Nonnull Stream<Ref<E>> refs, int batchSize) {
-        core.deleteByRef(refs, batchSize);
+    public void removeByRef(@Nonnull Stream<Ref<E>> refs, int batchSize) {
+        core.removeByRef(refs, batchSize);
     }
 
     @Override

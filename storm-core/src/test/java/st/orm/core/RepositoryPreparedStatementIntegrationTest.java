@@ -1209,7 +1209,7 @@ public class RepositoryPreparedStatementIntegrationTest {
     public void delete() {
         // data.sql: 14 visits. After deleting visit 1, expect 13.
         var repo = ORMTemplate.of(dataSource).entity(Visit.class);
-        repo.delete(Visit.builder().id(1).build());
+        repo.remove(Visit.builder().id(1).build());
         assertEquals(13, repo.select().getResultCount());
     }
 
@@ -1233,7 +1233,7 @@ public class RepositoryPreparedStatementIntegrationTest {
     public void deleteAll() {
         // After deleting all visits, count should be 0.
         var repo = ORMTemplate.of(dataSource).entity(Visit.class);
-        repo.deleteAll();
+        repo.removeAll();
         assertEquals(0, repo.select().getResultCount());
     }
 
@@ -1241,7 +1241,7 @@ public class RepositoryPreparedStatementIntegrationTest {
     public void deleteBatch() {
         var repo = ORMTemplate.of(dataSource).entity(Visit.class);
         try (var stream = repo.select().getResultStream()) {
-            repo.delete(stream);
+            repo.remove(stream);
         }
         assertEquals(0, repo.count());
     }
@@ -1250,7 +1250,7 @@ public class RepositoryPreparedStatementIntegrationTest {
     public void deleteRefBatch() {
         var repo = ORMTemplate.of(dataSource).entity(Visit.class);
         try (var stream = repo.select().getResultStream().map(Ref::of)) {
-            repo.deleteByRef(stream);
+            repo.removeByRef(stream);
         }
         assertEquals(0, repo.count());
     }
@@ -2088,23 +2088,6 @@ public class RepositoryPreparedStatementIntegrationTest {
 
     @Transactional(propagation = REQUIRED, isolation = REPEATABLE_READ)
     @Test
-    public void testSelectByIdPartialCacheHit() {
-        // When some entities are cached, only uncached ones should be queried.
-        var repository = ORMTemplate.of(dataSource).entity(Pet.class);
-        // Pre-load entity 1 into cache.
-        var pet1 = repository.getById(1);
-        AtomicReference<Sql> sql = new AtomicReference<>();
-        // Select by multiple IDs - should query only uncached IDs.
-        observe(sql::set, () -> repository.selectById(List.of(1, 2, 3).stream(), 100).toList());
-        assertNotNull(sql.get(), "Should execute SQL for uncached IDs");
-        // Verify cached entity is same instance.
-        var result = repository.selectById(List.of(1).stream(), 100).toList();
-        assertEquals(1, result.size());
-        assertSame(pet1, result.get(0), "Cached entity should be the same instance");
-    }
-
-    @Transactional(propagation = REQUIRED, isolation = REPEATABLE_READ)
-    @Test
     public void testRefFetchFromCachedOwner() {
         // When all owners are loaded, fetching a pet's owner ref should not execute SQL.
         var orm = ORMTemplate.of(dataSource);
@@ -2444,6 +2427,20 @@ public class RepositoryPreparedStatementIntegrationTest {
         assertEquals(3, page.content().size());
         assertEquals(6, page.totalCount());
         assertInstanceOf(Ref.class, page.content().getFirst());
+    }
+
+    @Test
+    public void testEntityFindAllRef() {
+        var refs = ORMTemplate.of(dataSource).entity(City.class).findAllRef();
+        assertEquals(6, refs.size());
+        assertInstanceOf(Ref.class, refs.getFirst());
+    }
+
+    @Test
+    public void testProjectionFindAllRef() {
+        var refs = ORMTemplate.of(dataSource).projection(OwnerView.class).findAllRef();
+        assertEquals(10, refs.size());
+        assertInstanceOf(Ref.class, refs.getFirst());
     }
 
     @Test

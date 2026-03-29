@@ -2,6 +2,10 @@ import {themes as prismThemes} from 'prism-react-renderer';
 import type {Config} from '@docusaurus/types';
 import type * as Preset from '@docusaurus/preset-classic';
 
+const stormVersion = require('./plugins/read-storm-version');
+const remarkStormVersion = require('./plugins/remark-storm-version');
+const staticVersionReplace = require('./plugins/static-version-replace');
+
 const config: Config = {
   title: 'Storm Framework',
   tagline: 'A modern, high-performance ORM for Kotlin 2.0+ and Java 21+',
@@ -20,6 +24,10 @@ const config: Config = {
     locales: ['en'],
   },
 
+  plugins: [
+    [staticVersionReplace, { version: stormVersion }],
+  ],
+
   presets: [
     [
       'classic',
@@ -35,6 +43,9 @@ const config: Config = {
             },
           },
           editUrl: 'https://github.com/storm-repo/storm-framework/edit/main/docs/',
+          beforeDefaultRemarkPlugins: [
+            [remarkStormVersion, { version: stormVersion }],
+          ],
         },
         blog: false,
         theme: {

@@ -71,7 +71,7 @@ Set up your project with the right dependencies, build flags, and optional modul
 
 **2. First Entity**
 
-Define your first entity, create an ORM template, and perform insert, read, update, and delete operations.
+Define your first entity, create an ORM template, and perform insert, read, update, and remove operations.
 
 **[Go to First Entity](first-entity.md)**
 

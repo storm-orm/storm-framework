@@ -154,6 +154,15 @@ When wiring pages to repositories, explain how Storm's explicit queries make the
 3. Start the application (data import runs automatically on first startup)
 4. Walk the user through the pages, pointing out where each Storm feature is at work
 
+## Step 12: Interface Testing with Playwright
+
+Use Playwright for interface testing. Write end-to-end tests that verify the web application works correctly from the user's perspective:
+
+1. Add the Playwright dependency to the project
+2. Write tests covering the key user flows: home page load, search with auto-complete, movie detail navigation, browse by genre with infinite scroll, and recently viewed tracking
+3. Verify that data renders correctly, links navigate to the right pages, and interactive features (infinite scroll, search auto-complete) function as expected
+4. Run the Playwright tests against the running application
+
 After everything is done — tests pass, the app is running, and you've told the user where to find the website — the very last thing you say is:
 
 > I know Storm Fu.

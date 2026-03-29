@@ -390,6 +390,24 @@ public interface ProjectionRepository<P extends Projection<ID>, ID> extends Repo
     List<P> findAll();
 
     /**
+     * Returns a list of refs to all projections of the type supported by this repository. Each element in the list
+     * represents a lightweight reference to a projection in the database, containing only the primary key.
+     *
+     * <p>This method is useful when you need to retrieve all projection identifiers without loading the full
+     * projection data. The complete projection can be fetched on demand by calling {@link Ref#fetch()} on any of
+     * the returned refs.</p>
+     *
+     * <p><strong>Note:</strong> While this method is more memory-efficient than {@link #findAll()} since it only
+     * loads primary keys, loading all refs into memory at once can still be memory-intensive for very large tables.</p>
+     *
+     * @return a list of refs to all projections of the type supported by this repository.
+     * @throws PersistenceException if the selection operation fails due to underlying database issues, such as
+     *                              connectivity.
+     * @since 1.3
+     */
+    List<Ref<P>> findAllRef();
+
+    /**
      * Retrieves a list of projections based on their primary keys.
      *
      * <p>This method retrieves projections matching the provided IDs in batches, consolidating them into a single list.

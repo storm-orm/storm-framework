@@ -71,12 +71,12 @@ public class EntityRepositoryAdditionalIntegrationTest {
     }
 
     @Test
-    public void testDeleteWithDefaultPrimaryKeyThrows() {
+    public void testRemoveWithDefaultPrimaryKeyThrows() {
         var orm = ORMTemplate.of(dataSource);
         var cities = orm.entity(City.class);
         // Deleting with null PK should throw.
         assertThrows(PersistenceException.class,
-                () -> cities.delete(City.builder().name("NoPK").build()));
+                () -> cities.remove(City.builder().name("NoPK").build()));
     }
 
     // insert with ignoreAutoGenerate
@@ -92,7 +92,7 @@ public class EntityRepositoryAdditionalIntegrationTest {
         City fetched = cities.getById(9990);
         assertEquals("ExplicitPK", fetched.name());
         // Clean up.
-        cities.deleteById(9990);
+        cities.removeById(9990);
     }
 
     @Test
@@ -107,7 +107,7 @@ public class EntityRepositoryAdditionalIntegrationTest {
     // deleteAll
 
     @Test
-    public void testDeleteAllRemovesAllEntities() {
+    public void testRemoveAllRemovesAllEntities() {
         var orm = ORMTemplate.of(dataSource);
         // Use pet_extension to avoid FK constraint issues (it's a leaf table).
         // Insert some cities that are not referenced by anything else.
@@ -123,7 +123,7 @@ public class EntityRepositoryAdditionalIntegrationTest {
         var visits = orm.entity(Visit.class);
         long visitCountBefore = visits.count();
         assertTrue(visitCountBefore > 0);
-        visits.deleteAll();
+        visits.removeAll();
         assertEquals(0, visits.count());
     }
 
@@ -342,7 +342,7 @@ public class EntityRepositoryAdditionalIntegrationTest {
         Integer insertedId = cities.insertAndFetchId(City.builder().name("NoCb").build());
         assertNotNull(insertedId);
         cities.update(City.builder().id(insertedId).name("NoCbUpdated").build());
-        cities.delete(City.builder().id(insertedId).name("NoCbUpdated").build());
+        cities.remove(City.builder().id(insertedId).name("NoCbUpdated").build());
     }
 
     // Batch update with joined entities and callbacks

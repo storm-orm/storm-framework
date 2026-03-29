@@ -14,7 +14,7 @@ The main Kotlin API module. It provides the `ORMTemplate` interface, extension f
 
 ```kotlin
 // Gradle (Kotlin DSL)
-implementation("st.orm:storm-kotlin:1.11.0")
+implementation("st.orm:storm-kotlin:@@STORM_VERSION@@")
 ```
 
 ```xml
@@ -22,7 +22,7 @@ implementation("st.orm:storm-kotlin:1.11.0")
 <dependency>
     <groupId>st.orm</groupId>
     <artifactId>storm-kotlin</artifactId>
-    <version>1.11.0</version>
+    <version>@@STORM_VERSION@@</version>
 </dependency>
 ```
 
@@ -33,7 +33,7 @@ The Kotlin API does not depend on any preview features. All APIs are stable and 
 Spring Framework integration for Kotlin. Provides `RepositoryBeanFactoryPostProcessor` for repository auto-discovery and injection, `@EnableTransactionIntegration` for bridging Storm's programmatic transactions with Spring's `@Transactional`, and transaction-aware coroutine support. Add this module when you use Spring Framework without Spring Boot.
 
 ```kotlin
-implementation("st.orm:storm-kotlin-spring:1.11.0")
+implementation("st.orm:storm-kotlin-spring:@@STORM_VERSION@@")
 ```
 
 See [Spring Integration](spring-integration.md) for configuration details.
@@ -43,7 +43,7 @@ See [Spring Integration](spring-integration.md) for configuration details.
 Spring Boot auto-configuration for Kotlin. Automatically creates an `ORMTemplate` bean from the `DataSource`, discovers repositories, enables transaction integration, and binds `storm.*` properties from `application.yml`. This is the recommended dependency for Spring Boot applications.
 
 ```kotlin
-implementation("st.orm:storm-kotlin-spring-boot-starter:1.11.0")
+implementation("st.orm:storm-kotlin-spring-boot-starter:@@STORM_VERSION@@")
 ```
 
 See [Spring Integration: Spring Boot Starter](spring-integration.md#spring-boot-starter) for what the starter provides and how to override its defaults.
@@ -96,7 +96,7 @@ plugins {
 }
 
 dependencies {
-    ksp("st.orm:storm-metamodel-ksp:1.11.0")
+    ksp("st.orm:storm-metamodel-ksp:@@STORM_VERSION@@")
 }
 ```
 
@@ -115,7 +115,7 @@ dependencies {
                     <path>
                         <groupId>st.orm</groupId>
                         <artifactId>storm-metamodel-processor</artifactId>
-                        <version>1.11.0</version>
+                        <version>@@STORM_VERSION@@</version>
                     </path>
                 </annotationProcessorPaths>
             </configuration>

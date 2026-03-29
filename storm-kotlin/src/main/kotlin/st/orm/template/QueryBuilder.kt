@@ -1156,15 +1156,12 @@ fun <T : Data, V> Metamodel<T, V>.isNotNull(): PredicateBuilder<T, T, *> = creat
  * A mutable scope for constructing queries using [QueryBuilder] methods in a block-based style, similar to
  * [buildList] or [buildMap].
  *
- * Each call inside the block (such as [where], [orderBy], [limit]) updates the internal builder state, removing
- * the need to chain method calls or capture return values.
+ * Each call inside the block (such as [where], [orderBy], [limit]) updates the internal builder state.
  *
- * ## Example
  * ```kotlin
- * orm.select<User> {
- *     where(User_.name eq "Alice")
- *     orderBy(User_.email)
- *     limit(10)
+ * userRepository.select {
+ *     where(User_.active eq true)
+ *     orderBy(User_.name)
  * }.resultList
  * ```
  *
@@ -1337,20 +1334,15 @@ class SqlScope<T : Data, R, ID : Any> @PublishedApi internal constructor(
     }
 
     /**
-     * Handles the block's return value: a [PredicateBuilder] is automatically applied as a WHERE clause,
-     * while any other non-[Unit] value indicates a programming error.
-     *
-     * This allows the shorthand `select { path eq value }` as equivalent to `select { where(path eq value) }`.
+     * Validates the block's return value: a non-null, non-[Unit] value is unexpected and indicates
+     * a programming error where an expression result was not consumed by a scope method.
      */
-    @Suppress("UNCHECKED_CAST")
     @PublishedApi
-    internal fun applyResult(result: Any?) {
-        when (result) {
-            is PredicateBuilder<*, *, *> -> where(result as PredicateBuilder<T, *, *>)
-            is Unit, null -> {}
-            else -> throw IllegalStateException(
-                "The query block returned a ${result::class.simpleName} value that was not applied. " +
-                    "Did you forget to wrap it in a method call such as where()?",
+    internal fun validateResult(result: Any?) {
+        if (result != null && result !is Unit) {
+            throw IllegalStateException(
+                "Unexpected ${result::class.simpleName} return value in query block. " +
+                    "All expressions must be consumed by scope methods such as where(), orderBy(), or limit().",
             )
         }
     }

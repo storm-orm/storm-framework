@@ -14,8 +14,8 @@ import org.springframework.test.context.jdbc.Sql
 import org.springframework.transaction.annotation.Transactional
 import st.orm.PersistenceException
 import st.orm.repository.countAll
-import st.orm.repository.deleteAll
 import st.orm.repository.exists
+import st.orm.repository.removeAll
 import st.orm.spring.model.Visit
 import st.orm.template.*
 import st.orm.template.TransactionIsolation.*
@@ -47,7 +47,7 @@ open class TransactionTest(
     @Test
     fun `modification visible after required commit`(): Unit = runBlocking {
         transactionBlocking {
-            orm.deleteAll<Visit>()
+            orm.removeAll<Visit>()
         }
         orm.exists<Visit>().shouldBeFalse()
     }
@@ -55,7 +55,7 @@ open class TransactionTest(
     @Test
     fun `modification rolled back after required rollback`(): Unit = runBlocking {
         transactionBlocking {
-            orm.deleteAll<Visit>()
+            orm.removeAll<Visit>()
             setRollbackOnly()
         }
         orm.exists<Visit>().shouldBeTrue()
@@ -65,7 +65,7 @@ open class TransactionTest(
     fun `modification rolled back after required rollback at start`(): Unit = runBlocking {
         transactionBlocking {
             setRollbackOnly()
-            orm.deleteAll<Visit>()
+            orm.removeAll<Visit>()
         }
         orm.exists<Visit>().shouldBeTrue()
     }
@@ -78,7 +78,7 @@ open class TransactionTest(
     fun `modification visible for required inner commit and outer commit`(): Unit = runBlocking {
         transactionBlocking {
             transactionBlocking(REQUIRED) {
-                orm.deleteAll<Visit>()
+                orm.removeAll<Visit>()
             }
         }
         orm.exists<Visit>().shouldBeFalse()
@@ -88,7 +88,7 @@ open class TransactionTest(
     fun `modification rolled back for required inner commit and outer rollback`(): Unit = runBlocking {
         transactionBlocking {
             transactionBlocking(REQUIRED) {
-                orm.deleteAll<Visit>()
+                orm.removeAll<Visit>()
             }
             setRollbackOnly()
             orm.exists<Visit>().shouldBeFalse()
@@ -104,7 +104,7 @@ open class TransactionTest(
     fun `modification visible for requires_new inner commit and outer commit`(): Unit = runBlocking {
         transactionBlocking {
             transactionBlocking(REQUIRES_NEW) {
-                orm.deleteAll<Visit>()
+                orm.removeAll<Visit>()
             }
             orm.exists<Visit>().shouldBeFalse()
         }
@@ -115,7 +115,7 @@ open class TransactionTest(
     fun `modification visible for requires_new inner commit and outer rollback`(): Unit = runBlocking {
         transactionBlocking {
             transactionBlocking(REQUIRES_NEW) {
-                orm.deleteAll<Visit>()
+                orm.removeAll<Visit>()
             }
             setRollbackOnly()
             orm.exists<Visit>().shouldBeFalse()
@@ -127,7 +127,7 @@ open class TransactionTest(
     fun `modification rolled back for requires_new inner rollback and outer commit`(): Unit = runBlocking {
         transactionBlocking {
             transactionBlocking(REQUIRES_NEW) {
-                orm.deleteAll<Visit>()
+                orm.removeAll<Visit>()
                 setRollbackOnly()
             }
             orm.exists<Visit>().shouldBeTrue()
@@ -139,7 +139,7 @@ open class TransactionTest(
     fun `modification rolled back for requires_new inner rollback and outer rollback`(): Unit = runBlocking {
         transactionBlocking {
             transactionBlocking(REQUIRES_NEW) {
-                orm.deleteAll<Visit>()
+                orm.removeAll<Visit>()
                 setRollbackOnly()
             }
             setRollbackOnly()
@@ -156,7 +156,7 @@ open class TransactionTest(
     fun `modification visible for nested inner commit and outer commit`(): Unit = runBlocking {
         transactionBlocking {
             transactionBlocking(NESTED) {
-                orm.deleteAll<Visit>()
+                orm.removeAll<Visit>()
             }
         }
         orm.exists<Visit>().shouldBeFalse()
@@ -166,7 +166,7 @@ open class TransactionTest(
     fun `modification rolled back for nested inner commit and outer rollback`(): Unit = runBlocking {
         transactionBlocking {
             transactionBlocking(NESTED) {
-                orm.deleteAll<Visit>()
+                orm.removeAll<Visit>()
             }
             setRollbackOnly()
             orm.exists<Visit>().shouldBeFalse()
@@ -178,7 +178,7 @@ open class TransactionTest(
     fun `modification rolled back for nested inner rollback and outer commit`(): Unit = runBlocking {
         transactionBlocking {
             transactionBlocking(NESTED) {
-                orm.deleteAll<Visit>()
+                orm.removeAll<Visit>()
                 setRollbackOnly()
             }
             orm.exists<Visit>().shouldBeTrue()
@@ -190,7 +190,7 @@ open class TransactionTest(
     fun `modification rolled back for nested inner rollback and outer rollback`(): Unit = runBlocking {
         transactionBlocking {
             transactionBlocking(NESTED) {
-                orm.deleteAll<Visit>()
+                orm.removeAll<Visit>()
                 setRollbackOnly()
             }
             setRollbackOnly()
@@ -204,7 +204,7 @@ open class TransactionTest(
     @Test
     fun `required commit with READ_UNCOMMITTED isolation`(): Unit = runBlocking {
         transactionBlocking(isolation = READ_UNCOMMITTED) {
-            orm.deleteAll<Visit>()
+            orm.removeAll<Visit>()
         }
         orm.exists<Visit>().shouldBeFalse()
     }
@@ -212,7 +212,7 @@ open class TransactionTest(
     @Test
     fun `required rollback with READ_UNCOMMITTED isolation`(): Unit = runBlocking {
         transactionBlocking(isolation = READ_UNCOMMITTED) {
-            orm.deleteAll<Visit>()
+            orm.removeAll<Visit>()
             setRollbackOnly()
         }
         orm.exists<Visit>().shouldBeTrue()
@@ -221,7 +221,7 @@ open class TransactionTest(
     @Test
     fun `required commit with READ_COMMITTED isolation`(): Unit = runBlocking {
         transactionBlocking(isolation = READ_COMMITTED) {
-            orm.deleteAll<Visit>()
+            orm.removeAll<Visit>()
         }
         orm.exists<Visit>().shouldBeFalse()
     }
@@ -229,7 +229,7 @@ open class TransactionTest(
     @Test
     fun `required rollback with READ_COMMITTED isolation`(): Unit = runBlocking {
         transactionBlocking(isolation = READ_COMMITTED) {
-            orm.deleteAll<Visit>()
+            orm.removeAll<Visit>()
             setRollbackOnly()
         }
         orm.exists<Visit>().shouldBeTrue()
@@ -238,7 +238,7 @@ open class TransactionTest(
     @Test
     fun `required commit with REPEATABLE_READ isolation`(): Unit = runBlocking {
         transactionBlocking(isolation = REPEATABLE_READ) {
-            orm.deleteAll<Visit>()
+            orm.removeAll<Visit>()
         }
         orm.exists<Visit>().shouldBeFalse()
     }
@@ -246,7 +246,7 @@ open class TransactionTest(
     @Test
     fun `required rollback with REPEATABLE_READ isolation`(): Unit = runBlocking {
         transactionBlocking(isolation = REPEATABLE_READ) {
-            orm.deleteAll<Visit>()
+            orm.removeAll<Visit>()
             setRollbackOnly()
         }
         orm.exists<Visit>().shouldBeTrue()
@@ -255,7 +255,7 @@ open class TransactionTest(
     @Test
     fun `required commit with SERIALIZABLE isolation`(): Unit = runBlocking {
         transactionBlocking(isolation = SERIALIZABLE) {
-            orm.deleteAll<Visit>()
+            orm.removeAll<Visit>()
         }
         orm.exists<Visit>().shouldBeFalse()
     }
@@ -263,7 +263,7 @@ open class TransactionTest(
     @Test
     fun `required rollback with SERIALIZABLE isolation`(): Unit = runBlocking {
         transactionBlocking(isolation = SERIALIZABLE) {
-            orm.deleteAll<Visit>()
+            orm.removeAll<Visit>()
             setRollbackOnly()
         }
         orm.exists<Visit>().shouldBeTrue()
@@ -280,7 +280,7 @@ open class TransactionTest(
         // Transaction 1: delete then mark rollback-only after a delay
         launch {
             transaction {
-                orm.deleteAll<Visit>()
+                orm.removeAll<Visit>()
                 started.complete(Unit)
                 delay(500)
                 setRollbackOnly()
@@ -315,7 +315,7 @@ open class TransactionTest(
         launch {
             latch1.await()
             transaction {
-                orm.deleteAll<Visit>()
+                orm.removeAll<Visit>()
             }
             latch2.complete(Unit)
         }
@@ -328,7 +328,7 @@ open class TransactionTest(
         // Transaction 1: delete then mark rollback-only after a delay.
         launch {
             transaction {
-                orm.deleteAll<Visit>()
+                orm.removeAll<Visit>()
                 started.complete(Unit)
                 delay(500)
             }
@@ -344,13 +344,13 @@ open class TransactionTest(
     }
 
     @Test
-    fun `dirty read deleteAll with READ_UNCOMMITTED`(): Unit = runBlocking {
+    fun `dirty read removeAll with READ_UNCOMMITTED`(): Unit = runBlocking {
         val started = CompletableDeferred<Unit>()
         val sawEmpty = CompletableDeferred<Boolean>()
         // Transaction1: deleteAll but delay before commit.
         launch {
             transaction {
-                orm.deleteAll<Visit>()
+                orm.removeAll<Visit>()
                 started.complete(Unit)
                 delay(500)
             }
@@ -366,13 +366,13 @@ open class TransactionTest(
     }
 
     @Test
-    fun `no dirty read deleteAll with READ_COMMITTED`(): Unit = runBlocking {
+    fun `no dirty read removeAll with READ_COMMITTED`(): Unit = runBlocking {
         val started = CompletableDeferred<Unit>()
         val sawFull = CompletableDeferred<Boolean>()
         // Transaction1: deleteAll but delay before commit.
         launch {
             transaction {
-                orm.deleteAll<Visit>()
+                orm.removeAll<Visit>()
                 started.complete(Unit)
                 delay(500)
             }
@@ -388,7 +388,7 @@ open class TransactionTest(
     }
 
     @Test
-    fun `non-repeatable deleteAll with READ_COMMITTED`(): Unit = runBlocking {
+    fun `non-repeatable removeAll with READ_COMMITTED`(): Unit = runBlocking {
         val deleted = CompletableDeferred<Unit>()
         val firstExists = CompletableDeferred<Boolean>()
         val secondExists = CompletableDeferred<Boolean>()
@@ -396,7 +396,7 @@ open class TransactionTest(
         launch {
             delay(500)
             transaction {
-                orm.deleteAll<Visit>()
+                orm.removeAll<Visit>()
             }
             deleted.complete(Unit)
         }
@@ -413,7 +413,7 @@ open class TransactionTest(
     }
 
     @Test
-    fun `no non-repeatable deleteAll with REPEATABLE_READ`(): Unit = runBlocking {
+    fun `no non-repeatable removeAll with REPEATABLE_READ`(): Unit = runBlocking {
         val deleted = CompletableDeferred<Unit>()
         val firstExists = CompletableDeferred<Boolean>()
         val secondExists = CompletableDeferred<Boolean>()
@@ -421,7 +421,7 @@ open class TransactionTest(
         launch {
             delay(500)
             transaction {
-                orm.deleteAll<Visit>()
+                orm.removeAll<Visit>()
             }
             deleted.complete(Unit)
         }
@@ -442,7 +442,7 @@ open class TransactionTest(
     open fun `programmatic transactions not allowed with spring managed transactions`(): Unit = runBlocking {
         assertThrows<PersistenceException> {
             transactionBlocking {
-                orm.deleteAll<Visit>()
+                orm.removeAll<Visit>()
             }
         }
     }
@@ -455,7 +455,7 @@ open class TransactionTest(
     open fun `transaction times out and rolls back when execution exceeds timeout`(): Unit = runBlocking {
         assertThrows<TransactionTimedOutException> {
             transactionBlocking(timeoutSeconds = 1) {
-                orm.deleteAll<Visit>()
+                orm.removeAll<Visit>()
                 Thread.sleep(1500)
             }
         }
@@ -467,7 +467,7 @@ open class TransactionTest(
     open fun `suspendTransaction times out and rolls back when execution exceeds delay timeout`(): Unit = runBlocking {
         assertThrows<TransactionTimedOutException> {
             transaction(timeoutSeconds = 1) {
-                orm.deleteAll<Visit>()
+                orm.removeAll<Visit>()
                 delay(1500)
             }
         }
@@ -479,7 +479,7 @@ open class TransactionTest(
     open fun `transaction times out and rolls back when execution exceeds query timeout`(): Unit = runBlocking {
         assertThrows<TransactionTimedOutException> {
             transactionBlocking(timeoutSeconds = 1) {
-                orm.deleteAll<Visit>()
+                orm.removeAll<Visit>()
                 orm.query(
                     """
                         SELECT COUNT(*)
@@ -500,7 +500,7 @@ open class TransactionTest(
     fun `context switch sees uncommitted data`(): Unit = runBlocking {
         val afterSwitch = CompletableDeferred<Boolean>()
         transaction {
-            orm.deleteAll<Visit>()
+            orm.removeAll<Visit>()
             withContext(Dispatchers.IO) {
                 afterSwitch.complete(orm.exists<Visit>())
             }
@@ -513,7 +513,7 @@ open class TransactionTest(
     fun `context switch with transaction sees uncommitted data`(): Unit = runBlocking {
         val afterSwitch = CompletableDeferred<Boolean>()
         transaction {
-            orm.deleteAll<Visit>()
+            orm.removeAll<Visit>()
             withContext(Dispatchers.IO) {
                 transactionBlocking {
                     afterSwitch.complete(orm.exists<Visit>())
@@ -528,7 +528,7 @@ open class TransactionTest(
     fun `context switch with suspend transaction sees uncommitted data`(): Unit = runBlocking {
         val afterSwitch = CompletableDeferred<Boolean>()
         transaction {
-            orm.deleteAll<Visit>()
+            orm.removeAll<Visit>()
             withContext(Dispatchers.IO) {
                 transaction {
                     afterSwitch.complete(orm.exists<Visit>())
@@ -582,7 +582,7 @@ open class TransactionTest(
     fun `outer commit fails with UnexpectedRollback when inner REQUIRED marks rollback-only`(): Unit = runBlocking {
         assertThrows<UnexpectedRollbackException> {
             transactionBlocking {
-                orm.deleteAll<Visit>()
+                orm.removeAll<Visit>()
                 // Inner REQUIRED participates in the same physical tx and marks rollback-only.
                 transactionBlocking(REQUIRED) {
                     setRollbackOnly()
@@ -597,7 +597,7 @@ open class TransactionTest(
     fun `nested rollback does not throw on outer commit`(): Unit = runBlocking {
         transactionBlocking {
             transactionBlocking(NESTED) {
-                orm.deleteAll<Visit>()
+                orm.removeAll<Visit>()
                 setRollbackOnly()
             }
             // Outer should still commit fine; data remains.
@@ -609,7 +609,7 @@ open class TransactionTest(
     fun `outer rollback does not throw when inner REQUIRED marked rollback-only too`(): Unit = runBlocking {
         transactionBlocking {
             transactionBlocking(REQUIRED) {
-                orm.deleteAll<Visit>()
+                orm.removeAll<Visit>()
                 setRollbackOnly() // Inner marks global tx rollback-only.
             }
             orm.exists<Visit>().shouldBeFalse() // Mid-scope still sees uncommitted change.
@@ -625,7 +625,7 @@ open class TransactionTest(
             transactionBlocking(propagation = REQUIRED) {
                 runCatching {
                     transactionBlocking(propagation = REQUIRED) {
-                        orm.deleteAll<Visit>()
+                        orm.removeAll<Visit>()
                         throw IllegalStateException("Something went wrong")
                     }
                 }
@@ -639,7 +639,7 @@ open class TransactionTest(
         assertThrows<IllegalStateException> {
             transactionBlocking(propagation = REQUIRED) {
                 transactionBlocking(propagation = REQUIRED) {
-                    orm.deleteAll<Visit>()
+                    orm.removeAll<Visit>()
                     throw IllegalStateException("Something went wrong")
                 }
             }
@@ -656,7 +656,7 @@ open class TransactionTest(
         setGlobalTransactionOptions(timeoutSeconds = 1)
         assertThrows<TransactionTimedOutException> {
             transactionBlocking {
-                orm.deleteAll<Visit>()
+                orm.removeAll<Visit>()
                 Thread.sleep(1500)
             }
         }
@@ -669,7 +669,7 @@ open class TransactionTest(
         setGlobalTransactionOptions(timeoutSeconds = 1)
         assertThrows<TransactionTimedOutException> {
             transaction {
-                orm.deleteAll<Visit>()
+                orm.removeAll<Visit>()
                 delay(1500)
             }
         }
@@ -686,7 +686,7 @@ open class TransactionTest(
         assertThrows<TransactionTimedOutException> {
             withTransactionOptions(timeoutSeconds = 1) {
                 transaction {
-                    orm.deleteAll<Visit>()
+                    orm.removeAll<Visit>()
                     delay(1500)
                 }
             }
@@ -701,7 +701,7 @@ open class TransactionTest(
             transaction {
                 // inner starts a new tx (from defaults), commits delete
                 transaction {
-                    orm.deleteAll<Visit>()
+                    orm.removeAll<Visit>()
                 }
                 // outer marks rollback-only: should NOT undo inner commit
                 setRollbackOnly()
@@ -721,7 +721,7 @@ open class TransactionTest(
         assertThrows<TransactionTimedOutException> {
             withTransactionOptionsBlocking(timeoutSeconds = 1) {
                 transactionBlocking {
-                    orm.deleteAll<Visit>()
+                    orm.removeAll<Visit>()
                     Thread.sleep(1500)
                 }
             }
@@ -783,7 +783,7 @@ open class TransactionTest(
     fun `global isolation default does not block writes (smoke)`(): Unit = runBlocking {
         setGlobalTransactionOptions(isolation = READ_COMMITTED)
         transactionBlocking {
-            orm.deleteAll<Visit>()
+            orm.removeAll<Visit>()
         }
         orm.exists<Visit>().shouldBeFalse()
     }

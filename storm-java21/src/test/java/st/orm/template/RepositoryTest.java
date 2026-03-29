@@ -608,9 +608,18 @@ public class RepositoryTest {
 
     @Test
     public void testEntityPageRef() {
-        Page<Ref<City>> refPage = orm.entity(City.class).selectRef().page(0, 3);
+        Page<Ref<City>> refPage = orm.entity(City.class).pageRef(0, 3);
         assertEquals(3, refPage.content().size());
         assertEquals(6, refPage.totalCount());
+    }
+
+    @Test
+    public void testEntityPageRefWithPageable() {
+        Pageable pageable = Pageable.ofSize(3);
+        Page<Ref<City>> refPage = orm.entity(City.class).pageRef(pageable);
+        assertEquals(3, refPage.content().size());
+        assertEquals(6, refPage.totalCount());
+        assertTrue(refPage.hasNext());
     }
 
     @Test
@@ -636,6 +645,12 @@ public class RepositoryTest {
         Page<Ref<OwnerView>> refPage = orm.projection(OwnerView.class).pageRef(0, 5);
         assertEquals(5, refPage.content().size());
         assertEquals(10, refPage.totalCount());
+    }
+
+    @Test
+    public void testProjectionFindAllRef() {
+        List<Ref<OwnerView>> allRefs = orm.projection(OwnerView.class).findAllRef();
+        assertEquals(10, allRefs.size());
     }
 
     // EntityRepository - additional default methods for completeness
@@ -664,30 +679,30 @@ public class RepositoryTest {
     }
 
     @Test
-    public void testEntityDelete() {
+    public void testEntityRemove() {
         var localOrm = ORMTemplate.of(dataSource);
         var repo = localOrm.entity(City.class);
         var inserted = repo.insertAndFetch(new City(null, "ToDeleteEntity"));
-        repo.delete(inserted);
+        repo.remove(inserted);
         assertFalse(repo.findById(inserted.id()).isPresent());
     }
 
     @Test
-    public void testEntityDeleteByRef() {
+    public void testEntityRemoveByRef() {
         var localOrm = ORMTemplate.of(dataSource);
         var repo = localOrm.entity(City.class);
         var inserted = repo.insertAndFetch(new City(null, "ToDeleteByRef"));
-        repo.deleteByRef(repo.ref(inserted.id()));
+        repo.removeByRef(repo.ref(inserted.id()));
         assertFalse(repo.findById(inserted.id()).isPresent());
     }
 
     @Test
-    public void testEntityDeleteByRefIterable() {
+    public void testEntityRemoveByRefIterable() {
         var localOrm = ORMTemplate.of(dataSource);
         var repo = localOrm.entity(City.class);
         var inserted1 = repo.insertAndFetch(new City(null, "ToDeleteRef1"));
         var inserted2 = repo.insertAndFetch(new City(null, "ToDeleteRef2"));
-        repo.deleteByRef(List.of(repo.ref(inserted1.id()), repo.ref(inserted2.id())));
+        repo.removeByRef(List.of(repo.ref(inserted1.id()), repo.ref(inserted2.id())));
         assertFalse(repo.findById(inserted1.id()).isPresent());
         assertFalse(repo.findById(inserted2.id()).isPresent());
     }

@@ -46,7 +46,7 @@ SELECT ... FROM "user" WHERE "email" = ?
 
 This applies to all Storm APIs, including:
 
-- Repository methods (`find`, `findAll`, `select`, `insert`, `update`, `delete`)
+- Repository methods (`find`, `findAll`, `select`, `insert`, `update`, `remove`, `delete`)
 - Query builder operations (`.where()`, `.set()`, `.values()`)
 - SQL templates with embedded expressions
 

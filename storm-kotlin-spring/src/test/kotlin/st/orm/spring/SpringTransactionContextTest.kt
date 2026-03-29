@@ -12,8 +12,8 @@ import org.springframework.boot.test.context.SpringBootTest
 import org.springframework.test.context.ContextConfiguration
 import org.springframework.test.context.jdbc.Sql
 import st.orm.repository.countAll
-import st.orm.repository.deleteAll
 import st.orm.repository.exists
+import st.orm.repository.removeAll
 import st.orm.spring.model.City
 import st.orm.spring.model.Visit
 import st.orm.template.*
@@ -182,7 +182,7 @@ open class SpringTransactionContextTest(
         transactionBlocking(isolation = REPEATABLE_READ) {
             val city1 = orm.entity(City::class).select().where(1).singleResult
             transactionBlocking(NESTED) {
-                orm.deleteAll<Visit>()
+                orm.removeAll<Visit>()
                 setRollbackOnly()
             }
             // After nested rollback, entity cache should have been cleared
@@ -340,7 +340,7 @@ open class SpringTransactionContextTest(
         transactionBlocking {
             transactionBlocking(REQUIRES_NEW) {
                 transactionBlocking(NESTED) {
-                    orm.deleteAll<Visit>()
+                    orm.removeAll<Visit>()
                     setRollbackOnly()
                 }
                 // Nested rolled back, visits should still exist
@@ -355,7 +355,7 @@ open class SpringTransactionContextTest(
     fun `setRollbackOnly before DB access should still rollback`(): Unit = runBlocking {
         transactionBlocking {
             setRollbackOnly()
-            orm.deleteAll<Visit>()
+            orm.removeAll<Visit>()
         }
         orm.exists<Visit>().shouldBeTrue()
     }
@@ -402,7 +402,7 @@ open class SpringTransactionContextTest(
     fun `setRollbackOnly before any DB access then access should rollback`(): Unit = runBlocking {
         transactionBlocking {
             setRollbackOnly()
-            orm.deleteAll<Visit>()
+            orm.removeAll<Visit>()
         }
         orm.exists<Visit>().shouldBeTrue()
     }
@@ -456,7 +456,7 @@ open class SpringTransactionContextTest(
         assertThrows<UnexpectedRollbackException> {
             transactionBlocking {
                 transactionBlocking(REQUIRED) {
-                    orm.deleteAll<Visit>()
+                    orm.removeAll<Visit>()
                     setRollbackOnly()
                 }
                 // Outer tries to commit but inner marked rollback-only
@@ -469,7 +469,7 @@ open class SpringTransactionContextTest(
     @Test
     fun `REQUIRES_NEW with readOnly inside writable outer`(): Unit = runBlocking {
         transactionBlocking {
-            orm.deleteAll<Visit>()
+            orm.removeAll<Visit>()
             transactionBlocking(REQUIRES_NEW, readOnly = true) {
                 orm.countAll<City>() shouldBe 6
             }

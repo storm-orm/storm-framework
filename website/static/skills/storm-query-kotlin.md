@@ -55,21 +55,49 @@ User_.city eq city.ref()    // also works, but unnecessary when you have the ent
 Order_.user eq user         // ✅ same for any FK field — don't use Order_.id.userId eq user.id
 ```
 
-Three query levels (suggest the simplest that works):
-| Approach | Best for |
-|----------|----------|
-| find/findAll | Simple lookups |
-| QueryBuilder (.select().where()) | Most application queries |
-| SQL Templates (/storm-sql-kotlin) | CTEs, window functions, subqueries |
+## API Design: Builder Methods vs Convenience Methods
 
-Quick queries:
+Repository/entity methods fall into two categories:
+
+**Builder methods** return `QueryBuilder` for composable, chainable queries. They never execute immediately:
+- `select()`, `select(predicate)`, `select { }` -- build SELECT queries
+- `selectRef()`, `selectRef(predicate)` -- build SELECT queries returning Refs
+- `selectCount()` -- build COUNT queries
+- `delete()`, `delete(predicate)`, `delete { }` -- build DELETE queries
+
+Terminal operations: `.resultList`, `.singleResult`, `.optionalResult`, `.resultFlow`, `.resultStream`, `.resultCount`, `.page()`, `.scroll()`, `.executeUpdate()`
+
+**Convenience methods** execute immediately and return results directly:
+- `findById()`, `findByRef()`, `findAll()`, `findAllRef()`, `findBy()`, `findAllBy()`, `getById()`, `getByRef()`, `getBy()`, `count()`, `exists()`, `remove()`, `removeById()`, `removeByRef()`, `removeAll()`, `removeAll(predicate)`, `removeAllBy()`, `page()`, `pageRef()`, `scroll()`
+
+The `delete`/`remove` distinction: `remove` operates on entities or ids you already have (immediate execution). `delete` builds a query to find and delete rows by criteria (returns `QueryBuilder`).
+
+Prefer the simplest approach that works. Four query levels, from simplest to most powerful:
+
+| Level | Approach | Best for |
+|-------|----------|----------|
+| 1 | Convenience methods (`find`, `findAll`, `removeAll`, `count`, `exists`) | Simple lookups and operations |
+| 2 | Builder with predicate (`select(predicate)`, `delete(predicate)`) | Filtered queries needing ordering, pagination, or joins |
+| 3 | Block DSL (`select { }`, `delete { }`) | Complex queries with multiple joins and conditions |
+| 4 | SQL Templates (/storm-sql-kotlin) | CTEs, window functions, database-specific features |
+
+**Level 1 — Convenience methods** (execute immediately, no terminal needed):
 ```kotlin
 val user = orm.find(User_.email eq email)
 val users = orm.findAll(User_.city eq city)
 val exists = orm.existsBy(User_.email, email)
+val removed = orm.removeAll(User_.active eq false)
 ```
 
-QueryBuilder (use `orm.entity<T>()` — reified, `import st.orm.repository.entity`):
+**Level 2 — Builder with predicate** (returns `QueryBuilder`, chain terminal + ordering/pagination):
+```kotlin
+val users = users
+    .select(User_.city eq city)
+    .orderBy(User_.name)
+    .resultList
+```
+
+Alternatively, use `select()` chained with `.where()` — equivalent, just a style preference:
 ```kotlin
 val users = orm.entity<User>()
     .select()
@@ -206,23 +234,27 @@ These are also available on the chained QueryBuilder API: `.whereAny(...)`, `.or
 
 ## Bulk DELETE/UPDATE
 
+`delete()` is a builder method that returns `QueryBuilder`. Call `.executeUpdate()` to execute:
+
 ```kotlin
-// DELETE with WHERE (safe)
+// DELETE with WHERE (safe) -- builder returns QueryBuilder, terminal executes
 orm.entity(User::class).delete().where(User_.active eq false).executeUpdate()
+
+// DELETE with predicate shorthand -- also returns QueryBuilder
+orm.entity(User::class).delete(User_.active eq false).executeUpdate()
 
 // DELETE/UPDATE without WHERE throws by default. Use unsafe() to confirm intent:
 orm.entity(User::class).delete().unsafe().executeUpdate()
+
+// Convenience method: removeAll() executes immediately (calls unsafe() internally)
+users.removeAll()
 ```
 
 ## Block-Based Query DSL
 
-Use `select { }` / `delete { }` to build queries without chaining. A `PredicateBuilder` returned as the block's last expression is automatically applied as a WHERE clause, so `select { path eq value }` is equivalent to `select { where(path eq value) }`:
+Use `select { }` / `delete { }` to build queries without chaining. Both are **builder methods** that return `QueryBuilder` -- they never execute immediately. Inside the block, use scope methods like `where()`, `orderBy()`, `limit()` to construct the query. Then call a terminal operation to execute:
 
 ```kotlin
-// Predicate shorthand (auto-applied as WHERE)
-orm.select<User> { User_.active eq true }.resultList
-
-// Explicit where — equivalent, use when combining with other clauses
 orm.select<User> {
     where(User_.active eq true)
     orderBy(User_.name)
@@ -230,11 +262,24 @@ orm.select<User> {
 }.resultList
 
 // On EntityRepository — same syntax
-select { User_.city eq city }.resultList
 select {
     where(User_.city eq city)
     orderByDescending(User_.createdAt)
 }.scroll(20)
+
+// delete { } also returns QueryBuilder — call .executeUpdate() to run it
+delete {
+    where(User_.active eq false)
+}.executeUpdate()
+```
+
+Predicate variants also return `QueryBuilder`:
+```kotlin
+// select(predicate) returns QueryBuilder
+users.select(User_.active eq true).resultList
+
+// delete(predicate) returns QueryBuilder
+users.delete(User_.active eq false).executeUpdate()
 ```
 
 Available in the block: `where`, `whereAny`, `orderBy`, `orderByAny`, `orderByDescending`, `orderByDescendingAny`, `groupBy`, `having`, `limit`, `offset`, `distinct`, `forUpdate`, `forShare`, `innerJoin`, `leftJoin`, `rightJoin`, `crossJoin`, `append`.
@@ -260,7 +305,7 @@ Critical rules:
 - QueryBuilder is IMMUTABLE. Every method returns a new instance. Always use the return value (or use the `select { }` DSL which handles this automatically).
 - Multiple .where() calls are AND-combined.
 - DELETE/UPDATE without WHERE throws. Use unsafe().
-- Streaming: `select().resultFlow` returns a Flow with automatic cleanup.
+- Streaming: `select().resultFlow` returns a Flow with automatic cleanup. There are no `selectBy` methods that return Flow/Stream directly -- always use `select()` (optionally with predicate or block DSL) and then `.resultFlow` or `.resultStream`.
 - **Metamodel navigation depth**: Multiple levels of navigation are allowed on the root entity. Joined (non-root) entities can only navigate one level deep. For deeper navigation, explicitly join the intermediate entity.
 - **Use `Ref` for map keys and set membership**: Prefer `Ref<Entity>` (via `.ref()`) for map keys, set membership, and identity-based lookups. `Ref` provides identity-based `equals`/`hashCode` on the primary key:
   ```kotlin

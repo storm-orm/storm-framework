@@ -106,32 +106,32 @@ public class EntityRepositoryBatchIntegrationTest {
     // Delete
 
     @Test
-    public void testDeleteEntityRemovesIt() {
+    public void testRemoveEntityRemovesIt() {
         var orm = ORMTemplate.of(dataSource);
         var cities = orm.entity(City.class);
 
         var insertedId = cities.insertAndFetchId(City.builder().name("ToDelete").build());
         long countBefore = cities.count();
 
-        cities.delete(City.builder().id(insertedId).name("ToDelete").build());
+        cities.remove(City.builder().id(insertedId).name("ToDelete").build());
         assertEquals(countBefore - 1, cities.count());
         // Verify the deleted city is actually gone.
         assertFalse(cities.findById(insertedId).isPresent());
     }
 
     @Test
-    public void testDeleteByRefRemovesEntity() {
+    public void testRemoveByRefRemovesEntity() {
         var orm = ORMTemplate.of(dataSource);
         var cities = orm.entity(City.class);
 
         var insertedId = cities.insertAndFetchId(City.builder().name("RefDelete").build());
-        cities.deleteByRef(Ref.of(City.class, insertedId));
+        cities.removeByRef(Ref.of(City.class, insertedId));
 
         assertFalse(cities.findById(insertedId).isPresent());
     }
 
     @Test
-    public void testBatchDeleteRemovesAllSpecified() {
+    public void testBatchRemoveRemovesAllSpecified() {
         var orm = ORMTemplate.of(dataSource);
         var cities = orm.entity(City.class);
 
@@ -139,7 +139,7 @@ public class EntityRepositoryBatchIntegrationTest {
         var id2 = cities.insertAndFetchId(City.builder().name("BatchDel2").build());
         long countBefore = cities.count();
 
-        cities.delete(List.of(
+        cities.remove(List.of(
                 City.builder().id(id1).name("BatchDel1").build(),
                 City.builder().id(id2).name("BatchDel2").build()
         ));
@@ -149,14 +149,14 @@ public class EntityRepositoryBatchIntegrationTest {
     }
 
     @Test
-    public void testBatchDeleteByRefRemovesAllSpecified() {
+    public void testBatchRemoveByRefRemovesAllSpecified() {
         var orm = ORMTemplate.of(dataSource);
         var cities = orm.entity(City.class);
 
         var id1 = cities.insertAndFetchId(City.builder().name("RefBatchDel1").build());
         var id2 = cities.insertAndFetchId(City.builder().name("RefBatchDel2").build());
 
-        cities.deleteByRef(List.of(
+        cities.removeByRef(List.of(
                 Ref.of(City.class, id1),
                 Ref.of(City.class, id2)
         ));

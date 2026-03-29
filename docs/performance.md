@@ -159,7 +159,7 @@ storm:
 
 ## Batch Operations
 
-Batch operations group multiple SQL statements into a single JDBC round-trip. Storm automatically uses JDBC batching when you pass collections to `insert`, `update`, `delete`, or `upsert`.
+Batch operations group multiple SQL statements into a single JDBC round-trip. Storm automatically uses JDBC batching when you pass collections to `insert`, `update`, `remove`, or `upsert`.
 
 ### Performance Characteristics
 

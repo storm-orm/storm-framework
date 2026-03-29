@@ -49,14 +49,14 @@ plugins {
 }
 
 dependencies {
-    ksp("st.orm:storm-metamodel-processor:1.11.0")
+    ksp("st.orm:storm-metamodel-processor:@@STORM_VERSION@@")
 }
 ```
 
 ### Gradle (Java)
 
 ```kotlin
-annotationProcessor("st.orm:storm-metamodel-processor:1.11.0")
+annotationProcessor("st.orm:storm-metamodel-processor:@@STORM_VERSION@@")
 ```
 
 ### Maven (Java)
@@ -65,7 +65,7 @@ annotationProcessor("st.orm:storm-metamodel-processor:1.11.0")
 <dependency>
     <groupId>st.orm</groupId>
     <artifactId>storm-metamodel-processor</artifactId>
-    <version>1.11.0</version>
+    <version>@@STORM_VERSION@@</version>
     <scope>provided</scope>
 </dependency>
 ```

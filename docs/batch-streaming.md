@@ -12,7 +12,7 @@ Database performance often degrades when applications issue many individual SQL 
 
 ## Batch Processing
 
-When you pass a list of entities to Storm's insert, update, delete, or upsert methods, Storm automatically uses JDBC batch statements. The framework groups rows together and sends them to the database in a single round-trip, rather than issuing one statement per entity.
+When you pass a list of entities to Storm's insert, update, remove, or upsert methods, Storm automatically uses JDBC batch statements. The framework groups rows together and sends them to the database in a single round-trip, rather than issuing one statement per entity.
 
 ### Batch Insert
 
@@ -73,25 +73,25 @@ orm.entity(User.class).update(updatedUsers);
 </TabItem>
 </Tabs>
 
-### Batch Delete
+### Batch Remove
 
-Batch deletes remove multiple entities in a single round-trip. Storm generates a batched DELETE using each entity's primary key.
+Batch removes delete multiple entities in a single round-trip. Storm generates a batched DELETE using each entity's primary key.
 
 <Tabs groupId="language">
 <TabItem value="kotlin" label="Kotlin" default>
 
 ```kotlin
-orm delete users
+orm remove users
 
-// Or delete all entities of a type
-orm.deleteAll<User>()
+// Or remove all entities of a type
+orm.removeAll<User>()
 ```
 
 </TabItem>
 <TabItem value="java" label="Java">
 
 ```java
-orm.entity(User.class).delete(users);
+orm.entity(User.class).remove(users);
 ```
 
 </TabItem>
