@@ -81,6 +81,26 @@ Prefer the simplest approach that works. Four query levels, from simplest to mos
 | 3 | Block DSL (`select { }`, `delete { }`) | Complex queries with multiple joins and conditions |
 | 4 | SQL Templates (/storm-sql-kotlin) | CTEs, window functions, database-specific features |
 
+### When to use each — and when NOT to
+
+| Need | Use (simplest) | Don't use (unnecessarily complex) |
+|------|----------------|-----------------------------------|
+| All rows as list | `findAll()` | `select().resultList` |
+| Filter by single field | `findAllBy(field, value)` | `select(field eq value).resultList` |
+| Filter by predicate | `findAll(predicate)` | `select(predicate).resultList` |
+| Single result by predicate | `find(predicate)` | `select(predicate).optionalResult` |
+| Single result (throw if missing) | `get(predicate)` | `select(predicate).singleResult` |
+| Count by predicate | `count(predicate)` | `selectCount().where(predicate).singleResult` |
+| Exists check | `exists(predicate)` | `count(predicate) > 0` |
+| Delete by predicate | `removeAll(predicate)` | `delete(predicate).executeUpdate()` |
+| Delete by field | `removeAllBy(field, value)` | `delete(field eq value).executeUpdate()` |
+| Filtered + **ordering/pagination** | `select(predicate).orderBy(...).resultList` | convenience methods (can't add ordering) |
+| Filtered + **joins** | `select { }` or `select().innerJoin(...)` | convenience methods (can't add joins) |
+| Filtered + **streaming** | `select(predicate).resultFlow` | convenience methods (return List, not Flow) |
+| Aggregates, CTEs, window functions | SQL Template (/storm-sql-kotlin) | QueryBuilder (can't express these) |
+
+The rule: **escalate only when the simpler level cannot express what you need.** If you need ordering, you need at least Level 2. If you need joins, you need Level 2 or 3. If you need CTEs or window functions, you need Level 4.
+
 **Level 1 — Convenience methods** (execute immediately, no terminal needed):
 ```kotlin
 val user = orm.find(User_.email eq email)
@@ -116,7 +136,13 @@ Explicit joins — two syntax forms depending on context:
 - **Chained API**: `.innerJoin(UserRole::class).on(Role::class)` — returns builder, chain `.whereAny()` etc.
 Select result type: `.select(ResultType::class)` to return a different type than the root entity
 
-**Always prefer entity/metamodel-based QueryBuilder methods over SQL template strings.** Only fall back to template lambdas when the QueryBuilder cannot express the query (e.g., database-specific functions). When you do use template lambdas, use `${}` interpolation (the compiler plugin handles parameter binding automatically) — never use `TemplateString.raw()` or `${t(...)}` manually.
+**Always prefer entity/metamodel-based QueryBuilder methods over SQL template strings.** SQL templates are an escape hatch for things the QueryBuilder cannot express. Three rules:
+
+1. **Code-first:** If it can be done with QueryBuilder methods (joins, where, orderBy, groupBy, having), do it in code. Never use a template string for a `WHERE` clause that could be a `.where(predicate)`, or an `ORDER BY` that could be `.orderBy(field)`.
+2. **Metamodel in templates:** When you do need a template fragment (e.g., for `COUNT(*)` in a select clause), still use metamodel references inside it (`${User_.email}`, not `"email"`). This keeps column references type-safe and refactor-proof.
+3. **Full SQL last resort:** A full `SELECT ... FROM ...` SQL template should only be used for totally custom queries (CTEs, UNIONs, window functions) that cannot be built at all with the QueryBuilder. Even then, users still benefit from bind variables (`$value`) and metamodel references (`${Entity_field}`).
+
+When you do use template lambdas, use `${}` interpolation (the compiler plugin handles parameter binding automatically) — never use `TemplateString.raw()` or `${t(...)}` manually.
 
 ## Aggregation
 

@@ -45,6 +45,23 @@ Prefer the simplest approach that works. Three query levels, from simplest to mo
 | 2 | Builder with predicate (`select(predicate)`, `delete(predicate)`) or chained (`select().where()`) | Most application queries needing ordering, pagination, or joins |
 | 3 | SQL Templates (/storm-sql-java) | CTEs, window functions, database-specific features |
 
+### When to use each — and when NOT to
+
+| Need | Use (simplest) | Don't use (unnecessarily complex) |
+|------|----------------|-----------------------------------|
+| All rows as list | `findAll()` | `select().getResultList()` |
+| Filter by single field | `findAllBy(field, value)` | `select().where(field, EQUALS, value).getResultList()` |
+| Single by unique key | `findBy(key, value)` | `select().where(key, EQUALS, value).getOptionalResult()` |
+| Count by field | `countBy(field, value)` | `selectCount().where(field, EQUALS, value).getSingleResult()` |
+| Exists check | `existsBy(field, value)` | `countBy(field, value) > 0` |
+| Delete by field | `removeAllBy(field, value)` | `delete().where(field, EQUALS, value).executeUpdate()` |
+| Filtered + **ordering/pagination** | `select().where(...).orderBy(...).getResultList()` | convenience methods (can't add ordering) |
+| Filtered + **joins** | `select().innerJoin(...).on(...).getResultList()` | convenience methods (can't add joins) |
+| Filtered + **streaming** | `select().where(...).getResultStream()` | convenience methods (return List, not Stream) |
+| Aggregates, CTEs, window functions | SQL Template (/storm-sql-java) | QueryBuilder (can't express these) |
+
+The rule: **escalate only when the simpler level cannot express what you need.** If you need ordering, you need Level 2. If you need CTEs or window functions, you need Level 3.
+
 **Level 1 — Convenience methods** (execute immediately, no terminal needed):
 ```java
 var users = orm.entity(User.class);
@@ -190,7 +207,13 @@ orm.entity(User.class).delete().unsafe().executeUpdate();
 users.removeAll();
 ```
 
-**Always prefer entity/metamodel-based QueryBuilder methods over SQL template strings.** Only fall back to template strings when QueryBuilder cannot express the query (e.g., database-specific functions). When you do use template strings, use `RAW."""..."""` (Java string templates with `--enable-preview`) — never use `TemplateString.raw()`.
+**Always prefer entity/metamodel-based QueryBuilder methods over SQL template strings.** SQL templates are an escape hatch for things the QueryBuilder cannot express. Three rules:
+
+1. **Code-first:** If it can be done with QueryBuilder methods (joins, where, orderBy, groupBy, having), do it in code. Never use a template string for a `WHERE` clause that could be a `.where(field, EQUALS, value)`, or an `ORDER BY` that could be `.orderBy(field)`.
+2. **Metamodel in templates:** When you do need a template fragment (e.g., for `COUNT(*)` in a select clause), still use metamodel references inside it (`\{User_.email}`, not `"email"`). This keeps column references type-safe and refactor-proof.
+3. **Full SQL last resort:** A full `SELECT ... FROM ...` SQL template should only be used for totally custom queries (CTEs, UNIONs, window functions) that cannot be built at all with the QueryBuilder. Even then, users still benefit from bind variables (`\{value}`) and metamodel references (`\{Entity_.field}`).
+
+When you do use template strings, use `RAW."""..."""` (Java string templates with `--enable-preview`) — never use `TemplateString.raw()`.
 
 Operators: `EQUALS`, `NOT_EQUALS`, `LESS_THAN`, `LESS_THAN_OR_EQUAL`, `GREATER_THAN`, `GREATER_THAN_OR_EQUAL`, `LIKE`, `NOT_LIKE`, `IS_NULL`, `IS_NOT_NULL`, `IS_TRUE`, `IS_FALSE`, `IN`, `NOT_IN`, `BETWEEN`
 

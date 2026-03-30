@@ -1,22 +1,40 @@
 Help the user write Storm SQL Templates using Kotlin.
 Ask what query they need and why QueryBuilder does not suffice.
 
-**SQL Templates should only be used when there is no code-based alternative.** Regular joins, filtering, ordering, and pagination are all expressible through the QueryBuilder API (/storm-query-kotlin). The most common use case for SQL Templates is when a **custom return type** is needed — typically for aggregates where the result shape differs from any entity or projection.
-
-Even inside SQL Templates, **use metamodel references wherever possible** (e.g., `${User_.email}` instead of hardcoding column names). This keeps queries type-safe and refactor-proof.
+**SQL Templates are an escape hatch — use them only when there is no code-based alternative.** Regular joins, filtering, ordering, and pagination are all expressible through the QueryBuilder API (/storm-query-kotlin). Using SQL templates for things the QueryBuilder can express defeats the purpose of the ORM.
 
 ## When to use SQL Templates
 
-- Aggregate queries with custom result types (e.g., `GROUP BY` with `COUNT`, `SUM`, `AVG`)
-- Window functions (`ROW_NUMBER`, `RANK`, `LAG`, `LEAD`)
+SQL Templates exist for two scenarios:
+
+**1. Template fragments** — a single clause (SELECT, HAVING) needs SQL that QueryBuilder cannot express, but the rest of the query is code-based. This is the most common case:
+```kotlin
+// Only the SELECT clause uses a template — joins, grouping, and ordering are code-based
+orm.entity(City::class)
+    .select(CityUserCount::class) { "${City::class}, COUNT(*)" }
+    .leftJoin(User::class).on(City::class)
+    .groupBy(City_.id)
+    .resultList
+```
+
+**2. Full SQL templates** — the entire query is custom SQL. This is truly a last resort for queries that cannot be composed with the QueryBuilder at all:
 - CTEs (`WITH` clauses)
 - `UNION` / `INTERSECT` / `EXCEPT`
-- Database-specific syntax not covered by QueryBuilder
+- Window functions (`ROW_NUMBER`, `RANK`, `LAG`, `LEAD`)
+- Database-specific syntax
+
+Even in full SQL templates, users still benefit from bind variables (`$value`) and metamodel references (`${Entity_.field}`).
 
 **Do NOT use SQL Templates for:**
 - Regular joins — use `innerJoin()`, `leftJoin()`, etc. on QueryBuilder
-- Filtering — use `where()` with metamodel predicates
-- Ordering, pagination, scrolling — use `orderBy()`, `page()`, `scroll()`
+- Filtering — use `where()` with metamodel predicates or convenience methods (`findAll`, `find`)
+- Ordering — use `orderBy()`, `orderByDescending()`
+- Pagination, scrolling — use `page()`, `scroll()`
+- Simple CRUD — use `find`, `findAll`, `remove`, `removeAll`, `insert`, `update`
+
+**Inside SQL templates, always use metamodel references** (`${User_.email}`, `${City_.id}`) instead of hardcoding column names. This keeps queries type-safe and refactor-proof. Only use `${unsafe("raw sql")}` when there is truly no metamodel equivalent.
+
+**FK path references:** Use `${User_.city.country}` (resolves to the FK column, e.g., `country_id`) rather than `${User_.city.country.id}` (resolves to the PK column on the joined table). The shorter form is preferred — it references the FK directly without requiring a join.
 
 Requires the Storm compiler plugin. With the compiler plugin, use standard Kotlin `${}` interpolation inside a lambda — the plugin automatically wraps all interpolations for safe parameter binding:
 

@@ -3419,11 +3419,34 @@ Storm offers three ways to query data, each suited to different complexity level
 
 | Approach | Best for | Type safety | Flexibility |
 |----------|----------|-------------|-------------|
-| **Repository `findBy`** | Simple key lookups by primary key or unique key | Full compile-time | Low (single-field equality only) |
+| **Convenience methods** (`find`, `findAll`, `findBy`, `removeAll`, `count`, `exists`) | Simple lookups and operations | Full compile-time | Low (single-field or predicate equality) |
 | **Query DSL** | Filtering, ordering, pagination with type-safe conditions | Full compile-time | Medium (AND/OR predicates, joins, ordering) |
-| **SQL Templates** | Complex joins, subqueries, CTEs, window functions, database-specific SQL | Column references checked at compile time, SQL structure at runtime | High (full SQL control) |
+| **SQL Templates** | CTEs, window functions, UNIONs, database-specific SQL | Column references checked at compile time, SQL structure at runtime | High (full SQL control) |
 
-Start with the simplest approach that meets your needs. Use `findBy` or `findAll` for straightforward lookups. Move to the query builder when you need compound filters or pagination. Use SQL templates when you need SQL features the DSL does not cover.
+Start with the simplest approach that meets your needs. Escalate only when the simpler level cannot express what you need.
+
+### When to use each — and when NOT to
+
+| Need | Use (simplest) | Don't use (unnecessarily complex) |
+|------|----------------|-----------------------------------|
+| All rows as list | `findAll()` | `select().resultList` / `select().getResultList()` |
+| Filter by single field | `findAllBy(field, value)` | `select().where(field, op, value).resultList` |
+| Filter by predicate (Kotlin) | `findAll(predicate)` | `select(predicate).resultList` |
+| Single result by predicate (Kotlin) | `find(predicate)` | `select(predicate).optionalResult` |
+| Count by predicate (Kotlin) | `count(predicate)` | `selectCount().where(predicate).singleResult` |
+| Delete by predicate (Kotlin) | `removeAll(predicate)` | `delete(predicate).executeUpdate()` |
+| Delete by field | `removeAllBy(field, value)` | `delete().where(field, op, value).executeUpdate()` |
+| Filtered + **ordering/pagination** | `select(predicate).orderBy(...)` | convenience methods (can't add ordering) |
+| Filtered + **joins** | `select().innerJoin(...)` or block DSL | convenience methods (can't add joins) |
+| Filtered + **streaming** | `select(predicate).resultFlow` / `.getResultStream()` | convenience methods (return List) |
+| Aggregates, CTEs, window functions | SQL Template | QueryBuilder (can't express these) |
+
+### SQL Template Escalation
+
+SQL Templates are an escape hatch for things the QueryBuilder cannot express. Three rules:
+1. **Code-first:** If it can be done with QueryBuilder methods (joins, where, orderBy, groupBy, having), do it in code. Never use a template for a WHERE clause or ORDER BY that the QueryBuilder can express.
+2. **Metamodel in templates:** When you do need a template fragment (e.g., `COUNT(*)` in a SELECT clause), still use metamodel references inside it (`${User_.email}`, not `"email"`). This keeps column references type-safe and refactor-proof.
+3. **Full SQL last resort:** A full `SELECT ... FROM ...` SQL template should only be used for totally custom queries (CTEs, UNIONs, window functions) that cannot be built at all with the QueryBuilder. Even then, users benefit from bind variables and metamodel references.
 
 ---
 
