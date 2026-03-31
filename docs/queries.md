@@ -463,7 +463,7 @@ When working with large result sets, Storm supports three strategies for retriev
 
 **Pagination** navigates by page number and includes a total count. It uses SQL `OFFSET` under the hood, which degrades on large tables. **Scrolling** uses keyset pagination for constant-time performance regardless of depth, but only supports sequential forward/backward navigation.
 
-For detailed usage, sorting, composite scrolling, `MappedWindow` vs `Window`, GROUP BY with scrolling, and REST cursor support, see [Pagination and Scrolling](pagination-and-scrolling.md).
+For detailed usage, sorting, composite scrolling, `Window` type parameters, GROUP BY with scrolling, and REST cursor support, see [Pagination and Scrolling](pagination-and-scrolling.md).
 
 ### Quick examples
 

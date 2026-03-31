@@ -55,6 +55,7 @@ Key rules:
 7. Pagination: `page(0, 20)` for offset-based. `scroll(scrollable)` for keyset on large tables.
 8. **Prefer entity/metamodel-based methods over templates.** Use `.innerJoin(Entity.class).on(OtherEntity.class)` for joins unless it cannot be expressed with entity classes. Only fall back to template lambdas when QueryBuilder cannot express the query.
 9. **Use `Ref` for map keys and set membership**: Prefer `Ref<Entity>` (via `.ref()`) for map keys, set membership, and identity-based lookups. `Ref` provides identity-based `equals`/`hashCode` on the primary key.
+10. **Prefer typed parameters over raw IDs.** Repository method signatures should accept entity or `Ref<Entity>` parameters for FK fields — not raw IDs like `String` or `int`. Raw IDs are untyped and lose the entity association. Convert IDs to `Ref` at the system boundary (controller/route handler) using `Ref.of(Entity.class, id)`.
 
 ## API Design: Prefer the Simplest Approach
 
@@ -151,9 +152,12 @@ User user = users.getByRef(User_.city, cityRef);
 ## Ref-Based Operations
 
 ```java
+// Create a Ref from a type and ID (no entity or repository needed)
+Ref<City> ref = Ref.of(City.class, cityId);
+
 // Create a Ref from an entity (attached — can fetch from DB)
 Ref<User> ref = users.ref(user);
-Ref<User> ref = users.ref(userId);     // from ID only
+Ref<User> ref = users.ref(userId);     // from ID only, via repository
 
 // Unload an entity to a lightweight Ref (discards entity data, keeps PK)
 Ref<User> ref = users.unload(user);
@@ -247,11 +251,42 @@ Page<User> page = users.page(0, 20);
 Page<User> page = users.page(Pageable.ofSize(20).sortBy(User_.name));
 Page<User> next = users.page(page.nextPageable());
 
+// Page API:
+// page.content()       — List<User> of results for this page
+// page.totalPages()    — total number of pages
+// page.totalElements() — total number of elements across all pages
+// page.number()        — current page number (0-based)
+// page.size()          — page size
+// page.hasNext()       — whether a next page exists
+// page.hasPrevious()   — whether a previous page exists
+// page.nextPageable()  — Pageable for the next page
+
 // Ref-based pagination
 Page<Ref<User>> refPage = users.pageRef(0, 20);
 
 // Keyset scrolling (better for large tables — no COUNT, cursor-based)
+// ⚠️ Scrollable manages ORDER BY internally — do NOT add orderBy() when using scroll(Scrollable)
+// ⚠️ Requires a simple (non-composite) PK — junction tables with composite PKs cannot be scrolled.
+//    To scroll filtered results from a junction table, query the entity with a simple PK
+//    and JOIN through the junction table (e.g., scroll User with a JOIN through UserRole).
+Window<User> window = users.scroll(Scrollable.of(User_.id, 20));
+
+// With custom sort order (sort column in addition to key)
+Window<User> window = users.scroll(Scrollable.of(User_.id, User_.name, 20));
+
+// First request vs subsequent: use Scrollable.of() when no cursor exists,
+// Scrollable.fromCursor() when resuming (cursor encodes size, direction, position)
+var scrollable = cursor != null
+    ? Scrollable.fromCursor(User_.id, cursor)
+    : Scrollable.of(User_.id, 20);
 Window<User> window = users.scroll(scrollable);
+
+// Window<R, T> is the scroll result record. Both scroll() methods return Window.
+// Window API:
+// window.content() — List<User>
+// window.hasNext() / window.hasPrevious()
+// window.nextCursor() / window.previousCursor() — serialized cursors for REST APIs
+// window.nextScrollable() / window.previousScrollable() — for programmatic navigation
 ```
 
 ## Framework-Specific Repository Registration
@@ -318,5 +353,7 @@ class UserRepositoryTest {
 ```
 
 Run the test. Show the user the captured SQL and explain how it aligns with the intended behavior. If a query produces unexpected SQL or the right approach is unclear, ask the user for feedback before changing the query.
+
+**Test isolation:** `SqlCapture` accumulates SQL across the entire test method. When writing multiple verification tests in one class, use `capture.clear()` between logical operations, or put each verification in its own `@Test` method. To avoid order-dependent failures, make assertions idempotent (don't assume specific row counts from prior inserts in other test methods) or use `@TestMethodOrder(MethodOrderer.OrderAnnotation.class)` with `@Order` if test ordering matters.
 
 The test can be temporary — verify and remove, or keep as a regression test. Ask the user which they prefer.

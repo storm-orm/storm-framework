@@ -9,8 +9,8 @@ import st.orm.Operator.*                         // EQUALS, NOT_EQUALS, LIKE, IN
 import st.orm.Ref                                // Lazy-loaded reference
 import st.orm.Page                               // Offset-based pagination result
 import st.orm.Pageable                           // Pagination request
-import st.orm.Scrollable                         // Keyset scrolling cursor
-import st.orm.MappedWindow                       // Keyset scrolling result
+import st.orm.Scrollable                         // Keyset scrolling cursor (single type param: Scrollable<T>)
+import st.orm.Window                             // Keyset scrolling result (Window<R, T>)
 import org.junit.jupiter.api.Assertions.*        // assertEquals, assertTrue, assertFalse
 ```
 
@@ -53,6 +53,10 @@ The `eq` operator accepts both entities and `Ref<T>`. When you have an entity, u
 User_.city eq city          // ✅ entity directly — compares by FK
 User_.city eq city.ref()    // also works, but unnecessary when you have the entity
 Order_.user eq user         // ✅ same for any FK field — don't use Order_.id.userId eq user.id
+
+// When you only have an ID (e.g., from a URL parameter), create a Ref:
+User_.city eq refById<City>(cityId)   // ✅ import st.orm.template.refById
+// ❌ Don't construct a dummy entity: City(id = cityId, name = "", ...)
 ```
 
 ## API Design: Builder Methods vs Convenience Methods
@@ -129,8 +133,8 @@ val users = orm.entity<User>()
 Compound filters: `(A eq x) and (B eq y)`, `(A eq x) or (B eq y)`
 Nested paths: `User_.city.country.code eq "US"`
 Ordering: `.orderBy(User_.name)`, `.orderByDescending(User_.createdAt)`
-Pagination: `.page(0, 20)` or `.page(Pageable.ofSize(20).sortBy(User_.name))`
-Scrolling (keyset, better for large tables): `.scroll(User_.id, 20)` or `Scrollable.fromCursor(User_.id, cursorString)` to resume from a serialized cursor
+Pagination: `.page(0, 20)` or `.page(Pageable.ofSize(20).sortBy(User_.name))`. Page API methods: `page.content()`, `page.totalPages()`, `page.totalElements()`, `page.number()`, `page.size()`, `page.hasNext()`, `page.hasPrevious()` — all are methods, not properties.
+Scrolling (keyset, better for large tables): `.scroll(Scrollable.of(User_.id, 20))` — do NOT combine with `orderBy()` (Scrollable manages ORDER BY internally, see Keyset Scrolling section)
 Explicit joins — two syntax forms depending on context:
 - **Block DSL** (inside `select { }`): `innerJoin(UserRole::class, Role::class)` — two-arg, no `.on()`
 - **Chained API**: `.innerJoin(UserRole::class).on(Role::class)` — returns builder, chain `.whereAny()` etc.
@@ -155,6 +159,32 @@ val totals = orm.entity(Order::class)
     .having(Order_.amount, Operator.GREATER_THAN, 100)
     .resultList
 ```
+
+**Computed aggregates (COUNT, AVG, SUM, etc.):** When the SELECT clause needs expressions that QueryBuilder can't produce, use `select(ResultType::class) { template }` for the SELECT only — keep joins, groupBy, having, orderBy, and limit in code:
+
+```kotlin
+data class CityUserCount(val city: City, val userCount: Long) : Data
+
+val cityCounts = orm.entity<City>()
+    .select(CityUserCount::class) { "${City::class}, COUNT(*)" }
+    .leftJoin(User::class).on(City::class)
+    .groupBy(City_.id)
+    .resultList
+
+// More complex example with WHERE, HAVING, and ORDER BY — all in code:
+data class GenreStat(val genreName: String, val averageRating: Double, val movieCount: Long) : Data
+
+val topGenres = orm.entity<Genre>()
+    .select(GenreStat::class) { "${Genre_.name}, AVG(${Rating_.averageRating}), COUNT(*)" }
+    .innerJoin(MovieGenre::class).on(Genre::class)
+    .innerJoin(Rating::class).on(MovieGenre::class)
+    .groupBy(Genre_.name)
+    .having(Genre_.name, Operator.GREATER_THAN, 10)  // HAVING COUNT(*) >= 10
+    .orderByDescendingAny(Rating_.averageRating)
+    .resultList
+```
+
+Only the `COUNT(*)` / `AVG()` expressions — which QueryBuilder cannot produce — use a template. Everything else stays in code. Do NOT write the entire query as a raw SQL string.
 
 ## Row Locking
 
@@ -258,6 +288,64 @@ select {
 
 These are also available on the chained QueryBuilder API: `.whereAny(...)`, `.orderByAny(...)`, `.orderByDescendingAny(...)`.
 
+## Keyset Scrolling
+
+Keyset scrolling uses cursor-based navigation instead of offset, making it efficient for large tables. `Scrollable<T>` takes a **single type parameter** — the entity type (e.g., `Scrollable<User>`). Do not pass a second type parameter. **Scrollable manages ORDER BY internally** — do NOT add `orderBy()` when using `scroll(Scrollable)`, or Storm throws `PersistenceException`.
+
+**Composite PK limitation:** Keyset scrolling requires a simple (non-composite) primary key as the scroll key. Entities with composite PKs (e.g., junction tables) cannot be scrolled directly — Storm throws `SqlTemplateException: Column not found for metamodel`. To scroll filtered results from a junction table, query the related entity with a simple PK and JOIN through the junction table for filtering:
+```kotlin
+// ❌ Cannot scroll a junction table with composite PK
+userRoles.scroll(Scrollable.of(UserRole_.id, 20))  // fails — UserRole has composite PK
+
+// ✅ Scroll User (simple PK) with a JOIN through UserRole for filtering
+users.select {
+    innerJoin(UserRole::class, User::class)
+    whereAny(UserRole_.role eq role)
+}.scroll(Scrollable.of(User_.id, 20))
+```
+
+```kotlin
+// WRONG: orderBy conflicts with Scrollable
+select {
+    where(User_.active eq true)
+    orderBy(User_.name)        // ❌ Scrollable manages ordering
+}.scroll(Scrollable.of(User_.id, 20))
+
+// CORRECT: ordering is controlled by the Scrollable's key (and optional sort field)
+select {
+    where(User_.active eq true)
+}.scroll(Scrollable.of(User_.id, 20))
+```
+
+**First request vs subsequent requests:** On the first request there is no cursor, so use `Scrollable.of()`. On subsequent requests, use `Scrollable.fromCursor()` — the cursor string encodes the size, direction, and position:
+
+```kotlin
+val scrollable = if (cursor != null) {
+    Scrollable.fromCursor(User_.id, cursor)           // size encoded in cursor
+} else {
+    Scrollable.of(User_.id, 20)                       // first page, size 20
+}
+val window: Window<User> = users.scroll(scrollable)
+val nextCursor: String? = window.nextCursor()          // null if no more results
+```
+
+**Custom sort column** (non-unique sort field with key as tiebreaker):
+```kotlin
+val scrollable = Scrollable.of(User_.id, User_.name, 20)
+val window = users.scroll(scrollable)
+```
+
+**Backward scrolling and navigation:**
+```kotlin
+val window = users.scroll(Scrollable.of(User_.id, 20))
+if (window.hasNext) {
+    val next = users.scroll(window.nextScrollable!!)
+}
+if (window.hasPrevious) {
+    val previous = users.scroll(window.previousScrollable!!)
+}
+```
+
 ## Bulk DELETE/UPDATE
 
 `delete()` is a builder method that returns `QueryBuilder`. Call `.executeUpdate()` to execute:
@@ -290,8 +378,7 @@ orm.select<User> {
 // On EntityRepository — same syntax
 select {
     where(User_.city eq city)
-    orderByDescending(User_.createdAt)
-}.scroll(20)
+}.scroll(Scrollable.of(User_.id, 20))  // do NOT add orderBy — Scrollable manages ORDER BY
 
 // delete { } also returns QueryBuilder — call .executeUpdate() to run it
 delete {
@@ -308,11 +395,61 @@ users.select(User_.active eq true).resultList
 users.delete(User_.active eq false).executeUpdate()
 ```
 
+**Conditional logic inside the block:** The block is a regular Kotlin lambda — use `if`, `when`, and loops to compose queries dynamically. This avoids duplicating shared parts (ordering, pagination, terminals) across branches:
+```kotlin
+// ✅ Single select { } with conditional logic inside
+select {
+    if (city != null) {
+        where(User_.city eq city)
+    }
+    orderBy(User_.name)
+}.page(page, size)
+
+// ❌ Don't branch outside and duplicate the shared parts
+if (city != null) {
+    select { where(User_.city eq city) }.orderBy(User_.name).page(page, size)
+} else {
+    select().orderBy(User_.name).page(page, size)
+}
+```
+
+This also works with joins — conditionally add a join only when needed:
+```kotlin
+select {
+    if (city != null) {
+        innerJoin(UserAddress::class, User::class)
+        whereAny(UserAddress_.city eq city)
+    }
+    orderByDescending(User_.createdAt)
+}.page(page, size)
+```
+
 Available in the block: `where`, `whereAny`, `orderBy`, `orderByAny`, `orderByDescending`, `orderByDescendingAny`, `groupBy`, `having`, `limit`, `offset`, `distinct`, `forUpdate`, `forShare`, `innerJoin`, `leftJoin`, `rightJoin`, `crossJoin`, `append`.
 
-The block DSL is typed to the root entity. To select a different result type, use the chained API: `repository.select(ResultType::class).where(...).resultList`.
+The block DSL is typed to the root entity. There is **no** `select(ResultType::class) { block }` form — `select { }` always returns the root entity type. To select a different result type, use the chained API:
+```kotlin
+// ❌ Not valid — no block DSL overload for result type
+select(UserSummary::class) {
+    where(User_.active eq true)
+}.resultList
 
-**Important:** `select(ResultType::class)` changes the **output columns**, not the table being queried. The query always runs against the repository's root entity table. The result type must map to columns available in the query (from the root table or joined tables). It does NOT support selecting a column subset of the root entity — use a `ProjectionRepository` for that.
+// ✅ Use chained API for a different result type
+select(UserSummary::class)
+    .where(User_.active eq true)
+    .resultList
+
+// ✅ With joins — chained API uses .innerJoin(A::class).on(B::class), not two-arg form
+select(UserSummary::class)
+    .innerJoin(UserRole::class).on(User::class)
+    .whereAny(UserRole_.role eq role)
+    .scroll(Scrollable.of(User_.id, 20))
+```
+
+**What `select(ResultType::class)` is for:** It selects a different result type from the query. This works for:
+- **Joined entity types** — e.g., selecting `City::class` from a `User` query that joins `City`.
+- **Custom SELECT with template** — e.g., `select(Summary::class, template)` with a custom SQL select clause that maps to the result type's fields.
+
+It does **not** work for selecting a column subset of the root entity — e.g., a `UserSummary` with only `id` and `name` from `User` will fail with "Cannot find alias for column." For column subsets, use a `Projection<T>` with `ProjectionRepository`.
 
 ## Result Retrieval
 
@@ -324,7 +461,7 @@ QueryBuilder terminals:
 - `.resultFlow` → `Flow<R>` (lazy, coroutines-based)
 - `.resultStream` → `Stream<R>` (lazy, must close after use)
 - `.page(pageNumber, pageSize)` → `Page<R>` (offset-based pagination)
-- `.scroll(size)` → `MappedWindow<R, T>` (keyset scrolling, better for large tables)
+- `.scroll(scrollable)` → `Window<R, T>` (keyset scrolling — do NOT combine with `orderBy()`, see Keyset Scrolling section). Use `nextScrollable()` / `previousScrollable()` for programmatic navigation, or `nextCursor()` / `previousCursor()` for REST APIs.
 - `.executeUpdate()` → `Int` (for DELETE/UPDATE)
 
 Critical rules:

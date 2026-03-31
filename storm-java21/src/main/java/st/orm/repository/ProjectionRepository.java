@@ -353,8 +353,8 @@ public interface ProjectionRepository<P extends Projection<ID>, ID> extends Repo
      * @return a window containing the results and navigation tokens.
      * @since 1.11
      */
-    default Window<P> scroll(@Nonnull Scrollable<P> scrollable) {
-        return Window.of(select().scroll(scrollable));
+    default Window<P, P> scroll(@Nonnull Scrollable<P> scrollable) {
+        return select().scroll(scrollable);
     }
 
     // List based methods.

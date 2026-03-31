@@ -1862,6 +1862,7 @@ async function demo() {
       { name: 'Cursor',          value: 'cursor' },
       { name: 'GitHub Copilot',  value: 'copilot' },
       { name: 'Windsurf',        value: 'windsurf' },
+      { name: 'Codex',           value: 'codex' },
     ],
   });
 
@@ -2040,6 +2041,10 @@ async function demo() {
     console.log(`  Start ${boltYellow('Claude Code')} in this directory and type:`);
     console.log();
     console.log(`    ${bold('/storm-demo')}`);
+  } else if (tool === 'codex') {
+    console.log(`  Start ${boltYellow('Codex')} in this directory and ask:`);
+    console.log();
+    console.log(`    ${bold('Run the Storm demo')}`);
   } else {
     console.log(`  Open this directory in ${boltYellow(config.name)} and ask:`);
     console.log();

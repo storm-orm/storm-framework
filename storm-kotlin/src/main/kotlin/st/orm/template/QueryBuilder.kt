@@ -939,7 +939,7 @@ interface QueryBuilder<T : Data, R, ID> {
      * @throws IllegalArgumentException if [size] is not positive.
      * @since 1.11
      */
-    fun scroll(size: Int): MappedWindow<R, T>
+    fun scroll(size: Int): Window<R, T>
 
     /**
      * Executes a scroll request from a [Scrollable] token, typically obtained from
@@ -949,7 +949,7 @@ interface QueryBuilder<T : Data, R, ID> {
      * @return a window containing the results for the requested scroll position.
      * @since 1.11
      */
-    fun scroll(scrollable: Scrollable<T>): MappedWindow<R, T>
+    fun scroll(scrollable: Scrollable<T>): Window<R, T>
 
     //
     // Execution methods.

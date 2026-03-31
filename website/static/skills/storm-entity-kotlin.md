@@ -47,6 +47,7 @@ Generation rules:
    - Wrap key columns in a separate data class. Use raw column types (e.g., `Int`, `String`), **never** `@FK` or entity/Ref types inside the PK class.
    - Annotate the PK field with `@PK(generation = NONE)`. The PK class is implicitly `@Inline`.
    - Place `@FK` fields on the **entity itself** to load related entities via JOINs. **Only** add `@Persist(insertable = false, updatable = false)` to FK fields whose column is already in the PK data class — these duplicate a PK column, so they must not be inserted/updated twice. FK fields for columns NOT in the PK must remain insertable (no `@Persist`).
+   - **Constructing instances for insert:** Non-insertable FK fields are ignored during INSERT, but Kotlin still requires a value in the constructor. Use `Ref` instead of full entity types for these fields — `refById<User>(id)` is lightweight and avoids constructing dummy entities with fake field values:
    ```kotlin
    // Simple case: all FK columns are in the PK
    data class UserRolePk(
@@ -56,9 +57,17 @@ Generation rules:
 
    data class UserRole(
        @PK(generation = NONE) val id: UserRolePk,
-       @FK @Persist(insertable = false, updatable = false) val user: User,   // userId is in PK
-       @FK @Persist(insertable = false, updatable = false) val role: Role    // roleId is in PK
+       @FK @Persist(insertable = false, updatable = false) val user: Ref<User>,  // userId is in PK
+       @FK @Persist(insertable = false, updatable = false) val role: Ref<Role>   // roleId is in PK
    ) : Entity<UserRolePk>
+
+   // Inserting: non-insertable FK fields are ignored, but Kotlin needs a value.
+   // Use refById — lightweight, no dummy entity construction needed:
+   orm insert UserRole(
+       id = UserRolePk(userId = 1, roleId = 2),
+       user = refById<User>(1),   // ignored on INSERT, but satisfies constructor
+       role = refById<Role>(2)    // ignored on INSERT, but satisfies constructor
+   )
 
    // Mixed case: some FK columns are in the PK, some are not
    data class OrderItemPk(
@@ -68,8 +77,8 @@ Generation rules:
 
    data class OrderItem(
        @PK(generation = NONE) val id: OrderItemPk,
-       @FK @Persist(insertable = false, updatable = false) val order: Order, // orderId is in PK → non-insertable
-       @FK val product: Product                                              // productId is NOT in PK → must be insertable
+       @FK @Persist(insertable = false, updatable = false) val order: Ref<Order>, // orderId is in PK → non-insertable
+       @FK val product: Product                                                    // productId is NOT in PK → must be insertable
    ) : Entity<OrderItemPk>
    ```
 

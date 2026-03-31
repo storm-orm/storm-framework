@@ -36,6 +36,7 @@ Tips:
 - Enums as strings: VARCHAR. Ordinal: INTEGER.
 - @Version: INTEGER or TIMESTAMP
 - `@Json` fields: use the correct JSON column type for the target database (see table above)
+- **H2 NUMERIC/DECIMAL precision:** Always specify precision and scale for NUMERIC/DECIMAL columns (e.g., `NUMERIC(4, 1)`, not `NUMERIC`). H2 defaults to scale 0, which silently truncates decimals — values like 8.7 become 9. This affects `@StormTest` with H2 and is difficult to diagnose.
 
 After writing a migration, rebuild the project for metamodel regeneration.
 

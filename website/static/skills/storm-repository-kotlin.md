@@ -13,8 +13,8 @@ import st.orm.Operator.*                         // EQUALS, NOT_EQUALS, IN, etc.
 import st.orm.Ref                                // Lazy-loaded reference
 import st.orm.Page                               // Offset-based pagination result
 import st.orm.Pageable                           // Pagination request
-import st.orm.Scrollable                         // Keyset scrolling cursor
-import st.orm.MappedWindow                       // Keyset scrolling result
+import st.orm.Scrollable                         // Keyset scrolling cursor (single type param: Scrollable<T>)
+import st.orm.Window                             // Keyset scrolling result (Window<R, T>)
 import st.orm.test.StormTest                     // Test annotation
 import st.orm.test.SqlCapture                    // SQL capture for verification
 import st.orm.test.CapturedSql.Operation         // SELECT, INSERT, UPDATE, DELETE
@@ -36,7 +36,15 @@ val users = orm.entity(User::class)          // also works, no import needed
 val userRepository = orm.repository<UserRepository>()  // import st.orm.repository.repository
 ```
 
+**Star projection caveat:** `orm.entity<User>()` returns `EntityRepository<User, *>` — the ID type is erased. Methods that depend on the ID type parameter (`existsById`, `findById`, `removeById`, etc.) will fail with star projection errors. For ID-based operations, use a typed custom repository (`EntityRepository<User, Int>`) or call the method via `orm.entity(User::class)` with an explicit cast.
+
 ```kotlin
+// ⚠️ Repository interfaces MUST import predicate operators — they are Kotlin extension functions:
+// import st.orm.template.eq   (and neq, like, greater, less, etc.)
+// import st.orm.template.and
+// import st.orm.template.or
+// Without these imports, `eq`, `and`, `or` etc. will not resolve in the interface file.
+
 interface UserRepository : EntityRepository<User, Int> {
     fun findByEmail(email: String): User? = find(User_.email eq email)
     fun findByCity(city: City): List<User> = findAll(User_.city eq city)
@@ -58,9 +66,10 @@ Key rules:
 4. QueryBuilder is IMMUTABLE. Always chain or capture the return value (or use the `select { }` DSL which handles this automatically).
 5. Streaming: `select().resultFlow` returns a `Flow` with automatic resource cleanup.
 6. DELETE/UPDATE without WHERE throws. Use `unsafe()` for intentional bulk ops.
-7. Pagination: `page(0, 20)` for offset-based. `scroll(User_.id, 20)` for keyset on large tables.
+7. Pagination: `page(0, 20)` for offset-based. `scroll(Scrollable.of(User_.id, 20))` for keyset on large tables (see Keyset Scrolling section).
 8. **Prefer entity/metamodel-based methods over templates.** For joins, use `innerJoin(Entity::class, OnEntity::class)` in the block DSL, or `.innerJoin(Entity::class).on(OnEntity::class)` in the chained API. Only fall back to template lambdas when QueryBuilder cannot express the query.
 9. **Use `Ref` for map keys and set membership**: Prefer `Ref<Entity>` (via `.ref()`) for map keys, set membership, and identity-based lookups. `Ref` provides identity-based `equals`/`hashCode` on the primary key. When a projection already returns `Ref<T>`, use it directly without calling `.ref()` again.
+10. **Prefer typed parameters over raw IDs.** Repository method signatures should accept entity or `Ref<Entity>` parameters for FK fields — not raw IDs like `String` or `Int`. Raw IDs are untyped and lose the entity association. Convert IDs to `Ref` at the system boundary (controller/route handler) using `refById<T>(id)` (import `st.orm.template.refById`).
 
 ## API Design: Prefer the Simplest Approach
 
@@ -233,6 +242,14 @@ val activeUsers: List<User> = users.findAll(User_.active eq true)
 // Compare by entity — use the FK field directly, don't extract the ID
 val orders: List<Order> = orders.findAll(Order_.user eq user)
 
+// Repository methods should accept entity or Ref<T>, not raw IDs:
+// ✅ fun findByCity(city: City): List<User> = findAll(User_.city eq city)
+// ✅ fun findByCity(city: Ref<City>): List<User> = findAll(User_.city eq city)
+// ❌ fun findByCity(cityId: Int): List<User> = ...  // untyped, loses entity association
+
+// At the call site (controller/route handler), convert IDs to Ref:
+// val users = userRepository.findByCity(refById<City>(cityId))
+
 // Ref variants (return Ref<User> instead of User — lightweight, only loads PK)
 val ref: Ref<User>? = users.findRef(User_.email eq "alice@example.com")
 val refs: List<Ref<User>> = users.findAllRef(User_.active eq true)
@@ -340,19 +357,42 @@ val page: Page<User> = users.page(0, 20)
 val page: Page<User> = users.page(Pageable.ofSize(20).sortBy(User_.name))
 val nextPage = users.page(page.nextPageable)
 
+// Page API — note: these are methods (not properties), call with ()
+// page.content()       — List<User> of results for this page
+// page.totalPages()    — total number of pages
+// page.totalElements() — total number of elements across all pages
+// page.number()        — current page number (0-based)
+// page.size()          — page size
+// page.hasNext()       — whether a next page exists
+// page.hasPrevious()   — whether a previous page exists
+// page.nextPageable    — Pageable for the next page (property, not method)
+
 // Keyset scrolling (better for large tables — no COUNT, cursor-based)
+// Scrollable<T> takes a single type parameter (the entity type)
+// ⚠️ Scrollable manages ORDER BY internally — do NOT add orderBy() when using scroll(Scrollable)
+// ⚠️ Requires a simple (non-composite) PK — junction tables with composite PKs cannot be scrolled.
+//    To scroll filtered results from a junction table, query the entity with a simple PK
+//    and JOIN through the junction table (e.g., scroll User with a JOIN through UserRole).
 val window = users.scroll(Scrollable.of(User_.id, 20))
 
 // With custom sort order (sort column in addition to key)
 val window = users.scroll(Scrollable.of(User_.id, User_.name, 20))
 
-// Resume from a serialized cursor (e.g., from a REST API request)
-val window = users.scroll(Scrollable.fromCursor(User_.id, cursorString))
+// First request vs subsequent: use Scrollable.of() when no cursor exists,
+// Scrollable.fromCursor() when resuming (cursor encodes size, direction, position)
+val scrollable = if (cursor != null) {
+    Scrollable.fromCursor(User_.id, cursor)
+} else {
+    Scrollable.of(User_.id, 20)
+}
+val window = users.scroll(scrollable)
 
-// MappedWindow API
+// Window<R, T> is the scroll result record. Both scroll() methods return Window.
+// Window API:
 // window.content — List<User> of results
 // window.hasNext / window.hasPrevious — bounds checking
 // window.nextCursor() / window.previousCursor() — serialized cursors for REST APIs
+// window.nextScrollable / window.previousScrollable — for programmatic navigation
 ```
 
 ## Framework-Specific Repository Registration
@@ -442,7 +482,47 @@ interface UserRepository : EntityRepository<User, Int> {
 }
 ```
 
-Both `select { }` and `delete { }` return a `QueryBuilder`, so you pick the terminal: `.resultList`, `.singleResult`, `.optionalResult`, `.scroll(20)`, `.page(0, 20)`, `.resultFlow`, `.resultCount` (for select), or `.executeUpdate()` (for delete).
+Both `select { }` and `delete { }` return a `QueryBuilder`, so you pick the terminal: `.resultList`, `.singleResult`, `.optionalResult`, `.scroll(scrollable)`, `.page(0, 20)`, `.resultFlow`, `.resultCount` (for select), or `.executeUpdate()` (for delete). **Do NOT combine `orderBy()` with `.scroll(Scrollable)`** — see Keyset Scrolling section above.
+
+**Result types and the block DSL:** There is **no** `select(ResultType::class) { block }` form. The block DSL always returns the root entity type. To select a different result type, use the chained API:
+```kotlin
+// ❌ Not valid — no block DSL overload for result type
+fun findSummaries(): List<UserSummary> = select(UserSummary::class) {
+    where(User_.active eq true)
+}.resultList
+
+// ✅ Use chained API — note: joins use .innerJoin(A::class).on(B::class), not two-arg form
+fun findSummaries(): List<UserSummary> = select(UserSummary::class)
+    .where(User_.active eq true)
+    .resultList
+```
+
+**What `select(ResultType::class)` is for:** It selects a different result type from the query. This works for joined entity types (e.g., `City::class` from a `User` query) and custom SELECT with a template string (`select(Summary::class, template)`). It does **not** work for column subsets of the root entity — `select(UserSummary::class)` where `UserSummary` has a subset of `User` fields will fail with "Cannot find alias for column." For column subsets, use a `Projection<T>` with `ProjectionRepository`.
+
+**Conditional logic inside the block:** The block is a regular Kotlin lambda — use `if`, `when`, and loops to compose queries dynamically. This keeps shared parts (ordering, pagination, terminals) in one place:
+```kotlin
+interface UserRepository : EntityRepository<User, Int> {
+    fun findByCity(city: Ref<City>?, page: Int, size: Int): Page<User> =
+        select {
+            if (city != null) {
+                where(User_.city eq city)
+            }
+            orderBy(User_.name)
+        }.page(page, size)
+}
+```
+
+This also works with conditional joins:
+```kotlin
+fun findFiltered(city: Ref<City>?, page: Int, size: Int): Page<User> =
+    select {
+        if (city != null) {
+            innerJoin(UserAddress::class, User::class)
+            whereAny(UserAddress_.city eq city)
+        }
+        orderByDescending(User_.createdAt)
+    }.page(page, size)
+```
 
 Predicate variants also return `QueryBuilder`:
 ```kotlin
@@ -486,5 +566,6 @@ class UserRepositoryTest {
 
 Run the test. Show the user the captured SQL and explain how it aligns with the intended behavior. If a query produces unexpected SQL or the right approach is unclear, ask the user for feedback before changing the query.
 
+**Test isolation:** `SqlCapture` accumulates SQL across the entire test method. When writing multiple verification tests in one class, use `capture.clear()` between logical operations, or put each verification in its own `@Test` method. To avoid order-dependent failures, make assertions idempotent (don't assume specific row counts from prior inserts in other test methods) or use `@TestMethodOrder(MethodOrderer.OrderAnnotation::class)` with `@Order` if test ordering matters.
 
 The test can be temporary — verify and remove, or keep as a regression test. Ask the user which they prefer.

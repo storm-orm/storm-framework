@@ -12,8 +12,8 @@ import st.orm.Metamodel;                          // Generated metamodel fields 
 import st.orm.Ref;                                // Lazy-loaded reference
 import st.orm.Page;                               // Offset-based pagination result
 import st.orm.Pageable;                           // Pagination request
-import st.orm.Scrollable;                         // Keyset scrolling cursor
-import st.orm.Window;                             // Keyset scrolling result
+import st.orm.Scrollable;                         // Keyset scrolling cursor (single type param: Scrollable<T>)
+import st.orm.Window;                             // Keyset scrolling result (Window<R, T>)
 ```
 
 The `Operator` enum is in `st.orm` and contains: `EQUALS`, `NOT_EQUALS`, `LESS_THAN`, `LESS_THAN_OR_EQUAL`, `GREATER_THAN`, `GREATER_THAN_OR_EQUAL`, `LIKE`, `NOT_LIKE`, `IS_NULL`, `IS_NOT_NULL`, `IS_TRUE`, `IS_FALSE`, `IN`, `NOT_IN`, `BETWEEN`.
@@ -93,14 +93,14 @@ List<User> result = users.select()
     .getResultList();
 ```
 
-Entity comparison: `.where(User_.city, EQUALS, city)` compares by FK — pass the entity directly, don't extract the ID.
+Entity comparison: `.where(User_.city, EQUALS, city)` compares by FK — pass the entity directly, don't extract the ID. When you only have an ID, use `Ref.of(City.class, cityId)` instead of constructing a full entity with dummy field values.
 Nested paths: `User_.city.country.code` with appropriate operator
 Ordering: `.orderBy(User_.name)`, `.orderByDescending(User_.createdAt)`
 Limit/Offset: `.limit(10)`, `.offset(20)`
 Pagination: `.page(0, 20)` or `.page(Pageable.ofSize(20).sortBy(User_.name))`
-Scrolling (keyset): `.scroll(User_.id, 20)`
+Scrolling (keyset): `.scroll(Scrollable.of(User_.id, 20))` — do NOT combine with `orderBy()` (Scrollable manages ORDER BY internally, see Keyset Scrolling section)
 Explicit joins: `.innerJoin(Entity.class).on(OtherEntity.class)`, `.leftJoin(Entity.class).on(OtherEntity.class)`, `.rightJoin(Entity.class).on(OtherEntity.class)`
-Projection: `.select(ProjectionType.class)`
+Result type: `.select(ResultType.class)` to return a different type than the root entity
 
 Operators: EQUALS, NOT_EQUALS, LESS_THAN, LESS_THAN_OR_EQUAL, GREATER_THAN, GREATER_THAN_OR_EQUAL, LIKE, NOT_LIKE, IS_NULL, IS_NOT_NULL, IN, NOT_IN
 
@@ -117,6 +117,32 @@ List<OrderSummary> totals = orm.entity(Order.class)
     .having(Order_.amount, GREATER_THAN, 100)
     .getResultList();
 ```
+
+**Computed aggregates (COUNT, AVG, SUM, etc.):** When the SELECT clause needs expressions that QueryBuilder can't produce, use `select(ResultType.class, RAW."template")` for the SELECT only — keep joins, groupBy, having, orderBy, and limit in code:
+
+```java
+record CityUserCount(@FK City city, long userCount) implements Data {}
+
+List<CityUserCount> cityCounts = orm.entity(City.class)
+    .select(CityUserCount.class, RAW."\{City.class}, COUNT(*)")
+    .leftJoin(User.class).on(City.class)
+    .groupBy(City_.id)
+    .getResultList();
+
+// More complex example with WHERE, HAVING, and ORDER BY — all in code:
+record GenreStat(String genreName, double averageRating, long movieCount) implements Data {}
+
+List<GenreStat> topGenres = orm.entity(Genre.class)
+    .select(GenreStat.class, RAW."\{Genre_.name}, AVG(\{Rating_.averageRating}), COUNT(*)")
+    .innerJoin(MovieGenre.class).on(Genre.class)
+    .innerJoin(Rating.class).on(MovieGenre.class)
+    .groupBy(Genre_.name)
+    .having(Genre_.name, GREATER_THAN, 10)  // HAVING COUNT(*) >= 10
+    .orderByDescending(Rating_.averageRating)
+    .getResultList();
+```
+
+Only the `COUNT(*)` / `AVG()` expressions — which QueryBuilder cannot produce — use a template. Everything else stays in code. Do NOT write the entire query as a raw SQL string.
 
 ## Row Locking
 
@@ -192,6 +218,61 @@ List<User> users = orm.entity(User.class)
     .getResultList();
 ```
 
+## Keyset Scrolling
+
+Keyset scrolling uses cursor-based navigation instead of offset, making it efficient for large tables. **Scrollable manages ORDER BY internally** — do NOT add `orderBy()` when using `scroll(Scrollable)`, or Storm throws `PersistenceException`.
+
+**Composite PK limitation:** Keyset scrolling requires a simple (non-composite) primary key as the scroll key. Entities with composite PKs (e.g., junction tables) cannot be scrolled directly — Storm throws `SqlTemplateException: Column not found for metamodel`. To scroll filtered results from a junction table, query the related entity with a simple PK and JOIN through the junction table for filtering:
+```java
+// ❌ Cannot scroll a junction table with composite PK
+userRoles.scroll(Scrollable.of(UserRole_.id, 20));  // fails — UserRole has composite PK
+
+// ✅ Scroll User (simple PK) with a JOIN through UserRole for filtering
+users.select()
+    .innerJoin(UserRole.class).on(User.class)
+    .whereAny(UserRole_.role, EQUALS, role)
+    .scroll(Scrollable.of(User_.id, 20));
+```
+
+```java
+// WRONG: orderBy conflicts with Scrollable
+users.select()
+    .where(User_.active, EQUALS, true)
+    .orderBy(User_.name)        // ❌ Scrollable manages ordering
+    .scroll(Scrollable.of(User_.id, 20));
+
+// CORRECT: ordering is controlled by the Scrollable's key (and optional sort field)
+users.select()
+    .where(User_.active, EQUALS, true)
+    .scroll(Scrollable.of(User_.id, 20));
+```
+
+**First request vs subsequent requests:** On the first request there is no cursor, so use `Scrollable.of()`. On subsequent requests, use `Scrollable.fromCursor()` — the cursor string encodes the size, direction, and position:
+
+```java
+var scrollable = cursor != null
+    ? Scrollable.fromCursor(User_.id, cursor)       // size encoded in cursor
+    : Scrollable.of(User_.id, 20);                  // first page, size 20
+Window<User> window = users.scroll(scrollable);
+String nextCursor = window.nextCursor();             // null if no more results
+```
+
+**Custom sort column** (non-unique sort field with key as tiebreaker):
+```java
+var scrollable = Scrollable.of(User_.id, User_.name, 20);
+```
+
+**Backward scrolling and navigation:**
+```java
+Window<User> window = users.scroll(Scrollable.of(User_.id, 20));
+if (window.hasNext()) {
+    var next = users.scroll(window.nextScrollable());
+}
+if (window.hasPrevious()) {
+    var previous = users.scroll(window.previousScrollable());
+}
+```
+
 ## Bulk DELETE/UPDATE
 
 `delete()` is a builder method that returns `QueryBuilder`. Call `.executeUpdate()` to execute:
@@ -219,6 +300,12 @@ Operators: `EQUALS`, `NOT_EQUALS`, `LESS_THAN`, `LESS_THAN_OR_EQUAL`, `GREATER_T
 
 The `EQUALS` operator accepts both entities and `Ref<T>`. When you have an entity, use it directly — no need to convert to a `Ref` first.
 
+When you only have an ID (e.g., from a URL parameter), create a `Ref` — don't construct a dummy entity with empty fields:
+```java
+.where(User_.city, EQUALS, Ref.of(City.class, cityId))   // ✅
+// ❌ new City(cityId, "", null)
+```
+
 ## Result Retrieval
 
 QueryBuilder terminals:
@@ -228,7 +315,7 @@ QueryBuilder terminals:
 - `.getResultCount()` → `long`
 - `.getResultStream()` → `Stream<R>` (lazy, **must** close with try-with-resources)
 - `.page(pageNumber, pageSize)` → `Page<R>` (offset-based pagination)
-- `.scroll(size)` → `MappedWindow<R, T>` (keyset scrolling, better for large tables)
+- `.scroll(scrollable)` → `Window<R, T>` (keyset scrolling — do NOT combine with `orderBy()`, see Keyset Scrolling section). Use `nextScrollable()` / `previousScrollable()` for programmatic navigation, or `nextCursor()` / `previousCursor()` for REST APIs.
 - `.executeUpdate()` → `int` (for DELETE/UPDATE)
 
 Critical rules:

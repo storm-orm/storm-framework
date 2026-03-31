@@ -17,7 +17,6 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.context.ContextConfiguration;
 import org.springframework.test.context.jdbc.Sql;
 import org.springframework.test.context.junit.jupiter.SpringExtension;
-import st.orm.MappedWindow;
 import st.orm.Page;
 import st.orm.Pageable;
 import st.orm.Ref;
@@ -162,14 +161,14 @@ public class RepositoryTest {
 
     @Test
     public void testScrollBasic() {
-        MappedWindow<City, City> window = orm.entity(City.class).select().scroll(2);
+        Window<City, City> window = orm.entity(City.class).select().scroll(2);
         assertEquals(2, window.content().size());
         assertTrue(window.hasNext());
     }
 
     @Test
     public void testScrollLastPage() {
-        MappedWindow<City, City> window = orm.entity(City.class).select().scroll(100);
+        Window<City, City> window = orm.entity(City.class).select().scroll(100);
         assertFalse(window.hasNext());
     }
 
@@ -355,98 +354,98 @@ public class RepositoryTest {
 
     @Test
     public void testEntityScrollByKey() {
-        Window<City> window = orm.entity(City.class).scroll(Scrollable.of(City_.id, 3));
+        Window<City, City> window = orm.entity(City.class).scroll(Scrollable.of(City_.id, 3));
         assertEquals(3, window.content().size());
         assertTrue(window.hasNext());
     }
 
     @Test
     public void testEntityScrollBeforeByKey() {
-        Window<City> window = orm.entity(City.class).scroll(Scrollable.of(City_.id, 3).backward());
+        Window<City, City> window = orm.entity(City.class).scroll(Scrollable.of(City_.id, 3).backward());
         assertEquals(3, window.content().size());
     }
 
     @Test
     public void testEntityScrollBeforeRefByKey() {
-        MappedWindow<Ref<City>, City> window = orm.entity(City.class).selectRef().scroll(Scrollable.of(City_.id, 3).backward());
+        Window<Ref<City>, City> window = orm.entity(City.class).selectRef().scroll(Scrollable.of(City_.id, 3).backward());
         assertEquals(3, window.content().size());
     }
 
     @Test
     public void testEntityScrollRefByKey() {
-        MappedWindow<Ref<City>, City> window = orm.entity(City.class).selectRef().scroll(Scrollable.of(City_.id, 3));
+        Window<Ref<City>, City> window = orm.entity(City.class).selectRef().scroll(Scrollable.of(City_.id, 3));
         assertEquals(3, window.content().size());
     }
 
     @Test
     public void testEntityScrollAfterByKey() {
-        MappedWindow<City, City> window = orm.entity(City.class).select().scroll(Scrollable.of(City_.id, 2, 3));
+        Window<City, City> window = orm.entity(City.class).select().scroll(Scrollable.of(City_.id, 2, 3));
         assertFalse(window.content().isEmpty());
     }
 
     @Test
     public void testEntityScrollBeforeByKeyAndValue() {
-        MappedWindow<City, City> window = orm.entity(City.class).select().scroll(Scrollable.of(City_.id, 5, 3).backward());
+        Window<City, City> window = orm.entity(City.class).select().scroll(Scrollable.of(City_.id, 5, 3).backward());
         assertFalse(window.content().isEmpty());
     }
 
     @Test
     public void testEntityScrollAfterRefByKey() {
-        MappedWindow<Ref<City>, City> window = orm.entity(City.class).selectRef().scroll(Scrollable.of(City_.id, 2, 3));
+        Window<Ref<City>, City> window = orm.entity(City.class).selectRef().scroll(Scrollable.of(City_.id, 2, 3));
         assertFalse(window.content().isEmpty());
     }
 
     @Test
     public void testEntityScrollBeforeRefByKeyAndValue() {
-        MappedWindow<Ref<City>, City> window = orm.entity(City.class).selectRef().scroll(Scrollable.of(City_.id, 5, 3).backward());
+        Window<Ref<City>, City> window = orm.entity(City.class).selectRef().scroll(Scrollable.of(City_.id, 5, 3).backward());
         assertFalse(window.content().isEmpty());
     }
 
     @Test
     public void testEntityScrollByKeyAndSort() {
-        Window<City> window = orm.entity(City.class).scroll(Scrollable.of(City_.id, City_.name, 3));
+        Window<City, City> window = orm.entity(City.class).scroll(Scrollable.of(City_.id, City_.name, 3));
         assertEquals(3, window.content().size());
     }
 
     @Test
     public void testEntityScrollBeforeByKeyAndSort() {
-        Window<City> window = orm.entity(City.class).scroll(Scrollable.of(City_.id, City_.name, 3).backward());
+        Window<City, City> window = orm.entity(City.class).scroll(Scrollable.of(City_.id, City_.name, 3).backward());
         assertEquals(3, window.content().size());
     }
 
     @Test
     public void testEntityScrollBeforeRefByKeyAndSort() {
-        MappedWindow<Ref<City>, City> window = orm.entity(City.class).selectRef().scroll(Scrollable.of(City_.id, City_.name, 3).backward());
+        Window<Ref<City>, City> window = orm.entity(City.class).selectRef().scroll(Scrollable.of(City_.id, City_.name, 3).backward());
         assertEquals(3, window.content().size());
     }
 
     @Test
     public void testEntityScrollRefByKeyAndSort() {
-        MappedWindow<Ref<City>, City> window = orm.entity(City.class).selectRef().scroll(Scrollable.of(City_.id, City_.name, 3));
+        Window<Ref<City>, City> window = orm.entity(City.class).selectRef().scroll(Scrollable.of(City_.id, City_.name, 3));
         assertEquals(3, window.content().size());
     }
 
     @Test
     public void testEntityScrollAfterByKeyAndSort() {
-        MappedWindow<City, City> window = orm.entity(City.class).select().scroll(Scrollable.of(City_.id, 2, City_.name, "A", 3));
+        Window<City, City> window = orm.entity(City.class).select().scroll(Scrollable.of(City_.id, 2, City_.name, "A", 3));
         assertNotNull(window);
     }
 
     @Test
     public void testEntityScrollBeforeByKeyAndSortAndValue() {
-        MappedWindow<City, City> window = orm.entity(City.class).select().scroll(Scrollable.of(City_.id, 5, City_.name, "Z", 3).backward());
+        Window<City, City> window = orm.entity(City.class).select().scroll(Scrollable.of(City_.id, 5, City_.name, "Z", 3).backward());
         assertNotNull(window);
     }
 
     @Test
     public void testEntityScrollAfterRefByKeyAndSort() {
-        MappedWindow<Ref<City>, City> window = orm.entity(City.class).selectRef().scroll(Scrollable.of(City_.id, 2, City_.name, "A", 3));
+        Window<Ref<City>, City> window = orm.entity(City.class).selectRef().scroll(Scrollable.of(City_.id, 2, City_.name, "A", 3));
         assertNotNull(window);
     }
 
     @Test
     public void testEntityScrollBeforeRefByKeyAndSortAndValue() {
-        MappedWindow<Ref<City>, City> window = orm.entity(City.class).selectRef().scroll(Scrollable.of(City_.id, 5, City_.name, "Z", 3).backward());
+        Window<Ref<City>, City> window = orm.entity(City.class).selectRef().scroll(Scrollable.of(City_.id, 5, City_.name, "Z", 3).backward());
         assertNotNull(window);
     }
 
@@ -454,20 +453,20 @@ public class RepositoryTest {
 
     @Test
     public void testProjectionScrollByKey() {
-        Window<OwnerView> window = orm.projection(OwnerView.class).scroll(Scrollable.of(OwnerView_.id, 5));
+        Window<OwnerView, OwnerView> window = orm.projection(OwnerView.class).scroll(Scrollable.of(OwnerView_.id, 5));
         assertEquals(5, window.content().size());
         assertTrue(window.hasNext());
     }
 
     @Test
     public void testProjectionScrollBeforeByKey() {
-        Window<OwnerView> window = orm.projection(OwnerView.class).scroll(Scrollable.of(OwnerView_.id, 5).backward());
+        Window<OwnerView, OwnerView> window = orm.projection(OwnerView.class).scroll(Scrollable.of(OwnerView_.id, 5).backward());
         assertEquals(5, window.content().size());
     }
 
     @Test
     public void testProjectionScrollRefByKey() {
-        MappedWindow<Ref<OwnerView>, OwnerView> window = orm.projection(OwnerView.class).selectRef().scroll(Scrollable.of(OwnerView_.id, 5));
+        Window<Ref<OwnerView>, OwnerView> window = orm.projection(OwnerView.class).selectRef().scroll(Scrollable.of(OwnerView_.id, 5));
         assertEquals(5, window.content().size());
     }
 
@@ -485,43 +484,43 @@ public class RepositoryTest {
 
     @Test
     public void testProjectionScrollAfterRefByKey() {
-        MappedWindow<Ref<OwnerView>, OwnerView> window = orm.projection(OwnerView.class).selectRef().scroll(Scrollable.of(OwnerView_.id, 3, 5));
+        Window<Ref<OwnerView>, OwnerView> window = orm.projection(OwnerView.class).selectRef().scroll(Scrollable.of(OwnerView_.id, 3, 5));
         assertFalse(window.content().isEmpty());
     }
 
     @Test
     public void testProjectionScrollBeforeRefByKeyAndValue() {
-        MappedWindow<Ref<OwnerView>, OwnerView> window = orm.projection(OwnerView.class).selectRef().scroll(Scrollable.of(OwnerView_.id, 8, 5).backward());
+        Window<Ref<OwnerView>, OwnerView> window = orm.projection(OwnerView.class).selectRef().scroll(Scrollable.of(OwnerView_.id, 8, 5).backward());
         assertFalse(window.content().isEmpty());
     }
 
     @Test
     public void testProjectionScrollBeforeRefByKeyInitial() {
-        MappedWindow<Ref<OwnerView>, OwnerView> window = orm.projection(OwnerView.class).selectRef().scroll(Scrollable.of(OwnerView_.id, 5).backward());
+        Window<Ref<OwnerView>, OwnerView> window = orm.projection(OwnerView.class).selectRef().scroll(Scrollable.of(OwnerView_.id, 5).backward());
         assertEquals(5, window.content().size());
     }
 
     @Test
     public void testProjectionScrollByKeyAndSort() {
-        Window<OwnerView> window = orm.projection(OwnerView.class).scroll(Scrollable.of(OwnerView_.id, OwnerView_.firstName, 5));
+        Window<OwnerView, OwnerView> window = orm.projection(OwnerView.class).scroll(Scrollable.of(OwnerView_.id, OwnerView_.firstName, 5));
         assertEquals(5, window.content().size());
     }
 
     @Test
     public void testProjectionScrollRefByKeyAndSort() {
-        MappedWindow<Ref<OwnerView>, OwnerView> window = orm.projection(OwnerView.class).selectRef().scroll(Scrollable.of(OwnerView_.id, OwnerView_.firstName, 5));
+        Window<Ref<OwnerView>, OwnerView> window = orm.projection(OwnerView.class).selectRef().scroll(Scrollable.of(OwnerView_.id, OwnerView_.firstName, 5));
         assertEquals(5, window.content().size());
     }
 
     @Test
     public void testProjectionScrollBeforeByKeyAndSort() {
-        Window<OwnerView> window = orm.projection(OwnerView.class).scroll(Scrollable.of(OwnerView_.id, OwnerView_.firstName, 5).backward());
+        Window<OwnerView, OwnerView> window = orm.projection(OwnerView.class).scroll(Scrollable.of(OwnerView_.id, OwnerView_.firstName, 5).backward());
         assertEquals(5, window.content().size());
     }
 
     @Test
     public void testProjectionScrollBeforeRefByKeyAndSort() {
-        MappedWindow<Ref<OwnerView>, OwnerView> window = orm.projection(OwnerView.class).selectRef().scroll(Scrollable.of(OwnerView_.id, OwnerView_.firstName, 5).backward());
+        Window<Ref<OwnerView>, OwnerView> window = orm.projection(OwnerView.class).selectRef().scroll(Scrollable.of(OwnerView_.id, OwnerView_.firstName, 5).backward());
         assertEquals(5, window.content().size());
     }
 
@@ -541,13 +540,13 @@ public class RepositoryTest {
 
     @Test
     public void testProjectionScrollAfterRefByKeyAndSort() {
-        MappedWindow<Ref<OwnerView>, OwnerView> window = orm.projection(OwnerView.class).selectRef().scroll(Scrollable.of(OwnerView_.id, 3, OwnerView_.firstName, "A", 5));
+        Window<Ref<OwnerView>, OwnerView> window = orm.projection(OwnerView.class).selectRef().scroll(Scrollable.of(OwnerView_.id, 3, OwnerView_.firstName, "A", 5));
         assertNotNull(window);
     }
 
     @Test
     public void testProjectionScrollBeforeRefByKeyAndSortAndValue() {
-        MappedWindow<Ref<OwnerView>, OwnerView> window = orm.projection(OwnerView.class).selectRef().scroll(Scrollable.of(OwnerView_.id, 8, OwnerView_.firstName, "Z", 5).backward());
+        Window<Ref<OwnerView>, OwnerView> window = orm.projection(OwnerView.class).selectRef().scroll(Scrollable.of(OwnerView_.id, 8, OwnerView_.firstName, "Z", 5).backward());
         assertNotNull(window);
     }
 

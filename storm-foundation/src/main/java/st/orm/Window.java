@@ -22,23 +22,23 @@ import jakarta.annotation.Nullable;
 import java.util.List;
 
 /**
- * Represents a window of query results from a scrolling operation where the result type matches the data type.
+ * Represents a window of query results from a scrolling operation with typed {@link Scrollable} navigation tokens.
  *
- * <p>A {@code Window} is the scrolling counterpart of {@link Page}. While a {@code Page} contains total counts and
- * page numbers for offset-based navigation, a {@code Window} contains cursor-based navigation tokens that allow
- * sequential traversal through large result sets.</p>
+ * <p>A {@code Window} implements {@link Slice} and provides cursor-based navigation for sequential traversal
+ * through large result sets. Use {@link #nextScrollable()} and {@link #previousScrollable()} for programmatic
+ * navigation, or {@link #nextCursor()} and {@link #previousCursor()} for serialized cursor strings suitable for
+ * REST APIs.</p>
  *
- * <p>This is the common case for entity and projection queries where the result type is the same as the data type.
- * For queries where the result type differs from the data type (e.g., ref queries), see {@link MappedWindow}.</p>
- *
- * <p>Use {@link #hasNext()} and {@link #nextScrollable()} to move forward, and {@link #hasPrevious()} and
- * {@link #previousScrollable()} to move backward. Pass the returned {@link Scrollable} to the repository's
- * {@code scroll} method to fetch the adjacent window.</p>
+ * <p>The type parameter {@code R} is the result type and {@code T} is the data type used to type the
+ * {@link Scrollable} navigation tokens. For entity and projection queries where the result type is the same as the
+ * data type, both parameters are the same (e.g., {@code Window<User, User>}). For queries where the result
+ * type differs (e.g., ref queries), {@code R} and {@code T} differ
+ * (e.g., {@code Window<Ref<User>, User>}).</p>
  *
  * <pre>{@code
- * Window<User> window = userRepository.scroll(Scrollable.of(User_.id, 20));
+ * Window<User, User> window = userRepository.scroll(Scrollable.of(User_.id, 20));
  * if (window.hasNext()) {
- *     Window<User> next = userRepository.scroll(window.nextScrollable());
+ *     Window<User, User> next = userRepository.scroll(window.nextScrollable());
  * }
  * }</pre>
  *
@@ -54,16 +54,18 @@ import java.util.List;
  * @param hasPrevious {@code true} if this window was fetched with a cursor position (i.e., not the first page).
  * @param nextScrollable the scrollable to fetch the next window, or {@code null} if the window is empty.
  * @param previousScrollable the scrollable to fetch the previous window, or {@code null} if the window is empty.
- * @param <T> the data type of both the results and the {@link Scrollable} navigation tokens.
+ * @param <R> the result type (e.g., {@code User} for entity queries, {@code Ref<User>} for ref queries).
+ * @param <T> the data type, used to type the {@link Scrollable} navigation tokens.
  * @since 1.11
  */
-public record Window<T extends Data>(
-        @Nonnull List<T> content,
+public record Window<R, T extends Data>(
+        @Nonnull List<R> content,
         boolean hasNext,
         boolean hasPrevious,
         @Nullable Scrollable<T> nextScrollable,
         @Nullable Scrollable<T> previousScrollable
-) {
+) implements Slice<R> {
+
     public Window {
         content = copyOf(content);
     }
@@ -71,23 +73,12 @@ public record Window<T extends Data>(
     /**
      * Returns an empty window with no content and no navigation tokens.
      *
+     * @param <R> the result type.
      * @param <T> the data type.
      * @return an empty window.
      */
-    public static <T extends Data> Window<T> empty() {
+    public static <R, T extends Data> Window<R, T> empty() {
         return new Window<>(List.of(), false, false, null, null);
-    }
-
-    /**
-     * Creates a {@code Window} from a {@link MappedWindow} where the result type matches the data type.
-     *
-     * @param mappedWindow the mapped window to convert.
-     * @param <T> the data type.
-     * @return a window with the same content and navigation tokens.
-     */
-    public static <T extends Data> Window<T> of(@Nonnull MappedWindow<T, T> mappedWindow) {
-        return new Window<>(mappedWindow.content(), mappedWindow.hasNext(), mappedWindow.hasPrevious(),
-                mappedWindow.nextScrollable(), mappedWindow.previousScrollable());
     }
 
     /**

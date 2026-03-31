@@ -823,5 +823,5 @@ interface ProjectionRepository<P, ID : Any> : Repository where P : Projection<ID
      * @return a window containing the projection results for the requested scroll position.
      * @since 1.11
      */
-    fun scroll(scrollable: Scrollable<P>): Window<P> = Window.of(select().scroll(scrollable))
+    fun scroll(scrollable: Scrollable<P>): Window<P, P> = select().scroll(scrollable)
 }

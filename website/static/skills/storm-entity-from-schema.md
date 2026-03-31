@@ -41,6 +41,8 @@ Naming convention detection:
 SQL type mapping (Kotlin): INTEGER->Int, BIGINT->Long, VARCHAR/TEXT->String, BOOLEAN->Boolean, DECIMAL->BigDecimal, DATE->LocalDate, TIMESTAMP->Instant, UUID->UUID
 SQL type mapping (Java): INTEGER->Integer(PK)/int, BIGINT->Long(PK)/long, VARCHAR/TEXT->String, BOOLEAN->Boolean/boolean, DECIMAL->BigDecimal, DATE->LocalDate, TIMESTAMP->Instant, UUID->UUID
 
+**H2 NUMERIC/DECIMAL precision:** When generating migrations for `@StormTest` (H2), always specify precision and scale for NUMERIC/DECIMAL columns (e.g., `NUMERIC(4, 1)`, not `NUMERIC`). H2 defaults to scale 0, which silently truncates decimals — values like 8.7 become 9. Warn the user if the source schema uses NUMERIC without precision.
+
 JSON column recognition: columns typed as JSONB (PostgreSQL), JSON (MySQL, MariaDB, Oracle), NVARCHAR(MAX) with JSON content (MS SQL Server), or CLOB with JSON content (H2) should be mapped with `@Json`. Ask the user what the JSON structure represents so you can choose the correct field type (e.g., `Map<String, String>`, a custom data class, or `List<T>`).
 
 After changes: review types, rebuild for metamodel regeneration.

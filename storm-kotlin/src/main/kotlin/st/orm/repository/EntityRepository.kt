@@ -1773,5 +1773,5 @@ interface EntityRepository<E, ID : Any> : Repository where E : Entity<ID> {
      * @return a window containing the entity results for the requested scroll position.
      * @since 1.11
      */
-    fun scroll(scrollable: Scrollable<E>): Window<E> = Window.of(select().scroll(scrollable))
+    fun scroll(scrollable: Scrollable<E>): Window<E, E> = select().scroll(scrollable)
 }

@@ -698,8 +698,8 @@ public interface EntityRepository<E extends Entity<ID>, ID> extends Repository {
      * @return a window containing the results and navigation tokens.
      * @since 1.11
      */
-    default Window<E> scroll(@Nonnull Scrollable<E> scrollable) {
-        return Window.of(select().scroll(scrollable));
+    default Window<E, E> scroll(@Nonnull Scrollable<E> scrollable) {
+        return select().scroll(scrollable);
     }
 
     // List based methods.

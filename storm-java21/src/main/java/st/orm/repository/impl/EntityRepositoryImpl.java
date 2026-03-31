@@ -250,8 +250,8 @@ public final class EntityRepositoryImpl<E extends Entity<ID>, ID> implements Ent
     }
 
     @Override
-    public Window<E> scroll(@Nonnull Scrollable<E> scrollable) {
-        return Window.of(select().scroll(scrollable));
+    public Window<E, E> scroll(@Nonnull Scrollable<E> scrollable) {
+        return select().scroll(scrollable);
     }
 
     @Override

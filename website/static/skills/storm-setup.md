@@ -95,11 +95,23 @@ Serialization (pick one if needed):
 Testing:
 - `st.orm:storm-test` (test scope) — provides `@StormTest`, `SqlCapture`, and H2 in-memory database support
 - `st.orm:storm-h2` (test runtime scope) — Storm's H2 dialect
-- `com.h2database:h2` (test runtime scope) — the H2 JDBC driver itself (required — `storm-h2` declares it as `provided`)
+- `com.h2database:h2:2.3.232` (test runtime scope) — the H2 JDBC driver itself (required — `storm-h2` declares it as `provided`, and H2 is **not** version-managed by the Storm BOM, so specify the version explicitly)
 - All three are needed. Without the H2 driver, `@StormTest` fails with `No suitable driver found`.
 - Key imports: `st.orm.test.StormTest`, `st.orm.test.SqlCapture`, `st.orm.test.CapturedSql.Operation`
 - `@StormTest` injects `ORMTemplate` and `SqlCapture` as test method parameters
 - Schema SQL files go in `src/test/resources/`
+
+**Kotlin/Gradle test dependencies:** Use the JUnit BOM directly — avoid `kotlin("test")` which can cause dependency conflicts:
+```kotlin
+dependencies {
+    testImplementation(platform("org.junit:junit-bom:5.11.4"))
+    testImplementation("org.junit.jupiter:junit-jupiter")
+    testRuntimeOnly("org.junit.platform:junit-platform-launcher")
+    testImplementation("st.orm:storm-test")
+    testRuntimeOnly("st.orm:storm-h2")
+    testRuntimeOnly("com.h2database:h2:2.3.232")  // not in Storm BOM — version required
+}
+```
 
 Database dialects (add as runtime dependency):
 - `st.orm:storm-postgresql`

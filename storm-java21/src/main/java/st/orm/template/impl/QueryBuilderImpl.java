@@ -27,12 +27,12 @@ import java.util.function.Function;
 import java.util.stream.Stream;
 import st.orm.Data;
 import st.orm.JoinType;
-import st.orm.MappedWindow;
 import st.orm.Metamodel;
 import st.orm.Operator;
 import st.orm.PersistenceException;
 import st.orm.Ref;
 import st.orm.Scrollable;
+import st.orm.Window;
 import st.orm.core.spi.ORMReflection;
 import st.orm.core.spi.Providers;
 import st.orm.core.template.TemplateString;
@@ -570,12 +570,12 @@ public final class QueryBuilderImpl<T extends Data, R, ID> extends QueryBuilder<
     }
 
     @Override
-    public MappedWindow<R, T> scroll(int size) {
+    public Window<R, T> scroll(int size) {
         return core.scroll(size);
     }
 
     @Override
-    public MappedWindow<R, T> scroll(@Nonnull Scrollable<T> scrollable) {
+    public Window<R, T> scroll(@Nonnull Scrollable<T> scrollable) {
         return core.scroll(scrollable);
     }
 

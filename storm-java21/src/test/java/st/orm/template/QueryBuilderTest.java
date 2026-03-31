@@ -31,12 +31,12 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.context.ContextConfiguration;
 import org.springframework.test.context.jdbc.Sql;
 import org.springframework.test.context.junit.jupiter.SpringExtension;
-import st.orm.MappedWindow;
 import st.orm.NoResultException;
 import st.orm.NonUniqueResultException;
 import st.orm.PersistenceException;
 import st.orm.Ref;
 import st.orm.Scrollable;
+import st.orm.Window;
 import st.orm.template.model.City;
 import st.orm.template.model.City_;
 import st.orm.template.model.Owner;
@@ -500,14 +500,14 @@ public class QueryBuilderTest {
 
     @Test
     public void testScroll() {
-        MappedWindow<City, City> window = orm.entity(City.class).select().scroll(3);
+        Window<City, City> window = orm.entity(City.class).select().scroll(3);
         assertEquals(3, window.content().size());
         assertTrue(window.hasNext());
     }
 
     @Test
     public void testScrollNoMore() {
-        MappedWindow<City, City> window = orm.entity(City.class).select().scroll(100);
+        Window<City, City> window = orm.entity(City.class).select().scroll(100);
         assertEquals(6, window.content().size());
         assertFalse(window.hasNext());
     }
@@ -773,7 +773,7 @@ public class QueryBuilderTest {
 
     @Test
     public void testScrollWithMetamodelKey() {
-        MappedWindow<City, City> window = orm.entity(City.class).select()
+        Window<City, City> window = orm.entity(City.class).select()
                 .scroll(Scrollable.of(City_.id, 3));
         assertEquals(3, window.content().size());
         assertTrue(window.hasNext());
@@ -781,34 +781,34 @@ public class QueryBuilderTest {
 
     @Test
     public void testScrollAfterWithMetamodelKey() {
-        MappedWindow<City, City> window = orm.entity(City.class).select()
+        Window<City, City> window = orm.entity(City.class).select()
                 .scroll(Scrollable.of(City_.id, 2, 3));
         assertFalse(window.content().isEmpty());
     }
 
     @Test
     public void testScrollBeforeWithMetamodelKey() {
-        MappedWindow<City, City> window = orm.entity(City.class).select()
+        Window<City, City> window = orm.entity(City.class).select()
                 .scroll(Scrollable.of(City_.id, 5, 3).backward());
         assertFalse(window.content().isEmpty());
     }
 
     @Test
     public void testScrollRefWithMetamodelKey() {
-        MappedWindow<Ref<City>, City> window = orm.entity(City.class).selectRef().scroll(Scrollable.of(City_.id, 3));
+        Window<Ref<City>, City> window = orm.entity(City.class).selectRef().scroll(Scrollable.of(City_.id, 3));
         assertEquals(3, window.content().size());
     }
 
     @Test
     public void testScrollAfterRefWithMetamodelKey() {
-        MappedWindow<Ref<City>, City> window = orm.entity(City.class).selectRef()
+        Window<Ref<City>, City> window = orm.entity(City.class).selectRef()
                 .scroll(Scrollable.of(City_.id, 2, 3));
         assertFalse(window.content().isEmpty());
     }
 
     @Test
     public void testScrollBeforeRefWithMetamodelKey() {
-        MappedWindow<Ref<City>, City> window = orm.entity(City.class).selectRef()
+        Window<Ref<City>, City> window = orm.entity(City.class).selectRef()
                 .scroll(Scrollable.of(City_.id, 5, 3).backward());
         assertFalse(window.content().isEmpty());
     }
@@ -1041,14 +1041,14 @@ public class QueryBuilderTest {
 
     @Test
     public void testScrollAfterComposite() {
-        MappedWindow<City, City> window = orm.entity(City.class).select()
+        Window<City, City> window = orm.entity(City.class).select()
                 .scroll(Scrollable.of(City_.id, 2, City_.name, "A", 3));
         assertNotNull(window);
     }
 
     @Test
     public void testScrollBeforeComposite() {
-        MappedWindow<City, City> window = orm.entity(City.class).select()
+        Window<City, City> window = orm.entity(City.class).select()
                 .scroll(Scrollable.of(City_.id, 5, City_.name, "Z", 3).backward());
         assertNotNull(window);
     }

@@ -30,7 +30,6 @@ import java.util.function.Function;
 import java.util.stream.Stream;
 import st.orm.Data;
 import st.orm.JoinType;
-import st.orm.MappedWindow;
 import st.orm.Metamodel;
 import st.orm.NoResultException;
 import st.orm.NonUniqueResultException;
@@ -765,14 +764,14 @@ public abstract class QueryBuilder<T extends Data, R, ID> {
      * @throws IllegalArgumentException if {@code size} is not positive.
      * @since 1.11
      */
-    public final MappedWindow<R, T> scroll(int size) {
+    public final Window<R, T> scroll(int size) {
         if (size <= 0) {
             throw new IllegalArgumentException("size must be positive.");
         }
         List<R> results = this.limit(size + 1).getResultList();
         boolean hasNext = results.size() > size;
         List<R> content = hasNext ? results.subList(0, size) : results;
-        return new MappedWindow<>(content, hasNext, false, null, null);
+        return new Window<>(content, hasNext, false, null, null);
     }
 
     /**
@@ -791,7 +790,7 @@ public abstract class QueryBuilder<T extends Data, R, ID> {
      * @since 1.11
      */
     @SuppressWarnings("unchecked")
-    private MappedWindow<R, T> toWindow(@Nonnull MappedWindow<R, T> raw, @Nonnull Metamodel.Key<T, ?> key,
+    private Window<R, T> toWindow(@Nonnull Window<R, T> raw, @Nonnull Metamodel.Key<T, ?> key,
                                @Nullable Metamodel<T, ?> sort, int size, boolean forward, boolean hasCursor) {
         if (raw.content().isEmpty()) {
             return raw;
@@ -818,7 +817,7 @@ public abstract class QueryBuilder<T extends Data, R, ID> {
                 sort != null ? sort.getValue((T) first) : null,
                 size, !forward);
         }
-        return new MappedWindow<>(raw.content(), raw.hasNext(), hasCursor, nextScrollable, previousScrollable);
+        return new Window<>(raw.content(), raw.hasNext(), hasCursor, nextScrollable, previousScrollable);
     }
 
     /**
@@ -851,7 +850,7 @@ public abstract class QueryBuilder<T extends Data, R, ID> {
      * @since 1.11
      */
     @SuppressWarnings("unchecked")
-    public final MappedWindow<R, T> scroll(@Nonnull Scrollable<T> scrollable) {
+    public final Window<R, T> scroll(@Nonnull Scrollable<T> scrollable) {
         var key = (Metamodel.Key<T, Object>) scrollable.key();
         int size = scrollable.size();
         boolean forward = scrollable.isForward();

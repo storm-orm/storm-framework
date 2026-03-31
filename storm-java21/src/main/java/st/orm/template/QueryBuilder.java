@@ -26,7 +26,6 @@ import java.util.function.Function;
 import java.util.stream.Stream;
 import st.orm.Data;
 import st.orm.JoinType;
-import st.orm.MappedWindow;
 import st.orm.Metamodel;
 import st.orm.NoResultException;
 import st.orm.NonUniqueResultException;
@@ -789,7 +788,7 @@ public abstract class QueryBuilder<T extends Data, R, ID> {
      * @throws IllegalArgumentException if {@code size} is not positive.
      * @since 1.11
      */
-    public abstract MappedWindow<R, T> scroll(int size);
+    public abstract Window<R, T> scroll(int size);
 
     /**
      * Executes a scroll request from a {@link Scrollable} token, typically obtained from
@@ -799,7 +798,7 @@ public abstract class QueryBuilder<T extends Data, R, ID> {
      * @return a window containing the results and navigation tokens.
      * @since 1.11
      */
-    public abstract MappedWindow<R, T> scroll(@Nonnull Scrollable<T> scrollable);
+    public abstract Window<R, T> scroll(@Nonnull Scrollable<T> scrollable);
 
     //
     // Execution methods.
