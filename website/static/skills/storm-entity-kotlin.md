@@ -47,6 +47,7 @@ Generation rules:
 
 8. Composite primary keys (join/junction tables):
    - Wrap key columns in a separate data class. Use raw column types (e.g., `Int`, `String`) inside the PK class.
+   - **Name the PK class `EntityNamePk`** (e.g., `UserRolePk`, `UserAddressPk`) — not `EntityNameId`.
    - Annotate the PK field with `@PK(generation = NONE)`. The PK class is implicitly `@Inline`.
    - Place `@FK` fields on the **entity itself** to load related entities via JOINs. **Only** add `@Persist(insertable = false, updatable = false)` to FK fields whose column is already in the PK data class — these duplicate a PK column, so they must not be inserted/updated twice. FK fields for columns NOT in the PK must remain insertable (no `@Persist`).
    - **Add a convenience constructor** that accepts the FK entities/refs and constructs the PK internally. This hides the PK wiring from client code:
