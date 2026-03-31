@@ -14,7 +14,7 @@ import st.orm.Ref                                // Lazy-loaded reference
 import st.orm.Page                               // Offset-based pagination result
 import st.orm.Pageable                           // Pagination request
 import st.orm.Scrollable                         // Keyset scrolling cursor (single type param: Scrollable<T>)
-import st.orm.Window                             // Keyset scrolling result (Window<R, T>)
+import st.orm.Window                             // Keyset scrolling result (Window<R>)
 import st.orm.test.StormTest                     // Test annotation
 import st.orm.test.SqlCapture                    // SQL capture for verification
 import st.orm.test.CapturedSql.Operation         // SELECT, INSERT, UPDATE, DELETE
@@ -388,12 +388,13 @@ val scrollable = if (cursor != null) {
 }
 val window = users.scroll(scrollable)
 
-// Window<R, T> is the scroll result record. Both scroll() methods return Window.
+// Window<R> is the scroll result record. Both scroll() methods return Window.
 // Window API:
 // window.content — List<User> of results
 // window.hasNext / window.hasPrevious — bounds checking
 // window.nextCursor() / window.previousCursor() — serialized cursors for REST APIs
-// window.nextScrollable / window.previousScrollable — for programmatic navigation
+// window.next() / window.previous() — typed Scrollable<T> for programmatic navigation
+// window.nextScrollable / window.previousScrollable — raw Scrollable<?> record component accessors (use next()/previous() instead)
 ```
 
 ## Framework-Specific Repository Registration

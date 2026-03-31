@@ -721,15 +721,14 @@ public interface EntityRepository<E extends Entity<ID>, ID> extends Repository {
      * Scrolls through entities using the given scrollable request.
      *
      * <p>This is a convenience method that delegates to {@code select().scroll(scrollable)}. It is typically used
-     * with a {@link Scrollable} obtained from {@link Window#nextScrollable()} or
-     * {@link Window#previousScrollable()}.</p>
+     * with a {@link Scrollable} obtained from {@link Window#next()} or {@link Window#previous()}.</p>
      *
      * @param scrollable the scroll request describing cursor position and page size.
      * @return a window containing the results.
      * @throws PersistenceException if the query fails due to underlying database issues.
      * @since 1.11
      */
-    default Window<E, E> scroll(@Nonnull Scrollable<E> scrollable) {
+    default Window<E> scroll(@Nonnull Scrollable<E> scrollable) {
         return select().scroll(scrollable);
     }
 

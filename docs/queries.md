@@ -485,9 +485,9 @@ val page: Page<User> = orm.entity(User::class).select()
 
 // Scrolling
 val window: Window<User> = userRepository.scroll(Scrollable.of(User_.id, 20))
-// nextScrollable() is non-null when the window has content.
+// next() is non-null when the window has content.
 // hasNext is informational; the developer decides whether to follow the cursor.
-val next = userRepository.scroll(window.nextScrollable())
+val next = userRepository.scroll(window.next())
 ```
 
 </TabItem>
@@ -507,9 +507,9 @@ Page<User> page = orm.entity(User.class).select()
 
 // Scrolling
 Window<User> window = userRepository.scroll(Scrollable.of(User_.id, 20));
-// nextScrollable() is non-null when the window has content.
+// next() is non-null when the window has content.
 // hasNext() is informational; the developer decides whether to follow the cursor.
-var next = userRepository.scroll(window.nextScrollable());
+var next = userRepository.scroll(window.next());
 ```
 
 </TabItem>

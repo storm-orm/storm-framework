@@ -570,12 +570,12 @@ public final class QueryBuilderImpl<T extends Data, R, ID> extends QueryBuilder<
     }
 
     @Override
-    public Window<R, T> scroll(int size) {
+    public Window<R> scroll(int size) {
         return core.scroll(size);
     }
 
     @Override
-    public Window<R, T> scroll(@Nonnull Scrollable<T> scrollable) {
+    public Window<R> scroll(@Nonnull Scrollable<T> scrollable) {
         return core.scroll(scrollable);
     }
 

@@ -500,14 +500,14 @@ public class QueryBuilderTest {
 
     @Test
     public void testScroll() {
-        Window<City, City> window = orm.entity(City.class).select().scroll(3);
+        Window<City> window = orm.entity(City.class).select().scroll(3);
         assertEquals(3, window.content().size());
         assertTrue(window.hasNext());
     }
 
     @Test
     public void testScrollNoMore() {
-        Window<City, City> window = orm.entity(City.class).select().scroll(100);
+        Window<City> window = orm.entity(City.class).select().scroll(100);
         assertEquals(6, window.content().size());
         assertFalse(window.hasNext());
     }
@@ -773,7 +773,7 @@ public class QueryBuilderTest {
 
     @Test
     public void testScrollWithMetamodelKey() {
-        Window<City, City> window = orm.entity(City.class).select()
+        Window<City> window = orm.entity(City.class).select()
                 .scroll(Scrollable.of(City_.id, 3));
         assertEquals(3, window.content().size());
         assertTrue(window.hasNext());
@@ -781,34 +781,34 @@ public class QueryBuilderTest {
 
     @Test
     public void testScrollAfterWithMetamodelKey() {
-        Window<City, City> window = orm.entity(City.class).select()
+        Window<City> window = orm.entity(City.class).select()
                 .scroll(Scrollable.of(City_.id, 2, 3));
         assertFalse(window.content().isEmpty());
     }
 
     @Test
     public void testScrollBeforeWithMetamodelKey() {
-        Window<City, City> window = orm.entity(City.class).select()
+        Window<City> window = orm.entity(City.class).select()
                 .scroll(Scrollable.of(City_.id, 5, 3).backward());
         assertFalse(window.content().isEmpty());
     }
 
     @Test
     public void testScrollRefWithMetamodelKey() {
-        Window<Ref<City>, City> window = orm.entity(City.class).selectRef().scroll(Scrollable.of(City_.id, 3));
+        Window<Ref<City>> window = orm.entity(City.class).selectRef().scroll(Scrollable.of(City_.id, 3));
         assertEquals(3, window.content().size());
     }
 
     @Test
     public void testScrollAfterRefWithMetamodelKey() {
-        Window<Ref<City>, City> window = orm.entity(City.class).selectRef()
+        Window<Ref<City>> window = orm.entity(City.class).selectRef()
                 .scroll(Scrollable.of(City_.id, 2, 3));
         assertFalse(window.content().isEmpty());
     }
 
     @Test
     public void testScrollBeforeRefWithMetamodelKey() {
-        Window<Ref<City>, City> window = orm.entity(City.class).selectRef()
+        Window<Ref<City>> window = orm.entity(City.class).selectRef()
                 .scroll(Scrollable.of(City_.id, 5, 3).backward());
         assertFalse(window.content().isEmpty());
     }
@@ -1041,14 +1041,14 @@ public class QueryBuilderTest {
 
     @Test
     public void testScrollAfterComposite() {
-        Window<City, City> window = orm.entity(City.class).select()
+        Window<City> window = orm.entity(City.class).select()
                 .scroll(Scrollable.of(City_.id, 2, City_.name, "A", 3));
         assertNotNull(window);
     }
 
     @Test
     public void testScrollBeforeComposite() {
-        Window<City, City> window = orm.entity(City.class).select()
+        Window<City> window = orm.entity(City.class).select()
                 .scroll(Scrollable.of(City_.id, 5, City_.name, "Z", 3).backward());
         assertNotNull(window);
     }

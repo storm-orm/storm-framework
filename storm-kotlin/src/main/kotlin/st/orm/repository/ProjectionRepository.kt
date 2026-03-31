@@ -817,11 +817,11 @@ interface ProjectionRepository<P, ID : Any> : Repository where P : Projection<ID
 
     /**
      * Executes a scroll request from a [Scrollable] token, typically obtained from
-     * [Window.nextScrollable] or [Window.previousScrollable].
+     * [Window.next] or [Window.previous].
      *
      * @param scrollable the scroll request containing cursor state, key, sort, size, and direction.
      * @return a window containing the projection results for the requested scroll position.
      * @since 1.11
      */
-    fun scroll(scrollable: Scrollable<P>): Window<P, P> = select().scroll(scrollable)
+    fun scroll(scrollable: Scrollable<P>): Window<P> = select().scroll(scrollable)
 }

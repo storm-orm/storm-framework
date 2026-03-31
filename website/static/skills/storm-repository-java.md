@@ -270,7 +270,7 @@ Page<Ref<User>> refPage = users.pageRef(0, 20);
 // ⚠️ Requires a simple (non-composite) PK — junction tables with composite PKs cannot be scrolled.
 //    To scroll filtered results from a junction table, query the entity with a simple PK
 //    and JOIN through the junction table (e.g., scroll User with a JOIN through UserRole).
-var window = users.scroll(Scrollable.of(User_.id, 20));    // prefer var — avoids Window<User, User> verbosity
+var window = users.scroll(Scrollable.of(User_.id, 20));    // prefer var — avoids Window<User> verbosity
 
 // With custom sort order (sort column in addition to key)
 var window = users.scroll(Scrollable.of(User_.id, User_.name, 20));
@@ -282,12 +282,13 @@ var scrollable = cursor != null
     : Scrollable.of(User_.id, 20);
 var window = users.scroll(scrollable);
 
-// Window<R, T> is the scroll result record. Both scroll() methods return Window.
+// Window<R> is the scroll result record. Both scroll() methods return Window.
 // Window API:
 // window.content() — List<User>
 // window.hasNext() / window.hasPrevious()
 // window.nextCursor() / window.previousCursor() — serialized cursors for REST APIs
-// window.nextScrollable() / window.previousScrollable() — for programmatic navigation
+// window.next() / window.previous() — typed Scrollable<T> for programmatic navigation
+// window.nextScrollable() / window.previousScrollable() — raw Scrollable<?> record component accessors (use next()/previous() instead)
 ```
 
 ## Framework-Specific Repository Registration

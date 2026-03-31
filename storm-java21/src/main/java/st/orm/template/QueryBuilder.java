@@ -780,25 +780,25 @@ public abstract class QueryBuilder<T extends Data, R, ID> {
      * most {@code size} results along with a {@code hasNext} flag. The caller is responsible for managing any WHERE
      * and ORDER BY clauses externally.</p>
      *
-     * <p>The returned window does not carry navigation tokens ({@code nextScrollable} and
-     * {@code previousScrollable} are {@code null}).</p>
+     * <p>The returned window does not carry navigation tokens ({@code next()} and
+     * {@code previous()} return {@code null}).</p>
      *
      * @param size the maximum number of results to include in the window (must be positive).
      * @return a window containing the results and a flag indicating whether more results exist.
      * @throws IllegalArgumentException if {@code size} is not positive.
      * @since 1.11
      */
-    public abstract Window<R, T> scroll(int size);
+    public abstract Window<R> scroll(int size);
 
     /**
      * Executes a scroll request from a {@link Scrollable} token, typically obtained from
-     * {@link Window#nextScrollable()} or {@link Window#previousScrollable()}.
+     * {@link Window#next()} or {@link Window#previous()}.
      *
      * @param scrollable the scroll request containing cursor state, key, sort, size, and direction.
      * @return a window containing the results and navigation tokens.
      * @since 1.11
      */
-    public abstract Window<R, T> scroll(@Nonnull Scrollable<T> scrollable);
+    public abstract Window<R> scroll(@Nonnull Scrollable<T> scrollable);
 
     //
     // Execution methods.

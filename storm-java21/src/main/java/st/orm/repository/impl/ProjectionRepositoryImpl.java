@@ -137,7 +137,7 @@ public final class ProjectionRepositoryImpl<P extends Projection<ID>, ID> implem
     // Window methods.
 
     @Override
-    public Window<P, P> scroll(@Nonnull Scrollable<P> scrollable) {
+    public Window<P> scroll(@Nonnull Scrollable<P> scrollable) {
         return select().scroll(scrollable);
     }
 

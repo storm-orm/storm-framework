@@ -939,17 +939,17 @@ interface QueryBuilder<T : Data, R, ID> {
      * @throws IllegalArgumentException if [size] is not positive.
      * @since 1.11
      */
-    fun scroll(size: Int): Window<R, T>
+    fun scroll(size: Int): Window<R>
 
     /**
      * Executes a scroll request from a [Scrollable] token, typically obtained from
-     * [Window.nextScrollable] or [Window.previousScrollable].
+     * [Window.next] or [Window.previous].
      *
      * @param scrollable the scroll request containing cursor state, key, sort, size, and direction.
      * @return a window containing the results for the requested scroll position.
      * @since 1.11
      */
-    fun scroll(scrollable: Scrollable<T>): Window<R, T>
+    fun scroll(scrollable: Scrollable<T>): Window<R>
 
     //
     // Execution methods.

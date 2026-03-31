@@ -10,7 +10,7 @@ import st.orm.Ref                                // Lazy-loaded reference
 import st.orm.Page                               // Offset-based pagination result
 import st.orm.Pageable                           // Pagination request
 import st.orm.Scrollable                         // Keyset scrolling cursor (single type param: Scrollable<T>)
-import st.orm.Window                             // Keyset scrolling result (Window<R, T>)
+import st.orm.Window                             // Keyset scrolling result (Window<R>)
 import org.junit.jupiter.api.Assertions.*        // assertEquals, assertTrue, assertFalse
 ```
 
@@ -334,7 +334,7 @@ val scrollable = if (cursor != null) {
 } else {
     Scrollable.of(User_.id, 20)                       // first page, size 20
 }
-val window = users.scroll(scrollable)                     // prefer val — avoids Window<User, User> verbosity
+val window = users.scroll(scrollable)                     // prefer val — avoids Window<User> verbosity
 val nextCursor: String? = window.nextCursor()          // null if no more results
 ```
 
@@ -348,10 +348,10 @@ val window = users.scroll(scrollable)
 ```kotlin
 val window = users.scroll(Scrollable.of(User_.id, 20))
 if (window.hasNext) {
-    val next = users.scroll(window.nextScrollable!!)
+    val next = users.scroll(window.next()!!)
 }
 if (window.hasPrevious) {
-    val previous = users.scroll(window.previousScrollable!!)
+    val previous = users.scroll(window.previous()!!)
 }
 ```
 
@@ -474,7 +474,7 @@ QueryBuilder terminals:
 - `.resultFlow` → `Flow<R>` (lazy, coroutines-based)
 - `.resultStream` → `Stream<R>` (lazy, must close after use)
 - `.page(pageNumber, pageSize)` → `Page<R>` (offset-based pagination)
-- `.scroll(scrollable)` → `Window<R, T>` (keyset scrolling — do NOT combine with `orderBy()`, see Keyset Scrolling section). Use `nextScrollable()` / `previousScrollable()` for programmatic navigation, or `nextCursor()` / `previousCursor()` for REST APIs.
+- `.scroll(scrollable)` → `Window<R>` (keyset scrolling — do NOT combine with `orderBy()`, see Keyset Scrolling section). Use `next()` / `previous()` for programmatic navigation, or `nextCursor()` / `previousCursor()` for REST APIs.
 - `.executeUpdate()` → `Int` (for DELETE/UPDATE)
 
 Critical rules:

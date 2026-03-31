@@ -13,7 +13,7 @@ import st.orm.Ref;                                // Lazy-loaded reference
 import st.orm.Page;                               // Offset-based pagination result
 import st.orm.Pageable;                           // Pagination request
 import st.orm.Scrollable;                         // Keyset scrolling cursor (single type param: Scrollable<T>)
-import st.orm.Window;                             // Keyset scrolling result (Window<R, T>)
+import st.orm.Window;                             // Keyset scrolling result (Window<R>)
 ```
 
 The `Operator` enum is in `st.orm` and contains: `EQUALS`, `NOT_EQUALS`, `LESS_THAN`, `LESS_THAN_OR_EQUAL`, `GREATER_THAN`, `GREATER_THAN_OR_EQUAL`, `LIKE`, `NOT_LIKE`, `IS_NULL`, `IS_NOT_NULL`, `IS_TRUE`, `IS_FALSE`, `IN`, `NOT_IN`, `BETWEEN`.
@@ -267,7 +267,7 @@ users.select()
 var scrollable = cursor != null
     ? Scrollable.fromCursor(User_.id, cursor)       // size encoded in cursor
     : Scrollable.of(User_.id, 20);                  // first page, size 20
-var window = users.scroll(scrollable);                     // prefer var — avoids Window<User, User> verbosity
+var window = users.scroll(scrollable);                     // prefer var — avoids Window<User> verbosity
 String nextCursor = window.nextCursor();             // null if no more results
 ```
 
@@ -280,10 +280,10 @@ var scrollable = Scrollable.of(User_.id, User_.name, 20);
 ```java
 var window = users.scroll(Scrollable.of(User_.id, 20));
 if (window.hasNext()) {
-    var next = users.scroll(window.nextScrollable());
+    var next = users.scroll(window.next());
 }
 if (window.hasPrevious()) {
-    var previous = users.scroll(window.previousScrollable());
+    var previous = users.scroll(window.previous());
 }
 ```
 
@@ -333,7 +333,7 @@ QueryBuilder terminals:
 - `.getResultCount()` → `long`
 - `.getResultStream()` → `Stream<R>` (lazy, **must** close with try-with-resources)
 - `.page(pageNumber, pageSize)` → `Page<R>` (offset-based pagination)
-- `.scroll(scrollable)` → `Window<R, T>` (keyset scrolling — do NOT combine with `orderBy()`, see Keyset Scrolling section). Use `nextScrollable()` / `previousScrollable()` for programmatic navigation, or `nextCursor()` / `previousCursor()` for REST APIs.
+- `.scroll(scrollable)` → `Window<R>` (keyset scrolling — do NOT combine with `orderBy()`, see Keyset Scrolling section). Use `next()` / `previous()` for programmatic navigation, or `nextCursor()` / `previousCursor()` for REST APIs.
 - `.executeUpdate()` → `int` (for DELETE/UPDATE)
 
 Critical rules:

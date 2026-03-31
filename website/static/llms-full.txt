@@ -3107,7 +3107,7 @@ Repositories provide convenience methods for scrolling through result sets, wher
 
 The key parameter must be a `Metamodel.Key`, which is generated for fields annotated with `@UK` or `@PK`. See [Metamodel](metamodel.md#unique-keys-uk-and-metamodelkey) for details.
 
-The `scroll` method accepts a `Scrollable<E>` that captures the cursor state (key, page size, direction, and cursor values) and returns a `Window<E>` containing the page content, informational `hasNext`/`hasPrevious` flags, and `Scrollable<E>` navigation tokens for fetching the adjacent window. Navigation tokens (`nextScrollable()`, `previousScrollable()`) are always present when the window has content; they are only `null` when the window is empty. The `hasNext` and `hasPrevious` flags indicate whether more results existed at query time, but they do not gate access to the navigation tokens. Since new data may appear after the query, the developer decides whether to follow a cursor.
+The `scroll` method accepts a `Scrollable<E>` that captures the cursor state (key, page size, direction, and cursor values) and returns a `Window<E>` containing the page content, informational `hasNext`/`hasPrevious` flags, and `Scrollable<E>` navigation tokens for fetching the adjacent window. Navigation tokens (`next()`, `previous()`) are always present when the window has content; they are only `null` when the window is empty. The `hasNext` and `hasPrevious` flags indicate whether more results existed at query time, but they do not gate access to the navigation tokens. Since new data may appear after the query, the developer decides whether to follow a cursor.
 
 Create a `Scrollable` using the factory methods, then use the navigation tokens on the returned `Window` to move forward or backward:
 
@@ -3117,11 +3117,11 @@ Create a `Scrollable` using the factory methods, then use the navigation tokens 
 // First page of 20 users ordered by ID
 val window: Window<User> = userRepository.scroll(Scrollable.of(User_.id, 20))
 
-// Next page (nextScrollable() is non-null whenever the window has content)
-val next: Window<User> = userRepository.scroll(window.nextScrollable())
+// Next page (next() is non-null whenever the window has content)
+val next: Window<User> = userRepository.scroll(window.next())
 
 // Previous page
-val previous: Window<User> = userRepository.scroll(window.previousScrollable())
+val previous: Window<User> = userRepository.scroll(window.previous())
 
 // Optionally check hasNext/hasPrevious to decide whether to follow the cursor.
 // These flags reflect a snapshot at query time; new data may appear afterward.
@@ -3138,7 +3138,7 @@ val activeWindow = userRepository.select()
     .scroll(Scrollable.of(User_.id, 20))
 val nextActive = userRepository.select()
     .where(User_.active, EQUALS, true)
-    .scroll(activeWindow.nextScrollable())
+    .scroll(activeWindow.next())
 ```
 
 For backward scrolling (starting from the end of the result set), use `.backward()`:
@@ -3157,11 +3157,11 @@ The same scrolling methods described in the Kotlin section are available on Java
 // First page of 20 users ordered by ID
 Window<User> window = userRepository.scroll(Scrollable.of(User_.id, 20));
 
-// Next page (nextScrollable() is non-null whenever the window has content)
-Window<User> next = userRepository.scroll(window.nextScrollable());
+// Next page (next() is non-null whenever the window has content)
+Window<User> next = userRepository.scroll(window.next());
 
 // Previous page
-Window<User> previous = userRepository.scroll(window.previousScrollable());
+Window<User> previous = userRepository.scroll(window.previous());
 
 // Optionally check hasNext/hasPrevious to decide whether to follow the cursor.
 // These flags reflect a snapshot at query time; new data may appear afterward.
@@ -3196,7 +3196,7 @@ When you need to sort by a non-unique column (for example, a date or status), us
 val window: Window<Post> = postRepository.scroll(Scrollable.of(Post_.id, Post_.createdAt, 20))
 
 // Next page
-val next: Window<Post> = postRepository.scroll(window.nextScrollable())
+val next: Window<Post> = postRepository.scroll(window.next())
 
 // With filter (use query builder)
 val activeWindow = postRepository.select()
@@ -3211,9 +3211,9 @@ val activeWindow = postRepository.select()
 Window<Post> window = postRepository.scroll(Scrollable.of(Post_.id, Post_.createdAt, 20));
 
 // Next page
-Window<Post> next = postRepository.scroll(window.nextScrollable());
+Window<Post> next = postRepository.scroll(window.next());
 ```
-The `Window` carries navigation tokens (`nextScrollable()`, `previousScrollable()`) that encode the cursor values internally, so the client does not need to extract cursor values manually. These tokens are always non-null when the window contains content. For REST APIs, `nextCursor()` and `previousCursor()` provide a convenient serialized form: `nextCursor()` returns `null` when `hasNext` is false, and `previousCursor()` returns `null` when `hasPrevious` is false.
+The `Window` carries navigation tokens (`next()`, `previous()`) that encode the cursor values internally, so the client does not need to extract cursor values manually. These tokens are always non-null when the window contains content. For REST APIs, `nextCursor()` and `previousCursor()` provide a convenient serialized form: `nextCursor()` returns `null` when `hasNext` is false, and `previousCursor()` returns `null` when `hasPrevious` is false.
 
 For queries that need joins, projections, or more complex filtering, use the query builder and call `scroll` as a terminal operation. See [Pagination and Scrolling: Scrolling](pagination-and-scrolling.md#scrolling) for full details on how scrolling composes with WHERE and ORDER BY clauses, including indexing recommendations.
 
@@ -3231,8 +3231,8 @@ Storm supports two strategies for traversing large result sets. The table below 
 | Performance at page 1 | Good | Good |
 | Performance at page 1,000 | Degrades (database must skip rows) | Consistent (index seek) |
 | Handles concurrent inserts | Rows may shift between pages | Stable cursor |
-| Navigate forward | `page.nextPageable()` | `window.nextScrollable()` |
-| Navigate backward | `page.previousPageable()` | `window.previousScrollable()` |
+| Navigate forward | `page.nextPageable()` | `window.next()` |
+| Navigate backward | `page.previousPageable()` | `window.previous()` |
 
 Use pagination when you need random page access or a total count (for example, displaying "Page 3 of 12" in a UI). Use scrolling when you need consistent performance over deep result sets or when the data changes frequently between requests.
 
@@ -3869,9 +3869,9 @@ val page: Page<User> = orm.entity(User::class).select()
 
 // Scrolling
 val window: Window<User> = userRepository.scroll(Scrollable.of(User_.id, 20))
-// nextScrollable() is non-null when the window has content.
+// next() is non-null when the window has content.
 // hasNext is informational; the developer decides whether to follow the cursor.
-val next = userRepository.scroll(window.nextScrollable())
+val next = userRepository.scroll(window.next())
 ```
 
 [Java]
@@ -3890,9 +3890,9 @@ Page<User> page = orm.entity(User.class).select()
 
 // Scrolling
 Window<User> window = userRepository.scroll(Scrollable.of(User_.id, 20));
-// nextScrollable() is non-null when the window has content.
+// next() is non-null when the window has content.
 // hasNext() is informational; the developer decides whether to follow the cursor.
-var next = userRepository.scroll(window.nextScrollable());
+var next = userRepository.scroll(window.next());
 ```
 ## Distinct Results
 
@@ -4220,7 +4220,7 @@ Storm provides three ways to retrieve a subset of query results. The right choic
 | Result type | `List<R>` | `Page<R>` | `Window<T>` |
 | Count query | no | yes | no |
 | Random access | yes | yes | no |
-| Navigation tokens | no | `nextPageable()` / `previousPageable()` | `nextScrollable()` / `previousScrollable()` |
+| Navigation tokens | no | `nextPageable()` / `previousPageable()` | `next()` / `previous()` |
 | Performance on large datasets | degrades with offset | degrades with offset | constant |
 
 **Offset and Limit** gives raw control with `offset()` and `limit()` on the query builder. Both pagination and offset/limit use SQL `OFFSET` under the hood, which degrades on large tables because the database must scan and discard all skipped rows.
@@ -4344,7 +4344,7 @@ For the full `Page` and `Pageable` API reference, see [Repositories: Offset-Base
 
 ## Scrolling
 
-Scrolling navigates sequentially using a cursor and returns a `Window<T>`. A `Window` represents a portion of the result set: it contains the data, informational flags (`hasNext`, `hasPrevious`) that indicate whether adjacent results existed at query time, and `Scrollable<T>` navigation tokens for sequential traversal, but no total count or page number. The navigation tokens `nextScrollable()` and `previousScrollable()` are always available when the window has content, regardless of whether `hasNext` or `hasPrevious` is `true`. This allows the developer to decide whether to follow a cursor, since new data may appear after the query was executed.
+Scrolling navigates sequentially using a cursor and returns a `Window<T>`. A `Window` represents a portion of the result set: it contains the data, informational flags (`hasNext`, `hasPrevious`) that indicate whether adjacent results existed at query time, and `Scrollable<T>` navigation tokens for sequential traversal, but no total count or page number. The navigation tokens `next()` and `previous()` are always available when the window has content, regardless of whether `hasNext` or `hasPrevious` is `true`. This allows the developer to decide whether to follow a cursor, since new data may appear after the query was executed.
 
 Under the hood, scrolling uses keyset pagination: it remembers the last value seen on the current page and asks the database for rows after (or before) that value. This avoids the performance cliff of `OFFSET` on large tables, because the database can seek directly to the cursor position using an index.
 
@@ -4358,8 +4358,8 @@ The `scroll` method is available directly on repositories and on the query build
 | `content()` | The list of results for this window. |
 | `hasNext()` | `true` if more results existed beyond this window at query time. |
 | `hasPrevious()` | `true` if this window was fetched with a cursor position (i.e., not the first page). |
-| `nextScrollable()` | Returns a `Scrollable<T>` for the next window, or `null` if the window is empty. |
-| `previousScrollable()` | Returns a `Scrollable<T>` for the previous window, or `null` if the window is empty. |
+| `next()` | Returns a `Scrollable<T>` for the next window, or `null` if the window is empty. |
+| `previous()` | Returns a `Scrollable<T>` for the previous window, or `null` if the window is empty. |
 
 Create a `Scrollable` using the factory methods, or obtain one from a `Window`:
 
@@ -4367,8 +4367,8 @@ Create a `Scrollable` using the factory methods, or obtain one from a `Window`:
 |--------|---------|------------|
 | `Scrollable.of(key, size)` | Request for the first page (ascending). | `ORDER BY key ASC LIMIT size+1` |
 | `Scrollable.of(key, size).backward()` | Request for the first page (descending). | `ORDER BY key DESC LIMIT size+1` |
-| `window.nextScrollable()` | Request for the next page after the current window. | `WHERE key > cursor ORDER BY key ASC LIMIT size+1` |
-| `window.previousScrollable()` | Request for the previous page before the current window. | `WHERE key < cursor ORDER BY key DESC LIMIT size+1` |
+| `window.next()` | Request for the next page after the current window. | `WHERE key > cursor ORDER BY key ASC LIMIT size+1` |
+| `window.previous()` | Request for the previous page before the current window. | `WHERE key < cursor ORDER BY key DESC LIMIT size+1` |
 
 The extra row (`size+1`) is used internally to determine the value of `hasNext`, then discarded from the returned content.
 
@@ -4376,7 +4376,7 @@ The extra row (`size+1`) is used internally to determine the value of `hasNext`,
 
 **No total count.** Unlike pagination, scrolling does not include a total element count. A separate `COUNT(*)` query must execute the same joins, filters, and conditions as the main query, which can be expensive on large or complex result sets. Total counts are also inherently unstable: rows may be inserted or deleted while a user navigates through pages, so the count can become stale between requests. Scrolling is designed for sequential "load more" or infinite-scroll patterns where a total is rarely needed. If you do need a total count (for example, for a UI label like "showing 10 of 4,827 results"), call the `count` (Kotlin) or `getCount()` (Java) method on the query builder separately, keeping in mind that the value is a snapshot that may drift as the underlying data changes.
 
-**REST cursor support.** For REST APIs that need to pass scroll state as an opaque string (for example, as a query parameter), `Window` provides `nextCursor()` and `previousCursor()` methods that serialize the scroll position to a cursor string. These convenience methods are gated by the informational flags: `nextCursor()` returns `null` when `hasNext()` is `false`, and `previousCursor()` returns `null` when `hasPrevious()` is `false`. This makes them safe to use directly in REST responses without additional checks. The underlying `nextScrollable()` and `previousScrollable()` methods remain available whenever the window has content, so server-side code can still follow a cursor even when the flags indicate no more results were seen at query time. To reconstruct a `Scrollable` from a cursor string, use `Scrollable.fromCursor(key, cursor)`. For details on supported cursor types, security considerations, and custom codec registration, see [Cursor Serialization](cursors.md).
+**REST cursor support.** For REST APIs that need to pass scroll state as an opaque string (for example, as a query parameter), `Window` provides `nextCursor()` and `previousCursor()` methods that serialize the scroll position to a cursor string. These convenience methods are gated by the informational flags: `nextCursor()` returns `null` when `hasNext()` is `false`, and `previousCursor()` returns `null` when `hasPrevious()` is `false`. This makes them safe to use directly in REST responses without additional checks. The underlying `next()` and `previous()` methods remain available whenever the window has content, so server-side code can still follow a cursor even when the flags indicate no more results were seen at query time. To reconstruct a `Scrollable` from a cursor string, use `Scrollable.fromCursor(key, cursor)`. For details on supported cursor types, security considerations, and custom codec registration, see [Cursor Serialization](cursors.md).
 
 [Kotlin]
 
@@ -4462,10 +4462,10 @@ val window = postRepository.select()
     .scroll(Scrollable.of(Post_.id, Post_.createdAt, 20))
 
 // Next page (cursor values are captured in the Scrollable automatically).
-// nextScrollable() is non-null whenever the window has content.
+// next() is non-null whenever the window has content.
 // hasNext() is informational; the developer decides whether to follow the cursor.
 val next = postRepository.select()
-    .scroll(window.nextScrollable())
+    .scroll(window.next())
 
 // First page sorted by creation date descending (most recent first)
 val latest = postRepository.select()
@@ -4473,7 +4473,7 @@ val latest = postRepository.select()
 
 // Previous page
 val prev = postRepository.select()
-    .scroll(window.previousScrollable())
+    .scroll(window.previous())
 ```
 
 [Java]
@@ -4484,24 +4484,24 @@ var window = postRepository.select()
     .scroll(Scrollable.of(Post_.id, Post_.createdAt, 20));
 
 // Next page (cursor values are captured in the Scrollable automatically).
-// nextScrollable() is non-null whenever the window has content.
+// next() is non-null whenever the window has content.
 // You can check hasNext() if you only want to proceed when more results
 // were known to exist at query time, or follow the cursor unconditionally
 // to pick up data that may have arrived after the query.
-var nextScrollable = window.nextScrollable();
-if (nextScrollable != null) {
+var nextPage = window.next();
+if (nextPage != null) {
     var next = postRepository.select()
-        .scroll(nextScrollable);
+        .scroll(nextPage);
 }
 
 // Previous page
-var previousScrollable = window.previousScrollable();
-if (previousScrollable != null) {
+var previousPage = window.previous();
+if (previousPage != null) {
     var prev = postRepository.select()
-        .scroll(previousScrollable);
+        .scroll(previousPage);
 }
 ```
-The `Window` carries navigation tokens (`nextScrollable()`, `previousScrollable()`) that encode the cursor values internally, so the client does not need to extract cursor values manually.
+The `Window` carries navigation tokens (`next()`, `previous()`) that encode the cursor values internally, so the client does not need to extract cursor values manually.
 
 The generated SQL uses a composite WHERE condition that maintains correct ordering even when `sort` values repeat:
 
@@ -4546,16 +4546,16 @@ See [Manual Key Wrapping](metamodel.md#manual-key-wrapping) for more details.
 
 ### Window Type Parameters
 
-When calling `scroll` on the query builder directly (rather than through a repository), the return type is `Window<R, T>` where `R` is the result type and `T` is the entity type from the FROM clause. For entity queries where `R` and `T` are the same type, `Window` carries `Scrollable<T>` navigation tokens. Repository convenience methods return `Window<E, E>`.
+When calling `scroll` on the query builder directly (rather than through a repository), the return type is `Window<R>` where `R` is the result type and `T` is the entity type from the FROM clause. For entity queries where `R` and `T` are the same type, `Window` carries `Scrollable<T>` navigation tokens. Repository convenience methods return `Window<E>`.
 
-For queries where the result type differs from the entity type (for example, selecting into a data class that combines columns from multiple sources), `Window` does not carry navigation tokens because Storm cannot extract cursor values from a result type it does not know how to navigate. In this case, `nextScrollable()` and `previousScrollable()` return `null` (even when the window has content), and `hasNext()` still works correctly as an informational flag. To continue scrolling, check `hasNext()` and construct the next `Scrollable` manually using cursor values from your result:
+For queries where the result type differs from the entity type (for example, selecting into a data class that combines columns from multiple sources), `Window` does not carry navigation tokens because Storm cannot extract cursor values from a result type it does not know how to navigate. In this case, `next()` and `previous()` return `null` (even when the window has content), and `hasNext()` still works correctly as an informational flag. To continue scrolling, check `hasNext()` and construct the next `Scrollable` manually using cursor values from your result:
 
 [Kotlin]
 
 ```kotlin
 data class OrderSummary(val city: Ref<City>, val orderCount: Long) : Data
 
-val window: Window<OrderSummary, Order> = orm.selectFrom(Order::class, OrderSummary::class) {
+val window: Window<OrderSummary> = orm.selectFrom(Order::class, OrderSummary::class) {
     """${Order_.city.id}, COUNT(*)"""
 }
 .groupBy(Order_.city)
@@ -4565,7 +4565,7 @@ val window: Window<OrderSummary, Order> = orm.selectFrom(Order::class, OrderSumm
 // Construct the next scrollable manually from the last result.
 // hasNext() is informational; the developer decides whether to follow the cursor.
 val lastCity = window.content.last().city.id()
-val next: Window<OrderSummary, Order> = orm.selectFrom(Order::class, OrderSummary::class) { ... }
+val next: Window<OrderSummary> = orm.selectFrom(Order::class, OrderSummary::class) { ... }
     .groupBy(Order_.city)
     .scroll(Scrollable.of(Order_.city.key(), lastCity, 20))
 ```
@@ -4575,7 +4575,7 @@ val next: Window<OrderSummary, Order> = orm.selectFrom(Order::class, OrderSummar
 ```java
 record OrderSummary(Ref<City> city, long orderCount) implements Data {}
 
-Window<OrderSummary, Order> window = orm.selectFrom(Order.class, OrderSummary.class,
+Window<OrderSummary> window = orm.selectFrom(Order.class, OrderSummary.class,
     RAW."""SELECT \{Order_.city.id}, COUNT(*)""")
     .groupBy(Order_.city)
     .scroll(Scrollable.of(Metamodel.key(Order_.city), 20));
@@ -4584,7 +4584,7 @@ Window<OrderSummary, Order> window = orm.selectFrom(Order.class, OrderSummary.cl
 // Construct the next scrollable manually from the last result.
 // hasNext() is informational; the developer decides whether to follow the cursor.
 var lastCity = window.content().getLast().city().id();
-Window<OrderSummary, Order> next = orm.selectFrom(Order.class, OrderSummary.class, ...)
+Window<OrderSummary> next = orm.selectFrom(Order.class, OrderSummary.class, ...)
     .groupBy(Order_.city)
     .scroll(Scrollable.of(Metamodel.key(Order_.city), lastCity, 20));
 ```
@@ -4595,8 +4595,8 @@ Window<OrderSummary, Order> next = orm.selectFrom(Order.class, OrderSummary.clas
 | Request | `Pageable` | `Scrollable<T>` |
 | Result | `Page` | `Window` |
 | Method | `page(pageable)` | `scroll(scrollable)` |
-| Navigate forward | `page.nextPageable()` | `window.nextScrollable()` |
-| Navigate backward | `page.previousPageable()` | `window.previousScrollable()` |
+| Navigate forward | `page.nextPageable()` | `window.next()` |
+| Navigate backward | `page.previousPageable()` | `window.previous()` |
 
 
 ========================================
@@ -5033,32 +5033,32 @@ User user = userRepository.getBy(User_.email, "alice@example.com");  // throws i
 
 ```kotlin
 val window: Window<User> = userRepository.scroll(Scrollable.of(User_.id, 20))
-// nextScrollable() is non-null when the window has content.
+// next() is non-null when the window has content.
 // hasNext() is informational; the developer decides whether to follow the cursor.
-val nextWindow: Window<User> = userRepository.scroll(window.nextScrollable())
+val nextWindow: Window<User> = userRepository.scroll(window.next())
 ```
 
 Compound unique keys work the same way. The inline record is used as the cursor value:
 
 ```kotlin
 val window: Window<SomeEntity> = repository.scroll(Scrollable.of(SomeEntity_.uniqueKey, 20))
-val nextWindow: Window<SomeEntity> = repository.scroll(window.nextScrollable())
+val nextWindow: Window<SomeEntity> = repository.scroll(window.next())
 ```
 
 [Java]
 
 ```java
 Window<User> window = userRepository.scroll(Scrollable.of(User_.id, 20));
-// nextScrollable() is non-null when the window has content.
+// next() is non-null when the window has content.
 // hasNext() is informational; the developer decides whether to follow the cursor.
-Window<User> next = userRepository.scroll(window.nextScrollable());
+Window<User> next = userRepository.scroll(window.next());
 ```
 
 Compound unique keys work the same way:
 
 ```java
 Window<SomeEntity> window = repository.scroll(Scrollable.of(SomeEntity_.uniqueKey, 20));
-Window<SomeEntity> next = repository.scroll(window.nextScrollable());
+Window<SomeEntity> next = repository.scroll(window.next());
 ```
 See [Pagination and Scrolling: Scrolling](pagination-and-scrolling.md#scrolling) for full details.
 
@@ -13918,7 +13918,7 @@ The following Java types can be used as cursor values (key or sort fields) out o
 
 If your key or sort field uses a type not in this list, serialization via `toCursor()` will throw an `IllegalStateException`. You can either use one of the supported types for your key/sort columns, or register a custom codec.
 
-Note that in-memory navigation (using `nextScrollable()` and `previousScrollable()` directly, without serializing to a cursor string) works with any type, including inline records and other composite types. The type restriction only applies to `toCursor()` serialization.
+Note that in-memory navigation (using `next()` and `previous()` directly, without serializing to a cursor string) works with any type, including inline records and other composite types. The type restriction only applies to `toCursor()` serialization.
 
 ## Custom cursor codecs
 
@@ -16605,13 +16605,13 @@ Use the `scroll()` method on any entity repository with a `Scrollable` that capt
 // First page of 20 users ordered by ID
 val window: Window<User> = userRepository.scroll(Scrollable.of(User_.id, 20))
 
-// Navigate forward: nextScrollable() is non-null whenever the window has content.
+// Navigate forward: next() is non-null whenever the window has content.
 // hasNext() is an informational flag indicating whether more rows existed at
 // query time, but the developer decides whether to follow the cursor.
-val next: Window<User> = userRepository.scroll(window.nextScrollable())
+val next: Window<User> = userRepository.scroll(window.next())
 
 // Navigate backward
-val previous: Window<User> = userRepository.scroll(window.previousScrollable())
+val previous: Window<User> = userRepository.scroll(window.previous())
 ```
 
 [Java]
@@ -16620,15 +16620,15 @@ val previous: Window<User> = userRepository.scroll(window.previousScrollable())
 // First page of 20 users ordered by ID
 Window<User> window = userRepository.scroll(Scrollable.of(User_.id, 20));
 
-// Navigate forward: nextScrollable() is non-null whenever the window has content.
+// Navigate forward: next() is non-null whenever the window has content.
 // hasNext() is an informational flag indicating whether more rows existed at
 // query time, but the developer decides whether to follow the cursor.
-Window<User> next = userRepository.scroll(window.nextScrollable());
+Window<User> next = userRepository.scroll(window.next());
 
 // Navigate backward
-Window<User> previous = userRepository.scroll(window.previousScrollable());
+Window<User> previous = userRepository.scroll(window.previous());
 ```
-Each method returns a `Window` containing the page content and navigation cursors for sequential traversal. The `hasNext()` and `hasPrevious()` flags reflect whether additional rows existed at query time, but they are not prerequisites for calling `nextScrollable()` or `previousScrollable()`. Both methods return a non-null `Scrollable` whenever the window contains at least one element, and return `null` only when the window is empty. This means you can always follow the cursor if you choose to; for example, new rows may have been inserted after the original query. For REST APIs, `Window` also provides `nextCursor()` and `previousCursor()` to serialize the scroll position as an opaque string, and `Scrollable.fromCursor(key, cursor)` to reconstruct a `Scrollable` from a cursor string. See [Repositories: Scrolling](repositories.md#scrolling) for the full API, including sort overloads, filtering, and Ref variants.
+Each method returns a `Window` containing the page content and navigation cursors for sequential traversal. The `hasNext()` and `hasPrevious()` flags reflect whether additional rows existed at query time, but they are not prerequisites for calling `next()` or `previous()`. Both methods return a non-null `Scrollable` whenever the window contains at least one element, and return `null` only when the window is empty. This means you can always follow the cursor if you choose to; for example, new rows may have been inserted after the original query. For REST APIs, `Window` also provides `nextCursor()` and `previousCursor()` to serialize the scroll position as an opaque string, and `Scrollable.fromCursor(key, cursor)` to reconstruct a `Scrollable` from a cursor string. See [Repositories: Scrolling](repositories.md#scrolling) for the full API, including sort overloads, filtering, and Ref variants.
 
 ### Choosing Between the Two
 
@@ -16642,8 +16642,8 @@ Each method returns a `Window` containing the page content and navigation cursor
 | Performance at page 1 | Good | Good |
 | Performance at page 1,000 | Degrades (database must skip rows) | Consistent (index seek) |
 | Handles concurrent inserts | Rows may shift between pages | Stable cursor |
-| Navigate forward | `page.nextPageable()` | `window.nextScrollable()` |
-| Navigate backward | `page.previousPageable()` | `window.previousScrollable()` |
+| Navigate forward | `page.nextPageable()` | `window.next()` |
+| Navigate backward | `page.previousPageable()` | `window.previous()` |
 
 Use pagination when you need random page access or a total count (for example, displaying "Page 3 of 12" in a UI). Use scrolling when you need consistent performance over deep result sets or when the data changes frequently between requests.
 
@@ -17421,18 +17421,18 @@ For large tables where users scroll through results sequentially, prefer **scrol
 
 ```kotlin
 val window = userRepository.scroll(Scrollable.of(User_.id, 20))
-// nextScrollable() is non-null when the window has content.
+// next() is non-null when the window has content.
 // hasNext() is informational; the developer decides whether to follow the cursor.
-val next = userRepository.scroll(window.nextScrollable())
+val next = userRepository.scroll(window.next())
 ```
 
 [Java]
 
 ```java
 Window<User> window = userRepository.scroll(Scrollable.of(User_.id, 20));
-// nextScrollable() is non-null when the window has content.
+// next() is non-null when the window has content.
 // hasNext() is informational; the developer decides whether to follow the cursor.
-Window<User> next = userRepository.scroll(window.nextScrollable());
+Window<User> next = userRepository.scroll(window.next());
 ```
 ### Why does my DELETE without a WHERE clause throw an exception?
 
@@ -18417,7 +18417,7 @@ A lightweight identifier (`Ref<T>`) that carries only the record type and primar
 An interface that provides database access methods for an entity or projection type. `EntityRepository<E, ID>` offers built-in CRUD operations; `ProjectionRepository<P, ID>` offers read-only operations. Custom repositories extend these interfaces with domain-specific query methods. See [Repositories](repositories.md).
 
 **Scrollable**
-A scroll request that captures cursor state for fetching a window of results. The scrolling counterpart of `Pageable`. Created via `Scrollable.of(key, size)` or obtained from `Window.nextScrollable()` / `Window.previousScrollable()`, which are always non-null when the window has content. Supports cursor serialization for REST APIs via `toCursor()` / `Scrollable.fromCursor(key, cursor)`. See [Pagination and Scrolling: Scrolling](pagination-and-scrolling.md#scrolling).
+A scroll request that captures cursor state for fetching a window of results. The scrolling counterpart of `Pageable`. Created via `Scrollable.of(key, size)` or obtained from `Window.next()` / `Window.previous()`, which are always non-null when the window has content. Supports cursor serialization for REST APIs via `toCursor()` / `Scrollable.fromCursor(key, cursor)`. See [Pagination and Scrolling: Scrolling](pagination-and-scrolling.md#scrolling).
 
 **SQL Template**
 Storm's template engine that uses string interpolation to embed entity types, metamodel fields, and parameter values into SQL text. Types expand to column lists, metamodel fields to column names, and values to parameterized placeholders. SQL Templates are the foundation of all Storm queries, including those generated by repositories. See [SQL Templates](sql-templates.md).
@@ -18429,7 +18429,7 @@ See [Metamodel](#metamodel) above.
 A configuration object (`StormConfig`) that controls runtime behavior for features like dirty checking mode, entity cache retention, and template cache size. All settings have sensible defaults, so configuration is optional. See [Configuration](configuration.md).
 
 **Window**
-A window of query results from a scrolling operation. A `Window<R>` contains the result list (`content`), informational `hasNext` and `hasPrevious` flags (a snapshot at query time), and navigation tokens (`nextScrollable()`, `previousScrollable()`) for sequential traversal. The navigation tokens are always non-null when the window has content; `hasNext` and `hasPrevious` are not prerequisites for accessing them, since new data may appear after the query. Also provides `nextCursor()` / `previousCursor()` for REST API cursor strings. See [Pagination and Scrolling: Scrolling](pagination-and-scrolling.md#scrolling).
+A window of query results from a scrolling operation. A `Window<R>` contains the result list (`content`), informational `hasNext` and `hasPrevious` flags (a snapshot at query time), and navigation tokens (`next()`, `previous()`) for sequential traversal. The navigation tokens are always non-null when the window has content; `hasNext` and `hasPrevious` are not prerequisites for accessing them, since new data may appear after the query. Also provides `nextCursor()` / `previousCursor()` for REST API cursor strings. See [Pagination and Scrolling: Scrolling](pagination-and-scrolling.md#scrolling).
 
 
 ========================================

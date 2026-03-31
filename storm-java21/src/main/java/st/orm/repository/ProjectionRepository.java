@@ -347,13 +347,13 @@ public interface ProjectionRepository<P extends Projection<ID>, ID> extends Repo
 
     /**
      * Executes a scroll request from a {@link Scrollable} token, typically obtained from
-     * {@link Window#nextScrollable()} or {@link Window#previousScrollable()}.
+     * {@link Window#next()} or {@link Window#previous()}.
      *
      * @param scrollable the scroll request containing cursor state, key, sort, size, and direction.
      * @return a window containing the results and navigation tokens.
      * @since 1.11
      */
-    default Window<P, P> scroll(@Nonnull Scrollable<P> scrollable) {
+    default Window<P> scroll(@Nonnull Scrollable<P> scrollable) {
         return select().scroll(scrollable);
     }
 

@@ -111,7 +111,7 @@ class EntityRepositoryImpl<E, ID : Any>(
 
     override fun pageRef(pageable: Pageable): Page<Ref<E>> = core.pageRef(pageable)
 
-    override fun scroll(scrollable: Scrollable<E>): Window<E, E> = select().scroll(scrollable)
+    override fun scroll(scrollable: Scrollable<E>): Window<E> = select().scroll(scrollable)
 
     override fun findById(id: ID): E? = core.findById(id).orElse(null)
 

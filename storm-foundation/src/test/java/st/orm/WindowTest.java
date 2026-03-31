@@ -76,6 +76,33 @@ class WindowTest {
     }
 
     @Test
+    void nextReturnsTypedScrollable() {
+        var scrollable = Scrollable.of(KEY, 42, 20);
+        var window = new Window<>(List.of("a", "b"), true, false, scrollable, null);
+        Scrollable<Data> typed = window.next();
+        assertNotNull(typed);
+        assertEquals(42, typed.keyCursor());
+        assertEquals(20, typed.size());
+    }
+
+    @Test
+    void previousReturnsTypedScrollable() {
+        var scrollable = Scrollable.of(KEY, 1, 20).backward();
+        var window = new Window<>(List.of("a", "b"), false, true, null, scrollable);
+        Scrollable<Data> typed = window.previous();
+        assertNotNull(typed);
+        assertEquals(1, typed.keyCursor());
+        assertFalse(typed.isForward());
+    }
+
+    @Test
+    void nextReturnsNullForEmptyWindow() {
+        var window = new Window<>(List.of(), false, false, null, null);
+        assertNull(window.<Data>next());
+        assertNull(window.<Data>previous());
+    }
+
+    @Test
     void nextCursorIsNullWhenNoNext() {
         var window = new Window<>(List.of("a"), false, false, null, null);
         assertNull(window.nextCursor());

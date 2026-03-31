@@ -692,13 +692,13 @@ public interface EntityRepository<E extends Entity<ID>, ID> extends Repository {
 
     /**
      * Executes a scroll request from a {@link Scrollable} token, typically obtained from
-     * {@link Window#nextScrollable()} or {@link Window#previousScrollable()}.
+     * {@link Window#next()} or {@link Window#previous()}.
      *
      * @param scrollable the scroll request containing cursor state, key, sort, size, and direction.
      * @return a window containing the results and navigation tokens.
      * @since 1.11
      */
-    default Window<E, E> scroll(@Nonnull Scrollable<E> scrollable) {
+    default Window<E> scroll(@Nonnull Scrollable<E> scrollable) {
         return select().scroll(scrollable);
     }
 

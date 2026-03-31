@@ -1802,10 +1802,10 @@ open class EntityRepositoryTest(
         firstWindow.content shouldHaveSize 3
         firstWindow.hasNext shouldBe true
         firstWindow.nextScrollable.shouldNotBeNull()
-        val nextWindow = repo.scroll(firstWindow.nextScrollable!!)
+        val nextWindow = repo.scroll(firstWindow.next<City>()!!)
         nextWindow.content shouldHaveSize 3
         nextWindow.previousScrollable.shouldNotBeNull()
-        val backToFirst = repo.scroll(nextWindow.previousScrollable!!)
+        val backToFirst = repo.scroll(nextWindow.previous<City>()!!)
         backToFirst.content shouldHaveSize 3
         backToFirst.content.map { it.id }.sorted() shouldBe firstWindow.content.map { it.id }.sorted()
     }
@@ -1820,7 +1820,7 @@ open class EntityRepositoryTest(
         cursor.shouldNotBeNull()
         val scrollable = Scrollable.fromCursor(idKey, cursor)
         val nextFromCursor = repo.scroll(scrollable)
-        val nextFromScrollable = repo.scroll(firstWindow.nextScrollable!!)
+        val nextFromScrollable = repo.scroll(firstWindow.next<City>()!!)
         nextFromCursor.content.map { it.id } shouldBe nextFromScrollable.content.map { it.id }
     }
 
@@ -1835,7 +1835,7 @@ open class EntityRepositoryTest(
         val ids = lastWindow.content.map { it.id }
         ids shouldBe ids.sortedDescending()
         lastWindow.nextScrollable.shouldNotBeNull()
-        val furtherBack = repo.scroll(lastWindow.nextScrollable!!)
+        val furtherBack = repo.scroll(lastWindow.next<City>()!!)
         furtherBack.content shouldHaveSize 3
         // Further back should return earlier items (still descending).
         val furtherIds = furtherBack.content.map { it.id }
