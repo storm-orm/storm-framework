@@ -150,8 +150,8 @@ val found: City? = orm.findById<City>(city.id)
 // Update
 orm update city.copy(population = 160_000)
 
-// Delete
-orm delete city
+// Remove
+orm remove city
 
 // Find with predicate
 val users: List<User> = orm.findAll(User_.city.name eq "Sunnyvale")
@@ -171,8 +171,8 @@ Optional<City> found = cities.findById(city.id());
 // Update
 cities.update(new City(city.id(), "Sunnyvale", 160_000));
 
-// Delete
-cities.delete(city);
+// Remove
+cities.remove(city);
 
 // Query
 List<User> users = orm.entity(User.class).select()
@@ -321,6 +321,52 @@ Metamodel: storm-metamodel-processor (Java), storm-metamodel-ksp (Kotlin)
 Testing: storm-test, storm-h2 (test runtime), com.h2database:h2 (test runtime — required, storm-h2 declares it as provided)
 Validation: storm-kotlin-validator
 
+## API Design: Prefer the Simplest Approach
+
+Always use the simplest method that meets your needs. Escalate only when the simpler level cannot express what you need.
+
+**Kotlin** has four levels:
+
+| Level | Approach | Best for |
+|-------|----------|----------|
+| 1 | Convenience methods (`find`, `findAll`, `removeAll`, `count`, `exists`) | Simple lookups and operations |
+| 2 | Builder with predicate (`select(predicate)`, `delete(predicate)`) | Filtered queries needing ordering, pagination, or joins |
+| 3 | Block DSL (`select { }`, `delete { }`) | Complex queries with multiple joins and conditions |
+| 4 | SQL Templates | CTEs, window functions, database-specific features |
+
+**Java** has three levels (no block DSL):
+
+| Level | Approach | Best for |
+|-------|----------|----------|
+| 1 | Convenience methods (`findBy`, `findAllBy`, `removeAllBy`, `countBy`, `existsBy`) | Simple lookups and operations |
+| 2 | Builder (`select().where()`, `delete().where()`) | Most queries needing ordering, pagination, or joins |
+| 3 | SQL Templates | CTEs, window functions, database-specific features |
+
+### When to use each — and when NOT to
+
+| Need | Use (simplest) | Don't use (unnecessarily complex) |
+|------|----------------|-----------------------------------|
+| All rows as list | `findAll()` | `select().resultList` |
+| Filter by single field | `findAllBy(field, value)` | `select().where(field, op, value).resultList` |
+| Filter by predicate (Kotlin) | `findAll(predicate)` | `select(predicate).resultList` |
+| Single result by predicate (Kotlin) | `find(predicate)` | `select(predicate).optionalResult` |
+| Delete by predicate (Kotlin) | `removeAll(predicate)` | `delete(predicate).executeUpdate()` |
+| Delete by field | `removeAllBy(field, value)` | `delete().where(field, op, value).executeUpdate()` |
+| Filtered + **ordering/pagination** | `select(predicate).orderBy(...)` | convenience methods (can't add ordering) |
+| Aggregates, CTEs, window functions | SQL Template | QueryBuilder (can't express these) |
+
+### SQL Template Escalation
+
+SQL Templates are an escape hatch. Three rules:
+1. **Code-first:** If it can be done with QueryBuilder methods (joins, where, orderBy, groupBy, having), do it in code.
+2. **Metamodel in templates:** When you do need a template fragment, use metamodel references (`${User_.email}`, not `"email"`).
+3. **Full SQL last resort:** Full `SELECT...FROM` templates only for totally custom queries (CTEs, UNIONs, window functions).
+
+### The delete/remove distinction
+
+- `remove` operates on entities or ids you already have (immediate execution): `remove(entity)`, `removeById(id)`, `removeAll()`, `removeAll(predicate)` (Kotlin).
+- `delete` builds a query to find and delete rows by criteria (returns `QueryBuilder`): `delete().where(...).executeUpdate()`.
+
 ## Critical Gotchas
 
 1. **QueryBuilder is immutable.** Every builder method returns a new instance. Always
@@ -337,7 +383,7 @@ Validation: storm-kotlin-validator
 
 2. **No lazy loading, no proxies, no persistence context.** Entities are plain
    records/data classes. There is no managed state, no dirty tracking, no
-   automatic flush. You explicitly call insert/update/delete.
+   automatic flush. You explicitly call insert/update/remove.
 
 3. **No collection fields on entities.** Storm entities cannot have List<Child>
    fields. Relationships are modeled from the child side using @FK. To get a
@@ -356,7 +402,7 @@ Validation: storm-kotlin-validator
    operations, Storm throws if you omit a WHERE clause. Use `unsafe()` if you
    intentionally want to affect all rows:
    ```kotlin
-   orm.entity(User::class).delete().unsafe().execute() // Deletes all users
+   orm.entity(User::class).delete().unsafe().executeUpdate() // Deletes all users
    ```
 
 6. **FK nullability determines JOIN type.** A non-nullable @FK produces INNER JOIN;

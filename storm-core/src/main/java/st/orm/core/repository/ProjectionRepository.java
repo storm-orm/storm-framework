@@ -362,8 +362,7 @@ public interface ProjectionRepository<P extends Projection<ID>, ID> extends Repo
      * Scrolls through projections using the given scrollable request.
      *
      * <p>This is a convenience method that delegates to {@code select().scroll(scrollable)}. It is typically used
-     * with a {@link Scrollable} obtained from {@link Window#nextScrollable()} or
-     * {@link Window#previousScrollable()}.</p>
+     * with a {@link Scrollable} obtained from {@link Window#next()} or {@link Window#previous()}.</p>
      *
      * @param scrollable the scroll request describing cursor position and page size.
      * @return a window containing the results.
@@ -371,7 +370,7 @@ public interface ProjectionRepository<P extends Projection<ID>, ID> extends Repo
      * @since 1.11
      */
     default Window<P> scroll(@Nonnull Scrollable<P> scrollable) {
-        return Window.of(select().scroll(scrollable));
+        return select().scroll(scrollable);
     }
 
     // List based methods.
@@ -388,6 +387,24 @@ public interface ProjectionRepository<P extends Projection<ID>, ID> extends Repo
      *                              connectivity.
      */
     List<P> findAll();
+
+    /**
+     * Returns a list of refs to all projections of the type supported by this repository. Each element in the list
+     * represents a lightweight reference to a projection in the database, containing only the primary key.
+     *
+     * <p>This method is useful when you need to retrieve all projection identifiers without loading the full
+     * projection data. The complete projection can be fetched on demand by calling {@link Ref#fetch()} on any of
+     * the returned refs.</p>
+     *
+     * <p><strong>Note:</strong> While this method is more memory-efficient than {@link #findAll()} since it only
+     * loads primary keys, loading all refs into memory at once can still be memory-intensive for very large tables.</p>
+     *
+     * @return a list of refs to all projections of the type supported by this repository.
+     * @throws PersistenceException if the selection operation fails due to underlying database issues, such as
+     *                              connectivity.
+     * @since 1.3
+     */
+    List<Ref<P>> findAllRef();
 
     /**
      * Retrieves a list of projections based on their primary keys.

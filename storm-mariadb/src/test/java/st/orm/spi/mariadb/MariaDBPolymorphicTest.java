@@ -141,7 +141,7 @@ public class MariaDBPolymorphicTest {
         long before = animals.count();
         var result = animals.select().getResultList();
         var last = result.getLast();
-        animals.delete(last);
+        animals.remove(last);
         assertEquals(before - 1, animals.count());
     }
 
@@ -244,7 +244,7 @@ public class MariaDBPolymorphicTest {
         long before = animals.count();
         var result = animals.select().getResultList();
         var last = result.getLast();
-        animals.delete(last);
+        animals.remove(last);
         assertEquals(before - 1, animals.count());
     }
 
@@ -254,7 +254,7 @@ public class MariaDBPolymorphicTest {
         var animals = orm.entity(JoinedAnimal.class);
         var id = animals.insertAndFetchId(new JoinedDog(null, "TempDog", 10));
         long before = animals.count();
-        animals.deleteById(id);
+        animals.removeById(id);
         assertEquals(before - 1, animals.count());
     }
 
@@ -331,7 +331,7 @@ public class MariaDBPolymorphicTest {
         var result = animals.select().getResultList();
         var cat = result.get(result.size() - 2);
         var dog = result.get(result.size() - 1);
-        animals.delete(List.of(cat, dog));
+        animals.remove(List.of(cat, dog));
         assertEquals(before - 2, animals.count());
     }
 
@@ -342,7 +342,7 @@ public class MariaDBPolymorphicTest {
         var ids = animals.insertAndFetchIds(List.of(new JoinedCat(null, "RefCat", true), new JoinedDog(null, "RefDog", 7)));
         long before = animals.count();
         List<Ref<JoinedAnimal>> refs = ids.stream().map(id -> Ref.of(JoinedAnimal.class, id)).toList();
-        animals.deleteByRef(refs);
+        animals.removeByRef(refs);
         assertEquals(before - 2, animals.count());
     }
 
@@ -418,7 +418,7 @@ public class MariaDBPolymorphicTest {
         long before = animals.count();
         var result = animals.select().getResultList();
         var last = result.getLast();
-        animals.delete(last);
+        animals.remove(last);
         assertEquals(before - 1, animals.count());
     }
 
@@ -452,7 +452,7 @@ public class MariaDBPolymorphicTest {
         var cat = result.get(result.size() - 3);
         var dog = result.get(result.size() - 2);
         var bird = result.get(result.size() - 1);
-        animals.delete(List.of(cat, dog, bird));
+        animals.remove(List.of(cat, dog, bird));
         assertEquals(before - 3, animals.count());
     }
 

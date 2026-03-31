@@ -46,7 +46,7 @@ EntityRepository<User, Integer> userRepository = orm.entity(User.class);
 <Tabs groupId="language">
 <TabItem value="kotlin" label="Kotlin" default>
 
-All CRUD operations use the entity's primary key (marked with `@PK`) for identity. Insert returns the entity with any database-generated fields populated (such as auto-increment IDs). Update and delete match by primary key. Query methods accept metamodel-based filter expressions that compile to parameterized WHERE clauses.
+All CRUD operations use the entity's primary key (marked with `@PK`) for identity. Insert returns the entity with any database-generated fields populated (such as auto-increment IDs). Update and remove match by primary key. Query methods accept metamodel-based filter expressions that compile to parameterized WHERE clauses.
 
 ```kotlin
 // Create
@@ -64,14 +64,17 @@ val all: List<User> = orm.findAll(User_.city eq city)
 // Update
 orm update user.copy(name = "Alice Johnson")
 
-// Delete
-orm delete user
+// Remove
+orm remove user
 
-// Delete by condition
-orm.delete<User>(User_.city eq city)
+// Remove by condition
+orm.removeBy(User_.city, city)
 
-// Delete all
-orm.deleteAll<User>()
+// Remove by predicate
+orm.removeAll(User_.active eq false)
+
+// Remove all
+orm.removeAll<User>()
 
 // Delete all (builder approach, requires unsafe() to confirm intent)
 orm.entity(User::class).delete().unsafe().executeUpdate()
@@ -102,11 +105,11 @@ userRepository.update(new User(
     user.id(), "alice@example.com", "Alice Johnson", user.birthDate(), user.city()
 ));
 
-// Delete
-userRepository.delete(user);
+// Remove
+userRepository.remove(user);
 
-// Delete all
-userRepository.deleteAll();
+// Remove all
+userRepository.removeAll();
 
 // Delete all (builder approach, requires unsafe() to confirm intent)
 userRepository.delete().unsafe().executeUpdate();
@@ -116,7 +119,7 @@ userRepository.delete().unsafe().executeUpdate();
 </Tabs>
 
 :::warning Safety Check
-Storm rejects DELETE and UPDATE queries that have no WHERE clause, throwing a `PersistenceException`. This prevents accidental bulk deletions, which is especially important because `QueryBuilder` is immutable and a lost `where()` return value would silently drop the filter. Call `unsafe()` to opt out of this check when you intentionally want to affect all rows. The `deleteAll()` convenience method calls `unsafe()` internally.
+Storm rejects DELETE and UPDATE queries that have no WHERE clause, throwing a `PersistenceException`. This prevents accidental bulk deletions, which is especially important because `QueryBuilder` is immutable and a lost `where()` return value would silently drop the filter. Call `unsafe()` to opt out of this check when you intentionally want to affect all rows. The `removeAll()` convenience method calls `unsafe()` internally.
 :::
 
 Storm uses dirty checking to determine which columns to include in the UPDATE statement. See [Dirty Checking](dirty-checking.md) for configuration details.
@@ -279,7 +282,7 @@ Repositories provide convenience methods for scrolling through result sets, wher
 
 The key parameter must be a `Metamodel.Key`, which is generated for fields annotated with `@UK` or `@PK`. See [Metamodel](metamodel.md#unique-keys-uk-and-metamodelkey) for details.
 
-The `scroll` method accepts a `Scrollable<E>` that captures the cursor state (key, page size, direction, and cursor values) and returns a `Window<E>` containing the page content, informational `hasNext`/`hasPrevious` flags, and `Scrollable<E>` navigation tokens for fetching the adjacent window. Navigation tokens (`nextScrollable()`, `previousScrollable()`) are always present when the window has content; they are only `null` when the window is empty. The `hasNext` and `hasPrevious` flags indicate whether more results existed at query time, but they do not gate access to the navigation tokens. Since new data may appear after the query, the developer decides whether to follow a cursor.
+The `scroll` method accepts a `Scrollable<E>` that captures the cursor state (key, page size, direction, and cursor values) and returns a `Window<E>` containing the page content, informational `hasNext`/`hasPrevious` flags, and `Scrollable<E>` navigation tokens for fetching the adjacent window. Navigation tokens (`next()`, `previous()`) are always present when the window has content; they are only `null` when the window is empty. The `hasNext` and `hasPrevious` flags indicate whether more results existed at query time, but they do not gate access to the navigation tokens. Since new data may appear after the query, the developer decides whether to follow a cursor.
 
 Create a `Scrollable` using the factory methods, then use the navigation tokens on the returned `Window` to move forward or backward:
 
@@ -290,11 +293,11 @@ Create a `Scrollable` using the factory methods, then use the navigation tokens 
 // First page of 20 users ordered by ID
 val window: Window<User> = userRepository.scroll(Scrollable.of(User_.id, 20))
 
-// Next page (nextScrollable() is non-null whenever the window has content)
-val next: Window<User> = userRepository.scroll(window.nextScrollable())
+// Next page (next() is non-null whenever the window has content)
+val next: Window<User> = userRepository.scroll(window.next())
 
 // Previous page
-val previous: Window<User> = userRepository.scroll(window.previousScrollable())
+val previous: Window<User> = userRepository.scroll(window.previous())
 
 // Optionally check hasNext/hasPrevious to decide whether to follow the cursor.
 // These flags reflect a snapshot at query time; new data may appear afterward.
@@ -311,7 +314,7 @@ val activeWindow = userRepository.select()
     .scroll(Scrollable.of(User_.id, 20))
 val nextActive = userRepository.select()
     .where(User_.active, EQUALS, true)
-    .scroll(activeWindow.nextScrollable())
+    .scroll(activeWindow.next())
 ```
 
 For backward scrolling (starting from the end of the result set), use `.backward()`:
@@ -325,17 +328,17 @@ The scroll methods handle ordering internally and reject explicit `orderBy()` ca
 </TabItem>
 <TabItem value="java" label="Java">
 
-The same scrolling methods described in the Kotlin section are available on Java repositories. The `scroll` method accepts a `Scrollable<E>` and returns a `Window<E>` containing the page `content()`, informational `hasNext()`/`hasPrevious()` flags, and `Scrollable<E>` navigation tokens that are always present when the window has content.
+The same scrolling methods described in the Kotlin section are available on Java repositories. The `scroll` method accepts a `Scrollable<E>` and returns a `Window<E>` containing the page `content()`, informational `hasNext()`/`hasPrevious()` flags, and `Scrollable<E>` navigation tokens (`next()`, `previous()`) that are always present when the window has content.
 
 ```java
 // First page of 20 users ordered by ID
 Window<User> window = userRepository.scroll(Scrollable.of(User_.id, 20));
 
-// Next page (nextScrollable() is non-null whenever the window has content)
-Window<User> next = userRepository.scroll(window.nextScrollable());
+// Next page (next() is non-null whenever the window has content)
+Window<User> next = userRepository.scroll(window.next());
 
 // Previous page
-Window<User> previous = userRepository.scroll(window.previousScrollable());
+Window<User> previous = userRepository.scroll(window.previous());
 
 // Optionally check hasNext/hasPrevious to decide whether to follow the cursor.
 // These flags reflect a snapshot at query time; new data may appear afterward.
@@ -375,7 +378,7 @@ When you need to sort by a non-unique column (for example, a date or status), us
 val window: Window<Post> = postRepository.scroll(Scrollable.of(Post_.id, Post_.createdAt, 20))
 
 // Next page
-val next: Window<Post> = postRepository.scroll(window.nextScrollable())
+val next: Window<Post> = postRepository.scroll(window.next())
 
 // With filter (use query builder)
 val activeWindow = postRepository.select()
@@ -391,13 +394,13 @@ val activeWindow = postRepository.select()
 Window<Post> window = postRepository.scroll(Scrollable.of(Post_.id, Post_.createdAt, 20));
 
 // Next page
-Window<Post> next = postRepository.scroll(window.nextScrollable());
+Window<Post> next = postRepository.scroll(window.next());
 ```
 
 </TabItem>
 </Tabs>
 
-The `Window` carries navigation tokens (`nextScrollable()`, `previousScrollable()`) that encode the cursor values internally, so the client does not need to extract cursor values manually. These tokens are always non-null when the window contains content. For REST APIs, `nextCursor()` and `previousCursor()` provide a convenient serialized form: `nextCursor()` returns `null` when `hasNext` is false, and `previousCursor()` returns `null` when `hasPrevious` is false.
+The `Window` carries navigation tokens (`next()`, `previous()`) that encode the cursor values internally, so the client does not need to extract cursor values manually. These tokens are always non-null when the window contains content. For REST APIs, `nextCursor()` and `previousCursor()` provide a convenient serialized form: `nextCursor()` returns `null` when `hasNext` is false, and `previousCursor()` returns `null` when `hasPrevious` is false.
 
 For queries that need joins, projections, or more complex filtering, use the query builder and call `scroll` as a terminal operation. See [Pagination and Scrolling: Scrolling](pagination-and-scrolling.md#scrolling) for full details on how scrolling composes with WHERE and ORDER BY clauses, including indexing recommendations.
 
@@ -415,8 +418,8 @@ Storm supports two strategies for traversing large result sets. The table below 
 | Performance at page 1 | Good | Good |
 | Performance at page 1,000 | Degrades (database must skip rows) | Consistent (index seek) |
 | Handles concurrent inserts | Rows may shift between pages | Stable cursor |
-| Navigate forward | `page.nextPageable()` | `window.nextScrollable()` |
-| Navigate backward | `page.previousPageable()` | `window.previousScrollable()` |
+| Navigate forward | `page.nextPageable()` | `window.next()` |
+| Navigate backward | `page.previousPageable()` | `window.previous()` |
 
 Use pagination when you need random page access or a total count (for example, displaying "Page 3 of 12" in a UI). Use scrolling when you need consistent performance over deep result sets or when the data changes frequently between requests.
 

@@ -24,7 +24,7 @@ class SqlCaptureTest {
     void captureDeleteOperationShouldRecordDeleteStatement(ORMTemplate orm, SqlCapture capture) {
         // Insert an item, then delete it while capturing to exercise the DELETE branch.
         Integer insertedId = orm.entity(Item.class).insertAndFetchId(new Item(0, "ToDelete"));
-        capture.run(() -> orm.entity(Item.class).delete(new Item(insertedId, "ToDelete")));
+        capture.run(() -> orm.entity(Item.class).remove(new Item(insertedId, "ToDelete")));
         assertEquals(1, capture.count(Operation.DELETE));
         var deleteStatements = capture.statements(Operation.DELETE);
         assertEquals(1, deleteStatements.size());

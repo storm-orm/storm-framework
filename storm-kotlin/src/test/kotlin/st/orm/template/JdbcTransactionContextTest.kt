@@ -15,8 +15,8 @@ import org.springframework.test.context.jdbc.Sql
 import org.springframework.test.context.junit.jupiter.SpringExtension
 import st.orm.PersistenceException
 import st.orm.repository.countAll
-import st.orm.repository.deleteAll
 import st.orm.repository.exists
+import st.orm.repository.removeAll
 import st.orm.template.TransactionIsolation.*
 import st.orm.template.TransactionPropagation.*
 import st.orm.template.model.City
@@ -72,7 +72,7 @@ open class JdbcTransactionContextTest(
         transactionBlocking(isolation = REPEATABLE_READ) {
             orm.countAll<Visit>() shouldBe 14
             transactionBlocking(NESTED) {
-                orm.deleteAll<Visit>()
+                orm.removeAll<Visit>()
                 orm.exists<Visit>().shouldBeFalse()
                 setRollbackOnly()
             }
@@ -85,7 +85,7 @@ open class JdbcTransactionContextTest(
     fun `double nested NESTED should work correctly`(): Unit = runBlocking {
         transactionBlocking {
             transactionBlocking(NESTED) {
-                orm.deleteAll<Visit>()
+                orm.removeAll<Visit>()
                 transactionBlocking(NESTED) {
                     orm.exists<Visit>().shouldBeFalse()
                     setRollbackOnly()
@@ -102,7 +102,7 @@ open class JdbcTransactionContextTest(
         transactionBlocking {
             transactionBlocking(REQUIRES_NEW) {
                 transactionBlocking(NESTED) {
-                    orm.deleteAll<Visit>()
+                    orm.removeAll<Visit>()
                     setRollbackOnly()
                 }
                 orm.exists<Visit>().shouldBeTrue()
@@ -158,7 +158,7 @@ open class JdbcTransactionContextTest(
     @Test
     fun `SUPPORTS without outer transaction runs non-transactional`(): Unit = runBlocking {
         transactionBlocking(SUPPORTS) {
-            orm.deleteAll<Visit>()
+            orm.removeAll<Visit>()
         }
         // Non-transactional: auto-committed
         orm.exists<Visit>().shouldBeFalse()
@@ -170,7 +170,7 @@ open class JdbcTransactionContextTest(
     fun `NOT_SUPPORTED should suspend outer transaction and run non-transactional`(): Unit = runBlocking {
         transactionBlocking {
             transactionBlocking(NOT_SUPPORTED) {
-                orm.deleteAll<Visit>()
+                orm.removeAll<Visit>()
             }
             // NOT_SUPPORTED changes are already committed
             orm.exists<Visit>().shouldBeFalse()
@@ -186,7 +186,7 @@ open class JdbcTransactionContextTest(
     fun `MANDATORY inside REQUIRED should join transaction`(): Unit = runBlocking {
         transactionBlocking {
             transactionBlocking(MANDATORY) {
-                orm.deleteAll<Visit>()
+                orm.removeAll<Visit>()
             }
         }
         orm.exists<Visit>().shouldBeFalse()
@@ -317,7 +317,7 @@ open class JdbcTransactionContextTest(
         assertThrows<UnexpectedRollbackException> {
             transactionBlocking {
                 transactionBlocking(REQUIRED) {
-                    orm.deleteAll<Visit>()
+                    orm.removeAll<Visit>()
                     setRollbackOnly()
                 }
                 // Outer tries to commit but inner set rollback-only
@@ -417,7 +417,7 @@ open class JdbcTransactionContextTest(
             orm.entity(Visit::class).select().where(1).singleResult
 
             // Delete visits: should invalidate Visit cache but NOT City cache
-            orm.deleteAll<Visit>()
+            orm.removeAll<Visit>()
 
             // City cache should still be intact
             val city2 = orm.entity(City::class).select().where(1).singleResult
@@ -428,7 +428,7 @@ open class JdbcTransactionContextTest(
     @Test
     fun `SUPPORTS with outer transaction should join and share data`(): Unit = runBlocking {
         transactionBlocking {
-            orm.deleteAll<Visit>()
+            orm.removeAll<Visit>()
             transactionBlocking(SUPPORTS) {
                 orm.exists<Visit>().shouldBeFalse()
             }
@@ -448,7 +448,7 @@ open class JdbcTransactionContextTest(
     @Test
     fun `multiple operations after rollback should succeed`(): Unit = runBlocking {
         transactionBlocking {
-            orm.deleteAll<Visit>()
+            orm.removeAll<Visit>()
             setRollbackOnly()
         }
         orm.exists<Visit>().shouldBeTrue()

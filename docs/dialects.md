@@ -28,7 +28,7 @@ Add the dialect dependency for your database. Dialects are runtime-only dependen
 <dependency>
     <groupId>st.orm</groupId>
     <artifactId>storm-oracle</artifactId>
-    <version>1.11.0</version>
+    <version>@@STORM_VERSION@@</version>
     <scope>runtime</scope>
 </dependency>
 
@@ -36,7 +36,7 @@ Add the dialect dependency for your database. Dialects are runtime-only dependen
 <dependency>
     <groupId>st.orm</groupId>
     <artifactId>storm-mssqlserver</artifactId>
-    <version>1.11.0</version>
+    <version>@@STORM_VERSION@@</version>
     <scope>runtime</scope>
 </dependency>
 
@@ -44,7 +44,7 @@ Add the dialect dependency for your database. Dialects are runtime-only dependen
 <dependency>
     <groupId>st.orm</groupId>
     <artifactId>storm-postgresql</artifactId>
-    <version>1.11.0</version>
+    <version>@@STORM_VERSION@@</version>
     <scope>runtime</scope>
 </dependency>
 
@@ -52,7 +52,7 @@ Add the dialect dependency for your database. Dialects are runtime-only dependen
 <dependency>
     <groupId>st.orm</groupId>
     <artifactId>storm-mysql</artifactId>
-    <version>1.11.0</version>
+    <version>@@STORM_VERSION@@</version>
     <scope>runtime</scope>
 </dependency>
 
@@ -60,7 +60,7 @@ Add the dialect dependency for your database. Dialects are runtime-only dependen
 <dependency>
     <groupId>st.orm</groupId>
     <artifactId>storm-mariadb</artifactId>
-    <version>1.11.0</version>
+    <version>@@STORM_VERSION@@</version>
     <scope>runtime</scope>
 </dependency>
 
@@ -68,7 +68,7 @@ Add the dialect dependency for your database. Dialects are runtime-only dependen
 <dependency>
     <groupId>st.orm</groupId>
     <artifactId>storm-sqlite</artifactId>
-    <version>1.11.0</version>
+    <version>@@STORM_VERSION@@</version>
     <scope>runtime</scope>
 </dependency>
 
@@ -76,7 +76,7 @@ Add the dialect dependency for your database. Dialects are runtime-only dependen
 <dependency>
     <groupId>st.orm</groupId>
     <artifactId>storm-h2</artifactId>
-    <version>1.11.0</version>
+    <version>@@STORM_VERSION@@</version>
     <scope>runtime</scope>
 </dependency>
 ```
@@ -85,50 +85,50 @@ Add the dialect dependency for your database. Dialects are runtime-only dependen
 
 ```groovy
 // Oracle
-runtimeOnly 'st.orm:storm-oracle:1.11.0'
+runtimeOnly 'st.orm:storm-oracle:@@STORM_VERSION@@'
 
 // MS SQL Server
-runtimeOnly 'st.orm:storm-mssqlserver:1.11.0'
+runtimeOnly 'st.orm:storm-mssqlserver:@@STORM_VERSION@@'
 
 // PostgreSQL
-runtimeOnly 'st.orm:storm-postgresql:1.11.0'
+runtimeOnly 'st.orm:storm-postgresql:@@STORM_VERSION@@'
 
 // MySQL
-runtimeOnly 'st.orm:storm-mysql:1.11.0'
+runtimeOnly 'st.orm:storm-mysql:@@STORM_VERSION@@'
 
 // MariaDB
-runtimeOnly 'st.orm:storm-mariadb:1.11.0'
+runtimeOnly 'st.orm:storm-mariadb:@@STORM_VERSION@@'
 
 // SQLite
-runtimeOnly 'st.orm:storm-sqlite:1.11.0'
+runtimeOnly 'st.orm:storm-sqlite:@@STORM_VERSION@@'
 
 // H2
-runtimeOnly 'st.orm:storm-h2:1.11.0'
+runtimeOnly 'st.orm:storm-h2:@@STORM_VERSION@@'
 ```
 
 ### Gradle (Kotlin DSL)
 
 ```kotlin
 // Oracle
-runtimeOnly("st.orm:storm-oracle:1.11.0")
+runtimeOnly("st.orm:storm-oracle:@@STORM_VERSION@@")
 
 // MS SQL Server
-runtimeOnly("st.orm:storm-mssqlserver:1.11.0")
+runtimeOnly("st.orm:storm-mssqlserver:@@STORM_VERSION@@")
 
 // PostgreSQL
-runtimeOnly("st.orm:storm-postgresql:1.11.0")
+runtimeOnly("st.orm:storm-postgresql:@@STORM_VERSION@@")
 
 // MySQL
-runtimeOnly("st.orm:storm-mysql:1.11.0")
+runtimeOnly("st.orm:storm-mysql:@@STORM_VERSION@@")
 
 // MariaDB
-runtimeOnly("st.orm:storm-mariadb:1.11.0")
+runtimeOnly("st.orm:storm-mariadb:@@STORM_VERSION@@")
 
 // SQLite
-runtimeOnly("st.orm:storm-sqlite:1.11.0")
+runtimeOnly("st.orm:storm-sqlite:@@STORM_VERSION@@")
 
 // H2
-runtimeOnly("st.orm:storm-h2:1.11.0")
+runtimeOnly("st.orm:storm-h2:@@STORM_VERSION@@")
 ```
 
 ## Automatic Detection

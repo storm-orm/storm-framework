@@ -598,7 +598,7 @@ public class BuilderPreparedStatementIntegrationTest {
         // Navigate forward: vets 4, 5, 6.
         var nextWindow = ORMTemplate.of(dataSource)
                 .selectFrom(Vet.class)
-                .scroll(firstWindow.nextScrollable());
+                .scroll(firstWindow.next());
         assertEquals(3, nextWindow.content().size());
         assertFalse(nextWindow.hasNext());
         assertEquals(4, nextWindow.content().get(0).id());
@@ -608,7 +608,7 @@ public class BuilderPreparedStatementIntegrationTest {
         // Navigate backward: should return the same vets as the first window, but in descending order (3, 2, 1).
         var backWindow = ORMTemplate.of(dataSource)
                 .selectFrom(Vet.class)
-                .scroll(nextWindow.previousScrollable());
+                .scroll(nextWindow.previous());
         assertEquals(3, backWindow.content().size());
         assertEquals(3, backWindow.content().get(0).id());
         assertEquals(2, backWindow.content().get(1).id());
@@ -642,7 +642,7 @@ public class BuilderPreparedStatementIntegrationTest {
         // Scroll using the navigation token for comparison.
         var tokenWindow = ORMTemplate.of(dataSource)
                 .selectFrom(Vet.class)
-                .scroll(firstWindow.nextScrollable());
+                .scroll(firstWindow.next());
 
         // Both approaches should yield the same results.
         assertEquals(tokenWindow.content().size(), cursorWindow.content().size());
@@ -666,10 +666,10 @@ public class BuilderPreparedStatementIntegrationTest {
         assertEquals(5, firstWindow.content().get(1).id());
         assertEquals(4, firstWindow.content().get(2).id());
 
-        // Navigate further back using previousScrollable: vets 3, 2, 1.
+        // Navigate further back using next(): vets 3, 2, 1.
         var previousWindow = ORMTemplate.of(dataSource)
                 .selectFrom(Vet.class)
-                .scroll(firstWindow.nextScrollable());
+                .scroll(firstWindow.next());
         assertEquals(3, previousWindow.content().size());
         assertFalse(previousWindow.hasNext());
         assertEquals(3, previousWindow.content().get(0).id());

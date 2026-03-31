@@ -138,7 +138,7 @@ public final class ProjectionRepositoryImpl<P extends Projection<ID>, ID> implem
 
     @Override
     public Window<P> scroll(@Nonnull Scrollable<P> scrollable) {
-        return Window.of(select().scroll(scrollable));
+        return select().scroll(scrollable);
     }
 
     @Override
@@ -184,6 +184,11 @@ public final class ProjectionRepositoryImpl<P extends Projection<ID>, ID> implem
     @Override
     public List<P> findAll() {
         return core.findAll();
+    }
+
+    @Override
+    public List<Ref<P>> findAllRef() {
+        return core.findAllRef();
     }
 
     @Override

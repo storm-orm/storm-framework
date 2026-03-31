@@ -30,7 +30,6 @@ import java.util.function.Function;
 import java.util.stream.Stream;
 import st.orm.Data;
 import st.orm.JoinType;
-import st.orm.MappedWindow;
 import st.orm.Metamodel;
 import st.orm.NoResultException;
 import st.orm.NonUniqueResultException;
@@ -758,21 +757,21 @@ public abstract class QueryBuilder<T extends Data, R, ID> {
      * and ORDER BY clauses externally.</p>
      *
      * <p>Because this method has no key or sort information, the returned window does not carry navigation tokens
-     * ({@code nextScrollable} and {@code previousScrollable} are {@code null}).</p>
+     * ({@code next()} and {@code previous()} return {@code null}).</p>
      *
      * @param size the maximum number of results to include in the window (must be positive).
      * @return a window containing the results and a flag indicating whether more results exist.
      * @throws IllegalArgumentException if {@code size} is not positive.
      * @since 1.11
      */
-    public final MappedWindow<R, T> scroll(int size) {
+    public final Window<R> scroll(int size) {
         if (size <= 0) {
             throw new IllegalArgumentException("size must be positive.");
         }
         List<R> results = this.limit(size + 1).getResultList();
         boolean hasNext = results.size() > size;
         List<R> content = hasNext ? results.subList(0, size) : results;
-        return new MappedWindow<>(content, hasNext, false, null, null);
+        return new Window<>(content, hasNext, false, null, null);
     }
 
     /**
@@ -791,7 +790,7 @@ public abstract class QueryBuilder<T extends Data, R, ID> {
      * @since 1.11
      */
     @SuppressWarnings("unchecked")
-    private MappedWindow<R, T> toWindow(@Nonnull MappedWindow<R, T> raw, @Nonnull Metamodel.Key<T, ?> key,
+    private Window<R> toWindow(@Nonnull Window<R> raw, @Nonnull Metamodel.Key<T, ?> key,
                                @Nullable Metamodel<T, ?> sort, int size, boolean forward, boolean hasCursor) {
         if (raw.content().isEmpty()) {
             return raw;
@@ -818,7 +817,7 @@ public abstract class QueryBuilder<T extends Data, R, ID> {
                 sort != null ? sort.getValue((T) first) : null,
                 size, !forward);
         }
-        return new MappedWindow<>(raw.content(), raw.hasNext(), hasCursor, nextScrollable, previousScrollable);
+        return new Window<>(raw.content(), raw.hasNext(), hasCursor, nextScrollable, previousScrollable);
     }
 
     /**
@@ -844,14 +843,14 @@ public abstract class QueryBuilder<T extends Data, R, ID> {
 
     /**
      * Executes a scroll request from a {@link Scrollable} token, typically obtained from
-     * {@link Window#nextScrollable()} or {@link Window#previousScrollable()}.
+     * {@link Window#next()} or {@link Window#previous()}.
      *
      * @param scrollable the scroll request containing cursor state, key, sort, size, and direction.
      * @return a window containing the results and navigation tokens.
      * @since 1.11
      */
     @SuppressWarnings("unchecked")
-    public final MappedWindow<R, T> scroll(@Nonnull Scrollable<T> scrollable) {
+    public final Window<R> scroll(@Nonnull Scrollable<T> scrollable) {
         var key = (Metamodel.Key<T, Object>) scrollable.key();
         int size = scrollable.size();
         boolean forward = scrollable.isForward();

@@ -22,8 +22,8 @@ import org.springframework.boot.test.context.SpringBootTest
 import org.springframework.test.context.ContextConfiguration
 import org.springframework.test.context.jdbc.Sql
 import st.orm.repository.countAll
-import st.orm.repository.deleteAll
 import st.orm.repository.exists
+import st.orm.repository.removeAll
 import st.orm.spring.impl.RepositoryAopAutoConfiguration
 import st.orm.spring.impl.ResolverRegistration
 import st.orm.spring.model.City
@@ -120,7 +120,7 @@ open class AdditionalTest(
             val visit1 = orm.entity(Visit::class).select().where(1).singleResult
 
             // Delete all visits: should invalidate Visit cache but not City cache
-            orm.deleteAll<Visit>()
+            orm.removeAll<Visit>()
 
             // City cache should still be intact
             val city2 = orm.entity(City::class).select().where(1).singleResult
@@ -367,7 +367,7 @@ open class AdditionalTest(
         transactionBlocking(isolation = REPEATABLE_READ) {
             val city1 = orm.entity(City::class).select().where(1).singleResult
             transactionBlocking(NESTED) {
-                orm.deleteAll<Visit>()
+                orm.removeAll<Visit>()
                 setRollbackOnly()
             }
             // After nested rollback, entity cache should have been cleared

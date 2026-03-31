@@ -416,9 +416,9 @@ class QueryBuilderImpl<T : Data, R, ID>(
      */
     override fun offset(offset: Int): QueryBuilder<T, R, ID> = QueryBuilderImpl<T, R, ID>(core.offset(offset))
 
-    override fun scroll(size: Int): MappedWindow<R, T> = core.scroll(size)
+    override fun scroll(size: Int): Window<R> = core.scroll(size)
 
-    override fun scroll(scrollable: Scrollable<T>): MappedWindow<R, T> = core.scroll(scrollable)
+    override fun scroll(scrollable: Scrollable<T>): Window<R> = core.scroll(scrollable)
 
     override fun getSubquery(): st.orm.core.template.TemplateString = (core as Subqueryable).subquery
 }

@@ -6,7 +6,7 @@
     <parent>
         <groupId>st.orm</groupId>
         <artifactId>storm-framework</artifactId>
-        <version>1.11.0</version>
+        <version>${revision}</version>
         <relativePath>../pom.xml</relativePath>
     </parent>
     <artifactId>storm-kotlin-spring</artifactId>

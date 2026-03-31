@@ -119,14 +119,14 @@ public class H2PolymorphicTest {
     }
 
     @Test
-    public void testDeleteAnimal() {
+    public void testRemoveAnimal() {
         var orm = ORMTemplate.of(dataSource);
         var animals = orm.entity(Animal.class);
         animals.insert(new Cat(null, "Temp", false));
         long before = animals.count();
         var result = animals.select().getResultList();
         var last = result.getLast();
-        animals.delete(last);
+        animals.remove(last);
         assertEquals(before - 1, animals.count());
     }
 
@@ -225,7 +225,7 @@ public class H2PolymorphicTest {
     }
 
     @Test
-    public void testDeleteJoinedAnimal() {
+    public void testRemoveJoinedAnimal() {
         var orm = ORMTemplate.of(dataSource);
         var animals = orm.entity(JoinedAnimal.class);
         // Insert a new animal and then delete it.
@@ -233,18 +233,18 @@ public class H2PolymorphicTest {
         long before = animals.count();
         var result = animals.select().getResultList();
         var last = result.getLast();
-        animals.delete(last);
+        animals.remove(last);
         assertEquals(before - 1, animals.count());
     }
 
     @Test
-    public void testDeleteByIdJoinedAnimal() {
+    public void testRemoveByIdJoinedAnimal() {
         var orm = ORMTemplate.of(dataSource);
         var animals = orm.entity(JoinedAnimal.class);
         // Insert a new animal and then delete by ID.
         var id = animals.insertAndFetchId(new JoinedDog(null, "TempDog", 10));
         long before = animals.count();
-        animals.deleteById(id);
+        animals.removeById(id);
         assertEquals(before - 1, animals.count());
     }
 
@@ -324,7 +324,7 @@ public class H2PolymorphicTest {
     }
 
     @Test
-    public void testBatchDeleteJoinedAnimals() {
+    public void testBatchRemoveJoinedAnimals() {
         var orm = ORMTemplate.of(dataSource);
         var animals = orm.entity(JoinedAnimal.class);
         // Insert entities to delete.
@@ -336,12 +336,12 @@ public class H2PolymorphicTest {
         var result = animals.select().getResultList();
         var cat = result.get(result.size() - 2);
         var dog = result.get(result.size() - 1);
-        animals.delete(List.of(cat, dog));
+        animals.remove(List.of(cat, dog));
         assertEquals(before - 2, animals.count());
     }
 
     @Test
-    public void testBatchDeleteByRefJoinedAnimals() {
+    public void testBatchRemoveByRefJoinedAnimals() {
         var orm = ORMTemplate.of(dataSource);
         var animals = orm.entity(JoinedAnimal.class);
         // Insert entities to delete by ref.
@@ -354,7 +354,7 @@ public class H2PolymorphicTest {
         List<Ref<JoinedAnimal>> refs = ids.stream()
                 .map(id -> Ref.of(JoinedAnimal.class, id))
                 .toList();
-        animals.deleteByRef(refs);
+        animals.removeByRef(refs);
         assertEquals(before - 2, animals.count());
     }
 
@@ -425,7 +425,7 @@ public class H2PolymorphicTest {
     }
 
     @Test
-    public void testDeleteNodscAnimal() {
+    public void testRemoveNodscAnimal() {
         var orm = ORMTemplate.of(dataSource);
         var animals = orm.entity(NodscAnimal.class);
         // Insert a new animal and then delete it.
@@ -433,7 +433,7 @@ public class H2PolymorphicTest {
         long before = animals.count();
         var result = animals.select().getResultList();
         var last = result.getLast();
-        animals.delete(last);
+        animals.remove(last);
         assertEquals(before - 1, animals.count());
     }
 
@@ -462,7 +462,7 @@ public class H2PolymorphicTest {
     }
 
     @Test
-    public void testBatchDeleteNodscAnimals() {
+    public void testBatchRemoveNodscAnimals() {
         var orm = ORMTemplate.of(dataSource);
         var animals = orm.entity(NodscAnimal.class);
         // Insert entities to delete (mixed subtypes).
@@ -476,7 +476,7 @@ public class H2PolymorphicTest {
         var cat = result.get(result.size() - 3);
         var dog = result.get(result.size() - 2);
         var bird = result.get(result.size() - 1);
-        animals.delete(List.of(cat, dog, bird));
+        animals.remove(List.of(cat, dog, bird));
         assertEquals(before - 3, animals.count());
     }
 

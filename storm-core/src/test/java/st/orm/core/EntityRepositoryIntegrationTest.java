@@ -51,48 +51,48 @@ public class EntityRepositoryIntegrationTest {
     // deleteById
 
     @Test
-    public void testDeleteById() {
+    public void testRemoveById() {
         var orm = ORMTemplate.of(dataSource);
         var cities = orm.entity(City.class);
         // Insert a new city so we can delete it without FK constraint issues.
         var id = cities.insertAndFetchId(City.builder().name("ToDelete").build());
         long before = cities.count();
-        cities.deleteById(id);
+        cities.removeById(id);
         assertEquals(before - 1, cities.count());
     }
 
     @Test
-    public void testDeleteByIdNonExistent() {
+    public void testRemoveByIdNonExistent() {
         var orm = ORMTemplate.of(dataSource);
         var cities = orm.entity(City.class);
-        assertDoesNotThrow(() -> cities.deleteById(99999));
+        assertDoesNotThrow(() -> cities.removeById(99999));
     }
 
     // deleteByRef
 
     @Test
-    public void testDeleteByRef() {
+    public void testRemoveByRef() {
         var orm = ORMTemplate.of(dataSource);
         var cities = orm.entity(City.class);
         var id = cities.insertAndFetchId(City.builder().name("RefDelete").build());
         long before = cities.count();
         Ref<City> ref = Ref.of(City.class, id);
-        cities.deleteByRef(ref);
+        cities.removeByRef(ref);
         assertEquals(before - 1, cities.count());
     }
 
     @Test
-    public void testDeleteByRefNonExistent() {
+    public void testRemoveByRefNonExistent() {
         var orm = ORMTemplate.of(dataSource);
         var cities = orm.entity(City.class);
         Ref<City> ref = Ref.of(City.class, 99999);
-        assertDoesNotThrow(() -> cities.deleteByRef(ref));
+        assertDoesNotThrow(() -> cities.removeByRef(ref));
     }
 
     // deleteAll
 
     @Test
-    public void testDeleteAll() {
+    public void testRemoveAll() {
         var orm = ORMTemplate.of(dataSource);
         var cities = orm.entity(City.class);
         // First remove owners that reference cities to avoid FK constraint violations.
@@ -128,7 +128,7 @@ public class EntityRepositoryIntegrationTest {
 
         // Insert cities that have no dependents, then use deleteAll. Since other cities have
         // FK dependents, deleteAll will throw. This IS a valid test of the error path.
-        assertThrows(PersistenceException.class, () -> cities.deleteAll());
+        assertThrows(PersistenceException.class, () -> cities.removeAll());
     }
 
     // ref(E entity)
@@ -431,7 +431,7 @@ public class EntityRepositoryIntegrationTest {
     // deleteByRef(Iterable<Ref<E>>)
 
     @Test
-    public void testDeleteByRefIterable() {
+    public void testRemoveByRefIterable() {
         var orm = ORMTemplate.of(dataSource);
         var cities = orm.entity(City.class);
         var id1 = cities.insertAndFetchId(City.builder().name("RefDelA").build());
@@ -441,14 +441,14 @@ public class EntityRepositoryIntegrationTest {
                 Ref.of(City.class, id1),
                 Ref.of(City.class, id2)
         );
-        cities.deleteByRef(refs);
+        cities.removeByRef(refs);
         assertEquals(before - 2, cities.count());
     }
 
     // delete(Iterable<E>)
 
     @Test
-    public void testDeleteIterable() {
+    public void testRemoveIterable() {
         var orm = ORMTemplate.of(dataSource);
         var cities = orm.entity(City.class);
         var id1 = cities.insertAndFetchId(City.builder().name("DelIterA").build());
@@ -458,7 +458,7 @@ public class EntityRepositoryIntegrationTest {
                 City.builder().id(id1).name("DelIterA").build(),
                 City.builder().id(id2).name("DelIterB").build()
         );
-        cities.delete(toDelete);
+        cities.remove(toDelete);
         assertEquals(before - 2, cities.count());
     }
 
@@ -562,13 +562,13 @@ public class EntityRepositoryIntegrationTest {
     // delete(Stream<E>)
 
     @Test
-    public void testDeleteStream() {
+    public void testRemoveStream() {
         var orm = ORMTemplate.of(dataSource);
         var cities = orm.entity(City.class);
         var id1 = cities.insertAndFetchId(City.builder().name("StreamDelA").build());
         var id2 = cities.insertAndFetchId(City.builder().name("StreamDelB").build());
         long before = cities.count();
-        cities.delete(Stream.of(
+        cities.remove(Stream.of(
                 City.builder().id(id1).name("StreamDelA").build(),
                 City.builder().id(id2).name("StreamDelB").build()
         ));
@@ -578,13 +578,13 @@ public class EntityRepositoryIntegrationTest {
     // delete(Stream<E>, int batchSize)
 
     @Test
-    public void testDeleteStreamWithBatchSize() {
+    public void testRemoveStreamWithBatchSize() {
         var orm = ORMTemplate.of(dataSource);
         var cities = orm.entity(City.class);
         var id1 = cities.insertAndFetchId(City.builder().name("BatchDelA").build());
         var id2 = cities.insertAndFetchId(City.builder().name("BatchDelB").build());
         long before = cities.count();
-        cities.delete(
+        cities.remove(
                 Stream.of(
                         City.builder().id(id1).name("BatchDelA").build(),
                         City.builder().id(id2).name("BatchDelB").build()
@@ -597,13 +597,13 @@ public class EntityRepositoryIntegrationTest {
     // deleteByRef(Stream<Ref<E>>)
 
     @Test
-    public void testDeleteByRefStream() {
+    public void testRemoveByRefStream() {
         var orm = ORMTemplate.of(dataSource);
         var cities = orm.entity(City.class);
         var id1 = cities.insertAndFetchId(City.builder().name("RefStreamDelA").build());
         var id2 = cities.insertAndFetchId(City.builder().name("RefStreamDelB").build());
         long before = cities.count();
-        cities.deleteByRef(Stream.of(
+        cities.removeByRef(Stream.of(
                 Ref.of(City.class, id1),
                 Ref.of(City.class, id2)
         ));
@@ -613,13 +613,13 @@ public class EntityRepositoryIntegrationTest {
     // deleteByRef(Stream<Ref<E>>, int batchSize)
 
     @Test
-    public void testDeleteByRefStreamWithBatchSize() {
+    public void testRemoveByRefStreamWithBatchSize() {
         var orm = ORMTemplate.of(dataSource);
         var cities = orm.entity(City.class);
         var id1 = cities.insertAndFetchId(City.builder().name("RefBatchDelA").build());
         var id2 = cities.insertAndFetchId(City.builder().name("RefBatchDelB").build());
         long before = cities.count();
-        cities.deleteByRef(
+        cities.removeByRef(
                 Stream.of(
                         Ref.of(City.class, id1),
                         Ref.of(City.class, id2)
@@ -728,29 +728,6 @@ public class EntityRepositoryIntegrationTest {
     }
 
     @Test
-    public void testSelectById() {
-        var orm = ORMTemplate.of(dataSource);
-        var cities = orm.entity(City.class);
-        try (var stream = cities.selectById(Stream.of(1, 2, 3))) {
-            List<City> result = stream.toList();
-            assertEquals(3, result.size());
-        }
-    }
-
-    @Test
-    public void testSelectByRef() {
-        var orm = ORMTemplate.of(dataSource);
-        var cities = orm.entity(City.class);
-        try (var stream = cities.selectByRef(Stream.of(
-                Ref.of(City.class, 1),
-                Ref.of(City.class, 2)
-        ))) {
-            List<City> result = stream.toList();
-            assertEquals(2, result.size());
-        }
-    }
-
-    @Test
     public void testCountById() {
         var orm = ORMTemplate.of(dataSource);
         var cities = orm.entity(City.class);
@@ -850,33 +827,6 @@ public class EntityRepositoryIntegrationTest {
         var cities = orm.entity(City.class);
         List<City> all = cities.findAll();
         assertEquals(cities.count(), all.size());
-    }
-
-    // selectById with chunkSize
-
-    @Test
-    public void testSelectByIdWithChunkSize() {
-        var orm = ORMTemplate.of(dataSource);
-        var cities = orm.entity(City.class);
-        try (var stream = cities.selectById(Stream.of(1, 2, 3, 4), 2)) {
-            List<City> result = stream.toList();
-            assertEquals(4, result.size());
-        }
-    }
-
-    // selectByRef with chunkSize
-
-    @Test
-    public void testSelectByRefWithChunkSize() {
-        var orm = ORMTemplate.of(dataSource);
-        var cities = orm.entity(City.class);
-        try (var stream = cities.selectByRef(
-                Stream.of(Ref.of(City.class, 1), Ref.of(City.class, 2), Ref.of(City.class, 3)),
-                2
-        )) {
-            List<City> result = stream.toList();
-            assertEquals(3, result.size());
-        }
     }
 
     // countById with chunkSize
@@ -992,21 +942,21 @@ public class EntityRepositoryIntegrationTest {
     }
 
     @Test
-    public void testUuidDelete() {
+    public void testUuidRemove() {
         var orm = ORMTemplate.of(dataSource);
         var apiKeys = orm.entity(ApiKey.class);
         long before = apiKeys.count();
-        apiKeys.delete(apiKeys.getById(DEFAULT_KEY_ID));
+        apiKeys.remove(apiKeys.getById(DEFAULT_KEY_ID));
         assertEquals(before - 1, apiKeys.count());
         assertTrue(apiKeys.findById(DEFAULT_KEY_ID).isEmpty());
     }
 
     @Test
-    public void testUuidDeleteById() {
+    public void testUuidRemoveById() {
         var orm = ORMTemplate.of(dataSource);
         var apiKeys = orm.entity(ApiKey.class);
         long before = apiKeys.count();
-        apiKeys.deleteById(SECONDARY_KEY_ID);
+        apiKeys.removeById(SECONDARY_KEY_ID);
         assertEquals(before - 1, apiKeys.count());
     }
 }

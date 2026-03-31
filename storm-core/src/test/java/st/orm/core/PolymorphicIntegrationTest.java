@@ -125,7 +125,7 @@ public class PolymorphicIntegrationTest {
     }
 
     @Test
-    public void testDeleteAnimal() {
+    public void testRemoveAnimal() {
         var orm = ORMTemplate.of(dataSource);
         var animals = orm.entity(Animal.class);
         // Insert a new animal and then delete it (avoids FK constraint from adoption table).
@@ -133,7 +133,7 @@ public class PolymorphicIntegrationTest {
         long before = animals.count();
         var result = animals.select().getResultList();
         var last = result.getLast();
-        animals.delete(last);
+        animals.remove(last);
         assertEquals(before - 1, animals.count());
     }
 
@@ -318,7 +318,7 @@ public class PolymorphicIntegrationTest {
     }
 
     @Test
-    public void testDeleteJoinedAnimal() {
+    public void testRemoveJoinedAnimal() {
         var orm = ORMTemplate.of(dataSource);
         var animals = orm.entity(JoinedAnimal.class);
         // Insert a new animal and then delete it (avoids FK constraint from joined_adoption table).
@@ -326,18 +326,18 @@ public class PolymorphicIntegrationTest {
         long before = animals.count();
         var result = animals.select().getResultList();
         var last = result.getLast();
-        animals.delete(last);
+        animals.remove(last);
         assertEquals(before - 1, animals.count());
     }
 
     @Test
-    public void testDeleteByIdJoinedAnimal() {
+    public void testRemoveByIdJoinedAnimal() {
         var orm = ORMTemplate.of(dataSource);
         var animals = orm.entity(JoinedAnimal.class);
         // Insert a new animal and then delete by ID.
         var id = animals.insertAndFetchId(new JoinedDog(null, "TempDog", 10));
         long before = animals.count();
-        animals.deleteById(id);
+        animals.removeById(id);
         assertEquals(before - 1, animals.count());
     }
 
@@ -497,7 +497,7 @@ public class PolymorphicIntegrationTest {
     }
 
     @Test
-    public void testDeleteNodscAnimal() {
+    public void testRemoveNodscAnimal() {
         var orm = ORMTemplate.of(dataSource);
         var animals = orm.entity(NodscAnimal.class);
         // Insert a new animal and then delete it.
@@ -505,12 +505,12 @@ public class PolymorphicIntegrationTest {
         long before = animals.count();
         var result = animals.select().getResultList();
         var last = result.getLast();
-        animals.delete(last);
+        animals.remove(last);
         assertEquals(before - 1, animals.count());
     }
 
     @Test
-    public void testDeleteNodscBird() {
+    public void testRemoveNodscBird() {
         var orm = ORMTemplate.of(dataSource);
         var animals = orm.entity(NodscAnimal.class);
         // Insert and delete a bird (PK-only extension table).
@@ -519,17 +519,17 @@ public class PolymorphicIntegrationTest {
         var result = animals.select().getResultList();
         var last = result.getLast();
         assertTrue(last instanceof NodscBird);
-        animals.delete(last);
+        animals.remove(last);
         assertEquals(before - 1, animals.count());
     }
 
     @Test
-    public void testDeleteByIdNodscAnimal() {
+    public void testRemoveByIdNodscAnimal() {
         var orm = ORMTemplate.of(dataSource);
         var animals = orm.entity(NodscAnimal.class);
         var id = animals.insertAndFetchId(new NodscDog(null, "TempDog", 10));
         long before = animals.count();
-        animals.deleteById(id);
+        animals.removeById(id);
         assertEquals(before - 1, animals.count());
     }
 
@@ -630,7 +630,7 @@ public class PolymorphicIntegrationTest {
     }
 
     @Test
-    public void testBatchDeleteJoinedAnimals() {
+    public void testBatchRemoveJoinedAnimals() {
         var orm = ORMTemplate.of(dataSource);
         var animals = orm.entity(JoinedAnimal.class);
         // Insert entities to delete.
@@ -642,12 +642,12 @@ public class PolymorphicIntegrationTest {
         var result = animals.select().getResultList();
         var cat = result.get(result.size() - 2);
         var dog = result.get(result.size() - 1);
-        animals.delete(List.of(cat, dog));
+        animals.remove(List.of(cat, dog));
         assertEquals(before - 2, animals.count());
     }
 
     @Test
-    public void testBatchDeleteByRefJoinedAnimals() {
+    public void testBatchRemoveByRefJoinedAnimals() {
         var orm = ORMTemplate.of(dataSource);
         var animals = orm.entity(JoinedAnimal.class);
         // Insert entities to delete by ref.
@@ -660,7 +660,7 @@ public class PolymorphicIntegrationTest {
         List<Ref<JoinedAnimal>> refs = ids.stream()
                 .map(id -> Ref.of(JoinedAnimal.class, id))
                 .toList();
-        animals.deleteByRef(refs);
+        animals.removeByRef(refs);
         assertEquals(before - 2, animals.count());
     }
 
@@ -742,7 +742,7 @@ public class PolymorphicIntegrationTest {
     }
 
     @Test
-    public void testBatchDeleteNodscAnimals() {
+    public void testBatchRemoveNodscAnimals() {
         var orm = ORMTemplate.of(dataSource);
         var animals = orm.entity(NodscAnimal.class);
         // Insert entities to delete (mixed subtypes).
@@ -756,7 +756,7 @@ public class PolymorphicIntegrationTest {
         var cat = result.get(result.size() - 3);
         var dog = result.get(result.size() - 2);
         var bird = result.get(result.size() - 1);
-        animals.delete(List.of(cat, dog, bird));
+        animals.remove(List.of(cat, dog, bird));
         assertEquals(before - 3, animals.count());
     }
 
@@ -817,13 +817,13 @@ public class PolymorphicIntegrationTest {
     }
 
     @Test
-    public void testDeleteIntDiscAnimal() {
+    public void testRemoveIntDiscAnimal() {
         var orm = ORMTemplate.of(dataSource);
         var animals = orm.entity(IntDiscAnimal.class);
         animals.insert(new IntDiscCat(null, "Temp", false));
         long before = animals.count();
         var result = animals.select().getResultList();
-        animals.delete(result.getLast());
+        animals.remove(result.getLast());
         assertEquals(before - 1, animals.count());
     }
 
@@ -883,13 +883,13 @@ public class PolymorphicIntegrationTest {
     }
 
     @Test
-    public void testDeleteCharDiscAnimal() {
+    public void testRemoveCharDiscAnimal() {
         var orm = ORMTemplate.of(dataSource);
         var animals = orm.entity(CharDiscAnimal.class);
         animals.insert(new CharDiscDog(null, "Temp", 5));
         long before = animals.count();
         var result = animals.select().getResultList();
-        animals.delete(result.getLast());
+        animals.remove(result.getLast());
         assertEquals(before - 1, animals.count());
     }
 
@@ -957,12 +957,12 @@ public class PolymorphicIntegrationTest {
     }
 
     @Test
-    public void testDeleteComment() {
+    public void testRemoveComment() {
         var orm = ORMTemplate.of(dataSource);
         var comments = orm.entity(Comment.class);
         var insertedId = comments.insertAndFetchId(new Comment(null, "To be deleted", commentableRef(Post.class, 1)));
         long before = comments.count();
-        comments.deleteById(insertedId);
+        comments.removeById(insertedId);
         assertEquals(before - 1, comments.count());
     }
 
@@ -1057,7 +1057,7 @@ public class PolymorphicIntegrationTest {
     }
 
     @Test
-    public void testBatchDeleteSingleTableAnimals() {
+    public void testBatchRemoveSingleTableAnimals() {
         var orm = ORMTemplate.of(dataSource);
         var animals = orm.entity(Animal.class);
         animals.insert(List.of(
@@ -1068,7 +1068,7 @@ public class PolymorphicIntegrationTest {
         var result = animals.select().getResultList();
         var cat = result.get(result.size() - 2);
         var dog = result.get(result.size() - 1);
-        animals.delete(List.of(cat, dog));
+        animals.remove(List.of(cat, dog));
         assertEquals(before - 2, animals.count());
     }
 

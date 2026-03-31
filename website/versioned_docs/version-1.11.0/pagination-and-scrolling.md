@@ -391,11 +391,11 @@ var window = orm.query(Order.class)
 
 See [Manual Key Wrapping](metamodel.md#manual-key-wrapping) for more details.
 
-### Window vs MappedWindow
+### Window Type Parameters
 
-When calling `scroll` on the query builder directly (rather than through a repository), the return type is `MappedWindow<R, T>` where `R` is the result type and `T` is the entity type from the FROM clause. For entity queries where `R` and `T` are the same type, `MappedWindow` carries `Scrollable<T>` navigation tokens and works the same as `Window<T>`. Repository convenience methods return `Window<T>` directly.
+When calling `scroll` on the query builder directly (rather than through a repository), the return type is `Window<R, T>` where `R` is the result type and `T` is the entity type from the FROM clause. For entity queries where `R` and `T` are the same type, `Window` carries `Scrollable<T>` navigation tokens. Repository convenience methods return `Window<E, E>`.
 
-For queries where the result type differs from the entity type (for example, selecting into a data class that combines columns from multiple sources), `MappedWindow` does not carry navigation tokens because Storm cannot extract cursor values from a result type it does not know how to navigate. In this case, `nextScrollable()` and `previousScrollable()` return `null` (even when the window has content), and `hasNext()` still works correctly as an informational flag. To continue scrolling, check `hasNext()` and construct the next `Scrollable` manually using cursor values from your result:
+For queries where the result type differs from the entity type (for example, selecting into a data class that combines columns from multiple sources), `Window` does not carry navigation tokens because Storm cannot extract cursor values from a result type it does not know how to navigate. In this case, `nextScrollable()` and `previousScrollable()` return `null` (even when the window has content), and `hasNext()` still works correctly as an informational flag. To continue scrolling, check `hasNext()` and construct the next `Scrollable` manually using cursor values from your result:
 
 <Tabs groupId="language">
 <TabItem value="kotlin" label="Kotlin" default>
@@ -403,7 +403,7 @@ For queries where the result type differs from the entity type (for example, sel
 ```kotlin
 data class OrderSummary(val city: Ref<City>, val orderCount: Long) : Data
 
-val window: MappedWindow<OrderSummary, Order> = orm.selectFrom(Order::class, OrderSummary::class) {
+val window: Window<OrderSummary, Order> = orm.selectFrom(Order::class, OrderSummary::class) {
     """${Order_.city.id}, COUNT(*)"""
 }
 .groupBy(Order_.city)
@@ -413,7 +413,7 @@ val window: MappedWindow<OrderSummary, Order> = orm.selectFrom(Order::class, Ord
 // Construct the next scrollable manually from the last result.
 // hasNext() is informational; the developer decides whether to follow the cursor.
 val lastCity = window.content.last().city.id()
-val next: MappedWindow<OrderSummary, Order> = orm.selectFrom(Order::class, OrderSummary::class) { ... }
+val next: Window<OrderSummary, Order> = orm.selectFrom(Order::class, OrderSummary::class) { ... }
     .groupBy(Order_.city)
     .scroll(Scrollable.of(Order_.city.key(), lastCity, 20))
 ```
@@ -424,7 +424,7 @@ val next: MappedWindow<OrderSummary, Order> = orm.selectFrom(Order::class, Order
 ```java
 record OrderSummary(Ref<City> city, long orderCount) implements Data {}
 
-MappedWindow<OrderSummary, Order> window = orm.selectFrom(Order.class, OrderSummary.class,
+Window<OrderSummary, Order> window = orm.selectFrom(Order.class, OrderSummary.class,
     RAW."""SELECT \{Order_.city.id}, COUNT(*)""")
     .groupBy(Order_.city)
     .scroll(Scrollable.of(Metamodel.key(Order_.city), 20));
@@ -433,7 +433,7 @@ MappedWindow<OrderSummary, Order> window = orm.selectFrom(Order.class, OrderSumm
 // Construct the next scrollable manually from the last result.
 // hasNext() is informational; the developer decides whether to follow the cursor.
 var lastCity = window.content().getLast().city().id();
-MappedWindow<OrderSummary, Order> next = orm.selectFrom(Order.class, OrderSummary.class, ...)
+Window<OrderSummary, Order> next = orm.selectFrom(Order.class, OrderSummary.class, ...)
     .groupBy(Order_.city)
     .scroll(Scrollable.of(Metamodel.key(Order_.city), lastCity, 20));
 ```

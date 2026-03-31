@@ -31,7 +31,7 @@ Use `transaction` for coroutine code:
 
 ```kotlin
 transaction {
-    orm.deleteAll<Visit>()
+    orm.removeAll<Visit>()
     orm insert User(email = "alice@example.com", name = "Alice")
     // Commits automatically on success, rolls back on exception
 }
@@ -59,7 +59,7 @@ Use `transactionBlocking` for synchronous code:
 
 ```kotlin
 transactionBlocking {
-    orm.deleteAll<Visit>()
+    orm.removeAll<Visit>()
     orm insert User(email = "alice@example.com", name = "Alice")
     // Commits automatically on success, rolls back on exception
 }
@@ -584,7 +584,7 @@ Long-running transactions hold database locks and consume connection pool resour
 
 ```kotlin
 transaction(timeoutSeconds = 30) {
-    orm.deleteAll<Visit>()
+    orm.removeAll<Visit>()
     delay(35_000)  // Will cause timeout
 }
 ```
@@ -606,7 +606,7 @@ Sometimes you need to abort a transaction based on a runtime condition rather th
 
 ```kotlin
 transaction {
-    orm.deleteAll<Visit>()
+    orm.removeAll<Visit>()
 
     if (someCondition) {
         setRollbackOnly()  // Mark for rollback
@@ -959,14 +959,14 @@ When you need different transaction settings for a specific section of code with
 withTransactionOptions(timeoutSeconds = 60) {
     transaction {
         // Uses 60 second timeout
-        orm.deleteAll<Visit>()
+        orm.removeAll<Visit>()
     }
 }
 
 withTransactionOptionsBlocking(isolation = SERIALIZABLE) {
     transactionBlocking {
         // Uses SERIALIZABLE isolation
-        orm.deleteAll<Visit>()
+        orm.removeAll<Visit>()
     }
 }
 ```

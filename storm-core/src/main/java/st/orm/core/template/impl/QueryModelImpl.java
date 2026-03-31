@@ -24,7 +24,6 @@ import static st.orm.core.template.impl.RecordReflection.getDiscriminatorType;
 import static st.orm.core.template.impl.RecordReflection.hasDiscriminator;
 import static st.orm.core.template.impl.RecordReflection.isJoinedEntity;
 import static st.orm.core.template.impl.RecordReflection.isSealedEntity;
-import static st.orm.core.template.impl.SqlParser.removeComments;
 
 import jakarta.annotation.Nonnull;
 import jakarta.annotation.Nullable;
@@ -32,7 +31,6 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.SequencedMap;
-import java.util.regex.Pattern;
 import java.util.stream.Stream;
 import st.orm.BindVars;
 import st.orm.Data;
@@ -54,6 +52,7 @@ import st.orm.core.template.impl.Elements.Expression;
 import st.orm.core.template.impl.Elements.ObjectExpression;
 import st.orm.core.template.impl.Elements.Subquery;
 import st.orm.core.template.impl.Elements.TemplateExpression;
+
 /**
  * Query model implementation responsible for translating high-level query expressions into SQL fragments and bind
  * values.
@@ -265,8 +264,8 @@ final class QueryModelImpl implements QueryModel {
             String fragment = fragments.get(i);
             parts.add(fragment);
             if (i < values.size()) {
-                Object value = resolveElements(values.get(i), fragment, i + 1 < fragments.size() ? fragments.get(i + 1) : "");
-                switch (value) {
+                Object resolved = resolveElements(values.get(i));
+                switch (resolved) {
                     case Stream<?> ignore -> throw new SqlTemplateException("Stream is not supported in expressions. Collect the Stream into a List before passing it.");
                     case Query ignore -> throw new SqlTemplateException("Query is not supported in expressions. Use a QueryBuilder subquery instead.");
                     case Expression it -> parts.add(compileExpression(it, compiler));
@@ -275,7 +274,7 @@ final class QueryModelImpl implements QueryModel {
                     case Class<?> it -> parts.add(compiler.compile(alias(REFLECTION.getDataType(it))));
                     case Object it when REFLECTION.isSupportedType(it) -> parts.add(compiler.compile(alias(REFLECTION.getDataType(it))));
                     case Element it -> parts.add(compiler.compile(it));
-                    default -> parts.add(compiler.compile(param(value)));
+                    default -> parts.add(compiler.compile(param(resolved)));
                 }
             }
         }
@@ -292,23 +291,18 @@ final class QueryModelImpl implements QueryModel {
      * @throws SqlTemplateException if an unsupported value is encountered.
      */
     private void bindTemplateExpression(@Nonnull TemplateString stringTemplate, @Nonnull TemplateBinder binder) throws SqlTemplateException{
-        var fragments = stringTemplate.fragments();
-        var values = stringTemplate.values();
-        for (int i = 0; i < fragments.size(); i++) {
-            String fragment = fragments.get(i);
-            if (i < values.size()) {
-                Object value = resolveElements(values.get(i), fragment, i + 1 < fragments.size() ? fragments.get(i + 1) : "");
-                switch (value) {
-                    case Stream<?> ignore -> throw new SqlTemplateException("Stream is not supported in expressions. Collect the Stream into a List before passing it.");
-                    case Query ignore -> throw new SqlTemplateException("Query is not supported in expressions. Use a QueryBuilder subquery instead.");
-                    case Expression it -> bindExpression(it, binder);
-                    case Ref<?> it -> bindExpression(new ObjectExpression(it), binder);
-                    case Data it -> bindExpression(new ObjectExpression(it), binder);
-                    case Class<?> it -> binder.bind(alias(REFLECTION.getDataType(it)));
-                    case Object it when REFLECTION.isSupportedType(it) -> binder.bind(alias(REFLECTION.getDataType(it)));
-                    case Element it -> binder.bind(it);
-                    default -> binder.bind(param(value));
-                }
+        for (var value : stringTemplate.values()) {
+            Object resolved = resolveElements(value);
+            switch (resolved) {
+                case Stream<?> ignore -> throw new SqlTemplateException("Stream is not supported in expressions. Collect the Stream into a List before passing it.");
+                case Query ignore -> throw new SqlTemplateException("Query is not supported in expressions. Use a QueryBuilder subquery instead.");
+                case Expression it -> bindExpression(it, binder);
+                case Ref<?> it -> bindExpression(new ObjectExpression(it), binder);
+                case Data it -> bindExpression(new ObjectExpression(it), binder);
+                case Class<?> it -> binder.bind(alias(REFLECTION.getDataType(it)));
+                case Object it when REFLECTION.isSupportedType(it) -> binder.bind(alias(REFLECTION.getDataType(it)));
+                case Element it -> binder.bind(it);
+                default -> binder.bind(param(resolved));
             }
         }
     }
@@ -529,41 +523,29 @@ final class QueryModelImpl implements QueryModel {
         return false;
     }
 
-    private static final Pattern ENDS_WITH_OPERATOR = Pattern.compile(".*[<=>]$");
-    private static final Pattern STARTS_WITH_OPERATOR = Pattern.compile("^[<=>].*");
-
     /**
      * Resolves a template value into a form that can be processed by the compiler or binder.
      *
-     * <p>This method validates contextual correctness, such as preventing records from being used
-     * next to operators.</p>
+     * <p>This method transforms known template value types into their corresponding internal representations
+     * (e.g., {@link Subqueryable} to {@link Subquery}, column-level {@link Metamodel} to {@link Column}), and rejects
+     * invalid types such as {@link TemplateString} and {@link Stream}.</p>
      *
-     * @param value            the value to resolve.
-     * @param previousFragment the preceding SQL fragment.
-     * @param nextFragment     the following SQL fragment.
+     * <p>{@link Data} and {@link Ref} instances pass through unchanged and are handled by the caller's switch
+     * (compiled via {@code ObjectExpression}, which resolves columns through the model). Other values (scalars,
+     * {@link Element} instances, etc.) also pass through unchanged and are compiled or bound by the caller.</p>
+     *
+     * @param value the value to resolve.
      * @return the resolved value.
      * @throws SqlTemplateException if the value is invalid in this context.
      */
-    private Object resolveElements(@Nullable Object value, @Nonnull String previousFragment, @Nonnull String nextFragment) throws SqlTemplateException {
+    private Object resolveElements(@Nullable Object value) throws SqlTemplateException {
         return switch (value) {
             case TemplateString ignore -> throw new SqlTemplateException("TemplateString is not allowed as a string template value.");
             case Stream<?> ignore -> throw new SqlTemplateException("Stream is not supported as a string template value. Collect the Stream into a List before passing it.");
             case Subqueryable t -> new Subquery(t.getSubquery(), true);
             case Metamodel<?, ?> m when m.isColumn() -> new st.orm.core.template.impl.Elements.Column(m, CASCADE);
             case Metamodel<?, ?> ignore -> throw new SqlTemplateException("Metamodel does not reference a column. Use a column-level metamodel (e.g., User_.name) rather than a table-level metamodel.");
-            case null, default -> {
-                if (!(value instanceof Element) && value instanceof Record) {
-                    String previous = removeComments(previousFragment, template.dialect()).stripTrailing().toUpperCase();
-                    if (ENDS_WITH_OPERATOR.matcher(previous).find()) {
-                        throw new SqlTemplateException("Record is not allowed directly next to a comparison operator in an expression. Use a specific field value or metamodel reference instead.");
-                    }
-                    String next = removeComments(nextFragment, template.dialect()).stripLeading().toUpperCase();
-                    if (STARTS_WITH_OPERATOR.matcher(next).find()) {
-                        throw new SqlTemplateException("Record is not allowed directly next to a comparison operator in an expression. Use a specific field value or metamodel reference instead.");
-                    }
-                }
-                yield value;
-            }
+            case null, default -> value;
         };
     }
 

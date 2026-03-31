@@ -204,20 +204,20 @@ users.update(new User(user.id(), user.email(), "Alice Johnson", user.city()));
 </TabItem>
 </Tabs>
 
-## Delete a Record
+## Remove a Record
 
 <Tabs groupId="language">
 <TabItem value="kotlin" label="Kotlin" default>
 
 ```kotlin
-orm delete user
+orm remove user
 ```
 
 </TabItem>
 <TabItem value="java" label="Java">
 
 ```java
-users.delete(user);
+users.remove(user);
 ```
 
 </TabItem>
@@ -267,7 +267,7 @@ You have now seen the core workflow:
 
 1. Define entities as data classes or records with `@PK` and `@FK` annotations
 2. Create an `ORMTemplate` from a `DataSource`
-3. Use `insert`, `findById`, `update`, and `delete` for basic CRUD
+3. Use `insert`, `findById`, `update`, and `remove` for basic CRUD
 
 ## Next Steps
 

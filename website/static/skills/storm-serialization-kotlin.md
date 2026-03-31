@@ -66,10 +66,10 @@ val json = Json {
 **Critical**: Every `Ref` field in a `@Serializable` class must be annotated with `@Contextual`:
 ```kotlin
 @Serializable
-data class Pet(
+data class User(
     @PK val id: Int = 0,
     val name: String,
-    @FK @Contextual val owner: Ref<Owner>?
+    @FK @Contextual val city: Ref<City>?
 ) : Entity<Int>
 ```
 
@@ -89,10 +89,10 @@ When an entity is annotated with `@Serializable`, all entities reachable from it
 
 ```kotlin
 @Serializable
-data class Order(
+data class Address(
     @PK val id: Int = 0,
-    @FK val customer: Customer,                  // Customer must be @Serializable
-    @FK @Contextual val product: Ref<Product>?,  // Product must be @Serializable
+    @FK val user: User,                      // User must be @Serializable
+    @FK @Contextual val city: Ref<City>?,    // City must be @Serializable
 ) : Entity<Int>
 ```
 

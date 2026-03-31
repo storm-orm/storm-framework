@@ -88,14 +88,14 @@ public class RepositoryProxyDispatchIntegrationTest {
     }
 
     @Test
-    public void testEntityRepositoryProxyInsertAndDelete() {
+    public void testEntityRepositoryProxyInsertAndRemove() {
         var orm = ORMTemplate.of(dataSource);
         CityEntityRepository repository = orm.repository(CityEntityRepository.class);
         long countBefore = repository.count();
         Integer insertedId = repository.insertAndFetchId(City.builder().name("ProxyCity").build());
         assertNotNull(insertedId);
         assertEquals(countBefore + 1, repository.count());
-        repository.deleteById(insertedId);
+        repository.removeById(insertedId);
         assertEquals(countBefore, repository.count());
     }
 

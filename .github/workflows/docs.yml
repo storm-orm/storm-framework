@@ -65,7 +65,8 @@ jobs:
           done
 
       - name: Generate llms-full.txt
-        run: bash website/scripts/generate-llms-full.sh
+        run: bash scripts/generate-llms-full.sh
+        working-directory: website
 
       - name: Build Docusaurus
         run: npm run build

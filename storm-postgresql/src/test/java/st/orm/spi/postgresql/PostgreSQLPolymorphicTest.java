@@ -148,7 +148,7 @@ public class PostgreSQLPolymorphicTest {
         long before = animals.count();
         var result = animals.select().getResultList();
         var last = result.getLast();
-        animals.delete(last);
+        animals.remove(last);
         assertEquals(before - 1, animals.count());
     }
 
@@ -255,7 +255,7 @@ public class PostgreSQLPolymorphicTest {
         long before = animals.count();
         var result = animals.select().getResultList();
         var last = result.getLast();
-        animals.delete(last);
+        animals.remove(last);
         assertEquals(before - 1, animals.count());
     }
 
@@ -266,7 +266,7 @@ public class PostgreSQLPolymorphicTest {
         // Insert a new animal and then delete by ID.
         var id = animals.insertAndFetchId(new JoinedDog(null, "TempDog", 10));
         long before = animals.count();
-        animals.deleteById(id);
+        animals.removeById(id);
         assertEquals(before - 1, animals.count());
     }
 
@@ -358,7 +358,7 @@ public class PostgreSQLPolymorphicTest {
         var result = animals.select().getResultList();
         var cat = result.get(result.size() - 2);
         var dog = result.get(result.size() - 1);
-        animals.delete(List.of(cat, dog));
+        animals.remove(List.of(cat, dog));
         assertEquals(before - 2, animals.count());
     }
 
@@ -376,7 +376,7 @@ public class PostgreSQLPolymorphicTest {
         List<Ref<JoinedAnimal>> refs = ids.stream()
                 .map(id -> Ref.of(JoinedAnimal.class, id))
                 .toList();
-        animals.deleteByRef(refs);
+        animals.removeByRef(refs);
         assertEquals(before - 2, animals.count());
     }
 
@@ -455,7 +455,7 @@ public class PostgreSQLPolymorphicTest {
         long before = animals.count();
         var result = animals.select().getResultList();
         var last = result.getLast();
-        animals.delete(last);
+        animals.remove(last);
         assertEquals(before - 1, animals.count());
     }
 
@@ -498,7 +498,7 @@ public class PostgreSQLPolymorphicTest {
         var cat = result.get(result.size() - 3);
         var dog = result.get(result.size() - 2);
         var bird = result.get(result.size() - 1);
-        animals.delete(List.of(cat, dog, bird));
+        animals.remove(List.of(cat, dog, bird));
         assertEquals(before - 3, animals.count());
     }
 

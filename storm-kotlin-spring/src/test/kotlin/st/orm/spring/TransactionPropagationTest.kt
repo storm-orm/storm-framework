@@ -12,8 +12,8 @@ import org.springframework.boot.test.context.SpringBootTest
 import org.springframework.test.context.ContextConfiguration
 import org.springframework.test.context.jdbc.Sql
 import st.orm.repository.countAll
-import st.orm.repository.deleteAll
 import st.orm.repository.exists
+import st.orm.repository.removeAll
 import st.orm.spring.model.Visit
 import st.orm.template.*
 import st.orm.template.TransactionPropagation.*
@@ -50,7 +50,7 @@ open class TransactionPropagationTest(
         // SUPPORTS without an existing transaction executes non-transactionally.
         // Modifications should be visible immediately since there is no transaction to roll back.
         transactionBlocking(SUPPORTS) {
-            orm.deleteAll<Visit>()
+            orm.removeAll<Visit>()
         }
         orm.exists<Visit>().shouldBeFalse()
     }
@@ -61,7 +61,7 @@ open class TransactionPropagationTest(
         // The exact behavior depends on whether the database connection is in auto-commit mode.
         // In non-transactional mode, writes are immediately committed, so rollback-only has no effect.
         transactionBlocking(SUPPORTS) {
-            orm.deleteAll<Visit>()
+            orm.removeAll<Visit>()
             setRollbackOnly()
         }
         // Modifications should have been immediately committed since there is no transaction boundary.
@@ -72,7 +72,7 @@ open class TransactionPropagationTest(
     fun `supports inside required outer transaction should join the outer transaction and commit together`(): Unit = runBlocking {
         transactionBlocking(REQUIRED) {
             transactionBlocking(SUPPORTS) {
-                orm.deleteAll<Visit>()
+                orm.removeAll<Visit>()
             }
         }
         orm.exists<Visit>().shouldBeFalse()
@@ -82,7 +82,7 @@ open class TransactionPropagationTest(
     fun `supports inside required outer transaction should roll back with outer transaction`(): Unit = runBlocking {
         transactionBlocking(REQUIRED) {
             transactionBlocking(SUPPORTS) {
-                orm.deleteAll<Visit>()
+                orm.removeAll<Visit>()
             }
             setRollbackOnly()
         }
@@ -96,7 +96,7 @@ open class TransactionPropagationTest(
         assertThrows<UnexpectedRollbackException> {
             transactionBlocking(REQUIRED) {
                 transactionBlocking(SUPPORTS) {
-                    orm.deleteAll<Visit>()
+                    orm.removeAll<Visit>()
                     setRollbackOnly()
                 }
             }
@@ -113,7 +113,7 @@ open class TransactionPropagationTest(
         // materialized (eagerly by Spring or lazily on first DB access).
         assertThrows<Exception> {
             transactionBlocking(MANDATORY) {
-                orm.deleteAll<Visit>()
+                orm.removeAll<Visit>()
             }
         }
         // Data should remain unchanged since the transaction was never started.
@@ -124,7 +124,7 @@ open class TransactionPropagationTest(
     fun `mandatory inside required outer transaction should join and commit together`(): Unit = runBlocking {
         transactionBlocking(REQUIRED) {
             transactionBlocking(MANDATORY) {
-                orm.deleteAll<Visit>()
+                orm.removeAll<Visit>()
             }
         }
         orm.exists<Visit>().shouldBeFalse()
@@ -134,7 +134,7 @@ open class TransactionPropagationTest(
     fun `mandatory inside required outer transaction should roll back with outer`(): Unit = runBlocking {
         transactionBlocking(REQUIRED) {
             transactionBlocking(MANDATORY) {
-                orm.deleteAll<Visit>()
+                orm.removeAll<Visit>()
             }
             setRollbackOnly()
         }
@@ -148,7 +148,7 @@ open class TransactionPropagationTest(
         assertThrows<UnexpectedRollbackException> {
             transactionBlocking(REQUIRED) {
                 transactionBlocking(MANDATORY) {
-                    orm.deleteAll<Visit>()
+                    orm.removeAll<Visit>()
                     setRollbackOnly()
                 }
             }
@@ -160,7 +160,7 @@ open class TransactionPropagationTest(
     fun `mandatory inner rollback-only with explicit outer rollback should not throw`(): Unit = runBlocking {
         transactionBlocking(REQUIRED) {
             transactionBlocking(MANDATORY) {
-                orm.deleteAll<Visit>()
+                orm.removeAll<Visit>()
                 setRollbackOnly()
             }
             setRollbackOnly()
@@ -173,7 +173,7 @@ open class TransactionPropagationTest(
     @Test
     fun `not_supported without outer transaction should execute non-transactionally`(): Unit = runBlocking {
         transactionBlocking(NOT_SUPPORTED) {
-            orm.deleteAll<Visit>()
+            orm.removeAll<Visit>()
         }
         orm.exists<Visit>().shouldBeFalse()
     }
@@ -183,7 +183,7 @@ open class TransactionPropagationTest(
         transactionBlocking(REQUIRED) {
             transactionBlocking(NOT_SUPPORTED) {
                 // This runs outside any transaction (outer is suspended).
-                orm.deleteAll<Visit>()
+                orm.removeAll<Visit>()
             }
             // The outer transaction is resumed. The inner changes were committed immediately
             // since they ran non-transactionally.
@@ -196,7 +196,7 @@ open class TransactionPropagationTest(
     fun `not_supported changes should survive outer rollback since they run non-transactionally`(): Unit = runBlocking {
         transactionBlocking(REQUIRED) {
             transactionBlocking(NOT_SUPPORTED) {
-                orm.deleteAll<Visit>()
+                orm.removeAll<Visit>()
             }
             setRollbackOnly()
         }
@@ -207,7 +207,7 @@ open class TransactionPropagationTest(
     @Test
     fun `not_supported should ignore rollback-only since there is no transaction`(): Unit = runBlocking {
         transactionBlocking(NOT_SUPPORTED) {
-            orm.deleteAll<Visit>()
+            orm.removeAll<Visit>()
             setRollbackOnly()
         }
         // Non-transactional execution means changes are auto-committed.
@@ -219,7 +219,7 @@ open class TransactionPropagationTest(
     @Test
     fun `never without outer transaction should execute non-transactionally`(): Unit = runBlocking {
         transactionBlocking(NEVER) {
-            orm.deleteAll<Visit>()
+            orm.removeAll<Visit>()
         }
         orm.exists<Visit>().shouldBeFalse()
     }
@@ -231,7 +231,7 @@ open class TransactionPropagationTest(
         assertThrows<Exception> {
             transactionBlocking(REQUIRED) {
                 transactionBlocking(NEVER) {
-                    orm.deleteAll<Visit>()
+                    orm.removeAll<Visit>()
                 }
             }
         }
@@ -242,7 +242,7 @@ open class TransactionPropagationTest(
     @Test
     fun `never should ignore rollback-only since there is no transaction`(): Unit = runBlocking {
         transactionBlocking(NEVER) {
-            orm.deleteAll<Visit>()
+            orm.removeAll<Visit>()
             setRollbackOnly()
         }
         // Non-transactional: changes committed immediately.
@@ -256,7 +256,7 @@ open class TransactionPropagationTest(
         // SUPPORTS without outer tx runs non-transactionally. REQUIRES_NEW inside creates a real tx.
         transactionBlocking(SUPPORTS) {
             transactionBlocking(REQUIRES_NEW) {
-                orm.deleteAll<Visit>()
+                orm.removeAll<Visit>()
             }
         }
         orm.exists<Visit>().shouldBeFalse()
@@ -266,7 +266,7 @@ open class TransactionPropagationTest(
     fun `requires_new inside supports without outer should allow independent rollback`(): Unit = runBlocking {
         transactionBlocking(SUPPORTS) {
             transactionBlocking(REQUIRES_NEW) {
-                orm.deleteAll<Visit>()
+                orm.removeAll<Visit>()
                 setRollbackOnly()
             }
         }
@@ -279,7 +279,7 @@ open class TransactionPropagationTest(
         // REQUIRES_NEW creates a new transaction, then MANDATORY joins it.
         transactionBlocking(REQUIRES_NEW) {
             transactionBlocking(MANDATORY) {
-                orm.deleteAll<Visit>()
+                orm.removeAll<Visit>()
             }
         }
         orm.exists<Visit>().shouldBeFalse()
@@ -289,7 +289,7 @@ open class TransactionPropagationTest(
     fun `not_supported inside requires_new should suspend the new transaction`(): Unit = runBlocking {
         transactionBlocking(REQUIRES_NEW) {
             transactionBlocking(NOT_SUPPORTED) {
-                orm.deleteAll<Visit>()
+                orm.removeAll<Visit>()
             }
             // NOT_SUPPORTED committed changes non-transactionally.
             orm.exists<Visit>().shouldBeFalse()
@@ -305,7 +305,7 @@ open class TransactionPropagationTest(
     fun `global default propagation SUPPORTS should execute non-transactionally when no outer exists`(): Unit = runBlocking {
         setGlobalTransactionOptions(propagation = SUPPORTS)
         transactionBlocking {
-            orm.deleteAll<Visit>()
+            orm.removeAll<Visit>()
         }
         orm.exists<Visit>().shouldBeFalse()
     }
@@ -315,7 +315,7 @@ open class TransactionPropagationTest(
         setGlobalTransactionOptions(propagation = NEVER)
         // Even though global says NEVER, explicit REQUIRED should work.
         transactionBlocking(REQUIRED) {
-            orm.deleteAll<Visit>()
+            orm.removeAll<Visit>()
         }
         orm.exists<Visit>().shouldBeFalse()
     }

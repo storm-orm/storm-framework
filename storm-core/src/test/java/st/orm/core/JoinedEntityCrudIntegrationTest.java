@@ -160,13 +160,13 @@ public class JoinedEntityCrudIntegrationTest {
     // Delete joined entity
 
     @Test
-    public void testDeleteJoinedEntity() {
+    public void testRemoveJoinedEntity() {
         var orm = ORMTemplate.of(dataSource);
         var animals = orm.entity(JoinedAnimal.class);
         // Insert a new entity to delete (avoid FK constraint issues with seed data).
         Integer insertedId = animals.insertAndFetchId(new JoinedCat(null, "ToDelete", true));
         long countBefore = animals.count();
-        animals.delete(new JoinedCat(insertedId, "ToDelete", true));
+        animals.remove(new JoinedCat(insertedId, "ToDelete", true));
         assertEquals(countBefore - 1, animals.count());
         assertTrue(animals.findById(insertedId).isEmpty());
     }
@@ -174,13 +174,13 @@ public class JoinedEntityCrudIntegrationTest {
     // Batch delete joined entities
 
     @Test
-    public void testBatchDeleteJoinedEntities() {
+    public void testBatchRemoveJoinedEntities() {
         var orm = ORMTemplate.of(dataSource);
         var animals = orm.entity(JoinedAnimal.class);
         Integer id1 = animals.insertAndFetchId(new JoinedCat(null, "BatchDel1", true));
         Integer id2 = animals.insertAndFetchId(new JoinedDog(null, "BatchDel2", 15));
         long countBefore = animals.count();
-        animals.delete(List.of(
+        animals.remove(List.of(
                 new JoinedCat(id1, "BatchDel1", true),
                 new JoinedDog(id2, "BatchDel2", 15)
         ));
@@ -228,13 +228,13 @@ public class JoinedEntityCrudIntegrationTest {
     // Delete joined entity by id (using delete(entity))
 
     @Test
-    public void testDeleteJoinedDogByEntity() {
+    public void testRemoveJoinedDogByEntity() {
         var orm = ORMTemplate.of(dataSource);
         var animals = orm.entity(JoinedAnimal.class);
         Integer insertedId = animals.insertAndFetchId(new JoinedDog(null, "DeleteDog", 18));
         long countBefore = animals.count();
         JoinedAnimal toDelete = animals.getById(insertedId);
-        animals.delete(toDelete);
+        animals.remove(toDelete);
         assertEquals(countBefore - 1, animals.count());
     }
 

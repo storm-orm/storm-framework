@@ -286,9 +286,9 @@ For large tables where users scroll through results sequentially, prefer **scrol
 
 ```kotlin
 val window = userRepository.scroll(Scrollable.of(User_.id, 20))
-// nextScrollable() is non-null when the window has content.
+// next() is non-null when the window has content.
 // hasNext() is informational; the developer decides whether to follow the cursor.
-val next = userRepository.scroll(window.nextScrollable())
+val next = userRepository.scroll(window.next())
 ```
 
 </TabItem>
@@ -296,9 +296,9 @@ val next = userRepository.scroll(window.nextScrollable())
 
 ```java
 Window<User> window = userRepository.scroll(Scrollable.of(User_.id, 20));
-// nextScrollable() is non-null when the window has content.
+// next() is non-null when the window has content.
 // hasNext() is informational; the developer decides whether to follow the cursor.
-Window<User> next = userRepository.scroll(window.nextScrollable());
+Window<User> next = userRepository.scroll(window.next());
 ```
 
 </TabItem>
@@ -345,20 +345,20 @@ userRepository.delete()
 </TabItem>
 </Tabs>
 
-If you genuinely need to delete all rows from a table, use the `deleteAll()` convenience method:
+If you genuinely need to delete all rows from a table, use the `removeAll()` convenience method:
 
 <Tabs groupId="language">
 <TabItem value="kotlin" label="Kotlin" default>
 
 ```kotlin
-userRepository.deleteAll()
+userRepository.removeAll()
 ```
 
 </TabItem>
 <TabItem value="java" label="Java">
 
 ```java
-userRepository.deleteAll();
+userRepository.removeAll();
 ```
 
 </TabItem>
@@ -383,7 +383,7 @@ userRepository.delete().unsafe().executeUpdate();
 </TabItem>
 </Tabs>
 
-The `unsafe()` method signals that the absence of a WHERE clause is intentional. Without it, Storm assumes the missing WHERE clause is a mistake. The `deleteAll()` convenience method calls `unsafe()` internally.
+The `unsafe()` method signals that the absence of a WHERE clause is intentional. Without it, Storm assumes the missing WHERE clause is a mistake. The `removeAll()` convenience method calls `unsafe()` internally.
 
 ### Can I use database-specific functions?
 

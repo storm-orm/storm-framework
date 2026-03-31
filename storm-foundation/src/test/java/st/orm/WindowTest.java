@@ -30,7 +30,7 @@ class WindowTest {
 
     @Test
     void emptyWindowHasNoNavigation() {
-        var window = new MappedWindow<>(List.of(), false, false, null, null);
+        var window = new Window<>(List.of(), false, false, null, null);
         assertTrue(window.content().isEmpty());
         assertFalse(window.hasNext());
         assertFalse(window.hasPrevious());
@@ -41,7 +41,7 @@ class WindowTest {
     @Test
     void windowWithNextScrollableHasNext() {
         var next = Scrollable.of(KEY, 42, 20);
-        var window = new MappedWindow<>(List.of("a", "b"), true, false, next, null);
+        var window = new Window<>(List.of("a", "b"), true, false, next, null);
         assertTrue(window.hasNext());
         assertFalse(window.hasPrevious());
         assertNotNull(window.nextScrollable());
@@ -51,7 +51,7 @@ class WindowTest {
     @Test
     void windowWithPreviousScrollableHasPrevious() {
         var prev = Scrollable.of(KEY, 1, 20).backward();
-        var window = new MappedWindow<>(List.of("a", "b"), false, true, null, prev);
+        var window = new Window<>(List.of("a", "b"), false, true, null, prev);
         assertFalse(window.hasNext());
         assertTrue(window.hasPrevious());
         assertNull(window.nextScrollable());
@@ -62,7 +62,7 @@ class WindowTest {
     void windowWithBothNavigations() {
         var next = Scrollable.of(KEY, 42, 20);
         var prev = Scrollable.of(KEY, 1, 20).backward();
-        var window = new MappedWindow<>(List.of("a", "b"), true, true, next, prev);
+        var window = new Window<>(List.of("a", "b"), true, true, next, prev);
         assertTrue(window.hasNext());
         assertTrue(window.hasPrevious());
     }
@@ -70,20 +70,47 @@ class WindowTest {
     @Test
     void contentIsImmutable() {
         var list = new ArrayList<>(List.of("a", "b"));
-        var window = new MappedWindow<>(list, false, false, null, null);
+        var window = new Window<>(list, false, false, null, null);
         list.add("c");
         assertEquals(2, window.content().size());
     }
 
     @Test
+    void nextReturnsTypedScrollable() {
+        var scrollable = Scrollable.of(KEY, 42, 20);
+        var window = new Window<>(List.of("a", "b"), true, false, scrollable, null);
+        Scrollable<Data> typed = window.next();
+        assertNotNull(typed);
+        assertEquals(42, typed.keyCursor());
+        assertEquals(20, typed.size());
+    }
+
+    @Test
+    void previousReturnsTypedScrollable() {
+        var scrollable = Scrollable.of(KEY, 1, 20).backward();
+        var window = new Window<>(List.of("a", "b"), false, true, null, scrollable);
+        Scrollable<Data> typed = window.previous();
+        assertNotNull(typed);
+        assertEquals(1, typed.keyCursor());
+        assertFalse(typed.isForward());
+    }
+
+    @Test
+    void nextReturnsNullForEmptyWindow() {
+        var window = new Window<>(List.of(), false, false, null, null);
+        assertNull(window.<Data>next());
+        assertNull(window.<Data>previous());
+    }
+
+    @Test
     void nextCursorIsNullWhenNoNext() {
-        var window = new MappedWindow<>(List.of("a"), false, false, null, null);
+        var window = new Window<>(List.of("a"), false, false, null, null);
         assertNull(window.nextCursor());
     }
 
     @Test
     void previousCursorIsNullWhenNoPrevious() {
-        var window = new MappedWindow<>(List.of("a"), false, false, null, null);
+        var window = new Window<>(List.of("a"), false, false, null, null);
         assertNull(window.previousCursor());
     }
 }

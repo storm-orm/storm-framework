@@ -1027,17 +1027,17 @@ public class EntityRepositoryImpl<E extends Entity<ID>, ID>
      * Deletes an entity from the database.
      *
      * <p>This method removes an existing entity from the database. The entity must exist in the database; if it does
-     * not, a {@link PersistenceException} is thrown. Unlike {@link #deleteById} and {@link #deleteByRef}, this method
+     * not, a {@link PersistenceException} is thrown. Unlike {@link #removeById} and {@link #removeByRef}, this method
      * is strict rather than idempotent, because possessing the full entity implies the caller expects it to exist.</p>
      *
-     * @param entity the entity to delete. The entity must exist in the database and should be correctly identified by
+     * @param entity the entity to remove. The entity must exist in the database and should be correctly identified by
      *               its primary key.
-     * @throws PersistenceException if the deletion operation fails. Reasons for failure might include the entity not
+     * @throws PersistenceException if the removal operation fails. Reasons for failure might include the entity not
      *                              being found in the database, violations of database constraints, connectivity
      *                              issues, or if the entity parameter is null.
      */
     @Override
-    public void delete(@Nonnull E entity) {
+    public void remove(@Nonnull E entity) {
         validateDelete(entity);
         fireBeforeDelete(entity);
         entityCache().ifPresent(cache -> {
@@ -1046,7 +1046,7 @@ public class EntityRepositoryImpl<E extends Entity<ID>, ID>
             }
         });
         if (model.isJoinedInheritance()) {
-            JoinedEntityHelper.delete(ormTemplate, model, entity);
+            JoinedEntityHelper.remove(ormTemplate, model, entity);
             fireAfterDelete(entity);
             return;
         }
@@ -1057,26 +1057,26 @@ public class EntityRepositoryImpl<E extends Entity<ID>, ID>
                 .managed()
                 .executeUpdate();
         if (result != 1) {
-            throw new PersistenceException("Delete of %s failed. 0 rows were affected, possibly because the entity does not exist or a foreign key constraint prevents deletion.".formatted(model.type().getSimpleName()));
+            throw new PersistenceException("Remove of %s failed. 0 rows were affected, possibly because the entity does not exist or a foreign key constraint prevents deletion.".formatted(model.type().getSimpleName()));
         }
         fireAfterDelete(entity);
     }
 
     /**
-     * Deletes an entity from the database based on its primary key.
+     * Removes an entity from the database based on its primary key.
      *
      * <p>This method ensures the entity with the given primary key is removed from the database. If the entity does
      * not exist, the operation completes successfully without error (idempotent behavior).</p>
      *
-     * @param id the primary key of the entity to delete.
-     * @throws PersistenceException if the deletion operation fails due to violations of database constraints,
+     * @param id the primary key of the entity to remove.
+     * @throws PersistenceException if the removal operation fails due to violations of database constraints,
      *                              connectivity issues, or if the id parameter is null.
      */
     @Override
-    public void deleteById(@Nonnull ID id) {
+    public void removeById(@Nonnull ID id) {
         entityCache().ifPresent(cache -> cache.remove(id));
         if (model.isJoinedInheritance()) {
-            JoinedEntityHelper.deleteById(ormTemplate, model, id);
+            JoinedEntityHelper.removeById(ormTemplate, model, id);
             return;
         }
         // Don't use query builder to prevent WHERE IN clause.
@@ -1088,17 +1088,17 @@ public class EntityRepositoryImpl<E extends Entity<ID>, ID>
     }
 
     /**
-     * Deletes an entity from the database by its reference.
+     * Removes an entity from the database by its reference.
      *
      * <p>This method ensures the entity identified by the given reference is removed from the database. If the entity
      * does not exist, the operation completes successfully without error (idempotent behavior).</p>
      *
-     * @param ref the reference to the entity to delete.
-     * @throws PersistenceException if the deletion operation fails due to violations of database constraints,
+     * @param ref the reference to the entity to remove.
+     * @throws PersistenceException if the removal operation fails due to violations of database constraints,
      *                              connectivity issues, or if the ref parameter is null.
      */
     @Override
-    public void deleteByRef(@Nonnull Ref<E> ref) {
+    public void removeByRef(@Nonnull Ref<E> ref) {
         //noinspection unchecked
         entityCache().ifPresent(cache -> cache.remove((ID) ref.id()));
         // Don't use query builder to prevent WHERE IN clause.
@@ -1110,17 +1110,17 @@ public class EntityRepositoryImpl<E extends Entity<ID>, ID>
     }
 
     /**
-     * Deletes all entities from the database.
+     * Removes all entities from the database.
      *
-     * <p>This method performs a bulk deletion operation, removing all instances of the entities managed by this
+     * <p>This method performs a bulk removal operation, removing all instances of the entities managed by this
      * repository from the database.</p>
      *
-     * @throws PersistenceException if the bulk deletion operation fails. Failure can occur for several reasons,
+     * @throws PersistenceException if the bulk removal operation fails. Failure can occur for several reasons,
      *                              including but not limited to database access issues, transaction failures, or
-     *                              underlying database constraints that prevent the deletion of certain records.
+     *                              underlying database constraints that prevent the removal of certain records.
      */
     @Override
-    public void deleteAll() {
+    public void removeAll() {
         entityCache().ifPresent(EntityCache::clear);
         // Don't use query builder to prevent WHERE IN clause.
         ormTemplate.query(TemplateString.raw("DELETE FROM \0", model.type()))
@@ -1393,37 +1393,37 @@ public class EntityRepositoryImpl<E extends Entity<ID>, ID>
     }
 
     /**
-     * Deletes a collection of entities from the database in batches.
+     * Removes a collection of entities from the database in batches.
      *
      * <p>This method processes the provided entities in batches to optimize performance when handling larger collections,
      * reducing database overhead. For each entity in the collection, the method removes the corresponding record from
-     * the database, if it exists. Batch processing ensures efficient handling of deletions, particularly for large data sets.</p>
+     * the database, if it exists. Batch processing ensures efficient handling of removals, particularly for large data sets.</p>
      *
-     * @param entities an iterable collection of entities to be deleted. Each entity in the collection must be non-null
-     *                 and represent a valid database record for deletion.
-     * @throws PersistenceException if the deletion operation fails due to database issues, such as connectivity problems
+     * @param entities an iterable collection of entities to be removed. Each entity in the collection must be non-null
+     *                 and represent a valid database record for removal.
+     * @throws PersistenceException if the removal operation fails due to database issues, such as connectivity problems
      *                              or constraints violations.
      */
     @Override
-    public void delete(@Nonnull Iterable<E> entities) {
-        delete(toStream(entities), defaultBatchSize);
+    public void remove(@Nonnull Iterable<E> entities) {
+        remove(toStream(entities), defaultBatchSize);
     }
 
     /**
-     * Deletes a collection of entities from the database in batches.
+     * Removes a collection of entities from the database in batches.
      *
      * <p>This method processes the provided entities in batches to optimize performance when handling larger collections,
      * reducing database overhead. For each entity in the collection, the method removes the corresponding record from
-     * the database, if it exists. Batch processing ensures efficient handling of deletions, particularly for large data sets.</p>
+     * the database, if it exists. Batch processing ensures efficient handling of removals, particularly for large data sets.</p>
      *
-     * @param refs an iterable collection of entities to be deleted. Each entity in the collection must be non-null
-     *             and represent a valid database record for deletion.
-     * @throws PersistenceException if the deletion operation fails due to database issues, such as connectivity problems
+     * @param refs an iterable collection of entities to be removed. Each entity in the collection must be non-null
+     *             and represent a valid database record for removal.
+     * @throws PersistenceException if the removal operation fails due to database issues, such as connectivity problems
      *                              or constraints violations.
      */
     @Override
-    public void deleteByRef(@Nonnull Iterable<Ref<E>> refs) {
-        deleteByRef(toStream(refs), defaultBatchSize);
+    public void removeByRef(@Nonnull Iterable<Ref<E>> refs) {
+        removeByRef(toStream(refs), defaultBatchSize);
     }
 
     // Stream based methods. These methods operate in multiple batches.
@@ -1894,41 +1894,41 @@ public class EntityRepositoryImpl<E extends Entity<ID>, ID>
     }
 
     /**
-     * Deletes a stream of entities from the database in batches.
+     * Removes a stream of entities from the database in batches.
      *
      * <p>This method processes the provided stream of entities in batches to optimize performance for larger
-     * data sets, reducing database overhead during deletion. For each entity in the stream, the method removes
+     * data sets, reducing database overhead during removal. For each entity in the stream, the method removes
      * the corresponding record from the database, if it exists. Batch processing allows efficient handling
-     * of deletions, particularly for large collections of entities.</p>
+     * of removals, particularly for large collections of entities.</p>
      *
-     * @param entities a stream of entities to be deleted. Each entity in the stream must be non-null and represent
-     *                 a valid database record for deletion.
-     * @throws PersistenceException if the deletion operation fails due to database issues, such as connectivity problems
+     * @param entities a stream of entities to be removed. Each entity in the stream must be non-null and represent
+     *                 a valid database record for removal.
+     * @throws PersistenceException if the removal operation fails due to database issues, such as connectivity problems
      *                              or constraints violations.
      */
     @Override
-    public void delete(@Nonnull Stream<E> entities) {
-        delete(entities, defaultBatchSize);
+    public void remove(@Nonnull Stream<E> entities) {
+        remove(entities, defaultBatchSize);
     }
 
     /**
-     * Deletes a stream of entities from the database in configurable batch sizes.
+     * Removes a stream of entities from the database in configurable batch sizes.
      *
      * <p>This method processes the provided stream of entities in batches, with the size of each batch specified
-     * by the `batchSize` parameter. This allows for control over the number of entities deleted in each database
+     * by the `batchSize` parameter. This allows for control over the number of entities removed in each database
      * operation, optimizing performance and memory usage based on system requirements. For each entity in the
      * stream, the method removes the corresponding record from the database, if it exists.</p>
      *
-     * @param entities a stream of entities to be deleted. Each entity in the stream must be non-null and represent
-     *                 a valid database record for deletion.
+     * @param entities a stream of entities to be removed. Each entity in the stream must be non-null and represent
+     *                 a valid database record for removal.
      * @param batchSize the number of entities to process in each batch. Larger batch sizes may improve performance
      *                  but require more memory, while smaller batch sizes may reduce memory usage but increase
      *                  the number of database operations.
-     * @throws PersistenceException if the deletion operation fails due to database issues, such as connectivity problems
+     * @throws PersistenceException if the removal operation fails due to database issues, such as connectivity problems
      *                              or constraints violations.
      */
     @Override
-    public void delete(@Nonnull Stream<E> entities, int batchSize) {
+    public void remove(@Nonnull Stream<E> entities, int batchSize) {
         if (model.isJoinedInheritance()) {
             var entityCache = entityCache();
             chunked(entities, batchSize).forEach(batch -> {
@@ -1939,7 +1939,7 @@ public class EntityRepositoryImpl<E extends Entity<ID>, ID>
                 entityCache.ifPresent(cache -> batch.stream()
                         .filter(e -> !model.isDefaultPrimaryKey(e.id()))
                         .forEach(e -> cache.remove(e.id())));
-                JoinedEntityHelper.deleteBatch(ormTemplate, model, batch);
+                JoinedEntityHelper.removeBatch(ormTemplate, model, batch);
                 batch.forEach(this::fireAfterDelete);
             });
             return;
@@ -1959,7 +1959,7 @@ public class EntityRepositoryImpl<E extends Entity<ID>, ID>
                         .forEach(e -> cache.remove(e.id())));
                 int[] result = query.executeBatch();
                 if (IntStream.of(result).anyMatch(r -> r != 1)) {
-                    throw new PersistenceException("Batch delete of %s failed. One or more rows were not affected.".formatted(model.type().getSimpleName()));
+                    throw new PersistenceException("Batch remove of %s failed. One or more rows were not affected.".formatted(model.type().getSimpleName()));
                 }
                 chunk.forEach(this::fireAfterDelete);
             });
@@ -1967,41 +1967,41 @@ public class EntityRepositoryImpl<E extends Entity<ID>, ID>
     }
 
     /**
-     * Deletes a stream of entities from the database in batches.
+     * Removes a stream of entities from the database in batches.
      *
      * <p>This method processes the provided stream of entities in batches to optimize performance for larger
-     * data sets, reducing database overhead during deletion. For each entity in the stream, the method removes
+     * data sets, reducing database overhead during removal. For each entity in the stream, the method removes
      * the corresponding record from the database, if it exists. Batch processing allows efficient handling
-     * of deletions, particularly for large collections of entities.</p>
+     * of removals, particularly for large collections of entities.</p>
      *
-     * @param refs a stream of entities to be deleted. Each entity in the stream must be non-null and represent
-     *             a valid database record for deletion.
-     * @throws PersistenceException if the deletion operation fails due to database issues, such as connectivity problems
+     * @param refs a stream of entities to be removed. Each entity in the stream must be non-null and represent
+     *             a valid database record for removal.
+     * @throws PersistenceException if the removal operation fails due to database issues, such as connectivity problems
      *                              or constraints violations.
      */
     @Override
-    public void deleteByRef(@Nonnull Stream<Ref<E>> refs) {
-        deleteByRef(refs, defaultBatchSize);
+    public void removeByRef(@Nonnull Stream<Ref<E>> refs) {
+        removeByRef(refs, defaultBatchSize);
     }
 
     /**
-     * Deletes a stream of entities from the database in configurable batch sizes.
+     * Removes a stream of entities from the database in configurable batch sizes.
      *
      * <p>This method processes the provided stream of entities in batches, with the size of each batch specified
-     * by the `batchSize` parameter. This allows for control over the number of entities deleted in each database
+     * by the `batchSize` parameter. This allows for control over the number of entities removed in each database
      * operation, optimizing performance and memory usage based on system requirements. For each entity in the
      * stream, the method removes the corresponding record from the database, if it exists.</p>
      *
-     * @param refs a stream of entities to be deleted. Each entity in the stream must be non-null and represent
-     *              valid database record for deletion.
+     * @param refs a stream of entities to be removed. Each entity in the stream must be non-null and represent
+     *              valid database record for removal.
      * @param batchSize the number of entities to process in each batch. Larger batch sizes may improve performance
      *                  but require more memory, while smaller batch sizes may reduce memory usage but increase
      *                  the number of database operations.
-     * @throws PersistenceException if the deletion operation fails due to database issues, such as connectivity problems
+     * @throws PersistenceException if the removal operation fails due to database issues, such as connectivity problems
      *                              or constraints violations.
      */
     @Override
-    public void deleteByRef(@Nonnull Stream<Ref<E>> refs, int batchSize) {
+    public void removeByRef(@Nonnull Stream<Ref<E>> refs, int batchSize) {
         if (model.isJoinedInheritance()) {
             var entityCache = entityCache();
             chunked(refs, batchSize).forEach(chunk -> {
@@ -2009,7 +2009,7 @@ public class EntityRepositoryImpl<E extends Entity<ID>, ID>
                 entityCache.ifPresent(cache -> chunk.stream()
                         .filter(r -> !model.isDefaultPrimaryKey((ID) r.id()))
                         .forEach(r -> cache.remove((ID) r.id())));
-                JoinedEntityHelper.deleteBatchByRef(ormTemplate, model, chunk);
+                JoinedEntityHelper.removeBatchByRef(ormTemplate, model, chunk);
             });
             return;
         }

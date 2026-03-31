@@ -18,6 +18,8 @@ Steps:
 Generation/update rules:
 - snake_case table -> PascalCase class, snake_case column -> camelCase field
 - Remove _id from FK fields (city_id -> city)
+- **Every column with a FK constraint must be modeled with `@FK`.** Without `@FK`, Storm cannot resolve joins automatically. Prefer full entity types (`@FK val city: City` / `@FK City city`) over `Ref<T>`. Use `Ref<T>` when the entity hierarchy gets too deep or loading the full related entity is overkill.
+- **FK columns in primary keys:** When a PK column is also a FK (both PK and FK constraint on the same column), use raw IDs in the PK class and place `@FK @Persist(insertable = false, updatable = false)` fields on the entity for join metadata. Add a convenience constructor that accepts the FK entities/refs and constructs the PK internally.
 - Auto-increment PKs: IDENTITY. Others: NONE.
 - NOT NULL FKs: non-nullable. Nullable FKs: nullable.
 - CIRCULAR NOT SUPPORTED. Two tables referencing each other: one must use Ref<T>. Self-ref: always Ref<T>.
@@ -40,6 +42,8 @@ Naming convention detection:
 
 SQL type mapping (Kotlin): INTEGER->Int, BIGINT->Long, VARCHAR/TEXT->String, BOOLEAN->Boolean, DECIMAL->BigDecimal, DATE->LocalDate, TIMESTAMP->Instant, UUID->UUID
 SQL type mapping (Java): INTEGER->Integer(PK)/int, BIGINT->Long(PK)/long, VARCHAR/TEXT->String, BOOLEAN->Boolean/boolean, DECIMAL->BigDecimal, DATE->LocalDate, TIMESTAMP->Instant, UUID->UUID
+
+**H2 NUMERIC/DECIMAL precision:** When generating migrations for `@StormTest` (H2), always specify precision and scale for NUMERIC/DECIMAL columns (e.g., `NUMERIC(4, 1)`, not `NUMERIC`). H2 defaults to scale 0, which silently truncates decimals — values like 8.7 become 9. Warn the user if the source schema uses NUMERIC without precision.
 
 JSON column recognition: columns typed as JSONB (PostgreSQL), JSON (MySQL, MariaDB, Oracle), NVARCHAR(MAX) with JSON content (MS SQL Server), or CLOB with JSON content (H2) should be mapped with `@Json`. Ask the user what the JSON structure represents so you can choose the correct field type (e.g., `Map<String, String>`, a custom data class, or `List<T>`).
 

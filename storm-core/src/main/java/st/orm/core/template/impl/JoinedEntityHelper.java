@@ -133,16 +133,16 @@ public final class JoinedEntityHelper {
     }
 
     /**
-     * Deletes a joined entity from both the extension and base tables.
+     * Removes a joined entity from both the extension and base tables.
      *
      * @param queryTemplate the query template for executing SQL.
      * @param model the model describing the sealed entity.
-     * @param entity the entity to delete.
+     * @param entity the entity to remove.
      * @param <E> the entity type (sealed interface).
      * @param <ID> the primary key type.
-     * @throws PersistenceException if the delete fails.
+     * @throws PersistenceException if the remove fails.
      */
-    public static <E extends Entity<ID>, ID> void delete(
+    public static <E extends Entity<ID>, ID> void remove(
             @Nonnull QueryTemplate queryTemplate,
             @Nonnull Model<E, ID> model,
             @Nonnull E entity
@@ -150,21 +150,21 @@ public final class JoinedEntityHelper {
         try {
             deleteJoined(queryTemplate, model, entity.getClass(), entity.id());
         } catch (SqlTemplateException e) {
-            throw new PersistenceException("Failed to construct delete statement for joined entity %s.".formatted(model.type().getSimpleName()), e);
+            throw new PersistenceException("Failed to construct remove statement for joined entity %s.".formatted(model.type().getSimpleName()), e);
         }
     }
 
     /**
-     * Deletes a joined entity by primary key from all extension and base tables.
+     * Removes a joined entity by primary key from all extension and base tables.
      *
      * @param queryTemplate the query template for executing SQL.
      * @param model the model describing the sealed entity.
-     * @param id the primary key of the entity to delete.
+     * @param id the primary key of the entity to remove.
      * @param <E> the entity type (sealed interface).
      * @param <ID> the primary key type.
-     * @throws PersistenceException if the delete fails.
+     * @throws PersistenceException if the remove fails.
      */
-    public static <E extends Entity<ID>, ID> void deleteById(
+    public static <E extends Entity<ID>, ID> void removeById(
             @Nonnull QueryTemplate queryTemplate,
             @Nonnull Model<E, ID> model,
             @Nonnull ID id
@@ -172,7 +172,7 @@ public final class JoinedEntityHelper {
         try {
             deleteJoined(queryTemplate, model, null, id);
         } catch (SqlTemplateException e) {
-            throw new PersistenceException("Failed to construct delete-by-id statement for joined entity %s.".formatted(model.type().getSimpleName()), e);
+            throw new PersistenceException("Failed to construct remove-by-id statement for joined entity %s.".formatted(model.type().getSimpleName()), e);
         }
     }
 
@@ -275,20 +275,20 @@ public final class JoinedEntityHelper {
     }
 
     /**
-     * Deletes a batch of joined entities from both extension and base tables.
+     * Removes a batch of joined entities from both extension and base tables.
      *
      * <p>Phase 1 deletes from extension tables first (FK constraints), partitioned by concrete subtype.
      * Phase 2 deletes all entities from the base table.</p>
      *
      * @param queryTemplate the query template for executing SQL.
      * @param model the model describing the sealed entity.
-     * @param entities the entities to delete (already validated).
+     * @param entities the entities to remove (already validated).
      * @param <E> the entity type (sealed interface).
      * @param <ID> the primary key type.
-     * @throws PersistenceException if the delete fails.
+     * @throws PersistenceException if the remove fails.
      * @since 1.9
      */
-    public static <E extends Entity<ID>, ID> void deleteBatch(
+    public static <E extends Entity<ID>, ID> void removeBatch(
             @Nonnull QueryTemplate queryTemplate,
             @Nonnull Model<E, ID> model,
             @Nonnull List<E> entities
@@ -299,25 +299,25 @@ public final class JoinedEntityHelper {
         try {
             deleteJoinedBatch(queryTemplate, model, entities);
         } catch (SqlTemplateException e) {
-            throw new PersistenceException("Failed to construct batch delete statement for joined entity %s.".formatted(model.type().getSimpleName()), e);
+            throw new PersistenceException("Failed to construct batch remove statement for joined entity %s.".formatted(model.type().getSimpleName()), e);
         }
     }
 
     /**
-     * Deletes a batch of joined entities by reference from all extension and base tables.
+     * Removes a batch of joined entities by reference from all extension and base tables.
      *
      * <p>When the concrete type is unknown, attempts DELETE from all extension tables for all IDs
      * (at most one will match per entity), then deletes from the base table.</p>
      *
      * @param queryTemplate the query template for executing SQL.
      * @param model the model describing the sealed entity.
-     * @param refs the entity references to delete.
+     * @param refs the entity references to remove.
      * @param <E> the entity type (sealed interface).
      * @param <ID> the primary key type.
-     * @throws PersistenceException if the delete fails.
+     * @throws PersistenceException if the remove fails.
      * @since 1.9
      */
-    public static <E extends Entity<ID>, ID> void deleteBatchByRef(
+    public static <E extends Entity<ID>, ID> void removeBatchByRef(
             @Nonnull QueryTemplate queryTemplate,
             @Nonnull Model<E, ID> model,
             @Nonnull List<Ref<E>> refs
@@ -328,7 +328,7 @@ public final class JoinedEntityHelper {
         try {
             deleteJoinedBatchByRef(queryTemplate, model, refs);
         } catch (SqlTemplateException e) {
-            throw new PersistenceException("Failed to construct batch delete-by-ref statement for joined entity %s.".formatted(model.type().getSimpleName()), e);
+            throw new PersistenceException("Failed to construct batch remove-by-ref statement for joined entity %s.".formatted(model.type().getSimpleName()), e);
         }
     }
 

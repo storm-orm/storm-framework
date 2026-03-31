@@ -144,10 +144,10 @@ import kotlin.reflect.KClass
  *
  * <h3>Delete</h3>
  *
- * Delete user in the database. The repository also supports updates for multiple entries in batch mode by passing a
- * list entities or primary keys. Alternatively, deletion can be executed in using a flow of entities.
+ * Remove user from the database. The repository also supports removals for multiple entries in batch mode by passing a
+ * list entities or primary keys. Alternatively, removal can be executed using a flow of entities.
  * ```
- * orm delete user
+ * orm remove user
  * ```
  *
  * Also here, the QueryBuilder can be used to create specialized statement, for instance, to delete all users where
@@ -227,8 +227,7 @@ interface EntityRepository<E, ID : Any> : Repository where E : Entity<ID> {
     /**
      * Constructs a SELECT query using a block-based DSL.
      *
-     * A [PredicateBuilder] returned as the block's last expression is automatically applied as a WHERE clause,
-     * so `select { path eq value }` is equivalent to `select { where(path eq value) }`.
+     * The block uses scope methods (e.g., `where`, `orderBy`, `limit`) to construct the query.
      *
      * ```kotlin
      * interface UserRepository : EntityRepository<User, Int> {
@@ -239,12 +238,20 @@ interface EntityRepository<E, ID : Any> : Repository where E : Entity<ID> {
      * }
      * ```
      */
-    @Suppress("UNCHECKED_CAST")
     fun select(block: SqlScope<E, E, ID>.() -> Any?): QueryBuilder<E, E, ID> {
         val scope = SqlScope(select())
-        scope.applyResult(scope.block())
+        scope.validateResult(scope.block())
         return scope.builder
     }
+
+    /**
+     * Constructs a SELECT query filtered by the given predicate.
+     *
+     * ```kotlin
+     * userRepository.select(User_.active eq true).resultList
+     * ```
+     */
+    fun select(predicate: PredicateBuilder<E, *, *>): QueryBuilder<E, E, ID> = select().where(predicate)
 
     /**
      * Creates a new query builder for the entity type managed by this repository.
@@ -275,6 +282,17 @@ interface EntityRepository<E, ID : Any> : Repository where E : Entity<ID> {
      * @since 1.3
      */
     fun selectRef(): QueryBuilder<E, Ref<E>, ID>
+
+    /**
+     * Constructs a SELECT query for refs, filtered by the given predicate.
+     *
+     * ```kotlin
+     * userRepository.selectRef(User_.active eq true).resultList
+     * ```
+     *
+     * @since 1.3
+     */
+    fun selectRef(predicate: PredicateBuilder<E, *, *>): QueryBuilder<E, Ref<E>, ID> = selectRef().where(predicate)
 
     /**
      * Creates a new query builder for the specialized `selectType` and specialized `template` for the select clause.
@@ -319,26 +337,19 @@ interface EntityRepository<E, ID : Any> : Repository where E : Entity<ID> {
     fun delete(): QueryBuilder<E, *, ID>
 
     /**
-     * Constructs and executes a DELETE statement using a block-based DSL.
-     *
-     * A [PredicateBuilder] returned as the block's last expression is automatically applied as a WHERE clause,
-     * so `delete { path eq value }` is equivalent to `delete { where(path eq value) }`.
+     * Constructs a DELETE query filtered by the given predicate.
      *
      * ```kotlin
-     * interface UserRepository : EntityRepository<User, Int> {
-     *     fun deleteInactive(): Int = delete {
-     *         where(User_.active eq false)
-     *     }
-     * }
+     * userRepository.delete(User_.active eq false).executeUpdate()
      * ```
-     *
-     * @return the number of rows deleted.
      */
+    fun delete(predicate: PredicateBuilder<E, *, *>): QueryBuilder<E, *, ID> = delete().where(predicate)
+
     @Suppress("UNCHECKED_CAST")
-    fun delete(block: SqlScope<E, Any?, ID>.() -> Any?): Int {
+    fun delete(block: SqlScope<E, Any?, ID>.() -> Any?): QueryBuilder<E, Any?, ID> {
         val scope = SqlScope(delete() as QueryBuilder<E, Any?, ID>)
-        scope.applyResult(scope.block())
-        return scope.builder.executeUpdate()
+        scope.validateResult(scope.block())
+        return scope.builder
     }
 
     // Base methods.
@@ -541,55 +552,55 @@ interface EntityRepository<E, ID : Any> : Repository where E : Entity<ID> {
      *
      *
      * This method removes an existing entity from the database. The entity must exist in the database; if it does
-     * not, a [st.orm.PersistenceException] is thrown. Unlike [deleteById] and [deleteByRef], this method is strict
+     * not, a [st.orm.PersistenceException] is thrown. Unlike [removeById] and [removeByRef], this method is strict
      * rather than idempotent, because possessing the full entity implies the caller expects it to exist.
      *
-     * @param entity the entity to delete. The entity must exist in the database and should be correctly identified by
+     * @param entity the entity to remove. The entity must exist in the database and should be correctly identified by
      * its primary key.
-     * @throws st.orm.PersistenceException if the deletion operation fails. Reasons for failure might include the entity not
+     * @throws st.orm.PersistenceException if the removal operation fails. Reasons for failure might include the entity not
      * being found in the database, violations of database constraints, connectivity
      * issues, or if the entity parameter is null.
      */
-    fun delete(entity: E)
+    fun remove(entity: E)
 
     /**
-     * Deletes an entity from the database based on its primary key.
+     * Removes an entity from the database based on its primary key.
      *
      *
      * This method ensures the entity with the given primary key is removed from the database. If the entity does
      * not exist, the operation completes successfully without error (idempotent behavior).
      *
-     * @param id the primary key of the entity to delete.
-     * @throws st.orm.PersistenceException if the deletion operation fails due to violations of database constraints,
+     * @param id the primary key of the entity to remove.
+     * @throws st.orm.PersistenceException if the removal operation fails due to violations of database constraints,
      * connectivity issues, or if the id parameter is null.
      */
-    fun deleteById(id: ID)
+    fun removeById(id: ID)
 
     /**
-     * Deletes an entity from the database by its reference.
+     * Removes an entity from the database by its reference.
      *
      *
      * This method ensures the entity identified by the given reference is removed from the database. If the entity
      * does not exist, the operation completes successfully without error (idempotent behavior).
      *
-     * @param ref the reference to the entity to delete.
-     * @throws st.orm.PersistenceException if the deletion operation fails due to violations of database constraints,
+     * @param ref the reference to the entity to remove.
+     * @throws st.orm.PersistenceException if the removal operation fails due to violations of database constraints,
      * connectivity issues, or if the ref parameter is null.
      */
-    fun deleteByRef(ref: Ref<E>)
+    fun removeByRef(ref: Ref<E>)
 
     /**
-     * Deletes all entities from the database.
+     * Removes all entities from the database.
      *
      *
-     * This method performs a bulk deletion operation, removing all instances of the entities managed by this
+     * This method performs a bulk removal operation, removing all instances of the entities managed by this
      * repository from the database.
      *
-     * @throws st.orm.PersistenceException if the bulk deletion operation fails. Failure can occur for several reasons,
+     * @throws st.orm.PersistenceException if the bulk removal operation fails. Failure can occur for several reasons,
      * including but not limited to database access issues, transaction failures, or
-     * underlying database constraints that prevent the deletion of certain records.
+     * underlying database constraints that prevent the removal of certain records.
      */
-    fun deleteAll()
+    fun removeAll()
 
     // Singular findBy methods.
 
@@ -917,148 +928,34 @@ interface EntityRepository<E, ID : Any> : Repository where E : Entity<ID> {
     fun upsertAndFetch(entities: Iterable<E>): List<E>
 
     /**
-     * Deletes a collection of entities from the database in batches.
+     * Removes a collection of entities from the database in batches.
      *
      *
      * This method processes the provided entities in batches to optimize performance when handling larger collections,
      * reducing database overhead. For each entity in the collection, the method removes the corresponding record from
-     * the database, if it exists. Batch processing ensures efficient handling of deletions, particularly for large data sets.
+     * the database, if it exists. Batch processing ensures efficient handling of removals, particularly for large data sets.
      *
-     * @param entities an iterable collection of entities to be deleted. Each entity in the collection must be non-null
-     * and represent a valid database record for deletion.
-     * @throws st.orm.PersistenceException if the deletion operation fails due to database issues, such as connectivity problems
+     * @param entities an iterable collection of entities to be removed. Each entity in the collection must be non-null
+     * and represent a valid database record for removal.
+     * @throws st.orm.PersistenceException if the removal operation fails due to database issues, such as connectivity problems
      * or constraints violations.
      */
-    fun delete(entities: Iterable<E>)
+    fun remove(entities: Iterable<E>)
 
     /**
-     * Deletes a collection of entities from the database in batches.
+     * Removes a collection of entities from the database in batches.
      *
      *
      * This method processes the provided entities in batches to optimize performance when handling larger collections,
      * reducing database overhead. For each entity in the collection, the method removes the corresponding record from
-     * the database, if it exists. Batch processing ensures efficient handling of deletions, particularly for large data sets.
+     * the database, if it exists. Batch processing ensures efficient handling of removals, particularly for large data sets.
      *
-     * @param refs an iterable collection of entities to be deleted. Each entity in the collection must be non-null
-     * and represent a valid database record for deletion.
-     * @throws st.orm.PersistenceException if the deletion operation fails due to database issues, such as connectivity problems
+     * @param refs an iterable collection of entities to be removed. Each entity in the collection must be non-null
+     * and represent a valid database record for removal.
+     * @throws st.orm.PersistenceException if the removal operation fails due to database issues, such as connectivity problems
      * or constraints violations.
      */
-    fun deleteByRef(refs: Iterable<Ref<E>>)
-
-    /**
-     * Retrieves a flow of entities based on their primary keys.
-     *
-     * This method executes queries in batches, depending on the number of primary keys in the specified ids flow.
-     * This optimization aims to reduce the overhead of executing multiple queries and efficiently retrieve entities.
-     * The batching strategy enhances performance, particularly when dealing with large sets of primary keys.
-     *
-     * The resulting flow is lazily loaded, meaning that the entities are only retrieved from the database as they
-     * are consumed by the flow. This approach is efficient and minimizes the memory footprint, especially when
-     * dealing with large volumes of entities.
-     *
-     * **Note:** Calling this method does trigger the execution of the underlying
-     * query, so it should only be invoked when the query is intended to run. Since the flow holds resources open
-     * while in use, it must be closed after usage to prevent resource leaks. As the flow is `AutoCloseable`, it
-     * is recommended to use it within a `try-with-resources` block.
-     *
-     * @param ids a flow of entity IDs to retrieve from the repository.
-     * @return a flow of entities corresponding to the provided primary keys. The order of entities in the flow is
-     * not guaranteed to match the order of ids in the input flow. If an id does not correspond to any entity
-     * in the database, it will simply be skipped, and no corresponding entity will be included in the returned
-     * flow. If the same entity is requested multiple times, it may be included in the flow multiple times
-     * if it is part of a separate batch.
-     * @throws st.orm.PersistenceException if the selection operation fails due to underlying database issues, such as
-     * connectivity.
-     */
-    fun selectById(ids: Flow<ID>): Flow<E>
-
-    /**
-     * Retrieves a flow of entities based on their primary keys.
-     *
-     * This method executes queries in batches, depending on the number of primary keys in the specified ids flow.
-     * This optimization aims to reduce the overhead of executing multiple queries and efficiently retrieve entities.
-     * The batching strategy enhances performance, particularly when dealing with large sets of primary keys.
-     *
-     * The resulting flow is lazily loaded, meaning that the entities are only retrieved from the database as they
-     * are consumed by the flow. This approach is efficient and minimizes the memory footprint, especially when
-     * dealing with large volumes of entities.
-     *
-     * **Note:** Calling this method does trigger the execution of the underlying
-     * query, so it should only be invoked when the query is intended to run. Since the flow holds resources open
-     * while in use, it must be closed after usage to prevent resource leaks. As the flow is `AutoCloseable`, it
-     * is recommended to use it within a `try-with-resources` block.
-     *
-     * @param refs a flow of refs to retrieve from the repository.
-     * @return a flow of entities corresponding to the provided primary keys. The order of entities in the flow is
-     * not guaranteed to match the order of ids in the input flow. If an id does not correspond to any entity
-     * in the database, it will simply be skipped, and no corresponding entity will be included in the returned
-     * flow. If the same entity is requested multiple times, it may be included in the flow multiple times
-     * if it is part of a separate batch.
-     * @throws st.orm.PersistenceException if the selection operation fails due to underlying database issues, such as
-     * connectivity.
-     */
-    fun selectByRef(refs: Flow<Ref<E>>): Flow<E>
-
-    /**
-     * Retrieves a flow of entities based on their primary keys.
-     *
-     * This method executes queries in batches, with the batch size determined by the provided parameter. This
-     * optimization aims to reduce the overhead of executing multiple queries and efficiently retrieve entities. The
-     * batching strategy enhances performance, particularly when dealing with large sets of primary keys.
-     *
-     * The resulting flow is lazily loaded, meaning that the entities are only retrieved from the database as they
-     * are consumed by the flow. This approach is efficient and minimizes the memory footprint, especially when
-     * dealing with large volumes of entities.
-     *
-     * **Note:** Calling this method does trigger the execution of the underlying
-     * query, so it should only be invoked when the query is intended to run. Since the flow holds resources open
-     * while in use, it must be closed after usage to prevent resource leaks. As the flow is `AutoCloseable`, it
-     * is recommended to use it within a `try-with-resources` block.
-     *
-     * @param ids a flow of entity IDs to retrieve from the repository.
-     * @param chunkSize the number of primary keys to include in each batch. This parameter determines the size of the
-     * batches used to execute the selection operation. A larger batch size can improve performance, especially when
-     * dealing with large sets of primary keys.
-     * @return a flow of entities corresponding to the provided primary keys. The order of entities in the flow is
-     * not guaranteed to match the order of refs in the input flow. If an id does not correspond to any entity in the
-     * database, it will simply be skipped, and no corresponding entity will be included in the returned flow. If the
-     * same entity is requested multiple times, it may be included in the flow multiple times if it is part of a
-     * separate batch.
-     * @throws st.orm.PersistenceException if the selection operation fails due to underlying database issues, such as
-     * connectivity.
-     */
-    fun selectById(ids: Flow<ID>, chunkSize: Int): Flow<E>
-
-    /**
-     * Retrieves a flow of entities based on their primary keys.
-     *
-     * This method executes queries in batches, with the batch size determined by the provided parameter. This
-     * optimization aims to reduce the overhead of executing multiple queries and efficiently retrieve entities. The
-     * batching strategy enhances performance, particularly when dealing with large sets of primary keys.
-     *
-     * The resulting flow is lazily loaded, meaning that the entities are only retrieved from the database as they
-     * are consumed by the flow. This approach is efficient and minimizes the memory footprint, especially when
-     * dealing with large volumes of entities.
-     *
-     * **Note:** Calling this method does trigger the execution of the underlying
-     * query, so it should only be invoked when the query is intended to run. Since the flow holds resources open
-     * while in use, it must be closed after usage to prevent resource leaks. As the flow is `AutoCloseable`, it
-     * is recommended to use it within a `try-with-resources` block.
-     *
-     * @param refs a flow of refs to retrieve from the repository.
-     * @param chunkSize the number of primary keys to include in each batch. This parameter determines the size of the
-     * batches used to execute the selection operation. A larger batch size can improve performance, especially when
-     * dealing with large sets of primary keys.
-     * @return a flow of entities corresponding to the provided primary keys. The order of entities in the flow is
-     * not guaranteed to match the order of refs in the input flow. If an id does not correspond to any entity in the
-     * database, it will simply be skipped, and no corresponding entity will be included in the returned flow. If the
-     * same entity is requested multiple times, it may be included in the flow multiple times if it is part of a
-     * separate batch.
-     * @throws st.orm.PersistenceException if the selection operation fails due to underlying database issues, such as
-     * connectivity.
-     */
-    fun selectByRef(refs: Flow<Ref<E>>, chunkSize: Int): Flow<E>
+    fun removeByRef(refs: Iterable<Ref<E>>)
 
     /**
      * Counts the number of entities identified by the provided flow of IDs using the default batch size.
@@ -1420,77 +1317,45 @@ interface EntityRepository<E, ID : Any> : Repository where E : Entity<ID> {
     fun upsertAndFetch(entities: Flow<E>, batchSize: Int): Flow<E>
 
     /**
-     * Deletes a flow of entities from the database in batches.
+     * Removes a flow of entities from the database in batches.
      *
-     * This method processes the provided flow of entities in batches to optimize performance for larger
-     * data sets, reducing database overhead during deletion. For each entity in the flow, the method removes
-     * the corresponding record from the database, if it exists. Batch processing allows efficient handling
-     * of deletions, particularly for large collections of entities.
-     *
-     * @param entities a flow of entities to be deleted. Each entity in the flow must be non-null and represent
-     * a valid database record for deletion.
-     * @throws st.orm.PersistenceException if the deletion operation fails due to database issues, such as connectivity problems
-     * or constraints violations.
+     * @param entities a flow of entities to be removed.
+     * @throws st.orm.PersistenceException if the removal operation fails.
      */
-    suspend fun delete(entities: Flow<E>)
+    suspend fun remove(entities: Flow<E>)
 
     /**
-     * Deletes a flow of entities from the database in configurable batch sizes.
+     * Removes a flow of entities from the database in configurable batch sizes.
      *
-     * This method processes the provided flow of entities in batches, with the size of each batch specified
-     * by the `chunkSize` parameter. This allows for control over the number of entities deleted in each database
-     * operation, optimizing performance and memory usage based on system requirements. For each entity in the
-     * flow, the method removes the corresponding record from the database, if it exists.
-     *
-     * @param entities a flow of entities to be deleted. Each entity in the flow must be non-null and represent
-     * a valid database record for deletion.
-     * @param batchSize the number of entities to process in each batch. Larger batch sizes may improve performance
-     * but require more memory, while smaller batch sizes may reduce memory usage but increase
-     * the number of database operations.
-     * @throws st.orm.PersistenceException if the deletion operation fails due to database issues, such as connectivity problems
-     * or constraints violations.
+     * @param entities a flow of entities to be removed.
+     * @param batchSize the number of entities to process in each batch.
+     * @throws st.orm.PersistenceException if the removal operation fails.
      */
-    suspend fun delete(entities: Flow<E>, batchSize: Int)
+    suspend fun remove(entities: Flow<E>, batchSize: Int)
 
     /**
-     * Deletes a flow of entities from the database in batches.
+     * Removes a flow of entities from the database in batches.
      *
-     * This method processes the provided flow of entities in batches to optimize performance for larger
-     * data sets, reducing database overhead during deletion. For each entity in the flow, the method removes
-     * the corresponding record from the database, if it exists. Batch processing allows efficient handling
-     * of deletions, particularly for large collections of entities.
-     *
-     * @param refs a flow of entities to be deleted. Each entity in the flow must be non-null and represent
-     * a valid database record for deletion.
-     * @throws st.orm.PersistenceException if the deletion operation fails due to database issues, such as connectivity problems
-     * or constraints violations.
+     * @param refs a flow of entities to be removed.
+     * @throws st.orm.PersistenceException if the removal operation fails.
      */
-    suspend fun deleteByRef(refs: Flow<Ref<E>>)
+    suspend fun removeByRef(refs: Flow<Ref<E>>)
 
     /**
-     * Deletes a flow of entities from the database in configurable batch sizes.
+     * Removes a flow of entities from the database in configurable batch sizes.
      *
-     * This method processes the provided flow of entities in batches, with the size of each batch specified
-     * by the `chunkSize` parameter. This allows for control over the number of entities deleted in each database
-     * operation, optimizing performance and memory usage based on system requirements. For each entity in the
-     * flow, the method removes the corresponding record from the database, if it exists.
-     *
-     * @param refs a flow of entities to be deleted. Each entity in the flow must be non-null and represent
-     * valid database record for deletion.
-     * @param batchSize the number of entities to process in each batch. Larger batch sizes may improve performance
-     * but require more memory, while smaller batch sizes may reduce memory usage but increase
-     * the number of database operations.
-     * @throws st.orm.PersistenceException if the deletion operation fails due to database issues, such as connectivity problems
-     * or constraints violations.
+     * @param refs a flow of entities to be removed.
+     * @param batchSize the number of entities to process in each batch.
+     * @throws st.orm.PersistenceException if the removal operation fails.
      */
-    suspend fun deleteByRef(refs: Flow<Ref<E>>, batchSize: Int)
+    suspend fun removeByRef(refs: Flow<Ref<E>>, batchSize: Int)
 
     // Kotlin specific DSL
 
     /**
-     * Retrieves all entities of type [E] from the repository.
+     * Returns a list of refs to all entities of type [E] from the repository.
      *
-     * @return a list containing all entities.
+     * @return a list containing refs to all entities.
      */
     fun findAllRef(): List<Ref<E>> = selectRef().resultList
 
@@ -1526,24 +1391,6 @@ interface EntityRepository<E, ID : Any> : Repository where E : Entity<ID> {
 
     /**
      * Retrieves entities of type [E] matching a single field and a single value.
-     * Returns an empty sequence if no entities are found.
-     *
-     * The resulting sequence is lazily loaded, meaning that the entities are only retrieved from the database as they
-     * are consumed by the sequence. This approach is efficient and minimizes the memory footprint, especially when
-     * dealing with large volumes of entities.
-     *
-     * Note: Calling this method does trigger the execution of the underlying
-     * query, so it should only be invoked when the query is intended to run. Since the sequence holds resources open
-     * while in use, it must be closed after usage to prevent resource leaks.
-     *
-     * @param field metamodel reference of the entity field.
-     * @param value the value to match against.
-     * @return a sequence of matching entities.
-     */
-    fun <V> selectBy(field: Metamodel<E, V>, value: V): Flow<E> = select().where(field, EQUALS, value).resultFlow
-
-    /**
-     * Retrieves entities of type [E] matching a single field and a single value.
      * Returns an empty list if no entities are found.
      *
      * @param field metamodel reference of the entity field.
@@ -1551,24 +1398,6 @@ interface EntityRepository<E, ID : Any> : Repository where E : Entity<ID> {
      * @return a list of matching entities.
      */
     fun <V : Data> findAllBy(field: Metamodel<E, V>, value: Ref<V>): List<E> = select().where(field, value).resultList
-
-    /**
-     * Retrieves entities of type [E] matching a single field and a single value.
-     * Returns an empty sequence if no entities are found.
-     *
-     * The resulting sequence is lazily loaded, meaning that the entities are only retrieved from the database as they
-     * are consumed by the sequence. This approach is efficient and minimizes the memory footprint, especially when
-     * dealing with large volumes of entities.
-     *
-     * Note: Calling this method does trigger the execution of the underlying
-     * query, so it should only be invoked when the query is intended to run. Since the sequence holds resources open
-     * while in use, it must be closed after usage to prevent resource leaks.
-     *
-     * @param field metamodel reference of the entity field.
-     * @param value the value to match against.
-     * @return a sequence of matching entities.
-     */
-    fun <V : Data> selectBy(field: Metamodel<E, V>, value: Ref<V>): Flow<E> = select().where(field, value).resultFlow
 
     /**
      * Retrieves entities of type [E] matching a single field against multiple values.
@@ -1582,24 +1411,6 @@ interface EntityRepository<E, ID : Any> : Repository where E : Entity<ID> {
 
     /**
      * Retrieves entities of type [E] matching a single field against multiple values.
-     * Returns an empty sequence if no entities are found.
-     *
-     * The resulting sequence is lazily loaded, meaning that the entities are only retrieved from the database as they
-     * are consumed by the sequence. This approach is efficient and minimizes the memory footprint, especially when
-     * dealing with large volumes of entities.
-     *
-     * Note: Calling this method does trigger the execution of the underlying
-     * query, so it should only be invoked when the query is intended to run. Since the sequence holds resources open
-     * while in use, it must be closed after usage to prevent resource leaks.
-     *
-     * @param field metamodel reference of the entity field.
-     * @param values Iterable of values to match against.
-     * @return at sequence of matching entities.
-     */
-    fun <V> selectBy(field: Metamodel<E, V>, values: Iterable<V>): Flow<E> = select().where(field, IN, values).resultFlow
-
-    /**
-     * Retrieves entities of type [E] matching a single field against multiple values.
      * Returns an empty list if no entities are found.
      *
      * @param field metamodel reference of the entity field.
@@ -1607,16 +1418,6 @@ interface EntityRepository<E, ID : Any> : Repository where E : Entity<ID> {
      * @return a list of matching entities.
      */
     fun <V : Data> findAllByRef(field: Metamodel<E, V>, values: Iterable<Ref<V>>): List<E> = select().whereRef(field, values).resultList
-
-    /**
-     * Retrieves entities of type [E] matching a single field against multiple values.
-     * Returns an empty sequence if no entities are found.
-     *
-     * @param field metamodel reference of the entity field.
-     * @param values Iterable of values to match against.
-     * @return a sequence of matching entities.
-     */
-    fun <V : Data> selectByRef(field: Metamodel<E, V>, values: Iterable<Ref<V>>): Flow<E> = select().whereRef(field, values).resultFlow
 
     /**
      * Retrieves exactly one entity of type [E] based on a single field and its value.
@@ -1674,24 +1475,6 @@ interface EntityRepository<E, ID : Any> : Repository where E : Entity<ID> {
 
     /**
      * Retrieves entities of type [E] matching a single field and a single value.
-     * Returns an empty sequence if no entities are found.
-     *
-     * The resulting sequence is lazily loaded, meaning that the entities are only retrieved from the database as they
-     * are consumed by the sequence. This approach is efficient and minimizes the memory footprint, especially when
-     * dealing with large volumes of entities.
-     *
-     * Note: Calling this method does trigger the execution of the underlying
-     * query, so it should only be invoked when the query is intended to run. Since the sequence holds resources open
-     * while in use, it must be closed after usage to prevent resource leaks.
-     *
-     * @param field metamodel reference of the entity field.
-     * @param value the value to match against.
-     * @return a sequence of matching entities.
-     */
-    fun <V> selectRefBy(field: Metamodel<E, V>, value: V): Flow<Ref<E>> = selectRef().where(field, EQUALS, value).resultFlow
-
-    /**
-     * Retrieves entities of type [E] matching a single field and a single value.
      * Returns an empty list if no entities are found.
      *
      * @param field metamodel reference of the entity field.
@@ -1699,24 +1482,6 @@ interface EntityRepository<E, ID : Any> : Repository where E : Entity<ID> {
      * @return a list of matching entities.
      */
     fun <V : Data> findAllRefBy(field: Metamodel<E, V>, value: Ref<V>): List<Ref<E>> = selectRef().where(field, value).resultList
-
-    /**
-     * Retrieves entities of type [E] matching a single field and a single value.
-     * Returns an empty sequence if no entities are found.
-     *
-     * The resulting sequence is lazily loaded, meaning that the entities are only retrieved from the database as they
-     * are consumed by the sequence. This approach is efficient and minimizes the memory footprint, especially when
-     * dealing with large volumes of entities.
-     *
-     * Note: Calling this method does trigger the execution of the underlying
-     * query, so it should only be invoked when the query is intended to run. Since the sequence holds resources open
-     * while in use, it must be closed after usage to prevent resource leaks.
-     *
-     * @param field metamodel reference of the entity field.
-     * @param value the value to match against.
-     * @return a sequence of matching entities.
-     */
-    fun <V : Data> selectRefBy(field: Metamodel<E, V>, value: Ref<V>): Flow<Ref<E>> = selectRef().where(field, value).resultFlow
 
     /**
      * Retrieves entities of type [E] matching a single field against multiple values.
@@ -1730,24 +1495,6 @@ interface EntityRepository<E, ID : Any> : Repository where E : Entity<ID> {
 
     /**
      * Retrieves entities of type [E] matching a single field against multiple values.
-     * Returns an empty sequence if no entities are found.
-     *
-     * The resulting sequence is lazily loaded, meaning that the entities are only retrieved from the database as they
-     * are consumed by the sequence. This approach is efficient and minimizes the memory footprint, especially when
-     * dealing with large volumes of entities.
-     *
-     * Note: Calling this method does trigger the execution of the underlying
-     * query, so it should only be invoked when the query is intended to run. Since the sequence holds resources open
-     * while in use, it must be closed after usage to prevent resource leaks.
-     *
-     * @param field metamodel reference of the entity field.
-     * @param values Iterable of values to match against.
-     * @return a sequence of matching entities.
-     */
-    fun <V> selectRefBy(field: Metamodel<E, V>, values: Iterable<V>): Flow<Ref<E>> = selectRef().where(field, IN, values).resultFlow
-
-    /**
-     * Retrieves entities of type [E] matching a single field against multiple values.
      * Returns an empty list if no entities are found.
      *
      * @param field metamodel reference of the entity field.
@@ -1755,24 +1502,6 @@ interface EntityRepository<E, ID : Any> : Repository where E : Entity<ID> {
      * @return a list of matching entities.
      */
     fun <V : Data> findAllRefByRef(field: Metamodel<E, V>, values: Iterable<Ref<V>>): List<Ref<E>> = selectRef().whereRef(field, values).resultList
-
-    /**
-     * Retrieves entities of type [E] matching a single field against multiple values.
-     * Returns an empty sequence if no entities are found.
-     *
-     * The resulting sequence is lazily loaded, meaning that the entities are only retrieved from the database as they
-     * are consumed by the sequence. This approach is efficient and minimizes the memory footprint, especially when
-     * dealing with large volumes of entities.
-     *
-     * Note: Calling this method does trigger the execution of the underlying
-     * query, so it should only be invoked when the query is intended to run. Since the sequence holds resources open
-     * while in use, it must be closed after usage to prevent resource leaks.
-     *
-     * @param field metamodel reference of the entity field.
-     * @param values Iterable of values to match against.
-     * @return a sequence of matching entities.
-     */
-    fun <V : Data> selectRefByRef(field: Metamodel<E, V>, values: Iterable<Ref<V>>): Flow<Ref<E>> = selectRef().whereRef(field, values).resultFlow
 
     /**
      * Retrieves exactly one entity of type [E] based on a single field and its value.
@@ -1925,49 +1654,59 @@ interface EntityRepository<E, ID : Any> : Repository where E : Entity<ID> {
     ): Boolean = selectCount().where(predicate).singleResult > 0
 
     /**
-     * Deletes entities of type [E] matching the specified field and value.
+     * Removes entities of type [E] matching the specified predicate.
+     *
+     * @param predicate Lambda to build the WHERE clause.
+     * @return the number of entities removed.
+     */
+    fun removeAll(
+        predicate: PredicateBuilder<E, *, *>,
+    ): Int = delete().where(predicate).executeUpdate()
+
+    /**
+     * Removes entities of type [E] matching the specified field and value.
      *
      * @param field metamodel reference of the entity field.
      * @param value the value to match against.
-     * @return the number of entities deleted.
+     * @return the number of entities removed.
      */
-    fun <V> deleteAllBy(
+    fun <V> removeAllBy(
         field: Metamodel<E, V>,
         value: V,
     ): Int = delete().where(field, EQUALS, value).executeUpdate()
 
     /**
-     * Deletes entities of type [E] matching the specified field and referenced value.
+     * Removes entities of type [E] matching the specified field and referenced value.
      *
      * @param field metamodel reference of the entity field.
      * @param value the referenced value to match against.
-     * @return the number of entities deleted.
+     * @return the number of entities removed.
      */
-    fun <V : Data> deleteAllBy(
+    fun <V : Data> removeAllBy(
         field: Metamodel<E, V>,
         value: Ref<V>,
     ): Int = delete().where(field, value).executeUpdate()
 
     /**
-     * Deletes entities of type [E] matching the specified field against multiple values.
+     * Removes entities of type [E] matching the specified field against multiple values.
      *
      * @param field metamodel reference of the entity field.
      * @param values Iterable of values to match against.
-     * @return the number of entities deleted.
+     * @return the number of entities removed.
      */
-    fun <V> deleteAllBy(
+    fun <V> removeAllBy(
         field: Metamodel<E, V>,
         values: Iterable<V>,
     ): Int = delete().where(field, IN, values).executeUpdate()
 
     /**
-     * Deletes entities of type [E] matching the specified field against multiple referenced values.
+     * Removes entities of type [E] matching the specified field against multiple referenced values.
      *
      * @param field metamodel reference of the entity field.
      * @param values Iterable of referenced values to match against.
-     * @return the number of entities deleted.
+     * @return the number of entities removed.
      */
-    fun <V : Data> deleteAllByRef(
+    fun <V : Data> removeAllByRef(
         field: Metamodel<E, V>,
         values: Iterable<Ref<V>>,
     ): Int = delete().whereRef(field, values).executeUpdate()
@@ -2003,12 +1742,36 @@ interface EntityRepository<E, ID : Any> : Repository where E : Entity<ID> {
     fun page(pageable: Pageable): Page<E>
 
     /**
+     * Returns a page of entity refs using offset-based pagination.
+     *
+     * Page numbers are zero-based: pass `0` for the first page.
+     *
+     * @param pageNumber the zero-based page index.
+     * @param pageSize the maximum number of refs per page.
+     * @return a page containing the ref results and pagination metadata.
+     * @since 1.10
+     */
+    fun pageRef(pageNumber: Int, pageSize: Int): Page<Ref<E>>
+
+    /**
+     * Returns a page of entity refs using offset-based pagination.
+     *
+     * This method executes two queries: a `SELECT COUNT(*)` to determine the total number of entities, and
+     * a query with OFFSET and LIMIT to fetch the refs for the requested page.
+     *
+     * @param pageable the pagination request specifying page number and page size.
+     * @return a page containing the ref results and pagination metadata.
+     * @since 1.10
+     */
+    fun pageRef(pageable: Pageable): Page<Ref<E>>
+
+    /**
      * Executes a scroll request from a [Scrollable] token, typically obtained from
-     * [Window.nextScrollable] or [Window.previousScrollable].
+     * [Window.next] or [Window.previous].
      *
      * @param scrollable the scroll request containing cursor state, key, sort, size, and direction.
      * @return a window containing the entity results for the requested scroll position.
      * @since 1.11
      */
-    fun scroll(scrollable: Scrollable<E>): Window<E> = Window.of(select().scroll(scrollable))
+    fun scroll(scrollable: Scrollable<E>): Window<E> = select().scroll(scrollable)
 }

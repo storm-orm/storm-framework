@@ -18,6 +18,7 @@ import st.orm.Data
 import st.orm.Metamodel
 import st.orm.NoResultException
 import st.orm.Operator.*
+import st.orm.Pageable
 import st.orm.Ref
 import st.orm.Scrollable
 import st.orm.repository.*
@@ -208,52 +209,6 @@ open class ProjectionRepositoryTest(
     fun `selectAll should return flow of all owner views`(): Unit = runBlocking {
         val repo = orm.projection(OwnerView::class)
         repo.select().resultFlow.count() shouldBe 10
-    }
-
-    @Test
-    fun `selectById with flow of ids should return matching owner views`(): Unit = runBlocking {
-        val repo = orm.projection(OwnerView::class)
-        val ids = flowOf(1, 2, 3)
-        val views = repo.selectById(ids).toList()
-        views shouldHaveSize 3
-    }
-
-    @Test
-    fun `selectByRef with flow of refs should return matching owner views`(): Unit = runBlocking {
-        val repo = orm.projection(OwnerView::class)
-        val refs = flowOf(repo.ref(1), repo.ref(2))
-        val views = repo.selectByRef(refs).toList()
-        views shouldHaveSize 2
-    }
-
-    @Test
-    fun `selectById with custom chunk size should return matching owner views`(): Unit = runBlocking {
-        val repo = orm.projection(OwnerView::class)
-        val ids = (1..10).asFlow()
-        val views = repo.selectById(ids, 3).toList()
-        views shouldHaveSize 10
-    }
-
-    @Test
-    fun `selectByRef with custom chunk size should return matching owner views`(): Unit = runBlocking {
-        val repo = orm.projection(OwnerView::class)
-        val refs = (1..10).map { repo.ref(it) }.asFlow()
-        val views = repo.selectByRef(refs, 3).toList()
-        views shouldHaveSize 10
-    }
-
-    @Test
-    fun `selectById with empty flow should return empty flow`(): Unit = runBlocking {
-        val repo = orm.projection(OwnerView::class)
-        val views = repo.selectById(emptyFlow()).toList()
-        views.shouldBeEmpty()
-    }
-
-    @Test
-    fun `selectByRef with empty flow should return empty flow`(): Unit = runBlocking {
-        val repo = orm.projection(OwnerView::class)
-        val views = repo.selectByRef(emptyFlow()).toList()
-        views.shouldBeEmpty()
     }
 
     // ProjectionRepository: countById and countByRef
@@ -605,23 +560,6 @@ open class ProjectionRepositoryTest(
 
     // ProjectionRepository: selectBy with Metamodel
 
-    @Test
-    fun `selectBy with field and value should return matching projections as flow`(): Unit = runBlocking {
-        val repo = orm.projection(OwnerView::class)
-        val firstNamePath = metamodel<OwnerView, String>(repo.model, "first_name")
-        val views = repo.selectBy(firstNamePath, "Betty").toList()
-        views shouldHaveSize 1
-        views.first().firstName shouldBe "Betty"
-    }
-
-    @Test
-    fun `selectBy with field and iterable values should return matching projections as flow`(): Unit = runBlocking {
-        val repo = orm.projection(OwnerView::class)
-        val firstNamePath = metamodel<OwnerView, String>(repo.model, "first_name")
-        val views = repo.selectBy(firstNamePath, listOf("Betty", "George")).toList()
-        views shouldHaveSize 2
-    }
-
     // ProjectionRepository: findRefBy/getRefBy with Metamodel
 
     @Test
@@ -664,14 +602,6 @@ open class ProjectionRepositoryTest(
         assertThrows<NoResultException> {
             repo.getRefBy(firstNamePath, "NonExistent")
         }
-    }
-
-    @Test
-    fun `selectRefBy with field and value should return matching refs as flow`(): Unit = runBlocking {
-        val repo = orm.projection(OwnerView::class)
-        val firstNamePath = metamodel<OwnerView, String>(repo.model, "first_name")
-        val refs = repo.selectRefBy(firstNamePath, "Betty").toList()
-        refs shouldHaveSize 1
     }
 
     // ProjectionRepository: PredicateBuilder direct-call variants
@@ -816,24 +746,6 @@ open class ProjectionRepositoryTest(
     }
 
     @Test
-    fun `selectBy with field and ref value should return matching flow`(): Unit = runBlocking {
-        val repo = orm.projection(OwnerView::class)
-        val cityPath = metamodel<OwnerView, City>(repo.model, "city_id")
-        val cityRef: Ref<City> = Ref.of(City::class.java, 2)
-        val count = repo.selectBy(cityPath, cityRef).count()
-        count shouldBe 4
-    }
-
-    @Test
-    fun `selectByRef with metamodel and iterable of refs should return matching flow`(): Unit = runBlocking {
-        val repo = orm.projection(OwnerView::class)
-        val cityPath = metamodel<OwnerView, City>(repo.model, "city_id")
-        val refs = listOf(Ref.of(City::class.java, 1), Ref.of(City::class.java, 3))
-        val count = repo.selectByRef(cityPath, refs).count()
-        count shouldBe 2
-    }
-
-    @Test
     fun `findRefBy with field and ref value should return matching ref`() {
         val repo = orm.projection(OwnerView::class)
         val cityPath = metamodel<OwnerView, City>(repo.model, "city_id")
@@ -849,15 +761,6 @@ open class ProjectionRepositoryTest(
         val cityRef: Ref<City> = Ref.of(City::class.java, 999)
         val ref = repo.findRefBy(cityPath, cityRef)
         ref.shouldBeNull()
-    }
-
-    @Test
-    fun `selectRefBy with field and ref value should return matching refs as flow`(): Unit = runBlocking {
-        val repo = orm.projection(OwnerView::class)
-        val cityPath = metamodel<OwnerView, City>(repo.model, "city_id")
-        val cityRef: Ref<City> = Ref.of(City::class.java, 1)
-        val refs = repo.selectRefBy(cityPath, cityRef).toList()
-        refs shouldHaveSize 1
     }
 
     @Test
@@ -918,18 +821,6 @@ open class ProjectionRepositoryTest(
     }
 
     @Test
-    fun `selectBy with field and iterable of ref values should return matching flow`(): Unit = runBlocking {
-        val repo = orm.projection(OwnerView::class)
-        val cityPath = metamodel<OwnerView, City>(repo.model, "city_id")
-        val refs = listOf(
-            Ref.of(City::class.java, 1),
-            Ref.of(City::class.java, 3),
-        )
-        val count = repo.selectByRef(cityPath, refs).count()
-        count shouldBe 2
-    }
-
-    @Test
     fun `orm findBy reified projection with ref should return matching`() {
         val cityPath = metamodel<OwnerView, City>(orm.projection(OwnerView::class).model, "city_id")
         val cityRef: Ref<City> = Ref.of(City::class.java, 1)
@@ -970,14 +861,6 @@ open class ProjectionRepositoryTest(
     }
 
     @Test
-    fun `orm selectBy reified projection with ref should return matching flow`(): Unit = runBlocking {
-        val cityPath = metamodel<OwnerView, City>(orm.projection(OwnerView::class).model, "city_id")
-        val cityRef: Ref<City> = Ref.of(City::class.java, 2)
-        val count = orm.selectBy<OwnerView, City>(cityPath, cityRef).count()
-        count shouldBe 4
-    }
-
-    @Test
     fun `orm findRefBy reified projection should return ref`() {
         val firstNamePath = metamodel<OwnerView, String>(orm.projection(OwnerView::class).model, "first_name")
         val ref = orm.findRefBy<OwnerView, String>(firstNamePath, "Betty")
@@ -989,13 +872,6 @@ open class ProjectionRepositoryTest(
         val firstNamePath = metamodel<OwnerView, String>(orm.projection(OwnerView::class).model, "first_name")
         val ref = orm.getRefBy<OwnerView, String>(firstNamePath, "Betty")
         ref.shouldNotBeNull()
-    }
-
-    @Test
-    fun `orm selectRefBy reified projection should return flow of refs`(): Unit = runBlocking {
-        val firstNamePath = metamodel<OwnerView, String>(orm.projection(OwnerView::class).model, "first_name")
-        val count = orm.selectRefBy<OwnerView, String>(firstNamePath, "Betty").count()
-        count shouldBe 1
     }
 
     @Test
@@ -1053,22 +929,6 @@ open class ProjectionRepositoryTest(
         val firstNamePath = metamodel<OwnerView, String>(repo.model, "first_name")
         val views = repo.findAllBy(firstNamePath, listOf("Betty", "Eduardo"))
         views shouldHaveSize 2
-    }
-
-    @Test
-    fun `selectBy with field and string value should return matching flow`(): Unit = runBlocking {
-        val repo = orm.projection(OwnerView::class)
-        val lastNamePath = metamodel<OwnerView, String>(repo.model, "last_name")
-        val count = repo.selectBy(lastNamePath, "Davis").count()
-        count shouldBe 2
-    }
-
-    @Test
-    fun `selectBy with field and iterable of values should return matching flow`(): Unit = runBlocking {
-        val repo = orm.projection(OwnerView::class)
-        val firstNamePath = metamodel<OwnerView, String>(repo.model, "first_name")
-        val count = repo.selectBy(firstNamePath, listOf("Betty", "Eduardo")).count()
-        count shouldBe 2
     }
 
     @Test
@@ -1136,40 +996,6 @@ open class ProjectionRepositoryTest(
         val cityPath = metamodel<OwnerView, City>(repo.model, "city_id")
         val refs = listOf(Ref.of(City::class.java, 1), Ref.of(City::class.java, 3))
         val resultRefs = repo.findAllRefByRef(cityPath, refs)
-        resultRefs shouldHaveSize 2
-    }
-
-    @Test
-    fun `selectRefBy with field and string value should return matching refs as flow`(): Unit = runBlocking {
-        val repo = orm.projection(OwnerView::class)
-        val lastNamePath = metamodel<OwnerView, String>(repo.model, "last_name")
-        val refs = repo.selectRefBy(lastNamePath, "Davis").toList()
-        refs shouldHaveSize 2
-    }
-
-    @Test
-    fun `selectRefBy with field and ref value for multiple results should return matching refs as flow`(): Unit = runBlocking {
-        val repo = orm.projection(OwnerView::class)
-        val cityPath = metamodel<OwnerView, City>(repo.model, "city_id")
-        val cityRef: Ref<City> = Ref.of(City::class.java, 2)
-        val refs = repo.selectRefBy(cityPath, cityRef).toList()
-        refs shouldHaveSize 4
-    }
-
-    @Test
-    fun `selectRefBy with field and iterable of values should return matching refs as flow`(): Unit = runBlocking {
-        val repo = orm.projection(OwnerView::class)
-        val firstNamePath = metamodel<OwnerView, String>(repo.model, "first_name")
-        val refs = repo.selectRefBy(firstNamePath, listOf("Betty", "Eduardo")).toList()
-        refs shouldHaveSize 2
-    }
-
-    @Test
-    fun `selectRefByRef with metamodel and iterable of refs should return matching refs as flow`(): Unit = runBlocking {
-        val repo = orm.projection(OwnerView::class)
-        val cityPath = metamodel<OwnerView, City>(repo.model, "city_id")
-        val refs = listOf(Ref.of(City::class.java, 1), Ref.of(City::class.java, 3))
-        val resultRefs = repo.selectRefByRef(cityPath, refs).toList()
         resultRefs shouldHaveSize 2
     }
 
@@ -1409,42 +1235,6 @@ open class ProjectionRepositoryTest(
         val repo = orm.projection(OwnerView::class)
         val count = repo.select().resultFlow.count()
         count shouldBe 10
-    }
-
-    @Test
-    fun `selectById should return matching projections as flow`(): Unit = runBlocking {
-        val repo = orm.projection(OwnerView::class)
-        val count = repo.selectById(kotlinx.coroutines.flow.flowOf(1, 2, 3)).count()
-        count shouldBe 3
-    }
-
-    @Test
-    fun `selectByRef should return matching projections as flow`(): Unit = runBlocking {
-        val repo = orm.projection(OwnerView::class)
-        val refs = kotlinx.coroutines.flow.flowOf(
-            Ref.of(OwnerView::class.java, 1),
-            Ref.of(OwnerView::class.java, 2),
-        )
-        val count = repo.selectByRef(refs).count()
-        count shouldBe 2
-    }
-
-    @Test
-    fun `selectById with chunkSize should return matching projections as flow`(): Unit = runBlocking {
-        val repo = orm.projection(OwnerView::class)
-        val count = repo.selectById(kotlinx.coroutines.flow.flowOf(1, 2, 3), 2).count()
-        count shouldBe 3
-    }
-
-    @Test
-    fun `selectByRef with chunkSize should return matching projections as flow`(): Unit = runBlocking {
-        val repo = orm.projection(OwnerView::class)
-        val refs = kotlinx.coroutines.flow.flowOf(
-            Ref.of(OwnerView::class.java, 1),
-            Ref.of(OwnerView::class.java, 2),
-        )
-        val count = repo.selectByRef(refs, 2).count()
-        count shouldBe 2
     }
 
     @Test
@@ -1803,15 +1593,6 @@ open class ProjectionRepositoryTest(
     }
 
     @Test
-    fun `selectRefBy with field and iterable of Data values should return refs flow`(): Unit = runBlocking {
-        val repo = orm.projection(OwnerView::class)
-        val cityPath = metamodel<OwnerView, City>(repo.model, "city_id")
-        val cities = listOf(City(id = 1, name = "Sun Prairie"), City(id = 3, name = "McFarland"))
-        val refs = repo.selectRefByRef(cityPath, cities.map { Ref.of(City::class.java, it.id) }).toList()
-        refs shouldHaveSize 2
-    }
-
-    @Test
     fun `getRefBy with ref value should throw for non-existing ref`() {
         val repo = orm.projection(OwnerView::class)
         val cityPath = metamodel<OwnerView, City>(repo.model, "city_id")
@@ -2073,5 +1854,25 @@ open class ProjectionRepositoryTest(
         val lastNamePath = metamodel<OwnerView, String>(repo.model, "last_name")
         val window = repo.selectRef().scroll(Scrollable(idKey, 8, lastNamePath, "Smith", 4, false))
         window.content shouldHaveSize 4
+    }
+
+    // ProjectionRepository: pageRef tests
+
+    @Test
+    fun `projection pageRef should return refs`() {
+        val repo = orm.projection(OwnerView::class)
+        val page = repo.pageRef(0, 5)
+        page.content shouldHaveSize 5
+        page.totalCount shouldBe 10
+    }
+
+    @Test
+    fun `projection pageRef with Pageable should return refs`() {
+        val repo = orm.projection(OwnerView::class)
+        val pageable = Pageable.ofSize(5)
+        val page = repo.pageRef(pageable)
+        page.content shouldHaveSize 5
+        page.totalCount shouldBe 10
+        page.hasNext() shouldBe true
     }
 }

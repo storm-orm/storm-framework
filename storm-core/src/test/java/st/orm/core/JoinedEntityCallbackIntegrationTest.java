@@ -167,7 +167,7 @@ public class JoinedEntityCallbackIntegrationTest {
     // Exercises deleteJoined + beforeDelete/afterDelete callback paths
 
     @Test
-    public void testJoinedEntityDeleteWithCallbacks() {
+    public void testJoinedEntityRemoveWithCallbacks() {
         List<String> log = new ArrayList<>();
         var orm = ORMTemplate.of(dataSource).withEntityCallback(new EntityCallback<JoinedAnimal>() {
             @Override
@@ -184,13 +184,13 @@ public class JoinedEntityCallbackIntegrationTest {
         // First insert a new entity so we can safely delete it.
         Integer newId = animals.insertAndFetchId(new JoinedCat(null, "TempCatDel", false));
         JoinedAnimal toDelete = animals.getById(newId);
-        animals.delete(toDelete);
+        animals.remove(toDelete);
         assertTrue(log.contains("beforeDelete"));
         assertTrue(log.contains("afterDelete"));
     }
 
     @Test
-    public void testJoinedEntityBatchDeleteWithCallbacks() {
+    public void testJoinedEntityBatchRemoveWithCallbacks() {
         List<String> log = new ArrayList<>();
         var orm = ORMTemplate.of(dataSource).withEntityCallback(new EntityCallback<JoinedAnimal>() {
             @Override
@@ -208,32 +208,32 @@ public class JoinedEntityCallbackIntegrationTest {
         Integer id2 = animals.insertAndFetchId(new JoinedDog(null, "DelBatch2", 10));
         JoinedAnimal cat = animals.getById(id1);
         JoinedAnimal dog = animals.getById(id2);
-        animals.delete(List.of(cat, dog));
+        animals.remove(List.of(cat, dog));
         assertEquals(4, log.size()); // 2 beforeDelete + 2 afterDelete
     }
 
     // Joined entity deleteById (exercises deleteJoined with null concreteType)
 
     @Test
-    public void testJoinedEntityDeleteById() {
+    public void testJoinedEntityRemoveById() {
         var orm = ORMTemplate.of(dataSource);
         var animals = orm.entity(JoinedAnimal.class);
         Integer newId = animals.insertAndFetchId(new JoinedDog(null, "TempDogDel", 5));
         long countBefore = animals.count();
-        animals.deleteById(newId);
+        animals.removeById(newId);
         assertEquals(countBefore - 1, animals.count());
     }
 
     // Joined entity batch deleteByRef
 
     @Test
-    public void testJoinedEntityBatchDeleteByRef() {
+    public void testJoinedEntityBatchRemoveByRef() {
         var orm = ORMTemplate.of(dataSource);
         var animals = orm.entity(JoinedAnimal.class);
         Integer id1 = animals.insertAndFetchId(new JoinedCat(null, "RefDel1", true));
         Integer id2 = animals.insertAndFetchId(new JoinedDog(null, "RefDel2", 15));
         long countBefore = animals.count();
-        animals.deleteByRef(List.of(
+        animals.removeByRef(List.of(
                 Ref.of(JoinedAnimal.class, id1),
                 Ref.of(JoinedAnimal.class, id2)
         ));
@@ -243,14 +243,14 @@ public class JoinedEntityCallbackIntegrationTest {
     // Joined entity batch deleteById
 
     @Test
-    public void testJoinedEntityBatchDeleteByIdList() {
+    public void testJoinedEntityBatchRemoveByIdList() {
         var orm = ORMTemplate.of(dataSource);
         var animals = orm.entity(JoinedAnimal.class);
         Integer id1 = animals.insertAndFetchId(new JoinedCat(null, "IdDel1", false));
         Integer id2 = animals.insertAndFetchId(new JoinedDog(null, "IdDel2", 8));
         long countBefore = animals.count();
-        animals.deleteById(id1);
-        animals.deleteById(id2);
+        animals.removeById(id1);
+        animals.removeById(id2);
         assertEquals(countBefore - 2, animals.count());
     }
 
@@ -286,7 +286,7 @@ public class JoinedEntityCallbackIntegrationTest {
     // Joined entity stream-based batch delete
 
     @Test
-    public void testJoinedEntityStreamDelete() {
+    public void testJoinedEntityStreamRemove() {
         var orm = ORMTemplate.of(dataSource);
         var animals = orm.entity(JoinedAnimal.class);
         Integer id1 = animals.insertAndFetchId(new JoinedCat(null, "StreamDel1", true));
@@ -294,7 +294,7 @@ public class JoinedEntityCallbackIntegrationTest {
         JoinedAnimal cat = animals.getById(id1);
         JoinedAnimal dog = animals.getById(id2);
         long countBefore = animals.count();
-        animals.delete(Stream.of(cat, dog), 1);
+        animals.remove(Stream.of(cat, dog), 1);
         assertEquals(countBefore - 2, animals.count());
     }
 
@@ -497,7 +497,7 @@ public class JoinedEntityCallbackIntegrationTest {
     // Joined entity: delete with callback transforms nothing (void)
 
     @Test
-    public void testJoinedEntityDeleteByIdWithCallbacks() {
+    public void testJoinedEntityRemoveByIdWithCallbacks() {
         List<String> log = new ArrayList<>();
         var orm = ORMTemplate.of(dataSource).withEntityCallback(new EntityCallback<JoinedAnimal>() {
             @Override
@@ -508,7 +508,7 @@ public class JoinedEntityCallbackIntegrationTest {
         var animals = orm.entity(JoinedAnimal.class);
         Integer newId = animals.insertAndFetchId(new JoinedCat(null, "DelByIdCb", true));
         // deleteById does NOT fire entity callbacks (entity not loaded).
-        animals.deleteById(newId);
+        animals.removeById(newId);
         // No callback should fire for deleteById.
         assertTrue(log.isEmpty(), "deleteById should not fire entity callbacks");
     }
@@ -524,16 +524,6 @@ public class JoinedEntityCallbackIntegrationTest {
         // Should contain both cats and dogs.
         assertTrue(all.stream().anyMatch(a -> a instanceof JoinedCat));
         assertTrue(all.stream().anyMatch(a -> a instanceof JoinedDog));
-    }
-
-    @Test
-    public void testJoinedEntitySelectById() {
-        var orm = ORMTemplate.of(dataSource);
-        var animals = orm.entity(JoinedAnimal.class);
-        try (var stream = animals.selectById(Stream.of(1, 3), 2)) {
-            List<JoinedAnimal> result = stream.toList();
-            assertEquals(2, result.size());
-        }
     }
 
     // EntityRepositoryImpl: various edge cases

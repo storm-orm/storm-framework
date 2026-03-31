@@ -35,7 +35,7 @@ import java.util.List;
  * @param <R> the type of the results.
  * @since 1.10
  */
-public record Page<R>(@Nonnull List<R> content, long totalCount, @Nonnull Pageable pageable) {
+public record Page<R>(@Nonnull List<R> content, long totalCount, @Nonnull Pageable pageable) implements Slice<R> {
     public Page {
         content = copyOf(content);
         if (totalCount < 0) {

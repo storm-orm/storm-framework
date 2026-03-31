@@ -463,7 +463,7 @@ When working with large result sets, Storm supports three strategies for retriev
 
 **Pagination** navigates by page number and includes a total count. It uses SQL `OFFSET` under the hood, which degrades on large tables. **Scrolling** uses keyset pagination for constant-time performance regardless of depth, but only supports sequential forward/backward navigation.
 
-For detailed usage, sorting, composite scrolling, `MappedWindow` vs `Window`, GROUP BY with scrolling, and REST cursor support, see [Pagination and Scrolling](pagination-and-scrolling.md).
+For detailed usage, sorting, composite scrolling, `Window` type parameters, GROUP BY with scrolling, and REST cursor support, see [Pagination and Scrolling](pagination-and-scrolling.md).
 
 ### Quick examples
 
@@ -485,9 +485,9 @@ val page: Page<User> = orm.entity(User::class).select()
 
 // Scrolling
 val window: Window<User> = userRepository.scroll(Scrollable.of(User_.id, 20))
-// nextScrollable() is non-null when the window has content.
+// next() is non-null when the window has content.
 // hasNext is informational; the developer decides whether to follow the cursor.
-val next = userRepository.scroll(window.nextScrollable())
+val next = userRepository.scroll(window.next())
 ```
 
 </TabItem>
@@ -507,9 +507,9 @@ Page<User> page = orm.entity(User.class).select()
 
 // Scrolling
 Window<User> window = userRepository.scroll(Scrollable.of(User_.id, 20));
-// nextScrollable() is non-null when the window has content.
+// next() is non-null when the window has content.
 // hasNext() is informational; the developer decides whether to follow the cursor.
-var next = userRepository.scroll(window.nextScrollable());
+var next = userRepository.scroll(window.next());
 ```
 
 </TabItem>

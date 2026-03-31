@@ -16,9 +16,9 @@ import java.time.ZoneOffset;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import st.orm.Data;
-import st.orm.MappedWindow;
 import st.orm.Metamodel;
 import st.orm.Scrollable;
+import st.orm.Window;
 
 /**
  * Tests cursor serialization (toCursor/fromCursor) which requires storm-core on the classpath.
@@ -244,7 +244,7 @@ class CursorSerializationTest {
     void windowNextCursorProducesStringFromScrollable() {
         var key = Metamodel.key(Metamodel.of(StubEntity.class, "id"));
         var next = new Scrollable<>(key, 42, null, null, 20, true);
-        var window = new MappedWindow<>(java.util.List.of("a"), true, false, next, null);
+        var window = new Window<>(java.util.List.of("a"), true, false, next, null);
         String cursor = window.nextCursor();
         assertNotNull(cursor);
         var restored = Scrollable.fromCursor(key, cursor);
@@ -257,7 +257,7 @@ class CursorSerializationTest {
     void windowPreviousCursorProducesStringFromScrollable() {
         var key = Metamodel.key(Metamodel.of(StubEntity.class, "id"));
         var prev = new Scrollable<>(key, 5, null, null, 10, false);
-        var window = new MappedWindow<>(java.util.List.of("a"), false, true, null, prev);
+        var window = new Window<>(java.util.List.of("a"), false, true, null, prev);
         String cursor = window.previousCursor();
         assertNotNull(cursor);
         var restored = Scrollable.fromCursor(key, cursor);

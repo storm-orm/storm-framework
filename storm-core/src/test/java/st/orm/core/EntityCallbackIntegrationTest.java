@@ -95,7 +95,7 @@ public class EntityCallbackIntegrationTest {
         });
         // Insert a city with no FK references, then delete it.
         var id = orm.entity(City.class).insertAndFetchId(City.builder().name("Deletable").build());
-        orm.entity(City.class).delete(City.builder().id(id).name("Deletable").build());
+        orm.entity(City.class).remove(City.builder().id(id).name("Deletable").build());
         assertEquals(List.of("before:Deletable"), log);
     }
 
@@ -110,7 +110,7 @@ public class EntityCallbackIntegrationTest {
         });
         // Insert a city with no FK references, then delete it.
         var id = orm.entity(City.class).insertAndFetchId(City.builder().name("Deletable").build());
-        orm.entity(City.class).delete(City.builder().id(id).name("Deletable").build());
+        orm.entity(City.class).remove(City.builder().id(id).name("Deletable").build());
         assertEquals(List.of("after:Deletable"), log);
     }
 

@@ -58,7 +58,7 @@ record User(@PK Integer id,
 
 ## Entity Interface
 
-Implementing the `Entity<ID>` interface is optional but required for using `EntityRepository` with built-in CRUD operations. The type parameter specifies the primary key type. Without this interface, you can still use Storm's SQL template features and query builder, but you lose the convenience methods like `findById`, `insert`, `update`, and `delete`. If you only need read access, consider using `Projection<ID>` instead (see [Projections](projections.md)).
+Implementing the `Entity<ID>` interface is optional but required for using `EntityRepository` with built-in CRUD operations. The type parameter specifies the primary key type. Without this interface, you can still use Storm's SQL template features and query builder, but you lose the convenience methods like `findById`, `insert`, `update`, and `remove`. If you only need read access, consider using `Projection<ID>` instead (see [Projections](projections.md)).
 
 Storm also supports polymorphic entity hierarchies using sealed interfaces. A sealed interface extending `Entity` can define multiple record subtypes, enabling Single-Table or Joined Table inheritance with compile-time exhaustive pattern matching. See [Polymorphism](polymorphism.md) for details.
 

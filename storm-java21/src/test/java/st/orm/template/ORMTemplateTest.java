@@ -196,30 +196,30 @@ public class ORMTemplateTest {
     }
 
     @Test
-    public void testEntityDelete() {
+    public void testEntityRemove() {
         EntityRepository<City, Integer> cities = orm.entity(City.class);
         City inserted = cities.insertAndFetch(new City(null, "ToDelete"));
         long countBefore = cities.count();
-        cities.delete(inserted);
+        cities.remove(inserted);
         long countAfter = cities.count();
         assertEquals(countBefore - 1, countAfter);
     }
 
     @Test
-    public void testEntityDeleteById() {
+    public void testEntityRemoveById() {
         EntityRepository<City, Integer> cities = orm.entity(City.class);
         City inserted = cities.insertAndFetch(new City(null, "DeleteById"));
-        cities.deleteById(inserted.id());
+        cities.removeById(inserted.id());
         assertFalse(cities.findById(inserted.id()).isPresent());
     }
 
     @Test
-    public void testEntityDeleteAll() {
+    public void testEntityRemoveAll() {
         // Visit has no incoming FK constraints, so we can safely deleteAll
         var localOrm = ORMTemplate.of(dataSource);
         EntityRepository<Visit, Integer> visits = localOrm.entity(Visit.class);
         assertTrue(visits.count() > 0);
-        visits.deleteAll();
+        visits.removeAll();
         assertEquals(0, visits.count());
     }
 
@@ -321,38 +321,6 @@ public class ORMTemplateTest {
     }
 
     @Test
-    public void testEntitySelectById() {
-        EntityRepository<City, Integer> cities = orm.entity(City.class);
-        try (Stream<City> stream = cities.selectById(Stream.of(1, 2, 3))) {
-            assertEquals(3, stream.count());
-        }
-    }
-
-    @Test
-    public void testEntitySelectByIdWithChunkSize() {
-        EntityRepository<City, Integer> cities = orm.entity(City.class);
-        try (Stream<City> stream = cities.selectById(Stream.of(1, 2, 3, 4), 2)) {
-            assertEquals(4, stream.count());
-        }
-    }
-
-    @Test
-    public void testEntitySelectByRef() {
-        EntityRepository<City, Integer> cities = orm.entity(City.class);
-        try (Stream<City> stream = cities.selectByRef(Stream.of(cities.ref(1), cities.ref(2)))) {
-            assertEquals(2, stream.count());
-        }
-    }
-
-    @Test
-    public void testEntitySelectByRefWithChunkSize() {
-        EntityRepository<City, Integer> cities = orm.entity(City.class);
-        try (Stream<City> stream = cities.selectByRef(Stream.of(cities.ref(1), cities.ref(2)), 1)) {
-            assertEquals(2, stream.count());
-        }
-    }
-
-    @Test
     public void testEntityCountById() {
         EntityRepository<City, Integer> cities = orm.entity(City.class);
         long count = cities.countById(Stream.of(1, 2, 3));
@@ -425,30 +393,30 @@ public class ORMTemplateTest {
     }
 
     @Test
-    public void testEntityDeleteIterable() {
+    public void testEntityRemoveIterable() {
         EntityRepository<City, Integer> cities = orm.entity(City.class);
         City city1 = cities.insertAndFetch(new City(null, "DelIter1"));
         City city2 = cities.insertAndFetch(new City(null, "DelIter2"));
         long countBefore = cities.count();
-        cities.delete(List.of(city1, city2));
+        cities.remove(List.of(city1, city2));
         assertEquals(countBefore - 2, cities.count());
     }
 
     @Test
-    public void testEntityDeleteByRefIterable() {
+    public void testEntityRemoveByRefIterable() {
         EntityRepository<City, Integer> cities = orm.entity(City.class);
         City city1 = cities.insertAndFetch(new City(null, "DelRef1"));
         City city2 = cities.insertAndFetch(new City(null, "DelRef2"));
         long countBefore = cities.count();
-        cities.deleteByRef(List.of(cities.ref(city1.id()), cities.ref(city2.id())));
+        cities.removeByRef(List.of(cities.ref(city1.id()), cities.ref(city2.id())));
         assertEquals(countBefore - 2, cities.count());
     }
 
     @Test
-    public void testEntityDeleteByRef() {
+    public void testEntityRemoveByRef() {
         EntityRepository<City, Integer> cities = orm.entity(City.class);
         City inserted = cities.insertAndFetch(new City(null, "DelByRef"));
-        cities.deleteByRef(cities.ref(inserted.id()));
+        cities.removeByRef(cities.ref(inserted.id()));
         assertFalse(cities.findById(inserted.id()).isPresent());
     }
 
@@ -486,39 +454,39 @@ public class ORMTemplateTest {
     }
 
     @Test
-    public void testEntityDeleteStream() {
+    public void testEntityRemoveStream() {
         EntityRepository<City, Integer> cities = orm.entity(City.class);
         City city1 = cities.insertAndFetch(new City(null, "DelStream1"));
         City city2 = cities.insertAndFetch(new City(null, "DelStream2"));
         long countBefore = cities.count();
-        cities.delete(Stream.of(city1, city2));
+        cities.remove(Stream.of(city1, city2));
         assertEquals(countBefore - 2, cities.count());
     }
 
     @Test
-    public void testEntityDeleteStreamWithBatchSize() {
+    public void testEntityRemoveStreamWithBatchSize() {
         EntityRepository<City, Integer> cities = orm.entity(City.class);
         City city1 = cities.insertAndFetch(new City(null, "DelSB1"));
         long countBefore = cities.count();
-        cities.delete(Stream.of(city1), 1);
+        cities.remove(Stream.of(city1), 1);
         assertEquals(countBefore - 1, cities.count());
     }
 
     @Test
-    public void testEntityDeleteByRefStream() {
+    public void testEntityRemoveByRefStream() {
         EntityRepository<City, Integer> cities = orm.entity(City.class);
         City city1 = cities.insertAndFetch(new City(null, "DelRefStream1"));
         long countBefore = cities.count();
-        cities.deleteByRef(Stream.of(cities.ref(city1.id())));
+        cities.removeByRef(Stream.of(cities.ref(city1.id())));
         assertEquals(countBefore - 1, cities.count());
     }
 
     @Test
-    public void testEntityDeleteByRefStreamWithBatchSize() {
+    public void testEntityRemoveByRefStreamWithBatchSize() {
         EntityRepository<City, Integer> cities = orm.entity(City.class);
         City city1 = cities.insertAndFetch(new City(null, "DelRefSB1"));
         long countBefore = cities.count();
-        cities.deleteByRef(Stream.of(cities.ref(city1.id())), 1);
+        cities.removeByRef(Stream.of(cities.ref(city1.id())), 1);
         assertEquals(countBefore - 1, cities.count());
     }
 

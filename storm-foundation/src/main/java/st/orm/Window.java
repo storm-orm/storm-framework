@@ -22,27 +22,20 @@ import jakarta.annotation.Nullable;
 import java.util.List;
 
 /**
- * Represents a window of query results from a scrolling operation where the result type matches the data type.
+ * Represents a window of query results from a scrolling operation with {@link Scrollable} navigation tokens.
  *
- * <p>A {@code Window} is the scrolling counterpart of {@link Page}. While a {@code Page} contains total counts and
- * page numbers for offset-based navigation, a {@code Window} contains cursor-based navigation tokens that allow
- * sequential traversal through large result sets.</p>
- *
- * <p>This is the common case for entity and projection queries where the result type is the same as the data type.
- * For queries where the result type differs from the data type (e.g., ref queries), see {@link MappedWindow}.</p>
- *
- * <p>Use {@link #hasNext()} and {@link #nextScrollable()} to move forward, and {@link #hasPrevious()} and
- * {@link #previousScrollable()} to move backward. Pass the returned {@link Scrollable} to the repository's
- * {@code scroll} method to fetch the adjacent window.</p>
+ * <p>A {@code Window} implements {@link Slice} and provides cursor-based navigation for sequential traversal
+ * through large result sets. Use {@link #next()} and {@link #previous()} for typed programmatic navigation,
+ * or {@link #nextCursor()} and {@link #previousCursor()} for serialized cursor strings suitable for REST APIs.</p>
  *
  * <pre>{@code
  * Window<User> window = userRepository.scroll(Scrollable.of(User_.id, 20));
  * if (window.hasNext()) {
- *     Window<User> next = userRepository.scroll(window.nextScrollable());
+ *     Window<User> next = userRepository.scroll(window.next());
  * }
  * }</pre>
  *
- * <p>The {@code nextScrollable} and {@code previousScrollable} navigation tokens are always provided when the window
+ * <p>The {@link #next()} and {@link #previous()} navigation tokens are always provided when the window
  * has content, regardless of whether {@code hasNext} or {@code hasPrevious} is {@code true}. This allows developers
  * to follow the cursor even when no more results were detected at query time, which is useful for polling scenarios
  * where new data may appear after the initial query. The {@code hasNext} and {@code hasPrevious} flags are
@@ -54,16 +47,17 @@ import java.util.List;
  * @param hasPrevious {@code true} if this window was fetched with a cursor position (i.e., not the first page).
  * @param nextScrollable the scrollable to fetch the next window, or {@code null} if the window is empty.
  * @param previousScrollable the scrollable to fetch the previous window, or {@code null} if the window is empty.
- * @param <T> the data type of both the results and the {@link Scrollable} navigation tokens.
+ * @param <R> the result type (e.g., {@code User} for entity queries, {@code Ref<User>} for ref queries).
  * @since 1.11
  */
-public record Window<T extends Data>(
-        @Nonnull List<T> content,
+public record Window<R>(
+        @Nonnull List<R> content,
         boolean hasNext,
         boolean hasPrevious,
-        @Nullable Scrollable<T> nextScrollable,
-        @Nullable Scrollable<T> previousScrollable
-) {
+        @Nullable Scrollable<?> nextScrollable,
+        @Nullable Scrollable<?> previousScrollable
+) implements Slice<R> {
+
     public Window {
         content = copyOf(content);
     }
@@ -71,23 +65,49 @@ public record Window<T extends Data>(
     /**
      * Returns an empty window with no content and no navigation tokens.
      *
-     * @param <T> the data type.
+     * @param <R> the result type.
      * @return an empty window.
      */
-    public static <T extends Data> Window<T> empty() {
+    public static <R> Window<R> empty() {
         return new Window<>(List.of(), false, false, null, null);
     }
 
     /**
-     * Creates a {@code Window} from a {@link MappedWindow} where the result type matches the data type.
+     * Returns a typed scrollable for fetching the next window, or {@code null} if the window is empty.
      *
-     * @param mappedWindow the mapped window to convert.
-     * @param <T> the data type.
-     * @return a window with the same content and navigation tokens.
+     * <p>The type parameter {@code T} is inferred from the call-site context, typically from the
+     * {@code scroll(Scrollable<T>)} method parameter:</p>
+     *
+     * <pre>{@code
+     * Window<User> next = userRepository.scroll(window.next());
+     * }</pre>
+     *
+     * @param <T> the data type, inferred from context.
+     * @return the scrollable for the next window, or {@code null}.
      */
-    public static <T extends Data> Window<T> of(@Nonnull MappedWindow<T, T> mappedWindow) {
-        return new Window<>(mappedWindow.content(), mappedWindow.hasNext(), mappedWindow.hasPrevious(),
-                mappedWindow.nextScrollable(), mappedWindow.previousScrollable());
+    @SuppressWarnings("unchecked")
+    @Nullable
+    public <T extends Data> Scrollable<T> next() {
+        return (Scrollable<T>) nextScrollable;
+    }
+
+    /**
+     * Returns a typed scrollable for fetching the previous window, or {@code null} if the window is empty.
+     *
+     * <p>The type parameter {@code T} is inferred from the call-site context, typically from the
+     * {@code scroll(Scrollable<T>)} method parameter:</p>
+     *
+     * <pre>{@code
+     * Window<User> prev = userRepository.scroll(window.previous());
+     * }</pre>
+     *
+     * @param <T> the data type, inferred from context.
+     * @return the scrollable for the previous window, or {@code null}.
+     */
+    @SuppressWarnings("unchecked")
+    @Nullable
+    public <T extends Data> Scrollable<T> previous() {
+        return (Scrollable<T>) previousScrollable;
     }
 
     /**
@@ -96,7 +116,7 @@ public record Window<T extends Data>(
      *
      * <p>This method is a convenience for REST APIs that want to include a cursor only when more results were
      * detected. For polling or streaming use cases where you want to follow the cursor regardless, use
-     * {@link #nextScrollable()} directly.</p>
+     * {@link #next()} directly.</p>
      *
      * @return the cursor string, or {@code null}.
      * @see Scrollable#toCursor()
@@ -112,7 +132,7 @@ public record Window<T extends Data>(
      * according to {@link #hasPrevious()}.
      *
      * <p>This method is a convenience for REST APIs that want to include a cursor only when previous results exist.
-     * For use cases where you want to follow the cursor regardless, use {@link #previousScrollable()} directly.</p>
+     * For use cases where you want to follow the cursor regardless, use {@link #previous()} directly.</p>
      *
      * @return the cursor string, or {@code null}.
      * @see Scrollable#toCursor()

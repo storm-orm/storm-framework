@@ -49,14 +49,14 @@ plugins {
 }
 
 dependencies {
-    ksp("st.orm:storm-metamodel-processor:1.11.0")
+    ksp("st.orm:storm-metamodel-processor:@@STORM_VERSION@@")
 }
 ```
 
 ### Gradle (Java)
 
 ```kotlin
-annotationProcessor("st.orm:storm-metamodel-processor:1.11.0")
+annotationProcessor("st.orm:storm-metamodel-processor:@@STORM_VERSION@@")
 ```
 
 ### Maven (Java)
@@ -65,7 +65,7 @@ annotationProcessor("st.orm:storm-metamodel-processor:1.11.0")
 <dependency>
     <groupId>st.orm</groupId>
     <artifactId>storm-metamodel-processor</artifactId>
-    <version>1.11.0</version>
+    <version>@@STORM_VERSION@@</version>
     <scope>provided</scope>
 </dependency>
 ```
@@ -457,16 +457,16 @@ User user = userRepository.getBy(User_.email, "alice@example.com");  // throws i
 
 ```kotlin
 val window: Window<User> = userRepository.scroll(Scrollable.of(User_.id, 20))
-// nextScrollable() is non-null when the window has content.
+// next() is non-null when the window has content.
 // hasNext() is informational; the developer decides whether to follow the cursor.
-val nextWindow: Window<User> = userRepository.scroll(window.nextScrollable())
+val nextWindow: Window<User> = userRepository.scroll(window.next())
 ```
 
 Compound unique keys work the same way. The inline record is used as the cursor value:
 
 ```kotlin
 val window: Window<SomeEntity> = repository.scroll(Scrollable.of(SomeEntity_.uniqueKey, 20))
-val nextWindow: Window<SomeEntity> = repository.scroll(window.nextScrollable())
+val nextWindow: Window<SomeEntity> = repository.scroll(window.next())
 ```
 
 </TabItem>
@@ -474,16 +474,16 @@ val nextWindow: Window<SomeEntity> = repository.scroll(window.nextScrollable())
 
 ```java
 Window<User> window = userRepository.scroll(Scrollable.of(User_.id, 20));
-// nextScrollable() is non-null when the window has content.
+// next() is non-null when the window has content.
 // hasNext() is informational; the developer decides whether to follow the cursor.
-Window<User> next = userRepository.scroll(window.nextScrollable());
+Window<User> next = userRepository.scroll(window.next());
 ```
 
 Compound unique keys work the same way:
 
 ```java
 Window<SomeEntity> window = repository.scroll(Scrollable.of(SomeEntity_.uniqueKey, 20));
-Window<SomeEntity> next = repository.scroll(window.nextScrollable());
+Window<SomeEntity> next = repository.scroll(window.next());
 ```
 
 </TabItem>

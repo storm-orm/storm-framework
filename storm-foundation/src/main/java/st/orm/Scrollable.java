@@ -26,7 +26,7 @@ import java.util.Objects;
  *
  * <p>A {@code Scrollable} is the scrolling counterpart of {@link Pageable}. While a {@code Pageable} navigates by
  * page number, a {@code Scrollable} navigates by cursor position. Scrollable instances are typically obtained from
- * {@link Window#nextScrollable()} or {@link Window#previousScrollable()}, but can also be created directly using
+ * {@link Window#next()} or {@link Window#previous()}, but can also be created directly using
  * the factory methods.</p>
  *
  * <p>The serialized cursor is opaque and URL-safe, but it is not tamper-proof. If the cursor is exposed to
@@ -203,7 +203,7 @@ public record Scrollable<T extends Data>(
      *
      * <pre>{@code
      * // Server: include cursor in response
-     * String cursor = window.nextScrollable().toCursor();
+     * String cursor = window.nextCursor();
      *
      * // Client sends cursor back as query parameter
      * // Server: reconstruct scrollable

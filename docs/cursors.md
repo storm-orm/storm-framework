@@ -85,7 +85,7 @@ The following Java types can be used as cursor values (key or sort fields) out o
 
 If your key or sort field uses a type not in this list, serialization via `toCursor()` will throw an `IllegalStateException`. You can either use one of the supported types for your key/sort columns, or register a custom codec.
 
-Note that in-memory navigation (using `nextScrollable()` and `previousScrollable()` directly, without serializing to a cursor string) works with any type, including inline records and other composite types. The type restriction only applies to `toCursor()` serialization.
+Note that in-memory navigation (using `next()` and `previous()` directly, without serializing to a cursor string) works with any type, including inline records and other composite types. The type restriction only applies to `toCursor()` serialization.
 
 ## Custom cursor codecs
 

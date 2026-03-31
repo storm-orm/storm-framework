@@ -25,6 +25,20 @@ Storm's concise API, strict conventions, and absence of hidden complexity make i
 - **Performance**: Template caching, transaction-scoped entity caching, and zero-overhead dirty checking (thanks to immutability) ensure efficient database interactions. Batch processing, lazy streams, and upserts are built in.
 - **Universal Database Compatibility**: Fully compatible with all SQL databases, it offers flexibility and broad applicability across various database systems.
 
+## Built for the AI Era
+
+Storm is the ORM that AI coding assistants get right. Its stateless, immutable entities mean what you see in the source code is exactly what exists at runtime: no hidden proxies, no lazy loading surprises, no persistence context rules that trip up AI-generated code. When you ask your AI tool to write a query, define an entity, or build a repository, the output is straightforward data classes and explicit SQL, the same code a senior developer would write by hand.
+
+Traditional ORMs carry invisible complexity (managed entity state, implicit flushes, bytecode-enhanced proxies) that AI tools have no reliable way to reason about. Storm eliminates these failure modes entirely. Combined with its compile-time metamodel that catches errors before runtime, Storm and AI coding tools form a natural partnership.
+
+**Get started in seconds:**
+
+```bash
+npx @storm/cli
+```
+
+This configures your AI tool (Claude Code, Cursor, Copilot, Windsurf) with Storm's patterns, conventions, and slash commands. See [AI-Assisted Development](ai-assistant-setup.md) for details.
+
 ## Why Storm?
 
 Storm draws inspiration from established ORMs such as Hibernate, but is built from scratch around a clear design philosophy: capture intent using the minimum amount of code, optimized for Kotlin and modern Java.
@@ -145,7 +159,7 @@ Storm provides a Bill of Materials (BOM) for centralized version management. Imp
 
 ```kotlin
 dependencies {
-    implementation(platform("st.orm:storm-bom:1.11.0"))
+    implementation(platform("st.orm:storm-bom:@@STORM_VERSION@@"))
     implementation("st.orm:storm-kotlin")
     runtimeOnly("st.orm:storm-core")
     // Use storm-compiler-plugin-2.0 for Kotlin 2.0.x, -2.1 for 2.1.x, etc.
@@ -162,7 +176,7 @@ dependencies {
         <dependency>
             <groupId>st.orm</groupId>
             <artifactId>storm-bom</artifactId>
-            <version>1.11.0</version>
+            <version>@@STORM_VERSION@@</version>
             <type>pom</type>
             <scope>import</scope>
         </dependency>

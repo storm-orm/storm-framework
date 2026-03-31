@@ -16,10 +16,17 @@
 package st.orm.core.template.impl;
 
 import jakarta.annotation.Nonnull;
+import jakarta.annotation.Nullable;
+import st.orm.Data;
+import st.orm.Ref;
+import st.orm.core.spi.ORMReflection;
+import st.orm.core.spi.Providers;
 import st.orm.core.template.SqlTemplateException;
 import st.orm.core.template.impl.Elements.Param;
 
 final class ParamProcessor implements ElementProcessor<Param> {
+
+    private static final ORMReflection REFLECTION = Providers.getORMReflection();
 
     /**
      * Returns a key that represents the compiled shape of the given element.
@@ -53,10 +60,11 @@ final class ParamProcessor implements ElementProcessor<Param> {
     @Override
     public CompiledElement compile(@Nonnull Param param, @Nonnull TemplateCompiler compiler)
             throws SqlTemplateException {
+        Object value = resolveParamValue(param.dbValue());
         if (param.name() != null) {
-            return new CompiledElement(compiler.mapParameter(param.name(), param.dbValue()));
+            return new CompiledElement(compiler.mapParameter(param.name(), value));
         }
-        return new CompiledElement(compiler.mapParameter(param.dbValue()));
+        return new CompiledElement(compiler.mapParameter(value));
     }
 
     /**
@@ -72,10 +80,34 @@ final class ParamProcessor implements ElementProcessor<Param> {
      */
     @Override
     public void bind(@Nonnull Param param, @Nonnull TemplateBinder binder, @Nonnull BindHint bindHint) throws SqlTemplateException {
+        Object value = resolveParamValue(param.dbValue());
         if (param.name() != null) {
-            binder.bindParameter(param.name(), param.dbValue());
+            binder.bindParameter(param.name(), value);
         } else {
-            binder.bindParameter(param.dbValue());
+            binder.bindParameter(value);
         }
+    }
+
+    /**
+     * Resolves a parameter value for binding. {@link Ref} instances are unwrapped to their primary key value via
+     * {@link Ref#id()}. {@link Data} instances are unwrapped to their primary key value via
+     * {@link ORMReflection#getId(Data)}.
+     *
+     * <p>This allows {@code Ref<T>} and {@code Data} instances (entities, projections, etc.) to be used directly as
+     * bind variables in raw SQL templates (e.g., {@code "WHERE id = $ref"} or {@code "WHERE id = $entity"}) without
+     * requiring the caller to extract the ID manually.</p>
+     *
+     * @param value the parameter value.
+     * @return the resolved value suitable for JDBC binding.
+     */
+    @Nullable
+    private static Object resolveParamValue(@Nullable Object value) throws SqlTemplateException {
+        if (value instanceof Ref<?> ref) {
+            return ref.id();
+        }
+        if (value instanceof Data data) {
+            return REFLECTION.getId(data);
+        }
+        return value;
     }
 }

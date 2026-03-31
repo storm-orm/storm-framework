@@ -10,7 +10,7 @@
 
 **Storm** is a modern, high-performance ORM for Kotlin 2.0+ and Java 21+, built around a powerful SQL template engine. It focuses on simplicity, type safety, and predictable performance through immutable models and compile-time metadata.
 
-**Key benefits:**
+**Core ORM benefits:**
 
 - **Minimal code**: Define entities with simple records/data classes and query with concise, readable syntax; no boilerplate.
 - **Parameterized by default**: String interpolations are automatically converted to bind variables, making queries SQL injection safe by design.
@@ -20,6 +20,17 @@
 - **Stateless**: Avoids hidden complexities and "magic" with stateless, record-based entities, ensuring simplicity and eliminating lazy initialization and transaction issues downstream.
 - **Performance**: Template caching, transaction-scoped entity caching, and zero-overhead dirty checking (thanks to immutability) ensure efficient database interactions. Batch processing, lazy streams, and upserts are built in.
 - **Universal Database Compatibility**: Fully compatible with all SQL databases, it offers flexibility and broad applicability across various database systems.
+
+Storm also includes an AI-assisted workflow for database development. It gives AI tools full schema awareness through a local MCP server, guides them with Storm-specific skills, and closes the loop with automated tests. The AI generates code, but the final checks are done by running code against the schema and captured SQL, not by trusting LLM reasoning.
+
+To set up the AI workflow in your project:
+
+```bash
+npm install -g @storm-orm/cli
+storm init
+```
+
+This installs Storm's rules, skills, and optional local MCP setup for supported AI coding tools. See [AI-Assisted Development](docs/ai.md) for the full workflow.
 
 ## Why Storm?
 
@@ -41,6 +52,25 @@ Storm embraces SQL rather than abstracting it away. It simplifies database inter
 | SQL hidden behind abstraction layers | SQL-first design—stay close to the database |
 
 **Storm is ideal for** developers who understand that the best solutions emerge when object model and database model work in harmony. If you value a database-first approach where records naturally mirror your schema, Storm is built for you. Custom mappings are supported when needed, but the real elegance comes from alignment, not abstraction.
+
+## AI Workflow
+
+AI tools can write a lot of database code quickly, but subtle mistakes are still common: wrong joins, missing constraints, stale schema assumptions, or queries that compile but do the wrong thing.
+
+Storm addresses that in two ways.
+
+First, it improves generation quality. A local MCP server gives the AI full schema awareness without exposing credentials or data, and Storm skills teach the AI how to create entities, queries, repositories, and migrations that follow Storm's conventions.
+
+Second, it verifies the result with automated tests. Storm can validate that generated entities still match the schema and that generated queries behave as intended. These checks run in unit tests, so the final gate is actual code execution rather than model self-evaluation.
+
+The workflow is simple:
+
+1. You prompt the AI.
+2. The AI uses Storm skills and local schema context to generate code.
+3. Storm verifies the generated entities and queries in tests.
+4. You review the result and keep moving with more confidence.
+
+This is the core idea: AI generates database code, and Storm closes the loop with context and verification.
 
 ## Choose Your Language
 
@@ -143,7 +173,7 @@ Storm provides a Bill of Materials (BOM) for centralized version management. Imp
         <dependency>
             <groupId>st.orm</groupId>
             <artifactId>storm-bom</artifactId>
-            <version>1.11.0</version>
+            <version>@@STORM_VERSION@@</version>
             <type>pom</type>
             <scope>import</scope>
         </dependency>
@@ -155,7 +185,7 @@ Storm provides a Bill of Materials (BOM) for centralized version management. Imp
 
 ```kotlin
 dependencies {
-    implementation(platform("st.orm:storm-bom:1.11.0"))
+    implementation(platform("st.orm:storm-bom:@@STORM_VERSION@@"))
 }
 ```
 
@@ -165,7 +195,7 @@ With the BOM imported, add Storm modules without specifying versions:
 
 ```kotlin
 dependencies {
-    implementation(platform("st.orm:storm-bom:1.11.0"))
+    implementation(platform("st.orm:storm-bom:@@STORM_VERSION@@"))
     implementation("st.orm:storm-kotlin")
     runtimeOnly("st.orm:storm-core")
     // Use storm-compiler-plugin-2.0 for Kotlin 2.0.x, -2.1 for 2.1.x, etc.

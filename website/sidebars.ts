@@ -76,6 +76,7 @@ const sidebars: SidebarsConfig = {
         'comparison',
         'faq',
         'migration-from-jpa',
+        'ai-assistant-setup',
       ],
     },
     {

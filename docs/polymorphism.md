@@ -420,8 +420,8 @@ pets.insert(Cat(name = "Bella", indoor = true))
 // Update
 pets.update(Cat(id = 1, name = "Sir Whiskers", indoor = true))
 
-// Delete
-pets.delete(somePet)
+// Remove
+pets.remove(somePet)
 ```
 
 </TabItem>
@@ -445,8 +445,8 @@ pets.insert(new Cat(null, "Bella", true));
 // Update
 pets.update(new Cat(1, "Sir Whiskers", true));
 
-// Delete
-pets.delete(somePet);
+// Remove
+pets.remove(somePet);
 ```
 
 </TabItem>
@@ -761,8 +761,8 @@ pets.insert(Cat(name = "Bella", indoor = true))
 // Update a Cat - updates both base and extension tables
 pets.update(Cat(id = 1, name = "Sir Whiskers", indoor = true))
 
-// Delete - deletes from extension table first, then base table
-pets.delete(somePet)
+// Remove - deletes from extension table first, then base table
+pets.remove(somePet)
 ```
 
 </TabItem>
@@ -780,8 +780,8 @@ pets.insert(new Cat(null, "Bella", true));
 // Update a Cat - updates both base and extension tables
 pets.update(new Cat(1, "Sir Whiskers", true));
 
-// Delete - deletes from extension table first, then base table
-pets.delete(somePet);
+// Remove - deletes from extension table first, then base table
+pets.remove(somePet);
 ```
 
 </TabItem>
@@ -955,7 +955,7 @@ Type changes require a transactional context for atomicity, since the operation 
 
 ### Batch Operations
 
-Storm supports batch operations with mixed subtypes. You can pass a list containing different concrete subtypes to `insert()`, `update()`, or `delete()`, and Storm handles them correctly.
+Storm supports batch operations with mixed subtypes. You can pass a list containing different concrete subtypes to `insert()`, `update()`, or `remove()`, and Storm handles them correctly.
 
 <Tabs groupId="language">
 <TabItem value="kotlin" label="Kotlin" default>
@@ -971,8 +971,8 @@ pets.insert(listOf(
 // Update mixed subtypes
 pets.update(listOf(updatedCat, updatedDog))
 
-// Delete mixed subtypes
-pets.delete(listOf(someCat, someDog))
+// Remove mixed subtypes
+pets.remove(listOf(someCat, someDog))
 ```
 
 </TabItem>
@@ -989,8 +989,8 @@ pets.insert(List.of(
 // Update mixed subtypes
 pets.update(List.of(updatedCat, updatedDog));
 
-// Delete mixed subtypes
-pets.delete(List.of(someCat, someDog));
+// Remove mixed subtypes
+pets.remove(List.of(someCat, someDog));
 ```
 
 </TabItem>

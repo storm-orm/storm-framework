@@ -55,7 +55,7 @@ orm.query(RAW."""
 
 The `Data` interface marks a record or data class as eligible for Storm's SQL generation. Without this marker, Storm treats the type as a plain container and expects you to write all SQL manually. With it, template expressions like `${MyType::class}` in a SELECT clause expand into the full column list, and the same expression in a FROM clause generates the table name with appropriate joins for `@FK` fields.
 
-Use `Data` for query-specific result types that do not need full repository support (insert, update, delete). If you need CRUD operations, use `Entity` or `Projection` instead, which extend `Data`.
+Use `Data` for query-specific result types that do not need full repository support (insert, update, remove). If you need CRUD operations, use `Entity` or `Projection` instead, which extend `Data`.
 
 <Tabs groupId="language">
 <TabItem value="kotlin" label="Kotlin" default>

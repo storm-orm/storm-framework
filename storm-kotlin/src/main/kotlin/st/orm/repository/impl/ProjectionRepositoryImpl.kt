@@ -16,7 +16,6 @@
 package st.orm.repository.impl
 
 import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.asFlow
 import kotlinx.coroutines.flow.fold
 import kotlinx.coroutines.flow.map
 import st.orm.*
@@ -90,18 +89,6 @@ class ProjectionRepositoryImpl<P, ID : Any>(
 
     override fun findAllByRef(refs: Iterable<Ref<P>>): List<P> = core.findAllByRef(refs)
 
-    override fun selectById(ids: Flow<ID>): Flow<P> = ids.chunked(core.defaultChunkSize)
-        .flatMapConcat { core.findAllById(it).asFlow() }
-
-    override fun selectByRef(refs: Flow<Ref<P>>): Flow<P> = refs.chunked(core.defaultChunkSize)
-        .flatMapConcat { core.findAllByRef(it).asFlow() }
-
-    override fun selectById(ids: Flow<ID>, chunkSize: Int): Flow<P> = ids.chunked(chunkSize)
-        .flatMapConcat { core.findAllById(it).asFlow() }
-
-    override fun selectByRef(refs: Flow<Ref<P>>, chunkSize: Int): Flow<P> = refs.chunked(chunkSize)
-        .flatMapConcat { core.findAllByRef(it).asFlow() }
-
     override suspend fun countById(ids: Flow<ID>): Long = ids.chunked(core.defaultChunkSize)
         .map { chunk -> core.countById(chunk.stream()) }
         .fold(0L) { acc, v -> acc + v }
@@ -122,5 +109,9 @@ class ProjectionRepositoryImpl<P, ID : Any>(
 
     override fun page(pageable: Pageable): Page<P> = core.page(pageable)
 
-    override fun scroll(scrollable: Scrollable<P>): Window<P> = Window.of(select().scroll(scrollable))
+    override fun pageRef(pageNumber: Int, pageSize: Int): Page<Ref<P>> = core.pageRef(pageNumber, pageSize)
+
+    override fun pageRef(pageable: Pageable): Page<Ref<P>> = core.pageRef(pageable)
+
+    override fun scroll(scrollable: Scrollable<P>): Window<P> = select().scroll(scrollable)
 }

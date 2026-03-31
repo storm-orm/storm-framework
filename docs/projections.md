@@ -5,7 +5,7 @@ import TabItem from '@theme/TabItem';
 
 ## What Are Projections?
 
-Projections are **read-only** data structures that represent database views or complex queries defined via `@ProjectionQuery`. Like entities, they are plain Kotlin data classes or Java records with no proxies and no bytecode manipulation. Unlike entities, projections support only read operations: no insert, update, or delete.
+Projections are **read-only** data structures that represent database views or complex queries defined via `@ProjectionQuery`. Like entities, they are plain Kotlin data classes or Java records with no proxies and no bytecode manipulation. Unlike entities, projections support only read operations: no insert, update, or remove.
 
 ```
 ┌─────────────────────────────────────────────────────────────────────┐
@@ -177,7 +177,7 @@ This is useful for aggregations, complex joins, or mapping database views.
 
 ### Getting a ProjectionRepository
 
-Obtain a `ProjectionRepository` from the ORM template. This is the read-only counterpart to `EntityRepository`. It provides find, select, count, and existence-check operations, but no insert, update, or delete.
+Obtain a `ProjectionRepository` from the ORM template. This is the read-only counterpart to `EntityRepository`. It provides find, select, count, and existence-check operations, but no insert, update, or remove.
 
 <Tabs groupId="language">
 <TabItem value="kotlin" label="Kotlin" default>
@@ -494,7 +494,7 @@ Use `@DbColumn` to map fields to columns with different names.
 | `select()` | Query builder for filtering |
 | `selectCount()` | Query builder for counting |
 
-Note: Unlike `EntityRepository`, there are no `insert`, `update`, `delete`, or `upsert` methods. Projections are read-only.
+Note: Unlike `EntityRepository`, there are no `insert`, `update`, `remove`, or `upsert` methods. Projections are read-only.
 
 ---
 
