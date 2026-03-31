@@ -9,7 +9,7 @@ SQL Templates exist for two scenarios:
 
 **1. Template fragments** — a single clause (SELECT, HAVING) needs SQL that QueryBuilder cannot express, but the rest of the query is code-based. This is the most common case:
 ```kotlin
-// Only the SELECT clause uses a template — joins, grouping, and ordering are code-based
+// Prefer code over templates — use templates only for expressions QueryBuilder can't produce
 orm.entity(City::class)
     .select(CityUserCount::class) { "${City::class}, COUNT(*)" }
     .leftJoin(User::class).on(City::class)
@@ -79,6 +79,8 @@ The join, grouping, and result retrieval are all code-based. Only the `COUNT(*)`
 The `Data` interface marks types for SQL generation without CRUD. It tells Storm how to map the result columns to the record fields.
 
 All interpolated values become bind parameters. SQL injection safe by design.
+
+**Note:** `Query.resultList` (Kotlin property, no type parameter) returns `List<Array<Any>>`. For typed results, use `query.resultList<T>()` or `query.getResultList(T::class)`. This is different from QueryBuilder's `.resultList` which returns `List<R>` already typed to the query's result type.
 
 Critical rules:
 - **Always use lambdas, never `TemplateString.raw()`**: Template expressions should always be written as lambdas (`{ "..." }`) so the compiler plugin can process them. Never construct `TemplateString.raw("...")` manually.

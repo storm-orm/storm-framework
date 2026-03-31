@@ -160,7 +160,9 @@ val totals = orm.entity(Order::class)
     .resultList
 ```
 
-**Computed aggregates (COUNT, AVG, SUM, etc.):** When the SELECT clause needs expressions that QueryBuilder can't produce, use `select(ResultType::class) { template }` for the SELECT only — keep joins, groupBy, having, orderBy, and limit in code:
+**Computed aggregates (COUNT, AVG, SUM, etc.):** When the SELECT clause needs expressions that QueryBuilder can't produce, use `select(ResultType::class) { template }` for the SELECT only — keep joins, groupBy, having, orderBy, and limit in code.
+
+**Important:** The `{ template }` provides the SELECT list only — not a full SQL query. If you put a full `SELECT ... FROM ... WHERE ...` inside, Storm wraps it as a scalar subquery, causing errors. For full custom SQL, use `orm.query { }.getResultList(T::class)` (see /storm-sql-kotlin).
 
 ```kotlin
 data class CityUserCount(val city: City, val userCount: Long) : Data
@@ -184,7 +186,7 @@ val topGenres = orm.entity<Genre>()
     .resultList
 ```
 
-Only the `COUNT(*)` / `AVG()` expressions — which QueryBuilder cannot produce — use a template. Everything else stays in code. Do NOT write the entire query as a raw SQL string.
+Always prefer code over templates. Templates are for expressions QueryBuilder can't produce (e.g., `COUNT(*)`, `AVG()`). `groupBy` and `orderBy` also accept templates when needed, but use the code-based methods when possible. Do NOT write the entire query as a raw SQL string.
 
 ## Row Locking
 
@@ -272,11 +274,14 @@ The `whereBuilder { }` lambda receives a `WhereBuilder` that provides `where()`,
 
 ## Joined-Entity Predicates and Ordering
 
-The `where()` and `orderBy()` methods in the block DSL are typed to the root entity (`T`). To filter or order by a joined entity's field, use the `Any` variants:
+The `where()` and `orderBy()` methods in the block DSL are typed to the root entity (`T`). To filter, order, or group by a joined entity's field, use the `Any` variants:
 
 - `whereAny(predicate)` — accepts `PredicateBuilder<*, *, *>` (any entity type)
 - `orderByAny(path)` — accepts `Metamodel<*, *>` (any entity type)
 - `orderByDescendingAny(path)` — same, descending
+- `groupByAny(path)` — accepts `Metamodel<*, *>` (any entity type)
+
+The `Any` variants (`whereAny`, `orderByAny`, `orderByDescendingAny`, `groupByAny`) are needed when referencing fields from joined (non-root) entities.
 
 ```kotlin
 select {
@@ -286,7 +291,7 @@ select {
 }.resultList
 ```
 
-These are also available on the chained QueryBuilder API: `.whereAny(...)`, `.orderByAny(...)`, `.orderByDescendingAny(...)`.
+These are also available on the chained QueryBuilder API: `.whereAny(...)`, `.orderByAny(...)`, `.orderByDescendingAny(...)`, `.groupByAny(...)`.
 
 ## Keyset Scrolling
 
@@ -325,7 +330,7 @@ val scrollable = if (cursor != null) {
 } else {
     Scrollable.of(User_.id, 20)                       // first page, size 20
 }
-val window: Window<User> = users.scroll(scrollable)
+val window = users.scroll(scrollable)                     // prefer val — avoids Window<User, User> verbosity
 val nextCursor: String? = window.nextCursor()          // null if no more results
 ```
 
@@ -424,7 +429,9 @@ select {
 }.page(page, size)
 ```
 
-Available in the block: `where`, `whereAny`, `orderBy`, `orderByAny`, `orderByDescending`, `orderByDescendingAny`, `groupBy`, `having`, `limit`, `offset`, `distinct`, `forUpdate`, `forShare`, `innerJoin`, `leftJoin`, `rightJoin`, `crossJoin`, `append`.
+Available in the block: `where`, `whereAny`, `orderBy`, `orderByAny`, `orderByDescending`, `orderByDescendingAny`, `groupBy`, `groupByAny`, `having`, `limit`, `offset`, `distinct`, `forUpdate`, `forShare`, `innerJoin`, `leftJoin`, `rightJoin`, `crossJoin`, `append`.
+
+**Note:** The block DSL has `orderBy { template }` but NOT `orderByDescending { template }`. For template-based descending order, use the chained API: `.orderByDescending { template }` or escape to raw SQL.
 
 The block DSL is typed to the root entity. There is **no** `select(ResultType::class) { block }` form — `select { }` always returns the root entity type. To select a different result type, use the chained API:
 ```kotlin
@@ -450,6 +457,8 @@ select(UserSummary::class)
 - **Custom SELECT with template** — e.g., `select(Summary::class, template)` with a custom SQL select clause that maps to the result type's fields.
 
 It does **not** work for selecting a column subset of the root entity — e.g., a `UserSummary` with only `id` and `name` from `User` will fail with "Cannot find alias for column." For column subsets, use a `Projection<T>` with `ProjectionRepository`.
+
+**Cross-entity pitfall:** Selecting a different entity type from the wrong root repository can fail with "Cannot find alias for column" when both entities have columns with the same name (e.g., `id`). Put the query on the target entity's repository instead.
 
 ## Result Retrieval
 

@@ -120,6 +120,8 @@ Database dialects (add as runtime dependency):
 - `st.orm:storm-oracle`
 - `st.orm:storm-mssqlserver`
 
+**Auto-validation on startup:** Storm automatically validates all registered entity types against the database schema on startup, logging "Successfully validated N Data types for correctness". This provides free schema validation without writing explicit tests.
+
 After configuring dependencies, remind the user to rebuild so the metamodel classes are generated.
 
 Use the version already in the project's BOM, or `@@STORM_VERSION@@` for new projects.

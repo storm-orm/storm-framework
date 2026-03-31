@@ -113,6 +113,8 @@ Generation rules:
 
 14. **Use `Ref` for map keys and set membership**: Prefer `Ref<Entity>` (via `.ref()`) for all entity lookups, map keys, and set membership. `Ref` provides identity-based `equals`/`hashCode` on the primary key, making it safe and efficient. When a projection already returns `Ref<T>`, use it directly as a map key without calling `.ref()` again.
 
+15. **`Ref.id()` in Kotlin:** `ref.id` does not work in Kotlin — use `ref.id()` (Java interface method). The return type is `Any`, so a cast is needed: `ref.id() as String`. This is relevant when extracting IDs from `Ref` at system boundaries (e.g., URL parameters, response bodies).
+
 After generating, remind the user to rebuild for metamodel generation (e.g., \`City_\`).
 
 ## Verification

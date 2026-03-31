@@ -269,17 +269,17 @@ Page<Ref<User>> refPage = users.pageRef(0, 20);
 // ⚠️ Requires a simple (non-composite) PK — junction tables with composite PKs cannot be scrolled.
 //    To scroll filtered results from a junction table, query the entity with a simple PK
 //    and JOIN through the junction table (e.g., scroll User with a JOIN through UserRole).
-Window<User> window = users.scroll(Scrollable.of(User_.id, 20));
+var window = users.scroll(Scrollable.of(User_.id, 20));    // prefer var — avoids Window<User, User> verbosity
 
 // With custom sort order (sort column in addition to key)
-Window<User> window = users.scroll(Scrollable.of(User_.id, User_.name, 20));
+var window = users.scroll(Scrollable.of(User_.id, User_.name, 20));
 
 // First request vs subsequent: use Scrollable.of() when no cursor exists,
 // Scrollable.fromCursor() when resuming (cursor encodes size, direction, position)
 var scrollable = cursor != null
     ? Scrollable.fromCursor(User_.id, cursor)
     : Scrollable.of(User_.id, 20);
-Window<User> window = users.scroll(scrollable);
+var window = users.scroll(scrollable);
 
 // Window<R, T> is the scroll result record. Both scroll() methods return Window.
 // Window API:

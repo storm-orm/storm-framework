@@ -499,6 +499,8 @@ fun findSummaries(): List<UserSummary> = select(UserSummary::class)
 
 **What `select(ResultType::class)` is for:** It selects a different result type from the query. This works for joined entity types (e.g., `City::class` from a `User` query) and custom SELECT with a template string (`select(Summary::class, template)`). It does **not** work for column subsets of the root entity — `select(UserSummary::class)` where `UserSummary` has a subset of `User` fields will fail with "Cannot find alias for column." For column subsets, use a `Projection<T>` with `ProjectionRepository`.
 
+**Cross-entity pitfall:** Selecting a different entity type from the wrong root repository can fail with "Cannot find alias for column" when both entities have columns with the same name (e.g., `id`). Put the query on the target entity's repository instead.
+
 **Conditional logic inside the block:** The block is a regular Kotlin lambda — use `if`, `when`, and loops to compose queries dynamically. This keeps shared parts (ordering, pagination, terminals) in one place:
 ```kotlin
 interface UserRepository : EntityRepository<User, Int> {

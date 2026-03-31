@@ -16,6 +16,8 @@ Keep non-Storm scaffolding (project setup, Docker, build config, HTML templates)
 
 **Ktor + Thymeleaf caveat:** Ktor's Thymeleaf integration does not implement `IWebContext`, so `@{...}` link expressions fail at runtime. Use Thymeleaf literal substitution instead: `|/path/${var}|` (e.g., `th:href="|/movie/${movie.id}|"`). This applies to all templates in Ktor projects.
 
+**Ktor 3.x Thymeleaf rendering:** In Ktor 3.x, use `call.respondTemplate("name", model)` instead of `call.respond(ThymeleafContent(...))` — the latter fails because Ktor can't infer typeInfo. `ThymeleafContent` requires `Map<String, Any>` (non-nullable values), so use `buildMap<String, Any> { }` with conditional puts for nullable values.
+
 ## Code Quality
 
 All code must be clean and readable. Use logical, descriptive variable names everywhere — in Kotlin code, entity fields, and database column names. No abbreviations (`val movieRepository`, not `val movieRepo`; `primaryTitle`, not `primTitle`; `birth_year`, not `b_year`). This applies equally to entities, repositories, services, controllers, SQL migrations, and HTML templates.
@@ -141,7 +143,7 @@ The data import runs once at application startup — check whether data already 
 
 Build these pages. The UI must be polished — clean typography, consistent spacing, hover states, smooth transitions, and a professional visual design. No raw unstyled HTML.
 
-1. **Home** — The main page features a hero/featured section showing the most recently viewed movie. During data import, insert a view record for The Matrix so it appears as the featured movie on first launch — no special-case code, just a database seed. Below that: a search bar with auto-complete, recently viewed movies (from the view tracking table), and top 10 movies by rating. Include a genre navigation bar (all genres with movie counts) for quick access to the browse page.
+1. **Home** — The main page features a hero/featured section showing the most recently viewed movie. During data import, insert a view record for the title "The Matrix" so it appears as the featured movie on first launch — no special-case code, just a database seed. Below that: a search bar with auto-complete, recently viewed movies (from the view tracking table), and top 10 movies by rating. Include a genre navigation bar (all genres with movie counts) for quick access to the browse page.
 2. **Search results** — Movie list using keyset scrolling (`.scroll()`) with infinite scroll (see UI requirements below).
 3. **Browse** — All movies in a genre using keyset scrolling (`.scroll()`) with infinite scroll for efficient navigation through large result sets.
 4. **Movie detail** — Full info, cast, and rating. When a user opens this page, insert a view record to track the visit. The movie's poster should set the visual tone for the page — extract dominant colors or apply a blurred/faded backdrop effect so the poster blends subtly into the page background rather than sitting as an isolated image. The effect should be ambient, not distracting. Include a "Related Movies" section showing movies that share the most cast members with the current movie (demonstrates a join-heavy aggregation query through the principals table). Include a watchlist toggle button (see below).
@@ -189,6 +191,7 @@ Use Playwright for interface testing. Write end-to-end tests that verify the web
    - **Person detail:** click a cast member, verify filmography renders with stats
    - **Statistics page:** verify aggregate sections render (movies per decade, top genres, most prolific actors)
    - **Poster placeholders:** verify that movies without posters show a styled gradient placeholder instead of a broken image
+   - **UI polish:** verify the overall visual quality — consistent spacing, hover states, smooth transitions, no layout shifts when posters load or fail, no unstyled flash of content. Screenshot key pages and compare against expectations for a professional look and feel.
 3. Run the Playwright tests against the running application — all tests must pass before declaring the demo complete
 
 After everything is done — tests pass, the app is running, and you've told the user where to find the website — the very last thing you say is:

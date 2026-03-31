@@ -100,7 +100,7 @@ Limit/Offset: `.limit(10)`, `.offset(20)`
 Pagination: `.page(0, 20)` or `.page(Pageable.ofSize(20).sortBy(User_.name))`
 Scrolling (keyset): `.scroll(Scrollable.of(User_.id, 20))` — do NOT combine with `orderBy()` (Scrollable manages ORDER BY internally, see Keyset Scrolling section)
 Explicit joins: `.innerJoin(Entity.class).on(OtherEntity.class)`, `.leftJoin(Entity.class).on(OtherEntity.class)`, `.rightJoin(Entity.class).on(OtherEntity.class)`
-Result type: `.select(ResultType.class)` to return a different type than the root entity
+Result type: `.select(ResultType.class)` to return a different type than the root entity. **Cross-entity pitfall:** Selecting a different entity type from the wrong root repository can fail with "Cannot find alias for column" when both entities have columns with the same name (e.g., `id`). Put the query on the target entity's repository instead.
 
 Operators: EQUALS, NOT_EQUALS, LESS_THAN, LESS_THAN_OR_EQUAL, GREATER_THAN, GREATER_THAN_OR_EQUAL, LIKE, NOT_LIKE, IS_NULL, IS_NOT_NULL, IN, NOT_IN
 
@@ -118,7 +118,9 @@ List<OrderSummary> totals = orm.entity(Order.class)
     .getResultList();
 ```
 
-**Computed aggregates (COUNT, AVG, SUM, etc.):** When the SELECT clause needs expressions that QueryBuilder can't produce, use `select(ResultType.class, RAW."template")` for the SELECT only — keep joins, groupBy, having, orderBy, and limit in code:
+**Computed aggregates (COUNT, AVG, SUM, etc.):** When the SELECT clause needs expressions that QueryBuilder can't produce, use `select(ResultType.class, RAW."template")` for the SELECT only — keep joins, groupBy, having, orderBy, and limit in code.
+
+**Important:** The `RAW."template"` provides the SELECT list only — not a full SQL query. If you put a full `SELECT ... FROM ... WHERE ...` inside, Storm wraps it as a scalar subquery, causing errors. For full custom SQL, use `orm.query(RAW."...").getResultList(T.class)` (see /storm-sql-java).
 
 ```java
 record CityUserCount(@FK City city, long userCount) implements Data {}
@@ -142,7 +144,7 @@ List<GenreStat> topGenres = orm.entity(Genre.class)
     .getResultList();
 ```
 
-Only the `COUNT(*)` / `AVG()` expressions — which QueryBuilder cannot produce — use a template. Everything else stays in code. Do NOT write the entire query as a raw SQL string.
+Always prefer code over templates. Templates are for expressions QueryBuilder can't produce (e.g., `COUNT(*)`, `AVG()`). `groupBy` and `orderBy` also accept templates when needed, but use the code-based methods when possible. Do NOT write the entire query as a raw SQL string.
 
 ## Row Locking
 
@@ -218,6 +220,18 @@ List<User> users = orm.entity(User.class)
     .getResultList();
 ```
 
+## Joined-Entity Predicates, Ordering, and Grouping
+
+The `where()`, `orderBy()`, and `groupBy()` methods are typed to the root entity. To filter, order, or group by a joined entity's field, use the `Any` variants: `.whereAny(...)`, `.orderByAny(...)`, `.orderByDescendingAny(...)`, `.groupByAny(...)`. The `Any` variants (`whereAny`, `orderByAny`, `orderByDescendingAny`, `groupByAny`) are needed when referencing fields from joined (non-root) entities.
+
+```java
+users.select()
+    .innerJoin(UserRole.class).on(User.class)
+    .whereAny(UserRole_.role, EQUALS, role)
+    .orderByAny(UserRole_.assignedAt)
+    .getResultList();
+```
+
 ## Keyset Scrolling
 
 Keyset scrolling uses cursor-based navigation instead of offset, making it efficient for large tables. **Scrollable manages ORDER BY internally** — do NOT add `orderBy()` when using `scroll(Scrollable)`, or Storm throws `PersistenceException`.
@@ -253,7 +267,7 @@ users.select()
 var scrollable = cursor != null
     ? Scrollable.fromCursor(User_.id, cursor)       // size encoded in cursor
     : Scrollable.of(User_.id, 20);                  // first page, size 20
-Window<User> window = users.scroll(scrollable);
+var window = users.scroll(scrollable);                     // prefer var — avoids Window<User, User> verbosity
 String nextCursor = window.nextCursor();             // null if no more results
 ```
 
@@ -264,7 +278,7 @@ var scrollable = Scrollable.of(User_.id, User_.name, 20);
 
 **Backward scrolling and navigation:**
 ```java
-Window<User> window = users.scroll(Scrollable.of(User_.id, 20));
+var window = users.scroll(Scrollable.of(User_.id, 20));
 if (window.hasNext()) {
     var next = users.scroll(window.nextScrollable());
 }

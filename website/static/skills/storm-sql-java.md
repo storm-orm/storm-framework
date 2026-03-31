@@ -9,7 +9,7 @@ SQL Templates exist for two scenarios:
 
 **1. Template fragments** — a single clause (SELECT, HAVING) needs SQL that QueryBuilder cannot express, but the rest of the query is code-based. This is the most common case:
 \`\`\`java
-// Only the SELECT clause uses a template — joins, grouping, and ordering are code-based
+// Prefer code over templates — use templates only for expressions QueryBuilder can't produce
 List<CityUserCount> cityCounts = orm.entity(City.class)
         .select(CityUserCount.class, RAW."\{City.class}, COUNT(*)")
         .leftJoin(User.class).on(City.class)
@@ -79,6 +79,8 @@ The join, grouping, and result retrieval are all code-based. Only the `COUNT(*)`
 The `Data` interface marks types for SQL generation without CRUD. It tells Storm how to map the result columns to the record fields.
 
 All interpolated values become bind parameters. SQL injection safe by design.
+
+**Note:** `Query.getResultList()` (no type parameter) returns `List<Object[]>`. For typed results, use `query.getResultList(T.class)`. This is different from QueryBuilder's `.getResultList()` which returns `List<R>` already typed to the query's result type.
 
 Critical rules:
 - **Metamodel navigation depth**: Multiple levels of navigation are allowed on the root entity. However, joined (non-root) entities can only navigate one level deep. If you need deeper navigation from a joined entity, explicitly join the intermediate entity.
