@@ -116,24 +116,6 @@ public class QueryModelAndUpsertIntegrationTest {
                 () -> petTypes.upsertAndFetchId(new PetTypeNoneGeneration(null, "TestType")));
     }
 
-    // QueryModelImpl.resolveElements: Record next to operator should throw
-
-    @Test
-    public void testRecordNextToOperatorThrows() {
-        var orm = of(dataSource);
-        City city = new City(1, "Test");
-        assertThrows(PersistenceException.class, () ->
-                orm.query(raw("SELECT * FROM city WHERE id = \0", city)).getResultList(City.class));
-    }
-
-    @Test
-    public void testRecordNextToLeadingOperatorThrows() {
-        var orm = of(dataSource);
-        City city = new City(1, "Test");
-        assertThrows(PersistenceException.class, () ->
-                orm.query(raw("SELECT * FROM city WHERE \0 = 1", city)).getResultList(City.class));
-    }
-
     // QueryModelImpl: Stream as value should throw
 
     @Test

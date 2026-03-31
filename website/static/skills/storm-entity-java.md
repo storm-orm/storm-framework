@@ -34,9 +34,11 @@ Generation rules:
    - Use primitives (\`int\`, \`long\`) for inherently non-nullable numerics.
 
 4. Foreign keys (\`@FK\`):
+   - **Every column with a FK constraint in the database must be modeled with `@FK` in the entity.** Without `@FK`, Storm has no FK metadata and cannot resolve joins automatically — forcing template-based joins that defeat the QueryBuilder.
+   - Prefer full entity types (`@Nonnull @FK City city`) over `Ref<T>` (`@FK Ref<City> city`). Full entities load the related data in one query with automatic JOINs.
+   - Use `Ref<T>` when the entity hierarchy gets too deep or loading the full related entity is overkill for the use case.
    - Non-nullable: \`@Nonnull @FK City city\` produces INNER JOIN.
    - Nullable: \`@Nullable @FK City city\` produces LEFT JOIN.
-   - \`@FK Ref<City> city\` defers loading.
 
 5. CIRCULAR REFERENCES ARE NOT SUPPORTED. At least one side MUST use \`Ref<T>\`. Self-references MUST use \`Ref<T>\`: \`@Nullable @FK Ref<User> invitedBy\`.
 
@@ -54,16 +56,37 @@ Generation rules:
    - Use \`@DbTable\`/\`@DbColumn\` only for exceptions to the global convention. If the entire database follows one pattern, a resolver handles it without any annotations.
 
 8. Composite primary keys (join/junction tables):
-   - Wrap key columns in a separate record. Use raw column types (e.g., `int`, `String`), **never** `@FK` or entity/Ref types inside the PK record.
+   - Wrap key columns in a separate record. Use raw column types (e.g., `int`, `String`) inside the PK record.
    - Annotate the PK field with `@PK(generation = NONE)`. The PK record is implicitly `@Inline`.
-   - Place `@FK` fields on the **entity itself** with `@Persist(insertable = false, updatable = false)` to load related entities without duplicating columns on insert/update.
+   - Place `@FK` fields on the **entity itself** with `@Persist(insertable = false, updatable = false)` for FK columns already in the PK — these duplicate a PK column, so they must not be inserted/updated twice. FK fields for columns NOT in the PK must remain insertable (no `@Persist`).
+   - **Add a convenience constructor** that accepts the FK entities/refs and constructs the PK internally. This hides the PK wiring from client code:
    ```java
+   // Simple case: all FK columns are in the PK
    record UserRolePk(int userId, int roleId) {}
 
    record UserRole(@PK(generation = NONE) UserRolePk id,
                    @Nonnull @FK @Persist(insertable = false, updatable = false) User user,
                    @Nonnull @FK @Persist(insertable = false, updatable = false) Role role
-   ) implements Entity<UserRolePk> {}
+   ) implements Entity<UserRolePk> {
+       UserRole(User user, Role role) {
+           this(new UserRolePk(user.id(), role.id()), user, role);
+       }
+   }
+
+   // Client code is clean — no need to construct the PK manually:
+   users.insert(new UserRole(user, role));
+
+   // Mixed case: some FK columns are in the PK, some are not
+   record UserAddressPk(int userId, int addressNumber) {}
+
+   record UserAddress(@PK(generation = NONE) UserAddressPk id,
+                      @Nonnull @FK @Persist(insertable = false, updatable = false) User user,  // userId in PK → non-insertable
+                      @Nonnull @FK City city                                                    // city_id NOT in PK → insertable
+   ) implements Entity<UserAddressPk> {
+       UserAddress(User user, int addressNumber, City city) {
+           this(new UserAddressPk(user.id(), addressNumber), user, city);
+       }
+   }
    ```
 
 9. Primary key as foreign key (dependent one-to-one, extension tables):
@@ -97,7 +120,7 @@ class EntitySchemaTest {
     @Test
     void validateEntities(ORMTemplate orm) {
         var errors = orm.validateSchema(List.of(
-            User.class, City.class, Order.class
+            User.class, City.class, Address.class
         ));
         assertTrue(errors.isEmpty(), () -> "Schema validation errors: " + errors);
     }

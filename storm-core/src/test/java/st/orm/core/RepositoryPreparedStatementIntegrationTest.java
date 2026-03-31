@@ -444,13 +444,11 @@ public class RepositoryPreparedStatementIntegrationTest {
 
     @Test
     public void testWhereWithOperatorAndRecord() {
-        var e = assertThrows(PersistenceException.class, () -> {
-            var owner = ORMTemplate.of(dataSource).entity(Owner.class).getById(1);
-            ORMTemplate.of(dataSource).entity(Pet.class).select()
-                    .where(raw("\0 = \0", Pet_.owner, owner))
-                    .getResultList();
-        });
-        assertInstanceOf(SqlTemplateException.class, e.getCause());
+        var owner = ORMTemplate.of(dataSource).entity(Owner.class).getById(1);
+        var pets = ORMTemplate.of(dataSource).entity(Pet.class).select()
+                .where(raw("\0 = \0", Pet_.owner, owner))
+                .getResultList();
+        assertFalse(pets.isEmpty());
     }
 
     @Test

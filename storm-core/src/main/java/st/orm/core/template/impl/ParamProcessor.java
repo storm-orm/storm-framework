@@ -15,17 +15,18 @@
  */
 package st.orm.core.template.impl;
 
-import static st.orm.core.template.impl.RecordReflection.isRecord;
-
 import jakarta.annotation.Nonnull;
 import jakarta.annotation.Nullable;
 import st.orm.Data;
-import st.orm.Entity;
 import st.orm.Ref;
+import st.orm.core.spi.ORMReflection;
+import st.orm.core.spi.Providers;
 import st.orm.core.template.SqlTemplateException;
 import st.orm.core.template.impl.Elements.Param;
 
 final class ParamProcessor implements ElementProcessor<Param> {
+
+    private static final ORMReflection REFLECTION = Providers.getORMReflection();
 
     /**
      * Returns a key that represents the compiled shape of the given element.
@@ -88,43 +89,24 @@ final class ParamProcessor implements ElementProcessor<Param> {
     }
 
     /**
-     * Resolves a parameter value for binding. {@link Ref} and {@link Entity} instances are unwrapped to their primary
-     * key value. Other {@link Data} instances (projections, inline types) are rejected since they cannot be used as
-     * single bind parameters.
+     * Resolves a parameter value for binding. {@link Ref} instances are unwrapped to their primary key value via
+     * {@link Ref#id()}. {@link Data} instances are unwrapped to their primary key value via
+     * {@link ORMReflection#getId(Data)}.
      *
-     * <p>This allows {@code Ref<T>} and {@code Entity<ID>} instances to be used directly as bind variables in raw SQL
-     * templates (e.g., {@code "WHERE id = $ref"} or {@code "WHERE id = $entity"}) without requiring the caller to
-     * extract the ID manually. Compound primary keys (where the ID is itself a record) are rejected because they span
-     * multiple columns and cannot be bound as a single parameter.</p>
+     * <p>This allows {@code Ref<T>} and {@code Data} instances (entities, projections, etc.) to be used directly as
+     * bind variables in raw SQL templates (e.g., {@code "WHERE id = $ref"} or {@code "WHERE id = $entity"}) without
+     * requiring the caller to extract the ID manually.</p>
      *
      * @param value the parameter value.
      * @return the resolved value suitable for JDBC binding.
-     * @throws SqlTemplateException if the value has a compound primary key, or is a non-entity {@code Data} instance.
      */
     @Nullable
     private static Object resolveParamValue(@Nullable Object value) throws SqlTemplateException {
         if (value instanceof Ref<?> ref) {
-            Object id = ref.id();
-            if (isRecord(id.getClass())) {
-                throw new SqlTemplateException(
-                        "Ref<%s> has a compound primary key and cannot be used as a single bind parameter. Extract the individual key fields instead."
-                                .formatted(ref.type().getSimpleName()));
-            }
-            return id;
+            return ref.id();
         }
-        if (value instanceof Entity<?> entity) {
-            Object id = entity.id();
-            if (isRecord(id.getClass())) {
-                throw new SqlTemplateException(
-                        "%s has a compound primary key and cannot be used as a single bind parameter. Extract the individual key fields instead."
-                                .formatted(entity.getClass().getSimpleName()));
-            }
-            return id;
-        }
-        if (value instanceof Data) {
-            throw new SqlTemplateException(
-                    "%s is a Data type and cannot be used as a single bind parameter. Use a Ref or Entity with a simple primary key, or extract the value manually."
-                            .formatted(value.getClass().getSimpleName()));
+        if (value instanceof Data data) {
+            return REFLECTION.getId(data);
         }
         return value;
     }

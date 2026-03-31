@@ -88,15 +88,17 @@ Critical rules:
 - **Metamodel navigation depth**: Multiple levels of navigation are allowed on the root entity. However, joined (non-root) entities can only navigate one level deep. If you need deeper navigation from a joined entity, explicitly join the intermediate entity:
   ```kotlin
   // ❌ Wrong - two levels from joined entity
-  orm.selectFrom(DemographicSet::class, ...)
-      .innerJoin(DemographicDemographicSet::class).on(DemographicSet::class)
-      .having { "${DemographicDemographicSet_.demographic.demographicType}" }
+  orm.entity<Role>()
+      .select(RoleSummary::class) { "..." }
+      .innerJoin(UserRole::class).on(Role::class)
+      .having { "COUNT(DISTINCT ${UserRole_.user.city}) > 1" }
 
   // ✅ Correct - explicitly join intermediate, then one level
-  orm.selectFrom(DemographicSet::class, ...)
-      .innerJoin(DemographicDemographicSet::class).on(DemographicSet::class)
-      .innerJoin(Demographic::class).on(DemographicDemographicSet::class)
-      .having { "${Demographic_.demographicType}" }
+  orm.entity<Role>()
+      .select(RoleSummary::class) { "..." }
+      .innerJoin(UserRole::class).on(Role::class)
+      .innerJoin(User::class).on(UserRole::class)
+      .having { "COUNT(DISTINCT ${User_.city}) > 1" }
   ```
 
 Advanced patterns:

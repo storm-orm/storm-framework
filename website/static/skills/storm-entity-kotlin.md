@@ -30,24 +30,26 @@ Generation rules:
    - Import `GenerationStrategy` values from the top-level enum: `import st.orm.GenerationStrategy.NONE` (not `st.orm.PK.GenerationStrategy.NONE`). `GenerationStrategy` is a top-level enum in `st.orm`, not nested inside `PK`.
 
 3. Foreign keys (\`@FK\`):
+   - **Every column with a FK constraint in the database must be modeled with `@FK` in the entity.** Without `@FK`, Storm has no FK metadata and cannot resolve joins automatically — forcing template-based joins that defeat the QueryBuilder.
+   - Prefer full entity types (`@FK val city: City`) over `Ref<T>` (`@FK val city: Ref<City>`). Full entities load the related data in one query with automatic JOINs.
+   - Use `Ref<T>` when the entity hierarchy gets too deep or loading the full related entity is overkill for the use case.
    - Non-nullable \`@FK val city: City\` produces INNER JOIN.
    - Nullable \`@FK val city: City?\` produces LEFT JOIN.
-   - Use \`Ref<T>\` to defer: \`@FK val city: Ref<City>\`.
 
 4. CIRCULAR REFERENCES ARE NOT SUPPORTED. If Entity A references B and B references A, at least one MUST use \`Ref<T>\`. Self-references MUST always use \`Ref<T>\`:
    \`@FK val invitedBy: Ref<User>?\`
 
-5. NO COLLECTION FIELDS. No \`List<Child>\` on entities. Query the child side instead: \`orm.findAll(Order_.user eq user)\`.
+5. NO COLLECTION FIELDS. No \`List<Child>\` on entities. Query the child side instead: \`orm.findAll(User_.city eq city)\`.
 
 6. Unique keys: \`@UK val email: String\` for type-safe lookups.
 
 7. Embedded components: Separate data class (no @PK, no Entity interface). Fields become parent table columns. Inlining is implicit — `@Inline` never needs to be specified explicitly. When `@Inline` is used, the field must be an inline (embedded) type, not a scalar or entity.
 
 8. Composite primary keys (join/junction tables):
-   - Wrap key columns in a separate data class. Use raw column types (e.g., `Int`, `String`), **never** `@FK` or entity/Ref types inside the PK class.
+   - Wrap key columns in a separate data class. Use raw column types (e.g., `Int`, `String`) inside the PK class.
    - Annotate the PK field with `@PK(generation = NONE)`. The PK class is implicitly `@Inline`.
    - Place `@FK` fields on the **entity itself** to load related entities via JOINs. **Only** add `@Persist(insertable = false, updatable = false)` to FK fields whose column is already in the PK data class — these duplicate a PK column, so they must not be inserted/updated twice. FK fields for columns NOT in the PK must remain insertable (no `@Persist`).
-   - **Constructing instances for insert:** Non-insertable FK fields are ignored during INSERT, but Kotlin still requires a value in the constructor. Use `Ref` instead of full entity types for these fields — `refById<User>(id)` is lightweight and avoids constructing dummy entities with fake field values:
+   - **Add a convenience constructor** that accepts the FK entities/refs and constructs the PK internally. This hides the PK wiring from client code:
    ```kotlin
    // Simple case: all FK columns are in the PK
    data class UserRolePk(
@@ -57,29 +59,36 @@ Generation rules:
 
    data class UserRole(
        @PK(generation = NONE) val id: UserRolePk,
-       @FK @Persist(insertable = false, updatable = false) val user: Ref<User>,  // userId is in PK
-       @FK @Persist(insertable = false, updatable = false) val role: Ref<Role>   // roleId is in PK
-   ) : Entity<UserRolePk>
+       @FK @Persist(insertable = false, updatable = false) val user: User,
+       @FK @Persist(insertable = false, updatable = false) val role: Role
+   ) : Entity<UserRolePk> {
+       constructor(user: User, role: Role) : this(
+           id = UserRolePk(userId = user.id, roleId = role.id),
+           user = user,
+           role = role
+       )
+   }
 
-   // Inserting: non-insertable FK fields are ignored, but Kotlin needs a value.
-   // Use refById — lightweight, no dummy entity construction needed:
-   orm insert UserRole(
-       id = UserRolePk(userId = 1, roleId = 2),
-       user = refById<User>(1),   // ignored on INSERT, but satisfies constructor
-       role = refById<Role>(2)    // ignored on INSERT, but satisfies constructor
-   )
+   // Client code is clean — no need to construct the PK manually:
+   orm insert UserRole(user = user, role = role)
 
    // Mixed case: some FK columns are in the PK, some are not
-   data class OrderItemPk(
-       val orderId: Int,
-       val lineNumber: Int
+   data class UserAddressPk(
+       val userId: Int,
+       val addressNumber: Int
    )
 
-   data class OrderItem(
-       @PK(generation = NONE) val id: OrderItemPk,
-       @FK @Persist(insertable = false, updatable = false) val order: Ref<Order>, // orderId is in PK → non-insertable
-       @FK val product: Product                                                    // productId is NOT in PK → must be insertable
-   ) : Entity<OrderItemPk>
+   data class UserAddress(
+       @PK(generation = NONE) val id: UserAddressPk,
+       @FK @Persist(insertable = false, updatable = false) val user: User,  // userId is in PK → non-insertable
+       @FK val city: City                                                    // city_id is NOT in PK → must be insertable
+   ) : Entity<UserAddressPk> {
+       constructor(user: User, addressNumber: Int, city: City) : this(
+           id = UserAddressPk(userId = user.id, addressNumber = addressNumber),
+           user = user,
+           city = city
+       )
+   }
    ```
 
 9. Primary key as foreign key (dependent one-to-one, extension tables):
@@ -129,7 +138,7 @@ class EntitySchemaTest {
     @Test
     fun validateEntities(orm: ORMTemplate) {
         val errors = orm.validateSchema(
-            User::class, City::class, Order::class
+            User::class, City::class, Address::class
         )
         assertTrue(errors.isEmpty()) { "Schema validation errors: \$errors" }
     }

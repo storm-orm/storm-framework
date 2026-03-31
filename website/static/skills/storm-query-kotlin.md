@@ -52,7 +52,7 @@ The `eq` operator accepts both entities and `Ref<T>`. When you have an entity, u
 ```kotlin
 User_.city eq city          // ✅ entity directly — compares by FK
 User_.city eq city.ref()    // also works, but unnecessary when you have the entity
-Order_.user eq user         // ✅ same for any FK field — don't use Order_.id.userId eq user.id
+// Same pattern works for any FK field — always pass the entity or Ref, not the raw ID
 
 // When you only have an ID (e.g., from a URL parameter), create a Ref:
 User_.city eq refById<City>(cityId)   // ✅ import st.orm.template.refById
@@ -140,7 +140,11 @@ Explicit joins — two syntax forms depending on context:
 - **Chained API**: `.innerJoin(UserRole::class).on(Role::class)` — returns builder, chain `.whereAny()` etc.
 Select result type: `.select(ResultType::class)` to return a different type than the root entity
 
-**Always prefer entity/metamodel-based QueryBuilder methods over SQL template strings.** SQL templates are an escape hatch for things the QueryBuilder cannot express. Three rules:
+**Always prefer entity/metamodel-based QueryBuilder methods over SQL template strings.** SQL templates are an escape hatch for things the QueryBuilder cannot express.
+
+**Template joins are a code smell.** If you need a template-based ON clause (`.innerJoin(T::class).on { "..." }`) or a full `orm.query { }` to express a join that follows a database FK constraint, the entity model is missing an `@FK` annotation. Fix the entity first — add `@FK` (with `Ref<T>` for PK fields, full entity for non-PK fields) — then the join becomes `.innerJoin(Entity::class).on(OnEntity::class)`, pure code with no templates. Template joins are only justified when there is genuinely no FK constraint in the database.
+
+Three rules:
 
 1. **Code-first:** If it can be done with QueryBuilder methods (joins, where, orderBy, groupBy, having), do it in code. Never use a template string for a `WHERE` clause that could be a `.where(predicate)`, or an `ORDER BY` that could be `.orderBy(field)`.
 2. **Metamodel in templates:** When you do need a template fragment (e.g., for `COUNT(*)` in a select clause), still use metamodel references inside it (`${User_.email}`, not `"email"`). This keeps column references type-safe and refactor-proof.
@@ -151,12 +155,12 @@ When you do use template lambdas, use `${}` interpolation (the compiler plugin h
 ## Aggregation
 
 ```kotlin
-val count = orm.entity(Order::class).selectCount().resultList.first()
+val userCount = orm.entity(User::class).selectCount().singleResult
 
-val totals = orm.entity(Order::class)
-    .select(OrderSummary::class)
-    .groupBy(Order_.status)
-    .having(Order_.amount, Operator.GREATER_THAN, 100)
+val citySummaries = orm.entity(City::class)
+    .select(CitySummary::class)
+    .groupBy(City_.country)
+    .having(City_.population, Operator.GREATER_THAN, 100000)
     .resultList
 ```
 
@@ -174,19 +178,19 @@ val cityCounts = orm.entity<City>()
     .resultList
 
 // More complex example with WHERE, HAVING, and ORDER BY — all in code:
-data class GenreStat(val genreName: String, val averageRating: Double, val movieCount: Long) : Data
+data class CityUserStats(val cityName: String, val averageAge: Double, val userCount: Long) : Data
 
-val topGenres = orm.entity<Genre>()
-    .select(GenreStat::class) { "${Genre_.name}, AVG(${Rating_.averageRating}), COUNT(*)" }
-    .innerJoin(MovieGenre::class).on(Genre::class)
-    .innerJoin(Rating::class).on(MovieGenre::class)
-    .groupBy(Genre_.name)
-    .having(Genre_.name, Operator.GREATER_THAN, 10)  // HAVING COUNT(*) >= 10
-    .orderByDescendingAny(Rating_.averageRating)
+val minUsers = 10
+val topCities = orm.entity<City>()
+    .select(CityUserStats::class) { "${City_.name}, AVG(${User_.age}), COUNT(*)" }
+    .leftJoin(User::class).on(City::class)
+    .groupBy(City_.name)
+    .having { "COUNT(*) >= $minUsers" }               // template form for aggregate expressions
+    .orderByDescending { "AVG(${User_.age})" }
     .resultList
 ```
 
-Always prefer code over templates. Templates are for expressions QueryBuilder can't produce (e.g., `COUNT(*)`, `AVG()`). `groupBy` and `orderBy` also accept templates when needed, but use the code-based methods when possible. Do NOT write the entire query as a raw SQL string.
+Always prefer code over templates. Templates are for expressions QueryBuilder can't produce (e.g., `COUNT(*)`, `AVG()`). `groupBy`, `having`, and `orderBy` also accept template lambdas when needed (e.g., `.having { "COUNT(*) >= $min" }`, `.orderByDescending { "AVG(${User_.age})" }`), but use the code-based methods when possible. Do NOT write the entire query as a raw SQL string.
 
 ## Row Locking
 
@@ -241,15 +245,15 @@ val refs = orm.entity(User::class)
 
 ```kotlin
 // WHERE EXISTS — filter entities that have related data
-val ownersWithPets = orm.entity(Owner::class)
+val citiesWithUsers = orm.entity(City::class)
     .select()
-    .whereExists { subquery(Pet::class) }
+    .whereExists { subquery(User::class) }
     .resultList
 
 // WHERE NOT EXISTS
-val ownersWithoutPets = orm.entity(Owner::class)
+val citiesWithoutUsers = orm.entity(City::class)
     .select()
-    .whereNotExists { subquery(Pet::class) }
+    .whereNotExists { subquery(User::class) }
     .resultList
 ```
 

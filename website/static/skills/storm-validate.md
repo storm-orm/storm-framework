@@ -33,9 +33,9 @@ class EntitySchemaTest {
     fun validateNewEntities(orm: ORMTemplate) {
         // Validate only the specific entities that were created or modified.
         val errors = orm.validateSchema(listOf(
-            Order::class.java,
-            OrderLine::class.java,
-            Product::class.java
+            User::class.java,
+            City::class.java,
+            Address::class.java
         ))
         assertTrue(errors.isEmpty()) { "Schema validation errors: $errors" }
     }

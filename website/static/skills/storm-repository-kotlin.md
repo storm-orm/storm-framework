@@ -68,6 +68,7 @@ Key rules:
 6. DELETE/UPDATE without WHERE throws. Use `unsafe()` for intentional bulk ops.
 7. Pagination: `page(0, 20)` for offset-based. `scroll(Scrollable.of(User_.id, 20))` for keyset on large tables (see Keyset Scrolling section).
 8. **Prefer entity/metamodel-based methods over templates.** For joins, use `innerJoin(Entity::class, OnEntity::class)` in the block DSL, or `.innerJoin(Entity::class).on(OnEntity::class)` in the chained API. Only fall back to template lambdas when QueryBuilder cannot express the query.
+   **Template joins are a code smell.** If you need a template-based ON clause (`.innerJoin(T::class).on { "..." }`) or a full `orm.query { }` to express a join that follows a database FK constraint, the entity model is missing an `@FK` annotation. Fix the entity first — add `@FK` (with `Ref<T>` for PK fields, full entity for non-PK fields) — then the join becomes `.innerJoin(Entity::class).on(OnEntity::class)`, pure code with no templates. Template joins are only justified when there is genuinely no FK constraint in the database.
 9. **Use `Ref` for map keys and set membership**: Prefer `Ref<Entity>` (via `.ref()`) for map keys, set membership, and identity-based lookups. `Ref` provides identity-based `equals`/`hashCode` on the primary key. When a projection already returns `Ref<T>`, use it directly without calling `.ref()` again.
 10. **Prefer typed parameters over raw IDs.** Repository method signatures should accept entity or `Ref<Entity>` parameters for FK fields — not raw IDs like `String` or `Int`. Raw IDs are untyped and lose the entity association. Convert IDs to `Ref` at the system boundary (controller/route handler) using `refById<T>(id)` (import `st.orm.template.refById`).
 
@@ -205,7 +206,7 @@ orm.removeBy(User_.city, city)
 val ref: Ref<User> = user.ref()            // import st.orm.template.ref
 
 // Create a Ref from a type and ID (no entity instance needed)
-val ref: Ref<Title> = refById<Title>(tconst)   // import st.orm.template.refById
+val ref: Ref<City> = refById<City>(cityId)     // import st.orm.template.refById
 
 // Or via repository
 val ref: Ref<User> = users.ref(user)
@@ -240,7 +241,7 @@ val alice: User = users.get(User_.email eq "alice@example.com")
 val activeUsers: List<User> = users.findAll(User_.active eq true)
 
 // Compare by entity — use the FK field directly, don't extract the ID
-val orders: List<Order> = orders.findAll(Order_.user eq user)
+val cityUsers: List<User> = users.findAll(User_.city eq city)
 
 // Repository methods should accept entity or Ref<T>, not raw IDs:
 // ✅ fun findByCity(city: City): List<User> = findAll(User_.city eq city)
