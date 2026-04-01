@@ -1,0 +1,19 @@
+$dokka.format:html-v1
+$dokka.linkExtension:html
+$dokka.location:st.orm.metamodel////PointingToDeclaration/storm-metamodel-ksp/st.orm.metamodel/index.html
+$dokka.location:st.orm.metamodel/MetamodelProcessor.Companion///PointingToDeclaration/storm-metamodel-ksp/st.orm.metamodel/-metamodel-processor/-companion/index.html
+$dokka.location:st.orm.metamodel/MetamodelProcessor///PointingToDeclaration/storm-metamodel-ksp/st.orm.metamodel/-metamodel-processor/index.html
+$dokka.location:st.orm.metamodel/MetamodelProcessor/MetamodelProcessor/#com.google.devtools.ksp.processing.CodeGenerator#com.google.devtools.ksp.processing.KSPLogger/PointingToDeclaration/storm-metamodel-ksp/st.orm.metamodel/-metamodel-processor/-metamodel-processor.html
+$dokka.location:st.orm.metamodel/MetamodelProcessor/process/#com.google.devtools.ksp.processing.Resolver/PointingToDeclaration/storm-metamodel-ksp/st.orm.metamodel/-metamodel-processor/process.html
+$dokka.location:st.orm.metamodel/MetamodelProcessorProvider///PointingToDeclaration/storm-metamodel-ksp/st.orm.metamodel/-metamodel-processor-provider/index.html
+$dokka.location:st.orm.metamodel/MetamodelProcessorProvider/MetamodelProcessorProvider/#/PointingToDeclaration/storm-metamodel-ksp/st.orm.metamodel/-metamodel-processor-provider/-metamodel-processor-provider.html
+$dokka.location:st.orm.metamodel/MetamodelProcessorProvider/create/#com.google.devtools.ksp.processing.SymbolProcessorEnvironment/PointingToDeclaration/storm-metamodel-ksp/st.orm.metamodel/-metamodel-processor-provider/create.html
+$dokka.location:st.orm.metamodel/TypeIndexProcessor.Companion///PointingToDeclaration/storm-metamodel-ksp/st.orm.metamodel/-type-index-processor/-companion/index.html
+$dokka.location:st.orm.metamodel/TypeIndexProcessor///PointingToDeclaration/storm-metamodel-ksp/st.orm.metamodel/-type-index-processor/index.html
+$dokka.location:st.orm.metamodel/TypeIndexProcessor/TypeIndexProcessor/#com.google.devtools.ksp.processing.CodeGenerator#com.google.devtools.ksp.processing.KSPLogger/PointingToDeclaration/storm-metamodel-ksp/st.orm.metamodel/-type-index-processor/-type-index-processor.html
+$dokka.location:st.orm.metamodel/TypeIndexProcessor/finish/#/PointingToDeclaration/storm-metamodel-ksp/st.orm.metamodel/-type-index-processor/finish.html
+$dokka.location:st.orm.metamodel/TypeIndexProcessor/process/#com.google.devtools.ksp.processing.Resolver/PointingToDeclaration/storm-metamodel-ksp/st.orm.metamodel/-type-index-processor/process.html
+$dokka.location:st.orm.metamodel/TypeIndexProcessorProvider///PointingToDeclaration/storm-metamodel-ksp/st.orm.metamodel/-type-index-processor-provider/index.html
+$dokka.location:st.orm.metamodel/TypeIndexProcessorProvider/TypeIndexProcessorProvider/#/PointingToDeclaration/storm-metamodel-ksp/st.orm.metamodel/-type-index-processor-provider/-type-index-processor-provider.html
+$dokka.location:st.orm.metamodel/TypeIndexProcessorProvider/create/#com.google.devtools.ksp.processing.SymbolProcessorEnvironment/PointingToDeclaration/storm-metamodel-ksp/st.orm.metamodel/-type-index-processor-provider/create.html
+st.orm.metamodel
