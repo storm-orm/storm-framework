@@ -689,6 +689,88 @@ function writeProjectConfig(tools, languages) {
   writeFileSync(configPath, JSON.stringify({ tools, languages }, null, 2) + '\n');
 }
 
+// ─── Database connection helpers ──────────────────────────────────────────────
+
+function ensureGlobalDir() {
+  const globalDir = join(homedir(), '.storm');
+  const connectionsDir = join(globalDir, 'connections');
+  mkdirSync(connectionsDir, { recursive: true });
+
+  const packageJsonPath = join(globalDir, 'package.json');
+  if (!existsSync(packageJsonPath)) {
+    writeFileSync(packageJsonPath, '{"private":true}\n');
+  }
+
+  // Always overwrite server.mjs to keep in sync with CLI version.
+  writeFileSync(join(globalDir, 'server.mjs'), MCP_SERVER_SOURCE);
+  return globalDir;
+}
+
+function installDriver(dialect) {
+  const globalDir = join(homedir(), '.storm');
+  const driverPackage = DIALECTS[dialect].driver;
+
+  // Skip if driver is already installed.
+  const driverDir = join(globalDir, 'node_modules', driverPackage);
+  if (existsSync(driverDir)) return true;
+
+  console.log(dimText(`  Installing ${DIALECTS[dialect].name} driver...`));
+  try {
+    execSync(`npm install ${driverPackage} --prefix "${globalDir}"`, {
+      stdio: 'pipe',
+      timeout: 60000,
+    });
+    return true;
+  } catch (error) {
+    console.log(boltYellow('  Failed to install driver. Make sure npm is available.'));
+    console.log(dimText('  ' + (error.stderr?.toString().trim() || error.message)));
+    return false;
+  }
+}
+
+function listGlobalConnections() {
+  const connectionsDir = join(homedir(), '.storm', 'connections');
+  if (!existsSync(connectionsDir)) return [];
+  return readdirSync(connectionsDir)
+    .filter(f => f.endsWith('.json'))
+    .map(f => f.replace(/\.json$/, ''));
+}
+
+function listLocalConnections() {
+  const connectionsDir = join(process.cwd(), '.storm', 'connections');
+  if (!existsSync(connectionsDir)) return [];
+  return readdirSync(connectionsDir)
+    .filter(f => f.endsWith('.json'))
+    .map(f => f.replace(/\.json$/, ''));
+}
+
+function resolveConnection(name) {
+  const localPath = join(process.cwd(), '.storm', 'connections', name + '.json');
+  if (existsSync(localPath)) return localPath;
+  const globalPath = join(homedir(), '.storm', 'connections', name + '.json');
+  if (existsSync(globalPath)) return globalPath;
+  return null;
+}
+
+function readDatabases() {
+  const databasesPath = join(process.cwd(), '.storm', 'databases.json');
+  try {
+    return JSON.parse(readFileSync(databasesPath, 'utf-8'));
+  } catch {
+    return {};
+  }
+}
+
+function writeDatabases(map) {
+  const stormDir = join(process.cwd(), '.storm');
+  mkdirSync(stormDir, { recursive: true });
+  writeFileSync(join(stormDir, 'databases.json'), JSON.stringify(map, null, 2) + '\n');
+}
+
+function mcpServerName(alias) {
+  return alias === 'default' ? 'storm-schema' : `storm-schema-${alias}`;
+}
+
 // ─── Content (fetched from orm.st at runtime) ───────────────────────────────
 
 const SKILLS_BASE_URL = 'https://orm.st/skills';
@@ -894,7 +976,8 @@ import { fileURLToPath } from 'url';
 
 var __dirname = dirname(fileURLToPath(import.meta.url));
 var require = createRequire(import.meta.url);
-var configPath = process.argv[2] || join(__dirname, 'connection.json');
+var configPath = process.argv[2];
+if (!configPath) { process.stderr.write('Usage: node server.mjs <connection.json>\\n'); process.exit(1); }
 var config = JSON.parse(readFileSync(configPath, 'utf-8'));
 
 // ─── Database ────────────────────────────────────────────
@@ -1175,7 +1258,7 @@ rl.on('line', async function(line) {
     respond(msg.id, {
       protocolVersion: '2024-11-05',
       capabilities: { tools: {} },
-      serverInfo: { name: 'storm-schema', version: '${VERSION}' },
+      serverInfo: { name: 'storm-schema (' + configPath.replace(/.*[\\\\/]/, '').replace('.json', '') + ')', version: '${VERSION}' },
     });
   } else if (msg.method === 'notifications/initialized') {
     // no response
@@ -1235,22 +1318,31 @@ function installRulesBlock(filePath, content, created, appended) {
   }
 }
 
-function registerMcp(toolConfig, stormDir, created, appended) {
+function registerMcp(toolConfig, alias, connectionPath, created, appended) {
   const cwd = process.cwd();
-  const serverPath = join(stormDir, 'mcp-server.mjs');
+  const serverPath = join(homedir(), '.storm', 'server.mjs');
+  const serverName = mcpServerName(alias);
 
   if (toolConfig.mcpFormat === 'codex') {
     // Codex uses TOML in .codex/config.toml
     const tomlPath = join(cwd, '.codex', 'config.toml');
-    const tomlEntry = '\n[mcp_servers.storm-schema]\n'
+    const tomlEntry = `\n[mcp_servers.${serverName}]\n`
       + 'type = "stdio"\n'
       + 'command = "node"\n'
-      + 'args = ["' + serverPath + '"]\n';
+      + `args = ["${serverPath}", "${connectionPath}"]\n`;
     if (existsSync(tomlPath)) {
       const existing = readFileSync(tomlPath, 'utf-8');
-      if (!existing.includes('storm-schema')) {
+      if (!existing.includes(serverName)) {
         appendFileSync(tomlPath, tomlEntry);
         appended.push('.codex/config.toml');
+      } else {
+        // Replace existing entry with updated args.
+        const regex = new RegExp(`\\[mcp_servers\\.${serverName}\\][\\s\\S]*?(?=\\n\\[|$)`);
+        const updated = existing.replace(regex, tomlEntry.trimStart().trimEnd());
+        if (updated !== existing) {
+          writeFileSync(tomlPath, updated);
+          appended.push('.codex/config.toml');
+        }
       }
     } else {
       mkdirSync(dirname(tomlPath), { recursive: true });
@@ -1274,41 +1366,104 @@ function registerMcp(toolConfig, stormDir, created, appended) {
     try { mcpConfig = JSON.parse(readFileSync(mcpPath, 'utf-8')); } catch {}
   }
   if (!mcpConfig.mcpServers) mcpConfig.mcpServers = {};
-  if (mcpConfig.mcpServers['storm-schema']) return; // already registered
 
-  mcpConfig.mcpServers['storm-schema'] = {
-    type: 'stdio',
-    command: 'node',
-    args: [serverPath],
-  };
+  const desired = { type: 'stdio', command: 'node', args: [serverPath, connectionPath] };
+  const existing = mcpConfig.mcpServers[serverName];
+  if (existing && JSON.stringify(existing) === JSON.stringify(desired)) return;
+
+  mcpConfig.mcpServers[serverName] = desired;
   mkdirSync(dirname(mcpPath), { recursive: true });
   writeFileSync(mcpPath, JSON.stringify(mcpConfig, null, 2) + '\n');
   (isNew ? created : appended).push(toolConfig.mcpFile);
 }
 
+function unregisterMcp(toolConfig, alias) {
+  const serverName = mcpServerName(alias);
+
+  if (toolConfig.mcpFormat === 'codex') {
+    const tomlPath = join(process.cwd(), '.codex', 'config.toml');
+    if (!existsSync(tomlPath)) return false;
+    const existing = readFileSync(tomlPath, 'utf-8');
+    const regex = new RegExp(`\\n?\\[mcp_servers\\.${serverName}\\][\\s\\S]*?(?=\\n\\[|$)`, 'g');
+    const updated = existing.replace(regex, '');
+    if (updated !== existing) {
+      writeFileSync(tomlPath, updated);
+      return true;
+    }
+    return false;
+  }
+
+  if (toolConfig.mcpFormat === 'windsurf' || !toolConfig.mcpFile) return false;
+
+  const mcpPath = join(process.cwd(), toolConfig.mcpFile);
+  if (!existsSync(mcpPath)) return false;
+  let mcpConfig;
+  try { mcpConfig = JSON.parse(readFileSync(mcpPath, 'utf-8')); } catch { return false; }
+  if (!mcpConfig.mcpServers || !mcpConfig.mcpServers[serverName]) return false;
+
+  delete mcpConfig.mcpServers[serverName];
+  writeFileSync(mcpPath, JSON.stringify(mcpConfig, null, 2) + '\n');
+  return true;
+}
+
+function registerAllMcpServers(tools, created, appended) {
+  const databases = readDatabases();
+  for (const [alias, connectionName] of Object.entries(databases)) {
+    const connectionPath = resolveConnection(connectionName);
+    if (!connectionPath) {
+      console.log(dimText(`  Skipping ${alias}: connection "${connectionName}" not found`));
+      continue;
+    }
+    for (const toolId of tools) {
+      const config = TOOL_CONFIGS[toolId];
+      if (!config.mcpFormat) continue;
+      registerMcp(config, alias, connectionPath, created, appended);
+    }
+  }
+}
+
 
 // ─── Database setup ──────────────────────────────────────────────────────────
 
-async function setupDatabase(preConfigured) {
-  const stormDir = join(homedir(), '.storm');
-  const connectionPath = join(stormDir, 'connection.json');
+function formatConnectionLabel(name, connection) {
+  if (connection.host) {
+    return `${name} (${connection.dialect}://${connection.host}${connection.port ? ':' + connection.port : ''}/${connection.database})`;
+  }
+  return `${name} (${connection.dialect}:${connection.database})`;
+}
 
+async function setupGlobalConnection(connectionName, preConfigured) {
   let connection;
 
   if (preConfigured) {
     // Non-interactive: use the provided connection details directly.
     connection = preConfigured;
+    if (!connectionName) {
+      connectionName = preConfigured.dialect + (preConfigured.database ? '-' + preConfigured.database : '');
+      connectionName = connectionName.toLowerCase().replace(/[^a-z0-9-]/g, '-');
+    }
   } else {
-    // Interactive: prompt the user.
-    if (existsSync(connectionPath)) {
-      try {
-        const existing = JSON.parse(readFileSync(connectionPath, 'utf-8'));
-        console.log(dimText(`  Current connection: ${existing.dialect}://${existing.host || ''}${existing.port ? ':' + existing.port : ''}/${existing.database}`));
-        console.log();
-        const reconfigure = await confirm({ message: 'Reconfigure?', defaultValue: false });
-        if (!reconfigure) return stormDir;
-        console.log();
-      } catch {}
+    // Interactive: show existing connections or create new.
+    const existingConnections = listGlobalConnections();
+
+    if (existingConnections.length > 0) {
+      const choices = existingConnections.map(name => {
+        const connectionPath = join(homedir(), '.storm', 'connections', name + '.json');
+        try {
+          const conn = JSON.parse(readFileSync(connectionPath, 'utf-8'));
+          return { name: formatConnectionLabel(name, conn), value: name };
+        } catch {
+          return { name, value: name };
+        }
+      });
+      choices.push({ name: 'Create new connection', value: '__new__' });
+
+      const picked = await select({ message: 'Database connection', choices });
+      if (picked !== '__new__') {
+        const connectionPath = join(homedir(), '.storm', 'connections', picked + '.json');
+        return { name: picked, path: connectionPath };
+      }
+      console.log();
     }
 
     const dialect = await select({
@@ -1362,36 +1517,45 @@ async function setupDatabase(preConfigured) {
         password: password || '',
       };
     }
+
+    // Prompt for a connection name with a sensible default derived from host + database.
+    if (!connectionName) {
+      const host = connection.host || 'local';
+      const dbName = connection.database
+        ? basename(connection.database).replace(/\.[^.]+$/, '') // strip extension for file-based
+        : dialect;
+      const suggestedName = (host + '-' + dbName).toLowerCase().replace(/[^a-z0-9.-]/g, '-');
+      connectionName = await textInput({ message: 'Connection name', defaultValue: suggestedName });
+      if (!connectionName || connectionName.trim() === '') {
+        connectionName = suggestedName;
+      }
+      connectionName = connectionName.trim().toLowerCase().replace(/[^a-z0-9-]/g, '-');
+    }
+
+    // Check if this name already exists globally.
+    const existingPath = join(homedir(), '.storm', 'connections', connectionName + '.json');
+    if (existsSync(existingPath)) {
+      try {
+        const existing = JSON.parse(readFileSync(existingPath, 'utf-8'));
+        console.log(dimText(`  Existing: ${formatConnectionLabel(connectionName, existing)}`));
+        console.log();
+        const reconfigure = await confirm({ message: 'Overwrite?', defaultValue: true });
+        if (!reconfigure) return { name: connectionName, path: existingPath };
+        console.log();
+      } catch {}
+    }
   }
 
-  // Install driver.
-  const driverPackage = DIALECTS[connection.dialect].driver;
+  // Ensure global directory structure and install driver.
+  const globalDir = ensureGlobalDir();
   console.log();
-  console.log(dimText(`  Installing ${DIALECTS[connection.dialect].name} driver...`));
+  if (!installDriver(connection.dialect)) return null;
 
-  mkdirSync(stormDir, { recursive: true });
+  // Write connection config.
+  const connectionFilePath = join(globalDir, 'connections', connectionName + '.json');
+  writeFileSync(connectionFilePath, JSON.stringify(connection, null, 2) + '\n');
 
-  const packageJsonPath = join(stormDir, 'package.json');
-  if (!existsSync(packageJsonPath)) {
-    writeFileSync(packageJsonPath, '{"private":true}\n');
-  }
-
-  try {
-    execSync(`npm install ${driverPackage} --prefix "${stormDir}"`, {
-      stdio: 'pipe',
-      timeout: 60000,
-    });
-  } catch (error) {
-    console.log(boltYellow('  Failed to install driver. Make sure npm is available.'));
-    console.log(dimText('  ' + (error.stderr?.toString().trim() || error.message)));
-    return null;
-  }
-
-  // Write connection config and MCP server.
-  writeFileSync(connectionPath, JSON.stringify(connection, null, 2) + '\n');
-  writeFileSync(join(stormDir, 'mcp-server.mjs'), MCP_SERVER_SOURCE);
-
-  return stormDir;
+  return { name: connectionName, path: connectionFilePath };
 }
 
 // ─── Update (non-interactive) ────────────────────────────────────────────────
@@ -1519,9 +1683,7 @@ async function update() {
     }
 
     // Also update schema-dependent skills if database is configured.
-    const stormDir = join(homedir(), '.storm');
-    const connectionPath = join(stormDir, 'connection.json');
-    if (existsSync(connectionPath)) {
+    if (Object.keys(readDatabases()).length > 0) {
       const schemaRules = await fetchSkill('storm-schema-rules');
       for (const toolId of tools) {
         const config = TOOL_CONFIGS[toolId];
@@ -1576,38 +1738,224 @@ async function update() {
   console.log();
 }
 
-// ─── MCP (non-interactive re-register) ──────────────────────────────────────
+// ─── Database commands (global connection library) ───────────────────────────
 
-async function updateMcp() {
-  const stormDir = join(homedir(), '.storm');
-  const connectionPath = join(stormDir, 'connection.json');
+async function dbAdd(nameArg) {
+  const result = await setupGlobalConnection(nameArg || null, null);
+  if (!result) return;
+  console.log();
+  console.log(bold(`  Connection "${result.name}" saved globally.`));
+  console.log(dimText(`  ${result.path}`));
+  console.log();
+}
 
-  if (!existsSync(connectionPath)) {
-    // No existing connection; fall back to interactive setup.
-    console.log(dimText('  No existing database connection found. Starting setup...'));
-    console.log();
-    const result = await setupDatabase();
-    if (!result) return;
+function dbList() {
+  const connections = listGlobalConnections();
+  if (connections.length === 0) {
+    console.log(dimText('\n  No global database connections configured.'));
+    console.log(dimText('  Run `storm db add` to add one.\n'));
+    return;
+  }
+  console.log();
+  for (const name of connections) {
+    const connectionPath = join(homedir(), '.storm', 'connections', name + '.json');
+    try {
+      const connection = JSON.parse(readFileSync(connectionPath, 'utf-8'));
+      console.log(`  ${boltYellow(name)}  ${formatConnectionLabel(name, connection).replace(name + ' ', '')}`);
+    } catch {
+      console.log(`  ${boltYellow(name)}  (unreadable)`);
+    }
+  }
+  console.log();
+}
+
+async function dbRemove(nameArg) {
+  const connections = listGlobalConnections();
+  if (connections.length === 0) {
+    console.log(dimText('\n  No global database connections to remove.\n'));
+    return;
   }
 
-  // Re-register MCP for all configured tools.
+  let name = nameArg;
+  if (!name) {
+    name = await select({
+      message: 'Remove which connection?',
+      choices: connections.map(n => {
+        const connectionPath = join(homedir(), '.storm', 'connections', n + '.json');
+        try {
+          const connection = JSON.parse(readFileSync(connectionPath, 'utf-8'));
+          return { name: formatConnectionLabel(n, connection), value: n };
+        } catch {
+          return { name: n, value: n };
+        }
+      }),
+    });
+  }
+
+  const connectionPath = join(homedir(), '.storm', 'connections', name + '.json');
+  if (!existsSync(connectionPath)) {
+    console.log(boltYellow(`\n  Connection "${name}" not found.\n`));
+    return;
+  }
+
+  unlinkSync(connectionPath);
+  console.log();
+  console.log(bold(`  Removed global connection "${name}".`));
+  console.log();
+}
+
+async function updateDb(subArgs) {
+  const subcommand = subArgs ? subArgs[0] : undefined;
+
+  if (subcommand === 'add') {
+    await dbAdd(subArgs[1]);
+  } else if (subcommand === 'list' || subcommand === 'ls' || !subcommand) {
+    dbList();
+  } else if (subcommand === 'remove' || subcommand === 'rm') {
+    await dbRemove(subArgs[1]);
+  } else {
+    console.log(boltYellow(`\n  Unknown db command: ${subcommand}`));
+    console.log(dimText('  Available: add, list, remove\n'));
+  }
+}
+
+// ─── MCP commands ────────────────────────────────────────────────────────────
+
+async function mcpAdd(aliasArg) {
   const tools = detectConfiguredTools();
   if (tools.length === 0) {
     console.log(boltYellow('\n  No configured AI tools found. Run `storm init` first.\n'));
     return;
   }
 
+  const alias = aliasArg || await textInput({ message: 'Alias for this connection', defaultValue: 'default' }) || 'default';
+  console.log();
+
+  const result = await setupGlobalConnection(null, null);
+  if (!result) return;
+
+  // Update project databases.json.
+  const databases = readDatabases();
+  databases[alias] = result.name;
+  writeDatabases(databases);
+
+  // Ensure global server.mjs exists.
+  ensureGlobalDir();
+
+  // Register MCP for all configured tools.
   const created = [];
   const appended = [];
   for (const toolId of tools) {
     const config = TOOL_CONFIGS[toolId];
     if (!config.mcpFormat) continue;
-    if (config.mcpFormat === 'codex' && existsSync(join(process.cwd(), '.codex'))) {
-      registerMcp(config, stormDir, created, appended);
-    } else if (config.mcpFile) {
-      registerMcp(config, stormDir, created, appended);
-    }
+    registerMcp(config, alias, result.path, created, appended);
   }
+
+  // Add .storm/ to .gitignore.
+  const gitignorePath = join(process.cwd(), '.gitignore');
+  let gitignore = existsSync(gitignorePath) ? readFileSync(gitignorePath, 'utf-8') : '';
+  if (!gitignore.includes('.storm/')) {
+    appendFileSync(gitignorePath, '\n# Storm database config (machine-specific)\n.storm/\n');
+  }
+
+  console.log();
+  console.log(bold(`  Database "${alias}" -> ${result.name} added.`));
+  if (created.length > 0 || appended.length > 0) {
+    [...created, ...appended].forEach(f => console.log(dimText(`    ${f}`)));
+  }
+  console.log();
+}
+
+function mcpList() {
+  const databases = readDatabases();
+  const entries = Object.entries(databases);
+  if (entries.length === 0) {
+    console.log(dimText('\n  No databases configured for this project.'));
+    console.log(dimText('  Run `storm mcp add` to add one.\n'));
+    return;
+  }
+  console.log();
+  for (const [alias, connectionName] of entries) {
+    const connectionPath = resolveConnection(connectionName);
+    const source = connectionPath
+      ? (connectionPath.startsWith(join(process.cwd(), '.storm')) ? 'local' : 'global')
+      : 'missing';
+    let detail = '';
+    if (connectionPath) {
+      try {
+        const connection = JSON.parse(readFileSync(connectionPath, 'utf-8'));
+        if (connection.host) {
+          detail = ` ${connection.dialect}://${connection.host}${connection.port ? ':' + connection.port : ''}/${connection.database}`;
+        } else {
+          detail = ` ${connection.dialect}:${connection.database}`;
+        }
+      } catch {}
+    }
+    const serverName = mcpServerName(alias);
+    console.log(`  ${boltYellow(alias)} -> ${connectionName} (${source})${detail}`);
+    console.log(dimText(`    MCP server: ${serverName}`));
+  }
+  console.log();
+}
+
+async function mcpRemove(aliasArg) {
+  const databases = readDatabases();
+  const entries = Object.entries(databases);
+  if (entries.length === 0) {
+    console.log(dimText('\n  No databases configured for this project.\n'));
+    return;
+  }
+
+  let alias = aliasArg;
+  if (!alias) {
+    alias = await select({
+      message: 'Remove which connection?',
+      choices: entries.map(([a, name]) => ({ name: `${a} -> ${name}`, value: a })),
+    });
+  }
+
+  if (!databases[alias]) {
+    console.log(boltYellow(`\n  Connection "${alias}" not found in this project.\n`));
+    return;
+  }
+
+  // Unregister from all tools.
+  const tools = detectConfiguredTools();
+  for (const toolId of tools) {
+    const config = TOOL_CONFIGS[toolId];
+    if (!config.mcpFormat) continue;
+    unregisterMcp(config, alias);
+  }
+
+  delete databases[alias];
+  writeDatabases(databases);
+
+  console.log();
+  console.log(bold(`  Removed "${alias}" from project.`));
+  console.log();
+}
+
+async function mcpReregisterAll() {
+  const databases = readDatabases();
+  if (Object.keys(databases).length === 0) {
+    console.log(dimText('\n  No databases configured. Adding one now...'));
+    console.log();
+    await mcpAdd('default');
+    return;
+  }
+
+  const tools = detectConfiguredTools();
+  if (tools.length === 0) {
+    console.log(boltYellow('\n  No configured AI tools found. Run `storm init` first.\n'));
+    return;
+  }
+
+  // Ensure global server.mjs is current.
+  ensureGlobalDir();
+
+  const created = [];
+  const appended = [];
+  registerAllMcpServers(tools, created, appended);
 
   console.log();
   if (created.length > 0) {
@@ -1626,6 +1974,20 @@ async function updateMcp() {
     console.log(dimText(`  MCP already configured for ${toolNames}. No changes needed.`));
   }
   console.log();
+}
+
+async function updateMcp(subArgs) {
+  const subcommand = subArgs ? subArgs[0] : undefined;
+
+  if (subcommand === 'add') {
+    await mcpAdd(subArgs[1]);
+  } else if (subcommand === 'list' || subcommand === 'ls') {
+    mcpList();
+  } else if (subcommand === 'remove' || subcommand === 'rm') {
+    await mcpRemove(subArgs[1]);
+  } else {
+    await mcpReregisterAll();
+  }
 }
 
 // ─── Main flow ───────────────────────────────────────────────────────────────
@@ -1728,10 +2090,10 @@ async function setup() {
     }
   }
 
-  // Step 4: Optional database connection.
+  // Step 4: Optional database connection(s).
   const mcpTools = tools.filter(t => TOOL_CONFIGS[t].mcpFormat);
   let dbConfigured = false;
-  let stormDir = null;
+  const databases = {};
 
   if (mcpTools.length > 0) {
     console.log();
@@ -1747,34 +2109,58 @@ async function setup() {
 
     if (connectDb) {
       console.log();
-      stormDir = await setupDatabase();
-      dbConfigured = stormDir !== null;
+      const result = await setupGlobalConnection(null, null);
+      if (result) {
+        const alias = await textInput({ message: 'Alias for this connection', defaultValue: 'default' }) || 'default';
+        databases[alias.trim()] = result.name;
+        dbConfigured = true;
+
+        // Offer to add more connections.
+        let addMore = true;
+        while (addMore) {
+          console.log();
+          addMore = await confirm({ message: 'Add another database connection?', defaultValue: false });
+          if (addMore) {
+            console.log();
+            const nextResult = await setupGlobalConnection(null, null);
+            if (nextResult) {
+              const nextAlias = await textInput({ message: 'Alias for this connection' });
+              if (nextAlias && nextAlias.trim()) {
+                databases[nextAlias.trim()] = nextResult.name;
+              }
+            }
+          }
+        }
+
+        writeDatabases(databases);
+      }
     }
   }
 
   // Step 5: Register MCP, append schema rules, update .gitignore, and install schema skills.
   if (dbConfigured) {
-    // Add MCP config files to .gitignore (they contain machine-specific paths).
+    // Add .storm/ and MCP config files to .gitignore.
     const gitignorePath = join(process.cwd(), '.gitignore');
-    const mcpIgnoreEntries = [];
+    const ignoreEntries = ['.storm/'];
     for (const toolId of tools) {
       const config = TOOL_CONFIGS[toolId];
-      if (config.mcpFile) mcpIgnoreEntries.push(config.mcpFile);
+      if (config.mcpFile) ignoreEntries.push(config.mcpFile);
     }
-    if (mcpIgnoreEntries.length > 0) {
-      let gitignore = existsSync(gitignorePath) ? readFileSync(gitignorePath, 'utf-8') : '';
-      const missing = mcpIgnoreEntries.filter(e => !gitignore.includes(e));
-      if (missing.length > 0) {
-        const block = '\n# Storm MCP (machine-specific paths)\n' + missing.join('\n') + '\n';
-        appendFileSync(gitignorePath, block);
-        appended.push('.gitignore');
-      }
+    let gitignore = existsSync(gitignorePath) ? readFileSync(gitignorePath, 'utf-8') : '';
+    const missing = ignoreEntries.filter(e => !gitignore.includes(e));
+    if (missing.length > 0) {
+      const block = '\n# Storm MCP (machine-specific)\n' + missing.join('\n') + '\n';
+      appendFileSync(gitignorePath, block);
+      appended.push('.gitignore');
     }
+
+    // Register MCP servers for all database connections.
+    registerAllMcpServers(tools, created, appended);
+
     // Fetch schema rules and append to each tool's rules block.
     const schemaRules = await fetchSkill('storm-schema-rules');
     for (const toolId of tools) {
       const config = TOOL_CONFIGS[toolId];
-      registerMcp(config, stormDir, created, appended);
       if (config.rulesFile && schemaRules) {
         const rulesPath = join(process.cwd(), config.rulesFile);
         if (existsSync(rulesPath)) {
@@ -1830,7 +2216,12 @@ async function setup() {
     console.log();
     console.log(dimText('  Note: Windsurf requires manual MCP configuration.'));
     console.log(dimText(`  Add storm-schema server in Windsurf settings with command:`));
-    console.log(dimText(`    node ${join(stormDir, 'mcp-server.mjs')}`));
+    for (const [alias, connectionName] of Object.entries(databases)) {
+      const connectionPath = resolveConnection(connectionName);
+      if (connectionPath) {
+        console.log(dimText(`    node ${join(homedir(), '.storm', 'server.mjs')} ${connectionPath}`));
+      }
+    }
   }
 
   console.log();
@@ -1951,20 +2342,25 @@ async function demo() {
   }
 
   console.log(dimText('  Setting up MCP server for database schema access...'));
-  const stormDir = await setupDatabase(demoConnection);
-  const dbConfigured = stormDir !== null;
+  const connectionName = 'demo-' + dialect;
+  const result = await setupGlobalConnection(connectionName, demoConnection);
+  const dbConfigured = result !== null;
 
   if (dbConfigured) {
-    // Register MCP for the selected tool.
-    registerMcp(config, stormDir, created, appended);
+    // Write project databases.json.
+    writeDatabases({ default: connectionName });
 
-    // Add MCP config file to .gitignore.
-    if (config.mcpFile) {
-      const gitignorePath = join(cwd, '.gitignore');
-      let gitignore = existsSync(gitignorePath) ? readFileSync(gitignorePath, 'utf-8') : '';
-      if (!gitignore.includes(config.mcpFile)) {
-        appendFileSync(gitignorePath, `\n# Storm MCP (machine-specific paths)\n${config.mcpFile}\n`);
-      }
+    // Register MCP for the selected tool.
+    registerMcp(config, 'default', result.path, created, appended);
+
+    // Add .storm/ and MCP config file to .gitignore.
+    const gitignorePath = join(cwd, '.gitignore');
+    const ignoreEntries = ['.storm/'];
+    if (config.mcpFile) ignoreEntries.push(config.mcpFile);
+    let gitignore = existsSync(gitignorePath) ? readFileSync(gitignorePath, 'utf-8') : '';
+    const missing = ignoreEntries.filter(e => !gitignore.includes(e));
+    if (missing.length > 0) {
+      appendFileSync(gitignorePath, `\n# Storm MCP (machine-specific)\n${missing.join('\n')}\n`);
     }
 
     // Fetch and install schema rules into the rules block.
@@ -2067,7 +2463,13 @@ async function run() {
     storm init               Configure rules, skills, and database (default)
     storm demo               Create a demo project in an empty directory
     storm update             Update rules and skills (non-interactive)
+    storm db                 List global database connections
+    storm db add [name]      Add a global database connection
+    storm db remove [name]   Remove a global database connection
     storm mcp                Re-register MCP servers for configured tools
+    storm mcp add [alias]    Add a database connection to this project
+    storm mcp list           List project database connections
+    storm mcp remove [alias] Remove a database connection
 
   ${dimText('Options:')}
     --help, -h               Show this help message
@@ -2086,8 +2488,12 @@ async function run() {
 
   if (command === 'update') {
     await update();
+  } else if (command === 'db') {
+    const dbSubArgs = args.filter(a => !a.startsWith('-')).slice(1);
+    await updateDb(dbSubArgs);
   } else if (command === 'mcp') {
-    await updateMcp();
+    const mcpSubArgs = args.filter(a => !a.startsWith('-')).slice(1);
+    await updateMcp(mcpSubArgs);
   } else if (command === 'demo') {
     await demo();
   } else {

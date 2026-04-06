@@ -5,12 +5,8 @@ import TabItem from '@theme/TabItem';
 
 Storm is an AI-first ORM. Entities are plain Kotlin data classes or Java records. Queries are explicit SQL. Built-in verification lets AI validate its own work before anything touches production.
 
-:::caution Storm is not for vibe coding
-Database code affects data integrity, performance, and security. Generating it without understanding or verifying the result is not something Storm encourages.
-
+:::info AI-first, not AI-only
 Storm keeps you in control. `ORMTemplate.validateSchema()` validates that entities match the database. `SqlCapture` validates that queries match the intent. `@StormTest` runs both checks in an isolated in-memory database before anything reaches production. The AI generates code, then Storm verifies it. That is what AI-first means here.
-
-Automated verification catches mistakes, but it does not replace understanding. Your data layer is not the place to let the codebase drift away from you.
 :::
 
 ---
@@ -34,17 +30,7 @@ The interactive setup walks you through three steps:
 
 ### 1. Select AI tools
 
-Choose which AI coding tools you use. Storm configures each one with rules, skills, and (optionally) a database-aware MCP server. You can select multiple tools if your team uses different editors.
-
-| Tool | Rules | Skills | MCP |
-|------|-------|--------|-----|
-| Claude Code | CLAUDE.md | .claude/skills/ | .mcp.json |
-| Cursor | .cursor/rules/storm.md | .cursor/rules/ | .cursor/mcp.json |
-| GitHub Copilot | .github/copilot-instructions.md | .github/instructions/ | (tool-dependent) |
-| Windsurf | .windsurf/rules/storm.md | .windsurf/rules/ | (manual config) |
-| Codex | AGENTS.md | - | .codex/config.toml |
-
-Each tool stores its configuration in a different location, but the content is the same: Storm's conventions, entity rules, query patterns, and verification guidelines.
+Choose which AI coding tools you use. Storm configures each one with rules, skills, and (optionally) a database-aware MCP server. You can select multiple tools if your team uses different editors. Storm currently supports Claude Code, Cursor, GitHub Copilot, Windsurf, and Codex. Each tool stores its configuration in a different location, but the content is the same: Storm's conventions, entity rules, query patterns, and verification guidelines. See [AI Tools Reference](ai-reference.md) for the full list of configuration locations.
 
 ### 2. Rules and skills
 
@@ -52,39 +38,17 @@ For each selected tool, Storm installs two types of AI context:
 
 **Rules** are a project-level configuration file that is always loaded by the AI tool. They contain Storm's key patterns, naming conventions, and critical constraints (immutable QueryBuilder, no collection fields on entities, `Ref<T>` for circular references, etc.). The rules ensure the AI follows Storm's conventions in every interaction, without you having to repeat them.
 
-**Skills** are per-topic guides that the AI loads on demand when working on a specific task. Each skill contains focused instructions, code examples, and common pitfalls for one area of Storm. Skills are fetched from orm.st during setup and can be updated automatically on each run without requiring a CLI update.
-
-| Skill | Purpose |
-|-------|---------|
-| storm-setup | Configure dependencies (detects Spring Boot, Ktor, or standalone) |
-| storm-docs | Load full Storm documentation |
-| storm-entity-kotlin | Create Kotlin entities |
-| storm-entity-java | Create Java entities |
-| storm-repository-kotlin | Write Kotlin repositories (framework-aware: Spring Boot, Ktor, standalone) |
-| storm-repository-java | Write Java repositories |
-| storm-query-kotlin | Kotlin QueryBuilder queries |
-| storm-query-java | Java QueryBuilder queries |
-| storm-sql-kotlin | Kotlin SQL Templates |
-| storm-sql-java | Java SQL Templates |
-| storm-json-kotlin / storm-json-java | JSON columns and JSON aggregation |
-| storm-serialization-kotlin / storm-serialization-java | Entity serialization for REST APIs (framework-aware content negotiation) |
-| storm-migration | Write Flyway/Liquibase migration SQL |
+**Skills** are per-topic guides that the AI loads on demand when working on a specific task. Each skill contains focused instructions, code examples, and common pitfalls for one area of Storm (entities, queries, repositories, migrations, JSON, serialization, and more). Skills are fetched from orm.st during setup and can be updated automatically on each run without requiring a CLI update. See [AI Tools Reference](ai-reference.md#skills) for the full list.
 
 ### 3. Database connection (optional)
 
 If you have a local development database running, Storm can set up a schema-aware MCP server. This gives your AI tool access to your actual database structure (table definitions, column types, foreign keys) without exposing credentials or data.
 
-The MCP server runs locally on your machine, exposes only schema metadata, and stores credentials in `~/.storm/` (outside your project, outside the LLM's reach). It supports PostgreSQL, MySQL, MariaDB, Oracle, SQL Server, SQLite, and H2.
+The MCP server runs locally on your machine, exposes only schema metadata, and stores credentials in `~/.storm/` (outside your project, outside the LLM's reach). It supports PostgreSQL, MySQL, MariaDB, Oracle, SQL Server, SQLite, and H2. You can connect multiple databases to a single project, even across different database types.
 
-With the database connected, three additional skills become available:
+With the database connected, three additional skills become available for schema inspection, entity validation against the live schema, and entity generation from database tables. See [AI Tools Reference](ai-reference.md#database-skills) for details.
 
-| Skill | Purpose |
-|-------|---------|
-| storm-schema | Inspect your live database schema |
-| storm-validate | Compare entities against the live schema |
-| storm-entity-from-schema | Generate, update, or refactor entities from database tables |
-
-To reconfigure the database connection later, run `storm mcp`.
+To manage database connections later, use `storm db` for the global connection library and `storm mcp` for project-level configuration. See [Database Connections & MCP](database-and-mcp.md) for the full guide.
 
 ---
 
