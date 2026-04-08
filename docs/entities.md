@@ -292,19 +292,6 @@ data class User(
 ) : Entity<Int>
 ```
 
-For compound unique constraints spanning multiple columns, use an inline record annotated with `@UK`. When the compound key columns overlap with other fields on the entity, use `@Persist(insertable = false, updatable = false)` to prevent duplicate persistence:
-
-```kotlin
-data class UserEmailUK(val userId: Int, val email: String)
-
-data class SomeEntity(
-    @PK val id: Int = 0,
-    @FK val user: User,
-    val email: String,
-    @UK @Persist(insertable = false, updatable = false) val uniqueKey: UserEmailUK
-) : Entity<Int>
-```
-
 </TabItem>
 <TabItem value="java" label="Java">
 
@@ -315,20 +302,46 @@ record User(@PK Integer id,
 ) implements Entity<Integer> {}
 ```
 
-For compound unique constraints spanning multiple columns, use an inline record annotated with `@UK`. When the compound key columns overlap with other fields on the entity, use `@Persist(insertable = false, updatable = false)` to prevent duplicate persistence:
+</TabItem>
+</Tabs>
+
+### Compound Unique Keys
+
+For compound unique constraints that need a metamodel key (e.g., for keyset pagination or type-safe lookups), use an inline record annotated with `@UK`. When the compound key columns overlap with other fields on the entity, use `@Persist(insertable = false, updatable = false)` to prevent duplicate persistence:
+
+<Tabs groupId="language">
+<TabItem value="kotlin" label="Kotlin" default>
+
+```kotlin
+data class UserEmailUk(val userId: Int, val email: String)
+
+data class SomeEntity(
+    @PK val id: Int = 0,
+    @FK val user: User,
+    val email: String,
+    @UK @Persist(insertable = false, updatable = false) val uniqueKey: UserEmailUk
+) : Entity<Int>
+```
+
+</TabItem>
+<TabItem value="java" label="Java">
 
 ```java
-record UserEmailUK(int userId, String email) {}
+record UserEmailUk(int userId, String email) {}
 
 record SomeEntity(@PK Integer id,
                   @Nonnull @FK User user,
                   @Nonnull String email,
-                  @UK @Persist(insertable = false, updatable = false) UserEmailUK uniqueKey
+                  @UK @Persist(insertable = false, updatable = false) UserEmailUk uniqueKey
 ) implements Entity<Integer> {}
 ```
 
 </TabItem>
 </Tabs>
+
+Compound unique constraints that do not require a metamodel key do not need to be modeled in the entity. Schema validation does not warn about unmodeled compound constraints.
+
+Use `@UK(constraint = false)` when the unique constraint does not exist in the database — for example, when uniqueness is enforced at the application level.
 
 When a column is not annotated with `@UK` but becomes unique in a specific query context (for example, a GROUP BY column produces unique values in the result set), wrap the metamodel with `.key()` (Kotlin) or `Metamodel.key()` (Java) to indicate it can serve as a scrolling cursor. See [Manual Key Wrapping](metamodel.md#manual-key-wrapping) for details.
 

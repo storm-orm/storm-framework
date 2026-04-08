@@ -63,32 +63,27 @@ import java.lang.annotation.Target;
  * ) : Entity<Int>
  * }</pre>
  *
- * <p>For compound unique constraints spanning multiple columns, use an inline record annotated with {@code @UK}:
+ * <h2>Compound Unique Keys</h2>
+ *
+ * <p>For compound unique constraints that need a metamodel key (e.g., for keyset pagination or type-safe lookups),
+ * use an inline record annotated with {@code @UK}:</p>
  *
  * <p>Java:
  * <pre>{@code
- * record UserEmailUK(int userId, String email) {}
+ * record UserEmailUk(int userId, String email) {}
  *
  * record SomeEntity(@PK Integer id,
  *                   @FK User user,
  *                   String email,
- *                   @UK @Persist(insertable = false, updatable = false) UserEmailUK uniqueKey
+ *                   @UK @Persist(insertable = false, updatable = false) UserEmailUk uniqueKey
  * ) implements Entity<Integer> {}
  * }</pre>
  *
- * <p>Kotlin:
- * <pre>{@code
- * data class UserEmailUK(val userId: Int, val email: String)
- *
- * data class SomeEntity(@PK val id: Int?,
- *                       @FK val user: User,
- *                       val email: String,
- *                       @UK @Persist(insertable = false, updatable = false) val uniqueKey: UserEmailUK
- * ) : Entity<Int>
- * }</pre>
- *
  * <p>The {@code @Persist(insertable = false, updatable = false)} annotation prevents the inline record's columns
- * from being persisted separately when they overlap with other fields on the entity.
+ * from being persisted separately when they overlap with other fields on the entity.</p>
+ *
+ * <p>Compound unique constraints that do not require a metamodel key do not need to be modeled in the entity.
+ * Schema validation does not warn about unmodeled compound constraints.</p>
  *
  * <p>The metamodel processor generates {@link Metamodel.Key} instances for fields annotated with {@code @UK},
  * enabling type-safe keyset pagination and unique field lookups via repository methods like

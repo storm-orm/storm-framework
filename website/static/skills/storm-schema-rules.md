@@ -3,7 +3,7 @@
 This project has a Storm Schema MCP server configured. Use the following tools to access the live database schema:
 
 - `list_tables` - List all tables in the database
-- `describe_table(table)` - Describe a table's columns, types, nullability, primary key, and foreign keys
+- `describe_table(table)` - Describe a table's columns, types, nullability, primary key, foreign keys (with cascade rules), and unique constraints
 
 Use these tools when:
 - Asked about the database schema or data model

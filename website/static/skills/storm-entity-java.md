@@ -99,13 +99,20 @@ Generation rules:
    ) implements Entity<User> {}
    ```
 
-10. Unique keys, embedded components, enums, optimistic locking: same rules as Kotlin.
+10. Unique keys:
+   - **Single-column** (apply by default): `@UK @Nonnull String email`. Generates a `Metamodel.Key` for type-safe lookups and scrolling. Always add `@UK` when the database has a single-column unique constraint — it's one annotation for free value.
+   - **Composite** (only when needed in code): use an inline record + `@UK @Persist(insertable = false, updatable = false)`. Only add this when the user explicitly needs a composite `Metamodel.Key` for keyset pagination or type-safe lookups. Composite unique constraints that don't need a Key don't need to be modeled.
+   - `@UK(constraint = false)` suppresses schema validation when no database constraint exists.
 
-11. Java records are immutable. Consider Lombok \`@Builder(toBuilder = true)\` for copy-with-modification.
+11. Embedded components, enums, optimistic locking: same rules as Kotlin.
 
-12. Use descriptive variable names, never abbreviated.
+12. Java records are immutable. Consider Lombok \`@Builder(toBuilder = true)\` for copy-with-modification.
 
-13. **Use `Ref` for map keys and set membership**: Prefer `Ref<Entity>` (via `.ref()`) for all entity lookups, map keys, and set membership. `Ref` provides identity-based `equals`/`hashCode` on the primary key, making it safe and efficient. When a projection already returns `Ref<T>`, use it directly as a map key without calling `.ref()` again.
+13. Use descriptive variable names, never abbreviated.
+
+14. **Use `Ref` for map keys and set membership**: Prefer `Ref<Entity>` (via `.ref()`) for all entity lookups, map keys, and set membership. `Ref` provides identity-based `equals`/`hashCode` on the primary key, making it safe and efficient. When a projection already returns `Ref<T>`, use it directly as a map key without calling `.ref()` again.
+
+15. **Typed ID from `Ref`:** Use `Ref.entityId(ref)` to extract a type-safe ID from a `Ref`. For projections, use `Ref.projectionId(ref)`. Avoid `ref.id()` — it returns `Object` and requires an unsafe cast.
 
 After generating, remind the user to rebuild for metamodel generation.
 

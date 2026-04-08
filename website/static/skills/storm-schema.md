@@ -13,5 +13,6 @@ Generation conventions:
 - @FK for FKs, nullability from NOT NULL constraints
 - CIRCULAR: if two tables reference each other, at least one must use Ref<T>
 - Self-referencing: always Ref<T>
-- @UK for unique constraints
+- @UK for single-column unique constraints (apply by default). Composite unique constraints don't need modeling unless the user needs a composite Metamodel.Key
+- FK cascade rules (onDelete/onUpdate) are exposed by describe_table for context but are not modeled by Storm — cascade behavior is a database-level concern
 - Descriptive names, never abbreviated

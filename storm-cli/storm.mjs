@@ -9,7 +9,7 @@ import { basename, join, dirname } from 'path';
 import { homedir } from 'os';
 import { execSync } from 'child_process';
 
-const VERSION = '1.11.1';
+const VERSION = '1.11.2';
 
 // ─── ANSI ────────────────────────────────────────────────────────────────────
 
@@ -1091,9 +1091,23 @@ function describeSqlite(tableName) {
   var quoted = '"' + tableName.replace(/"/g, '""') + '"';
   var columns = db.pragma('table_info(' + quoted + ')');
   var fks = db.pragma('foreign_key_list(' + quoted + ')');
+  var indexes = db.pragma('index_list(' + quoted + ')');
   var fkMap = {};
   fks.forEach(function(fk) {
-    fkMap[fk.from] = { referencedTable: fk.table, referencedColumn: fk.to };
+    fkMap[fk.from] = {
+      referencedTable: fk.table, referencedColumn: fk.to,
+      onDelete: fk.on_delete, onUpdate: fk.on_update,
+    };
+  });
+  var uniqueConstraints = [];
+  indexes.forEach(function(idx) {
+    if (idx.unique && idx.origin !== 'pk') {
+      var idxCols = db.pragma('index_info("' + idx.name.replace(/"/g, '""') + '")');
+      uniqueConstraints.push({
+        name: idx.name,
+        columns: idxCols.map(function(c) { return c.name; }),
+      });
+    }
   });
   return {
     table: tableName,
@@ -1104,6 +1118,7 @@ function describeSqlite(tableName) {
         foreignKey: fkMap[c.name] || null,
       };
     }),
+    uniqueConstraints: uniqueConstraints,
   };
 }
 
@@ -1118,23 +1133,40 @@ async function describeOracle(tableName) {
     + ' WHERE cons.owner = ' + ph(1) + ' AND cons.table_name = ' + ph(2)
     + " AND cons.constraint_type = 'P' ORDER BY cols.position";
   var fkSql = 'SELECT cols.column_name, r_cols.table_name AS referenced_table,'
-    + ' r_cols.column_name AS referenced_column FROM all_constraints cons'
+    + ' r_cols.column_name AS referenced_column, cons.delete_rule'
+    + ' FROM all_constraints cons'
     + ' JOIN all_cons_columns cols ON cons.constraint_name = cols.constraint_name'
     + ' AND cons.owner = cols.owner'
     + ' JOIN all_cons_columns r_cols ON cons.r_constraint_name = r_cols.constraint_name'
     + ' AND cons.r_owner = r_cols.owner'
     + ' WHERE cons.owner = ' + ph(1) + ' AND cons.table_name = ' + ph(2)
     + " AND cons.constraint_type = 'R'";
+  var ukSql = 'SELECT cons.constraint_name, cols.column_name FROM all_constraints cons'
+    + ' JOIN all_cons_columns cols ON cons.constraint_name = cols.constraint_name'
+    + ' AND cons.owner = cols.owner'
+    + ' WHERE cons.owner = ' + ph(1) + ' AND cons.table_name = ' + ph(2)
+    + " AND cons.constraint_type = 'U' ORDER BY cons.constraint_name, cols.position";
   var params = [schemaName, tableName];
   var columns = await dbQuery(colSql, params);
   var pks = await dbQuery(pkSql, params);
   var fks = await dbQuery(fkSql, params);
+  var uks = await dbQuery(ukSql, params);
   var pkNames = pks.map(function(r) { return r.COLUMN_NAME; });
   var fkMap = {};
   fks.forEach(function(r) {
     fkMap[r.COLUMN_NAME] = {
       referencedTable: r.REFERENCED_TABLE, referencedColumn: r.REFERENCED_COLUMN,
+      onDelete: r.DELETE_RULE, onUpdate: 'NO ACTION',
     };
+  });
+  var uniqueConstraints = [];
+  var ukMap = {};
+  uks.forEach(function(r) {
+    if (!ukMap[r.CONSTRAINT_NAME]) {
+      ukMap[r.CONSTRAINT_NAME] = { name: r.CONSTRAINT_NAME, columns: [] };
+      uniqueConstraints.push(ukMap[r.CONSTRAINT_NAME]);
+    }
+    ukMap[r.CONSTRAINT_NAME].columns.push(r.COLUMN_NAME);
   });
   return {
     table: tableName,
@@ -1146,6 +1178,7 @@ async function describeOracle(tableName) {
         foreignKey: fkMap[c.COLUMN_NAME] || null,
       };
     }),
+    uniqueConstraints: uniqueConstraints,
   };
 }
 
@@ -1165,7 +1198,8 @@ async function describeInfoSchema(tableName) {
   var fkSql;
   if (dbType === 'pg') {
     fkSql = 'SELECT kcu.column_name, ccu.table_name AS referenced_table,'
-      + ' ccu.column_name AS referenced_column'
+      + ' ccu.column_name AS referenced_column,'
+      + ' rc.update_rule, rc.delete_rule'
       + ' FROM information_schema.table_constraints tc'
       + ' JOIN information_schema.key_column_usage kcu'
       + '   ON tc.constraint_name = kcu.constraint_name'
@@ -1173,30 +1207,49 @@ async function describeInfoSchema(tableName) {
       + ' JOIN information_schema.constraint_column_usage ccu'
       + '   ON tc.constraint_name = ccu.constraint_name'
       + '   AND tc.table_schema = ccu.table_schema'
+      + ' JOIN information_schema.referential_constraints rc'
+      + '   ON tc.constraint_name = rc.constraint_name'
+      + '   AND tc.constraint_schema = rc.constraint_schema'
       + ' WHERE tc.table_schema = ' + ph(1) + ' AND tc.table_name = ' + ph(2)
       + "   AND tc.constraint_type = 'FOREIGN KEY'";
   } else if (dbType === 'mssql') {
     fkSql = 'SELECT COL_NAME(fkc.parent_object_id, fkc.parent_column_id) AS column_name,'
       + ' OBJECT_NAME(fkc.referenced_object_id) AS referenced_table,'
-      + ' COL_NAME(fkc.referenced_object_id, fkc.referenced_column_id) AS referenced_column'
+      + ' COL_NAME(fkc.referenced_object_id, fkc.referenced_column_id) AS referenced_column,'
+      + " REPLACE(fk.delete_referential_action_desc, '_', ' ') AS delete_rule,"
+      + " REPLACE(fk.update_referential_action_desc, '_', ' ') AS update_rule"
       + ' FROM sys.foreign_key_columns fkc'
+      + ' JOIN sys.foreign_keys fk ON fkc.constraint_object_id = fk.object_id'
       + ' JOIN sys.tables t ON fkc.parent_object_id = t.object_id'
       + ' WHERE SCHEMA_NAME(t.schema_id) = ' + ph(1) + ' AND t.name = ' + ph(2);
   } else {
     fkSql = 'SELECT kcu.column_name,'
       + ' kcu.referenced_table_name AS referenced_table,'
-      + ' kcu.referenced_column_name AS referenced_column'
+      + ' kcu.referenced_column_name AS referenced_column,'
+      + ' rc.update_rule, rc.delete_rule'
       + ' FROM information_schema.key_column_usage kcu'
       + ' JOIN information_schema.table_constraints tc'
       + '   ON tc.constraint_name = kcu.constraint_name'
       + '   AND tc.table_schema = kcu.table_schema'
+      + ' JOIN information_schema.referential_constraints rc'
+      + '   ON tc.constraint_name = rc.constraint_name'
+      + '   AND tc.constraint_schema = rc.constraint_schema'
       + ' WHERE kcu.table_schema = ' + ph(1) + ' AND kcu.table_name = ' + ph(2)
       + "   AND tc.constraint_type = 'FOREIGN KEY'";
   }
+  var ukSql = 'SELECT tc.constraint_name, kcu.column_name'
+    + ' FROM information_schema.table_constraints tc'
+    + ' JOIN information_schema.key_column_usage kcu'
+    + '   ON tc.constraint_name = kcu.constraint_name'
+    + '   AND tc.table_schema = kcu.table_schema'
+    + ' WHERE tc.table_schema = ' + ph(1) + ' AND tc.table_name = ' + ph(2)
+    + "   AND tc.constraint_type = 'UNIQUE'"
+    + ' ORDER BY tc.constraint_name, kcu.ordinal_position';
   var params = [schemaName, tableName];
   var columns = await dbQuery(colSql, params);
   var pks = await dbQuery(pkSql, params);
   var fks = await dbQuery(fkSql, params);
+  var uks = await dbQuery(ukSql, params);
   var pkNames = pks.map(function(r) { return r.column_name || r.COLUMN_NAME; });
   var fkMap = {};
   fks.forEach(function(r) {
@@ -1204,7 +1257,20 @@ async function describeInfoSchema(tableName) {
     fkMap[col] = {
       referencedTable: r.referenced_table || r.REFERENCED_TABLE,
       referencedColumn: r.referenced_column || r.REFERENCED_COLUMN,
+      onDelete: r.delete_rule || r.DELETE_RULE || 'NO ACTION',
+      onUpdate: r.update_rule || r.UPDATE_RULE || 'NO ACTION',
     };
+  });
+  var uniqueConstraints = [];
+  var ukMap = {};
+  uks.forEach(function(r) {
+    var constraintName = r.constraint_name || r.CONSTRAINT_NAME;
+    var colName = r.column_name || r.COLUMN_NAME;
+    if (!ukMap[constraintName]) {
+      ukMap[constraintName] = { name: constraintName, columns: [] };
+      uniqueConstraints.push(ukMap[constraintName]);
+    }
+    ukMap[constraintName].columns.push(colName);
   });
   return {
     table: tableName,
@@ -1218,6 +1284,7 @@ async function describeInfoSchema(tableName) {
         foreignKey: fkMap[name] || null,
       };
     }),
+    uniqueConstraints: uniqueConstraints,
   };
 }
 
@@ -1231,7 +1298,7 @@ var TOOLS = [
   },
   {
     name: 'describe_table',
-    description: 'Describe a table: columns, types, nullability, primary key, and foreign keys.',
+    description: 'Describe a table: columns, types, nullability, primary key, foreign keys (with cascade rules), and unique constraints.',
     inputSchema: {
       type: 'object',
       properties: { table: { type: 'string', description: 'Table name' } },

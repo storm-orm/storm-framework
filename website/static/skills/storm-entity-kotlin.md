@@ -41,7 +41,10 @@ Generation rules:
 
 5. NO COLLECTION FIELDS. No \`List<Child>\` on entities. Query the child side instead: \`orm.findAll(User_.city eq city)\`.
 
-6. Unique keys: \`@UK val email: String\` for type-safe lookups.
+6. Unique keys:
+   - **Single-column** (apply by default): `@UK val email: String`. Generates a `Metamodel.Key` for type-safe lookups and scrolling. Always add `@UK` when the database has a single-column unique constraint — it's one annotation for free value.
+   - **Composite** (only when needed in code): use an inline record + `@UK @Persist(insertable = false, updatable = false)`. Only add this when the user explicitly needs a composite `Metamodel.Key` for keyset pagination or type-safe lookups. Composite unique constraints that don't need a Key don't need to be modeled.
+   - `@UK(constraint = false)` suppresses schema validation when no database constraint exists.
 
 7. Embedded components: Separate data class (no @PK, no Entity interface). Fields become parent table columns. Inlining is implicit — `@Inline` never needs to be specified explicitly. When `@Inline` is used, the field must be an inline (embedded) type, not a scalar or entity.
 
@@ -123,7 +126,7 @@ Generation rules:
 
 14. **Use `Ref` for map keys and set membership**: Prefer `Ref<Entity>` (via `.ref()`) for all entity lookups, map keys, and set membership. `Ref` provides identity-based `equals`/`hashCode` on the primary key, making it safe and efficient. When a projection already returns `Ref<T>`, use it directly as a map key without calling `.ref()` again.
 
-15. **`Ref.id()` in Kotlin:** `ref.id` does not work in Kotlin — use `ref.id()` (Java interface method). The return type is `Any`, so a cast is needed: `ref.id() as String`. This is relevant when extracting IDs from `Ref` at system boundaries (e.g., URL parameters, response bodies).
+15. **Typed ID from `Ref`:** Use the `entityId()` extension function to extract a type-safe ID: `ref.entityId()` (import `st.orm.template.entityId`). For projections, use `ref.projectionId()` (import `st.orm.template.projectionId`). Avoid `ref.id()` — it returns `Any` and requires an unsafe cast.
 
 After generating, remind the user to rebuild for metamodel generation (e.g., \`City_\`).
 

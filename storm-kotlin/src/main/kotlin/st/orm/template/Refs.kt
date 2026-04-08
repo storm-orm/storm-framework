@@ -17,6 +17,7 @@ package st.orm.template
 
 import st.orm.Data
 import st.orm.Entity
+import st.orm.Projection
 import st.orm.Ref
 
 /**
@@ -42,3 +43,29 @@ fun <E : Entity<*>> E.ref(): Ref<E> = Ref.of(this)
  * Requires `import st.orm.template.refById`.
  */
 inline fun <reified T : Data> refById(id: Any): Ref<T> = Ref.of(T::class.java, id)
+
+/**
+ * Extracts the primary key from an entity ref, returning a type-safe id.
+ *
+ * Usage:
+ * ```kotlin
+ * val ref: Ref<User> = ...
+ * val id: Int = ref.entityId()
+ * ```
+ *
+ * Requires `import st.orm.template.entityId`.
+ */
+fun <ID, E : Entity<ID>> Ref<E>.entityId(): ID = Ref.entityId(this)
+
+/**
+ * Extracts the primary key from a projection ref, returning a type-safe id.
+ *
+ * Usage:
+ * ```kotlin
+ * val ref: Ref<BasketSummary> = ...
+ * val id: Int = ref.projectionId()
+ * ```
+ *
+ * Requires `import st.orm.template.projectionId`.
+ */
+fun <ID, P : Projection<ID>> Ref<P>.projectionId(): ID = Ref.projectionId(this)

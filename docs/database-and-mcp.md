@@ -212,7 +212,7 @@ The MCP server exposes exactly two read-only tools:
 | Tool | What it returns |
 |------|----------------|
 | `list_tables` | Table names |
-| `describe_table` | Column names, types, nullability, primary keys, foreign keys |
+| `describe_table` | Column names, types, nullability, primary keys, foreign keys (with cascade rules), unique constraints |
 
 No data access. No writes. No credential exposure.
 

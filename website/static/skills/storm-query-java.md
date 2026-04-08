@@ -142,9 +142,24 @@ List<CityUserStats> topCities = orm.entity(City.class)
     .having(RAW."COUNT(*) >= \{minUsers}")               // template form for aggregate expressions
     .orderByDescending(RAW."AVG(\{User_.age})")
     .getResultList();
+
+// Multi-field groupBy — always use the varargs metamodel form:
+record CityActiveCount(@FK Ref<City> city, boolean active, long userCount) implements Data {}
+
+List<CityActiveCount> counts = orm.entity(User.class)
+    .select(CityActiveCount.class, RAW."\{User_.city}, \{User_.active}, COUNT(*)")
+    .groupBy(User_.city, User_.active)    // ✅ varargs metamodel form
+    .getResultList();
+
+// ❌ Don't use template when metamodel fields work:
+//    .groupBy(RAW."\{User_.city}, \{User_.active}")
+// ✅ Use varargs metamodel form — code-first, type-safe:
+//    .groupBy(User_.city, User_.active)
 ```
 
-Always prefer code over templates. Templates are for expressions QueryBuilder can't produce (e.g., `COUNT(*)`, `AVG()`). `groupBy`, `having`, and `orderBy` also accept template forms when needed (e.g., `.having(RAW."COUNT(*) >= \{min}")`, `.orderByDescending(RAW."AVG(\{User_.age})")`), but use the code-based methods when possible. Do NOT write the entire query as a raw SQL string.
+**`Ref<T>` in aggregation result types:** When the SELECT clause references a FK field (`\{User_.city}`) rather than a full entity (`\{City.class}`), use `Ref<T>` in the result type — not the raw ID type and not the full entity. `Ref<City>` maps correctly to the FK column value. Use the full entity type only when the SELECT includes all its columns via `\{City.class}`.
+
+Always prefer code over templates. Templates are for expressions QueryBuilder can't produce (e.g., `COUNT(*)`, `AVG()`). `groupBy`, `having`, and `orderBy` also accept template forms when needed (e.g., `.having(RAW."COUNT(*) >= \{min}")`, `.orderByDescending(RAW."AVG(\{User_.age})")`), but **always use the varargs metamodel form for `groupBy`** and **the metamodel form for `orderBy`** when possible — reserve template forms for computed expressions. Do NOT write the entire query as a raw SQL string.
 
 ## Row Locking
 
@@ -342,6 +357,7 @@ Critical rules:
 - Streaming: `select().getResultStream()` returns a `Stream`. ALWAYS use try-with-resources to avoid connection leaks. There are no `selectBy` methods that return Stream directly -- always use `select()` (optionally with predicate) and then `.getResultStream()`.
 - **Metamodel navigation depth**: Multiple levels of navigation are allowed on the root entity. Joined (non-root) entities can only navigate one level deep. For deeper navigation, explicitly join the intermediate entity.
 - **Use `Ref` for map keys and set membership**: Prefer `Ref<Entity>` (via `.ref()`) for map keys, set membership, and identity-based lookups. `Ref` provides identity-based `equals`/`hashCode` on the primary key.
+- **Typed ID from `Ref`:** Use `Ref.entityId(ref)` to extract a type-safe ID. For projections, use `Ref.projectionId(ref)`. Avoid `ref.id()` — it returns `Object` and requires an unsafe cast.
 
 ## Verification
 

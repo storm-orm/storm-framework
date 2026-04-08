@@ -11,7 +11,8 @@ Compare Storm entities against the live database schema.
    - Extra columns that are NOT NULL without a default value (these would cause INSERT failures)
    - FK/`@FK` mismatches (FK referencing wrong table is an error; missing FK constraint is a warning)
    - Nullability differences (entity non-null but DB nullable is a warning)
-   - Missing unique constraints for @UK fields
+   - Missing unique constraints for @UK fields (use `uniqueConstraints` array from `describe_table`)
+   - Do NOT validate or report on FK cascade rules (onDelete/onUpdate) — Storm does not model cascade behavior
    - Primary key issues: mismatch between entity and DB PK columns is an error; missing PK constraint is a warning
    - Missing sequences for @PK(generation = SEQUENCE) fields
 
@@ -20,6 +21,7 @@ Respect suppression annotations:
 - Skip fields annotated with `@DbIgnore`
 - `@PK(constraint = false)` suppresses missing PK constraint warning
 - `@UK(constraint = false)` suppresses missing unique constraint warning
+- Composite (multi-column) DB unique constraints that are not modeled in the entity do NOT produce a warning — modeling them requires structural changes that should be a deliberate choice
 - `@FK(constraint = false)` suppresses missing FK constraint warning
 - Polymorphic FKs (sealed interface targets) cannot have standard DB FK constraints; skip FK validation for these
 
