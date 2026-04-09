@@ -1,0 +1,954 @@
+<!DOCTYPE html>
+<html class="no-js">
+<head>
+    <meta name="viewport" content="width=device-width, initial-scale=1" charset="UTF-8">
+    <title>st.orm.template</title>
+    <link href="../../images/logo-icon.svg" rel="icon" type="image/svg">
+    <script>var pathToRoot = "../../";</script>
+    <script>document.documentElement.classList.replace("no-js","js");</script>
+    <script>const storage = localStorage.getItem("dokka-dark-mode")
+    if (storage == null) {
+        const osDarkSchemePreferred = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches
+        if (osDarkSchemePreferred === true) {
+            document.getElementsByTagName("html")[0].classList.add("theme-dark")
+        }
+    } else {
+        const savedDarkMode = JSON.parse(storage)
+        if(savedDarkMode === true) {
+            document.getElementsByTagName("html")[0].classList.add("theme-dark")
+        }
+    }
+    </script>
+<script type="text/javascript" src="https://unpkg.com/kotlin-playground@1/dist/playground.min.js" async="async"></script>
+<script type="text/javascript" src="../../scripts/sourceset_dependencies.js" async="async"></script>
+<link href="../../styles/style.css" rel="Stylesheet">
+<link href="../../styles/main.css" rel="Stylesheet">
+<link href="../../styles/prism.css" rel="Stylesheet">
+<link href="../../styles/logo-styles.css" rel="Stylesheet">
+<link href="../../styles/font-jb-sans-auto.css" rel="Stylesheet">
+<link href="../../ui-kit/ui-kit.min.css" rel="Stylesheet">
+<script type="text/javascript" src="../../scripts/clipboard.js" async="async"></script>
+<script type="text/javascript" src="../../scripts/navigation-loader.js" async="async"></script>
+<script type="text/javascript" src="../../scripts/platform-content-handler.js" async="async"></script>
+<script type="text/javascript" src="../../scripts/main.js" defer="defer"></script>
+<script type="text/javascript" src="../../scripts/prism.js" async="async"></script>
+<script type="text/javascript" src="../../ui-kit/ui-kit.min.js" defer="defer"></script>
+<script type="text/javascript" src="../../scripts/symbol-parameters-wrapper_deferred.js" defer="defer"></script>
+</head>
+<body>
+    <div class="root">
+    <nav class="navigation theme-dark" id="navigation-wrapper">
+            <a class="library-name--link" href="../../index.html">
+                    storm-kotlin
+            </a>
+        <button class="navigation-controls--btn navigation-controls--btn_toc ui-kit_mobile-only" id="toc-toggle"
+                type="button">Toggle table of contents
+        </button>
+        <div class="navigation-controls--break ui-kit_mobile-only"></div>
+        <div class="library-version" id="library-version">
+        </div>
+        <div class="navigation-controls">
+        <div class="filter-section filter-section_loading" id="filter-section">
+                <button class="platform-tag platform-selector jvm-like" data-active=""
+                        data-filter="storm-kotlin/JVM">JVM</button>
+            <div class="dropdown filter-section--dropdown" data-role="dropdown" id="filter-section-dropdown">
+                <button class="button button_dropdown filter-section--dropdown-toggle" role="combobox"
+                        data-role="dropdown-toggle"
+                        aria-controls="platform-tags-listbox"
+                        aria-haspopup="listbox"
+                        aria-expanded="false"
+                        aria-label="Toggle source sets"
+                ></button>
+                <ul role="listbox" id="platform-tags-listbox" class="dropdown--list" data-role="dropdown-listbox">
+                    <div class="dropdown--header"><span>Platform filter</span>
+                        <button class="button" data-role="dropdown-toggle" aria-label="Close platform filter">
+                            <i class="ui-kit-icon ui-kit-icon_cross"></i>
+                        </button>
+                    </div>
+                        <li role="option" class="dropdown--option platform-selector-option jvm-like" tabindex="0">
+                            <label class="checkbox">
+                                <input type="checkbox" class="checkbox--input" id="storm-kotlin/JVM"
+                                       data-filter="storm-kotlin/JVM"/>
+                                <span class="checkbox--icon"></span>
+                                JVM
+                            </label>
+                        </li>
+                </ul>
+                <div class="dropdown--overlay"></div>
+            </div>
+        </div>
+            <button class="navigation-controls--btn navigation-controls--btn_theme" id="theme-toggle-button"
+                    type="button">Switch theme
+            </button>
+            <div class="navigation-controls--btn navigation-controls--btn_search" id="searchBar" role="button">Search in
+                API
+            </div>
+        </div>
+    </nav>
+        <div id="container">
+            <div class="sidebar" id="leftColumn">
+                <div class="dropdown theme-dark_mobile" data-role="dropdown" id="toc-dropdown">
+                    <ul role="listbox" id="toc-listbox" class="dropdown--list dropdown--list_toc-list"
+                        data-role="dropdown-listbox">
+                        <div class="dropdown--header">
+                            <span>
+                                    storm-kotlin
+                            </span>
+                            <button class="button" data-role="dropdown-toggle" aria-label="Close table of contents">
+                                <i class="ui-kit-icon ui-kit-icon_cross"></i>
+                            </button>
+                        </div>
+                        <div class="sidebar--inner" id="sideMenu"></div>
+                    </ul>
+                    <div class="dropdown--overlay"></div>
+                </div>
+            </div>
+            <div id="main">
+<div class="main-content" data-page-type="package" id="content" pageIds="storm-kotlin::st.orm.template////PointingToDeclaration//1326967511">
+  <div class="breadcrumbs"><a href="../../index.html">storm-kotlin</a><span class="delimiter">/</span><span class="current">st.orm.template</span></div>
+  <div class="cover ">
+    <h1 class="cover"><span><span>Package-level</span></span> <span><span>declarations</span></span></h1>
+  </div>
+  <div class="tabbedcontent">
+    <div class="tabs-section" tabs-section="tabs-section"><button class="section-tab" data-active="" data-togglable="TYPE">Types</button><button class="section-tab" data-togglable="FUNCTION,EXTENSION_FUNCTION">Functions</button><button class="section-tab" data-togglable="PROPERTY,EXTENSION_PROPERTY">Properties</button></div>
+    <div class="tabs-section-body">
+      <div data-togglable="TYPE">
+        <h2 class="">Types</h2>
+        <div class="table"><a data-name="1912639191%2FClasslikes%2F1326967511" anchor-label="Column" id="1912639191%2FClasslikes%2F1326967511" data-filterable-set="storm-kotlin/JVM"></a>
+          <div class="table-row" data-filterable-current="storm-kotlin/JVM" data-filterable-set="storm-kotlin/JVM">
+            <div class="main-subrow keyValue ">
+              <div class=""><span class="inline-flex">
+                  <div><a href="-column/index.html"><span><span>Column</span></span></a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="1912639191%2FClasslikes%2F1326967511"></span>
+                    <div class="copy-popup-wrapper "><span class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+                  </span></span></div>
+              <div>
+                <div class="title">
+                  <div class="platform-hinted " data-platform-hinted="data-platform-hinted"><div class="content sourceset-dependent-content" data-active="" data-togglable="storm-kotlin/JVM"><div class="symbol monospace"><span class="token keyword">interface </span><a href="-column/index.html">Column</a></div><div class="brief "><p class="paragraph">Represents metadata about a single column in a database table, as derived from the entity or projection model.</p></div></div></div>
+                </div>
+              </div>
+            </div>
+          </div>
+<a data-name="669235844%2FClasslikes%2F1326967511" anchor-label="JoinBuilder" id="669235844%2FClasslikes%2F1326967511" data-filterable-set="storm-kotlin/JVM"></a>
+          <div class="table-row" data-filterable-current="storm-kotlin/JVM" data-filterable-set="storm-kotlin/JVM">
+            <div class="main-subrow keyValue ">
+              <div class=""><span class="inline-flex">
+                  <div><a href="-join-builder/index.html"><span>Join</span><wbr></wbr><span><span>Builder</span></span></a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="669235844%2FClasslikes%2F1326967511"></span>
+                    <div class="copy-popup-wrapper "><span class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+                  </span></span></div>
+              <div>
+                <div class="title">
+                  <div class="platform-hinted " data-platform-hinted="data-platform-hinted"><div class="content sourceset-dependent-content" data-active="" data-togglable="storm-kotlin/JVM"><div class="symbol monospace"><span class="token keyword">interface </span><a href="-join-builder/index.html">JoinBuilder</a><span class="token operator">&lt;</span><a href="-join-builder/index.html">T</a><span class="token operator"> : </span><span data-unresolved-link="st.orm/Data///PointingToDeclaration/">Data</span><span class="token punctuation">, </span><a href="-join-builder/index.html">R</a><span class="token punctuation">, </span><a href="-join-builder/index.html">ID</a><span class="token operator">&gt;</span></div><div class="brief "><p class="paragraph">A builder for specifying the ON condition of a JOIN clause using a custom template string expression.</p></div></div></div>
+                </div>
+              </div>
+            </div>
+          </div>
+<a data-name="1073902700%2FClasslikes%2F1326967511" anchor-label="Model" id="1073902700%2FClasslikes%2F1326967511" data-filterable-set="storm-kotlin/JVM"></a>
+          <div class="table-row" data-filterable-current="storm-kotlin/JVM" data-filterable-set="storm-kotlin/JVM">
+            <div class="main-subrow keyValue ">
+              <div class=""><span class="inline-flex">
+                  <div><a href="-model/index.html"><span><span>Model</span></span></a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="1073902700%2FClasslikes%2F1326967511"></span>
+                    <div class="copy-popup-wrapper "><span class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+                  </span></span></div>
+              <div>
+                <div class="title">
+                  <div class="platform-hinted " data-platform-hinted="data-platform-hinted"><div class="content sourceset-dependent-content" data-active="" data-togglable="storm-kotlin/JVM"><div class="symbol monospace"><span class="token keyword">interface </span><a href="-model/index.html">Model</a><span class="token operator">&lt;</span><a href="-model/index.html">E</a><span class="token operator"> : </span><span data-unresolved-link="st.orm/Data///PointingToDeclaration/">Data</span><span class="token punctuation">, </span><a href="-model/index.html">ID</a><span class="token operator"> : </span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-any/index.html">Any</a><span class="token operator">&gt;</span></div><div class="brief "><p class="paragraph">Provides metadata about an entity or projection type, including its table name, primary key type, and column definitions.</p></div></div></div>
+                </div>
+              </div>
+            </div>
+          </div>
+<a data-name="-1132566671%2FClasslikes%2F1326967511" anchor-label="ORMTemplate" id="-1132566671%2FClasslikes%2F1326967511" data-filterable-set="storm-kotlin/JVM"></a>
+          <div class="table-row" data-filterable-current="storm-kotlin/JVM" data-filterable-set="storm-kotlin/JVM">
+            <div class="main-subrow keyValue ">
+              <div class=""><span class="inline-flex">
+                  <div><a href="-o-r-m-template/index.html"><span><span>ORMTemplate</span></span></a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="-1132566671%2FClasslikes%2F1326967511"></span>
+                    <div class="copy-popup-wrapper "><span class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+                  </span></span></div>
+              <div>
+                <div class="title">
+                  <div class="platform-hinted " data-platform-hinted="data-platform-hinted"><div class="content sourceset-dependent-content" data-active="" data-togglable="storm-kotlin/JVM"><div class="symbol monospace"><span class="token keyword">interface </span><a href="-o-r-m-template/index.html">ORMTemplate</a> : <a href="-query-template/index.html">QueryTemplate</a>, <a href="../st.orm.repository/-repository-lookup/index.html">RepositoryLookup</a></div><div class="brief "><p class="paragraph">The primary entry point for Storm's ORM functionality in Kotlin, combining SQL template query construction with repository access.</p></div></div></div>
+                </div>
+              </div>
+            </div>
+          </div>
+<a data-name="2045743369%2FClasslikes%2F1326967511" anchor-label="PredicateBuilder" id="2045743369%2FClasslikes%2F1326967511" data-filterable-set="storm-kotlin/JVM"></a>
+          <div class="table-row" data-filterable-current="storm-kotlin/JVM" data-filterable-set="storm-kotlin/JVM">
+            <div class="main-subrow keyValue ">
+              <div class=""><span class="inline-flex">
+                  <div><a href="-predicate-builder/index.html"><span>Predicate</span><wbr></wbr><span><span>Builder</span></span></a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="2045743369%2FClasslikes%2F1326967511"></span>
+                    <div class="copy-popup-wrapper "><span class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+                  </span></span></div>
+              <div>
+                <div class="title">
+                  <div class="platform-hinted " data-platform-hinted="data-platform-hinted"><div class="content sourceset-dependent-content" data-active="" data-togglable="storm-kotlin/JVM"><div class="symbol monospace"><span class="token keyword">interface </span><a href="-predicate-builder/index.html">PredicateBuilder</a><span class="token operator">&lt;</span><a href="-predicate-builder/index.html">T</a><span class="token operator"> : </span><span data-unresolved-link="st.orm/Data///PointingToDeclaration/">Data</span><span class="token punctuation">, </span><a href="-predicate-builder/index.html">R</a><span class="token punctuation">, </span><a href="-predicate-builder/index.html">ID</a><span class="token operator">&gt;</span></div><div class="brief "><p class="paragraph">Represents a composable predicate for the WHERE clause of a query, supporting <code class="lang-kotlin">AND</code> and <code class="lang-kotlin">OR</code> composition.</p></div></div></div>
+                </div>
+              </div>
+            </div>
+          </div>
+<a data-name="-412882102%2FClasslikes%2F1326967511" anchor-label="PreparedQuery" id="-412882102%2FClasslikes%2F1326967511" data-filterable-set="storm-kotlin/JVM"></a>
+          <div class="table-row" data-filterable-current="storm-kotlin/JVM" data-filterable-set="storm-kotlin/JVM">
+            <div class="main-subrow keyValue ">
+              <div class=""><span class="inline-flex">
+                  <div><a href="-prepared-query/index.html"><span>Prepared</span><wbr></wbr><span><span>Query</span></span></a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="-412882102%2FClasslikes%2F1326967511"></span>
+                    <div class="copy-popup-wrapper "><span class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+                  </span></span></div>
+              <div>
+                <div class="title">
+                  <div class="platform-hinted " data-platform-hinted="data-platform-hinted"><div class="content sourceset-dependent-content" data-active="" data-togglable="storm-kotlin/JVM"><div class="symbol monospace"><span class="token keyword">interface </span><a href="-prepared-query/index.html">PreparedQuery</a> : <a href="-query/index.html">Query</a>, <a href="https://docs.oracle.com/javase/8/docs/api/java/lang/AutoCloseable.html">AutoCloseable</a></div><div class="brief "><p class="paragraph">Represents an eagerly constructed, reusable query that supports batch operations and generated key retrieval.</p></div></div></div>
+                </div>
+              </div>
+            </div>
+          </div>
+<a data-name="747411373%2FClasslikes%2F1326967511" anchor-label="Query" id="747411373%2FClasslikes%2F1326967511" data-filterable-set="storm-kotlin/JVM"></a>
+          <div class="table-row" data-filterable-current="storm-kotlin/JVM" data-filterable-set="storm-kotlin/JVM">
+            <div class="main-subrow keyValue ">
+              <div class=""><span class="inline-flex">
+                  <div><a href="-query/index.html"><span><span>Query</span></span></a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="747411373%2FClasslikes%2F1326967511"></span>
+                    <div class="copy-popup-wrapper "><span class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+                  </span></span></div>
+              <div>
+                <div class="title">
+                  <div class="platform-hinted " data-platform-hinted="data-platform-hinted"><div class="content sourceset-dependent-content" data-active="" data-togglable="storm-kotlin/JVM"><div class="symbol monospace"><span class="token keyword">interface </span><a href="-query/index.html">Query</a></div><div class="brief "><p class="paragraph">Represents a constructed SQL statement that is ready for execution.</p></div></div></div>
+                </div>
+              </div>
+            </div>
+          </div>
+<a data-name="-1153238502%2FClasslikes%2F1326967511" anchor-label="QueryBuilder" id="-1153238502%2FClasslikes%2F1326967511" data-filterable-set="storm-kotlin/JVM"></a>
+          <div class="table-row" data-filterable-current="storm-kotlin/JVM" data-filterable-set="storm-kotlin/JVM">
+            <div class="main-subrow keyValue ">
+              <div class=""><span class="inline-flex">
+                  <div><a href="-query-builder/index.html"><span>Query</span><wbr></wbr><span><span>Builder</span></span></a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="-1153238502%2FClasslikes%2F1326967511"></span>
+                    <div class="copy-popup-wrapper "><span class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+                  </span></span></div>
+              <div>
+                <div class="title">
+                  <div class="platform-hinted " data-platform-hinted="data-platform-hinted"><div class="content sourceset-dependent-content" data-active="" data-togglable="storm-kotlin/JVM"><div class="symbol monospace"><span class="token keyword">interface </span><a href="-query-builder/index.html">QueryBuilder</a><span class="token operator">&lt;</span><a href="-query-builder/index.html">T</a><span class="token operator"> : </span><span data-unresolved-link="st.orm/Data///PointingToDeclaration/">Data</span><span class="token punctuation">, </span><a href="-query-builder/index.html">R</a><span class="token punctuation">, </span><a href="-query-builder/index.html">ID</a><span class="token operator">&gt;</span></div><div class="brief "><p class="paragraph">A fluent builder for constructing type-safe SELECT and DELETE queries using the entity graph and metamodel.</p></div></div></div>
+                </div>
+              </div>
+            </div>
+          </div>
+<a data-name="884878419%2FClasslikes%2F1326967511" anchor-label="QueryTemplate" id="884878419%2FClasslikes%2F1326967511" data-filterable-set="storm-kotlin/JVM"></a>
+          <div class="table-row" data-filterable-current="storm-kotlin/JVM" data-filterable-set="storm-kotlin/JVM">
+            <div class="main-subrow keyValue ">
+              <div class=""><span class="inline-flex">
+                  <div><a href="-query-template/index.html"><span>Query</span><wbr></wbr><span><span>Template</span></span></a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="884878419%2FClasslikes%2F1326967511"></span>
+                    <div class="copy-popup-wrapper "><span class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+                  </span></span></div>
+              <div>
+                <div class="title">
+                  <div class="platform-hinted " data-platform-hinted="data-platform-hinted"><div class="content sourceset-dependent-content" data-active="" data-togglable="storm-kotlin/JVM"><div class="symbol monospace"><span class="token keyword">interface </span><a href="-query-template/index.html">QueryTemplate</a> : <a href="-subquery-template/index.html">SubqueryTemplate</a></div><div class="brief "><p class="paragraph">Provides methods for constructing SQL queries and query builders using Storm's template string DSL or the fluent API.</p></div></div></div>
+                </div>
+              </div>
+            </div>
+          </div>
+<a data-name="-31998146%2FClasslikes%2F1326967511" anchor-label="SqlDsl" id="-31998146%2FClasslikes%2F1326967511" data-filterable-set="storm-kotlin/JVM"></a>
+          <div class="table-row" data-filterable-current="storm-kotlin/JVM" data-filterable-set="storm-kotlin/JVM">
+            <div class="main-subrow keyValue ">
+              <div class=""><span class="inline-flex">
+                  <div><a href="-sql-dsl/index.html"><span>Sql</span><wbr></wbr><span><span>Dsl</span></span></a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="-31998146%2FClasslikes%2F1326967511"></span>
+                    <div class="copy-popup-wrapper "><span class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+                  </span></span></div>
+              <div>
+                <div class="title">
+                  <div class="platform-hinted " data-platform-hinted="data-platform-hinted"><div class="content sourceset-dependent-content" data-active="" data-togglable="storm-kotlin/JVM"><div class="symbol monospace"><div class="block"><div class="block"><span class="token annotation builtin">@</span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-dsl-marker/index.html"><span class="token annotation builtin">DslMarker</span></a></div></div><span class="token keyword">annotation class </span><a href="-sql-dsl/index.html">SqlDsl</a></div><div class="brief "><p class="paragraph">Marker annotation for Storm's block-based SQL DSL.</p></div></div></div>
+                </div>
+              </div>
+            </div>
+          </div>
+<a data-name="-1104565241%2FClasslikes%2F1326967511" anchor-label="SqlScope" id="-1104565241%2FClasslikes%2F1326967511" data-filterable-set="storm-kotlin/JVM"></a>
+          <div class="table-row" data-filterable-current="storm-kotlin/JVM" data-filterable-set="storm-kotlin/JVM">
+            <div class="main-subrow keyValue ">
+              <div class=""><span class="inline-flex">
+                  <div><a href="-sql-scope/index.html"><span>Sql</span><wbr></wbr><span><span>Scope</span></span></a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="-1104565241%2FClasslikes%2F1326967511"></span>
+                    <div class="copy-popup-wrapper "><span class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+                  </span></span></div>
+              <div>
+                <div class="title">
+                  <div class="platform-hinted " data-platform-hinted="data-platform-hinted"><div class="content sourceset-dependent-content" data-active="" data-togglable="storm-kotlin/JVM"><div class="symbol monospace"><span class="token keyword">class </span><a href="-sql-scope/index.html">SqlScope</a><span class="token operator">&lt;</span><a href="-sql-scope/index.html">T</a><span class="token operator"> : </span><span data-unresolved-link="st.orm/Data///PointingToDeclaration/">Data</span><span class="token punctuation">, </span><a href="-sql-scope/index.html">R</a><span class="token punctuation">, </span><a href="-sql-scope/index.html">ID</a><span class="token operator"> : </span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-any/index.html">Any</a><span class="token operator">&gt;</span></div><div class="brief "><p class="paragraph">A mutable scope for constructing queries using <a href="-query-builder/index.html">QueryBuilder</a> methods in a block-based style, similar to <a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin.collections/index.html">buildList</a> or <a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin.collections/index.html">buildMap</a>.</p></div></div></div>
+                </div>
+              </div>
+            </div>
+          </div>
+<a data-name="-1481361013%2FClasslikes%2F1326967511" anchor-label="SubqueryTemplate" id="-1481361013%2FClasslikes%2F1326967511" data-filterable-set="storm-kotlin/JVM"></a>
+          <div class="table-row" data-filterable-current="storm-kotlin/JVM" data-filterable-set="storm-kotlin/JVM">
+            <div class="main-subrow keyValue ">
+              <div class=""><span class="inline-flex">
+                  <div><a href="-subquery-template/index.html"><span>Subquery</span><wbr></wbr><span><span>Template</span></span></a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="-1481361013%2FClasslikes%2F1326967511"></span>
+                    <div class="copy-popup-wrapper "><span class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+                  </span></span></div>
+              <div>
+                <div class="title">
+                  <div class="platform-hinted " data-platform-hinted="data-platform-hinted"><div class="content sourceset-dependent-content" data-active="" data-togglable="storm-kotlin/JVM"><div class="symbol monospace"><span class="token keyword">interface </span><a href="-subquery-template/index.html">SubqueryTemplate</a></div><div class="brief "><p class="paragraph">Provides factory methods for constructing subqueries that can be correlated with or embedded in an outer query.</p></div></div></div>
+                </div>
+              </div>
+            </div>
+          </div>
+<a data-name="-1661556780%2FClasslikes%2F1326967511" anchor-label="TemplateBuilder" id="-1661556780%2FClasslikes%2F1326967511" data-filterable-set="storm-kotlin/JVM"></a>
+          <div class="table-row" data-filterable-current="storm-kotlin/JVM" data-filterable-set="storm-kotlin/JVM">
+            <div class="main-subrow keyValue ">
+              <div class=""><span class="inline-flex">
+                  <div><a href="-template-builder/index.html"><span>Template</span><wbr></wbr><span><span>Builder</span></span></a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="-1661556780%2FClasslikes%2F1326967511"></span>
+                    <div class="copy-popup-wrapper "><span class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+                  </span></span></div>
+              <div>
+                <div class="title">
+                  <div class="platform-hinted " data-platform-hinted="data-platform-hinted"><div class="content sourceset-dependent-content" data-active="" data-togglable="storm-kotlin/JVM"><div class="symbol monospace"><span class="token keyword">typealias </span><a href="-template-builder/index.html">TemplateBuilder</a><span class="token operator"> = </span><a href="-template-context/index.html">TemplateContext</a><span class="token punctuation">.</span><span class="token punctuation">(</span><span class="token punctuation">)</span><span class="token operator"> -&gt; </span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-string/index.html">String</a></div><div class="brief "><p class="paragraph">A function type alias for building SQL template strings. The receiver <a href="-template-context/index.html">TemplateContext</a> provides the <a href="-template-context/t.html">t</a> function used to interpolate values, types, and elements into the template.</p></div></div></div>
+                </div>
+              </div>
+            </div>
+          </div>
+<a data-name="723034176%2FClasslikes%2F1326967511" anchor-label="TemplateContext" id="723034176%2FClasslikes%2F1326967511" data-filterable-set="storm-kotlin/JVM"></a>
+          <div class="table-row" data-filterable-current="storm-kotlin/JVM" data-filterable-set="storm-kotlin/JVM">
+            <div class="main-subrow keyValue ">
+              <div class=""><span class="inline-flex">
+                  <div><a href="-template-context/index.html"><span>Template</span><wbr></wbr><span><span>Context</span></span></a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="723034176%2FClasslikes%2F1326967511"></span>
+                    <div class="copy-popup-wrapper "><span class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+                  </span></span></div>
+              <div>
+                <div class="title">
+                  <div class="platform-hinted " data-platform-hinted="data-platform-hinted"><div class="content sourceset-dependent-content" data-active="" data-togglable="storm-kotlin/JVM"><div class="symbol monospace"><span class="token keyword">interface </span><a href="-template-context/index.html">TemplateContext</a></div><div class="brief "><p class="paragraph">Provides the interpolation context for building SQL template strings.</p></div></div></div>
+                </div>
+              </div>
+            </div>
+          </div>
+<a data-name="-960521124%2FClasslikes%2F1326967511" anchor-label="Templates" id="-960521124%2FClasslikes%2F1326967511" data-filterable-set="storm-kotlin/JVM"></a>
+          <div class="table-row" data-filterable-current="storm-kotlin/JVM" data-filterable-set="storm-kotlin/JVM">
+            <div class="main-subrow keyValue ">
+              <div class=""><span class="inline-flex">
+                  <div><a href="-templates/index.html"><span><span>Templates</span></span></a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="-960521124%2FClasslikes%2F1326967511"></span>
+                    <div class="copy-popup-wrapper "><span class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+                  </span></span></div>
+              <div>
+                <div class="title">
+                  <div class="platform-hinted " data-platform-hinted="data-platform-hinted"><div class="content sourceset-dependent-content" data-active="" data-togglable="storm-kotlin/JVM"><div class="symbol monospace"><span class="token keyword">object </span><a href="-templates/index.html">Templates</a></div><div class="brief "><p class="paragraph">The <code class="lang-kotlin">Templates</code> interface provides a collection of static methods for constructing SQL query elements and creating ORM repository templates. It serves as a central point for building SQL queries or getting access to repositories that can interact with databases in a type-safe and manner, supporting both JPA and JDBC.</p></div></div></div>
+                </div>
+              </div>
+            </div>
+          </div>
+<a data-name="1384864418%2FClasslikes%2F1326967511" anchor-label="TemplateString" id="1384864418%2FClasslikes%2F1326967511" data-filterable-set="storm-kotlin/JVM"></a>
+          <div class="table-row" data-filterable-current="storm-kotlin/JVM" data-filterable-set="storm-kotlin/JVM">
+            <div class="main-subrow keyValue ">
+              <div class=""><span class="inline-flex">
+                  <div><a href="-template-string/index.html"><span>Template</span><wbr></wbr><span><span>String</span></span></a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="1384864418%2FClasslikes%2F1326967511"></span>
+                    <div class="copy-popup-wrapper "><span class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+                  </span></span></div>
+              <div>
+                <div class="title">
+                  <div class="platform-hinted " data-platform-hinted="data-platform-hinted"><div class="content sourceset-dependent-content" data-active="" data-togglable="storm-kotlin/JVM"><div class="symbol monospace"><span class="token keyword">sealed </span><span class="token keyword">interface </span><a href="-template-string/index.html">TemplateString</a></div><div class="brief "><p class="paragraph">Represents a compiled SQL template string that can be passed to Storm's query engine for execution.</p></div></div></div>
+                </div>
+              </div>
+            </div>
+          </div>
+<a data-name="-1656602793%2FClasslikes%2F1326967511" anchor-label="Transaction" id="-1656602793%2FClasslikes%2F1326967511" data-filterable-set="storm-kotlin/JVM"></a>
+          <div class="table-row" data-filterable-current="storm-kotlin/JVM" data-filterable-set="storm-kotlin/JVM">
+            <div class="main-subrow keyValue ">
+              <div class=""><span class="inline-flex">
+                  <div><a href="-transaction/index.html"><span><span>Transaction</span></span></a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="-1656602793%2FClasslikes%2F1326967511"></span>
+                    <div class="copy-popup-wrapper "><span class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+                  </span></span></div>
+              <div>
+                <div class="title">
+                  <div class="platform-hinted " data-platform-hinted="data-platform-hinted"><div class="content sourceset-dependent-content" data-active="" data-togglable="storm-kotlin/JVM"><div class="symbol monospace"><span class="token keyword">interface </span><a href="-transaction/index.html">Transaction</a></div><div class="brief "><p class="paragraph">Interface for programmatic transaction management with ORMTemplate.</p></div></div></div>
+                </div>
+              </div>
+            </div>
+          </div>
+<a data-name="-39965633%2FClasslikes%2F1326967511" anchor-label="TransactionDispatchers" id="-39965633%2FClasslikes%2F1326967511" data-filterable-set="storm-kotlin/JVM"></a>
+          <div class="table-row" data-filterable-current="storm-kotlin/JVM" data-filterable-set="storm-kotlin/JVM">
+            <div class="main-subrow keyValue ">
+              <div class=""><span class="inline-flex">
+                  <div><a href="-transaction-dispatchers/index.html"><span>Transaction</span><wbr></wbr><span><span>Dispatchers</span></span></a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="-39965633%2FClasslikes%2F1326967511"></span>
+                    <div class="copy-popup-wrapper "><span class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+                  </span></span></div>
+              <div>
+                <div class="title">
+                  <div class="platform-hinted " data-platform-hinted="data-platform-hinted"><div class="content sourceset-dependent-content" data-active="" data-togglable="storm-kotlin/JVM"><div class="symbol monospace"><span class="token keyword">object </span><a href="-transaction-dispatchers/index.html">TransactionDispatchers</a></div><div class="brief "><p class="paragraph">Selects a default dispatcher that prefers Virtual Threads on Java 24+, and falls back to Dispatchers.IO on older JVMs (to avoid VT pinning on Java 21–23).</p></div></div></div>
+                </div>
+              </div>
+            </div>
+          </div>
+<a data-name="-313755427%2FClasslikes%2F1326967511" anchor-label="TransactionIsolation" id="-313755427%2FClasslikes%2F1326967511" data-filterable-set="storm-kotlin/JVM"></a>
+          <div class="table-row" data-filterable-current="storm-kotlin/JVM" data-filterable-set="storm-kotlin/JVM">
+            <div class="main-subrow keyValue ">
+              <div class=""><span class="inline-flex">
+                  <div><a href="-transaction-isolation/index.html"><span>Transaction</span><wbr></wbr><span><span>Isolation</span></span></a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="-313755427%2FClasslikes%2F1326967511"></span>
+                    <div class="copy-popup-wrapper "><span class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+                  </span></span></div>
+              <div>
+                <div class="title">
+                  <div class="platform-hinted " data-platform-hinted="data-platform-hinted"><div class="content sourceset-dependent-content" data-active="" data-togglable="storm-kotlin/JVM"><div class="symbol monospace"><span class="token keyword">enum </span><a href="-transaction-isolation/index.html">TransactionIsolation</a> : <a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-enum/index.html">Enum</a><span class="token operator">&lt;</span><a href="-transaction-isolation/index.html">TransactionIsolation</a><span class="token operator">&gt; </span></div><div class="brief "><p class="paragraph">Represents the standard transaction isolation levels supported in database transactions. These levels determine how transactions interact with each other when accessing and modifying data.</p></div></div></div>
+                </div>
+              </div>
+            </div>
+          </div>
+<a data-name="106560799%2FClasslikes%2F1326967511" anchor-label="TransactionPropagation" id="106560799%2FClasslikes%2F1326967511" data-filterable-set="storm-kotlin/JVM"></a>
+          <div class="table-row" data-filterable-current="storm-kotlin/JVM" data-filterable-set="storm-kotlin/JVM">
+            <div class="main-subrow keyValue ">
+              <div class=""><span class="inline-flex">
+                  <div><a href="-transaction-propagation/index.html"><span>Transaction</span><wbr></wbr><span><span>Propagation</span></span></a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="106560799%2FClasslikes%2F1326967511"></span>
+                    <div class="copy-popup-wrapper "><span class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+                  </span></span></div>
+              <div>
+                <div class="title">
+                  <div class="platform-hinted " data-platform-hinted="data-platform-hinted"><div class="content sourceset-dependent-content" data-active="" data-togglable="storm-kotlin/JVM"><div class="symbol monospace"><span class="token keyword">enum </span><a href="-transaction-propagation/index.html">TransactionPropagation</a> : <a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-enum/index.html">Enum</a><span class="token operator">&lt;</span><a href="-transaction-propagation/index.html">TransactionPropagation</a><span class="token operator">&gt; </span></div><div class="brief "><p class="paragraph">Represents the transaction propagation behaviors that control how a transactional method interacts with an existing transaction context.</p></div></div></div>
+                </div>
+              </div>
+            </div>
+          </div>
+<a data-name="340703091%2FClasslikes%2F1326967511" anchor-label="TransactionTimedOutException" id="340703091%2FClasslikes%2F1326967511" data-filterable-set="storm-kotlin/JVM"></a>
+          <div class="table-row" data-filterable-current="storm-kotlin/JVM" data-filterable-set="storm-kotlin/JVM">
+            <div class="main-subrow keyValue ">
+              <div class=""><span class="inline-flex">
+                  <div><a href="-transaction-timed-out-exception/index.html"><span>Transaction</span><wbr></wbr><span>Timed</span><wbr></wbr><span>Out</span><wbr></wbr><span><span>Exception</span></span></a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="340703091%2FClasslikes%2F1326967511"></span>
+                    <div class="copy-popup-wrapper "><span class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+                  </span></span></div>
+              <div>
+                <div class="title">
+                  <div class="platform-hinted " data-platform-hinted="data-platform-hinted"><div class="content sourceset-dependent-content" data-active="" data-togglable="storm-kotlin/JVM"><div class="symbol monospace"><span class="token keyword">class </span><a href="-transaction-timed-out-exception/index.html">TransactionTimedOutException</a><span class="token punctuation">(</span><span class="parameters "><span class="parameter ">message<span class="token operator">: </span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-string/index.html">String</a><span class="token punctuation">, </span></span><span class="parameter ">cause<span class="token operator">: </span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-throwable/index.html">Throwable</a><span class="token operator">?</span><span class="token operator"> = </span>null</span></span><span class="token punctuation">)</span> : <span data-unresolved-link="st.orm/PersistenceException///PointingToDeclaration/">PersistenceException</span></div><div class="brief "><p class="paragraph">Exception thrown when a transaction times out.</p></div></div></div>
+                </div>
+              </div>
+            </div>
+          </div>
+<a data-name="-1036118010%2FClasslikes%2F1326967511" anchor-label="TypedJoinBuilder" id="-1036118010%2FClasslikes%2F1326967511" data-filterable-set="storm-kotlin/JVM"></a>
+          <div class="table-row" data-filterable-current="storm-kotlin/JVM" data-filterable-set="storm-kotlin/JVM">
+            <div class="main-subrow keyValue ">
+              <div class=""><span class="inline-flex">
+                  <div><a href="-typed-join-builder/index.html"><span>Typed</span><wbr></wbr><span>Join</span><wbr></wbr><span><span>Builder</span></span></a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="-1036118010%2FClasslikes%2F1326967511"></span>
+                    <div class="copy-popup-wrapper "><span class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+                  </span></span></div>
+              <div>
+                <div class="title">
+                  <div class="platform-hinted " data-platform-hinted="data-platform-hinted"><div class="content sourceset-dependent-content" data-active="" data-togglable="storm-kotlin/JVM"><div class="symbol monospace"><span class="token keyword">interface </span><a href="-typed-join-builder/index.html">TypedJoinBuilder</a><span class="token operator">&lt;</span><a href="-typed-join-builder/index.html">T</a><span class="token operator"> : </span><span data-unresolved-link="st.orm/Data///PointingToDeclaration/">Data</span><span class="token punctuation">, </span><a href="-typed-join-builder/index.html">R</a><span class="token punctuation">, </span><a href="-typed-join-builder/index.html">ID</a><span class="token operator">&gt;</span> : <a href="-join-builder/index.html">JoinBuilder</a><span class="token operator">&lt;</span><a href="-typed-join-builder/index.html">T</a><span class="token punctuation">, </span><a href="-typed-join-builder/index.html">R</a><span class="token punctuation">, </span><a href="-typed-join-builder/index.html">ID</a><span class="token operator">&gt; </span></div><div class="brief "><p class="paragraph">A builder for specifying the ON condition of a JOIN clause using a type-safe entity relation or a custom expression.</p></div></div></div>
+                </div>
+              </div>
+            </div>
+          </div>
+<a data-name="-182427589%2FClasslikes%2F1326967511" anchor-label="UnexpectedRollbackException" id="-182427589%2FClasslikes%2F1326967511" data-filterable-set="storm-kotlin/JVM"></a>
+          <div class="table-row" data-filterable-current="storm-kotlin/JVM" data-filterable-set="storm-kotlin/JVM">
+            <div class="main-subrow keyValue ">
+              <div class=""><span class="inline-flex">
+                  <div><a href="-unexpected-rollback-exception/index.html"><span>Unexpected</span><wbr></wbr><span>Rollback</span><wbr></wbr><span><span>Exception</span></span></a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="-182427589%2FClasslikes%2F1326967511"></span>
+                    <div class="copy-popup-wrapper "><span class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+                  </span></span></div>
+              <div>
+                <div class="title">
+                  <div class="platform-hinted " data-platform-hinted="data-platform-hinted"><div class="content sourceset-dependent-content" data-active="" data-togglable="storm-kotlin/JVM"><div class="symbol monospace"><span class="token keyword">class </span><a href="-unexpected-rollback-exception/index.html">UnexpectedRollbackException</a><span class="token punctuation">(</span><span class="parameters "><span class="parameter ">message<span class="token operator">: </span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-string/index.html">String</a><span class="token punctuation">, </span></span><span class="parameter ">cause<span class="token operator">: </span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-throwable/index.html">Throwable</a><span class="token operator">?</span><span class="token operator"> = </span>null</span></span><span class="token punctuation">)</span> : <span data-unresolved-link="st.orm/PersistenceException///PointingToDeclaration/">PersistenceException</span></div><div class="brief "><p class="paragraph">Exception raised</p></div></div></div>
+                </div>
+              </div>
+            </div>
+          </div>
+<a data-name="1965122105%2FClasslikes%2F1326967511" anchor-label="WhereBuilder" id="1965122105%2FClasslikes%2F1326967511" data-filterable-set="storm-kotlin/JVM"></a>
+          <div class="table-row" data-filterable-current="storm-kotlin/JVM" data-filterable-set="storm-kotlin/JVM">
+            <div class="main-subrow keyValue ">
+              <div class=""><span class="inline-flex">
+                  <div><a href="-where-builder/index.html"><span>Where</span><wbr></wbr><span><span>Builder</span></span></a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="1965122105%2FClasslikes%2F1326967511"></span>
+                    <div class="copy-popup-wrapper "><span class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+                  </span></span></div>
+              <div>
+                <div class="title">
+                  <div class="platform-hinted " data-platform-hinted="data-platform-hinted"><div class="content sourceset-dependent-content" data-active="" data-togglable="storm-kotlin/JVM"><div class="symbol monospace"><span class="token keyword">interface </span><a href="-where-builder/index.html">WhereBuilder</a><span class="token operator">&lt;</span><a href="-where-builder/index.html">T</a><span class="token operator"> : </span><span data-unresolved-link="st.orm/Data///PointingToDeclaration/">Data</span><span class="token punctuation">, </span><a href="-where-builder/index.html">R</a><span class="token punctuation">, </span><a href="-where-builder/index.html">ID</a><span class="token operator">&gt;</span> : <a href="-subquery-template/index.html">SubqueryTemplate</a></div><div class="brief "><p class="paragraph">A builder for constructing the WHERE clause of a query, providing type-safe predicate construction.</p></div></div></div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div data-togglable="EXTENSION_PROPERTY">
+        <h2 class="">Properties</h2>
+        <div class="table"><a data-name="-817339713%2FProperties%2F1326967511" anchor-label="orm" id="-817339713%2FProperties%2F1326967511" data-filterable-set="storm-kotlin/JVM"></a>
+          <div class="table-row" data-filterable-current="storm-kotlin/JVM" data-filterable-set="storm-kotlin/JVM">
+            <div class="main-subrow keyValue ">
+              <div class=""><span class="inline-flex">
+                  <div><a href="orm.html"><span><span>orm</span></span></a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="-817339713%2FProperties%2F1326967511"></span>
+                    <div class="copy-popup-wrapper "><span class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+                  </span></span></div>
+              <div>
+                <div class="title">
+                  <div class="platform-hinted " data-platform-hinted="data-platform-hinted"><div class="content sourceset-dependent-content" data-active="" data-togglable="storm-kotlin/JVM"><div class="symbol monospace"><span class="token keyword">val </span><a href="https://docs.oracle.com/javase/8/docs/api/java/sql/Connection.html">Connection</a><span class="token punctuation">.</span><a href="orm.html">orm</a><span class="token operator">: </span><a href="-o-r-m-template/index.html">ORMTemplate</a></div><div class="brief "><p class="paragraph">Creates an <a href="-o-r-m-template/index.html">ORMTemplate</a> from this <a href="https://docs.oracle.com/javase/8/docs/api/java/sql/Connection.html">Connection</a> with default configuration.</p></div><div class="symbol monospace"><span class="token keyword">val </span><a href="https://docs.oracle.com/javase/8/docs/api/javax/sql/DataSource.html">DataSource</a><span class="token punctuation">.</span><a href="orm.html">orm</a><span class="token operator">: </span><a href="-o-r-m-template/index.html">ORMTemplate</a></div><div class="brief "><p class="paragraph">Creates an <a href="-o-r-m-template/index.html">ORMTemplate</a> from this <a href="https://docs.oracle.com/javase/8/docs/api/javax/sql/DataSource.html">DataSource</a> with default configuration.</p></div></div></div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div data-togglable="FUNCTION">
+        <h2 class="">Functions</h2>
+        <div class="table"><a data-name="27599667%2FFunctions%2F1326967511" anchor-label="between" id="27599667%2FFunctions%2F1326967511" data-filterable-set="storm-kotlin/JVM"></a>
+          <div class="table-row" data-togglable="EXTENSION_FUNCTION" data-filterable-current="storm-kotlin/JVM" data-filterable-set="storm-kotlin/JVM">
+            <div class="main-subrow keyValue ">
+              <div class=""><span class="inline-flex">
+                  <div><a href="between.html"><span><span>between</span></span></a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="27599667%2FFunctions%2F1326967511"></span>
+                    <div class="copy-popup-wrapper "><span class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+                  </span></span></div>
+              <div>
+                <div class="title">
+                  <div class="platform-hinted " data-platform-hinted="data-platform-hinted"><div class="content sourceset-dependent-content" data-active="" data-togglable="storm-kotlin/JVM"><div class="symbol monospace"><span class="token keyword">fun </span><span class="token operator">&lt;</span><a href="between.html">T</a><span class="token operator"> : </span><span data-unresolved-link="st.orm/Data///PointingToDeclaration/">Data</span><span class="token punctuation">, </span><a href="between.html">V</a><span class="token operator">&gt; </span><span data-unresolved-link="st.orm/Metamodel///PointingToDeclaration/">Metamodel</span><span class="token operator">&lt;</span><a href="between.html">T</a><span class="token punctuation">, </span><a href="between.html">V</a><span class="token operator">&gt;</span><span class="token punctuation">.</span><a href="between.html"><span class="token function">between</span></a><span class="token punctuation">(</span><span class="parameters "><span class="parameter ">left<span class="token operator">: </span><a href="between.html">V</a><span class="token punctuation">, </span></span><span class="parameter ">right<span class="token operator">: </span><a href="between.html">V</a></span></span><span class="token punctuation">)</span><span class="token operator">: </span><a href="-predicate-builder/index.html">PredicateBuilder</a><span class="token operator">&lt;</span><a href="between.html">T</a><span class="token punctuation">, </span><a href="between.html">T</a><span class="token punctuation">, </span><span class="token operator">*</span><span class="token operator">&gt;</span></div><div class="brief "><p class="paragraph">Infix functions to create a predicate to check if a field is between two values.</p></div></div></div>
+                </div>
+              </div>
+            </div>
+          </div>
+<a data-name="-648690070%2FFunctions%2F1326967511" anchor-label="build" id="-648690070%2FFunctions%2F1326967511" data-filterable-set="storm-kotlin/JVM"></a>
+          <div class="table-row" data-togglable="EXTENSION_FUNCTION" data-filterable-current="storm-kotlin/JVM" data-filterable-set="storm-kotlin/JVM">
+            <div class="main-subrow keyValue ">
+              <div class=""><span class="inline-flex">
+                  <div><a href="build.html"><span><span>build</span></span></a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="-648690070%2FFunctions%2F1326967511"></span>
+                    <div class="copy-popup-wrapper "><span class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+                  </span></span></div>
+              <div>
+                <div class="title">
+                  <div class="platform-hinted " data-platform-hinted="data-platform-hinted"><div class="content sourceset-dependent-content" data-active="" data-togglable="storm-kotlin/JVM"><div class="symbol monospace"><span class="token keyword">fun </span><a href="-template-builder/index.html">TemplateBuilder</a><span class="token punctuation">.</span><a href="build.html"><span class="token function">build</span></a><span class="token punctuation">(</span><span class="token punctuation">)</span><span class="token operator">: </span><a href="-template-string/index.html">TemplateString</a></div><div class="brief "><p class="paragraph">Builds this <a href="-template-builder/index.html">TemplateBuilder</a> into a <a href="-template-string/index.html">TemplateString</a> ready for use with the Storm query engine.</p></div></div></div>
+                </div>
+              </div>
+            </div>
+          </div>
+<a data-name="1291981924%2FFunctions%2F1326967511" anchor-label="entityId" id="1291981924%2FFunctions%2F1326967511" data-filterable-set="storm-kotlin/JVM"></a>
+          <div class="table-row" data-togglable="EXTENSION_FUNCTION" data-filterable-current="storm-kotlin/JVM" data-filterable-set="storm-kotlin/JVM">
+            <div class="main-subrow keyValue ">
+              <div class=""><span class="inline-flex">
+                  <div><a href="entity-id.html"><span>entity</span><wbr></wbr><span><span>Id</span></span></a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="1291981924%2FFunctions%2F1326967511"></span>
+                    <div class="copy-popup-wrapper "><span class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+                  </span></span></div>
+              <div>
+                <div class="title">
+                  <div class="platform-hinted " data-platform-hinted="data-platform-hinted"><div class="content sourceset-dependent-content" data-active="" data-togglable="storm-kotlin/JVM"><div class="symbol monospace"><span class="token keyword">fun </span><span class="token operator">&lt;</span><a href="entity-id.html">ID</a><span class="token punctuation">, </span><a href="entity-id.html">E</a><span class="token operator"> : </span><span data-unresolved-link="st.orm/Entity///PointingToDeclaration/">Entity</span><span class="token operator">&lt;</span><a href="entity-id.html">ID</a><span class="token operator">&gt;</span><span class="token operator">&gt; </span><span data-unresolved-link="st.orm/Ref///PointingToDeclaration/">Ref</span><span class="token operator">&lt;</span><a href="entity-id.html">E</a><span class="token operator">&gt;</span><span class="token punctuation">.</span><a href="entity-id.html"><span class="token function">entityId</span></a><span class="token punctuation">(</span><span class="token punctuation">)</span><span class="token operator">: </span><a href="entity-id.html">ID</a></div><div class="brief "><p class="paragraph">Extracts the primary key from an entity ref, returning a type-safe id.</p></div></div></div>
+                </div>
+              </div>
+            </div>
+          </div>
+<a data-name="664653968%2FFunctions%2F1326967511" anchor-label="eq" id="664653968%2FFunctions%2F1326967511" data-filterable-set="storm-kotlin/JVM"></a>
+          <div class="table-row" data-togglable="EXTENSION_FUNCTION" data-filterable-current="storm-kotlin/JVM" data-filterable-set="storm-kotlin/JVM">
+            <div class="main-subrow keyValue ">
+              <div class=""><span class="inline-flex">
+                  <div><a href="eq.html"><span><span>eq</span></span></a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="664653968%2FFunctions%2F1326967511"></span>
+                    <div class="copy-popup-wrapper "><span class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+                  </span></span></div>
+              <div>
+                <div class="title">
+                  <div class="platform-hinted " data-platform-hinted="data-platform-hinted"><div class="content sourceset-dependent-content" data-active="" data-togglable="storm-kotlin/JVM"><div class="symbol monospace"><span class="token keyword">infix </span><span class="token keyword">fun </span><span class="token operator">&lt;</span><a href="eq.html">T</a><span class="token operator"> : </span><span data-unresolved-link="st.orm/Data///PointingToDeclaration/">Data</span><span class="token punctuation">, </span><a href="eq.html">V</a><span class="token operator">&gt; </span><span data-unresolved-link="st.orm/Metamodel///PointingToDeclaration/">Metamodel</span><span class="token operator">&lt;</span><a href="eq.html">T</a><span class="token punctuation">, </span><a href="eq.html">V</a><span class="token operator">&gt;</span><span class="token punctuation">.</span><a href="eq.html"><span class="token function">eq</span></a><span class="token punctuation">(</span><span class="parameters "><span class="parameter ">value<span class="token operator">: </span><a href="eq.html">V</a></span></span><span class="token punctuation">)</span><span class="token operator">: </span><a href="-predicate-builder/index.html">PredicateBuilder</a><span class="token operator">&lt;</span><a href="eq.html">T</a><span class="token punctuation">, </span><a href="eq.html">T</a><span class="token punctuation">, </span><span class="token operator">*</span><span class="token operator">&gt;</span></div><div class="brief "><p class="paragraph">Infix functions to create a predicate to check if a field is equal to a value.</p></div><div class="symbol monospace"><span class="token keyword">infix </span><span class="token keyword">fun </span><span class="token operator">&lt;</span><a href="eq.html">T</a><span class="token operator"> : </span><span data-unresolved-link="st.orm/Data///PointingToDeclaration/">Data</span><span class="token punctuation">, </span><a href="eq.html">V</a><span class="token operator"> : </span><span data-unresolved-link="st.orm/Data///PointingToDeclaration/">Data</span><span class="token operator">&gt; </span><span data-unresolved-link="st.orm/Metamodel///PointingToDeclaration/">Metamodel</span><span class="token operator">&lt;</span><a href="eq.html">T</a><span class="token punctuation">, </span><a href="eq.html">V</a><span class="token operator">&gt;</span><span class="token punctuation">.</span><a href="eq.html"><span class="token function">eq</span></a><span class="token punctuation">(</span><span class="parameters "><span class="parameter ">value<span class="token operator">: </span><span data-unresolved-link="st.orm/Ref///PointingToDeclaration/">Ref</span><span class="token operator">&lt;</span><a href="eq.html">V</a><span class="token operator">&gt;</span></span></span><span class="token punctuation">)</span><span class="token operator">: </span><a href="-predicate-builder/index.html">PredicateBuilder</a><span class="token operator">&lt;</span><a href="eq.html">T</a><span class="token punctuation">, </span><a href="eq.html">T</a><span class="token punctuation">, </span><span class="token operator">*</span><span class="token operator">&gt;</span></div><div class="brief "><p class="paragraph">Infix functions to create a predicate to check if a field is equal to a reference.</p></div></div></div>
+                </div>
+              </div>
+            </div>
+          </div>
+<a data-name="-1415853086%2FFunctions%2F1326967511" anchor-label="greater" id="-1415853086%2FFunctions%2F1326967511" data-filterable-set="storm-kotlin/JVM"></a>
+          <div class="table-row" data-togglable="EXTENSION_FUNCTION" data-filterable-current="storm-kotlin/JVM" data-filterable-set="storm-kotlin/JVM">
+            <div class="main-subrow keyValue ">
+              <div class=""><span class="inline-flex">
+                  <div><a href="greater.html"><span><span>greater</span></span></a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="-1415853086%2FFunctions%2F1326967511"></span>
+                    <div class="copy-popup-wrapper "><span class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+                  </span></span></div>
+              <div>
+                <div class="title">
+                  <div class="platform-hinted " data-platform-hinted="data-platform-hinted"><div class="content sourceset-dependent-content" data-active="" data-togglable="storm-kotlin/JVM"><div class="symbol monospace"><span class="token keyword">infix </span><span class="token keyword">fun </span><span class="token operator">&lt;</span><a href="greater.html">T</a><span class="token operator"> : </span><span data-unresolved-link="st.orm/Data///PointingToDeclaration/">Data</span><span class="token punctuation">, </span><a href="greater.html">V</a><span class="token operator">&gt; </span><span data-unresolved-link="st.orm/Metamodel///PointingToDeclaration/">Metamodel</span><span class="token operator">&lt;</span><a href="greater.html">T</a><span class="token punctuation">, </span><a href="greater.html">V</a><span class="token operator">&gt;</span><span class="token punctuation">.</span><a href="greater.html"><span class="token function">greater</span></a><span class="token punctuation">(</span><span class="parameters "><span class="parameter ">value<span class="token operator">: </span><a href="greater.html">V</a></span></span><span class="token punctuation">)</span><span class="token operator">: </span><a href="-predicate-builder/index.html">PredicateBuilder</a><span class="token operator">&lt;</span><a href="greater.html">T</a><span class="token punctuation">, </span><a href="greater.html">T</a><span class="token punctuation">, </span><span class="token operator">*</span><span class="token operator">&gt;</span></div><div class="brief "><p class="paragraph">Infix functions to create a predicate to check if a field is greater than a value.</p></div></div></div>
+                </div>
+              </div>
+            </div>
+          </div>
+<a data-name="270334038%2FFunctions%2F1326967511" anchor-label="greaterEq" id="270334038%2FFunctions%2F1326967511" data-filterable-set="storm-kotlin/JVM"></a>
+          <div class="table-row" data-togglable="EXTENSION_FUNCTION" data-filterable-current="storm-kotlin/JVM" data-filterable-set="storm-kotlin/JVM">
+            <div class="main-subrow keyValue ">
+              <div class=""><span class="inline-flex">
+                  <div><a href="greater-eq.html"><span>greater</span><wbr></wbr><span><span>Eq</span></span></a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="270334038%2FFunctions%2F1326967511"></span>
+                    <div class="copy-popup-wrapper "><span class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+                  </span></span></div>
+              <div>
+                <div class="title">
+                  <div class="platform-hinted " data-platform-hinted="data-platform-hinted"><div class="content sourceset-dependent-content" data-active="" data-togglable="storm-kotlin/JVM"><div class="symbol monospace"><span class="token keyword">infix </span><span class="token keyword">fun </span><span class="token operator">&lt;</span><a href="greater-eq.html">T</a><span class="token operator"> : </span><span data-unresolved-link="st.orm/Data///PointingToDeclaration/">Data</span><span class="token punctuation">, </span><a href="greater-eq.html">V</a><span class="token operator">&gt; </span><span data-unresolved-link="st.orm/Metamodel///PointingToDeclaration/">Metamodel</span><span class="token operator">&lt;</span><a href="greater-eq.html">T</a><span class="token punctuation">, </span><a href="greater-eq.html">V</a><span class="token operator">&gt;</span><span class="token punctuation">.</span><a href="greater-eq.html"><span class="token function">greaterEq</span></a><span class="token punctuation">(</span><span class="parameters "><span class="parameter ">value<span class="token operator">: </span><a href="greater-eq.html">V</a></span></span><span class="token punctuation">)</span><span class="token operator">: </span><a href="-predicate-builder/index.html">PredicateBuilder</a><span class="token operator">&lt;</span><a href="greater-eq.html">T</a><span class="token punctuation">, </span><a href="greater-eq.html">T</a><span class="token punctuation">, </span><span class="token operator">*</span><span class="token operator">&gt;</span></div><div class="brief "><p class="paragraph">Infix functions to create a predicate to check if a field is greater than or equal to a value.</p></div></div></div>
+                </div>
+              </div>
+            </div>
+          </div>
+<a data-name="-280007905%2FFunctions%2F1326967511" anchor-label="inList" id="-280007905%2FFunctions%2F1326967511" data-filterable-set="storm-kotlin/JVM"></a>
+          <div class="table-row" data-togglable="EXTENSION_FUNCTION" data-filterable-current="storm-kotlin/JVM" data-filterable-set="storm-kotlin/JVM">
+            <div class="main-subrow keyValue ">
+              <div class=""><span class="inline-flex">
+                  <div><a href="in-list.html"><span>in</span><wbr></wbr><span><span>List</span></span></a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="-280007905%2FFunctions%2F1326967511"></span>
+                    <div class="copy-popup-wrapper "><span class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+                  </span></span></div>
+              <div>
+                <div class="title">
+                  <div class="platform-hinted " data-platform-hinted="data-platform-hinted"><div class="content sourceset-dependent-content" data-active="" data-togglable="storm-kotlin/JVM"><div class="symbol monospace"><span class="token keyword">infix </span><span class="token keyword">fun </span><span class="token operator">&lt;</span><a href="in-list.html">T</a><span class="token operator"> : </span><span data-unresolved-link="st.orm/Data///PointingToDeclaration/">Data</span><span class="token punctuation">, </span><a href="in-list.html">V</a><span class="token operator">&gt; </span><span data-unresolved-link="st.orm/Metamodel///PointingToDeclaration/">Metamodel</span><span class="token operator">&lt;</span><a href="in-list.html">T</a><span class="token punctuation">, </span><a href="in-list.html">V</a><span class="token operator">&gt;</span><span class="token punctuation">.</span><a href="in-list.html"><span class="token function">inList</span></a><span class="token punctuation">(</span><span class="parameters "><span class="parameter ">value<span class="token operator">: </span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin.collections/-iterable/index.html">Iterable</a><span class="token operator">&lt;</span><a href="in-list.html">V</a><span class="token operator">&gt;</span></span></span><span class="token punctuation">)</span><span class="token operator">: </span><a href="-predicate-builder/index.html">PredicateBuilder</a><span class="token operator">&lt;</span><a href="in-list.html">T</a><span class="token punctuation">, </span><a href="in-list.html">T</a><span class="token punctuation">, </span><span class="token operator">*</span><span class="token operator">&gt;</span></div><div class="brief "><p class="paragraph">Infix function to create a predicate to check if a field is in a list of values.</p></div></div></div>
+                </div>
+              </div>
+            </div>
+          </div>
+<a data-name="1135871257%2FFunctions%2F1326967511" anchor-label="inRefs" id="1135871257%2FFunctions%2F1326967511" data-filterable-set="storm-kotlin/JVM"></a>
+          <div class="table-row" data-togglable="EXTENSION_FUNCTION" data-filterable-current="storm-kotlin/JVM" data-filterable-set="storm-kotlin/JVM">
+            <div class="main-subrow keyValue ">
+              <div class=""><span class="inline-flex">
+                  <div><a href="in-refs.html"><span>in</span><wbr></wbr><span><span>Refs</span></span></a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="1135871257%2FFunctions%2F1326967511"></span>
+                    <div class="copy-popup-wrapper "><span class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+                  </span></span></div>
+              <div>
+                <div class="title">
+                  <div class="platform-hinted " data-platform-hinted="data-platform-hinted"><div class="content sourceset-dependent-content" data-active="" data-togglable="storm-kotlin/JVM"><div class="symbol monospace"><span class="token keyword">infix </span><span class="token keyword">fun </span><span class="token operator">&lt;</span><a href="in-refs.html">T</a><span class="token operator"> : </span><span data-unresolved-link="st.orm/Data///PointingToDeclaration/">Data</span><span class="token punctuation">, </span><a href="in-refs.html">V</a><span class="token operator"> : </span><span data-unresolved-link="st.orm/Data///PointingToDeclaration/">Data</span><span class="token operator">&gt; </span><span data-unresolved-link="st.orm/Metamodel///PointingToDeclaration/">Metamodel</span><span class="token operator">&lt;</span><a href="in-refs.html">T</a><span class="token punctuation">, </span><a href="in-refs.html">V</a><span class="token operator">&gt;</span><span class="token punctuation">.</span><a href="in-refs.html"><span class="token function">inRefs</span></a><span class="token punctuation">(</span><span class="parameters "><span class="parameter ">value<span class="token operator">: </span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin.collections/-iterable/index.html">Iterable</a><span class="token operator">&lt;</span><span data-unresolved-link="st.orm/Ref///PointingToDeclaration/">Ref</span><span class="token operator">&lt;</span><a href="in-refs.html">V</a><span class="token operator">&gt;</span><span class="token operator">&gt;</span></span></span><span class="token punctuation">)</span><span class="token operator">: </span><a href="-predicate-builder/index.html">PredicateBuilder</a><span class="token operator">&lt;</span><a href="in-refs.html">T</a><span class="token punctuation">, </span><a href="in-refs.html">T</a><span class="token punctuation">, </span><span class="token operator">*</span><span class="token operator">&gt;</span></div><div class="brief "><p class="paragraph">Infix function to create a predicate to check if a field is in a list of references.</p></div></div></div>
+                </div>
+              </div>
+            </div>
+          </div>
+<a data-name="342510075%2FFunctions%2F1326967511" anchor-label="isFalse" id="342510075%2FFunctions%2F1326967511" data-filterable-set="storm-kotlin/JVM"></a>
+          <div class="table-row" data-togglable="EXTENSION_FUNCTION" data-filterable-current="storm-kotlin/JVM" data-filterable-set="storm-kotlin/JVM">
+            <div class="main-subrow keyValue ">
+              <div class=""><span class="inline-flex">
+                  <div><a href="is-false.html"><span>is</span><wbr></wbr><span><span>False</span></span></a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="342510075%2FFunctions%2F1326967511"></span>
+                    <div class="copy-popup-wrapper "><span class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+                  </span></span></div>
+              <div>
+                <div class="title">
+                  <div class="platform-hinted " data-platform-hinted="data-platform-hinted"><div class="content sourceset-dependent-content" data-active="" data-togglable="storm-kotlin/JVM"><div class="symbol monospace"><span class="token keyword">fun </span><span class="token operator">&lt;</span><a href="is-false.html">T</a><span class="token operator"> : </span><span data-unresolved-link="st.orm/Data///PointingToDeclaration/">Data</span><span class="token punctuation">, </span><a href="is-false.html">V</a><span class="token operator">&gt; </span><span data-unresolved-link="st.orm/Metamodel///PointingToDeclaration/">Metamodel</span><span class="token operator">&lt;</span><a href="is-false.html">T</a><span class="token punctuation">, </span><a href="is-false.html">V</a><span class="token operator">&gt;</span><span class="token punctuation">.</span><a href="is-false.html"><span class="token function">isFalse</span></a><span class="token punctuation">(</span><span class="token punctuation">)</span><span class="token operator">: </span><a href="-predicate-builder/index.html">PredicateBuilder</a><span class="token operator">&lt;</span><a href="is-false.html">T</a><span class="token punctuation">, </span><a href="is-false.html">T</a><span class="token punctuation">, </span><span class="token operator">*</span><span class="token operator">&gt;</span></div><div class="brief "><p class="paragraph">Infix functions to create a predicate to check if a field is false.</p></div></div></div>
+                </div>
+              </div>
+            </div>
+          </div>
+<a data-name="-589096878%2FFunctions%2F1326967511" anchor-label="isNotNull" id="-589096878%2FFunctions%2F1326967511" data-filterable-set="storm-kotlin/JVM"></a>
+          <div class="table-row" data-togglable="EXTENSION_FUNCTION" data-filterable-current="storm-kotlin/JVM" data-filterable-set="storm-kotlin/JVM">
+            <div class="main-subrow keyValue ">
+              <div class=""><span class="inline-flex">
+                  <div><a href="is-not-null.html"><span>is</span><wbr></wbr><span>Not</span><wbr></wbr><span><span>Null</span></span></a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="-589096878%2FFunctions%2F1326967511"></span>
+                    <div class="copy-popup-wrapper "><span class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+                  </span></span></div>
+              <div>
+                <div class="title">
+                  <div class="platform-hinted " data-platform-hinted="data-platform-hinted"><div class="content sourceset-dependent-content" data-active="" data-togglable="storm-kotlin/JVM"><div class="symbol monospace"><span class="token keyword">fun </span><span class="token operator">&lt;</span><a href="is-not-null.html">T</a><span class="token operator"> : </span><span data-unresolved-link="st.orm/Data///PointingToDeclaration/">Data</span><span class="token punctuation">, </span><a href="is-not-null.html">V</a><span class="token operator">&gt; </span><span data-unresolved-link="st.orm/Metamodel///PointingToDeclaration/">Metamodel</span><span class="token operator">&lt;</span><a href="is-not-null.html">T</a><span class="token punctuation">, </span><a href="is-not-null.html">V</a><span class="token operator">&gt;</span><span class="token punctuation">.</span><a href="is-not-null.html"><span class="token function">isNotNull</span></a><span class="token punctuation">(</span><span class="token punctuation">)</span><span class="token operator">: </span><a href="-predicate-builder/index.html">PredicateBuilder</a><span class="token operator">&lt;</span><a href="is-not-null.html">T</a><span class="token punctuation">, </span><a href="is-not-null.html">T</a><span class="token punctuation">, </span><span class="token operator">*</span><span class="token operator">&gt;</span></div><div class="brief "><p class="paragraph">Infix functions to create a predicate to check if a field is not null.</p></div></div></div>
+                </div>
+              </div>
+            </div>
+          </div>
+<a data-name="-1170629783%2FFunctions%2F1326967511" anchor-label="isNull" id="-1170629783%2FFunctions%2F1326967511" data-filterable-set="storm-kotlin/JVM"></a>
+          <div class="table-row" data-togglable="EXTENSION_FUNCTION" data-filterable-current="storm-kotlin/JVM" data-filterable-set="storm-kotlin/JVM">
+            <div class="main-subrow keyValue ">
+              <div class=""><span class="inline-flex">
+                  <div><a href="is-null.html"><span>is</span><wbr></wbr><span><span>Null</span></span></a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="-1170629783%2FFunctions%2F1326967511"></span>
+                    <div class="copy-popup-wrapper "><span class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+                  </span></span></div>
+              <div>
+                <div class="title">
+                  <div class="platform-hinted " data-platform-hinted="data-platform-hinted"><div class="content sourceset-dependent-content" data-active="" data-togglable="storm-kotlin/JVM"><div class="symbol monospace"><span class="token keyword">fun </span><span class="token operator">&lt;</span><a href="is-null.html">T</a><span class="token operator"> : </span><span data-unresolved-link="st.orm/Data///PointingToDeclaration/">Data</span><span class="token punctuation">, </span><a href="is-null.html">V</a><span class="token operator">&gt; </span><span data-unresolved-link="st.orm/Metamodel///PointingToDeclaration/">Metamodel</span><span class="token operator">&lt;</span><a href="is-null.html">T</a><span class="token punctuation">, </span><a href="is-null.html">V</a><span class="token operator">&gt;</span><span class="token punctuation">.</span><a href="is-null.html"><span class="token function">isNull</span></a><span class="token punctuation">(</span><span class="token punctuation">)</span><span class="token operator">: </span><a href="-predicate-builder/index.html">PredicateBuilder</a><span class="token operator">&lt;</span><a href="is-null.html">T</a><span class="token punctuation">, </span><a href="is-null.html">T</a><span class="token punctuation">, </span><span class="token operator">*</span><span class="token operator">&gt;</span></div><div class="brief "><p class="paragraph">Infix functions to create a predicate to check if a field is null.</p></div></div></div>
+                </div>
+              </div>
+            </div>
+          </div>
+<a data-name="-947086672%2FFunctions%2F1326967511" anchor-label="isTrue" id="-947086672%2FFunctions%2F1326967511" data-filterable-set="storm-kotlin/JVM"></a>
+          <div class="table-row" data-togglable="EXTENSION_FUNCTION" data-filterable-current="storm-kotlin/JVM" data-filterable-set="storm-kotlin/JVM">
+            <div class="main-subrow keyValue ">
+              <div class=""><span class="inline-flex">
+                  <div><a href="is-true.html"><span>is</span><wbr></wbr><span><span>True</span></span></a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="-947086672%2FFunctions%2F1326967511"></span>
+                    <div class="copy-popup-wrapper "><span class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+                  </span></span></div>
+              <div>
+                <div class="title">
+                  <div class="platform-hinted " data-platform-hinted="data-platform-hinted"><div class="content sourceset-dependent-content" data-active="" data-togglable="storm-kotlin/JVM"><div class="symbol monospace"><span class="token keyword">fun </span><span class="token operator">&lt;</span><a href="is-true.html">T</a><span class="token operator"> : </span><span data-unresolved-link="st.orm/Data///PointingToDeclaration/">Data</span><span class="token punctuation">, </span><a href="is-true.html">V</a><span class="token operator">&gt; </span><span data-unresolved-link="st.orm/Metamodel///PointingToDeclaration/">Metamodel</span><span class="token operator">&lt;</span><a href="is-true.html">T</a><span class="token punctuation">, </span><a href="is-true.html">V</a><span class="token operator">&gt;</span><span class="token punctuation">.</span><a href="is-true.html"><span class="token function">isTrue</span></a><span class="token punctuation">(</span><span class="token punctuation">)</span><span class="token operator">: </span><a href="-predicate-builder/index.html">PredicateBuilder</a><span class="token operator">&lt;</span><a href="is-true.html">T</a><span class="token punctuation">, </span><a href="is-true.html">T</a><span class="token punctuation">, </span><span class="token operator">*</span><span class="token operator">&gt;</span></div><div class="brief "><p class="paragraph">Infix functions to create a predicate to check if a field is true.</p></div></div></div>
+                </div>
+              </div>
+            </div>
+          </div>
+<a data-name="-1544164031%2FFunctions%2F1326967511" anchor-label="key" id="-1544164031%2FFunctions%2F1326967511" data-filterable-set="storm-kotlin/JVM"></a>
+          <div class="table-row" data-togglable="EXTENSION_FUNCTION" data-filterable-current="storm-kotlin/JVM" data-filterable-set="storm-kotlin/JVM">
+            <div class="main-subrow keyValue ">
+              <div class=""><span class="inline-flex">
+                  <div><a href="key.html"><span><span>key</span></span></a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="-1544164031%2FFunctions%2F1326967511"></span>
+                    <div class="copy-popup-wrapper "><span class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+                  </span></span></div>
+              <div>
+                <div class="title">
+                  <div class="platform-hinted " data-platform-hinted="data-platform-hinted"><div class="content sourceset-dependent-content" data-active="" data-togglable="storm-kotlin/JVM"><div class="symbol monospace"><span class="token keyword">fun </span><span class="token operator">&lt;</span><a href="key.html">T</a><span class="token operator"> : </span><span data-unresolved-link="st.orm/Data///PointingToDeclaration/">Data</span><span class="token punctuation">, </span><a href="key.html">E</a><span class="token operator">&gt; </span><span data-unresolved-link="st.orm/Metamodel///PointingToDeclaration/">Metamodel</span><span class="token operator">&lt;</span><a href="key.html">T</a><span class="token punctuation">, </span><a href="key.html">E</a><span class="token operator">&gt;</span><span class="token punctuation">.</span><a href="key.html"><span class="token function">key</span></a><span class="token punctuation">(</span><span class="token punctuation">)</span><span class="token operator">: </span><span data-unresolved-link="st.orm/Metamodel.Key///PointingToDeclaration/">Metamodel.Key</span><span class="token operator">&lt;</span><a href="key.html">T</a><span class="token punctuation">, </span><a href="key.html">E</a><span class="token operator">&gt;</span></div><div class="brief "><p class="paragraph">Returns a <span data-unresolved-link="st.orm/Metamodel.Key///PointingToDeclaration/">Metamodel.Key</span> view of this metamodel. If this metamodel already implements <span data-unresolved-link="st.orm/Metamodel.Key///PointingToDeclaration/">Metamodel.Key</span>, it is returned as-is; otherwise it is wrapped in a delegate that implements <span data-unresolved-link="st.orm/Metamodel.Key///PointingToDeclaration/">Metamodel.Key</span>.</p></div></div></div>
+                </div>
+              </div>
+            </div>
+          </div>
+<a data-name="-256436243%2FFunctions%2F1326967511" anchor-label="less" id="-256436243%2FFunctions%2F1326967511" data-filterable-set="storm-kotlin/JVM"></a>
+          <div class="table-row" data-togglable="EXTENSION_FUNCTION" data-filterable-current="storm-kotlin/JVM" data-filterable-set="storm-kotlin/JVM">
+            <div class="main-subrow keyValue ">
+              <div class=""><span class="inline-flex">
+                  <div><a href="less.html"><span><span>less</span></span></a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="-256436243%2FFunctions%2F1326967511"></span>
+                    <div class="copy-popup-wrapper "><span class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+                  </span></span></div>
+              <div>
+                <div class="title">
+                  <div class="platform-hinted " data-platform-hinted="data-platform-hinted"><div class="content sourceset-dependent-content" data-active="" data-togglable="storm-kotlin/JVM"><div class="symbol monospace"><span class="token keyword">infix </span><span class="token keyword">fun </span><span class="token operator">&lt;</span><a href="less.html">T</a><span class="token operator"> : </span><span data-unresolved-link="st.orm/Data///PointingToDeclaration/">Data</span><span class="token punctuation">, </span><a href="less.html">V</a><span class="token operator">&gt; </span><span data-unresolved-link="st.orm/Metamodel///PointingToDeclaration/">Metamodel</span><span class="token operator">&lt;</span><a href="less.html">T</a><span class="token punctuation">, </span><a href="less.html">V</a><span class="token operator">&gt;</span><span class="token punctuation">.</span><a href="less.html"><span class="token function">less</span></a><span class="token punctuation">(</span><span class="parameters "><span class="parameter ">value<span class="token operator">: </span><a href="less.html">V</a></span></span><span class="token punctuation">)</span><span class="token operator">: </span><a href="-predicate-builder/index.html">PredicateBuilder</a><span class="token operator">&lt;</span><a href="less.html">T</a><span class="token punctuation">, </span><a href="less.html">T</a><span class="token punctuation">, </span><span class="token operator">*</span><span class="token operator">&gt;</span></div><div class="brief "><p class="paragraph">Infix functions to create a predicate to check if a field is less than a value.</p></div></div></div>
+                </div>
+              </div>
+            </div>
+          </div>
+<a data-name="2073390497%2FFunctions%2F1326967511" anchor-label="lessEq" id="2073390497%2FFunctions%2F1326967511" data-filterable-set="storm-kotlin/JVM"></a>
+          <div class="table-row" data-togglable="EXTENSION_FUNCTION" data-filterable-current="storm-kotlin/JVM" data-filterable-set="storm-kotlin/JVM">
+            <div class="main-subrow keyValue ">
+              <div class=""><span class="inline-flex">
+                  <div><a href="less-eq.html"><span>less</span><wbr></wbr><span><span>Eq</span></span></a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="2073390497%2FFunctions%2F1326967511"></span>
+                    <div class="copy-popup-wrapper "><span class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+                  </span></span></div>
+              <div>
+                <div class="title">
+                  <div class="platform-hinted " data-platform-hinted="data-platform-hinted"><div class="content sourceset-dependent-content" data-active="" data-togglable="storm-kotlin/JVM"><div class="symbol monospace"><span class="token keyword">infix </span><span class="token keyword">fun </span><span class="token operator">&lt;</span><a href="less-eq.html">T</a><span class="token operator"> : </span><span data-unresolved-link="st.orm/Data///PointingToDeclaration/">Data</span><span class="token punctuation">, </span><a href="less-eq.html">V</a><span class="token operator">&gt; </span><span data-unresolved-link="st.orm/Metamodel///PointingToDeclaration/">Metamodel</span><span class="token operator">&lt;</span><a href="less-eq.html">T</a><span class="token punctuation">, </span><a href="less-eq.html">V</a><span class="token operator">&gt;</span><span class="token punctuation">.</span><a href="less-eq.html"><span class="token function">lessEq</span></a><span class="token punctuation">(</span><span class="parameters "><span class="parameter ">value<span class="token operator">: </span><a href="less-eq.html">V</a></span></span><span class="token punctuation">)</span><span class="token operator">: </span><a href="-predicate-builder/index.html">PredicateBuilder</a><span class="token operator">&lt;</span><a href="less-eq.html">T</a><span class="token punctuation">, </span><a href="less-eq.html">T</a><span class="token punctuation">, </span><span class="token operator">*</span><span class="token operator">&gt;</span></div><div class="brief "><p class="paragraph">Infix functions to create a predicate to check if a field is less than or equal to a value.</p></div></div></div>
+                </div>
+              </div>
+            </div>
+          </div>
+<a data-name="1192609711%2FFunctions%2F1326967511" anchor-label="like" id="1192609711%2FFunctions%2F1326967511" data-filterable-set="storm-kotlin/JVM"></a>
+          <div class="table-row" data-togglable="EXTENSION_FUNCTION" data-filterable-current="storm-kotlin/JVM" data-filterable-set="storm-kotlin/JVM">
+            <div class="main-subrow keyValue ">
+              <div class=""><span class="inline-flex">
+                  <div><a href="like.html"><span><span>like</span></span></a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="1192609711%2FFunctions%2F1326967511"></span>
+                    <div class="copy-popup-wrapper "><span class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+                  </span></span></div>
+              <div>
+                <div class="title">
+                  <div class="platform-hinted " data-platform-hinted="data-platform-hinted"><div class="content sourceset-dependent-content" data-active="" data-togglable="storm-kotlin/JVM"><div class="symbol monospace"><span class="token keyword">infix </span><span class="token keyword">fun </span><span class="token operator">&lt;</span><a href="like.html">T</a><span class="token operator"> : </span><span data-unresolved-link="st.orm/Data///PointingToDeclaration/">Data</span><span class="token punctuation">, </span><a href="like.html">V</a><span class="token operator">&gt; </span><span data-unresolved-link="st.orm/Metamodel///PointingToDeclaration/">Metamodel</span><span class="token operator">&lt;</span><a href="like.html">T</a><span class="token punctuation">, </span><a href="like.html">V</a><span class="token operator">&gt;</span><span class="token punctuation">.</span><a href="like.html"><span class="token function">like</span></a><span class="token punctuation">(</span><span class="parameters "><span class="parameter ">value<span class="token operator">: </span><a href="like.html">V</a></span></span><span class="token punctuation">)</span><span class="token operator">: </span><a href="-predicate-builder/index.html">PredicateBuilder</a><span class="token operator">&lt;</span><a href="like.html">T</a><span class="token punctuation">, </span><a href="like.html">T</a><span class="token punctuation">, </span><span class="token operator">*</span><span class="token operator">&gt;</span></div><div class="brief "><p class="paragraph">Infix functions to create a predicate to check if a field is like a value.</p></div></div></div>
+                </div>
+              </div>
+            </div>
+          </div>
+<a data-name="-1737057164%2FFunctions%2F1326967511" anchor-label="neq" id="-1737057164%2FFunctions%2F1326967511" data-filterable-set="storm-kotlin/JVM"></a>
+          <div class="table-row" data-togglable="EXTENSION_FUNCTION" data-filterable-current="storm-kotlin/JVM" data-filterable-set="storm-kotlin/JVM">
+            <div class="main-subrow keyValue ">
+              <div class=""><span class="inline-flex">
+                  <div><a href="neq.html"><span><span>neq</span></span></a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="-1737057164%2FFunctions%2F1326967511"></span>
+                    <div class="copy-popup-wrapper "><span class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+                  </span></span></div>
+              <div>
+                <div class="title">
+                  <div class="platform-hinted " data-platform-hinted="data-platform-hinted"><div class="content sourceset-dependent-content" data-active="" data-togglable="storm-kotlin/JVM"><div class="symbol monospace"><span class="token keyword">infix </span><span class="token keyword">fun </span><span class="token operator">&lt;</span><a href="neq.html">T</a><span class="token operator"> : </span><span data-unresolved-link="st.orm/Data///PointingToDeclaration/">Data</span><span class="token punctuation">, </span><a href="neq.html">V</a><span class="token operator">&gt; </span><span data-unresolved-link="st.orm/Metamodel///PointingToDeclaration/">Metamodel</span><span class="token operator">&lt;</span><a href="neq.html">T</a><span class="token punctuation">, </span><a href="neq.html">V</a><span class="token operator">&gt;</span><span class="token punctuation">.</span><a href="neq.html"><span class="token function">neq</span></a><span class="token punctuation">(</span><span class="parameters "><span class="parameter ">value<span class="token operator">: </span><a href="neq.html">V</a></span></span><span class="token punctuation">)</span><span class="token operator">: </span><a href="-predicate-builder/index.html">PredicateBuilder</a><span class="token operator">&lt;</span><a href="neq.html">T</a><span class="token punctuation">, </span><a href="neq.html">T</a><span class="token punctuation">, </span><span class="token operator">*</span><span class="token operator">&gt;</span></div><div class="brief "><p class="paragraph">Infix functions to create a predicate to check if a field is not equal to a value.</p></div><div class="symbol monospace"><span class="token keyword">infix </span><span class="token keyword">fun </span><span class="token operator">&lt;</span><a href="neq.html">T</a><span class="token operator"> : </span><span data-unresolved-link="st.orm/Data///PointingToDeclaration/">Data</span><span class="token punctuation">, </span><a href="neq.html">V</a><span class="token operator"> : </span><span data-unresolved-link="st.orm/Data///PointingToDeclaration/">Data</span><span class="token operator">&gt; </span><span data-unresolved-link="st.orm/Metamodel///PointingToDeclaration/">Metamodel</span><span class="token operator">&lt;</span><a href="neq.html">T</a><span class="token punctuation">, </span><a href="neq.html">V</a><span class="token operator">&gt;</span><span class="token punctuation">.</span><a href="neq.html"><span class="token function">neq</span></a><span class="token punctuation">(</span><span class="parameters "><span class="parameter ">value<span class="token operator">: </span><span data-unresolved-link="st.orm/Ref///PointingToDeclaration/">Ref</span><span class="token operator">&lt;</span><a href="neq.html">V</a><span class="token operator">&gt;</span></span></span><span class="token punctuation">)</span><span class="token operator">: </span><a href="-predicate-builder/index.html">PredicateBuilder</a><span class="token operator">&lt;</span><a href="neq.html">T</a><span class="token punctuation">, </span><a href="neq.html">T</a><span class="token punctuation">, </span><span class="token operator">*</span><span class="token operator">&gt;</span></div><div class="brief "><p class="paragraph">Infix functions to create a predicate to check if a field is not equal to a reference.</p></div></div></div>
+                </div>
+              </div>
+            </div>
+          </div>
+<a data-name="-353824356%2FFunctions%2F1326967511" anchor-label="notInList" id="-353824356%2FFunctions%2F1326967511" data-filterable-set="storm-kotlin/JVM"></a>
+          <div class="table-row" data-togglable="EXTENSION_FUNCTION" data-filterable-current="storm-kotlin/JVM" data-filterable-set="storm-kotlin/JVM">
+            <div class="main-subrow keyValue ">
+              <div class=""><span class="inline-flex">
+                  <div><a href="not-in-list.html"><span>not</span><wbr></wbr><span>In</span><wbr></wbr><span><span>List</span></span></a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="-353824356%2FFunctions%2F1326967511"></span>
+                    <div class="copy-popup-wrapper "><span class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+                  </span></span></div>
+              <div>
+                <div class="title">
+                  <div class="platform-hinted " data-platform-hinted="data-platform-hinted"><div class="content sourceset-dependent-content" data-active="" data-togglable="storm-kotlin/JVM"><div class="symbol monospace"><span class="token keyword">infix </span><span class="token keyword">fun </span><span class="token operator">&lt;</span><a href="not-in-list.html">T</a><span class="token operator"> : </span><span data-unresolved-link="st.orm/Data///PointingToDeclaration/">Data</span><span class="token punctuation">, </span><a href="not-in-list.html">V</a><span class="token operator">&gt; </span><span data-unresolved-link="st.orm/Metamodel///PointingToDeclaration/">Metamodel</span><span class="token operator">&lt;</span><a href="not-in-list.html">T</a><span class="token punctuation">, </span><a href="not-in-list.html">V</a><span class="token operator">&gt;</span><span class="token punctuation">.</span><a href="not-in-list.html"><span class="token function">notInList</span></a><span class="token punctuation">(</span><span class="parameters "><span class="parameter ">value<span class="token operator">: </span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin.collections/-iterable/index.html">Iterable</a><span class="token operator">&lt;</span><a href="not-in-list.html">V</a><span class="token operator">&gt;</span></span></span><span class="token punctuation">)</span><span class="token operator">: </span><a href="-predicate-builder/index.html">PredicateBuilder</a><span class="token operator">&lt;</span><a href="not-in-list.html">T</a><span class="token punctuation">, </span><a href="not-in-list.html">T</a><span class="token punctuation">, </span><span class="token operator">*</span><span class="token operator">&gt;</span></div><div class="brief "><p class="paragraph">Infix function to create a predicate to check if a field is not in a list of values.</p></div></div></div>
+                </div>
+              </div>
+            </div>
+          </div>
+<a data-name="234805270%2FFunctions%2F1326967511" anchor-label="notInRefs" id="234805270%2FFunctions%2F1326967511" data-filterable-set="storm-kotlin/JVM"></a>
+          <div class="table-row" data-togglable="EXTENSION_FUNCTION" data-filterable-current="storm-kotlin/JVM" data-filterable-set="storm-kotlin/JVM">
+            <div class="main-subrow keyValue ">
+              <div class=""><span class="inline-flex">
+                  <div><a href="not-in-refs.html"><span>not</span><wbr></wbr><span>In</span><wbr></wbr><span><span>Refs</span></span></a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="234805270%2FFunctions%2F1326967511"></span>
+                    <div class="copy-popup-wrapper "><span class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+                  </span></span></div>
+              <div>
+                <div class="title">
+                  <div class="platform-hinted " data-platform-hinted="data-platform-hinted"><div class="content sourceset-dependent-content" data-active="" data-togglable="storm-kotlin/JVM"><div class="symbol monospace"><span class="token keyword">infix </span><span class="token keyword">fun </span><span class="token operator">&lt;</span><a href="not-in-refs.html">T</a><span class="token operator"> : </span><span data-unresolved-link="st.orm/Data///PointingToDeclaration/">Data</span><span class="token punctuation">, </span><a href="not-in-refs.html">V</a><span class="token operator"> : </span><span data-unresolved-link="st.orm/Data///PointingToDeclaration/">Data</span><span class="token operator">&gt; </span><span data-unresolved-link="st.orm/Metamodel///PointingToDeclaration/">Metamodel</span><span class="token operator">&lt;</span><a href="not-in-refs.html">T</a><span class="token punctuation">, </span><a href="not-in-refs.html">V</a><span class="token operator">&gt;</span><span class="token punctuation">.</span><a href="not-in-refs.html"><span class="token function">notInRefs</span></a><span class="token punctuation">(</span><span class="parameters "><span class="parameter ">value<span class="token operator">: </span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin.collections/-iterable/index.html">Iterable</a><span class="token operator">&lt;</span><span data-unresolved-link="st.orm/Ref///PointingToDeclaration/">Ref</span><span class="token operator">&lt;</span><a href="not-in-refs.html">V</a><span class="token operator">&gt;</span><span class="token operator">&gt;</span></span></span><span class="token punctuation">)</span><span class="token operator">: </span><a href="-predicate-builder/index.html">PredicateBuilder</a><span class="token operator">&lt;</span><a href="not-in-refs.html">T</a><span class="token punctuation">, </span><a href="not-in-refs.html">T</a><span class="token punctuation">, </span><span class="token operator">*</span><span class="token operator">&gt;</span></div><div class="brief "><p class="paragraph">Infix function to create a predicate to check if a field is not in a list of references.</p></div></div></div>
+                </div>
+              </div>
+            </div>
+          </div>
+<a data-name="-1320796974%2FFunctions%2F1326967511" anchor-label="notLike" id="-1320796974%2FFunctions%2F1326967511" data-filterable-set="storm-kotlin/JVM"></a>
+          <div class="table-row" data-togglable="EXTENSION_FUNCTION" data-filterable-current="storm-kotlin/JVM" data-filterable-set="storm-kotlin/JVM">
+            <div class="main-subrow keyValue ">
+              <div class=""><span class="inline-flex">
+                  <div><a href="not-like.html"><span>not</span><wbr></wbr><span><span>Like</span></span></a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="-1320796974%2FFunctions%2F1326967511"></span>
+                    <div class="copy-popup-wrapper "><span class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+                  </span></span></div>
+              <div>
+                <div class="title">
+                  <div class="platform-hinted " data-platform-hinted="data-platform-hinted"><div class="content sourceset-dependent-content" data-active="" data-togglable="storm-kotlin/JVM"><div class="symbol monospace"><span class="token keyword">infix </span><span class="token keyword">fun </span><span class="token operator">&lt;</span><a href="not-like.html">T</a><span class="token operator"> : </span><span data-unresolved-link="st.orm/Data///PointingToDeclaration/">Data</span><span class="token punctuation">, </span><a href="not-like.html">V</a><span class="token operator">&gt; </span><span data-unresolved-link="st.orm/Metamodel///PointingToDeclaration/">Metamodel</span><span class="token operator">&lt;</span><a href="not-like.html">T</a><span class="token punctuation">, </span><a href="not-like.html">V</a><span class="token operator">&gt;</span><span class="token punctuation">.</span><a href="not-like.html"><span class="token function">notLike</span></a><span class="token punctuation">(</span><span class="parameters "><span class="parameter ">value<span class="token operator">: </span><a href="not-like.html">V</a></span></span><span class="token punctuation">)</span><span class="token operator">: </span><a href="-predicate-builder/index.html">PredicateBuilder</a><span class="token operator">&lt;</span><a href="not-like.html">T</a><span class="token punctuation">, </span><a href="not-like.html">T</a><span class="token punctuation">, </span><span class="token operator">*</span><span class="token operator">&gt;</span></div><div class="brief "><p class="paragraph">Infix functions to create a predicate to check if a field is not like a value.</p></div></div></div>
+                </div>
+              </div>
+            </div>
+          </div>
+<a data-name="-234598311%2FFunctions%2F1326967511" anchor-label="orm" id="-234598311%2FFunctions%2F1326967511" data-filterable-set="storm-kotlin/JVM"></a>
+          <div class="table-row" data-togglable="EXTENSION_FUNCTION" data-filterable-current="storm-kotlin/JVM" data-filterable-set="storm-kotlin/JVM">
+            <div class="main-subrow keyValue ">
+              <div class=""><span class="inline-flex">
+                  <div><a href="orm.html"><span><span>orm</span></span></a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="-234598311%2FFunctions%2F1326967511"></span>
+                    <div class="copy-popup-wrapper "><span class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+                  </span></span></div>
+              <div>
+                <div class="title">
+                  <div class="platform-hinted " data-platform-hinted="data-platform-hinted"><div class="content sourceset-dependent-content" data-active="" data-togglable="storm-kotlin/JVM"><div class="symbol monospace"><span class="token keyword">fun </span><a href="https://docs.oracle.com/javase/8/docs/api/java/sql/Connection.html">Connection</a><span class="token punctuation">.</span><a href="orm.html"><span class="token function">orm</span></a><span class="token punctuation">(</span><span class="parameters "><span class="parameter ">decorator<span class="token operator">: </span><span class="token punctuation">(</span><span data-unresolved-link="st.orm.mapping/TemplateDecorator///PointingToDeclaration/">TemplateDecorator</span><span class="token punctuation">)</span><span class="token operator"> -&gt; </span><span data-unresolved-link="st.orm.mapping/TemplateDecorator///PointingToDeclaration/">TemplateDecorator</span></span></span><span class="token punctuation">)</span><span class="token operator">: </span><a href="-o-r-m-template/index.html">ORMTemplate</a></div><div class="brief "><p class="paragraph">Creates an <a href="-o-r-m-template/index.html">ORMTemplate</a> from this <a href="https://docs.oracle.com/javase/8/docs/api/java/sql/Connection.html">Connection</a> with a custom <span data-unresolved-link="st.orm.mapping/TemplateDecorator///PointingToDeclaration/">TemplateDecorator</span>.</p></div><div class="symbol monospace"><span class="token keyword">fun </span><a href="https://docs.oracle.com/javase/8/docs/api/java/sql/Connection.html">Connection</a><span class="token punctuation">.</span><a href="orm.html"><span class="token function">orm</span></a><span class="token punctuation">(</span><span class="parameters "><span class="parameter ">config<span class="token operator">: </span><span data-unresolved-link="st.orm/StormConfig///PointingToDeclaration/">StormConfig</span></span></span><span class="token punctuation">)</span><span class="token operator">: </span><a href="-o-r-m-template/index.html">ORMTemplate</a></div><div class="brief "><p class="paragraph">Creates an <a href="-o-r-m-template/index.html">ORMTemplate</a> from this <a href="https://docs.oracle.com/javase/8/docs/api/java/sql/Connection.html">Connection</a> with a custom <span data-unresolved-link="st.orm/StormConfig///PointingToDeclaration/">StormConfig</span>.</p></div><div class="symbol monospace"><span class="token keyword">fun </span><a href="https://docs.oracle.com/javase/8/docs/api/javax/sql/DataSource.html">DataSource</a><span class="token punctuation">.</span><a href="orm.html"><span class="token function">orm</span></a><span class="token punctuation">(</span><span class="parameters "><span class="parameter ">decorator<span class="token operator">: </span><span class="token punctuation">(</span><span data-unresolved-link="st.orm.mapping/TemplateDecorator///PointingToDeclaration/">TemplateDecorator</span><span class="token punctuation">)</span><span class="token operator"> -&gt; </span><span data-unresolved-link="st.orm.mapping/TemplateDecorator///PointingToDeclaration/">TemplateDecorator</span></span></span><span class="token punctuation">)</span><span class="token operator">: </span><a href="-o-r-m-template/index.html">ORMTemplate</a></div><div class="brief "><p class="paragraph">Creates an <a href="-o-r-m-template/index.html">ORMTemplate</a> from this <a href="https://docs.oracle.com/javase/8/docs/api/javax/sql/DataSource.html">DataSource</a> with a custom <span data-unresolved-link="st.orm.mapping/TemplateDecorator///PointingToDeclaration/">TemplateDecorator</span>.</p></div><div class="symbol monospace"><span class="token keyword">fun </span><a href="https://docs.oracle.com/javase/8/docs/api/javax/sql/DataSource.html">DataSource</a><span class="token punctuation">.</span><a href="orm.html"><span class="token function">orm</span></a><span class="token punctuation">(</span><span class="parameters "><span class="parameter ">config<span class="token operator">: </span><span data-unresolved-link="st.orm/StormConfig///PointingToDeclaration/">StormConfig</span></span></span><span class="token punctuation">)</span><span class="token operator">: </span><a href="-o-r-m-template/index.html">ORMTemplate</a></div><div class="brief "><p class="paragraph">Creates an <a href="-o-r-m-template/index.html">ORMTemplate</a> from this <a href="https://docs.oracle.com/javase/8/docs/api/javax/sql/DataSource.html">DataSource</a> with a custom <span data-unresolved-link="st.orm/StormConfig///PointingToDeclaration/">StormConfig</span>.</p></div><div class="symbol monospace"><span class="token keyword">fun </span><a href="https://docs.oracle.com/javase/8/docs/api/java/sql/Connection.html">Connection</a><span class="token punctuation">.</span><a href="orm.html"><span class="token function">orm</span></a><span class="token punctuation">(</span><span class="parameters "><span class="parameter ">config<span class="token operator">: </span><span data-unresolved-link="st.orm/StormConfig///PointingToDeclaration/">StormConfig</span><span class="token punctuation">, </span></span><span class="parameter ">decorator<span class="token operator">: </span><span class="token punctuation">(</span><span data-unresolved-link="st.orm.mapping/TemplateDecorator///PointingToDeclaration/">TemplateDecorator</span><span class="token punctuation">)</span><span class="token operator"> -&gt; </span><span data-unresolved-link="st.orm.mapping/TemplateDecorator///PointingToDeclaration/">TemplateDecorator</span></span></span><span class="token punctuation">)</span><span class="token operator">: </span><a href="-o-r-m-template/index.html">ORMTemplate</a></div><div class="brief "><p class="paragraph">Creates an <a href="-o-r-m-template/index.html">ORMTemplate</a> from this <a href="https://docs.oracle.com/javase/8/docs/api/java/sql/Connection.html">Connection</a> with a custom <span data-unresolved-link="st.orm/StormConfig///PointingToDeclaration/">StormConfig</span> and <span data-unresolved-link="st.orm.mapping/TemplateDecorator///PointingToDeclaration/">TemplateDecorator</span>.</p></div><div class="symbol monospace"><span class="token keyword">fun </span><a href="https://docs.oracle.com/javase/8/docs/api/javax/sql/DataSource.html">DataSource</a><span class="token punctuation">.</span><a href="orm.html"><span class="token function">orm</span></a><span class="token punctuation">(</span><span class="parameters "><span class="parameter ">config<span class="token operator">: </span><span data-unresolved-link="st.orm/StormConfig///PointingToDeclaration/">StormConfig</span><span class="token punctuation">, </span></span><span class="parameter ">decorator<span class="token operator">: </span><span class="token punctuation">(</span><span data-unresolved-link="st.orm.mapping/TemplateDecorator///PointingToDeclaration/">TemplateDecorator</span><span class="token punctuation">)</span><span class="token operator"> -&gt; </span><span data-unresolved-link="st.orm.mapping/TemplateDecorator///PointingToDeclaration/">TemplateDecorator</span></span></span><span class="token punctuation">)</span><span class="token operator">: </span><a href="-o-r-m-template/index.html">ORMTemplate</a></div><div class="brief "><p class="paragraph">Creates an <a href="-o-r-m-template/index.html">ORMTemplate</a> from this <a href="https://docs.oracle.com/javase/8/docs/api/javax/sql/DataSource.html">DataSource</a> with a custom <span data-unresolved-link="st.orm/StormConfig///PointingToDeclaration/">StormConfig</span> and <span data-unresolved-link="st.orm.mapping/TemplateDecorator///PointingToDeclaration/">TemplateDecorator</span>.</p></div></div></div>
+                </div>
+              </div>
+            </div>
+          </div>
+<a data-name="-2017760156%2FFunctions%2F1326967511" anchor-label="projectionId" id="-2017760156%2FFunctions%2F1326967511" data-filterable-set="storm-kotlin/JVM"></a>
+          <div class="table-row" data-togglable="EXTENSION_FUNCTION" data-filterable-current="storm-kotlin/JVM" data-filterable-set="storm-kotlin/JVM">
+            <div class="main-subrow keyValue ">
+              <div class=""><span class="inline-flex">
+                  <div><a href="projection-id.html"><span>projection</span><wbr></wbr><span><span>Id</span></span></a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="-2017760156%2FFunctions%2F1326967511"></span>
+                    <div class="copy-popup-wrapper "><span class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+                  </span></span></div>
+              <div>
+                <div class="title">
+                  <div class="platform-hinted " data-platform-hinted="data-platform-hinted"><div class="content sourceset-dependent-content" data-active="" data-togglable="storm-kotlin/JVM"><div class="symbol monospace"><span class="token keyword">fun </span><span class="token operator">&lt;</span><a href="projection-id.html">ID</a><span class="token punctuation">, </span><a href="projection-id.html">P</a><span class="token operator"> : </span><span data-unresolved-link="st.orm/Projection///PointingToDeclaration/">Projection</span><span class="token operator">&lt;</span><a href="projection-id.html">ID</a><span class="token operator">&gt;</span><span class="token operator">&gt; </span><span data-unresolved-link="st.orm/Ref///PointingToDeclaration/">Ref</span><span class="token operator">&lt;</span><a href="projection-id.html">P</a><span class="token operator">&gt;</span><span class="token punctuation">.</span><a href="projection-id.html"><span class="token function">projectionId</span></a><span class="token punctuation">(</span><span class="token punctuation">)</span><span class="token operator">: </span><a href="projection-id.html">ID</a></div><div class="brief "><p class="paragraph">Extracts the primary key from a projection ref, returning a type-safe id.</p></div></div></div>
+                </div>
+              </div>
+            </div>
+          </div>
+<a data-name="-496521021%2FFunctions%2F1326967511" anchor-label="ref" id="-496521021%2FFunctions%2F1326967511" data-filterable-set="storm-kotlin/JVM"></a>
+          <div class="table-row" data-togglable="EXTENSION_FUNCTION" data-filterable-current="storm-kotlin/JVM" data-filterable-set="storm-kotlin/JVM">
+            <div class="main-subrow keyValue ">
+              <div class=""><span class="inline-flex">
+                  <div><a href="ref.html"><span><span>ref</span></span></a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="-496521021%2FFunctions%2F1326967511"></span>
+                    <div class="copy-popup-wrapper "><span class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+                  </span></span></div>
+              <div>
+                <div class="title">
+                  <div class="platform-hinted " data-platform-hinted="data-platform-hinted"><div class="content sourceset-dependent-content" data-active="" data-togglable="storm-kotlin/JVM"><div class="symbol monospace"><span class="token keyword">fun </span><span class="token operator">&lt;</span><a href="ref.html">E</a><span class="token operator"> : </span><span data-unresolved-link="st.orm/Entity///PointingToDeclaration/">Entity</span><span class="token operator">&lt;</span><span class="token operator">*</span><span class="token operator">&gt;</span><span class="token operator">&gt; </span><a href="ref.html">E</a><span class="token punctuation">.</span><a href="ref.html"><span class="token function">ref</span></a><span class="token punctuation">(</span><span class="token punctuation">)</span><span class="token operator">: </span><span data-unresolved-link="st.orm/Ref///PointingToDeclaration/">Ref</span><span class="token operator">&lt;</span><a href="ref.html">E</a><span class="token operator">&gt;</span></div><div class="brief "><p class="paragraph">Creates a <span data-unresolved-link="st.orm/Ref///PointingToDeclaration/">Ref</span> for the entity.</p></div></div></div>
+                </div>
+              </div>
+            </div>
+          </div>
+<a data-name="847031332%2FFunctions%2F1326967511" anchor-label="refById" id="847031332%2FFunctions%2F1326967511" data-filterable-set="storm-kotlin/JVM"></a>
+          <div class="table-row" data-filterable-current="storm-kotlin/JVM" data-filterable-set="storm-kotlin/JVM">
+            <div class="main-subrow keyValue ">
+              <div class=""><span class="inline-flex">
+                  <div><a href="ref-by-id.html"><span>ref</span><wbr></wbr><span>By</span><wbr></wbr><span><span>Id</span></span></a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="847031332%2FFunctions%2F1326967511"></span>
+                    <div class="copy-popup-wrapper "><span class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+                  </span></span></div>
+              <div>
+                <div class="title">
+                  <div class="platform-hinted " data-platform-hinted="data-platform-hinted"><div class="content sourceset-dependent-content" data-active="" data-togglable="storm-kotlin/JVM"><div class="symbol monospace"><span class="token keyword">inline </span><span class="token keyword">fun </span><span class="token operator">&lt;</span><a href="ref-by-id.html">T</a><span class="token operator"> : </span><span data-unresolved-link="st.orm/Data///PointingToDeclaration/">Data</span><span class="token operator">&gt; </span><a href="ref-by-id.html"><span class="token function">refById</span></a><span class="token punctuation">(</span><span class="parameters "><span class="parameter ">id<span class="token operator">: </span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-any/index.html">Any</a></span></span><span class="token punctuation">)</span><span class="token operator">: </span><span data-unresolved-link="st.orm/Ref///PointingToDeclaration/">Ref</span><span class="token operator">&lt;</span><a href="ref-by-id.html">T</a><span class="token operator">&gt;</span></div><div class="brief "><p class="paragraph">Creates a <span data-unresolved-link="st.orm/Ref///PointingToDeclaration/">Ref</span> from a type and primary key value, without needing an entity instance.</p></div></div></div>
+                </div>
+              </div>
+            </div>
+          </div>
+<a data-name="305633197%2FFunctions%2F1326967511" anchor-label="setGlobalTransactionOptions" id="305633197%2FFunctions%2F1326967511" data-filterable-set="storm-kotlin/JVM"></a>
+          <div class="table-row" data-filterable-current="storm-kotlin/JVM" data-filterable-set="storm-kotlin/JVM">
+            <div class="main-subrow keyValue ">
+              <div class=""><span class="inline-flex">
+                  <div><a href="set-global-transaction-options.html"><span>set</span><wbr></wbr><span>Global</span><wbr></wbr><span>Transaction</span><wbr></wbr><span><span>Options</span></span></a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="305633197%2FFunctions%2F1326967511"></span>
+                    <div class="copy-popup-wrapper "><span class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+                  </span></span></div>
+              <div>
+                <div class="title">
+                  <div class="platform-hinted " data-platform-hinted="data-platform-hinted"><div class="content sourceset-dependent-content" data-active="" data-togglable="storm-kotlin/JVM"><div class="symbol monospace"><span class="token keyword">fun </span><a href="set-global-transaction-options.html"><span class="token function">setGlobalTransactionOptions</span></a><span class="token punctuation">(</span><span class="parameters "><span class="parameter ">propagation<span class="token operator">: </span><a href="-transaction-propagation/index.html">TransactionPropagation</a><span class="token operator">?</span><span class="token operator"> = </span>null<span class="token punctuation">, </span></span><span class="parameter ">isolation<span class="token operator">: </span><a href="-transaction-isolation/index.html">TransactionIsolation</a><span class="token operator">?</span><span class="token operator"> = </span>null<span class="token punctuation">, </span></span><span class="parameter ">timeoutSeconds<span class="token operator">: </span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-int/index.html">Int</a><span class="token operator">?</span><span class="token operator"> = </span>null<span class="token punctuation">, </span></span><span class="parameter ">readOnly<span class="token operator">: </span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-boolean/index.html">Boolean</a><span class="token operator">?</span><span class="token operator"> = </span>null</span></span><span class="token punctuation">)</span></div><div class="brief "><p class="paragraph">Sets the global transaction options.</p></div></div></div>
+                </div>
+              </div>
+            </div>
+          </div>
+<a data-name="-862273863%2FFunctions%2F1326967511" anchor-label="transaction" id="-862273863%2FFunctions%2F1326967511" data-filterable-set="storm-kotlin/JVM"></a>
+          <div class="table-row" data-filterable-current="storm-kotlin/JVM" data-filterable-set="storm-kotlin/JVM">
+            <div class="main-subrow keyValue ">
+              <div class=""><span class="inline-flex">
+                  <div><a href="transaction.html"><span><span>transaction</span></span></a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="-862273863%2FFunctions%2F1326967511"></span>
+                    <div class="copy-popup-wrapper "><span class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+                  </span></span></div>
+              <div>
+                <div class="title">
+                  <div class="platform-hinted " data-platform-hinted="data-platform-hinted"><div class="content sourceset-dependent-content" data-active="" data-togglable="storm-kotlin/JVM"><div class="symbol monospace"><span class="token keyword">suspend </span><span class="token keyword">fun </span><span class="token operator">&lt;</span><a href="transaction.html">T</a><span class="token operator">&gt; </span><a href="transaction.html"><span class="token function">transaction</span></a><span class="token punctuation">(</span><span class="parameters "><span class="parameter ">dispatcher<span class="token operator">: </span><span data-unresolved-link="kotlinx.coroutines/CoroutineDispatcher///PointingToDeclaration/">CoroutineDispatcher</span><span class="token operator"> = </span>TransactionDispatchers.Default<span class="token punctuation">, </span></span><span class="parameter ">propagation<span class="token operator">: </span><a href="-transaction-propagation/index.html">TransactionPropagation</a><span class="token operator">?</span><span class="token operator"> = </span>null<span class="token punctuation">, </span></span><span class="parameter ">isolation<span class="token operator">: </span><a href="-transaction-isolation/index.html">TransactionIsolation</a><span class="token operator">?</span><span class="token operator"> = </span>null<span class="token punctuation">, </span></span><span class="parameter ">timeoutSeconds<span class="token operator">: </span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-int/index.html">Int</a><span class="token operator">?</span><span class="token operator"> = </span>null<span class="token punctuation">, </span></span><span class="parameter ">readOnly<span class="token operator">: </span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-boolean/index.html">Boolean</a><span class="token operator">?</span><span class="token operator"> = </span>null<span class="token punctuation">, </span></span><span class="parameter ">block<span class="token operator">: </span><span class="token keyword">suspend </span><a href="-transaction/index.html">Transaction</a><span class="token punctuation">.</span><span class="token punctuation">(</span><span class="token punctuation">)</span><span class="token operator"> -&gt; </span><a href="transaction.html">T</a></span></span><span class="token punctuation">)</span><span class="token operator">: </span><a href="transaction.html">T</a></div><div class="brief "><p class="paragraph">Executes the given <a href="transaction.html">block</a> within a coroutine-friendly database transaction.</p></div></div></div>
+                </div>
+              </div>
+            </div>
+          </div>
+<a data-name="1073853765%2FFunctions%2F1326967511" anchor-label="transactionBlocking" id="1073853765%2FFunctions%2F1326967511" data-filterable-set="storm-kotlin/JVM"></a>
+          <div class="table-row" data-filterable-current="storm-kotlin/JVM" data-filterable-set="storm-kotlin/JVM">
+            <div class="main-subrow keyValue ">
+              <div class=""><span class="inline-flex">
+                  <div><a href="transaction-blocking.html"><span>transaction</span><wbr></wbr><span><span>Blocking</span></span></a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="1073853765%2FFunctions%2F1326967511"></span>
+                    <div class="copy-popup-wrapper "><span class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+                  </span></span></div>
+              <div>
+                <div class="title">
+                  <div class="platform-hinted " data-platform-hinted="data-platform-hinted"><div class="content sourceset-dependent-content" data-active="" data-togglable="storm-kotlin/JVM"><div class="symbol monospace"><span class="token keyword">fun </span><span class="token operator">&lt;</span><a href="transaction-blocking.html">T</a><span class="token operator">&gt; </span><a href="transaction-blocking.html"><span class="token function">transactionBlocking</span></a><span class="token punctuation">(</span><span class="parameters "><span class="parameter ">propagation<span class="token operator">: </span><a href="-transaction-propagation/index.html">TransactionPropagation</a><span class="token operator">?</span><span class="token operator"> = </span>null<span class="token punctuation">, </span></span><span class="parameter ">isolation<span class="token operator">: </span><a href="-transaction-isolation/index.html">TransactionIsolation</a><span class="token operator">?</span><span class="token operator"> = </span>null<span class="token punctuation">, </span></span><span class="parameter ">timeoutSeconds<span class="token operator">: </span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-int/index.html">Int</a><span class="token operator">?</span><span class="token operator"> = </span>null<span class="token punctuation">, </span></span><span class="parameter ">readOnly<span class="token operator">: </span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-boolean/index.html">Boolean</a><span class="token operator">?</span><span class="token operator"> = </span>null<span class="token punctuation">, </span></span><span class="parameter ">block<span class="token operator">: </span><a href="-transaction/index.html">Transaction</a><span class="token punctuation">.</span><span class="token punctuation">(</span><span class="token punctuation">)</span><span class="token operator"> -&gt; </span><a href="transaction-blocking.html">T</a></span></span><span class="token punctuation">)</span><span class="token operator">: </span><a href="transaction-blocking.html">T</a></div><div class="brief "><p class="paragraph">Executes the given <a href="transaction-blocking.html">block</a> within a database transaction.</p></div></div></div>
+                </div>
+              </div>
+            </div>
+          </div>
+<a data-name="-298780011%2FFunctions%2F1326967511" anchor-label="withTransactionOptions" id="-298780011%2FFunctions%2F1326967511" data-filterable-set="storm-kotlin/JVM"></a>
+          <div class="table-row" data-filterable-current="storm-kotlin/JVM" data-filterable-set="storm-kotlin/JVM">
+            <div class="main-subrow keyValue ">
+              <div class=""><span class="inline-flex">
+                  <div><a href="with-transaction-options.html"><span>with</span><wbr></wbr><span>Transaction</span><wbr></wbr><span><span>Options</span></span></a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="-298780011%2FFunctions%2F1326967511"></span>
+                    <div class="copy-popup-wrapper "><span class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+                  </span></span></div>
+              <div>
+                <div class="title">
+                  <div class="platform-hinted " data-platform-hinted="data-platform-hinted"><div class="content sourceset-dependent-content" data-active="" data-togglable="storm-kotlin/JVM"><div class="symbol monospace"><span class="token keyword">suspend </span><span class="token keyword">fun </span><span class="token operator">&lt;</span><a href="with-transaction-options.html">T</a><span class="token operator">&gt; </span><a href="with-transaction-options.html"><span class="token function">withTransactionOptions</span></a><span class="token punctuation">(</span><span class="parameters "><span class="parameter ">propagation<span class="token operator">: </span><a href="-transaction-propagation/index.html">TransactionPropagation</a><span class="token operator">?</span><span class="token operator"> = </span>null<span class="token punctuation">, </span></span><span class="parameter ">isolation<span class="token operator">: </span><a href="-transaction-isolation/index.html">TransactionIsolation</a><span class="token operator">?</span><span class="token operator"> = </span>null<span class="token punctuation">, </span></span><span class="parameter ">timeoutSeconds<span class="token operator">: </span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-int/index.html">Int</a><span class="token operator">?</span><span class="token operator"> = </span>null<span class="token punctuation">, </span></span><span class="parameter ">readOnly<span class="token operator">: </span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-boolean/index.html">Boolean</a><span class="token operator">?</span><span class="token operator"> = </span>null<span class="token punctuation">, </span></span><span class="parameter ">block<span class="token operator">: </span><span class="token keyword">suspend </span><span class="token punctuation">(</span><span class="token punctuation">)</span><span class="token operator"> -&gt; </span><a href="with-transaction-options.html">T</a></span></span><span class="token punctuation">)</span><span class="token operator">: </span><a href="with-transaction-options.html">T</a></div><div class="brief "><p class="paragraph">Set the default transaction options for the current coroutine context.</p></div></div></div>
+                </div>
+              </div>
+            </div>
+          </div>
+<a data-name="1092466259%2FFunctions%2F1326967511" anchor-label="withTransactionOptionsBlocking" id="1092466259%2FFunctions%2F1326967511" data-filterable-set="storm-kotlin/JVM"></a>
+          <div class="table-row" data-filterable-current="storm-kotlin/JVM" data-filterable-set="storm-kotlin/JVM">
+            <div class="main-subrow keyValue ">
+              <div class=""><span class="inline-flex">
+                  <div><a href="with-transaction-options-blocking.html"><span>with</span><wbr></wbr><span>Transaction</span><wbr></wbr><span>Options</span><wbr></wbr><span><span>Blocking</span></span></a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="1092466259%2FFunctions%2F1326967511"></span>
+                    <div class="copy-popup-wrapper "><span class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+                  </span></span></div>
+              <div>
+                <div class="title">
+                  <div class="platform-hinted " data-platform-hinted="data-platform-hinted"><div class="content sourceset-dependent-content" data-active="" data-togglable="storm-kotlin/JVM"><div class="symbol monospace"><span class="token keyword">fun </span><span class="token operator">&lt;</span><a href="with-transaction-options-blocking.html">T</a><span class="token operator">&gt; </span><a href="with-transaction-options-blocking.html"><span class="token function">withTransactionOptionsBlocking</span></a><span class="token punctuation">(</span><span class="parameters "><span class="parameter ">propagation<span class="token operator">: </span><a href="-transaction-propagation/index.html">TransactionPropagation</a><span class="token operator">?</span><span class="token operator"> = </span>null<span class="token punctuation">, </span></span><span class="parameter ">isolation<span class="token operator">: </span><a href="-transaction-isolation/index.html">TransactionIsolation</a><span class="token operator">?</span><span class="token operator"> = </span>null<span class="token punctuation">, </span></span><span class="parameter ">timeoutSeconds<span class="token operator">: </span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-int/index.html">Int</a><span class="token operator">?</span><span class="token operator"> = </span>null<span class="token punctuation">, </span></span><span class="parameter ">readOnly<span class="token operator">: </span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-boolean/index.html">Boolean</a><span class="token operator">?</span><span class="token operator"> = </span>null<span class="token punctuation">, </span></span><span class="parameter ">block<span class="token operator">: </span><span class="token punctuation">(</span><span class="token punctuation">)</span><span class="token operator"> -&gt; </span><a href="with-transaction-options-blocking.html">T</a></span></span><span class="token punctuation">)</span><span class="token operator">: </span><a href="with-transaction-options-blocking.html">T</a></div><div class="brief "><p class="paragraph">Set the default transaction options for the current thread.</p></div></div></div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+    <div class="footer">
+        <a href="#content" id="go-to-top-link" class="footer--button footer--button_go-to-top"></a>
+        <span>© 2026 Copyright</span>
+        <span class="pull-right">
+            <span>Generated by </span>
+            <a class="footer--link footer--link_external" href="https://github.com/Kotlin/dokka">
+                <span>dokka</span>
+            </a>
+        </span>
+    </div>
+            </div>
+        </div>
+    </div>
+</body>
+</html>

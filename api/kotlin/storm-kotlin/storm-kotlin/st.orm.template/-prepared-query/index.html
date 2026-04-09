@@ -1,0 +1,471 @@
+<!DOCTYPE html>
+<html class="no-js">
+<head>
+    <meta name="viewport" content="width=device-width, initial-scale=1" charset="UTF-8">
+    <title>PreparedQuery</title>
+    <link href="../../../images/logo-icon.svg" rel="icon" type="image/svg">
+    <script>var pathToRoot = "../../../";</script>
+    <script>document.documentElement.classList.replace("no-js","js");</script>
+    <script>const storage = localStorage.getItem("dokka-dark-mode")
+    if (storage == null) {
+        const osDarkSchemePreferred = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches
+        if (osDarkSchemePreferred === true) {
+            document.getElementsByTagName("html")[0].classList.add("theme-dark")
+        }
+    } else {
+        const savedDarkMode = JSON.parse(storage)
+        if(savedDarkMode === true) {
+            document.getElementsByTagName("html")[0].classList.add("theme-dark")
+        }
+    }
+    </script>
+<script type="text/javascript" src="https://unpkg.com/kotlin-playground@1/dist/playground.min.js" async="async"></script>
+<script type="text/javascript" src="../../../scripts/sourceset_dependencies.js" async="async"></script>
+<link href="../../../styles/style.css" rel="Stylesheet">
+<link href="../../../styles/main.css" rel="Stylesheet">
+<link href="../../../styles/prism.css" rel="Stylesheet">
+<link href="../../../styles/logo-styles.css" rel="Stylesheet">
+<link href="../../../styles/font-jb-sans-auto.css" rel="Stylesheet">
+<link href="../../../ui-kit/ui-kit.min.css" rel="Stylesheet">
+<script type="text/javascript" src="../../../scripts/clipboard.js" async="async"></script>
+<script type="text/javascript" src="../../../scripts/navigation-loader.js" async="async"></script>
+<script type="text/javascript" src="../../../scripts/platform-content-handler.js" async="async"></script>
+<script type="text/javascript" src="../../../scripts/main.js" defer="defer"></script>
+<script type="text/javascript" src="../../../scripts/prism.js" async="async"></script>
+<script type="text/javascript" src="../../../ui-kit/ui-kit.min.js" defer="defer"></script>
+<script type="text/javascript" src="../../../scripts/symbol-parameters-wrapper_deferred.js" defer="defer"></script>
+</head>
+<body>
+    <div class="root">
+    <nav class="navigation theme-dark" id="navigation-wrapper">
+            <a class="library-name--link" href="../../../index.html">
+                    storm-kotlin
+            </a>
+        <button class="navigation-controls--btn navigation-controls--btn_toc ui-kit_mobile-only" id="toc-toggle"
+                type="button">Toggle table of contents
+        </button>
+        <div class="navigation-controls--break ui-kit_mobile-only"></div>
+        <div class="library-version" id="library-version">
+        </div>
+        <div class="navigation-controls">
+        <div class="filter-section filter-section_loading" id="filter-section">
+                <button class="platform-tag platform-selector jvm-like" data-active=""
+                        data-filter="storm-kotlin/JVM">JVM</button>
+            <div class="dropdown filter-section--dropdown" data-role="dropdown" id="filter-section-dropdown">
+                <button class="button button_dropdown filter-section--dropdown-toggle" role="combobox"
+                        data-role="dropdown-toggle"
+                        aria-controls="platform-tags-listbox"
+                        aria-haspopup="listbox"
+                        aria-expanded="false"
+                        aria-label="Toggle source sets"
+                ></button>
+                <ul role="listbox" id="platform-tags-listbox" class="dropdown--list" data-role="dropdown-listbox">
+                    <div class="dropdown--header"><span>Platform filter</span>
+                        <button class="button" data-role="dropdown-toggle" aria-label="Close platform filter">
+                            <i class="ui-kit-icon ui-kit-icon_cross"></i>
+                        </button>
+                    </div>
+                        <li role="option" class="dropdown--option platform-selector-option jvm-like" tabindex="0">
+                            <label class="checkbox">
+                                <input type="checkbox" class="checkbox--input" id="storm-kotlin/JVM"
+                                       data-filter="storm-kotlin/JVM"/>
+                                <span class="checkbox--icon"></span>
+                                JVM
+                            </label>
+                        </li>
+                </ul>
+                <div class="dropdown--overlay"></div>
+            </div>
+        </div>
+            <button class="navigation-controls--btn navigation-controls--btn_theme" id="theme-toggle-button"
+                    type="button">Switch theme
+            </button>
+            <div class="navigation-controls--btn navigation-controls--btn_search" id="searchBar" role="button">Search in
+                API
+            </div>
+        </div>
+    </nav>
+        <div id="container">
+            <div class="sidebar" id="leftColumn">
+                <div class="dropdown theme-dark_mobile" data-role="dropdown" id="toc-dropdown">
+                    <ul role="listbox" id="toc-listbox" class="dropdown--list dropdown--list_toc-list"
+                        data-role="dropdown-listbox">
+                        <div class="dropdown--header">
+                            <span>
+                                    storm-kotlin
+                            </span>
+                            <button class="button" data-role="dropdown-toggle" aria-label="Close table of contents">
+                                <i class="ui-kit-icon ui-kit-icon_cross"></i>
+                            </button>
+                        </div>
+                        <div class="sidebar--inner" id="sideMenu"></div>
+                    </ul>
+                    <div class="dropdown--overlay"></div>
+                </div>
+            </div>
+            <div id="main">
+<div class="main-content" data-page-type="classlike" id="content" pageIds="storm-kotlin::st.orm.template/PreparedQuery///PointingToDeclaration//1326967511">
+  <div class="breadcrumbs"><a href="../../../index.html">storm-kotlin</a><span class="delimiter">/</span><a href="../index.html">st.orm.template</a><span class="delimiter">/</span><span class="current">PreparedQuery</span></div>
+  <div class="cover ">
+    <h1 class="cover"><span>Prepared</span><wbr></wbr><span><span>Query</span></span></h1>
+    <div class="platform-hinted " data-platform-hinted="data-platform-hinted"><div class="content sourceset-dependent-content" data-active="" data-togglable="storm-kotlin/JVM"><div class="symbol monospace"><span class="token keyword">interface </span><a href="index.html">PreparedQuery</a> : <a href="../-query/index.html">Query</a>, <a href="https://docs.oracle.com/javase/8/docs/api/java/lang/AutoCloseable.html">AutoCloseable</a></div><p class="paragraph">Represents an eagerly constructed, reusable query that supports batch operations and generated key retrieval.</p><p class="paragraph">Unlike regular <a href="../-query/index.html">Query</a> instances which are constructed lazily, a <code class="lang-kotlin">PreparedQuery</code> is constructed eagerly when <a href="../-query/prepare.html">Query.prepare</a> or <a href="../-query-builder/prepare.html">QueryBuilder.prepare</a> is called. This enables:</p><ul><li><p class="paragraph"><strong>Batch operations</strong> -- Add multiple records via <a href="add-batch.html">addBatch</a> and execute them in a single database round-trip with <span data-unresolved-link="st.orm.template/PreparedQuery/executeBatch/#/PointingToDeclaration/">executeBatch</span>.</p></li><li><p class="paragraph"><strong>Generated keys</strong> -- Retrieve auto-generated primary keys after INSERT via <a href="get-generated-keys.html">getGeneratedKeys</a>.</p></li></ul><p class="paragraph">As <code class="lang-kotlin">PreparedQuery</code> implements <a href="https://docs.oracle.com/javase/8/docs/api/java/lang/AutoCloseable.html">AutoCloseable</a>, it must be closed after usage to release database resources. Use it within a <code class="lang-kotlin">use</code> block:</p><div class="sample-container"><pre><code class="block lang-kotlin" theme="idea">val bindVars = orm.createBindVars()<br>orm.query(&quot;INSERT INTO ${User::class} VALUES ${bindVars}&quot;).prepare().use { query -&gt;<br>    users.forEach { query.addBatch(it) }<br>    query.executeBatch()<br>}</code></pre><span class="top-right-position"><span class="copy-icon"></span><div class="copy-popup-wrapper popup-to-left"><span class="copy-popup-icon"></span><span>Content copied to clipboard</span></div></span></div><h4 class="">See also</h4><div class="table"><div class="table-row" data-filterable-current="storm-kotlin/JVM" data-filterable-set="storm-kotlin/JVM"><div class="main-subrow keyValue "><div class=""><span class="inline-flex"><div><a href="../-query/prepare.html"><span>Query.</span><wbr></wbr><span>prepare</span></a></div></span></div><div></div></div></div><div class="table-row" data-filterable-current="storm-kotlin/JVM" data-filterable-set="storm-kotlin/JVM"><div class="main-subrow keyValue "><div class=""><span class="inline-flex"><div><a href="../-query-builder/prepare.html"><span>Query</span><wbr></wbr><span>Builder.</span><wbr></wbr><span>prepare</span></a></div></span></div><div></div></div></div></div><h4 class="">Inheritors</h4><div class="table"><div class="table-row" data-filterable-current="storm-kotlin/JVM" data-filterable-set="storm-kotlin/JVM"><div class="main-subrow keyValue "><div class=""><span class="inline-flex"><div><a href="../../st.orm.template.impl/-prepared-query-impl/index.html">PreparedQueryImpl</a></div></span></div><div></div></div></div></div></div></div>
+  </div>
+  <div class="tabbedcontent">
+    <div class="tabs-section" tabs-section="tabs-section"><button class="section-tab" data-active="" data-togglable="CONSTRUCTOR,TYPE,PROPERTY,FUNCTION">Members</button></div>
+    <div class="tabs-section-body">
+      <div data-togglable="PROPERTY">
+        <h2 class="">Properties</h2>
+        <div class="table"><a data-name="-1015097675%2FProperties%2F1326967511" anchor-label="optionalResult" id="-1015097675%2FProperties%2F1326967511" data-filterable-set="storm-kotlin/JVM"></a>
+          <div class="table-row" data-filterable-current="storm-kotlin/JVM" data-filterable-set="storm-kotlin/JVM">
+            <div class="main-subrow keyValue ">
+              <div class=""><span class="inline-flex">
+                  <div><a href="../-query/optional-result.html"><span>optional</span><wbr></wbr><span><span>Result</span></span></a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="-1015097675%2FProperties%2F1326967511"></span>
+                    <div class="copy-popup-wrapper "><span class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+                  </span></span></div>
+              <div>
+                <div class="title">
+                  <div class="platform-hinted " data-platform-hinted="data-platform-hinted"><div class="content sourceset-dependent-content" data-active="" data-togglable="storm-kotlin/JVM"><div class="symbol monospace"><span class="token keyword">open </span><span class="token keyword">val </span><a href="../-query/optional-result.html">optionalResult</a><span class="token operator">: </span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-array/index.html">Array</a><span class="token operator">&lt;</span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-any/index.html">Any</a><span class="token operator">&gt;</span><span class="token operator">?</span></div></div></div>
+                </div>
+              </div>
+            </div>
+          </div>
+<a data-name="-1116597962%2FProperties%2F1326967511" anchor-label="resultCount" id="-1116597962%2FProperties%2F1326967511" data-filterable-set="storm-kotlin/JVM"></a>
+          <div class="table-row" data-filterable-current="storm-kotlin/JVM" data-filterable-set="storm-kotlin/JVM">
+            <div class="main-subrow keyValue ">
+              <div class=""><span class="inline-flex">
+                  <div><a href="../-query/result-count.html"><span>result</span><wbr></wbr><span><span>Count</span></span></a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="-1116597962%2FProperties%2F1326967511"></span>
+                    <div class="copy-popup-wrapper "><span class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+                  </span></span></div>
+              <div>
+                <div class="title">
+                  <div class="platform-hinted " data-platform-hinted="data-platform-hinted"><div class="content sourceset-dependent-content" data-active="" data-togglable="storm-kotlin/JVM"><div class="symbol monospace"><span class="token keyword">open </span><span class="token keyword">val </span><a href="../-query/result-count.html">resultCount</a><span class="token operator">: </span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-long/index.html">Long</a></div></div></div>
+                </div>
+              </div>
+            </div>
+          </div>
+<a data-name="1698979239%2FProperties%2F1326967511" anchor-label="resultFlow" id="1698979239%2FProperties%2F1326967511" data-filterable-set="storm-kotlin/JVM"></a>
+          <div class="table-row" data-filterable-current="storm-kotlin/JVM" data-filterable-set="storm-kotlin/JVM">
+            <div class="main-subrow keyValue ">
+              <div class=""><span class="inline-flex">
+                  <div><a href="../-query/result-flow.html"><span>result</span><wbr></wbr><span><span>Flow</span></span></a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="1698979239%2FProperties%2F1326967511"></span>
+                    <div class="copy-popup-wrapper "><span class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+                  </span></span></div>
+              <div>
+                <div class="title">
+                  <div class="platform-hinted " data-platform-hinted="data-platform-hinted"><div class="content sourceset-dependent-content" data-active="" data-togglable="storm-kotlin/JVM"><div class="symbol monospace"><span class="token keyword">open </span><span class="token keyword">val </span><a href="../-query/result-flow.html">resultFlow</a><span class="token operator">: </span><span data-unresolved-link="kotlinx.coroutines.flow/Flow///PointingToDeclaration/">Flow</span><span class="token operator">&lt;</span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-array/index.html">Array</a><span class="token operator">&lt;</span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-any/index.html">Any</a><span class="token operator">&gt;</span><span class="token operator">&gt;</span></div><div class="brief "><p class="paragraph">Execute a SELECT query and return the resulting rows as a flow of row instances.</p></div></div></div>
+                </div>
+              </div>
+            </div>
+          </div>
+<a data-name="1785261111%2FProperties%2F1326967511" anchor-label="resultList" id="1785261111%2FProperties%2F1326967511" data-filterable-set="storm-kotlin/JVM"></a>
+          <div class="table-row" data-filterable-current="storm-kotlin/JVM" data-filterable-set="storm-kotlin/JVM">
+            <div class="main-subrow keyValue ">
+              <div class=""><span class="inline-flex">
+                  <div><a href="../-query/result-list.html"><span>result</span><wbr></wbr><span><span>List</span></span></a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="1785261111%2FProperties%2F1326967511"></span>
+                    <div class="copy-popup-wrapper "><span class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+                  </span></span></div>
+              <div>
+                <div class="title">
+                  <div class="platform-hinted " data-platform-hinted="data-platform-hinted"><div class="content sourceset-dependent-content" data-active="" data-togglable="storm-kotlin/JVM"><div class="symbol monospace"><span class="token keyword">open </span><span class="token keyword">val </span><a href="../-query/result-list.html">resultList</a><span class="token operator">: </span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin.collections/-list/index.html">List</a><span class="token operator">&lt;</span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-array/index.html">Array</a><span class="token operator">&lt;</span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-any/index.html">Any</a><span class="token operator">&gt;</span><span class="token operator">&gt;</span></div></div></div>
+                </div>
+              </div>
+            </div>
+          </div>
+<a data-name="1622276501%2FProperties%2F1326967511" anchor-label="resultStream" id="1622276501%2FProperties%2F1326967511" data-filterable-set="storm-kotlin/JVM"></a>
+          <div class="table-row" data-filterable-current="storm-kotlin/JVM" data-filterable-set="storm-kotlin/JVM">
+            <div class="main-subrow keyValue ">
+              <div class=""><span class="inline-flex">
+                  <div><a href="../-query/result-stream.html"><span>result</span><wbr></wbr><span><span>Stream</span></span></a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="1622276501%2FProperties%2F1326967511"></span>
+                    <div class="copy-popup-wrapper "><span class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+                  </span></span></div>
+              <div>
+                <div class="title">
+                  <div class="platform-hinted " data-platform-hinted="data-platform-hinted"><div class="content sourceset-dependent-content" data-active="" data-togglable="storm-kotlin/JVM"><div class="symbol monospace"><span class="token keyword">abstract </span><span class="token keyword">val </span><a href="../-query/result-stream.html">resultStream</a><span class="token operator">: </span><a href="https://docs.oracle.com/javase/8/docs/api/java/util/stream/Stream.html">Stream</a><span class="token operator">&lt;</span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-array/index.html">Array</a><span class="token operator">&lt;</span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-any/index.html">Any</a><span class="token operator">&gt;</span><span class="token operator">&gt;</span></div><div class="brief "><p class="paragraph">Execute a SELECT query and return the resulting rows as a stream of row instances.</p></div></div></div>
+                </div>
+              </div>
+            </div>
+          </div>
+<a data-name="-1957627379%2FProperties%2F1326967511" anchor-label="singleResult" id="-1957627379%2FProperties%2F1326967511" data-filterable-set="storm-kotlin/JVM"></a>
+          <div class="table-row" data-filterable-current="storm-kotlin/JVM" data-filterable-set="storm-kotlin/JVM">
+            <div class="main-subrow keyValue ">
+              <div class=""><span class="inline-flex">
+                  <div><a href="../-query/single-result.html"><span>single</span><wbr></wbr><span><span>Result</span></span></a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="-1957627379%2FProperties%2F1326967511"></span>
+                    <div class="copy-popup-wrapper "><span class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+                  </span></span></div>
+              <div>
+                <div class="title">
+                  <div class="platform-hinted " data-platform-hinted="data-platform-hinted"><div class="content sourceset-dependent-content" data-active="" data-togglable="storm-kotlin/JVM"><div class="symbol monospace"><span class="token keyword">open </span><span class="token keyword">val </span><a href="../-query/single-result.html">singleResult</a><span class="token operator">: </span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-array/index.html">Array</a><span class="token operator">&lt;</span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-any/index.html">Any</a><span class="token operator">&gt;</span></div></div></div>
+                </div>
+              </div>
+            </div>
+          </div>
+<a data-name="-2000005300%2FProperties%2F1326967511" anchor-label="versionAware" id="-2000005300%2FProperties%2F1326967511" data-filterable-set="storm-kotlin/JVM"></a>
+          <div class="table-row" data-filterable-current="storm-kotlin/JVM" data-filterable-set="storm-kotlin/JVM">
+            <div class="main-subrow keyValue ">
+              <div class=""><span class="inline-flex">
+                  <div><a href="../-query/version-aware.html"><span>version</span><wbr></wbr><span><span>Aware</span></span></a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="-2000005300%2FProperties%2F1326967511"></span>
+                    <div class="copy-popup-wrapper "><span class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+                  </span></span></div>
+              <div>
+                <div class="title">
+                  <div class="platform-hinted " data-platform-hinted="data-platform-hinted"><div class="content sourceset-dependent-content" data-active="" data-togglable="storm-kotlin/JVM"><div class="symbol monospace"><span class="token keyword">abstract </span><span class="token keyword">val </span><a href="../-query/version-aware.html">versionAware</a><span class="token operator">: </span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-boolean/index.html">Boolean</a></div><div class="brief "><p class="paragraph">Returns true if the query is version aware, false otherwise.</p></div></div></div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div data-togglable="FUNCTION">
+        <h2 class="">Functions</h2>
+        <div class="table"><a data-name="-1247495125%2FFunctions%2F1326967511" anchor-label="addBatch" id="-1247495125%2FFunctions%2F1326967511" data-filterable-set="storm-kotlin/JVM"></a>
+          <div class="table-row" data-filterable-current="storm-kotlin/JVM" data-filterable-set="storm-kotlin/JVM">
+            <div class="main-subrow keyValue ">
+              <div class=""><span class="inline-flex">
+                  <div><a href="add-batch.html"><span>add</span><wbr></wbr><span><span>Batch</span></span></a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="-1247495125%2FFunctions%2F1326967511"></span>
+                    <div class="copy-popup-wrapper "><span class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+                  </span></span></div>
+              <div>
+                <div class="title">
+                  <div class="platform-hinted " data-platform-hinted="data-platform-hinted"><div class="content sourceset-dependent-content" data-active="" data-togglable="storm-kotlin/JVM"><div class="symbol monospace"><span class="token keyword">abstract </span><span class="token keyword">fun </span><a href="add-batch.html"><span class="token function">addBatch</span></a><span class="token punctuation">(</span><span class="parameters "><span class="parameter ">record<span class="token operator">: </span><span data-unresolved-link="st.orm/Data///PointingToDeclaration/">Data</span></span></span><span class="token punctuation">)</span></div><div class="brief "><p class="paragraph">Add a record to the batch.</p></div></div></div>
+                </div>
+              </div>
+            </div>
+          </div>
+<a data-name="-276082931%2FFunctions%2F1326967511" anchor-label="close" id="-276082931%2FFunctions%2F1326967511" data-filterable-set="storm-kotlin/JVM"></a>
+          <div class="table-row" data-filterable-current="storm-kotlin/JVM" data-filterable-set="storm-kotlin/JVM">
+            <div class="main-subrow keyValue ">
+              <div class=""><span class="inline-flex">
+                  <div><a href="close.html"><span><span>close</span></span></a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="-276082931%2FFunctions%2F1326967511"></span>
+                    <div class="copy-popup-wrapper "><span class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+                  </span></span></div>
+              <div>
+                <div class="title">
+                  <div class="platform-hinted " data-platform-hinted="data-platform-hinted"><div class="content sourceset-dependent-content" data-active="" data-togglable="storm-kotlin/JVM"><div class="symbol monospace"><span class="token keyword">abstract </span><span class="token keyword">override </span><span class="token keyword">fun </span><a href="close.html"><span class="token function">close</span></a><span class="token punctuation">(</span><span class="token punctuation">)</span></div><div class="brief "><p class="paragraph">Close the resources associated with this query.</p></div></div></div>
+                </div>
+              </div>
+            </div>
+          </div>
+<a data-name="-1604971571%2FFunctions%2F1326967511" anchor-label="executeBatch" id="-1604971571%2FFunctions%2F1326967511" data-filterable-set="storm-kotlin/JVM"></a>
+          <div class="table-row" data-filterable-current="storm-kotlin/JVM" data-filterable-set="storm-kotlin/JVM">
+            <div class="main-subrow keyValue ">
+              <div class=""><span class="inline-flex">
+                  <div><a href="../-query/execute-batch.html"><span>execute</span><wbr></wbr><span><span>Batch</span></span></a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="-1604971571%2FFunctions%2F1326967511"></span>
+                    <div class="copy-popup-wrapper "><span class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+                  </span></span></div>
+              <div>
+                <div class="title">
+                  <div class="platform-hinted " data-platform-hinted="data-platform-hinted"><div class="content sourceset-dependent-content" data-active="" data-togglable="storm-kotlin/JVM"><div class="symbol monospace"><span class="token keyword">abstract </span><span class="token keyword">fun </span><a href="../-query/execute-batch.html"><span class="token function">executeBatch</span></a><span class="token punctuation">(</span><span class="token punctuation">)</span><span class="token operator">: </span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-int-array/index.html">IntArray</a></div><div class="brief "><p class="paragraph">Execute a batch of commands.</p></div></div></div>
+                </div>
+              </div>
+            </div>
+          </div>
+<a data-name="2121686602%2FFunctions%2F1326967511" anchor-label="executeUpdate" id="2121686602%2FFunctions%2F1326967511" data-filterable-set="storm-kotlin/JVM"></a>
+          <div class="table-row" data-filterable-current="storm-kotlin/JVM" data-filterable-set="storm-kotlin/JVM">
+            <div class="main-subrow keyValue ">
+              <div class=""><span class="inline-flex">
+                  <div><a href="../-query/execute-update.html"><span>execute</span><wbr></wbr><span><span>Update</span></span></a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="2121686602%2FFunctions%2F1326967511"></span>
+                    <div class="copy-popup-wrapper "><span class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+                  </span></span></div>
+              <div>
+                <div class="title">
+                  <div class="platform-hinted " data-platform-hinted="data-platform-hinted"><div class="content sourceset-dependent-content" data-active="" data-togglable="storm-kotlin/JVM"><div class="symbol monospace"><span class="token keyword">abstract </span><span class="token keyword">fun </span><a href="../-query/execute-update.html"><span class="token function">executeUpdate</span></a><span class="token punctuation">(</span><span class="token punctuation">)</span><span class="token operator">: </span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-int/index.html">Int</a></div><div class="brief "><p class="paragraph">Execute a command, such as an INSERT, UPDATE, or DELETE statement.</p></div></div></div>
+                </div>
+              </div>
+            </div>
+          </div>
+<a data-name="-2000403648%2FFunctions%2F1326967511" anchor-label="getGeneratedKeys" id="-2000403648%2FFunctions%2F1326967511" data-filterable-set="storm-kotlin/JVM"></a>
+          <div class="table-row" data-filterable-current="storm-kotlin/JVM" data-filterable-set="storm-kotlin/JVM">
+            <div class="main-subrow keyValue ">
+              <div class=""><span class="inline-flex">
+                  <div><a href="get-generated-keys.html"><span>get</span><wbr></wbr><span>Generated</span><wbr></wbr><span><span>Keys</span></span></a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="-2000403648%2FFunctions%2F1326967511"></span>
+                    <div class="copy-popup-wrapper "><span class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+                  </span></span></div>
+              <div>
+                <div class="title">
+                  <div class="platform-hinted " data-platform-hinted="data-platform-hinted"><div class="content sourceset-dependent-content" data-active="" data-togglable="storm-kotlin/JVM"><div class="symbol monospace"><span class="token keyword">abstract </span><span class="token keyword">fun </span><span class="token operator">&lt;</span><a href="get-generated-keys.html">ID</a><span class="token operator"> : </span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-any/index.html">Any</a><span class="token operator">&gt; </span><a href="get-generated-keys.html"><span class="token function">getGeneratedKeys</span></a><span class="token punctuation">(</span><span class="parameters "><span class="parameter ">type<span class="token operator">: </span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin.reflect/-k-class/index.html">KClass</a><span class="token operator">&lt;</span><a href="get-generated-keys.html">ID</a><span class="token operator">&gt;</span></span></span><span class="token punctuation">)</span><span class="token operator">: </span><a href="https://docs.oracle.com/javase/8/docs/api/java/util/stream/Stream.html">Stream</a><span class="token operator">&lt;</span><a href="get-generated-keys.html">ID</a><span class="token operator">&gt;</span></div><div class="brief "><p class="paragraph">Returns a stream of generated keys as the result of an insert statement. Returns an empty stream if the insert statement did not generate any keys.</p></div></div></div>
+                </div>
+              </div>
+            </div>
+          </div>
+<a data-name="-1068707949%2FFunctions%2F1326967511" anchor-label="getOptionalResult" id="-1068707949%2FFunctions%2F1326967511" data-filterable-set="storm-kotlin/JVM"></a>
+          <div class="table-row" data-filterable-current="storm-kotlin/JVM" data-filterable-set="storm-kotlin/JVM">
+            <div class="main-subrow keyValue ">
+              <div class=""><span class="inline-flex">
+                  <div><a href="../-query/get-optional-result.html"><span>get</span><wbr></wbr><span>Optional</span><wbr></wbr><span><span>Result</span></span></a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="-1068707949%2FFunctions%2F1326967511"></span>
+                    <div class="copy-popup-wrapper "><span class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+                  </span></span></div>
+              <div>
+                <div class="title">
+                  <div class="platform-hinted " data-platform-hinted="data-platform-hinted"><div class="content sourceset-dependent-content" data-active="" data-togglable="storm-kotlin/JVM"><div class="symbol monospace"><span class="token keyword">open </span><span class="token keyword">fun </span><span class="token operator">&lt;</span><a href="../-query/get-optional-result.html">T</a><span class="token operator"> : </span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-any/index.html">Any</a><span class="token operator">&gt; </span><a href="../-query/get-optional-result.html"><span class="token function">getOptionalResult</span></a><span class="token punctuation">(</span><span class="parameters "><span class="parameter ">type<span class="token operator">: </span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin.reflect/-k-class/index.html">KClass</a><span class="token operator">&lt;</span><a href="../-query/get-optional-result.html">T</a><span class="token operator">&gt;</span></span></span><span class="token punctuation">)</span><span class="token operator">: </span><a href="../-query/get-optional-result.html">T</a><span class="token operator">?</span></div><div class="brief "><p class="paragraph">Execute a SELECT query and returns a single row, where the columns of the row are mapped to the constructor arguments of the specified <code class="lang-kotlin">type</code>.</p></div></div></div>
+                </div>
+              </div>
+            </div>
+          </div>
+<a data-name="-36318109%2FFunctions%2F1326967511" anchor-label="getRefFlow" id="-36318109%2FFunctions%2F1326967511" data-filterable-set="storm-kotlin/JVM"></a>
+          <div class="table-row" data-filterable-current="storm-kotlin/JVM" data-filterable-set="storm-kotlin/JVM">
+            <div class="main-subrow keyValue ">
+              <div class=""><span class="inline-flex">
+                  <div><a href="../-query/get-ref-flow.html"><span>get</span><wbr></wbr><span>Ref</span><wbr></wbr><span><span>Flow</span></span></a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="-36318109%2FFunctions%2F1326967511"></span>
+                    <div class="copy-popup-wrapper "><span class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+                  </span></span></div>
+              <div>
+                <div class="title">
+                  <div class="platform-hinted " data-platform-hinted="data-platform-hinted"><div class="content sourceset-dependent-content" data-active="" data-togglable="storm-kotlin/JVM"><div class="symbol monospace"><span class="token keyword">open </span><span class="token keyword">fun </span><span class="token operator">&lt;</span><a href="../-query/get-ref-flow.html">T</a><span class="token operator"> : </span><span data-unresolved-link="st.orm/Data///PointingToDeclaration/">Data</span><span class="token operator">&gt; </span><a href="../-query/get-ref-flow.html"><span class="token function">getRefFlow</span></a><span class="token punctuation">(</span><span class="parameters "><span class="parameter ">type<span class="token operator">: </span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin.reflect/-k-class/index.html">KClass</a><span class="token operator">&lt;</span><a href="../-query/get-ref-flow.html">T</a><span class="token operator">&gt;</span><span class="token punctuation">, </span></span><span class="parameter ">pkType<span class="token operator">: </span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin.reflect/-k-class/index.html">KClass</a><span class="token operator">&lt;</span><span class="token operator">*</span><span class="token operator">&gt;</span></span></span><span class="token punctuation">)</span><span class="token operator">: </span><span data-unresolved-link="kotlinx.coroutines.flow/Flow///PointingToDeclaration/">Flow</span><span class="token operator">&lt;</span><span data-unresolved-link="st.orm/Ref///PointingToDeclaration/">Ref</span><span class="token operator">&lt;</span><a href="../-query/get-ref-flow.html">T</a><span class="token operator">&gt;</span><span class="token operator">&gt;</span></div><div class="brief "><p class="paragraph">Execute a SELECT query and return the resulting rows as a flow of ref instances.</p></div></div></div>
+                </div>
+              </div>
+            </div>
+          </div>
+<a data-name="-2019765293%2FFunctions%2F1326967511" anchor-label="getRefList" id="-2019765293%2FFunctions%2F1326967511" data-filterable-set="storm-kotlin/JVM"></a>
+          <div class="table-row" data-filterable-current="storm-kotlin/JVM" data-filterable-set="storm-kotlin/JVM">
+            <div class="main-subrow keyValue ">
+              <div class=""><span class="inline-flex">
+                  <div><a href="../-query/get-ref-list.html"><span>get</span><wbr></wbr><span>Ref</span><wbr></wbr><span><span>List</span></span></a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="-2019765293%2FFunctions%2F1326967511"></span>
+                    <div class="copy-popup-wrapper "><span class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+                  </span></span></div>
+              <div>
+                <div class="title">
+                  <div class="platform-hinted " data-platform-hinted="data-platform-hinted"><div class="content sourceset-dependent-content" data-active="" data-togglable="storm-kotlin/JVM"><div class="symbol monospace"><span class="token keyword">open </span><span class="token keyword">fun </span><span class="token operator">&lt;</span><a href="../-query/get-ref-list.html">T</a><span class="token operator"> : </span><span data-unresolved-link="st.orm/Data///PointingToDeclaration/">Data</span><span class="token operator">&gt; </span><a href="../-query/get-ref-list.html"><span class="token function">getRefList</span></a><span class="token punctuation">(</span><span class="parameters "><span class="parameter ">type<span class="token operator">: </span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin.reflect/-k-class/index.html">KClass</a><span class="token operator">&lt;</span><a href="../-query/get-ref-list.html">T</a><span class="token operator">&gt;</span><span class="token punctuation">, </span></span><span class="parameter ">pkType<span class="token operator">: </span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin.reflect/-k-class/index.html">KClass</a><span class="token operator">&lt;</span><span class="token operator">*</span><span class="token operator">&gt;</span></span></span><span class="token punctuation">)</span><span class="token operator">: </span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin.collections/-list/index.html">List</a><span class="token operator">&lt;</span><span data-unresolved-link="st.orm/Ref///PointingToDeclaration/">Ref</span><span class="token operator">&lt;</span><a href="../-query/get-ref-list.html">T</a><span class="token operator">&gt;</span><span class="token operator">&gt;</span></div><div class="brief "><p class="paragraph">Execute a SELECT query and return the resulting rows as a list of ref instances.</p></div></div></div>
+                </div>
+              </div>
+            </div>
+          </div>
+<a data-name="-2083242315%2FFunctions%2F1326967511" anchor-label="getRefStream" id="-2083242315%2FFunctions%2F1326967511" data-filterable-set="storm-kotlin/JVM"></a>
+          <div class="table-row" data-filterable-current="storm-kotlin/JVM" data-filterable-set="storm-kotlin/JVM">
+            <div class="main-subrow keyValue ">
+              <div class=""><span class="inline-flex">
+                  <div><a href="../-query/get-ref-stream.html"><span>get</span><wbr></wbr><span>Ref</span><wbr></wbr><span><span>Stream</span></span></a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="-2083242315%2FFunctions%2F1326967511"></span>
+                    <div class="copy-popup-wrapper "><span class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+                  </span></span></div>
+              <div>
+                <div class="title">
+                  <div class="platform-hinted " data-platform-hinted="data-platform-hinted"><div class="content sourceset-dependent-content" data-active="" data-togglable="storm-kotlin/JVM"><div class="symbol monospace"><span class="token keyword">abstract </span><span class="token keyword">fun </span><span class="token operator">&lt;</span><a href="../-query/get-ref-stream.html">T</a><span class="token operator"> : </span><span data-unresolved-link="st.orm/Data///PointingToDeclaration/">Data</span><span class="token operator">&gt; </span><a href="../-query/get-ref-stream.html"><span class="token function">getRefStream</span></a><span class="token punctuation">(</span><span class="parameters "><span class="parameter ">type<span class="token operator">: </span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin.reflect/-k-class/index.html">KClass</a><span class="token operator">&lt;</span><a href="../-query/get-ref-stream.html">T</a><span class="token operator">&gt;</span><span class="token punctuation">, </span></span><span class="parameter ">pkType<span class="token operator">: </span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin.reflect/-k-class/index.html">KClass</a><span class="token operator">&lt;</span><span class="token operator">*</span><span class="token operator">&gt;</span></span></span><span class="token punctuation">)</span><span class="token operator">: </span><a href="https://docs.oracle.com/javase/8/docs/api/java/util/stream/Stream.html">Stream</a><span class="token operator">&lt;</span><span data-unresolved-link="st.orm/Ref///PointingToDeclaration/">Ref</span><span class="token operator">&lt;</span><a href="../-query/get-ref-stream.html">T</a><span class="token operator">&gt;</span><span class="token operator">&gt;</span></div><div class="brief "><p class="paragraph">Execute a SELECT query and return the resulting rows as a stream of ref instances.</p></div></div></div>
+                </div>
+              </div>
+            </div>
+          </div>
+<a data-name="344513505%2FFunctions%2F1326967511" anchor-label="getResultFlow" id="344513505%2FFunctions%2F1326967511" data-filterable-set="storm-kotlin/JVM"></a>
+          <div class="table-row" data-filterable-current="storm-kotlin/JVM" data-filterable-set="storm-kotlin/JVM">
+            <div class="main-subrow keyValue ">
+              <div class=""><span class="inline-flex">
+                  <div><a href="../-query/get-result-flow.html"><span>get</span><wbr></wbr><span>Result</span><wbr></wbr><span><span>Flow</span></span></a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="344513505%2FFunctions%2F1326967511"></span>
+                    <div class="copy-popup-wrapper "><span class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+                  </span></span></div>
+              <div>
+                <div class="title">
+                  <div class="platform-hinted " data-platform-hinted="data-platform-hinted"><div class="content sourceset-dependent-content" data-active="" data-togglable="storm-kotlin/JVM"><div class="symbol monospace"><span class="token keyword">open </span><span class="token keyword">fun </span><span class="token operator">&lt;</span><a href="../-query/get-result-flow.html">T</a><span class="token operator"> : </span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-any/index.html">Any</a><span class="token operator">&gt; </span><a href="../-query/get-result-flow.html"><span class="token function">getResultFlow</span></a><span class="token punctuation">(</span><span class="parameters "><span class="parameter ">type<span class="token operator">: </span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin.reflect/-k-class/index.html">KClass</a><span class="token operator">&lt;</span><a href="../-query/get-result-flow.html">T</a><span class="token operator">&gt;</span></span></span><span class="token punctuation">)</span><span class="token operator">: </span><span data-unresolved-link="kotlinx.coroutines.flow/Flow///PointingToDeclaration/">Flow</span><span class="token operator">&lt;</span><a href="../-query/get-result-flow.html">T</a><span class="token operator">&gt;</span></div><div class="brief "><p class="paragraph">Execute a SELECT query and return the resulting rows as a flow of row instances.</p></div></div></div>
+                </div>
+              </div>
+            </div>
+          </div>
+<a data-name="-308787375%2FFunctions%2F1326967511" anchor-label="getResultList" id="-308787375%2FFunctions%2F1326967511" data-filterable-set="storm-kotlin/JVM"></a>
+          <div class="table-row" data-filterable-current="storm-kotlin/JVM" data-filterable-set="storm-kotlin/JVM">
+            <div class="main-subrow keyValue ">
+              <div class=""><span class="inline-flex">
+                  <div><a href="../-query/get-result-list.html"><span>get</span><wbr></wbr><span>Result</span><wbr></wbr><span><span>List</span></span></a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="-308787375%2FFunctions%2F1326967511"></span>
+                    <div class="copy-popup-wrapper "><span class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+                  </span></span></div>
+              <div>
+                <div class="title">
+                  <div class="platform-hinted " data-platform-hinted="data-platform-hinted"><div class="content sourceset-dependent-content" data-active="" data-togglable="storm-kotlin/JVM"><div class="symbol monospace"><span class="token keyword">open </span><span class="token keyword">fun </span><span class="token operator">&lt;</span><a href="../-query/get-result-list.html">T</a><span class="token operator"> : </span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-any/index.html">Any</a><span class="token operator">&gt; </span><a href="../-query/get-result-list.html"><span class="token function">getResultList</span></a><span class="token punctuation">(</span><span class="parameters "><span class="parameter ">type<span class="token operator">: </span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin.reflect/-k-class/index.html">KClass</a><span class="token operator">&lt;</span><a href="../-query/get-result-list.html">T</a><span class="token operator">&gt;</span></span></span><span class="token punctuation">)</span><span class="token operator">: </span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin.collections/-list/index.html">List</a><span class="token operator">&lt;</span><a href="../-query/get-result-list.html">T</a><span class="token operator">&gt;</span></div><div class="brief "><p class="paragraph">Execute a SELECT query and return the resulting rows as a list of row instances.</p></div></div></div>
+                </div>
+              </div>
+            </div>
+          </div>
+<a data-name="-549074765%2FFunctions%2F1326967511" anchor-label="getResultStream" id="-549074765%2FFunctions%2F1326967511" data-filterable-set="storm-kotlin/JVM"></a>
+          <div class="table-row" data-filterable-current="storm-kotlin/JVM" data-filterable-set="storm-kotlin/JVM">
+            <div class="main-subrow keyValue ">
+              <div class=""><span class="inline-flex">
+                  <div><a href="../-query/get-result-stream.html"><span>get</span><wbr></wbr><span>Result</span><wbr></wbr><span><span>Stream</span></span></a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="-549074765%2FFunctions%2F1326967511"></span>
+                    <div class="copy-popup-wrapper "><span class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+                  </span></span></div>
+              <div>
+                <div class="title">
+                  <div class="platform-hinted " data-platform-hinted="data-platform-hinted"><div class="content sourceset-dependent-content" data-active="" data-togglable="storm-kotlin/JVM"><div class="symbol monospace"><span class="token keyword">abstract </span><span class="token keyword">fun </span><span class="token operator">&lt;</span><a href="../-query/get-result-stream.html">T</a><span class="token operator"> : </span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-any/index.html">Any</a><span class="token operator">&gt; </span><a href="../-query/get-result-stream.html"><span class="token function">getResultStream</span></a><span class="token punctuation">(</span><span class="parameters "><span class="parameter ">type<span class="token operator">: </span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin.reflect/-k-class/index.html">KClass</a><span class="token operator">&lt;</span><a href="../-query/get-result-stream.html">T</a><span class="token operator">&gt;</span></span></span><span class="token punctuation">)</span><span class="token operator">: </span><a href="https://docs.oracle.com/javase/8/docs/api/java/util/stream/Stream.html">Stream</a><span class="token operator">&lt;</span><a href="../-query/get-result-stream.html">T</a><span class="token operator">&gt;</span></div><div class="brief "><p class="paragraph">Execute a SELECT query and return the resulting rows as a stream of row instances.</p></div></div></div>
+                </div>
+              </div>
+            </div>
+          </div>
+<a data-name="-689298629%2FFunctions%2F1326967511" anchor-label="getSingleResult" id="-689298629%2FFunctions%2F1326967511" data-filterable-set="storm-kotlin/JVM"></a>
+          <div class="table-row" data-filterable-current="storm-kotlin/JVM" data-filterable-set="storm-kotlin/JVM">
+            <div class="main-subrow keyValue ">
+              <div class=""><span class="inline-flex">
+                  <div><a href="../-query/get-single-result.html"><span>get</span><wbr></wbr><span>Single</span><wbr></wbr><span><span>Result</span></span></a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="-689298629%2FFunctions%2F1326967511"></span>
+                    <div class="copy-popup-wrapper "><span class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+                  </span></span></div>
+              <div>
+                <div class="title">
+                  <div class="platform-hinted " data-platform-hinted="data-platform-hinted"><div class="content sourceset-dependent-content" data-active="" data-togglable="storm-kotlin/JVM"><div class="symbol monospace"><span class="token keyword">open </span><span class="token keyword">fun </span><span class="token operator">&lt;</span><a href="../-query/get-single-result.html">T</a><span class="token operator"> : </span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-any/index.html">Any</a><span class="token operator">&gt; </span><a href="../-query/get-single-result.html"><span class="token function">getSingleResult</span></a><span class="token punctuation">(</span><span class="parameters "><span class="parameter ">type<span class="token operator">: </span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin.reflect/-k-class/index.html">KClass</a><span class="token operator">&lt;</span><a href="../-query/get-single-result.html">T</a><span class="token operator">&gt;</span></span></span><span class="token punctuation">)</span><span class="token operator">: </span><a href="../-query/get-single-result.html">T</a></div><div class="brief "><p class="paragraph">Execute a SELECT query and returns a single row, where the columns of the row are mapped to the constructor arguments of the specified <code class="lang-kotlin">type</code>.</p></div></div></div>
+                </div>
+              </div>
+            </div>
+          </div>
+<a data-name="-1571944895%2FFunctions%2F1326967511" anchor-label="prepare" id="-1571944895%2FFunctions%2F1326967511" data-filterable-set="storm-kotlin/JVM"></a>
+          <div class="table-row" data-filterable-current="storm-kotlin/JVM" data-filterable-set="storm-kotlin/JVM">
+            <div class="main-subrow keyValue ">
+              <div class=""><span class="inline-flex">
+                  <div><a href="../-query/prepare.html"><span><span>prepare</span></span></a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="-1571944895%2FFunctions%2F1326967511"></span>
+                    <div class="copy-popup-wrapper "><span class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+                  </span></span></div>
+              <div>
+                <div class="title">
+                  <div class="platform-hinted " data-platform-hinted="data-platform-hinted"><div class="content sourceset-dependent-content" data-active="" data-togglable="storm-kotlin/JVM"><div class="symbol monospace"><span class="token keyword">abstract </span><span class="token keyword">fun </span><a href="../-query/prepare.html"><span class="token function">prepare</span></a><span class="token punctuation">(</span><span class="token punctuation">)</span><span class="token operator">: </span><a href="index.html">PreparedQuery</a></div><div class="brief "><p class="paragraph">Prepares the query for execution.</p></div></div></div>
+                </div>
+              </div>
+            </div>
+          </div>
+<a data-name="1124001228%2FFunctions%2F1326967511" anchor-label="unsafe" id="1124001228%2FFunctions%2F1326967511" data-filterable-set="storm-kotlin/JVM"></a>
+          <div class="table-row" data-filterable-current="storm-kotlin/JVM" data-filterable-set="storm-kotlin/JVM">
+            <div class="main-subrow keyValue ">
+              <div class=""><span class="inline-flex">
+                  <div><a href="../-query/unsafe.html"><span><span>unsafe</span></span></a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="1124001228%2FFunctions%2F1326967511"></span>
+                    <div class="copy-popup-wrapper "><span class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+                  </span></span></div>
+              <div>
+                <div class="title">
+                  <div class="platform-hinted " data-platform-hinted="data-platform-hinted"><div class="content sourceset-dependent-content" data-active="" data-togglable="storm-kotlin/JVM"><div class="symbol monospace"><span class="token keyword">abstract </span><span class="token keyword">fun </span><a href="../-query/unsafe.html"><span class="token function">unsafe</span></a><span class="token punctuation">(</span><span class="token punctuation">)</span><span class="token operator">: </span><a href="../-query/index.html">Query</a></div><div class="brief "><p class="paragraph">Returns a new query that allows dangerous operations, such as DELETE and UPDATE without a WHERE clause.</p></div></div></div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+    <div class="footer">
+        <a href="#content" id="go-to-top-link" class="footer--button footer--button_go-to-top"></a>
+        <span>© 2026 Copyright</span>
+        <span class="pull-right">
+            <span>Generated by </span>
+            <a class="footer--link footer--link_external" href="https://github.com/Kotlin/dokka">
+                <span>dokka</span>
+            </a>
+        </span>
+    </div>
+            </div>
+        </div>
+    </div>
+</body>
+</html>

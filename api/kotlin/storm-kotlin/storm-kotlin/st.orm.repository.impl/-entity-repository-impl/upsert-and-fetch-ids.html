@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html class="no-js">
+<head>
+    <meta name="viewport" content="width=device-width, initial-scale=1" charset="UTF-8">
+    <title>upsertAndFetchIds</title>
+    <link href="../../../images/logo-icon.svg" rel="icon" type="image/svg">
+    <script>var pathToRoot = "../../../";</script>
+    <script>document.documentElement.classList.replace("no-js","js");</script>
+    <script>const storage = localStorage.getItem("dokka-dark-mode")
+    if (storage == null) {
+        const osDarkSchemePreferred = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches
+        if (osDarkSchemePreferred === true) {
+            document.getElementsByTagName("html")[0].classList.add("theme-dark")
+        }
+    } else {
+        const savedDarkMode = JSON.parse(storage)
+        if(savedDarkMode === true) {
+            document.getElementsByTagName("html")[0].classList.add("theme-dark")
+        }
+    }
+    </script>
+<script type="text/javascript" src="https://unpkg.com/kotlin-playground@1/dist/playground.min.js" async="async"></script>
+<script type="text/javascript" src="../../../scripts/sourceset_dependencies.js" async="async"></script>
+<link href="../../../styles/style.css" rel="Stylesheet">
+<link href="../../../styles/main.css" rel="Stylesheet">
+<link href="../../../styles/prism.css" rel="Stylesheet">
+<link href="../../../styles/logo-styles.css" rel="Stylesheet">
+<link href="../../../styles/font-jb-sans-auto.css" rel="Stylesheet">
+<link href="../../../ui-kit/ui-kit.min.css" rel="Stylesheet">
+<script type="text/javascript" src="../../../scripts/clipboard.js" async="async"></script>
+<script type="text/javascript" src="../../../scripts/navigation-loader.js" async="async"></script>
+<script type="text/javascript" src="../../../scripts/platform-content-handler.js" async="async"></script>
+<script type="text/javascript" src="../../../scripts/main.js" defer="defer"></script>
+<script type="text/javascript" src="../../../scripts/prism.js" async="async"></script>
+<script type="text/javascript" src="../../../ui-kit/ui-kit.min.js" defer="defer"></script>
+<script type="text/javascript" src="../../../scripts/symbol-parameters-wrapper_deferred.js" defer="defer"></script>
+</head>
+<body>
+    <div class="root">
+    <nav class="navigation theme-dark" id="navigation-wrapper">
+            <a class="library-name--link" href="../../../index.html">
+                    storm-kotlin
+            </a>
+        <button class="navigation-controls--btn navigation-controls--btn_toc ui-kit_mobile-only" id="toc-toggle"
+                type="button">Toggle table of contents
+        </button>
+        <div class="navigation-controls--break ui-kit_mobile-only"></div>
+        <div class="library-version" id="library-version">
+        </div>
+        <div class="navigation-controls">
+        <div class="filter-section filter-section_loading" id="filter-section">
+                <button class="platform-tag platform-selector jvm-like" data-active=""
+                        data-filter="storm-kotlin/JVM">JVM</button>
+            <div class="dropdown filter-section--dropdown" data-role="dropdown" id="filter-section-dropdown">
+                <button class="button button_dropdown filter-section--dropdown-toggle" role="combobox"
+                        data-role="dropdown-toggle"
+                        aria-controls="platform-tags-listbox"
+                        aria-haspopup="listbox"
+                        aria-expanded="false"
+                        aria-label="Toggle source sets"
+                ></button>
+                <ul role="listbox" id="platform-tags-listbox" class="dropdown--list" data-role="dropdown-listbox">
+                    <div class="dropdown--header"><span>Platform filter</span>
+                        <button class="button" data-role="dropdown-toggle" aria-label="Close platform filter">
+                            <i class="ui-kit-icon ui-kit-icon_cross"></i>
+                        </button>
+                    </div>
+                        <li role="option" class="dropdown--option platform-selector-option jvm-like" tabindex="0">
+                            <label class="checkbox">
+                                <input type="checkbox" class="checkbox--input" id="storm-kotlin/JVM"
+                                       data-filter="storm-kotlin/JVM"/>
+                                <span class="checkbox--icon"></span>
+                                JVM
+                            </label>
+                        </li>
+                </ul>
+                <div class="dropdown--overlay"></div>
+            </div>
+        </div>
+            <button class="navigation-controls--btn navigation-controls--btn_theme" id="theme-toggle-button"
+                    type="button">Switch theme
+            </button>
+            <div class="navigation-controls--btn navigation-controls--btn_search" id="searchBar" role="button">Search in
+                API
+            </div>
+        </div>
+    </nav>
+        <div id="container">
+            <div class="sidebar" id="leftColumn">
+                <div class="dropdown theme-dark_mobile" data-role="dropdown" id="toc-dropdown">
+                    <ul role="listbox" id="toc-listbox" class="dropdown--list dropdown--list_toc-list"
+                        data-role="dropdown-listbox">
+                        <div class="dropdown--header">
+                            <span>
+                                    storm-kotlin
+                            </span>
+                            <button class="button" data-role="dropdown-toggle" aria-label="Close table of contents">
+                                <i class="ui-kit-icon ui-kit-icon_cross"></i>
+                            </button>
+                        </div>
+                        <div class="sidebar--inner" id="sideMenu"></div>
+                    </ul>
+                    <div class="dropdown--overlay"></div>
+                </div>
+            </div>
+            <div id="main">
+<div class="main-content" data-page-type="member" id="content" pageIds="storm-kotlin::st.orm.repository.impl/EntityRepositoryImpl/upsertAndFetchIds/#kotlin.collections.Iterable[TypeParam(bounds=[st.orm.Data, st.orm.Entity[TypeParam(bounds=[kotlin.Any])]])]/PointingToDeclaration//1326967511">
+  <div class="breadcrumbs"><a href="../../../index.html">storm-kotlin</a><span class="delimiter">/</span><a href="../index.html">st.orm.repository.impl</a><span class="delimiter">/</span><a href="index.html">EntityRepositoryImpl</a><span class="delimiter">/</span><span class="current">upsertAndFetchIds</span></div>
+  <div class="cover ">
+    <h1 class="cover"><span>upsert</span><wbr></wbr><span>And</span><wbr></wbr><span>Fetch</span><wbr></wbr><span><span>Ids</span></span></h1>
+  </div>
+  <div class="platform-hinted " data-platform-hinted="data-platform-hinted"><div class="content sourceset-dependent-content" data-active="" data-togglable="storm-kotlin/JVM"><div class="symbol monospace"><span class="token keyword">open </span><span class="token keyword">override </span><span class="token keyword">fun </span><a href="upsert-and-fetch-ids.html"><span class="token function">upsertAndFetchIds</span></a><span class="token punctuation">(</span><span class="parameters "><span class="parameter ">entities<span class="token operator">: </span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin.collections/-iterable/index.html">Iterable</a><span class="token operator">&lt;</span><a href="index.html">E</a><span class="token operator">&gt;</span></span></span><span class="token punctuation">)</span><span class="token operator">: </span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin.collections/-list/index.html">List</a><span class="token operator">&lt;</span><a href="index.html">ID</a><span class="token operator">&gt;</span></div><p class="paragraph">Inserts or updates a collection of entities in the database in batches and returns a list of their IDs.</p><p class="paragraph">This method processes the provided entities in batches to optimize performance for larger collections, reducing database overhead. For each entity, the method performs an &quot;upsert&quot; operation, inserting the entity if it does not already exist in the database, or updating it if it does. Upon successful completion, the method returns a list of the IDs of the upserted entities, reflecting their identifiers as stored in the database.</p><span class="kdoc-tag"><h4 class="">Return</h4><p class="paragraph">a list of IDs corresponding to the upserted entities. The order of IDs in the returned list is not guaranteed to match the order of the input collection.</p></span><h4 class="">Parameters</h4><div class="table"><div class="table-row" data-filterable-current="storm-kotlin/JVM" data-filterable-set="storm-kotlin/JVM"><div class="main-subrow keyValue "><div class=""><span class="inline-flex"><div><u><span><span>entities</span></span></u></div></span></div><div><div class="title"><p class="paragraph">an iterable collection of entities to be inserted or updated. Each entity in the collection must be non-null and contain valid data for insertion or update in the database.</p></div></div></div></div></div><h4 class="">Throws</h4><div class="table"><div class="table-row" data-filterable-current="storm-kotlin/JVM" data-filterable-set="storm-kotlin/JVM"><div class="main-subrow keyValue "><div class=""><span class="inline-flex"><div><span data-unresolved-link="st.orm/PersistenceException///PointingToDeclaration/"><span>Persistence</span><wbr></wbr><span><span>Exception</span></span></span></div></span></div><div><div class="title"><p class="paragraph">if the upsert operation fails due to database issues, such as connectivity problems, constraints violations, or invalid entity data.</p></div></div></div></div></div><hr><div class="symbol monospace"><span class="token keyword">open </span><span class="token keyword">override </span><span class="token keyword">fun </span><a href="upsert-and-fetch-ids.html"><span class="token function">upsertAndFetchIds</span></a><span class="token punctuation">(</span><span class="parameters "><span class="parameter ">entities<span class="token operator">: </span><span data-unresolved-link="kotlinx.coroutines.flow/Flow///PointingToDeclaration/">Flow</span><span class="token operator">&lt;</span><a href="index.html">E</a><span class="token operator">&gt;</span></span></span><span class="token punctuation">)</span><span class="token operator">: </span><span data-unresolved-link="kotlinx.coroutines.flow/Flow///PointingToDeclaration/">Flow</span><span class="token operator">&lt;</span><a href="index.html">ID</a><span class="token operator">&gt;</span></div><p class="paragraph">Inserts or updates a flow of entities in the database in batches and retrieves their IDs through a callback.</p><p class="paragraph">This method processes the provided flow of entities in batches, performing an &quot;upsert&quot; operation on each entity. For each entity, it will be inserted if it does not already exist in the database or updated if it does. After each batch operation, the IDs of the upserted entities are passed to the provided callback, allowing for specialized handling of the IDs as they are retrieved.</p><h4 class="">Parameters</h4><div class="table"><div class="table-row" data-filterable-current="storm-kotlin/JVM" data-filterable-set="storm-kotlin/JVM"><div class="main-subrow keyValue "><div class=""><span class="inline-flex"><div><u><span><span>entities</span></span></u></div></span></div><div><div class="title"><p class="paragraph">a flow of entities to be inserted or updated. Each entity in the flow must be non-null and contain valid data for insertion or update in the database.</p></div></div></div></div></div><h4 class="">Throws</h4><div class="table"><div class="table-row" data-filterable-current="storm-kotlin/JVM" data-filterable-set="storm-kotlin/JVM"><div class="main-subrow keyValue "><div class=""><span class="inline-flex"><div><span data-unresolved-link="st.orm/PersistenceException///PointingToDeclaration/"><span>Persistence</span><wbr></wbr><span><span>Exception</span></span></span></div></span></div><div><div class="title"><p class="paragraph">if the upsert operation fails due to database issues, such as connectivity problems, constraints violations, or invalid entity data.</p></div></div></div></div></div><hr><div class="symbol monospace"><span class="token keyword">open </span><span class="token keyword">override </span><span class="token keyword">fun </span><a href="upsert-and-fetch-ids.html"><span class="token function">upsertAndFetchIds</span></a><span class="token punctuation">(</span><span class="parameters "><span class="parameter ">entities<span class="token operator">: </span><span data-unresolved-link="kotlinx.coroutines.flow/Flow///PointingToDeclaration/">Flow</span><span class="token operator">&lt;</span><a href="index.html">E</a><span class="token operator">&gt;</span><span class="token punctuation">, </span></span><span class="parameter ">batchSize<span class="token operator">: </span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-int/index.html">Int</a></span></span><span class="token punctuation">)</span><span class="token operator">: </span><span data-unresolved-link="kotlinx.coroutines.flow/Flow///PointingToDeclaration/">Flow</span><span class="token operator">&lt;</span><a href="index.html">ID</a><span class="token operator">&gt;</span></div><p class="paragraph">Inserts or updates a flow of entities in the database in configurable batch sizes and retrieves their IDs through a callback.</p><p class="paragraph">This method processes the provided flow of entities in batches, performing an &quot;upsert&quot; operation on each entity. For each entity, it will be inserted if it does not already exist in the database or updated if it does. The batch size parameter allows control over the number of entities processed in each batch, optimizing memory and performance based on system requirements. After each batch operation, the IDs of the upserted entities are passed to the provided callback, allowing for specialized handling of the IDs as they are retrieved.</p><h4 class="">Parameters</h4><div class="table"><div class="table-row" data-filterable-current="storm-kotlin/JVM" data-filterable-set="storm-kotlin/JVM"><div class="main-subrow keyValue "><div class=""><span class="inline-flex"><div><u><span><span>entities</span></span></u></div></span></div><div><div class="title"><p class="paragraph">a flow of entities to be inserted or updated. Each entity in the flow must be non-null and contain valid data for insertion or update in the database.</p></div></div></div></div><div class="table-row" data-filterable-current="storm-kotlin/JVM" data-filterable-set="storm-kotlin/JVM"><div class="main-subrow keyValue "><div class=""><span class="inline-flex"><div><u><span>batch</span><wbr></wbr><span><span>Size</span></span></u></div></span></div><div><div class="title"><p class="paragraph">the number of entities to process in each batch. Adjusting the batch size can optimize performance and memory usage, with larger sizes potentially improving performance but using more memory.</p></div></div></div></div></div><h4 class="">Throws</h4><div class="table"><div class="table-row" data-filterable-current="storm-kotlin/JVM" data-filterable-set="storm-kotlin/JVM"><div class="main-subrow keyValue "><div class=""><span class="inline-flex"><div><span data-unresolved-link="st.orm/PersistenceException///PointingToDeclaration/"><span>Persistence</span><wbr></wbr><span><span>Exception</span></span></span></div></span></div><div><div class="title"><p class="paragraph">if the upsert operation fails due to database issues, such as connectivity problems, constraints violations, or invalid entity data.</p></div></div></div></div></div></div></div>
+</div>
+    <div class="footer">
+        <a href="#content" id="go-to-top-link" class="footer--button footer--button_go-to-top"></a>
+        <span>© 2026 Copyright</span>
+        <span class="pull-right">
+            <span>Generated by </span>
+            <a class="footer--link footer--link_external" href="https://github.com/Kotlin/dokka">
+                <span>dokka</span>
+            </a>
+        </span>
+    </div>
+            </div>
+        </div>
+    </div>
+</body>
+</html>

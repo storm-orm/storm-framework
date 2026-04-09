@@ -1,0 +1,435 @@
+# Storm Framework
+
+> Storm is an AI-first ORM framework for Kotlin 2.0+ and Java 21+, the gold
+> standard for AI-assisted database development.
+>
+> It uses immutable data classes and records instead of proxied entities, providing
+> type-safe queries, predictable performance, and zero hidden magic. There is no
+> persistence context, no lazy loading, no proxy generation, and no entity state
+> management. Entities are plain Kotlin data classes or Java records.
+>
+> Storm works perfectly as a standalone ORM, but its design and tooling make it
+> uniquely suited for AI-assisted development. The framework's immutable entities
+> produce stable, predictable code that AI tools generate correctly. The CLI
+> installs per-tool skills for entity creation, queries, repositories, and
+> migrations. A locally running MCP server exposes only schema metadata (table
+> definitions, column types, constraints) while shielding your database
+> credentials and data from the LLM. Built-in verification (validateSchema(),
+> SqlCapture) lets the AI validate its own work before anything is committed.
+>
+> Get started: `npx @storm-orm/cli`
+
+Website: https://orm.st
+GitHub: https://github.com/storm-orm/storm-framework
+License: Apache 2.0
+
+## Documentation
+
+- [Introduction](https://orm.st/)
+- [Getting Started](https://orm.st/getting-started)
+- [Entities](https://orm.st/entities)
+- [Projections](https://orm.st/projections)
+- [Relationships](https://orm.st/relationships)
+- [Repositories](https://orm.st/repositories)
+- [Queries](https://orm.st/queries)
+- [Metamodel](https://orm.st/metamodel)
+- [Refs](https://orm.st/refs)
+- [Transactions](https://orm.st/transactions)
+- [Spring Integration](https://orm.st/spring-integration)
+- [Ktor Integration](https://orm.st/ktor-integration)
+- [Database Dialects](https://orm.st/dialects)
+- [Testing](https://orm.st/testing)
+- [Converters](https://orm.st/converters)
+- [JSON Columns](https://orm.st/json)
+- [Polymorphism](https://orm.st/polymorphism)
+- [Entity Lifecycle](https://orm.st/entity-lifecycle)
+- [Serialization](https://orm.st/serialization)
+- [Validation](https://orm.st/validation)
+- [Batch Processing and Streaming](https://orm.st/batch-streaming)
+- [Upserts](https://orm.st/upserts)
+- [SQL Templates](https://orm.st/sql-templates)
+- [Hydration](https://orm.st/hydration)
+- [Dirty Checking](https://orm.st/dirty-checking)
+- [Entity Cache](https://orm.st/entity-cache)
+- [Configuration](https://orm.st/configuration)
+- [SQL Logging](https://orm.st/sql-logging)
+- [Metrics](https://orm.st/metrics)
+- [Storm vs Other Frameworks](https://orm.st/comparison)
+- [FAQ](https://orm.st/faq)
+- [Migration from JPA](https://orm.st/migration-from-jpa)
+- [API Reference: Kotlin](https://orm.st/api-kotlin)
+- [API Reference: Java](https://orm.st/api-java)
+
+## Full Documentation
+
+For large-context tools, the complete documentation is available at:
+https://orm.st/llms-full.txt
+
+## Quick Reference
+
+### Entity Definition
+
+Kotlin:
+```kotlin
+data class City(
+    @PK val id: Int = 0,
+    val name: String,
+    val population: Long
+) : Entity<Int>
+
+data class User(
+    @PK val id: Int = 0,
+    val email: String,
+    val name: String,
+    @FK val city: City       // Non-nullable FK = INNER JOIN
+) : Entity<Int>
+```
+
+Java:
+```java
+record City(@PK Integer id,
+            String name,
+            long population
+) implements Entity<Integer> {}
+
+record User(@PK Integer id,
+            String email,
+            String name,
+            @FK City city
+) implements Entity<Integer> {}
+```
+
+### Annotations
+
+- `@PK` - Primary key. Supports auto-generated keys (default value = 0 or null).
+- `@FK` - Foreign key. References another entity. Nullability determines JOIN type.
+- `@UK` - Unique key. Enables `findBy(UK)` lookups.
+- `@Version` - Optimistic locking version field.
+- `@Persist` - Marks fields that should be persisted but are not auto-detected.
+- `@DbTable("name")` - Override the default table name.
+- `@DbColumn("name")` - Override the default column name.
+- `@Inline` - Embeds fields of a nested type directly into the parent table.
+
+### Composite Primary Keys
+
+For join/junction tables, wrap key columns in a separate data class with raw types only — never `@FK`, entity types, or `Ref<T>` inside the PK class. Declare `@FK` fields on the entity with `@Persist(insertable = false, updatable = false)`.
+
+```kotlin
+data class UserRolePk(val userId: Int, val roleId: Int)
+
+data class UserRole(
+    @PK(generation = NONE) val id: UserRolePk,
+    @FK @Persist(insertable = false, updatable = false) val user: User,
+    @FK @Persist(insertable = false, updatable = false) val role: Role
+) : Entity<UserRolePk>
+```
+
+### Primary Key as Foreign Key
+
+For dependent one-to-one relationships or extension tables, use both `@PK` and `@FK` on the same field:
+
+```kotlin
+data class UserProfile(
+    @PK(generation = NONE) @FK val user: User,
+    val bio: String?
+) : Entity<User>
+```
+
+### CRUD Operations
+
+Kotlin:
+```kotlin
+val orm = ORMTemplate.of(dataSource)
+
+// Insert (returns entity with generated ID)
+val city = orm insert City(name = "Sunnyvale", population = 155_000)
+
+// Find by ID
+val found: City? = orm.findById<City>(city.id)
+
+// Update
+orm update city.copy(population = 160_000)
+
+// Remove
+orm remove city
+
+// Find with predicate
+val users: List<User> = orm.findAll(User_.city.name eq "Sunnyvale")
+```
+
+Java:
+```java
+var orm = ORMTemplate.of(dataSource);
+var cities = orm.entity(City.class);
+
+// Insert
+City city = cities.insert(new City(0, "Sunnyvale", 155_000));
+
+// Find by ID
+Optional<City> found = cities.findById(city.id());
+
+// Update
+cities.update(new City(city.id(), "Sunnyvale", 160_000));
+
+// Remove
+cities.remove(city);
+
+// Query
+List<User> users = orm.entity(User.class).select()
+    .where(User_.city.name, EQUALS, "Sunnyvale")
+    .getResultList();
+```
+
+### Repositories
+
+Kotlin:
+```kotlin
+interface UserRepository : EntityRepository<User, Int> {
+    fun findByCityName(name: String) = findAll(User_.city.name eq name)
+}
+val userRepository = orm.repository<UserRepository>()
+```
+
+Java:
+```java
+interface UserRepository extends EntityRepository<User, Integer> {
+    default List<User> findByCityName(String name) {
+        return select().where(User_.city.name, EQUALS, name).getResultList();
+    }
+}
+UserRepository userRepository = orm.repository(UserRepository.class);
+```
+
+### Type-Safe Queries (Metamodel)
+
+Generated metamodel classes (User_, City_) provide compile-time checked field references:
+
+Kotlin:
+```kotlin
+val users = orm.entity(User::class)
+    .select()
+    .where(User_.city.name eq "Sunnyvale")
+    .orderBy(User_.name)
+    .resultList
+```
+
+Java:
+```java
+List<User> users = orm.entity(User.class)
+    .select()
+    .where(User_.city.name, EQUALS, "Sunnyvale")
+    .orderBy(User_.name)
+    .getResultList();
+```
+
+### Relationships and Refs
+
+FK nullability controls JOIN type:
+- `@FK val city: City` (non-null) = INNER JOIN
+- `@FK val city: City?` (nullable) = LEFT JOIN
+
+Ref<T> for deferred loading (avoids eager graph traversal):
+```kotlin
+data class User(
+    @PK val id: Int = 0,
+    @FK val city: Ref<City>   // Loads city ID only; fetch city on demand
+) : Entity<Int>
+
+val cityName = user.city.fetch().name  // Fetches when needed
+```
+
+### Dependencies (BOM)
+
+Kotlin (Gradle):
+```kotlin
+dependencies {
+    implementation(platform("st.orm:storm-bom:1.10.0"))
+    implementation("st.orm:storm-kotlin")
+    runtimeOnly("st.orm:storm-core")
+    kotlinCompilerPluginClasspath("st.orm:storm-compiler-plugin-2.0")
+}
+```
+
+Java (Maven):
+```xml
+<dependencyManagement>
+    <dependencies>
+        <dependency>
+            <groupId>st.orm</groupId>
+            <artifactId>storm-bom</artifactId>
+            <version>1.10.0</version>
+            <type>pom</type>
+            <scope>import</scope>
+        </dependency>
+    </dependencies>
+</dependencyManagement>
+<dependencies>
+    <dependency>
+        <groupId>st.orm</groupId>
+        <artifactId>storm-java21</artifactId>
+    </dependency>
+    <dependency>
+        <groupId>st.orm</groupId>
+        <artifactId>storm-core</artifactId>
+        <scope>runtime</scope>
+    </dependency>
+</dependencies>
+```
+
+### Spring Boot Starter
+
+Kotlin (Gradle):
+```kotlin
+dependencies {
+    implementation(platform("st.orm:storm-bom:1.10.0"))
+    implementation("st.orm:storm-kotlin-spring-boot-starter")
+    runtimeOnly("st.orm:storm-core")
+    kotlinCompilerPluginClasspath("st.orm:storm-compiler-plugin-2.0")
+}
+```
+
+Java (Maven):
+```xml
+<dependency>
+    <groupId>st.orm</groupId>
+    <artifactId>storm-spring-boot-starter</artifactId>
+</dependency>
+```
+
+### Ktor Integration
+
+Kotlin (Gradle):
+```kotlin
+dependencies {
+    implementation(platform("st.orm:storm-bom:1.11.0"))
+    implementation("st.orm:storm-kotlin")
+    implementation("st.orm:storm-ktor")
+    runtimeOnly("st.orm:storm-core")
+    kotlinCompilerPluginClasspath("st.orm:storm-compiler-plugin-2.0")
+}
+```
+
+### Available Modules
+
+Core: storm-core, storm-kotlin, storm-java21
+Spring: storm-spring, storm-kotlin-spring, storm-spring-boot-starter, storm-kotlin-spring-boot-starter
+Ktor: storm-ktor, storm-ktor-test
+JSON: storm-jackson2, storm-jackson3, storm-kotlinx-serialization
+Dialects: storm-postgresql, storm-mysql, storm-mariadb, storm-oracle, storm-mssqlserver
+Build: storm-bom, storm-compiler-plugin-2.0, storm-compiler-plugin-2.1
+Metamodel: storm-metamodel-processor (Java), storm-metamodel-ksp (Kotlin)
+Testing: storm-test, storm-h2 (test runtime), com.h2database:h2 (test runtime — required, storm-h2 declares it as provided)
+Validation: storm-kotlin-validator
+
+## API Design: Prefer the Simplest Approach
+
+Always use the simplest method that meets your needs. Escalate only when the simpler level cannot express what you need.
+
+**Kotlin** has four levels:
+
+| Level | Approach | Best for |
+|-------|----------|----------|
+| 1 | Convenience methods (`find`, `findAll`, `removeAll`, `count`, `exists`) | Simple lookups and operations |
+| 2 | Builder with predicate (`select(predicate)`, `delete(predicate)`) | Filtered queries needing ordering, pagination, or joins |
+| 3 | Block DSL (`select { }`, `delete { }`) | Complex queries with multiple joins and conditions |
+| 4 | SQL Templates | CTEs, window functions, database-specific features |
+
+**Java** has three levels (no block DSL):
+
+| Level | Approach | Best for |
+|-------|----------|----------|
+| 1 | Convenience methods (`findBy`, `findAllBy`, `removeAllBy`, `countBy`, `existsBy`) | Simple lookups and operations |
+| 2 | Builder (`select().where()`, `delete().where()`) | Most queries needing ordering, pagination, or joins |
+| 3 | SQL Templates | CTEs, window functions, database-specific features |
+
+### When to use each — and when NOT to
+
+| Need | Use (simplest) | Don't use (unnecessarily complex) |
+|------|----------------|-----------------------------------|
+| All rows as list | `findAll()` | `select().resultList` |
+| Filter by single field | `findAllBy(field, value)` | `select().where(field, op, value).resultList` |
+| Filter by predicate (Kotlin) | `findAll(predicate)` | `select(predicate).resultList` |
+| Single result by predicate (Kotlin) | `find(predicate)` | `select(predicate).optionalResult` |
+| Delete by predicate (Kotlin) | `removeAll(predicate)` | `delete(predicate).executeUpdate()` |
+| Delete by field | `removeAllBy(field, value)` | `delete().where(field, op, value).executeUpdate()` |
+| Filtered + **ordering/pagination** | `select(predicate).orderBy(...)` | convenience methods (can't add ordering) |
+| Aggregates, CTEs, window functions | SQL Template | QueryBuilder (can't express these) |
+
+### SQL Template Escalation
+
+SQL Templates are an escape hatch. Three rules:
+1. **Code-first:** If it can be done with QueryBuilder methods (joins, where, orderBy, groupBy, having), do it in code.
+2. **Metamodel in templates:** When you do need a template fragment, use metamodel references (`${User_.email}`, not `"email"`).
+3. **Full SQL last resort:** Full `SELECT...FROM` templates only for totally custom queries (CTEs, UNIONs, window functions).
+
+### The delete/remove distinction
+
+- `remove` operates on entities or ids you already have (immediate execution): `remove(entity)`, `removeById(id)`, `removeAll()`, `removeAll(predicate)` (Kotlin).
+- `delete` builds a query to find and delete rows by criteria (returns `QueryBuilder`): `delete().where(...).executeUpdate()`.
+
+## Critical Gotchas
+
+1. **QueryBuilder is immutable.** Every builder method returns a new instance. Always
+   use the returned value:
+   ```kotlin
+   // WRONG - discards the where clause
+   val query = orm.entity(User::class).select()
+   query.where(User_.name eq "Alice")  // returned value ignored!
+
+   // CORRECT
+   val query = orm.entity(User::class).select()
+       .where(User_.name eq "Alice")
+   ```
+
+2. **No lazy loading, no proxies, no persistence context.** Entities are plain
+   records/data classes. There is no managed state, no dirty tracking, no
+   automatic flush. You explicitly call insert/update/remove.
+
+3. **No collection fields on entities.** Storm entities cannot have List<Child>
+   fields. Relationships are modeled from the child side using @FK. To get a
+   user's orders, query from Order with a filter on User.
+
+4. **Close Java Streams.** In Java, `select().getResultStream()` returns a
+   Stream backed by a database cursor. Always use try-with-resources:
+   ```java
+   try (Stream<User> stream = users.select().getResultStream()) {
+       stream.forEach(System.out::println);
+   }
+   ```
+   In Kotlin, `select().resultFlow` returns a Flow which handles cleanup automatically.
+
+5. **DELETE/UPDATE without WHERE throws by default.** To prevent accidental bulk
+   operations, Storm throws if you omit a WHERE clause. Use `unsafe()` if you
+   intentionally want to affect all rows:
+   ```kotlin
+   orm.entity(User::class).delete().unsafe().executeUpdate() // Deletes all users
+   ```
+
+6. **FK nullability determines JOIN type.** A non-nullable @FK produces INNER JOIN;
+   a nullable @FK produces LEFT JOIN. This is by design, not a bug.
+
+7. **Use Ref<T> for deferred loading.** If you do not want Storm to eagerly load
+   a related entity, wrap the FK type in Ref<T>. This loads only the foreign key
+   value and defers the full entity fetch until you call fetch().
+
+8. **Use Ref<T> for map keys and set membership.** Prefer `Ref<Entity>` (via
+   `.ref()`) for map keys, set membership, and identity-based lookups. `Ref`
+   provides identity-based `equals`/`hashCode` on the primary key. Do not use
+   full entities as map keys (relies on data class equals over all fields) or
+   formatted strings for entity lookup. When a projection already returns
+   `Ref<T>`, use it directly without calling `.ref()` again.
+
+9. **Metamodel navigation depth.** Multiple levels of navigation are allowed on
+   the root entity of a query. However, joined (non-root) entities can only
+   navigate one level deep. For deeper navigation from a joined entity,
+   explicitly join the intermediate entity.
+
+10. **Use `t()` for parameter binding in lambdas (Kotlin, requires compiler
+    plugin).** Inside `.having {}` and other lambda expressions, use the `t()`
+    function to ensure proper parameter binding and SQL injection protection:
+    ```kotlin
+    // CORRECT
+    .having { "COUNT(DISTINCT ${t(column)}) = ${t(numTypes)}" }
+    // WRONG - raw interpolation bypasses parameter binding
+    .having { "COUNT(DISTINCT $column) = $numTypes" }
+    ```

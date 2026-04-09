@@ -1,0 +1,24 @@
+$dokka.format:html-v1
+$dokka.linkExtension:html
+$dokka.location:st.orm.serialization.spi////PointingToDeclaration/storm-kotlinx-serialization/st.orm.serialization.spi/index.html
+$dokka.location:st.orm.serialization.spi/JsonORMConverterImpl.Companion///PointingToDeclaration/storm-kotlinx-serialization/st.orm.serialization.spi/-json-o-r-m-converter-impl/-companion/index.html
+$dokka.location:st.orm.serialization.spi/JsonORMConverterImpl///PointingToDeclaration/storm-kotlinx-serialization/st.orm.serialization.spi/-json-o-r-m-converter-impl/index.html
+$dokka.location:st.orm.serialization.spi/JsonORMConverterImpl/JsonORMConverterImpl/#st.orm.mapping.RecordField#kotlin.reflect.KType#st.orm.Json/PointingToDeclaration/storm-kotlinx-serialization/st.orm.serialization.spi/-json-o-r-m-converter-impl/-json-o-r-m-converter-impl.html
+$dokka.location:st.orm.serialization.spi/JsonORMConverterImpl/fromDatabase/#kotlin.Array[kotlin.Any?]#st.orm.core.spi.RefFactory/PointingToDeclaration/storm-kotlinx-serialization/st.orm.serialization.spi/-json-o-r-m-converter-impl/from-database.html
+$dokka.location:st.orm.serialization.spi/JsonORMConverterImpl/getColumns/#st.orm.core.spi.ORMConverter.NameResolver/PointingToDeclaration/storm-kotlinx-serialization/st.orm.serialization.spi/-json-o-r-m-converter-impl/get-columns.html
+$dokka.location:st.orm.serialization.spi/JsonORMConverterImpl/getParameterCount/#/PointingToDeclaration/storm-kotlinx-serialization/st.orm.serialization.spi/-json-o-r-m-converter-impl/get-parameter-count.html
+$dokka.location:st.orm.serialization.spi/JsonORMConverterImpl/getParameterTypes/#/PointingToDeclaration/storm-kotlinx-serialization/st.orm.serialization.spi/-json-o-r-m-converter-impl/get-parameter-types.html
+$dokka.location:st.orm.serialization.spi/JsonORMConverterImpl/toDatabase/#kotlin.Any?/PointingToDeclaration/storm-kotlinx-serialization/st.orm.serialization.spi/-json-o-r-m-converter-impl/to-database.html
+$dokka.location:st.orm.serialization.spi/JsonORMConverterProviderImpl///PointingToDeclaration/storm-kotlinx-serialization/st.orm.serialization.spi/-json-o-r-m-converter-provider-impl/index.html
+$dokka.location:st.orm.serialization.spi/JsonORMConverterProviderImpl/JsonORMConverterProviderImpl/#/PointingToDeclaration/storm-kotlinx-serialization/st.orm.serialization.spi/-json-o-r-m-converter-provider-impl/-json-o-r-m-converter-provider-impl.html
+$dokka.location:st.orm.serialization.spi/JsonORMConverterProviderImpl/getConverter/#st.orm.mapping.RecordField/PointingToDeclaration/storm-kotlinx-serialization/st.orm.serialization.spi/-json-o-r-m-converter-provider-impl/get-converter.html
+$dokka.location:st.orm.serialization////PointingToDeclaration/storm-kotlinx-serialization/st.orm.serialization/index.html
+$dokka.location:st.orm.serialization//StormSerializers/#/PointingToDeclaration/storm-kotlinx-serialization/st.orm.serialization/-storm-serializers.html
+$dokka.location:st.orm.serialization//StormSerializersModule/#kotlin.Function0[st.orm.core.spi.RefFactory?]?/PointingToDeclaration/storm-kotlinx-serialization/st.orm.serialization/-storm-serializers-module.html
+$dokka.location:st.orm.serialization/RefSerializer///PointingToDeclaration/storm-kotlinx-serialization/st.orm.serialization/-ref-serializer/index.html
+$dokka.location:st.orm.serialization/RefSerializer/RefSerializer/#java.lang.Class[st.orm.Data]#kotlin.Function0[kotlinx.serialization.KSerializer[TypeParam(bounds=[st.orm.Data])]]#kotlin.Function0[st.orm.core.spi.RefFactory?]?/PointingToDeclaration/storm-kotlinx-serialization/st.orm.serialization/-ref-serializer/-ref-serializer.html
+$dokka.location:st.orm.serialization/RefSerializer/descriptor/#/PointingToDeclaration/storm-kotlinx-serialization/st.orm.serialization/-ref-serializer/descriptor.html
+$dokka.location:st.orm.serialization/RefSerializer/deserialize/#kotlinx.serialization.encoding.Decoder/PointingToDeclaration/storm-kotlinx-serialization/st.orm.serialization/-ref-serializer/deserialize.html
+$dokka.location:st.orm.serialization/RefSerializer/serialize/#kotlinx.serialization.encoding.Encoder#st.orm.Ref[TypeParam(bounds=[st.orm.Data])]?/PointingToDeclaration/storm-kotlinx-serialization/st.orm.serialization/-ref-serializer/serialize.html
+st.orm.serialization
+st.orm.serialization.spi

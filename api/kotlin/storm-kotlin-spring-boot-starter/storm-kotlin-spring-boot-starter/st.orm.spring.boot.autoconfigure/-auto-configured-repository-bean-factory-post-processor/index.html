@@ -1,0 +1,235 @@
+<!DOCTYPE html>
+<html class="no-js">
+<head>
+    <meta name="viewport" content="width=device-width, initial-scale=1" charset="UTF-8">
+    <title>AutoConfiguredRepositoryBeanFactoryPostProcessor</title>
+    <link href="../../../images/logo-icon.svg" rel="icon" type="image/svg">
+    <script>var pathToRoot = "../../../";</script>
+    <script>document.documentElement.classList.replace("no-js","js");</script>
+    <script>const storage = localStorage.getItem("dokka-dark-mode")
+    if (storage == null) {
+        const osDarkSchemePreferred = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches
+        if (osDarkSchemePreferred === true) {
+            document.getElementsByTagName("html")[0].classList.add("theme-dark")
+        }
+    } else {
+        const savedDarkMode = JSON.parse(storage)
+        if(savedDarkMode === true) {
+            document.getElementsByTagName("html")[0].classList.add("theme-dark")
+        }
+    }
+    </script>
+<script type="text/javascript" src="https://unpkg.com/kotlin-playground@1/dist/playground.min.js" async="async"></script>
+<script type="text/javascript" src="../../../scripts/sourceset_dependencies.js" async="async"></script>
+<link href="../../../styles/style.css" rel="Stylesheet">
+<link href="../../../styles/main.css" rel="Stylesheet">
+<link href="../../../styles/prism.css" rel="Stylesheet">
+<link href="../../../styles/logo-styles.css" rel="Stylesheet">
+<link href="../../../styles/font-jb-sans-auto.css" rel="Stylesheet">
+<link href="../../../ui-kit/ui-kit.min.css" rel="Stylesheet">
+<script type="text/javascript" src="../../../scripts/clipboard.js" async="async"></script>
+<script type="text/javascript" src="../../../scripts/navigation-loader.js" async="async"></script>
+<script type="text/javascript" src="../../../scripts/platform-content-handler.js" async="async"></script>
+<script type="text/javascript" src="../../../scripts/main.js" defer="defer"></script>
+<script type="text/javascript" src="../../../scripts/prism.js" async="async"></script>
+<script type="text/javascript" src="../../../ui-kit/ui-kit.min.js" defer="defer"></script>
+<script type="text/javascript" src="../../../scripts/symbol-parameters-wrapper_deferred.js" defer="defer"></script>
+</head>
+<body>
+    <div class="root">
+    <nav class="navigation theme-dark" id="navigation-wrapper">
+            <a class="library-name--link" href="../../../index.html">
+                    storm-kotlin-spring-boot-starter
+            </a>
+        <button class="navigation-controls--btn navigation-controls--btn_toc ui-kit_mobile-only" id="toc-toggle"
+                type="button">Toggle table of contents
+        </button>
+        <div class="navigation-controls--break ui-kit_mobile-only"></div>
+        <div class="library-version" id="library-version">
+        </div>
+        <div class="navigation-controls">
+        <div class="filter-section filter-section_loading" id="filter-section">
+                <button class="platform-tag platform-selector jvm-like" data-active=""
+                        data-filter="storm-kotlin-spring-boot-starter/JVM">JVM</button>
+            <div class="dropdown filter-section--dropdown" data-role="dropdown" id="filter-section-dropdown">
+                <button class="button button_dropdown filter-section--dropdown-toggle" role="combobox"
+                        data-role="dropdown-toggle"
+                        aria-controls="platform-tags-listbox"
+                        aria-haspopup="listbox"
+                        aria-expanded="false"
+                        aria-label="Toggle source sets"
+                ></button>
+                <ul role="listbox" id="platform-tags-listbox" class="dropdown--list" data-role="dropdown-listbox">
+                    <div class="dropdown--header"><span>Platform filter</span>
+                        <button class="button" data-role="dropdown-toggle" aria-label="Close platform filter">
+                            <i class="ui-kit-icon ui-kit-icon_cross"></i>
+                        </button>
+                    </div>
+                        <li role="option" class="dropdown--option platform-selector-option jvm-like" tabindex="0">
+                            <label class="checkbox">
+                                <input type="checkbox" class="checkbox--input" id="storm-kotlin-spring-boot-starter/JVM"
+                                       data-filter="storm-kotlin-spring-boot-starter/JVM"/>
+                                <span class="checkbox--icon"></span>
+                                JVM
+                            </label>
+                        </li>
+                </ul>
+                <div class="dropdown--overlay"></div>
+            </div>
+        </div>
+            <button class="navigation-controls--btn navigation-controls--btn_theme" id="theme-toggle-button"
+                    type="button">Switch theme
+            </button>
+            <div class="navigation-controls--btn navigation-controls--btn_search" id="searchBar" role="button">Search in
+                API
+            </div>
+        </div>
+    </nav>
+        <div id="container">
+            <div class="sidebar" id="leftColumn">
+                <div class="dropdown theme-dark_mobile" data-role="dropdown" id="toc-dropdown">
+                    <ul role="listbox" id="toc-listbox" class="dropdown--list dropdown--list_toc-list"
+                        data-role="dropdown-listbox">
+                        <div class="dropdown--header">
+                            <span>
+                                    storm-kotlin-spring-boot-starter
+                            </span>
+                            <button class="button" data-role="dropdown-toggle" aria-label="Close table of contents">
+                                <i class="ui-kit-icon ui-kit-icon_cross"></i>
+                            </button>
+                        </div>
+                        <div class="sidebar--inner" id="sideMenu"></div>
+                    </ul>
+                    <div class="dropdown--overlay"></div>
+                </div>
+            </div>
+            <div id="main">
+<div class="main-content" data-page-type="classlike" id="content" pageIds="storm-kotlin-spring-boot-starter::st.orm.spring.boot.autoconfigure/AutoConfiguredRepositoryBeanFactoryPostProcessor///PointingToDeclaration//453155280">
+  <div class="breadcrumbs"><a href="../../../index.html">storm-kotlin-spring-boot-starter</a><span class="delimiter">/</span><a href="../index.html">st.orm.spring.boot.autoconfigure</a><span class="delimiter">/</span><span class="current">AutoConfiguredRepositoryBeanFactoryPostProcessor</span></div>
+  <div class="cover ">
+    <h1 class="cover"><span>Auto</span><wbr></wbr><span>Configured</span><wbr></wbr><span>Repository</span><wbr></wbr><span>Bean</span><wbr></wbr><span>Factory</span><wbr></wbr><span>Post</span><wbr></wbr><span><span>Processor</span></span></h1>
+    <div class="platform-hinted " data-platform-hinted="data-platform-hinted"><div class="content sourceset-dependent-content" data-active="" data-togglable="storm-kotlin-spring-boot-starter/JVM"><div class="symbol monospace"><span class="token keyword">class </span><a href="index.html">AutoConfiguredRepositoryBeanFactoryPostProcessor</a> : <span data-unresolved-link="st.orm.spring/RepositoryBeanFactoryPostProcessor///PointingToDeclaration/">RepositoryBeanFactoryPostProcessor</span></div><p class="paragraph">A <span data-unresolved-link="st.orm.spring/RepositoryBeanFactoryPostProcessor///PointingToDeclaration/">RepositoryBeanFactoryPostProcessor</span> that automatically resolves base packages from Spring Boot's <span data-unresolved-link="org.springframework.boot.autoconfigure/AutoConfigurationPackages///PointingToDeclaration/">AutoConfigurationPackages</span>.</p><p class="paragraph">This allows Storm repositories to be discovered without requiring the user to manually specify base packages.</p></div></div>
+  </div>
+  <div class="tabbedcontent">
+    <div class="tabs-section" tabs-section="tabs-section"><button class="section-tab" data-active="" data-togglable="CONSTRUCTOR,TYPE,PROPERTY,FUNCTION">Members</button></div>
+    <div class="tabs-section-body">
+      <div data-togglable="CONSTRUCTOR">
+        <h2 class="">Constructors</h2>
+        <div class="table"><a data-name="1209281618%2FConstructors%2F453155280" anchor-label="AutoConfiguredRepositoryBeanFactoryPostProcessor" id="1209281618%2FConstructors%2F453155280" data-filterable-set="storm-kotlin-spring-boot-starter/JVM"></a>
+          <div class="table-row" data-togglable="CONSTRUCTOR" data-filterable-current="storm-kotlin-spring-boot-starter/JVM" data-filterable-set="storm-kotlin-spring-boot-starter/JVM">
+            <div class="main-subrow keyValue ">
+              <div class=""><span class="inline-flex">
+                  <div><a href="-auto-configured-repository-bean-factory-post-processor.html"><span>Auto</span><wbr></wbr><span>Configured</span><wbr></wbr><span>Repository</span><wbr></wbr><span>Bean</span><wbr></wbr><span>Factory</span><wbr></wbr><span>Post</span><wbr></wbr><span><span>Processor</span></span></a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="1209281618%2FConstructors%2F453155280"></span>
+                    <div class="copy-popup-wrapper "><span class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+                  </span></span></div>
+              <div>
+                <div class="title">
+                  <div class="platform-hinted " data-platform-hinted="data-platform-hinted"><div class="content sourceset-dependent-content" data-active="" data-togglable="storm-kotlin-spring-boot-starter/JVM"><div class="symbol monospace"><span class="token keyword">constructor</span><span class="token punctuation">(</span><span class="token punctuation">)</span></div></div></div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div data-togglable="PROPERTY">
+        <h2 class="">Properties</h2>
+        <div class="table"><a data-name="1718408314%2FProperties%2F453155280" anchor-label="ormTemplateBeanName" id="1718408314%2FProperties%2F453155280" data-filterable-set="storm-kotlin-spring-boot-starter/JVM"></a>
+          <div class="table-row" data-filterable-current="storm-kotlin-spring-boot-starter/JVM" data-filterable-set="storm-kotlin-spring-boot-starter/JVM">
+            <div class="main-subrow keyValue ">
+              <div class=""><span class="inline-flex">
+                  <div><a href="index.html#1718408314%2FProperties%2F453155280"><span>orm</span><wbr></wbr><span>Template</span><wbr></wbr><span>Bean</span><wbr></wbr><span><span>Name</span></span></a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="1718408314%2FProperties%2F453155280"></span>
+                    <div class="copy-popup-wrapper "><span class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+                  </span></span></div>
+              <div>
+                <div class="title">
+                  <div class="platform-hinted " data-platform-hinted="data-platform-hinted"><div class="content sourceset-dependent-content" data-active="" data-togglable="storm-kotlin-spring-boot-starter/JVM"><div class="symbol monospace"><span class="token keyword">open </span><span class="token keyword">val </span><a href="index.html#1718408314%2FProperties%2F453155280">ormTemplateBeanName</a><span class="token operator">: </span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-string/index.html">String</a><span class="token operator">?</span></div></div></div>
+                </div>
+              </div>
+            </div>
+          </div>
+<a data-name="1881096857%2FProperties%2F453155280" anchor-label="repositoryBasePackages" id="1881096857%2FProperties%2F453155280" data-filterable-set="storm-kotlin-spring-boot-starter/JVM"></a>
+          <div class="table-row" data-filterable-current="storm-kotlin-spring-boot-starter/JVM" data-filterable-set="storm-kotlin-spring-boot-starter/JVM">
+            <div class="main-subrow keyValue ">
+              <div class=""><span class="inline-flex">
+                  <div><a href="repository-base-packages.html"><span>repository</span><wbr></wbr><span>Base</span><wbr></wbr><span><span>Packages</span></span></a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="1881096857%2FProperties%2F453155280"></span>
+                    <div class="copy-popup-wrapper "><span class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+                  </span></span></div>
+              <div>
+                <div class="title">
+                  <div class="platform-hinted " data-platform-hinted="data-platform-hinted"><div class="content sourceset-dependent-content" data-active="" data-togglable="storm-kotlin-spring-boot-starter/JVM"><div class="symbol monospace"><span class="token keyword">open </span><span class="token keyword">override </span><span class="token keyword">val </span><a href="repository-base-packages.html">repositoryBasePackages</a><span class="token operator">: </span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-array/index.html">Array</a><span class="token operator">&lt;</span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-string/index.html">String</a><span class="token operator">&gt;</span></div><div class="brief "><p class="paragraph">Returns the base packages resolved from <span data-unresolved-link="org.springframework.boot.autoconfigure/AutoConfigurationPackages///PointingToDeclaration/">AutoConfigurationPackages</span>, or an empty array if no packages were resolved.</p></div></div></div>
+                </div>
+              </div>
+            </div>
+          </div>
+<a data-name="386963045%2FProperties%2F453155280" anchor-label="repositoryPrefix" id="386963045%2FProperties%2F453155280" data-filterable-set="storm-kotlin-spring-boot-starter/JVM"></a>
+          <div class="table-row" data-filterable-current="storm-kotlin-spring-boot-starter/JVM" data-filterable-set="storm-kotlin-spring-boot-starter/JVM">
+            <div class="main-subrow keyValue ">
+              <div class=""><span class="inline-flex">
+                  <div><a href="index.html#386963045%2FProperties%2F453155280"><span>repository</span><wbr></wbr><span><span>Prefix</span></span></a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="386963045%2FProperties%2F453155280"></span>
+                    <div class="copy-popup-wrapper "><span class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+                  </span></span></div>
+              <div>
+                <div class="title">
+                  <div class="platform-hinted " data-platform-hinted="data-platform-hinted"><div class="content sourceset-dependent-content" data-active="" data-togglable="storm-kotlin-spring-boot-starter/JVM"><div class="symbol monospace"><span class="token keyword">open </span><span class="token keyword">val </span><a href="index.html#386963045%2FProperties%2F453155280">repositoryPrefix</a><span class="token operator">: </span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-string/index.html">String</a></div></div></div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div data-togglable="FUNCTION">
+        <h2 class="">Functions</h2>
+        <div class="table"><a data-name="-217859965%2FFunctions%2F453155280" anchor-label="postProcessBeanFactory" id="-217859965%2FFunctions%2F453155280" data-filterable-set="storm-kotlin-spring-boot-starter/JVM"></a>
+          <div class="table-row" data-filterable-current="storm-kotlin-spring-boot-starter/JVM" data-filterable-set="storm-kotlin-spring-boot-starter/JVM">
+            <div class="main-subrow keyValue ">
+              <div class=""><span class="inline-flex">
+                  <div><a href="post-process-bean-factory.html"><span>post</span><wbr></wbr><span>Process</span><wbr></wbr><span>Bean</span><wbr></wbr><span><span>Factory</span></span></a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="-217859965%2FFunctions%2F453155280"></span>
+                    <div class="copy-popup-wrapper "><span class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+                  </span></span></div>
+              <div>
+                <div class="title">
+                  <div class="platform-hinted " data-platform-hinted="data-platform-hinted"><div class="content sourceset-dependent-content" data-active="" data-togglable="storm-kotlin-spring-boot-starter/JVM"><div class="symbol monospace"><span class="token keyword">open </span><span class="token keyword">override </span><span class="token keyword">fun </span><a href="post-process-bean-factory.html"><span class="token function">postProcessBeanFactory</span></a><span class="token punctuation">(</span><span class="parameters "><span class="parameter ">beanFactory<span class="token operator">: </span><span data-unresolved-link="org.springframework.beans.factory.config/ConfigurableListableBeanFactory///PointingToDeclaration/">ConfigurableListableBeanFactory</span></span></span><span class="token punctuation">)</span></div><div class="brief "><p class="paragraph">Resolves the auto-configuration base packages from <span data-unresolved-link="org.springframework.boot.autoconfigure/AutoConfigurationPackages///PointingToDeclaration/">AutoConfigurationPackages</span> and then delegates to the superclass to scan and register repository beans.</p></div></div></div>
+                </div>
+              </div>
+            </div>
+          </div>
+<a data-name="-1421526923%2FFunctions%2F453155280" anchor-label="setResourceLoader" id="-1421526923%2FFunctions%2F453155280" data-filterable-set="storm-kotlin-spring-boot-starter/JVM"></a>
+          <div class="table-row" data-filterable-current="storm-kotlin-spring-boot-starter/JVM" data-filterable-set="storm-kotlin-spring-boot-starter/JVM">
+            <div class="main-subrow keyValue ">
+              <div class=""><span class="inline-flex">
+                  <div><a href="index.html#-1421526923%2FFunctions%2F453155280"><span>set</span><wbr></wbr><span>Resource</span><wbr></wbr><span><span>Loader</span></span></a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="-1421526923%2FFunctions%2F453155280"></span>
+                    <div class="copy-popup-wrapper "><span class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+                  </span></span></div>
+              <div>
+                <div class="title">
+                  <div class="platform-hinted " data-platform-hinted="data-platform-hinted"><div class="content sourceset-dependent-content" data-active="" data-togglable="storm-kotlin-spring-boot-starter/JVM"><div class="symbol monospace"><span class="token keyword">open </span><span class="token keyword">override </span><span class="token keyword">fun </span><a href="index.html#-1421526923%2FFunctions%2F453155280"><span class="token function">setResourceLoader</span></a><span class="token punctuation">(</span><span class="parameters "><span class="parameter ">resourceLoader<span class="token operator">: </span><span data-unresolved-link="org.springframework.core.io/ResourceLoader///PointingToDeclaration/">ResourceLoader</span></span></span><span class="token punctuation">)</span></div></div></div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+    <div class="footer">
+        <a href="#content" id="go-to-top-link" class="footer--button footer--button_go-to-top"></a>
+        <span>© 2026 Copyright</span>
+        <span class="pull-right">
+            <span>Generated by </span>
+            <a class="footer--link footer--link_external" href="https://github.com/Kotlin/dokka">
+                <span>dokka</span>
+            </a>
+        </span>
+    </div>
+            </div>
+        </div>
+    </div>
+</body>
+</html>

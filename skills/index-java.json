@@ -1,0 +1,18 @@
+{
+  "skills": [
+    "storm-setup",
+    "storm-docs",
+    "storm-entity-java",
+    "storm-repository-java",
+    "storm-query-java",
+    "storm-sql-java",
+    "storm-json-java",
+    "storm-serialization-java",
+    "storm-migration"
+  ],
+  "schemaSkills": [
+    "storm-schema",
+    "storm-validate",
+    "storm-entity-from-schema"
+  ]
+}

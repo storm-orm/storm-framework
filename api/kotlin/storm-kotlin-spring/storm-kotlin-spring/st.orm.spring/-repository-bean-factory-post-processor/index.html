@@ -1,0 +1,269 @@
+<!DOCTYPE html>
+<html class="no-js">
+<head>
+    <meta name="viewport" content="width=device-width, initial-scale=1" charset="UTF-8">
+    <title>RepositoryBeanFactoryPostProcessor</title>
+    <link href="../../../images/logo-icon.svg" rel="icon" type="image/svg">
+    <script>var pathToRoot = "../../../";</script>
+    <script>document.documentElement.classList.replace("no-js","js");</script>
+    <script>const storage = localStorage.getItem("dokka-dark-mode")
+    if (storage == null) {
+        const osDarkSchemePreferred = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches
+        if (osDarkSchemePreferred === true) {
+            document.getElementsByTagName("html")[0].classList.add("theme-dark")
+        }
+    } else {
+        const savedDarkMode = JSON.parse(storage)
+        if(savedDarkMode === true) {
+            document.getElementsByTagName("html")[0].classList.add("theme-dark")
+        }
+    }
+    </script>
+<script type="text/javascript" src="https://unpkg.com/kotlin-playground@1/dist/playground.min.js" async="async"></script>
+<script type="text/javascript" src="../../../scripts/sourceset_dependencies.js" async="async"></script>
+<link href="../../../styles/style.css" rel="Stylesheet">
+<link href="../../../styles/main.css" rel="Stylesheet">
+<link href="../../../styles/prism.css" rel="Stylesheet">
+<link href="../../../styles/logo-styles.css" rel="Stylesheet">
+<link href="../../../styles/font-jb-sans-auto.css" rel="Stylesheet">
+<link href="../../../ui-kit/ui-kit.min.css" rel="Stylesheet">
+<script type="text/javascript" src="../../../scripts/clipboard.js" async="async"></script>
+<script type="text/javascript" src="../../../scripts/navigation-loader.js" async="async"></script>
+<script type="text/javascript" src="../../../scripts/platform-content-handler.js" async="async"></script>
+<script type="text/javascript" src="../../../scripts/main.js" defer="defer"></script>
+<script type="text/javascript" src="../../../scripts/prism.js" async="async"></script>
+<script type="text/javascript" src="../../../ui-kit/ui-kit.min.js" defer="defer"></script>
+<script type="text/javascript" src="../../../scripts/symbol-parameters-wrapper_deferred.js" defer="defer"></script>
+</head>
+<body>
+    <div class="root">
+    <nav class="navigation theme-dark" id="navigation-wrapper">
+            <a class="library-name--link" href="../../../index.html">
+                    storm-kotlin-spring
+            </a>
+        <button class="navigation-controls--btn navigation-controls--btn_toc ui-kit_mobile-only" id="toc-toggle"
+                type="button">Toggle table of contents
+        </button>
+        <div class="navigation-controls--break ui-kit_mobile-only"></div>
+        <div class="library-version" id="library-version">
+        </div>
+        <div class="navigation-controls">
+        <div class="filter-section filter-section_loading" id="filter-section">
+                <button class="platform-tag platform-selector jvm-like" data-active=""
+                        data-filter="storm-kotlin-spring/JVM">JVM</button>
+            <div class="dropdown filter-section--dropdown" data-role="dropdown" id="filter-section-dropdown">
+                <button class="button button_dropdown filter-section--dropdown-toggle" role="combobox"
+                        data-role="dropdown-toggle"
+                        aria-controls="platform-tags-listbox"
+                        aria-haspopup="listbox"
+                        aria-expanded="false"
+                        aria-label="Toggle source sets"
+                ></button>
+                <ul role="listbox" id="platform-tags-listbox" class="dropdown--list" data-role="dropdown-listbox">
+                    <div class="dropdown--header"><span>Platform filter</span>
+                        <button class="button" data-role="dropdown-toggle" aria-label="Close platform filter">
+                            <i class="ui-kit-icon ui-kit-icon_cross"></i>
+                        </button>
+                    </div>
+                        <li role="option" class="dropdown--option platform-selector-option jvm-like" tabindex="0">
+                            <label class="checkbox">
+                                <input type="checkbox" class="checkbox--input" id="storm-kotlin-spring/JVM"
+                                       data-filter="storm-kotlin-spring/JVM"/>
+                                <span class="checkbox--icon"></span>
+                                JVM
+                            </label>
+                        </li>
+                </ul>
+                <div class="dropdown--overlay"></div>
+            </div>
+        </div>
+            <button class="navigation-controls--btn navigation-controls--btn_theme" id="theme-toggle-button"
+                    type="button">Switch theme
+            </button>
+            <div class="navigation-controls--btn navigation-controls--btn_search" id="searchBar" role="button">Search in
+                API
+            </div>
+        </div>
+    </nav>
+        <div id="container">
+            <div class="sidebar" id="leftColumn">
+                <div class="dropdown theme-dark_mobile" data-role="dropdown" id="toc-dropdown">
+                    <ul role="listbox" id="toc-listbox" class="dropdown--list dropdown--list_toc-list"
+                        data-role="dropdown-listbox">
+                        <div class="dropdown--header">
+                            <span>
+                                    storm-kotlin-spring
+                            </span>
+                            <button class="button" data-role="dropdown-toggle" aria-label="Close table of contents">
+                                <i class="ui-kit-icon ui-kit-icon_cross"></i>
+                            </button>
+                        </div>
+                        <div class="sidebar--inner" id="sideMenu"></div>
+                    </ul>
+                    <div class="dropdown--overlay"></div>
+                </div>
+            </div>
+            <div id="main">
+<div class="main-content" data-page-type="classlike" id="content" pageIds="storm-kotlin-spring::st.orm.spring/RepositoryBeanFactoryPostProcessor///PointingToDeclaration//44253609">
+  <div class="breadcrumbs"><a href="../../../index.html">storm-kotlin-spring</a><span class="delimiter">/</span><a href="../index.html">st.orm.spring</a><span class="delimiter">/</span><span class="current">RepositoryBeanFactoryPostProcessor</span></div>
+  <div class="cover ">
+    <h1 class="cover"><span>Repository</span><wbr></wbr><span>Bean</span><wbr></wbr><span>Factory</span><wbr></wbr><span>Post</span><wbr></wbr><span><span>Processor</span></span></h1>
+    <div class="platform-hinted " data-platform-hinted="data-platform-hinted"><div class="content sourceset-dependent-content" data-active="" data-togglable="storm-kotlin-spring/JVM"><div class="symbol monospace"><div class="block"><div class="block"><span class="token annotation builtin">@</span><span data-unresolved-link="org.springframework.stereotype/Component///PointingToDeclaration/"><span class="token annotation builtin">Component</span></span></div></div><span class="token keyword">open </span><span class="token keyword">class </span><a href="index.html">RepositoryBeanFactoryPostProcessor</a> : <span data-unresolved-link="org.springframework.beans.factory.config/BeanFactoryPostProcessor///PointingToDeclaration/">BeanFactoryPostProcessor</span>, <span data-unresolved-link="org.springframework.context/ResourceLoaderAware///PointingToDeclaration/">ResourceLoaderAware</span></div><p class="paragraph">A <span data-unresolved-link="org.springframework.beans.factory.config/BeanFactoryPostProcessor///PointingToDeclaration/">BeanFactoryPostProcessor</span> that scans the specified base packages for repository interfaces and registers them as beans in the bean factory. This allows repository interfaces to be autowired by the ORM framework.</p></div></div>
+  </div>
+  <div class="tabbedcontent">
+    <div class="tabs-section" tabs-section="tabs-section"><button class="section-tab" data-active="" data-togglable="CONSTRUCTOR,TYPE,PROPERTY,FUNCTION">Members</button></div>
+    <div class="tabs-section-body">
+      <div data-togglable="CONSTRUCTOR">
+        <h2 class="">Constructors</h2>
+        <div class="table"><a data-name="263874143%2FConstructors%2F44253609" anchor-label="RepositoryBeanFactoryPostProcessor" id="263874143%2FConstructors%2F44253609" data-filterable-set="storm-kotlin-spring/JVM"></a>
+          <div class="table-row" data-togglable="CONSTRUCTOR" data-filterable-current="storm-kotlin-spring/JVM" data-filterable-set="storm-kotlin-spring/JVM">
+            <div class="main-subrow keyValue ">
+              <div class=""><span class="inline-flex">
+                  <div><a href="-repository-bean-factory-post-processor.html"><span>Repository</span><wbr></wbr><span>Bean</span><wbr></wbr><span>Factory</span><wbr></wbr><span>Post</span><wbr></wbr><span><span>Processor</span></span></a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="263874143%2FConstructors%2F44253609"></span>
+                    <div class="copy-popup-wrapper "><span class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+                  </span></span></div>
+              <div>
+                <div class="title">
+                  <div class="platform-hinted " data-platform-hinted="data-platform-hinted"><div class="content sourceset-dependent-content" data-active="" data-togglable="storm-kotlin-spring/JVM"><div class="symbol monospace"><span class="token keyword">constructor</span><span class="token punctuation">(</span><span class="token punctuation">)</span></div></div></div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div data-togglable="TYPE">
+        <h2 class="">Types</h2>
+        <div class="table"><a data-name="1458273248%2FClasslikes%2F44253609" anchor-label="Companion" id="1458273248%2FClasslikes%2F44253609" data-filterable-set="storm-kotlin-spring/JVM"></a>
+          <div class="table-row" data-filterable-current="storm-kotlin-spring/JVM" data-filterable-set="storm-kotlin-spring/JVM">
+            <div class="main-subrow keyValue ">
+              <div class=""><span class="inline-flex">
+                  <div><a href="-companion/index.html"><span><span>Companion</span></span></a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="1458273248%2FClasslikes%2F44253609"></span>
+                    <div class="copy-popup-wrapper "><span class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+                  </span></span></div>
+              <div>
+                <div class="title">
+                  <div class="platform-hinted " data-platform-hinted="data-platform-hinted"><div class="content sourceset-dependent-content" data-active="" data-togglable="storm-kotlin-spring/JVM"><div class="symbol monospace"><span class="token keyword">object </span><a href="-companion/index.html">Companion</a></div></div></div>
+                </div>
+              </div>
+            </div>
+          </div>
+<a data-name="-1818321439%2FClasslikes%2F44253609" anchor-label="RepositoryAutowireCandidateResolver" id="-1818321439%2FClasslikes%2F44253609" data-filterable-set="storm-kotlin-spring/JVM"></a>
+          <div class="table-row" data-filterable-current="storm-kotlin-spring/JVM" data-filterable-set="storm-kotlin-spring/JVM">
+            <div class="main-subrow keyValue ">
+              <div class=""><span class="inline-flex">
+                  <div><a href="-repository-autowire-candidate-resolver/index.html"><span>Repository</span><wbr></wbr><span>Autowire</span><wbr></wbr><span>Candidate</span><wbr></wbr><span><span>Resolver</span></span></a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="-1818321439%2FClasslikes%2F44253609"></span>
+                    <div class="copy-popup-wrapper "><span class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+                  </span></span></div>
+              <div>
+                <div class="title">
+                  <div class="platform-hinted " data-platform-hinted="data-platform-hinted"><div class="content sourceset-dependent-content" data-active="" data-togglable="storm-kotlin-spring/JVM"><div class="symbol monospace"><span class="token keyword">class </span><a href="-repository-autowire-candidate-resolver/index.html">RepositoryAutowireCandidateResolver</a><span class="token punctuation">(</span><span class="parameters "><span class="parameter ">delegate<span class="token operator">: </span><span data-unresolved-link="org.springframework.beans.factory.support/AutowireCandidateResolver///PointingToDeclaration/">AutowireCandidateResolver</span></span></span><span class="token punctuation">)</span> : <span data-unresolved-link="org.springframework.beans.factory.support/AutowireCandidateResolver///PointingToDeclaration/">AutowireCandidateResolver</span></div><div class="brief "><p class="paragraph">Adds qualifier support by looking at the attribute &quot;qualifier&quot; of the bean definition. This works hand in hand with the proxyBeanDefinition.setAttribute(&quot;qualifier&quot;, repositoryPrefix) call above.</p></div></div></div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div data-togglable="PROPERTY">
+        <h2 class="">Properties</h2>
+        <div class="table"><a data-name="1718408314%2FProperties%2F44253609" anchor-label="ormTemplateBeanName" id="1718408314%2FProperties%2F44253609" data-filterable-set="storm-kotlin-spring/JVM"></a>
+          <div class="table-row" data-filterable-current="storm-kotlin-spring/JVM" data-filterable-set="storm-kotlin-spring/JVM">
+            <div class="main-subrow keyValue ">
+              <div class=""><span class="inline-flex">
+                  <div><a href="orm-template-bean-name.html"><span>orm</span><wbr></wbr><span>Template</span><wbr></wbr><span>Bean</span><wbr></wbr><span><span>Name</span></span></a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="1718408314%2FProperties%2F44253609"></span>
+                    <div class="copy-popup-wrapper "><span class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+                  </span></span></div>
+              <div>
+                <div class="title">
+                  <div class="platform-hinted " data-platform-hinted="data-platform-hinted"><div class="content sourceset-dependent-content" data-active="" data-togglable="storm-kotlin-spring/JVM"><div class="symbol monospace"><span class="token keyword">open </span><span class="token keyword">val </span><a href="orm-template-bean-name.html">ormTemplateBeanName</a><span class="token operator">: </span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-string/index.html">String</a><span class="token operator">?</span></div></div></div>
+                </div>
+              </div>
+            </div>
+          </div>
+<a data-name="340390937%2FProperties%2F44253609" anchor-label="repositoryBasePackages" id="340390937%2FProperties%2F44253609" data-filterable-set="storm-kotlin-spring/JVM"></a>
+          <div class="table-row" data-filterable-current="storm-kotlin-spring/JVM" data-filterable-set="storm-kotlin-spring/JVM">
+            <div class="main-subrow keyValue ">
+              <div class=""><span class="inline-flex">
+                  <div><a href="repository-base-packages.html"><span>repository</span><wbr></wbr><span>Base</span><wbr></wbr><span><span>Packages</span></span></a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="340390937%2FProperties%2F44253609"></span>
+                    <div class="copy-popup-wrapper "><span class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+                  </span></span></div>
+              <div>
+                <div class="title">
+                  <div class="platform-hinted " data-platform-hinted="data-platform-hinted"><div class="content sourceset-dependent-content" data-active="" data-togglable="storm-kotlin-spring/JVM"><div class="symbol monospace"><span class="token keyword">open </span><span class="token keyword">val </span><a href="repository-base-packages.html">repositoryBasePackages</a><span class="token operator">: </span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-array/index.html">Array</a><span class="token operator">&lt;</span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-string/index.html">String</a><span class="token operator">&gt;</span></div></div></div>
+                </div>
+              </div>
+            </div>
+          </div>
+<a data-name="386963045%2FProperties%2F44253609" anchor-label="repositoryPrefix" id="386963045%2FProperties%2F44253609" data-filterable-set="storm-kotlin-spring/JVM"></a>
+          <div class="table-row" data-filterable-current="storm-kotlin-spring/JVM" data-filterable-set="storm-kotlin-spring/JVM">
+            <div class="main-subrow keyValue ">
+              <div class=""><span class="inline-flex">
+                  <div><a href="repository-prefix.html"><span>repository</span><wbr></wbr><span><span>Prefix</span></span></a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="386963045%2FProperties%2F44253609"></span>
+                    <div class="copy-popup-wrapper "><span class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+                  </span></span></div>
+              <div>
+                <div class="title">
+                  <div class="platform-hinted " data-platform-hinted="data-platform-hinted"><div class="content sourceset-dependent-content" data-active="" data-togglable="storm-kotlin-spring/JVM"><div class="symbol monospace"><span class="token keyword">open </span><span class="token keyword">val </span><a href="repository-prefix.html">repositoryPrefix</a><span class="token operator">: </span><a href="https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-string/index.html">String</a></div></div></div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div data-togglable="FUNCTION">
+        <h2 class="">Functions</h2>
+        <div class="table"><a data-name="1037625859%2FFunctions%2F44253609" anchor-label="postProcessBeanFactory" id="1037625859%2FFunctions%2F44253609" data-filterable-set="storm-kotlin-spring/JVM"></a>
+          <div class="table-row" data-filterable-current="storm-kotlin-spring/JVM" data-filterable-set="storm-kotlin-spring/JVM">
+            <div class="main-subrow keyValue ">
+              <div class=""><span class="inline-flex">
+                  <div><a href="post-process-bean-factory.html"><span>post</span><wbr></wbr><span>Process</span><wbr></wbr><span>Bean</span><wbr></wbr><span><span>Factory</span></span></a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="1037625859%2FFunctions%2F44253609"></span>
+                    <div class="copy-popup-wrapper "><span class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+                  </span></span></div>
+              <div>
+                <div class="title">
+                  <div class="platform-hinted " data-platform-hinted="data-platform-hinted"><div class="content sourceset-dependent-content" data-active="" data-togglable="storm-kotlin-spring/JVM"><div class="symbol monospace"><span class="token keyword">open </span><span class="token keyword">override </span><span class="token keyword">fun </span><a href="post-process-bean-factory.html"><span class="token function">postProcessBeanFactory</span></a><span class="token punctuation">(</span><span class="parameters "><span class="parameter ">beanFactory<span class="token operator">: </span><span data-unresolved-link="org.springframework.beans.factory.config/ConfigurableListableBeanFactory///PointingToDeclaration/">ConfigurableListableBeanFactory</span></span></span><span class="token punctuation">)</span></div></div></div>
+                </div>
+              </div>
+            </div>
+          </div>
+<a data-name="-1421526923%2FFunctions%2F44253609" anchor-label="setResourceLoader" id="-1421526923%2FFunctions%2F44253609" data-filterable-set="storm-kotlin-spring/JVM"></a>
+          <div class="table-row" data-filterable-current="storm-kotlin-spring/JVM" data-filterable-set="storm-kotlin-spring/JVM">
+            <div class="main-subrow keyValue ">
+              <div class=""><span class="inline-flex">
+                  <div><a href="set-resource-loader.html"><span>set</span><wbr></wbr><span>Resource</span><wbr></wbr><span><span>Loader</span></span></a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="-1421526923%2FFunctions%2F44253609"></span>
+                    <div class="copy-popup-wrapper "><span class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+                  </span></span></div>
+              <div>
+                <div class="title">
+                  <div class="platform-hinted " data-platform-hinted="data-platform-hinted"><div class="content sourceset-dependent-content" data-active="" data-togglable="storm-kotlin-spring/JVM"><div class="symbol monospace"><span class="token keyword">open </span><span class="token keyword">override </span><span class="token keyword">fun </span><a href="set-resource-loader.html"><span class="token function">setResourceLoader</span></a><span class="token punctuation">(</span><span class="parameters "><span class="parameter ">resourceLoader<span class="token operator">: </span><span data-unresolved-link="org.springframework.core.io/ResourceLoader///PointingToDeclaration/">ResourceLoader</span></span></span><span class="token punctuation">)</span></div></div></div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+    <div class="footer">
+        <a href="#content" id="go-to-top-link" class="footer--button footer--button_go-to-top"></a>
+        <span>© 2026 Copyright</span>
+        <span class="pull-right">
+            <span>Generated by </span>
+            <a class="footer--link footer--link_external" href="https://github.com/Kotlin/dokka">
+                <span>dokka</span>
+            </a>
+        </span>
+    </div>
+            </div>
+        </div>
+    </div>
+</body>
+</html>
