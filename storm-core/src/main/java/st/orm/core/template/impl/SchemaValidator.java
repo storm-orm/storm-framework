@@ -472,7 +472,14 @@ public final class SchemaValidator {
     }
 
     /**
-     * Validates that {@code @UK}-annotated fields have a matching unique constraint in the database.
+     * Validates unique key alignment between {@code @UK}-annotated fields and database unique constraints.
+     *
+     * <p>Forward check: for each {@code @UK} field, verifies a matching constraint exists in the database
+     * (unless suppressed by {@code @UK(constraint = false)}).</p>
+     *
+     * <p>Reverse check: for each single-column unique constraint in the database, warns if the corresponding
+     * entity field is not annotated with {@code @UK}. Composite (multi-column) constraints are not flagged,
+     * since modeling them requires structural changes (inline records) that should be a deliberate choice.</p>
      */
     private void validateUniqueKeys(
             @Nonnull Class<? extends Data> type,
@@ -490,26 +497,15 @@ public final class SchemaValidator {
             indexColumnsByName.computeIfAbsent(uk.indexName(), k -> new TreeSet<>(String.CASE_INSENSITIVE_ORDER))
                     .add(uk.columnName());
         }
+        // Forward check: @UK fields must have a matching database constraint.
         for (RecordField field : model.recordType().fields()) {
-            if (field.isAnnotationPresent(DbIgnore.class)) {
-                continue;
-            }
-            if (!field.isAnnotationPresent(UK.class)) {
-                continue;
-            }
-            // Skip @PK fields, since primary keys are already validated in step 5.
-            if (field.isAnnotationPresent(PK.class)) {
-                continue;
-            }
-            if (ignoredComponents.contains(field.name())) {
-                continue;
-            }
-            // Skip if the @UK annotation indicates no constraint is expected.
+            if (field.isAnnotationPresent(DbIgnore.class)) continue;
+            if (!field.isAnnotationPresent(UK.class)) continue;
+            if (field.isAnnotationPresent(PK.class)) continue;
+            if (ignoredComponents.contains(field.name())) continue;
             UK ukAnnotation = field.getAnnotation(UK.class);
-            if (ukAnnotation != null && !ukAnnotation.constraint()) {
-                continue;
-            }
-            // Collect the expected column names for this @UK field.
+            if (ukAnnotation == null) continue;
+            if (!ukAnnotation.constraint()) continue;
             SortedSet<String> expectedColumns = new TreeSet<>(String.CASE_INSENSITIVE_ORDER);
             for (Column column : model.declaredColumns()) {
                 String fieldPath = column.metamodel().fieldPath();
@@ -517,10 +513,7 @@ public final class SchemaValidator {
                     expectedColumns.add(column.name());
                 }
             }
-            if (expectedColumns.isEmpty()) {
-                continue;
-            }
-            // Check if any unique index in the database covers exactly these columns.
+            if (expectedColumns.isEmpty()) continue;
             boolean found = indexColumnsByName.values().stream()
                     .anyMatch(indexColumns -> indexColumns.equals(expectedColumns));
             if (!found) {

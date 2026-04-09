@@ -62,10 +62,10 @@ class MetamodelProcessor(
     companion object {
         private const val GENERATE_METAMODEL = "st.orm.GenerateMetamodel"
         private const val DATA = "st.orm.Data"
-        private const val DISCRIMINATOR = "st.orm.Discriminator"
         private const val REF = "st.orm.Ref"
+        private const val FOREIGN_KEY = "st.orm.FK"
         private const val PRIMARY_KEY = "st.orm.PK"
-        private const val UNIQUE = "st.orm.UK"
+        private const val UNIQUE_KEY = "st.orm.UK"
 
         private const val K_BOOLEAN = "kotlin.Boolean"
         private const val K_BYTE = "kotlin.Byte"
@@ -444,14 +444,14 @@ class MetamodelProcessor(
     }
 
     private fun isUniqueField(prop: KSPropertyDeclaration): Boolean {
-        if (hasAnnotationOrMeta(prop, UNIQUE)) return true
+        if (hasAnnotationOrMeta(prop, UNIQUE_KEY)) return true
 
         val parent = prop.parentDeclaration as? KSClassDeclaration ?: return false
 
         val ctor = parent.primaryConstructor
         if (ctor != null) {
             val param = ctor.parameters.firstOrNull { it.name?.asString() == prop.simpleName.asString() }
-            if (param != null && hasAnnotationOrMeta(param, UNIQUE)) return true
+            if (param != null && hasAnnotationOrMeta(param, UNIQUE_KEY)) return true
         }
 
         // Fallback for sealed interface properties: delegate to first sealed subclass.
@@ -471,7 +471,7 @@ class MetamodelProcessor(
         for (ann in prop.annotations) {
             val annDecl = ann.annotationType.resolve().declaration as? KSClassDeclaration ?: continue
             val annQn = annDecl.qualifiedName?.asString()
-            if (annQn == UNIQUE) {
+            if (annQn == UNIQUE_KEY) {
                 val argument = ann.arguments.firstOrNull { it.name?.asString() == "nullsDistinct" }
                 return argument?.value as? Boolean ?: true
             }
@@ -485,7 +485,7 @@ class MetamodelProcessor(
                 for (ann in param.annotations) {
                     val annDecl = ann.annotationType.resolve().declaration as? KSClassDeclaration ?: continue
                     val annQn = annDecl.qualifiedName?.asString()
-                    if (annQn == UNIQUE) {
+                    if (annQn == UNIQUE_KEY) {
                         val argument = ann.arguments.firstOrNull { it.name?.asString() == "nullsDistinct" }
                         return argument?.value as? Boolean ?: true
                     }
@@ -502,6 +502,11 @@ class MetamodelProcessor(
         }
         return true
     }
+
+    /**
+     * Returns true if the field should be treated as a unique key for metamodel generation.
+     */
+    private fun isEffectivelyUniqueField(prop: KSPropertyDeclaration): Boolean = isUniqueField(prop)
 
     private fun isEffectivelyNullable(prop: KSPropertyDeclaration): Boolean {
         // PK fields are always non-null.
@@ -668,7 +673,7 @@ class MetamodelProcessor(
             } else {
                 val kotlinTypeName = getKotlinTypeName(typeRef, packageName) // E (unwrap Ref)
                 val valueKotlinTypeName = getKotlinValueTypeName(typeRef, packageName) // V (keep Ref)
-                val unique = isUniqueField(prop)
+                val unique = isEffectivelyUniqueField(prop)
                 val baseClass = if (unique) "AbstractKeyMetamodel" else "AbstractMetamodel"
                 builder.append("        /** Represents the $className.$fieldName field. */\n")
                 builder.append(
@@ -702,7 +707,7 @@ class MetamodelProcessor(
                 val kotlinTypeName = getKotlinTypeName(typeRef, packageName) // E
                 val valueKotlinTypeName = getKotlinValueTypeName(typeRef, packageName) // V
                 val v = if (forceNullableChain) ensureNullable(valueKotlinTypeName) else valueKotlinTypeName
-                val unique = isUniqueField(prop)
+                val unique = isEffectivelyUniqueField(prop)
                 val isData = classDeclaration.implementsInterface(DATA)
                 val baseClass = if (!isData || unique) "AbstractKeyMetamodel" else "AbstractMetamodel"
                 builder.append("    val $fieldName: $baseClass<T, $kotlinTypeName, $v>\n")
@@ -729,6 +734,30 @@ class MetamodelProcessor(
 
                 val simpleTypeName = getSimpleTypeName(typeRef, packageName)
                 val isChildData = isDataType(prop)
+                // Validate: @PK, @FK, and @UK are not supported on inline record fields.
+                if (!classDeclaration.implementsInterface(DATA)) {
+                    if (hasAnnotationOrMeta(prop, PRIMARY_KEY)) {
+                        logger.error(
+                            "@PK is not supported on inline record fields. " +
+                                "Primary keys are only supported on top-level entity fields.",
+                            prop,
+                        )
+                    }
+                    if (hasAnnotationOrMeta(prop, FOREIGN_KEY)) {
+                        logger.error(
+                            "@FK is not supported on inline record fields. " +
+                                "Foreign keys are only supported on top-level entity fields.",
+                            prop,
+                        )
+                    }
+                    if (hasAnnotationOrMeta(prop, UNIQUE_KEY)) {
+                        logger.error(
+                            "@UK is not supported on inline record fields. " +
+                                "Unique keys are only supported on top-level entity fields.",
+                            prop,
+                        )
+                    }
+                }
                 val inlineFlag = if (isChildData) "false" else "true"
                 val childForceNullable = forceNullableChain || propNullable
                 val childMetaClassName =
@@ -739,7 +768,7 @@ class MetamodelProcessor(
                 } else {
                     "{ t: T -> this@$metaClassName.getValue(t).$fieldName }"
                 }
-                if (!isChildData && isUniqueField(prop)) {
+                if (!isChildData && isEffectivelyUniqueField(prop)) {
                     val nullsDistinct = getNullsDistinct(prop)
                     val referencedDecl = typeRef.resolve().declaration as? KSClassDeclaration
                     if (nullsDistinct && referencedDecl != null && hasNullableLeaf(referencedDecl)) {
@@ -793,8 +822,32 @@ class MetamodelProcessor(
                     "            override fun getValue(record: T): $v =\n" +
                         "                this@$metaClassName.getValue(record).$fieldName\n"
                 }
-                val unique = isUniqueField(prop)
+                val unique = isEffectivelyUniqueField(prop)
                 val isData = classDeclaration.implementsInterface(DATA)
+                // Validate: @PK, @FK, and @UK are not supported on inline record fields.
+                if (!isData) {
+                    if (hasAnnotationOrMeta(prop, PRIMARY_KEY)) {
+                        logger.error(
+                            "@PK is not supported on inline record fields. " +
+                                "Primary keys are only supported on top-level entity fields.",
+                            prop,
+                        )
+                    }
+                    if (hasAnnotationOrMeta(prop, FOREIGN_KEY)) {
+                        logger.error(
+                            "@FK is not supported on inline record fields. " +
+                                "Foreign keys are only supported on top-level entity fields.",
+                            prop,
+                        )
+                    }
+                    if (hasAnnotationOrMeta(prop, UNIQUE_KEY)) {
+                        logger.error(
+                            "@UK is not supported on inline record fields. " +
+                                "Unique keys are only supported on top-level entity fields.",
+                            prop,
+                        )
+                    }
+                }
                 val effectivelyNullable = if (!isData) {
                     // Leaf of a compound key: report raw field nullability for runtime derivation.
                     isEffectivelyNullable(prop)

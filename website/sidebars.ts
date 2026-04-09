@@ -77,6 +77,8 @@ const sidebars: SidebarsConfig = {
         'faq',
         'migration-from-jpa',
         'ai',
+        'ai-reference',
+        'database-and-mcp',
       ],
     },
     {

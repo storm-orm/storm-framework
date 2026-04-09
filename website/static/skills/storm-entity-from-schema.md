@@ -10,8 +10,9 @@ Steps:
 2. Check which tables already have entity classes in the codebase.
 3. For tables without entities: offer to generate new ones.
 4. For tables with existing entities: call \`describe_table\` and compare against the entity definition. Report differences and suggest updates.
-5. Ask: Kotlin or Java?
-6. Ask about loading preference for new FKs:
+5. If \`select_data\` is available: sample a few rows from ambiguous columns to inform type decisions. For example, a \`VARCHAR\` column might contain enum-like values (suggest an enum), a \`TEXT\` column might store JSON (suggest \`@Json\`), or an \`INT\` column might be a type discriminator. Only query when the schema alone leaves the type decision ambiguous — do not sample every table.
+6. Ask: Kotlin or Java?
+7. Ask about loading preference for new FKs:
    - **Deeply nested**: FK as direct types. Full graph in one query, no N+1.
    - **Shallow**: FK as Ref<T>. Only ID stored, fetch on demand. No N+1 either way.
 
@@ -23,7 +24,10 @@ Generation/update rules:
 - Auto-increment PKs: IDENTITY. Others: NONE.
 - NOT NULL FKs: non-nullable. Nullable FKs: nullable.
 - CIRCULAR NOT SUPPORTED. Two tables referencing each other: one must use Ref<T>. Self-ref: always Ref<T>.
-- @UK for unique constraints. @Version for version columns (confirm with user).
+- **Single-column unique constraints** (apply by default): use `@UK` on the field. Generates a `Metamodel.Key` for type-safe lookups and scrolling. Always add `@UK` when `describe_table` shows a single-column unique constraint — it's one annotation for free value.
+- **Composite unique constraints** (only when needed): composite unique constraints do NOT need to be modeled unless the user explicitly needs a composite `Metamodel.Key` (for keyset pagination or type-safe lookups). When needed, use an inline record + `@UK @Persist(insertable = false, updatable = false)` — ask the user if they need this.
+- `describe_table` reports unique constraints (top-level `uniqueConstraints` array with constraint name and column list) and FK cascade rules (onDelete/onUpdate). Both are exposed for context only. **Storm does not model cascade behavior or enforce uniqueness** — these are database-level concerns. Do not generate annotations or code for cascade rules.
+- @Version for version columns (confirm with user).
 - When updating, preserve existing field order and custom annotations. Only add/modify what changed.
 - Use `@DbIgnore` on fields or types that should be excluded from schema validation.
 - Use `@PK(constraint = false)` if the table intentionally has no PK constraint in the database.

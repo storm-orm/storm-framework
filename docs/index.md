@@ -12,6 +12,10 @@ import TabItem from '@theme/TabItem';
 Storm's concise API, strict conventions, and absence of hidden complexity make it optimized for AI-assisted development. Combined with AI skills and secure schema access via MCP, AI coding tools generate correct Storm code consistently. Install with `npm install -g @storm-orm/cli` and run `storm init` in your project. See [AI-Assisted Development](ai.md).
 :::
 
+:::tip Looking for a database MCP server for Python, Go, Ruby, or any other language?
+Storm's schema-aware MCP server works standalone — no Storm ORM required. Run `npx @storm-orm/cli mcp init` to give your AI tool access to your database schema and (optionally) read-only data, regardless of your tech stack. See [Using Without Storm ORM](database-and-mcp.md#using-without-storm-orm).
+:::
+
 **Storm** is a modern, high-performance ORM for Kotlin 2.0+ and Java 21+, built around a powerful SQL template engine. It focuses on simplicity, type safety, and predictable performance through immutable models and compile-time metadata.
 
 **Key benefits:**

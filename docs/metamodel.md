@@ -397,13 +397,13 @@ For compound unique constraints spanning multiple columns, use an inline record 
 <TabItem value="kotlin" label="Kotlin" default>
 
 ```kotlin
-data class UserEmailUK(val userId: Int, val email: String)
+data class UserEmailUk(val userId: Int, val email: String)
 
 data class SomeEntity(
     @PK val id: Int = 0,
     @FK val user: User,
     val email: String,
-    @UK @Persist(insertable = false, updatable = false) val uniqueKey: UserEmailUK
+    @UK @Persist(insertable = false, updatable = false) val uniqueKey: UserEmailUk
 ) : Entity<Int>
 ```
 
@@ -411,12 +411,12 @@ data class SomeEntity(
 <TabItem value="java" label="Java">
 
 ```java
-record UserEmailUK(int userId, String email) {}
+record UserEmailUk(int userId, String email) {}
 
 record SomeEntity(@PK Integer id,
                   @Nonnull @FK User user,
                   @Nonnull String email,
-                  @UK @Persist(insertable = false, updatable = false) UserEmailUK uniqueKey
+                  @UK @Persist(insertable = false, updatable = false) UserEmailUk uniqueKey
 ) implements Entity<Integer> {}
 ```
 

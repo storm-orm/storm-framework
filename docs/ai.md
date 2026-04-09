@@ -5,12 +5,8 @@ import TabItem from '@theme/TabItem';
 
 Storm is an AI-first ORM. Entities are plain Kotlin data classes or Java records. Queries are explicit SQL. Built-in verification lets AI validate its own work before anything touches production.
 
-:::caution Storm is not for vibe coding
-Database code affects data integrity, performance, and security. Generating it without understanding or verifying the result is not something Storm encourages.
-
+:::info AI-first, not AI-only
 Storm keeps you in control. `ORMTemplate.validateSchema()` validates that entities match the database. `SqlCapture` validates that queries match the intent. `@StormTest` runs both checks in an isolated in-memory database before anything reaches production. The AI generates code, then Storm verifies it. That is what AI-first means here.
-
-Automated verification catches mistakes, but it does not replace understanding. Your data layer is not the place to let the codebase drift away from you.
 :::
 
 ---
@@ -34,17 +30,7 @@ The interactive setup walks you through three steps:
 
 ### 1. Select AI tools
 
-Choose which AI coding tools you use. Storm configures each one with rules, skills, and (optionally) a database-aware MCP server. You can select multiple tools if your team uses different editors.
-
-| Tool | Rules | Skills | MCP |
-|------|-------|--------|-----|
-| Claude Code | CLAUDE.md | .claude/skills/ | .mcp.json |
-| Cursor | .cursor/rules/storm.md | .cursor/rules/ | .cursor/mcp.json |
-| GitHub Copilot | .github/copilot-instructions.md | .github/instructions/ | (tool-dependent) |
-| Windsurf | .windsurf/rules/storm.md | .windsurf/rules/ | (manual config) |
-| Codex | AGENTS.md | - | .codex/config.toml |
-
-Each tool stores its configuration in a different location, but the content is the same: Storm's conventions, entity rules, query patterns, and verification guidelines.
+Choose which AI coding tools you use. Storm configures each one with rules, skills, and (optionally) a database-aware MCP server. You can select multiple tools if your team uses different editors. Storm currently supports Claude Code, Cursor, GitHub Copilot, Windsurf, and Codex. Each tool stores its configuration in a different location, but the content is the same: Storm's conventions, entity rules, query patterns, and verification guidelines. See [AI Tools Reference](ai-reference.md) for the full list of configuration locations.
 
 ### 2. Rules and skills
 
@@ -52,39 +38,23 @@ For each selected tool, Storm installs two types of AI context:
 
 **Rules** are a project-level configuration file that is always loaded by the AI tool. They contain Storm's key patterns, naming conventions, and critical constraints (immutable QueryBuilder, no collection fields on entities, `Ref<T>` for circular references, etc.). The rules ensure the AI follows Storm's conventions in every interaction, without you having to repeat them.
 
-**Skills** are per-topic guides that the AI loads on demand when working on a specific task. Each skill contains focused instructions, code examples, and common pitfalls for one area of Storm. Skills are fetched from orm.st during setup and can be updated automatically on each run without requiring a CLI update.
-
-| Skill | Purpose |
-|-------|---------|
-| storm-setup | Configure dependencies (detects Spring Boot, Ktor, or standalone) |
-| storm-docs | Load full Storm documentation |
-| storm-entity-kotlin | Create Kotlin entities |
-| storm-entity-java | Create Java entities |
-| storm-repository-kotlin | Write Kotlin repositories (framework-aware: Spring Boot, Ktor, standalone) |
-| storm-repository-java | Write Java repositories |
-| storm-query-kotlin | Kotlin QueryBuilder queries |
-| storm-query-java | Java QueryBuilder queries |
-| storm-sql-kotlin | Kotlin SQL Templates |
-| storm-sql-java | Java SQL Templates |
-| storm-json-kotlin / storm-json-java | JSON columns and JSON aggregation |
-| storm-serialization-kotlin / storm-serialization-java | Entity serialization for REST APIs (framework-aware content negotiation) |
-| storm-migration | Write Flyway/Liquibase migration SQL |
+**Skills** are per-topic guides that the AI loads on demand when working on a specific task. Each skill contains focused instructions, code examples, and common pitfalls for one area of Storm (entities, queries, repositories, migrations, JSON, serialization, and more). Skills are fetched from orm.st during setup and can be updated automatically on each run without requiring a CLI update. See [AI Tools Reference](ai-reference.md#skills) for the full list.
 
 ### 3. Database connection (optional)
 
 If you have a local development database running, Storm can set up a schema-aware MCP server. This gives your AI tool access to your actual database structure (table definitions, column types, foreign keys) without exposing credentials or data.
 
-The MCP server runs locally on your machine, exposes only schema metadata, and stores credentials in `~/.storm/` (outside your project, outside the LLM's reach). It supports PostgreSQL, MySQL, MariaDB, Oracle, SQL Server, SQLite, and H2.
+The MCP server runs locally on your machine, exposes only schema metadata by default, and stores credentials in `~/.storm/` (outside your project, outside the LLM's reach). It supports PostgreSQL, MySQL, MariaDB, Oracle, SQL Server, SQLite, and H2. You can connect multiple databases to a single project, even across different database types.
 
-With the database connected, three additional skills become available:
+Optionally, you can enable read-only data access per connection. This lets the AI query individual records to inform type decisions — for example, recognizing that a `VARCHAR` column contains enum-like values, or that a `TEXT` column stores JSON. Data access is disabled by default because it means actual data from your database flows through the AI's context. When enabled, the database connection is read-only (enforced at both the application and database driver level), and the AI cannot write, modify, or delete data. See [Database Connections & MCP — Security](database-and-mcp.md#security) for the full details.
 
-| Skill | Purpose |
-|-------|---------|
-| storm-schema | Inspect your live database schema |
-| storm-validate | Compare entities against the live schema |
-| storm-entity-from-schema | Generate, update, or refactor entities from database tables |
+With the database connected, three additional skills become available for schema inspection, entity validation against the live schema, and entity generation from database tables. See [AI Tools Reference](ai-reference.md#database-skills) for details.
 
-To reconfigure the database connection later, run `storm mcp`.
+To manage database connections later, use `storm db` for the global connection library and `storm mcp` for project-level configuration. See [Database Connections & MCP](database-and-mcp.md) for the full guide.
+
+:::tip Looking for a database MCP server for Python, Go, Ruby, or any other language?
+The Storm MCP server works standalone — no Storm ORM required. Run `npx @storm-orm/cli mcp init` to set up schema access and optional read-only data queries without installing Storm rules or skills. See [Using Without Storm ORM](database-and-mcp.md#using-without-storm-orm).
+:::
 
 ---
 
@@ -140,12 +110,12 @@ The design choices that matter most:
 - **No persistence context.** No session scope, flush ordering, or detachment rules that require deep framework knowledge.
 - **Convention over configuration.** Fewer annotations and config files for the AI to keep consistent.
 - **Compile-time metamodel.** Type errors caught at build time, not at runtime. The AI gets immediate feedback.
-- **Secure schema access.** The MCP server gives AI tools structural database knowledge without exposing credentials or data.
+- **Secure schema access.** The MCP server gives AI tools structural database knowledge without exposing credentials. Data access is opt-in, read-only by construction, and enforced at the database driver level.
 
 Beyond the data model, Storm provides dedicated tooling for AI-assisted workflows:
 
 - **Skills** guide AI tools through specific tasks (entity creation, queries, repositories, migrations) with framework-aware conventions and rules.
-- **A locally running MCP server** gives AI tools access to your live database schema: table definitions, column types, constraints, and foreign keys. The AI can inspect your actual database structure to generate entities that match, or validate entities it just created.
+- **A locally running MCP server** gives AI tools access to your live database schema: table definitions, column types, constraints, and foreign keys. Optionally, the AI can also query individual records (read-only) when sample data would improve type decisions. The AI can inspect your actual database structure to generate entities that match, or validate entities it just created.
 - **Built-in verification** through `ORMTemplate.validateSchema()` and `SqlCapture` lets the AI validate its own work. After generating entities, the AI can validate them against the database. After writing queries, it can capture and inspect the actual SQL. Both checks run in an isolated in-memory database through `@StormTest`, so verification happens before anything touches production. For dialect-specific code, `@StormTest` supports a static `dataSource()` factory method on the test class, allowing integration with Testcontainers to test against the actual target database.
 
 ---
@@ -180,13 +150,14 @@ The AI generates and updates code (entities, migrations, queries). Storm validat
 
 In a schema-first workflow, the database is the source of truth. The schema already exists (or is managed by a DBA), and entities need to match it.
 
-When the MCP server is configured, the AI has access to the live database through `list_tables` and `describe_table`. This gives it full visibility into table definitions, column types, constraints, and foreign key relationships.
+When the MCP server is configured, the AI has access to the live database through `list_tables` and `describe_table`. This gives it full visibility into table definitions, column types, constraints, and foreign key relationships. When data access is enabled, the AI can also use `select_data` to sample individual records — useful when the schema alone is ambiguous about intent (e.g., a `VARCHAR` that holds enum values, or a `TEXT` column that stores JSON).
 
 The AI workflow:
 
 1. **Inspect the schema.** The AI calls `list_tables` to discover tables, then `describe_table` for each relevant table.
-2. **Generate entities.** Based on the schema metadata and Storm's entity conventions (naming, `@PK`, `@FK`, `@UK`, nullability, `Ref<T>` for circular or self-references), the AI generates Kotlin data classes or Java records.
-3. **Validate.** The AI writes a temporary test that validates the generated entities against the database using `ORMTemplate.validateSchema()`.
+2. **Sample data (if available).** When `select_data` is enabled and the schema leaves a type decision ambiguous, the AI queries a few rows to inform the choice.
+3. **Generate entities.** Based on the schema metadata (and optional sample data) and Storm's entity conventions (naming, `@PK`, `@FK`, `@UK`, nullability, `Ref<T>` for circular or self-references), the AI generates Kotlin data classes or Java records.
+4. **Validate.** The AI writes a temporary test that validates the generated entities against the database using `ORMTemplate.validateSchema()`.
 
 When the database schema evolves, the same flow applies: the AI inspects the changed tables, updates the affected entities, and re-validates.
 

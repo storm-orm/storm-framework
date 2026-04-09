@@ -78,6 +78,8 @@ The join, grouping, and result retrieval are all code-based. Only the `COUNT(*)`
 
 The `Data` interface marks types for SQL generation without CRUD. It tells Storm how to map the result columns to the record fields.
 
+**`Ref<T>` in result types:** When a SELECT clause references a FK field (`${User_.city}`) rather than a full entity (`${City::class}`), use `Ref<T>` in the result type — not the raw ID type and not the full entity. `Ref<City>` maps correctly to the FK column value. Use the full entity type only when selecting all its columns via `${City::class}`.
+
 All interpolated values become bind parameters. SQL injection safe by design.
 
 **Note:** `Query.resultList` (Kotlin property, no type parameter) returns `List<Array<Any>>`. For typed results, use `query.resultList<T>()` or `query.getResultList(T::class)`. This is different from QueryBuilder's `.resultList` which returns `List<R>` already typed to the query's result type.

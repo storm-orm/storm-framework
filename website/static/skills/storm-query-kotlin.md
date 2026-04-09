@@ -188,9 +188,24 @@ val topCities = orm.entity<City>()
     .having { "COUNT(*) >= $minUsers" }               // template form for aggregate expressions
     .orderByDescending { "AVG(${User_.age})" }
     .resultList
+
+// Multi-field groupBy — always use the varargs metamodel form:
+data class CityActiveCount(val city: Ref<City>, val active: Boolean, val userCount: Long) : Data
+
+val counts = orm.entity<User>()
+    .select(CityActiveCount::class) { "${User_.city}, ${User_.active}, COUNT(*)" }
+    .groupBy(User_.city, User_.active)    // ✅ varargs metamodel form
+    .resultList
+
+// ❌ Don't use template lambda when metamodel fields work:
+//    .groupBy { "${User_.city}, ${User_.active}" }
+// ✅ Use varargs metamodel form — code-first, type-safe:
+//    .groupBy(User_.city, User_.active)
 ```
 
-Always prefer code over templates. Templates are for expressions QueryBuilder can't produce (e.g., `COUNT(*)`, `AVG()`). `groupBy`, `having`, and `orderBy` also accept template lambdas when needed (e.g., `.having { "COUNT(*) >= $min" }`, `.orderByDescending { "AVG(${User_.age})" }`), but use the code-based methods when possible. Do NOT write the entire query as a raw SQL string.
+**`Ref<T>` in aggregation result types:** When the SELECT clause references a FK field (`${User_.city}`) rather than a full entity (`${City::class}`), use `Ref<T>` in the result type — not the raw ID type and not the full entity. `Ref<City>` maps correctly to the FK column value. Use the full entity type only when the SELECT includes all its columns via `${City::class}`.
+
+Always prefer code over templates. Templates are for expressions QueryBuilder can't produce (e.g., `COUNT(*)`, `AVG()`). `groupBy`, `having`, and `orderBy` also accept template lambdas when needed (e.g., `.having { "COUNT(*) >= $min" }`, `.orderByDescending { "AVG(${User_.age})" }`), but **always use the varargs metamodel form for `groupBy`** and **the metamodel form for `orderBy`** when possible — reserve template lambdas for computed expressions. Do NOT write the entire query as a raw SQL string.
 
 ## Row Locking
 
@@ -488,6 +503,7 @@ Critical rules:
   val countMap: MutableMap<Ref<Cell>, MutableMap<String, Int>> = mutableMapOf()
   countMap.getOrPut(candidate.cell.ref()) { mutableMapOf() }
   ```
+- **Typed ID from `Ref`:** Use `ref.entityId()` (import `st.orm.template.entityId`) to extract a type-safe ID from a `Ref`. Avoid `ref.id()` — it returns `Any` and requires an unsafe cast.
 
 ## Verification
 

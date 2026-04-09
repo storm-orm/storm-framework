@@ -66,10 +66,9 @@ public final class MetamodelProcessor extends AbstractProcessor {
     private static final String METAMODEL_TYPE = "st.orm.MetamodelType";
     private static final String GENERATE_METAMODEL = "st.orm.GenerateMetamodel";
     private static final String DATA = "st.orm.Data";
-    private static final String DISCRIMINATOR = "st.orm.Discriminator";
     private static final String FOREIGN_KEY = "st.orm.FK";
     private static final String PRIMARY_KEY = "st.orm.PK";
-    private static final String UNIQUE = "st.orm.UK";
+    private static final String UNIQUE_KEY = "st.orm.UK";
 
     private static final Pattern REF_PATTERN = Pattern.compile("^st\\.orm\\.Ref<([^>]+)>$");
 
@@ -495,7 +494,7 @@ public final class MetamodelProcessor extends AbstractProcessor {
         if (recordElement.getKind() == RECORD && recordElement instanceof TypeElement te) {
             for (RecordComponentElement rc : te.getRecordComponents()) {
                 if (rc.getSimpleName().toString().equals(fieldName)) {
-                    return hasAnnotationOrMeta(rc, UNIQUE);
+                    return hasAnnotationOrMeta(rc, UNIQUE_KEY);
                 }
             }
         }
@@ -504,7 +503,7 @@ public final class MetamodelProcessor extends AbstractProcessor {
             if (enclosed.getKind() != CONSTRUCTOR) continue;
             for (VariableElement param : ((ExecutableElement) enclosed).getParameters()) {
                 if (param.getSimpleName().toString().equals(fieldName)) {
-                    return hasAnnotationOrMeta(param, UNIQUE);
+                    return hasAnnotationOrMeta(param, UNIQUE_KEY);
                 }
             }
         }
@@ -599,7 +598,7 @@ public final class MetamodelProcessor extends AbstractProcessor {
     private static boolean extractNullsDistinct(@Nonnull Element element) {
         for (AnnotationMirror am : element.getAnnotationMirrors()) {
             String annotationName = am.getAnnotationType().toString();
-            if (UNIQUE.equals(annotationName)) {
+            if (UNIQUE_KEY.equals(annotationName)) {
                 // Direct @UK annotation.
                 for (var entry : am.getElementValues().entrySet()) {
                     if ("nullsDistinct".equals(entry.getKey().getSimpleName().toString())) {
@@ -612,7 +611,7 @@ public final class MetamodelProcessor extends AbstractProcessor {
             Element annEl = am.getAnnotationType().asElement();
             if (annEl instanceof TypeElement te) {
                 for (AnnotationMirror meta : te.getAnnotationMirrors()) {
-                    if (UNIQUE.equals(meta.getAnnotationType().toString())) {
+                    if (UNIQUE_KEY.equals(meta.getAnnotationType().toString())) {
                         // Meta-annotated @UK does not carry the user's nullsDistinct attribute.
                         return true;
                     }
@@ -773,7 +772,7 @@ public final class MetamodelProcessor extends AbstractProcessor {
                         .append(fieldName).append(";\n");
             } else {
                 String valueTypeName = getValueTypeName(fieldType, packageName);
-                boolean unique = isUniqueField(recordElement, fieldName);
+                boolean unique = isEffectivelyUniqueField(recordElement, fieldName);
                 String baseClass = unique ? "AbstractKeyMetamodel" : "AbstractMetamodel";
 
                 builder.append("    /** Represents the {@link ").append(recordName).append("#").append(fieldName)
@@ -853,7 +852,7 @@ public final class MetamodelProcessor extends AbstractProcessor {
                         .append(";\n");
             } else {
                 String valueTypeName = getValueTypeName(fieldType, packageName);
-                boolean unique = isUniqueField(recordElement, fieldName);
+                boolean unique = isEffectivelyUniqueField(recordElement, fieldName);
                 boolean isData = implementsData(recordElement);
                 String baseClass = (!isData || unique) ? "AbstractKeyMetamodel" : "AbstractMetamodel";
 
@@ -886,6 +885,27 @@ public final class MetamodelProcessor extends AbstractProcessor {
                 if (isNestedRecord(fieldType)) continue;
 
                 boolean inline = !isDataType(recordElement, fieldName);
+                // Validate: @PK, @FK, and @UK are not supported on inline record fields.
+                if (!implementsData(recordElement)) {
+                    if (hasAnnotationOrMeta(enclosed, PRIMARY_KEY)) {
+                        processingEnv.getMessager().printMessage(ERROR,
+                                "@PK is not supported on inline record fields. "
+                                + "Primary keys are only supported on top-level entity fields.",
+                                enclosed);
+                    }
+                    if (hasAnnotationOrMeta(enclosed, FOREIGN_KEY)) {
+                        processingEnv.getMessager().printMessage(ERROR,
+                                "@FK is not supported on inline record fields. "
+                                + "Foreign keys are only supported on top-level entity fields.",
+                                enclosed);
+                    }
+                    if (hasAnnotationOrMeta(enclosed, UNIQUE_KEY)) {
+                        processingEnv.getMessager().printMessage(ERROR,
+                                "@UK is not supported on inline record fields. "
+                                + "Unique keys are only supported on top-level entity fields.",
+                                enclosed);
+                    }
+                }
                 String inlineFlag = inline ? "true" : "false";
                 // Null-safe nested getter: parent record (root getter) can be null.
                 String nestedGetter =
@@ -893,7 +913,7 @@ public final class MetamodelProcessor extends AbstractProcessor {
                                 "            " + recordName + " p = " + metaClassName + ".this.getValue(t);\n" +
                                 "            return (p == null) ? null : " + accessorExpr(recordElement, "p", fieldName, fieldType) + ";\n" +
                                 "        }";
-                if (inline && isUniqueField(recordElement, fieldName)) {
+                if (inline && isEffectivelyUniqueField(recordElement, fieldName)) {
                     boolean nullsDistinct = getNullsDistinct(recordElement, fieldName);
                     if (nullsDistinct && hasNullableLeaf(asTypeElement(fieldType))) {
                         processingEnv.getMessager().printMessage(
@@ -920,8 +940,29 @@ public final class MetamodelProcessor extends AbstractProcessor {
                 }
             } else {
                 String valueTypeName = getValueTypeName(fieldType, packageName);
-                boolean unique = isUniqueField(recordElement, fieldName);
+                boolean unique = isEffectivelyUniqueField(recordElement, fieldName);
                 boolean isData = implementsData(recordElement);
+                // Validate: @PK, @FK, and @UK are not supported on inline record fields.
+                if (!isData) {
+                    if (hasAnnotationOrMeta(enclosed, PRIMARY_KEY)) {
+                        processingEnv.getMessager().printMessage(ERROR,
+                                "@PK is not supported on inline record fields. "
+                                + "Primary keys are only supported on top-level entity fields.",
+                                enclosed);
+                    }
+                    if (hasAnnotationOrMeta(enclosed, FOREIGN_KEY)) {
+                        processingEnv.getMessager().printMessage(ERROR,
+                                "@FK is not supported on inline record fields. "
+                                + "Foreign keys are only supported on top-level entity fields.",
+                                enclosed);
+                    }
+                    if (hasAnnotationOrMeta(enclosed, UNIQUE_KEY)) {
+                        processingEnv.getMessager().printMessage(ERROR,
+                                "@UK is not supported on inline record fields. "
+                                + "Unique keys are only supported on top-level entity fields.",
+                                enclosed);
+                    }
+                }
                 String baseClass = (!isData || unique) ? "AbstractKeyMetamodel" : "AbstractMetamodel";
                 boolean effectivelyNullable = false;
                 if (!isData) {
@@ -1250,6 +1291,18 @@ public final class MetamodelProcessor extends AbstractProcessor {
         return firstRecord != null && isUniqueField(firstRecord, fieldName);
     }
 
+    /**
+     * Returns {@code true} if the field should be treated as a unique key for metamodel generation purposes.
+     */
+    private static boolean isEffectivelyUniqueField(@Nonnull Element recordElement, @Nonnull String fieldName) {
+        return isUniqueField(recordElement, fieldName);
+    }
+
+    private boolean isEffectivelyUniqueFieldOnSubclass(@Nonnull TypeElement sealedInterface, @Nonnull String fieldName) {
+        TypeElement firstRecord = getFirstPermittedRecord(sealedInterface);
+        return firstRecord != null && isEffectivelyUniqueField(firstRecord, fieldName);
+    }
+
     private boolean getNullsDistinctOnSubclass(@Nonnull TypeElement sealedInterface, @Nonnull String fieldName) {
         TypeElement firstRecord = getFirstPermittedRecord(sealedInterface);
         return firstRecord != null ? getNullsDistinct(firstRecord, fieldName) : true;
@@ -1300,7 +1353,7 @@ public final class MetamodelProcessor extends AbstractProcessor {
                         .append(fieldName).append(";\n");
             } else {
                 String valueTypeName = getValueTypeName(fieldType, packageName);
-                boolean unique = isUniqueFieldOnSubclass(sealedInterface, fieldName);
+                boolean unique = isEffectivelyUniqueFieldOnSubclass(sealedInterface, fieldName);
                 String baseClass = unique ? "AbstractKeyMetamodel" : "AbstractMetamodel";
                 fields.append("    /** Represents the {@link ").append(typeName).append("#").append(fieldName)
                         .append("()} field. */\n");
@@ -1398,7 +1451,7 @@ public final class MetamodelProcessor extends AbstractProcessor {
                         .append(";\n");
             } else {
                 String valueTypeName = getValueTypeName(fieldType, packageName);
-                boolean unique = isUniqueFieldOnSubclass(sealedInterface, fieldName);
+                boolean unique = isEffectivelyUniqueFieldOnSubclass(sealedInterface, fieldName);
                 String baseClass = (!isData || unique) ? "AbstractKeyMetamodel" : "AbstractMetamodel";
                 classFields.append("    /** Represents the {@link ").append(typeName).append("#").append(fieldName)
                         .append("()} field. */\n");
@@ -1423,7 +1476,7 @@ public final class MetamodelProcessor extends AbstractProcessor {
                                 "            " + typeName + " p = " + metaClassName + ".this.getValue(t);\n" +
                                 "            return (p == null) ? null : p." + fieldName + "();\n" +
                                 "        }";
-                if (inline && isUniqueFieldOnSubclass(sealedInterface, fieldName)) {
+                if (inline && isEffectivelyUniqueFieldOnSubclass(sealedInterface, fieldName)) {
                     boolean nullsDistinct = getNullsDistinctOnSubclass(sealedInterface, fieldName);
                     initFields.append("        this.").append(fieldName).append(" = new ").append(fieldTypeName)
                             .append("Metamodel<>(")
@@ -1441,7 +1494,7 @@ public final class MetamodelProcessor extends AbstractProcessor {
                 }
             } else {
                 String valueTypeName = getValueTypeName(fieldType, packageName);
-                boolean unique = isUniqueFieldOnSubclass(sealedInterface, fieldName);
+                boolean unique = isEffectivelyUniqueFieldOnSubclass(sealedInterface, fieldName);
                 String baseClass = (!isData || unique) ? "AbstractKeyMetamodel" : "AbstractMetamodel";
                 boolean effectivelyNullable;
                 if (!isData) {
