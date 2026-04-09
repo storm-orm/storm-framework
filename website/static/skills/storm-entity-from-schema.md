@@ -10,8 +10,9 @@ Steps:
 2. Check which tables already have entity classes in the codebase.
 3. For tables without entities: offer to generate new ones.
 4. For tables with existing entities: call \`describe_table\` and compare against the entity definition. Report differences and suggest updates.
-5. Ask: Kotlin or Java?
-6. Ask about loading preference for new FKs:
+5. If \`select_data\` is available: sample a few rows from ambiguous columns to inform type decisions. For example, a \`VARCHAR\` column might contain enum-like values (suggest an enum), a \`TEXT\` column might store JSON (suggest \`@Json\`), or an \`INT\` column might be a type discriminator. Only query when the schema alone leaves the type decision ambiguous — do not sample every table.
+6. Ask: Kotlin or Java?
+7. Ask about loading preference for new FKs:
    - **Deeply nested**: FK as direct types. Full graph in one query, no N+1.
    - **Shallow**: FK as Ref<T>. Only ID stored, fetch on demand. No N+1 either way.
 

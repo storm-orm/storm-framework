@@ -7,7 +7,7 @@
 import { writeFileSync, appendFileSync, mkdirSync, existsSync, readFileSync, readdirSync, unlinkSync, rmdirSync, statSync } from 'fs';
 import { basename, join, dirname } from 'path';
 import { homedir } from 'os';
-import { execSync } from 'child_process';
+import { execSync, spawn } from 'child_process';
 
 const VERSION = '1.11.2';
 
@@ -419,8 +419,32 @@ async function checkbox({ message, choices }) {
   return new Promise((resolve, reject) => {
     const selected = new Set();
     choices.forEach((c, i) => { if (c.checked) selected.add(i); });
-    let cursor = 0;
+    let filter = '';
+    let filtered = choices.map((_, i) => i); // indices into choices
+    let cursor = 0;     // cursor within filtered list
     let linesWritten = 0;
+
+    // Viewport: reserve lines for header (1) + filter (1) + footer (1), rest for items.
+    const maxVisible = Math.max(3, (stdout.rows || 24) - 5);
+    let scrollOffset = 0;
+
+    function applyFilter() {
+      if (filter === '') {
+        filtered = choices.map((_, i) => i);
+      } else {
+        const lower = filter.toLowerCase();
+        const exact = [], prefix = [], contains = [];
+        for (let i = 0; i < choices.length; i++) {
+          const name = choices[i].name.toLowerCase();
+          if (name === lower) exact.push(i);
+          else if (name.startsWith(lower)) prefix.push(i);
+          else if (name.includes(lower)) contains.push(i);
+        }
+        filtered = exact.concat(prefix, contains);
+      }
+      cursor = Math.min(cursor, Math.max(0, filtered.length - 1));
+      scrollOffset = 0;
+    }
 
     function render(final) {
       let out = '';
@@ -429,23 +453,41 @@ async function checkbox({ message, choices }) {
       if (final) {
         out += CLEAR_DOWN;
         const names = choices.filter((_, i) => selected.has(i)).map(c => c.name).join(', ');
-        out += `${boltYellow('\u2714')} ${bold(message)} ${boltYellow(names)}\n`;
+        out += `${boltYellow('\u2714')} ${bold(message)} ${boltYellow(names || 'none')}\n`;
         linesWritten = 1;
         stdout.write(out);
         return;
       }
 
-      out += `\x1b[2K${boltYellow('?')} ${bold(message)}\n`;
-      for (let i = 0; i < choices.length; i++) {
-        const atCursor  = i === cursor;
+      // Keep cursor in viewport.
+      if (cursor < scrollOffset) scrollOffset = cursor;
+      if (cursor >= scrollOffset + maxVisible) scrollOffset = cursor - maxVisible + 1;
+
+      const visibleCount = Math.min(filtered.length, maxVisible);
+      const hasScrollUp = scrollOffset > 0;
+      const hasScrollDown = scrollOffset + visibleCount < filtered.length;
+
+      out += `\x1b[2K${boltYellow('?')} ${bold(message)}`;
+      if (filter) out += ` ${dimText('filter:')} ${boltYellow(filter)}`;
+      out += '\n';
+      if (hasScrollUp) out += `\x1b[2K  ${dimText('\u2191 more')}\n`;
+      for (let v = scrollOffset; v < scrollOffset + visibleCount; v++) {
+        const i = filtered[v];
+        const atCursor  = v === cursor;
         const isChecked = selected.has(i);
         const prefix = atCursor ? boltYellow('\u276f') : ' ';
         const check  = isChecked ? boltYellow('\u25c9') : dimText('\u25cb');
         const label  = atCursor  ? boltYellow(choices[i].name) : choices[i].name;
         out += `\x1b[2K  ${prefix} ${check} ${label}\n`;
       }
-      out += `\x1b[2K${dimText('  Space to toggle, Enter to confirm')}\n`;
-      linesWritten = choices.length + 2;
+      if (filtered.length === 0) {
+        out += `\x1b[2K  ${dimText('No matches')}\n`;
+      }
+      if (hasScrollDown) out += `\x1b[2K  ${dimText('\u2193 more')}\n`;
+      out += `\x1b[2K${dimText('  Space to toggle, Enter to confirm, type to filter')}\n`;
+      out += CLEAR_DOWN;
+      const renderedItems = filtered.length === 0 ? 1 : visibleCount;
+      linesWritten = renderedItems + 2 + (hasScrollUp ? 1 : 0) + (hasScrollDown ? 1 : 0);
       stdout.write(out);
     }
 
@@ -462,16 +504,36 @@ async function checkbox({ message, choices }) {
         reject(Object.assign(new Error('User cancelled'), { name: 'ExitPromptError' }));
         return;
       }
-      if (key === '\x1b[A') cursor = Math.max(0, cursor - 1);
-      else if (key === '\x1b[B') cursor = Math.min(choices.length - 1, cursor + 1);
+      if (key === '\x1b[A') cursor = Math.max(0, cursor - 1);                       // up
+      else if (key === '\x1b[B') cursor = Math.min(filtered.length - 1, cursor + 1); // down
+      else if (key === '\x1b[H' || key === '\x1b[1~') cursor = 0;                   // home
+      else if (key === '\x1b[F' || key === '\x1b[4~') cursor = Math.max(0, filtered.length - 1); // end
+      else if (key === '\x1b[5~') cursor = Math.max(0, cursor - maxVisible);         // page up
+      else if (key === '\x1b[6~') cursor = Math.min(filtered.length - 1, cursor + maxVisible); // page down
       else if (key === ' ') {
-        if (selected.has(cursor)) selected.delete(cursor);
-        else selected.add(cursor);
+        if (filtered.length > 0) {
+          const i = filtered[cursor];
+          if (selected.has(i)) selected.delete(i);
+          else selected.add(i);
+        }
       } else if (key === '\r') {
         render(true);
         cleanup();
         resolve(choices.filter((_, i) => selected.has(i)).map(c => c.value));
         return;
+      } else if (key === '\x7f' || key === '\b') { // backspace
+        if (filter.length > 0) {
+          filter = filter.slice(0, -1);
+          applyFilter();
+        }
+      } else if (key === '\x1b') { // escape: clear filter
+        if (filter.length > 0) {
+          filter = '';
+          applyFilter();
+        }
+      } else if (key.length === 1 && key >= ' ' && key !== ' ') { // printable (except space)
+        filter += key;
+        applyFilter();
       }
       render(false);
     };
@@ -991,6 +1053,7 @@ async function connectDatabase() {
     db = new pg.Pool({
       host: config.host, port: config.port, database: config.database,
       user: config.username, password: config.password,
+      options: '-c default_transaction_read_only=on',
     });
     dbType = 'pg';
   } else if (config.dialect === 'mysql' || config.dialect === 'mariadb') {
@@ -999,13 +1062,14 @@ async function connectDatabase() {
       host: config.host, port: config.port, database: config.database,
       user: config.username, password: config.password,
     });
+    await db.query('SET SESSION TRANSACTION READ ONLY');
     dbType = 'mysql';
   } else if (config.dialect === 'mssqlserver') {
     var mssql = require('mssql');
     db = await mssql.connect({
       server: config.host, port: config.port, database: config.database,
       user: config.username, password: config.password,
-      options: { encrypt: false, trustServerCertificate: true },
+      options: { encrypt: false, trustServerCertificate: true, readOnlyIntent: true },
     });
     dbType = 'mssql';
   } else if (config.dialect === 'oracle') {
@@ -1059,6 +1123,8 @@ function ph(n) {
 }
 
 // ─── Schema queries ──────────────────────────────────────
+
+var excludedTables = new Set((config.excludeTables || []).map(function(t) { return t.toLowerCase(); }));
 
 async function listTables() {
   await dbReady;
@@ -1288,6 +1354,139 @@ async function describeInfoSchema(tableName) {
   };
 }
 
+// ─── Data queries ────────────────────────────────────────
+
+var ALLOWED_OPERATORS = ['=', '!=', '<', '>', '<=', '>=', 'LIKE', 'IN', 'IS NULL', 'IS NOT NULL'];
+var DEFAULT_ROWS = 50;
+var MAX_ROWS = 500;
+var MAX_CELL_LENGTH = 200;
+var columnCache = {};
+
+async function resolveColumns(tableName) {
+  if (columnCache[tableName]) return columnCache[tableName];
+  var desc = await describeTable(tableName);
+  var names = desc.columns.map(function(c) { return c.name; });
+  columnCache[tableName] = names;
+  return names;
+}
+
+function quoteIdentifier(name) {
+  if (dbType === 'mysql') return '\`' + name.replace(/\`/g, '\`\`') + '\`';
+  return '"' + name.replace(/"/g, '""') + '"';
+}
+
+function resolveTableName(tables, name) {
+  for (var i = 0; i < tables.length; i++) {
+    if (tables[i].toLowerCase() === name.toLowerCase()) return tables[i];
+  }
+  return null;
+}
+
+function resolveColumnName(validColumns, name) {
+  for (var i = 0; i < validColumns.length; i++) {
+    if (validColumns[i].toLowerCase() === name.toLowerCase()) return validColumns[i];
+  }
+  return null;
+}
+
+async function selectData(args) {
+  if (excludedTables.has((args.table || '').toLowerCase())) throw new Error('Data access is excluded for table: ' + args.table);
+  var tables = await listTables();
+  var tableName = resolveTableName(tables, args.table);
+  if (!tableName) throw new Error('Unknown table: ' + args.table);
+
+  var validColumns = await resolveColumns(tableName);
+
+  var columns = args.columns;
+  if (columns && columns.length > 0) {
+    for (var i = 0; i < columns.length; i++) {
+      var resolved = resolveColumnName(validColumns, columns[i]);
+      if (!resolved) throw new Error('Unknown column: ' + columns[i] + ' in table ' + tableName);
+      columns[i] = resolved;
+    }
+  }
+
+  var selectClause = (!columns || columns.length === 0) ? '*' : columns.map(quoteIdentifier).join(', ');
+  var sql = 'SELECT ' + selectClause + ' FROM ' + quoteIdentifier(tableName);
+  var params = [];
+
+  if (args.where && args.where.length > 0) {
+    var conditions = [];
+    for (var i = 0; i < args.where.length; i++) {
+      var w = args.where[i];
+      var resolvedCol = resolveColumnName(validColumns, w.column);
+      if (!resolvedCol) throw new Error('Unknown column: ' + w.column + ' in table ' + tableName);
+      w.column = resolvedCol;
+      var op = (w.operator || '=').toUpperCase();
+      if (ALLOWED_OPERATORS.indexOf(op) < 0) throw new Error('Unsupported operator: ' + w.operator);
+      var col = quoteIdentifier(w.column);
+      if (op === 'IS NULL') {
+        conditions.push(col + ' IS NULL');
+      } else if (op === 'IS NOT NULL') {
+        conditions.push(col + ' IS NOT NULL');
+      } else if (op === 'IN') {
+        if (!Array.isArray(w.value)) throw new Error('IN operator requires an array value');
+        var placeholders = w.value.map(function(v) { params.push(v); return ph(params.length); });
+        conditions.push(col + ' IN (' + placeholders.join(', ') + ')');
+      } else {
+        params.push(w.value);
+        conditions.push(col + ' ' + op + ' ' + ph(params.length));
+      }
+    }
+    sql += ' WHERE ' + conditions.join(' AND ');
+  }
+
+  if (args.orderBy && args.orderBy.length > 0) {
+    var orderParts = [];
+    for (var i = 0; i < args.orderBy.length; i++) {
+      var o = args.orderBy[i];
+      var resolvedOrderCol = resolveColumnName(validColumns, o.column);
+      if (!resolvedOrderCol) throw new Error('Unknown column: ' + o.column + ' in table ' + tableName);
+      var dir = (o.direction || 'ASC').toUpperCase();
+      if (dir !== 'ASC' && dir !== 'DESC') dir = 'ASC';
+      orderParts.push(quoteIdentifier(resolvedOrderCol) + ' ' + dir);
+    }
+    sql += ' ORDER BY ' + orderParts.join(', ');
+  }
+
+  var limit = Math.min(args.limit || DEFAULT_ROWS, MAX_ROWS);
+  var offset = Math.max(0, Math.floor(args.offset || 0));
+  if (dbType === 'mssql') {
+    if (offset > 0) {
+      if (!args.orderBy || args.orderBy.length === 0) {
+        sql += ' ORDER BY (SELECT NULL)';
+      }
+      sql += ' OFFSET ' + offset + ' ROWS FETCH NEXT ' + limit + ' ROWS ONLY';
+    } else {
+      sql = sql.replace('SELECT ', 'SELECT TOP ' + limit + ' ');
+    }
+  } else if (dbType === 'oracle') {
+    sql += ' OFFSET ' + offset + ' ROWS FETCH NEXT ' + limit + ' ROWS ONLY';
+  } else {
+    sql += ' LIMIT ' + limit;
+    if (offset > 0) sql += ' OFFSET ' + offset;
+  }
+
+  var rows = await dbQuery(sql, params);
+  if (!rows || rows.length === 0) return { table: tableName, rows: 0, data: 'No rows found.' };
+
+  // Format as markdown table.
+  var keys = Object.keys(rows[0]);
+  var header = '| ' + keys.join(' | ') + ' |';
+  var separator = '| ' + keys.map(function() { return '---'; }).join(' | ') + ' |';
+  var body = rows.map(function(row) {
+    return '| ' + keys.map(function(k) {
+      var v = row[k];
+      if (v === null || v === undefined) return 'NULL';
+      var s = String(v).replace(/[|]/g, '/').replace(/[\\n\\r]+/g, ' ');
+      if (s.length > MAX_CELL_LENGTH) s = s.substring(0, MAX_CELL_LENGTH) + '...';
+      return s;
+    }).join(' | ') + ' |';
+  });
+
+  return { table: tableName, rows: rows.length, data: header + '\\n' + separator + '\\n' + body.join('\\n') };
+}
+
 // ─── MCP Protocol ────────────────────────────────────────
 
 var TOOLS = [
@@ -1306,6 +1505,46 @@ var TOOLS = [
     },
   },
 ];
+
+if (config.selectAccess) {
+  TOOLS.push({
+    name: 'select_data',
+    description: 'Query records from a table. Returns individual rows, no aggregation, grouping, or joins.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        table: { type: 'string', description: 'Table name' },
+        columns: { type: 'array', items: { type: 'string' }, description: 'Columns to return (omit for all columns)' },
+        where: {
+          type: 'array', description: 'Filter conditions (combined with AND)',
+          items: {
+            type: 'object',
+            properties: {
+              column: { type: 'string', description: 'Column name' },
+              operator: { type: 'string', enum: ['=', '!=', '<', '>', '<=', '>=', 'LIKE', 'IN', 'IS NULL', 'IS NOT NULL'], description: 'Comparison operator (default: =)' },
+              value: { description: 'Comparison value (omit for IS NULL/IS NOT NULL, use array for IN)' },
+            },
+            required: ['column'],
+          },
+        },
+        orderBy: {
+          type: 'array', description: 'Sort order',
+          items: {
+            type: 'object',
+            properties: {
+              column: { type: 'string', description: 'Column name' },
+              direction: { type: 'string', enum: ['ASC', 'DESC'], description: 'Sort direction (default: ASC)' },
+            },
+            required: ['column'],
+          },
+        },
+        offset: { type: 'integer', description: 'Number of rows to skip (default: 0)', minimum: 0 },
+        limit: { type: 'integer', description: 'Maximum rows to return (default: 50, max: 500)', minimum: 1, maximum: 500 },
+      },
+      required: ['table'],
+    },
+  });
+}
 
 function respond(id, result) {
   process.stdout.write(JSON.stringify({ jsonrpc: '2.0', id: id, result: result }) + '\\n');
@@ -1338,6 +1577,9 @@ rl.on('line', async function(line) {
         result = await listTables();
       } else if (msg.params.name === 'describe_table') {
         result = await describeTable(msg.params.arguments.table);
+      } else if (msg.params.name === 'select_data') {
+        if (!config.selectAccess) { respondError(msg.id, -32601, 'Data access is not enabled for this connection'); return; }
+        result = await selectData(msg.params.arguments);
       } else {
         respondError(msg.id, -32601, 'Unknown tool: ' + msg.params.name);
         return;
@@ -1585,6 +1827,17 @@ async function setupGlobalConnection(connectionName, preConfigured) {
       };
     }
 
+    console.log();
+    const selectAccess = await confirm({
+      message: 'Allow AI tools to query data? (read-only SELECT)',
+      defaultValue: false,
+    });
+    connection.selectAccess = selectAccess;
+
+    if (selectAccess) {
+      console.log(dimText('  Tip: Use `storm db config <connection>` to exclude specific tables from data queries.'));
+    }
+
     // Prompt for a connection name with a sensible default derived from host + database.
     if (!connectionName) {
       const host = connection.host || 'local';
@@ -1784,6 +2037,11 @@ async function update() {
     cleanStaleSkills(skillToolConfigs, installedSkillNames, skipped);
   }
 
+  // Update MCP server script if databases are configured.
+  if (Object.keys(readDatabases()).length > 0) {
+    ensureGlobalDir();
+  }
+
   const uniqueCreated  = [...new Set(created)];
   const uniqueAppended = [...new Set(appended)];
 
@@ -1871,6 +2129,141 @@ async function dbRemove(nameArg) {
   console.log();
 }
 
+async function dbConfig(nameArg) {
+  const connections = listGlobalConnections();
+  if (connections.length === 0) {
+    console.log(dimText('\n  No global database connections configured.'));
+    console.log(dimText('  Run `storm db add` to add one.\n'));
+    return;
+  }
+
+  let name = nameArg;
+  if (!name) {
+    name = await select({
+      message: 'Configure connection',
+      choices: connections.map(n => {
+        const connectionPath = join(homedir(), '.storm', 'connections', n + '.json');
+        try {
+          const connection = JSON.parse(readFileSync(connectionPath, 'utf-8'));
+          return { name: formatConnectionLabel(n, connection), value: n };
+        } catch {
+          return { name: n, value: n };
+        }
+      }),
+    });
+  }
+
+  const connectionPath = join(homedir(), '.storm', 'connections', name + '.json');
+  if (!existsSync(connectionPath)) {
+    console.log(boltYellow(`\n  Connection "${name}" not found.\n`));
+    return;
+  }
+
+  const connection = JSON.parse(readFileSync(connectionPath, 'utf-8'));
+  let changed = false;
+
+  // Data access toggle.
+  console.log();
+  const wantsSelectAccess = await confirm({
+    message: 'Allow AI tools to query data? (read-only SELECT)',
+    defaultValue: connection.selectAccess || false,
+  });
+  if (wantsSelectAccess !== (connection.selectAccess || false)) {
+    connection.selectAccess = wantsSelectAccess;
+    changed = true;
+  }
+
+  // Table exclusions (only when data access is enabled).
+  if (connection.selectAccess) {
+    // Ensure server.mjs is up to date before spawning it.
+    ensureGlobalDir();
+
+    const serverPath = join(homedir(), '.storm', 'server.mjs');
+    console.log(dimText('\n  Connecting to database...'));
+    let tables;
+    try {
+      tables = await new Promise((resolve, reject) => {
+        const child = spawn('node', [serverPath, connectionPath], { stdio: ['pipe', 'pipe', 'pipe'] });
+        let output = '';
+        child.stdout.on('data', data => { output += data.toString(); });
+        child.stderr.on('data', () => {});
+
+        child.stdin.write(JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'initialize', params: { protocolVersion: '2024-11-05', capabilities: {}, clientInfo: { name: 'storm-cli' } } }) + '\n');
+
+        setTimeout(() => {
+          child.stdin.write(JSON.stringify({ jsonrpc: '2.0', id: 2, method: 'tools/call', params: { name: 'list_tables', arguments: {} } }) + '\n');
+        }, 500);
+
+        setTimeout(() => {
+          child.kill();
+          try {
+            const lines = output.trim().split('\n');
+            for (const line of lines) {
+              const msg = JSON.parse(line);
+              if (msg.id === 2 && msg.result) {
+                resolve(JSON.parse(msg.result.content[0].text));
+                return;
+              }
+            }
+            reject(new Error('No table list response received'));
+          } catch (e) {
+            reject(e);
+          }
+        }, 3000);
+
+        child.on('error', reject);
+      });
+    } catch (error) {
+      console.log(boltYellow(`  Could not connect to database: ${error.message}`));
+      tables = null;
+    }
+
+    if (tables && tables.length > 0) {
+      const currentExclusions = new Set((connection.excludeTables || []).map(t => t.toLowerCase()));
+
+      console.log();
+      const excluded = await checkbox({
+        message: 'Exclude tables from data queries',
+        choices: tables.map(t => ({
+          name: t,
+          value: t,
+          checked: currentExclusions.has(t.toLowerCase()),
+        })),
+      });
+
+      const newExclusions = excluded.length > 0 ? excluded : undefined;
+      if (JSON.stringify(newExclusions) !== JSON.stringify(connection.excludeTables)) {
+        connection.excludeTables = newExclusions;
+        changed = true;
+      }
+    }
+  } else if (connection.excludeTables) {
+    // Data access disabled — clear exclusions.
+    delete connection.excludeTables;
+    changed = true;
+  }
+
+  if (changed) {
+    writeFileSync(connectionPath, JSON.stringify(connection, null, 2) + '\n');
+    ensureGlobalDir();
+    console.log();
+    console.log(bold(`  Connection "${name}" updated.`));
+    if (connection.selectAccess) {
+      console.log(dimText('  Data access: enabled'));
+      if (connection.excludeTables && connection.excludeTables.length > 0) {
+        console.log(dimText(`  Excluded tables: ${connection.excludeTables.join(', ')}`));
+      }
+    } else {
+      console.log(dimText('  Data access: disabled'));
+    }
+    console.log();
+    console.log(dimText('  Restart your AI tool to apply changes.'));
+  } else {
+    console.log(dimText('\n  No changes.'));
+  }
+  console.log();
+}
+
 async function updateDb(subArgs) {
   const subcommand = subArgs ? subArgs[0] : undefined;
 
@@ -1880,9 +2273,11 @@ async function updateDb(subArgs) {
     dbList();
   } else if (subcommand === 'remove' || subcommand === 'rm') {
     await dbRemove(subArgs[1]);
+  } else if (subcommand === 'config') {
+    await dbConfig(subArgs[1]);
   } else {
     console.log(boltYellow(`\n  Unknown db command: ${subcommand}`));
-    console.log(dimText('  Available: add, list, remove\n'));
+    console.log(dimText('  Available: add, list, remove, config\n'));
   }
 }
 
@@ -2043,10 +2438,112 @@ async function mcpReregisterAll() {
   console.log();
 }
 
+async function mcpInit() {
+  console.log();
+  console.log('  Set up a database-aware MCP server for your AI tools.');
+  console.log('  This gives your AI tool access to your database schema');
+  console.log('  (and optionally data) without exposing credentials.');
+  console.log('  No Storm ORM required — works with any language or framework.');
+  console.log();
+
+  // Step 1: Select AI tools that support MCP.
+  const mcpToolEntries = Object.entries(TOOL_CONFIGS).filter(([_, c]) => c.mcpFormat);
+  const tools = await checkbox({
+    message: 'Which AI tools do you use?',
+    choices: mcpToolEntries.map(([id, config]) => ({
+      name: config.name,
+      value: id,
+      checked: false,
+    })),
+  });
+
+  if (tools.length === 0) {
+    console.log(boltYellow('\n  No tools selected.\n'));
+    return;
+  }
+
+  // Step 2: Database connection(s).
+  const databases = {};
+  console.log();
+  const result = await setupGlobalConnection(null, null);
+  if (!result) return;
+
+  const alias = await textInput({ message: 'Alias for this connection', defaultValue: 'default' }) || 'default';
+  databases[alias.trim()] = result.name;
+
+  let addMore = true;
+  while (addMore) {
+    console.log();
+    addMore = await confirm({ message: 'Add another database connection?', defaultValue: false });
+    if (addMore) {
+      console.log();
+      const nextResult = await setupGlobalConnection(null, null);
+      if (nextResult) {
+        const nextAlias = await textInput({ message: 'Alias for this connection' });
+        if (nextAlias && nextAlias.trim()) {
+          databases[nextAlias.trim()] = nextResult.name;
+        }
+      }
+    }
+  }
+
+  writeDatabases(databases);
+  ensureGlobalDir();
+
+  // Step 3: Register MCP servers and update .gitignore.
+  const created = [];
+  const appended = [];
+
+  for (const [alias, connectionName] of Object.entries(databases)) {
+    const connectionPath = resolveConnection(connectionName);
+    if (!connectionPath) continue;
+    for (const toolId of tools) {
+      const config = TOOL_CONFIGS[toolId];
+      if (!config.mcpFormat) continue;
+      registerMcp(config, alias, connectionPath, created, appended);
+    }
+  }
+
+  const gitignorePath = join(process.cwd(), '.gitignore');
+  const ignoreEntries = ['.storm/'];
+  for (const toolId of tools) {
+    const config = TOOL_CONFIGS[toolId];
+    if (config.mcpFile) ignoreEntries.push(config.mcpFile);
+  }
+  let gitignore = existsSync(gitignorePath) ? readFileSync(gitignorePath, 'utf-8') : '';
+  const missing = ignoreEntries.filter(e => !gitignore.includes(e));
+  if (missing.length > 0) {
+    const block = '\n# Storm MCP (machine-specific)\n' + missing.join('\n') + '\n';
+    appendFileSync(gitignorePath, block);
+    appended.push('.gitignore');
+  }
+
+  // Summary.
+  console.log();
+  if (created.length > 0 || appended.length > 0) {
+    [...new Set([...created, ...appended])].forEach(f => console.log(dimText(`    ${f}`)));
+  }
+
+  console.log();
+  console.log(bold('  MCP server configured.'));
+  console.log();
+  const toolNames = tools.map(t => TOOL_CONFIGS[t].name);
+  console.log(`  Your AI tool${toolNames.length > 1 ? 's' : ''} (${toolNames.join(', ')}) can now access your`);
+  console.log('  database schema. Restart your AI tool to activate.');
+  console.log();
+  console.log(dimText('  Manage later with:'));
+  console.log(dimText('    storm db config    Toggle data access and table exclusions'));
+  console.log(dimText('    storm mcp add      Add another database to this project'));
+  console.log(dimText('    storm mcp list     Show configured databases'));
+  console.log();
+}
+
 async function updateMcp(subArgs) {
   const subcommand = subArgs ? subArgs[0] : undefined;
 
-  if (subcommand === 'add') {
+  if (subcommand === 'init') {
+    await mcpInit();
+  } else if (subcommand === 'add') {
     await mcpAdd(subArgs[1]);
   } else if (subcommand === 'list' || subcommand === 'ls') {
     mcpList();
@@ -2533,6 +3030,8 @@ async function run() {
     storm db                 List global database connections
     storm db add [name]      Add a global database connection
     storm db remove [name]   Remove a global database connection
+    storm db config [name]   Configure data access and table exclusions
+    storm mcp init           Set up MCP database server (no Storm ORM required)
     storm mcp                Re-register MCP servers for configured tools
     storm mcp add [alias]    Add a database connection to this project
     storm mcp list           List project database connections
