@@ -75,7 +75,7 @@ jobs:
 
       - name: Set package version from tag
         run: |
-          npm version ${{ steps.version.outputs.VERSION }} --no-git-tag-version
+          npm version ${{ steps.version.outputs.VERSION }} --no-git-tag-version --allow-same-version
           sed -i "s/const VERSION = '.*'/const VERSION = '${{ steps.version.outputs.VERSION }}'/" storm.mjs
         working-directory: storm-cli
 
