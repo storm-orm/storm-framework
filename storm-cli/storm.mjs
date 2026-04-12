@@ -9,7 +9,7 @@ import { basename, join, dirname } from 'path';
 import { homedir } from 'os';
 import { execSync, spawn } from 'child_process';
 
-const VERSION = '1.11.2';
+const VERSION = '1.11.3';
 
 // ─── ANSI ────────────────────────────────────────────────────────────────────
 
@@ -905,13 +905,18 @@ async function fetchSkill(name) {
   }
 }
 
-function installSkill(name, content, toolConfig, created) {
+function installSkill(name, content, toolConfig, created, appended) {
   const cwd = process.cwd();
   const fullPath = join(cwd, toolConfig.skillPath(name));
-  if (existsSync(fullPath) && readFileSync(fullPath, 'utf-8') === content) return;
+  const exists = existsSync(fullPath);
+  if (exists && readFileSync(fullPath, 'utf-8') === content) return;
   mkdirSync(dirname(fullPath), { recursive: true });
   writeFileSync(fullPath, content);
-  created.push(toolConfig.skillPath(name));
+  if (exists && appended) {
+    appended.push(toolConfig.skillPath(name));
+  } else {
+    created.push(toolConfig.skillPath(name));
+  }
 }
 
 function cleanStaleSkills(toolConfigs, installedSkillNames, skipped) {
@@ -1389,6 +1394,18 @@ function resolveColumnName(validColumns, name) {
   return null;
 }
 
+function coerceArray(value) {
+  if (value == null) return value;
+  if (Array.isArray(value)) return value;
+  if (typeof value === 'string') {
+    var trimmed = value.trim();
+    if (trimmed.charAt(0) === '[') {
+      try { var parsed = JSON.parse(trimmed); if (Array.isArray(parsed)) return parsed; } catch (e) { /* fall through */ }
+    }
+  }
+  return value;
+}
+
 async function selectData(args) {
   if (excludedTables.has((args.table || '').toLowerCase())) throw new Error('Data access is excluded for table: ' + args.table);
   var tables = await listTables();
@@ -1397,7 +1414,7 @@ async function selectData(args) {
 
   var validColumns = await resolveColumns(tableName);
 
-  var columns = args.columns;
+  var columns = coerceArray(args.columns);
   if (columns && columns.length > 0) {
     for (var i = 0; i < columns.length; i++) {
       var resolved = resolveColumnName(validColumns, columns[i]);
@@ -1410,10 +1427,11 @@ async function selectData(args) {
   var sql = 'SELECT ' + selectClause + ' FROM ' + quoteIdentifier(tableName);
   var params = [];
 
-  if (args.where && args.where.length > 0) {
+  var where = coerceArray(args.where);
+  if (where && where.length > 0) {
     var conditions = [];
-    for (var i = 0; i < args.where.length; i++) {
-      var w = args.where[i];
+    for (var i = 0; i < where.length; i++) {
+      var w = where[i];
       var resolvedCol = resolveColumnName(validColumns, w.column);
       if (!resolvedCol) throw new Error('Unknown column: ' + w.column + ' in table ' + tableName);
       w.column = resolvedCol;
@@ -1425,6 +1443,7 @@ async function selectData(args) {
       } else if (op === 'IS NOT NULL') {
         conditions.push(col + ' IS NOT NULL');
       } else if (op === 'IN') {
+        w.value = coerceArray(w.value);
         if (!Array.isArray(w.value)) throw new Error('IN operator requires an array value');
         var placeholders = w.value.map(function(v) { params.push(v); return ph(params.length); });
         conditions.push(col + ' IN (' + placeholders.join(', ') + ')');
@@ -1436,10 +1455,11 @@ async function selectData(args) {
     sql += ' WHERE ' + conditions.join(' AND ');
   }
 
-  if (args.orderBy && args.orderBy.length > 0) {
+  var orderBy = coerceArray(args.orderBy);
+  if (orderBy && orderBy.length > 0) {
     var orderParts = [];
-    for (var i = 0; i < args.orderBy.length; i++) {
-      var o = args.orderBy[i];
+    for (var i = 0; i < orderBy.length; i++) {
+      var o = orderBy[i];
       var resolvedOrderCol = resolveColumnName(validColumns, o.column);
       if (!resolvedOrderCol) throw new Error('Unknown column: ' + o.column + ' in table ' + tableName);
       var dir = (o.direction || 'ASC').toUpperCase();
@@ -1453,7 +1473,7 @@ async function selectData(args) {
   var offset = Math.max(0, Math.floor(args.offset || 0));
   if (dbType === 'mssql') {
     if (offset > 0) {
-      if (!args.orderBy || args.orderBy.length === 0) {
+      if (!orderBy || orderBy.length === 0) {
         sql += ' ORDER BY (SELECT NULL)';
       }
       sql += ' OFFSET ' + offset + ' ROWS FETCH NEXT ' + limit + ' ROWS ONLY';
@@ -1600,6 +1620,28 @@ rl.on('line', async function(line) {
 
 const MARKER_START = '<!-- STORM:START -->';
 const MARKER_END   = '<!-- STORM:END -->';
+
+function installSchemaRules(filePath, schemaRules, appended) {
+  if (!existsSync(filePath)) return;
+  const existing = readFileSync(filePath, 'utf-8');
+  const endMarker = existing.indexOf(MARKER_END);
+  if (endMarker === -1) return;
+  const cleanRules = schemaRules.replace('\n' + STORM_SKILL_MARKER, '');
+  const schemaStart = existing.indexOf('## Database Schema Access');
+  if (schemaStart !== -1 && schemaStart < endMarker) {
+    // Replace existing schema rules (from start to just before MARKER_END).
+    const updated = existing.substring(0, schemaStart) + cleanRules + '\n' + existing.substring(endMarker);
+    if (updated !== existing) {
+      writeFileSync(filePath, updated);
+      if (!appended.includes(filePath.replace(process.cwd() + '/', ''))) appended.push(filePath.replace(process.cwd() + '/', ''));
+    }
+  } else {
+    // First time — insert before MARKER_END.
+    const updated = existing.substring(0, endMarker) + '\n' + cleanRules + '\n' + existing.substring(endMarker);
+    writeFileSync(filePath, updated);
+    if (!appended.includes(filePath.replace(process.cwd() + '/', ''))) appended.push(filePath.replace(process.cwd() + '/', ''));
+  }
+}
 
 function installRulesBlock(filePath, content, created, appended) {
   const block = `${MARKER_START}\n${content.trim()}\n${MARKER_END}`;
@@ -1998,7 +2040,7 @@ async function update() {
 
     for (const config of skillToolConfigs) {
       for (const [name, content] of fetchedSkills) {
-        installSkill(name, content, config, created);
+        installSkill(name, content, config, created, appended);
       }
     }
 
@@ -2008,18 +2050,7 @@ async function update() {
       for (const toolId of tools) {
         const config = TOOL_CONFIGS[toolId];
         if (config.rulesFile && schemaRules) {
-          const rulesPath = join(process.cwd(), config.rulesFile);
-          if (existsSync(rulesPath)) {
-            const existing = readFileSync(rulesPath, 'utf-8');
-            if (!existing.includes('Database Schema Access')) {
-              const endMarker = existing.indexOf(MARKER_END);
-              if (endMarker !== -1) {
-                const updated = existing.substring(0, endMarker) + '\n' + schemaRules.replace('\n' + STORM_SKILL_MARKER, '') + '\n' + existing.substring(endMarker);
-                writeFileSync(rulesPath, updated);
-                if (!appended.includes(config.rulesFile)) appended.push(config.rulesFile);
-              }
-            }
-          }
+          installSchemaRules(join(process.cwd(), config.rulesFile), schemaRules, appended);
         }
       }
 
@@ -2028,7 +2059,7 @@ async function update() {
         if (!content) { skipped.push(skillName + ' (fetch failed)'); continue; }
         installedSkillNames.push(skillName);
         for (const config of skillToolConfigs) {
-          installSkill(skillName, content, config, created);
+          installSkill(skillName, content, config, created, appended);
         }
       }
     }
@@ -2040,6 +2071,7 @@ async function update() {
   // Update MCP server script if databases are configured.
   if (Object.keys(readDatabases()).length > 0) {
     ensureGlobalDir();
+    appended.push('~/.storm/server.mjs');
   }
 
   const uniqueCreated  = [...new Set(created)];
@@ -2549,8 +2581,10 @@ async function updateMcp(subArgs) {
     mcpList();
   } else if (subcommand === 'remove' || subcommand === 'rm') {
     await mcpRemove(subArgs[1]);
-  } else {
+  } else if (subcommand === 'update') {
     await mcpReregisterAll();
+  } else {
+    await mcpInit();
   }
 }
 
@@ -2649,7 +2683,7 @@ async function setup() {
     // Install fetched skills into each tool's directory.
     for (const config of skillToolConfigs) {
       for (const [name, content] of fetchedSkills) {
-        installSkill(name, content, config, created);
+        installSkill(name, content, config, created, appended);
       }
     }
   }
@@ -2726,19 +2760,7 @@ async function setup() {
     for (const toolId of tools) {
       const config = TOOL_CONFIGS[toolId];
       if (config.rulesFile && schemaRules) {
-        const rulesPath = join(process.cwd(), config.rulesFile);
-        if (existsSync(rulesPath)) {
-          const existing = readFileSync(rulesPath, 'utf-8');
-          // Insert schema rules inside the STORM block if not already present.
-          if (!existing.includes('Database Schema Access')) {
-            const endMarker = existing.indexOf(MARKER_END);
-            if (endMarker !== -1) {
-              const updated = existing.substring(0, endMarker) + '\n' + schemaRules.replace('\n' + STORM_SKILL_MARKER, '') + '\n' + existing.substring(endMarker);
-              writeFileSync(rulesPath, updated);
-              appended.push(config.rulesFile);
-            }
-          }
-        }
+        installSchemaRules(join(process.cwd(), config.rulesFile), schemaRules, appended);
       }
     }
 
@@ -2749,7 +2771,7 @@ async function setup() {
         if (!content) { skipped.push(skillName + ' (fetch failed)'); continue; }
         installedSkillNames.push(skillName);
         for (const config of skillToolConfigs) {
-          installSkill(skillName, content, config, created);
+          installSkill(skillName, content, config, created, appended);
         }
       }
     }
@@ -2873,7 +2895,7 @@ async function demo() {
       installedSkillNames.push(skillName);
     }
     for (const [name, content] of fetchedSkills) {
-      installSkill(name, content, config, created);
+      installSkill(name, content, config, created, appended);
     }
   }
 
@@ -2930,18 +2952,7 @@ async function demo() {
     // Fetch and install schema rules into the rules block.
     const schemaRules = await fetchSkill('storm-schema-rules');
     if (config.rulesFile && schemaRules) {
-      const rulesPath = join(cwd, config.rulesFile);
-      if (existsSync(rulesPath)) {
-        const existing = readFileSync(rulesPath, 'utf-8');
-        if (!existing.includes('Database Schema Access')) {
-          const endMarker = existing.indexOf(MARKER_END);
-          if (endMarker !== -1) {
-            const updated = existing.substring(0, endMarker) + '\n' + schemaRules.replace('\n' + STORM_SKILL_MARKER, '') + '\n' + existing.substring(endMarker);
-            writeFileSync(rulesPath, updated);
-            appended.push(config.rulesFile);
-          }
-        }
-      }
+      installSchemaRules(join(cwd, config.rulesFile), schemaRules, appended);
     }
 
     // Fetch and install schema-dependent skills.
@@ -2950,7 +2961,7 @@ async function demo() {
       for (const skillName of schemaSkillNames) {
         const content = await fetchSkill(skillName);
         if (!content) { skipped.push(skillName + ' (fetch failed)'); continue; }
-        installSkill(skillName, content, config, created);
+        installSkill(skillName, content, config, created, appended);
         installedSkillNames.push(skillName);
       }
     }
@@ -3031,8 +3042,8 @@ async function run() {
     storm db add [name]      Add a global database connection
     storm db remove [name]   Remove a global database connection
     storm db config [name]   Configure data access and table exclusions
-    storm mcp init           Set up MCP database server (no Storm ORM required)
-    storm mcp                Re-register MCP servers for configured tools
+    storm mcp                Set up MCP database server (default, no Storm ORM required)
+    storm mcp update         Re-register MCP servers for configured tools
     storm mcp add [alias]    Add a database connection to this project
     storm mcp list           List project database connections
     storm mcp remove [alias] Remove a database connection

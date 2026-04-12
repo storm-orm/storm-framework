@@ -53,7 +53,7 @@ With the database connected, three additional skills become available for schema
 To manage database connections later, use `storm db` for the global connection library and `storm mcp` for project-level configuration. See [Database Connections & MCP](database-and-mcp.md) for the full guide.
 
 :::tip Looking for a database MCP server for Python, Go, Ruby, or any other language?
-The Storm MCP server works standalone — no Storm ORM required. Run `npx @storm-orm/cli mcp init` to set up schema access and optional read-only data queries without installing Storm rules or skills. See [Using Without Storm ORM](database-and-mcp.md#using-without-storm-orm).
+The Storm MCP server works standalone — no Storm ORM required. Run `npx @storm-orm/cli mcp` to set up schema access and optional read-only data queries without installing Storm rules or skills. See [Using Without Storm ORM](database-and-mcp.md#using-without-storm-orm).
 :::
 
 ---

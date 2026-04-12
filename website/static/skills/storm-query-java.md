@@ -20,6 +20,8 @@ The `Operator` enum is in `st.orm` and contains: `EQUALS`, `NOT_EQUALS`, `LESS_T
 
 Ask what data they need, filters, ordering, or pagination.
 
+**DI preference:** In Spring Boot projects, repositories should be constructor-injected (see /storm-repository-java). Use `orm.entity(T.class)` and `orm.repository(T.class)` lookups only in standalone (non-DI) contexts and tests. In DI environments, write queries on injected repository instances.
+
 ## API Design: Builder Methods vs Convenience Methods
 
 Repository/entity methods fall into two categories:
