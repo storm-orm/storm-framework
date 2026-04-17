@@ -9,7 +9,7 @@ import TabItem from '@theme/TabItem';
 # ST/ORM
 
 :::tip Give your AI tool access to your database schema
-Storm includes a schema-aware MCP server that exposes your table definitions, column types, and foreign keys to AI coding tools like Claude Code, Cursor, Copilot and Codex. Run `npx @storm-orm/cli` for full Storm ORM support including AI skills, conventions, and schema access. Using Python, Go, Ruby, or another language? Run `npx @storm-orm/cli mcp init` to set up the MCP server standalone.
+Storm includes a schema-aware MCP server that exposes your table definitions, column types, and foreign keys to AI coding tools like Claude Code, Cursor, Copilot and Codex. Run `npx @storm-orm/cli` for full Storm ORM support including AI skills, conventions, and schema access. Using Python, Go, Ruby, or another language? Run `npx @storm-orm/cli mcp` to set up the MCP server standalone.
 :::
 
 **Storm** is a modern, high-performance ORM for Kotlin 2.0+ and Java 21+, built around a powerful SQL template engine. It focuses on simplicity, type safety, and predictable performance through immutable models and compile-time metadata.

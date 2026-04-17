@@ -108,7 +108,7 @@ Run `storm mcp remove reporting` to remove an alias from the project. This unreg
 
 ### Re-registering connections
 
-If your AI tool's MCP configuration gets out of sync (for example, after switching branches or resetting editor config files), run `storm mcp` without arguments. This re-registers all connections from `databases.json` for every configured AI tool.
+If your AI tool's MCP configuration gets out of sync (for example, after switching branches or resetting editor config files), run `storm mcp update`. This re-registers all connections from `databases.json` for every configured AI tool.
 
 ---
 
@@ -191,7 +191,7 @@ Global connections are stored in `~/.storm/connections/`. Project-level configur
 The Storm MCP server is a standalone database tool — it does not require Storm ORM in your project. If you use Python, Go, Ruby, or any other language and just want your AI tool to have schema awareness and optional data access, run:
 
 ```bash
-npx @storm-orm/cli mcp init
+npx @storm-orm/cli mcp
 ```
 
 This walks you through:
@@ -324,11 +324,11 @@ Excluded tables still appear in `list_tables` and can be described with `describ
 
 ### `storm mcp` — Project MCP servers
 
-#### `storm mcp init`
-
-Standalone setup for the MCP database server, intended for projects that do not use Storm ORM. Walks you through AI tool selection, database connections, data access, and MCP registration. No Storm rules or language-specific configuration is installed.
-
 #### `storm mcp`
+
+Set up a MCP database server (default). Walks you through AI tool selection, database connections, data access, and MCP registration. Works standalone — no Storm ORM required. `storm mcp init` is an alias for this command.
+
+#### `storm mcp update`
 
 Re-register all MCP servers defined in `.storm/databases.json` with your AI tools. Useful after switching branches, resetting editor config files, or when MCP registrations get out of sync.
 

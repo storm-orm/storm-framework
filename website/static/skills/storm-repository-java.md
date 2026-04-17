@@ -24,7 +24,33 @@ Ask: which entity, what custom queries?
 
 Detect the project's framework from its build file (pom.xml or build.gradle): look for `storm-spring-boot-starter` or `spring-boot-starter` (Spring Boot) or neither (standalone). Use the detected framework to suggest the appropriate repository registration pattern.
 
+**DI preference:** In Spring Boot projects, always prefer constructor-injected repositories over `orm.entity(T.class)` or `orm.repository(T.class)` lookups. Repository lookup via `orm` is for standalone (non-DI) use and tests only. In DI environments, repositories are beans — inject them.
+
 ## Getting a Repository
+
+### Spring Boot (preferred in DI environments)
+
+Inject repositories via constructor injection. The Spring Boot Starter (or a `RepositoryBeanFactoryPostProcessor`) auto-registers repository interfaces as beans:
+
+```java
+@Service
+public class UserService {
+    private final UserRepository userRepository;
+    public UserService(UserRepository userRepository) { this.userRepository = userRepository; }
+    public Optional<User> findUser(String email) { return userRepository.findByEmail(email); }
+}
+
+// For generic entity access without a custom repository, inject EntityRepository directly:
+@Service
+public class CityService {
+    private final EntityRepository<City, Integer> cities;
+    public CityService(EntityRepository<City, Integer> cities) { this.cities = cities; }
+}
+```
+
+### Standalone / Tests
+
+Create repositories directly from the `ORMTemplate` (no DI container):
 
 ```java
 // Generic entity access (no custom interface needed)

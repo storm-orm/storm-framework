@@ -20,6 +20,30 @@ All infix predicate operators (`eq`, `neq`, `like`, `greater`, `less`, `inList`,
 
 Ask what data they need, filters, ordering, or pagination.
 
+**Repository rule:** All database queries must live in repository interfaces, not inline in services or other classes. In Spring Boot or Ktor projects, repositories are constructor-injected (see /storm-repository-kotlin). Use `orm.entity<T>()` and `orm.repository<T>()` lookups only in standalone (non-DI) contexts and tests.
+
+**Code-first WHERE clauses:** Always express WHERE conditions using metamodel-based predicates (`eq`, `isFalse()`, `isNotNull()`, etc.) instead of template strings. Only fall back to template expressions for conditions that predicates cannot express (e.g., `COALESCE`, date arithmetic, aggregate functions). When a WHERE clause mixes expressible and inexpressible conditions, split it: use code-based predicates for what you can, templates only for what you must. Multiple `where()` calls are AND-combined automatically. FK paths through the object graph (e.g., `User_.city eq city`) do not require explicit joins.
+
+```kotlin
+// ❌ Wrong — WHERE conditions as a template string
+fun findActiveWithEmail(city: City, minAge: Int): List<User> =
+    select {
+        where {
+            """${User_.city} = ${city.id()}
+            AND ${User_.active} = true
+            AND ${User_.email} IS NOT NULL
+            AND TIMESTAMPDIFF(YEAR, ${User_.birthDate}, CURDATE()) >= $minAge"""
+        }
+    }.resultList
+
+// ✅ Correct — code-based predicates where possible, template only when no alternative exists
+fun findActiveWithEmail(city: City, minAge: Int): List<User> =
+    select {
+        where((User_.city eq city) and (User_.active.isTrue()) and (User_.email.isNotNull()))
+        where { "TIMESTAMPDIFF(YEAR, ${User_.birthDate}, CURDATE()) >= $minAge" }
+    }.resultList
+```
+
 ## Kotlin Infix Predicate Operators
 
 All operators are extension functions on `Metamodel<T, V>` (generated metamodel fields like `User_.name`):

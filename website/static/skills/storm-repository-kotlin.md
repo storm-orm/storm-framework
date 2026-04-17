@@ -23,9 +23,45 @@ import org.junit.jupiter.api.Assertions.*        // assertEquals, assertTrue, as
 
 Ask: which entity, what custom queries?
 
+**Repository rule:** All database queries must live in repository interfaces, not inline in services or other classes. Services orchestrate by calling repository methods — they never build queries directly. When a skill or tool generates a query, always place it in the appropriate repository interface.
+
 Detect the project's framework from its build file (pom.xml or build.gradle.kts): look for `storm-kotlin-spring-boot-starter` or `spring-boot-starter` (Spring Boot), `storm-ktor` or `ktor-server-core` (Ktor), or neither (standalone). Use the detected framework to suggest the appropriate repository registration pattern below.
 
+**DI preference:** In Spring Boot or Ktor projects, always prefer constructor-injected repositories over `orm.entity<T>()` or `orm.repository<T>()` lookups. Repository lookup via `orm` is for standalone (non-DI) use and tests only. In DI environments, repositories are beans/components — inject them.
+
 ## Getting a Repository
+
+### Spring Boot (preferred in DI environments)
+
+Inject repositories via constructor injection. The Spring Boot Starter (or a `RepositoryBeanFactoryPostProcessor`) auto-registers repository interfaces as beans:
+
+```kotlin
+@Service
+class UserService(private val userRepository: UserRepository) {
+    fun findUser(email: String) = userRepository.findByEmail(email)
+}
+
+// For generic entity access without a custom repository, inject EntityRepository directly:
+@Service
+class CityService(private val cities: EntityRepository<City, Int>) {
+    fun findAll() = cities.findAll()
+}
+```
+
+### Ktor
+
+Access repositories via `call.repository<T>()` after registering them with `stormRepositories { }`:
+
+```kotlin
+get("/users/{email}") {
+    val users = call.repository<UserRepository>()
+    call.respond(users.findByEmail(call.parameters.getOrFail("email")))
+}
+```
+
+### Standalone / Tests
+
+Create repositories directly from the `ORMTemplate` (no DI container):
 
 ```kotlin
 // Generic entity access (no custom interface needed)
@@ -51,12 +87,6 @@ interface UserRepository : EntityRepository<User, Int> {
     fun findActiveInCity(city: City): List<User> =
         findAll((User_.city eq city) and (User_.active eq true))
 }
-
-// Obtain the repository
-val userRepository: UserRepository = orm.repository<UserRepository>()
-
-// Or use the generic entity repository for simple CRUD
-val users = orm.entity(User::class)
 ```
 
 Key rules:
