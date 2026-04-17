@@ -34,6 +34,7 @@ import java.util.SortedMap;
 import java.util.SortedSet;
 import java.util.TreeMap;
 import java.util.TreeSet;
+import java.util.function.Predicate;
 import java.util.stream.Collectors;
 import javax.sql.DataSource;
 import org.slf4j.Logger;
@@ -203,6 +204,28 @@ public final class SchemaValidator {
     }
 
     /**
+     * Validates discovered types matching the filter, logs each finding, and returns the error messages.
+     *
+     * <p>Discovers all entity and projection types via the classpath index, applies the given filter, and validates
+     * the matching types.</p>
+     *
+     * <p>In strict mode, all findings (including warnings like type narrowing and nullability mismatches) are treated
+     * as errors. In non-strict mode, warnings are logged at WARN level but excluded from the returned error list.</p>
+     *
+     * @param filter predicate to select which discovered types to validate.
+     * @param strict whether to treat warnings as errors.
+     * @return the list of error messages (empty on success).
+     * @since 1.11
+     */
+    public List<String> validateAndReport(@Nonnull Predicate<Class<? extends Data>> filter, boolean strict) {
+        LOGGER.info("Validating Data types for schema compatibility.");
+        List<Class<? extends Data>> types = TypeDiscovery.getDataTypes().stream()
+                .filter(filter)
+                .toList();
+        return reportErrors(validate(types), strict, types.size());
+    }
+
+    /**
      * Validates the specified types, logs each finding, and returns the error messages.
      *
      * <p>In strict mode, all findings (including warnings like type narrowing and nullability mismatches) are treated
@@ -236,6 +259,21 @@ public final class SchemaValidator {
      */
     public void validateReportAndThrow(boolean strict) {
         List<String> errors = validateAndReport(strict);
+        if (!errors.isEmpty()) {
+            throw new st.orm.PersistenceException(formatErrors(errors));
+        }
+    }
+
+    /**
+     * Validates discovered types matching the filter, reports errors with logging, and throws if any errors remain.
+     *
+     * @param filter predicate to select which discovered types to validate.
+     * @param strict whether to treat warnings as errors.
+     * @throws st.orm.PersistenceException if one or more validation errors are detected after reporting.
+     * @since 1.11
+     */
+    public void validateReportAndThrow(@Nonnull Predicate<Class<? extends Data>> filter, boolean strict) {
+        List<String> errors = validateAndReport(filter, strict);
         if (!errors.isEmpty()) {
             throw new st.orm.PersistenceException(formatErrors(errors));
         }

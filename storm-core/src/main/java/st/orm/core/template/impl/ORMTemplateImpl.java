@@ -112,6 +112,11 @@ public final class ORMTemplateImpl extends QueryTemplateImpl implements ORMTempl
     }
 
     @Override
+    public List<String> validateSchema(@Nonnull Predicate<Class<? extends Data>> filter) {
+        return createSchemaValidator().validateAndReport(filter, isStrictSchemaValidation());
+    }
+
+    @Override
     public List<String> validateSchema(@Nonnull Iterable<Class<? extends Data>> types) {
         return createSchemaValidator().validateAndReport(types, isStrictSchemaValidation());
     }
@@ -119,6 +124,11 @@ public final class ORMTemplateImpl extends QueryTemplateImpl implements ORMTempl
     @Override
     public void validateSchemaOrThrow() {
         createSchemaValidator().validateReportAndThrow(isStrictSchemaValidation());
+    }
+
+    @Override
+    public void validateSchemaOrThrow(@Nonnull Predicate<Class<? extends Data>> filter) {
+        createSchemaValidator().validateReportAndThrow(filter, isStrictSchemaValidation());
     }
 
     @Override

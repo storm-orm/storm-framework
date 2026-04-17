@@ -26,6 +26,7 @@ import java.lang.reflect.ParameterizedType;
 import java.lang.reflect.Type;
 import java.util.List;
 import java.util.Optional;
+import java.util.function.Predicate;
 import st.orm.Data;
 import st.orm.Entity;
 import st.orm.EntityCallback;
@@ -65,6 +66,11 @@ public final class ORMTemplateImpl extends QueryTemplateImpl implements ORMTempl
     }
 
     @Override
+    public List<String> validateSchema(@Nonnull Predicate<Class<? extends Data>> filter) {
+        return core.validateSchema(filter);
+    }
+
+    @Override
     public List<String> validateSchema(@Nonnull Iterable<Class<? extends Data>> types) {
         return core.validateSchema(types);
     }
@@ -72,6 +78,11 @@ public final class ORMTemplateImpl extends QueryTemplateImpl implements ORMTempl
     @Override
     public void validateSchemaOrThrow() {
         core.validateSchemaOrThrow();
+    }
+
+    @Override
+    public void validateSchemaOrThrow(@Nonnull Predicate<Class<? extends Data>> filter) {
+        core.validateSchemaOrThrow(filter);
     }
 
     @Override
