@@ -18,6 +18,7 @@ package st.orm.core.template;
 import jakarta.annotation.Nonnull;
 import java.sql.Connection;
 import java.util.List;
+import java.util.function.Predicate;
 import java.util.function.UnaryOperator;
 import javax.sql.DataSource;
 import st.orm.Data;
@@ -105,6 +106,28 @@ public interface ORMTemplate extends QueryTemplate, RepositoryLookup {
     }
 
     /**
+     * Validates discovered types matching the filter against the database schema.
+     *
+     * <p>Discovers all entity and projection types via the classpath index, applies the given filter, and validates
+     * the matching types. This is useful when a single application connects to multiple datasources and only a
+     * subset of types is reachable from each connection.</p>
+     *
+     * <p>Logs each validation error and returns the list of error messages. On success, logs a
+     * confirmation message and returns an empty list.</p>
+     *
+     * <p>This method requires a DataSource-backed template. Templates created from a raw
+     * {@link Connection} or {@code EntityManager} do not support schema validation.</p>
+     *
+     * @param filter predicate to select which discovered types to validate.
+     * @return the list of validation error messages (empty on success).
+     * @throws PersistenceException if the template does not support schema validation.
+     * @since 1.11
+     */
+    default List<String> validateSchema(@Nonnull Predicate<Class<? extends Data>> filter) {
+        throw new PersistenceException("Schema validation is not supported by this template.");
+    }
+
+    /**
      * Validates the specified types against the database schema.
      *
      * <p>Logs each validation error and returns the list of error messages. On success, logs a
@@ -132,6 +155,24 @@ public interface ORMTemplate extends QueryTemplate, RepositoryLookup {
      * @since 1.9
      */
     default void validateSchemaOrThrow() {
+        throw new PersistenceException("Schema validation is not supported by this template.");
+    }
+
+    /**
+     * Validates discovered types matching the filter and throws if any errors are found.
+     *
+     * <p>Discovers all entity and projection types via the classpath index, applies the given filter, and validates
+     * the matching types. This is useful when a single application connects to multiple datasources and only a
+     * subset of types is reachable from each connection.</p>
+     *
+     * <p>This method requires a DataSource-backed template. Templates created from a raw
+     * {@link Connection} or {@code EntityManager} do not support schema validation.</p>
+     *
+     * @param filter predicate to select which discovered types to validate.
+     * @throws PersistenceException if validation fails or the template does not support schema validation.
+     * @since 1.11
+     */
+    default void validateSchemaOrThrow(@Nonnull Predicate<Class<? extends Data>> filter) {
         throw new PersistenceException("Schema validation is not supported by this template.");
     }
 

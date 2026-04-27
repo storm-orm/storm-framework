@@ -88,9 +88,13 @@ class ORMTemplateImpl(private val core: st.orm.core.template.ORMTemplate) :
 
     override fun validateSchema(): List<String> = core.validateSchema()
 
+    override fun validateSchema(filter: (KClass<out Data>) -> Boolean): List<String> = core.validateSchema { filter(it.kotlin) }
+
     override fun validateSchema(vararg types: KClass<out Data>): List<String> = core.validateSchema(types.map { it.java })
 
     override fun validateSchemaOrThrow() = core.validateSchemaOrThrow()
+
+    override fun validateSchemaOrThrow(filter: (KClass<out Data>) -> Boolean) = core.validateSchemaOrThrow { filter(it.kotlin) }
 
     override fun validateSchemaOrThrow(vararg types: KClass<out Data>) = core.validateSchemaOrThrow(types.map { it.java })
 

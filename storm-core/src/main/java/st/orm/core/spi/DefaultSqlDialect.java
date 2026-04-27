@@ -134,7 +134,7 @@ public class DefaultSqlDialect implements SqlDialect {
             "TABLESAMPLE", "THEN", "TIME", "TIMESTAMP", "TIMEZONE_HOUR",
             "TIMEZONE_MINUTE", "TO", "TRAILING", "TRANSLATE", "TRANSLATION", "TREAT",
             "TRIGGER", "TRIM", "TRUE", "UESCAPE", "UNDER", "UNION", "UNIQUE", "UNKNOWN",
-            "UNNEST", "UPDATE", "UPPER", "USER", "USING", "VALUE", "VALUES", "VAR_POP",
+            "UNNEST", "UPDATE", "UPPER", "USE", "USER", "USING", "VALUE", "VALUES", "VAR_POP",
             "VAR_SAMP", "VARBINARY", "VARCHAR", "VARYING", "VERSIONING", "WHEN",
             "WHENEVER", "WHERE", "WIDTH_BUCKET", "WINDOW", "WITH", "WITHIN", "WITHOUT",
             "YEAR"

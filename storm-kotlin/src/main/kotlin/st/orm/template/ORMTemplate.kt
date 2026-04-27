@@ -100,6 +100,26 @@ interface ORMTemplate :
     fun validateSchema(): List<String>
 
     /**
+     * Validates discovered types matching the filter against the database schema.
+     *
+     * Discovers all entity and projection types via the classpath index, applies the given filter, and validates
+     * the matching types. This is useful when a single application connects to multiple datasources and only a
+     * subset of types is reachable from each connection.
+     *
+     * Logs each validation error and returns the list of error messages. On success, logs a
+     * confirmation message and returns an empty list.
+     *
+     * This method requires a DataSource-backed template. Templates created from a raw
+     * [java.sql.Connection] or `EntityManager` do not support schema validation.
+     *
+     * @param filter predicate to select which discovered types to validate.
+     * @return the list of validation error messages (empty on success).
+     * @throws st.orm.PersistenceException if the template does not support schema validation.
+     * @since 1.11
+     */
+    fun validateSchema(filter: (KClass<out Data>) -> Boolean): List<String>
+
+    /**
      * Validates the specified types against the database schema.
      *
      * Logs each validation error and returns the list of error messages. On success, logs a
@@ -125,6 +145,22 @@ interface ORMTemplate :
      * @since 1.9
      */
     fun validateSchemaOrThrow()
+
+    /**
+     * Validates discovered types matching the filter and throws if any errors are found.
+     *
+     * Discovers all entity and projection types via the classpath index, applies the given filter, and validates
+     * the matching types. This is useful when a single application connects to multiple datasources and only a
+     * subset of types is reachable from each connection.
+     *
+     * This method requires a DataSource-backed template. Templates created from a raw
+     * [java.sql.Connection] or `EntityManager` do not support schema validation.
+     *
+     * @param filter predicate to select which discovered types to validate.
+     * @throws st.orm.PersistenceException if validation fails or the template does not support schema validation.
+     * @since 1.11
+     */
+    fun validateSchemaOrThrow(filter: (KClass<out Data>) -> Boolean)
 
     /**
      * Validates the specified types and throws if any errors are found.
