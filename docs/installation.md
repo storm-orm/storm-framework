@@ -29,12 +29,11 @@ The Storm Gradle plugin collapses the whole setup into one plugin application. I
 ```kotlin
 plugins {
     kotlin("jvm") version "2.4.0"
-    id("com.google.devtools.ksp") version "2.3.10"
     id("st.orm") version "@@STORM_VERSION@@"
 }
 ```
 
-That is the entire Storm setup. KSP stays in your plugins block because its version is paired to your Kotlin version; when it is missing, the build fails with the exact line to add.
+That is the entire Storm setup: on Kotlin 2.3 and newer the plugin applies KSP itself, and a KSP version you apply in the plugins block always takes precedence. Kotlin 2.2 and older pair with their own KSP builds, so add the `com.google.devtools.ksp` plugin there yourself; when it is missing, the build fails with the exact line to add.
 
 </TabItem>
 <TabItem value="java" label="Java">
@@ -76,6 +75,8 @@ storm {
 ```
 
 In mixed Kotlin/Java projects the Kotlin path wins: KSP processes Java declarations too. If you specifically need the Java annotation processor as well, add `annotationProcessor("st.orm:storm-metamodel-processor")` manually.
+
+The automatic KSP application can be disabled with the Gradle property `storm.autoApplyKsp=false`; the plugin then expects KSP in your plugins block, exactly as on older Kotlin versions.
 
 Maven users and Gradle users who prefer explicit configuration continue with the manual setup below.
 

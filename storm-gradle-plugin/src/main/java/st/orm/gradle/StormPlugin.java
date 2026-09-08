@@ -41,8 +41,12 @@ import org.gradle.external.javadoc.CoreJavadocOptions;
  * the artifacts are released together.</p>
  *
  * <p>The plugin has no compile-time dependency on the Kotlin Gradle plugin or KSP: it reacts to plugin ids
- * and wires dependencies by configuration name. KSP itself is applied by the user (its version is paired to
- * the Kotlin version); when it is missing, the build fails with the exact line to add.</p>
+ * and wires dependencies by configuration name. KSP ships bundled with the plugin (as a preferred version,
+ * so a KSP version the build applies itself always wins the classpath) and is applied automatically when
+ * the Kotlin plugin is declared before {@code st.orm} and the bundled version is the recommended one for
+ * the project's Kotlin version. Kotlin versions that pair with their own KSP builds are left to apply it
+ * explicitly; when it is missing there, the build fails with the exact line to add. Set the Gradle
+ * property {@code storm.autoApplyKsp=false} to opt out of the automatic application.</p>
  */
 public class StormPlugin implements Plugin<Project> {
 
@@ -64,7 +68,53 @@ public class StormPlugin implements Plugin<Project> {
         String version = StormVersion.get();
         var kotlin = new AtomicBoolean(false);
         var pluginManager = project.getPluginManager();
-        pluginManager.withPlugin(KOTLIN_JVM_PLUGIN_ID, applied -> kotlin.set(true));
+        pluginManager.withPlugin(KOTLIN_JVM_PLUGIN_ID, applied -> {
+            kotlin.set(true);
+            // KSP configurations never extend each other either, so each source set's configuration
+            // (main's is named plain "ksp") is wired on its own. The wiring reacts to the configurations
+            // KSP creates rather than to the KSP plugin id: with the bundled KSP jar on the classpath, an
+            // id lookup loads KSP's implementation class, which links against the Kotlin Gradle plugin API
+            // and fails whenever that API sits in another classloader scope (or, on a Java-only project,
+            // nowhere at all). Without KSP the configurations never appear and the wiring stays inert.
+            pluginManager.withPlugin("java", javaApplied ->
+                    project.getExtensions().getByType(JavaPluginExtension.class).getSourceSets()
+                            .configureEach(sourceSet -> project.getConfigurations()
+                                    .matching(configuration ->
+                                            configuration.getName().equals(kspConfigurationName(sourceSet)))
+                                    .configureEach(configuration -> {
+                                        // KSP decides whether to run from the configuration's dependency
+                                        // list without triggering Gradle's lazy dependency callbacks, so
+                                        // the processor must be added eagerly.
+                                        configuration.getDependencies().add(project.getDependencies()
+                                                .create("st.orm:storm-metamodel-ksp:" + version));
+                                    })));
+        });
+        project.afterEvaluate(evaluated -> {
+            // The metamodel opt-out is honored from this project-level hook: the processor is added in a
+            // configureEach action, whose context disallows registering afterEvaluate when KSP's
+            // configurations appear after the wiring, as they do when the plugin applies KSP itself.
+            if (!kotlin.get() || extension.getMetamodel().get()) {
+                return;
+            }
+            evaluated.getExtensions().getByType(JavaPluginExtension.class).getSourceSets()
+                    .forEach(sourceSet -> {
+                        var configuration = evaluated.getConfigurations()
+                                .findByName(kspConfigurationName(sourceSet));
+                        if (configuration != null) {
+                            configuration.getDependencies().removeIf(dependency ->
+                                    "st.orm".equals(dependency.getGroup())
+                                            && "storm-metamodel-ksp".equals(dependency.getName()));
+                        }
+                    });
+        });
+        // Immediate application only: a plugin applied from inside a withPlugin callback runs under
+        // Gradle's mutation guard, which rejects the afterEvaluate registration KSP's own apply performs.
+        // With the conventional plugins-block order the Kotlin plugin is applied before Storm, so it is
+        // already present here; when Storm is declared first, the metamodel validation reports the exact
+        // line to add (or the reorder that enables the automatic application).
+        if (project.getPlugins().hasPlugin(KOTLIN_JVM_PLUGIN_ID)) {
+            applyBundledKsp(project);
+        }
         pluginManager.withPlugin("java", applied -> {
             // The dependency callbacks run when the configuration is resolved, so the language path and the
             // extension are read after the whole build script has been evaluated; plugins-block order and
@@ -125,28 +175,6 @@ public class StormPlugin implements Plugin<Project> {
                 });
             });
         });
-        // KSP configurations never extend each other either, so each source set's configuration (main's is
-        // named plain "ksp") is wired on its own.
-        pluginManager.withPlugin(KSP_PLUGIN_ID, applied ->
-                pluginManager.withPlugin("java", javaApplied ->
-                        project.getExtensions().getByType(JavaPluginExtension.class).getSourceSets()
-                                .configureEach(sourceSet -> project.getConfigurations()
-                                        .matching(configuration ->
-                                                configuration.getName().equals(kspConfigurationName(sourceSet)))
-                                        .configureEach(configuration -> {
-                                            // KSP decides whether to run from the configuration's dependency
-                                            // list without triggering Gradle's lazy dependency callbacks, so
-                                            // the processor must be added eagerly; the metamodel opt-out is
-                                            // honored once the build script has been evaluated.
-                                            var metamodelProcessor = project.getDependencies()
-                                                    .create("st.orm:storm-metamodel-ksp:" + version);
-                                            configuration.getDependencies().add(metamodelProcessor);
-                                            project.afterEvaluate(evaluated -> {
-                                                if (!extension.getMetamodel().get()) {
-                                                    configuration.getDependencies().remove(metamodelProcessor);
-                                                }
-                                            });
-                                        }))));
         pluginManager.withPlugin(KOTLIN_JVM_PLUGIN_ID, applied ->
                 configure(project, "kotlinCompilerPluginClasspath", dependencies -> {
                     if (extension.getCompilerPlugin().get()) {
@@ -158,13 +186,18 @@ public class StormPlugin implements Plugin<Project> {
                     }
                 }));
         project.afterEvaluate(evaluated -> {
-            // Validation only: the Kotlin metamodel processor runs through KSP, which the user applies
-            // because its version is paired to the project's Kotlin version.
-            if (kotlin.get() && extension.getMetamodel().get() && !pluginManager.hasPlugin(KSP_PLUGIN_ID)) {
+            // Reached only when the automatic application declined: a Kotlin version that pairs with its
+            // own KSP build, an opt-out through storm.autoApplyKsp=false, or an undetectable Kotlin
+            // version. The message carries the exact paired plugin line to add. KSP's presence is read
+            // from the configuration it creates: a plugin-id lookup would load the bundled KSP class,
+            // which cannot link when the Kotlin Gradle plugin API sits in another classloader scope.
+            if (kotlin.get() && extension.getMetamodel().get()
+                    && evaluated.getConfigurations().findByName("ksp") == null) {
                 throw new GradleException(("""
                         Storm: the Kotlin metamodel processor requires KSP. Add it to your plugins block:
                             id("com.google.devtools.ksp") version "%s"
-                        or disable metamodel generation with:
+                        declare the Kotlin JVM plugin before st.orm so Storm applies its bundled KSP \
+                        (Kotlin 2.3+), or disable metamodel generation with:
                             storm { metamodel.set(false) }""")
                         .formatted(KotlinVariants.kspFor(detectKotlinVersion(evaluated))));
             }
@@ -191,6 +224,45 @@ public class StormPlugin implements Plugin<Project> {
         project.getConfigurations()
                 .matching(configuration -> configuration.getName().equals(configurationName))
                 .configureEach(configuration -> configuration.withDependencies(action));
+    }
+
+    /**
+     * Applies the bundled KSP plugin so the metamodel works without further setup. An explicitly applied
+     * KSP always stays authoritative: the configuration it creates skips projects that already applied it,
+     * and because the bundled dependency only prefers its version, a version the build declares itself wins
+     * the classpath, so the id-based application below picks that version up. The application is limited to
+     * Kotlin versions whose recommended KSP equals the bundled one; older Kotlin versions pair with their
+     * own KSP builds and keep the instructive failure from the metamodel validation. The Gradle property
+     * {@code storm.autoApplyKsp=false} opts out.
+     */
+    private static void applyBundledKsp(Project project) {
+        if (project.getConfigurations().findByName("ksp") != null) {
+            return;
+        }
+        if (!Boolean.parseBoolean(project.getProviders().gradleProperty("storm.autoApplyKsp").getOrElse("true"))) {
+            return;
+        }
+        String kotlinVersion;
+        try {
+            kotlinVersion = detectKotlinVersion(project);
+        } catch (GradleException e) {
+            // The compiler-plugin path reports an undetectable Kotlin version with actionable advice.
+            return;
+        }
+        if (!KotlinVariants.kspFor(kotlinVersion).equals(StormVersion.bundledKspVersion())) {
+            return;
+        }
+        try {
+            // Applying by id loads the bundled KSP plugin class, which links against the Kotlin Gradle
+            // plugin API. That API is visible here only when the Kotlin plugin shares this plugin's
+            // classloader scope (a plugins block declaring both, the common case); when it does not, the
+            // bundled KSP cannot be used and the metamodel validation reports the plugin line to add.
+            Class.forName("org.jetbrains.kotlin.gradle.plugin.KotlinCompilerPluginSupportPlugin",
+                    false, StormPlugin.class.getClassLoader());
+        } catch (ClassNotFoundException | LinkageError e) {
+            return;
+        }
+        project.getPluginManager().apply(KSP_PLUGIN_ID);
     }
 
     /**

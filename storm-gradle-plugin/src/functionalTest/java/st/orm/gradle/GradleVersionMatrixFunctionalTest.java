@@ -45,6 +45,20 @@ public class GradleVersionMatrixFunctionalTest {
         return result.getOutput();
     }
 
+    private String runDumpFromMavenLocal(String gradleVersion, String buildScript) throws Exception {
+        // No injected classpath: the Kotlin path resolves the plugin from mavenLocal so that KSP and the
+        // Kotlin Gradle plugin share one classloader scope, as in a regular build.
+        FunctionalTestSupport.writeProject(projectDir, FunctionalTestSupport.SETTINGS_MAVEN_LOCAL,
+                buildScript.replace("id(\"st.orm\")",
+                        "id(\"st.orm\") version \"" + System.getProperty("storm.plugin.version") + "\""));
+        var result = GradleRunner.create()
+                .withProjectDir(projectDir.toFile())
+                .withGradleVersion(gradleVersion)
+                .withArguments("stormDump", "-q")
+                .build();
+        return result.getOutput();
+    }
+
     @ParameterizedTest
     @ValueSource(strings = {"8.5", "8.14.3"})
     public void javaPathWiresOnGradle(String gradleVersion) throws Exception {
@@ -66,7 +80,7 @@ public class GradleVersionMatrixFunctionalTest {
     @ValueSource(strings = {"8.5", "8.14.3"})
     public void kotlinPathWiresOnGradle(String gradleVersion) throws Exception {
         // Kotlin 2.0.21: the KGP line whose supported Gradle range covers the plugin's minimum.
-        var output = runDump(gradleVersion, """
+        var output = runDumpFromMavenLocal(gradleVersion, """
                 plugins {
                     id("org.jetbrains.kotlin.jvm") version "2.0.21"
                     id("com.google.devtools.ksp") version "2.0.21-1.0.28"

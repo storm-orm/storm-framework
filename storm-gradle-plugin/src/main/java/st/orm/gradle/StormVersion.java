@@ -25,27 +25,39 @@ import java.util.Properties;
  */
 final class StormVersion {
 
-    private static final String VERSION = load();
+    private static final Properties PROPERTIES = load();
 
     private StormVersion() {
     }
 
     static String get() {
-        return VERSION;
+        return property("version");
     }
 
-    private static String load() {
+    /**
+     * The KSP version bundled with the plugin, declared as a preferred version in the plugin's own
+     * dependencies, so it is on the classpath unless the build applies a KSP version of its own.
+     */
+    static String bundledKspVersion() {
+        return property("bundledKspVersion");
+    }
+
+    private static String property(String key) {
+        String value = PROPERTIES.getProperty(key);
+        if (value == null || value.isBlank()) {
+            throw new IllegalStateException("Storm Gradle plugin: storm-version.properties has no " + key + ".");
+        }
+        return value;
+    }
+
+    private static Properties load() {
         try (InputStream in = StormVersion.class.getResourceAsStream("/st/orm/gradle/storm-version.properties")) {
             if (in == null) {
                 throw new IllegalStateException("Storm Gradle plugin: missing storm-version.properties resource.");
             }
             Properties properties = new Properties();
             properties.load(in);
-            String version = properties.getProperty("version");
-            if (version == null || version.isBlank()) {
-                throw new IllegalStateException("Storm Gradle plugin: storm-version.properties has no version.");
-            }
-            return version;
+            return properties;
         } catch (IOException e) {
             throw new IllegalStateException("Storm Gradle plugin: cannot read storm-version.properties.", e);
         }

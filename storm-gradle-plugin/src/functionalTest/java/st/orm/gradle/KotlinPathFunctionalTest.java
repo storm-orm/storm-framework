@@ -31,10 +31,15 @@ public class KotlinPathFunctionalTest {
     Path projectDir;
 
     private String runDump(String buildScript) throws Exception {
-        FunctionalTestSupport.writeProject(projectDir, buildScript);
+        // Resolved from mavenLocal rather than TestKit's injected classpath: with the bundled KSP jar,
+        // classpath injection puts KSP in a classloader scope that cannot link against the Kotlin Gradle
+        // plugin, so the Kotlin path only works with all plugins resolved into one scope, as in a
+        // regular build.
+        FunctionalTestSupport.writeProject(projectDir, FunctionalTestSupport.SETTINGS_MAVEN_LOCAL,
+                buildScript.replace("id(\"st.orm\")",
+                        "id(\"st.orm\") version \"" + System.getProperty("storm.plugin.version") + "\""));
         var result = GradleRunner.create()
                 .withProjectDir(projectDir.toFile())
-                .withPluginClasspath()
                 .withArguments("stormDump", "-q")
                 .build();
         return result.getOutput();

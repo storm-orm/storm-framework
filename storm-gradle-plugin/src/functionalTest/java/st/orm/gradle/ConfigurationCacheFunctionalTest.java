@@ -40,6 +40,14 @@ public class ConfigurationCacheFunctionalTest {
                 .withArguments("stormDump", "--configuration-cache");
     }
 
+    private GradleRunner mavenLocalRunner() {
+        // No injected classpath: the Kotlin path resolves the plugin from mavenLocal so that KSP and the
+        // Kotlin Gradle plugin share one classloader scope, as in a regular build.
+        return GradleRunner.create()
+                .withProjectDir(projectDir.toFile())
+                .withArguments("stormDump", "--configuration-cache");
+    }
+
     @Test
     public void javaPathStoresAndReusesTheConfigurationCache() throws Exception {
         FunctionalTestSupport.writeProject(projectDir, """
@@ -64,19 +72,19 @@ public class ConfigurationCacheFunctionalTest {
 
     @Test
     public void kotlinPathStoresAndReusesTheConfigurationCache() throws Exception {
-        FunctionalTestSupport.writeProject(projectDir, """
+        FunctionalTestSupport.writeProject(projectDir, FunctionalTestSupport.SETTINGS_MAVEN_LOCAL, """
                 plugins {
                     id("org.jetbrains.kotlin.jvm") version "2.4.0"
                     id("com.google.devtools.ksp") version "2.3.10"
-                    id("st.orm")
+                    id("st.orm") version "%s"
                 }
-                """);
-        var first = runner().build();
+                """.formatted(System.getProperty("storm.plugin.version")));
+        var first = mavenLocalRunner().build();
         assertTrue(first.getOutput().contains("Configuration cache entry stored."), first.getOutput());
         assertTrue(first.getOutput().contains("DEP implementation st.orm:storm-kotlin:"));
         assertTrue(first.getOutput().contains("DEP ksp st.orm:storm-metamodel-ksp:"));
         assertTrue(first.getOutput().contains("DEP kotlinCompilerPluginClasspath st.orm:storm-compiler-plugin-"));
-        var second = runner().build();
+        var second = mavenLocalRunner().build();
         assertTrue(second.getOutput().contains("Reusing configuration cache."), second.getOutput());
         assertTrue(second.getOutput().contains("DEP implementation st.orm:storm-kotlin:"),
                 "The cached run must replay the dependencies captured at configuration time.");

@@ -10,6 +10,11 @@ for the CLI, to [npm](https://www.npmjs.com/package/@storm-orm/cli)
 (`@storm-orm/cli`). Full release notes for every version are on the
 [GitHub Releases](https://github.com/storm-orm/storm-framework/releases) page.
 
+## [Unreleased]
+
+- The Gradle plugin applies KSP itself, so `plugins { kotlin("jvm"); id("st.orm") }` is the entire Kotlin setup on Kotlin 2.3 and newer. The bundled KSP version is only preferred, so a KSP version the build declares wins the classpath, and an already applied KSP is left untouched; Kotlin 2.0–2.2 keep applying their paired KSP builds explicitly, guided by the same instructive failure as before. The Gradle property `storm.autoApplyKsp=false` opts out of the automatic application.
+- Upgrade note: with `st.orm` on a root project's classpath, a subproject that declares `id("com.google.devtools.ksp") version "..."` now fails resolution with "the plugin is already on the classpath". Drop the version there: the subproject inherits the classpath's KSP, and Storm still defers to it.
+
 ## [1.14.0] - 2026-09-02
 
 A quality release: a smaller, more coherent API, and SQL that is correct on every dialect Storm supports rather than on the permissive ones, held there by a Technology Compatibility Kit that every dialect runs.

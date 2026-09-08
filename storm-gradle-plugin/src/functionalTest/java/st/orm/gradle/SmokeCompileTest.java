@@ -30,7 +30,9 @@ import org.junit.jupiter.api.io.TempDir;
  * preview class files. The two main-source builds run with {@code --configuration-cache} and run twice, so
  * the full task graph (KSP respectively the annotation processor and the preview-flag argument providers) is
  * proven to serialize and be reusable. Requires a prior {@code mvn install -DskipTests} of the reactor;
- * gated behind {@code -Dstorm.smoke=true}.
+ * gated behind {@code -Dstorm.smoke=true}. The Kotlin projects resolve the plugin from mavenLocal
+ * (published by the functionalTest task) rather than TestKit's injected classpath: the injected classpath
+ * is its own classloader scope, in which the bundled KSP cannot link against the Kotlin Gradle plugin.
  */
 public class SmokeCompileTest {
 
@@ -44,15 +46,25 @@ public class SmokeCompileTest {
                 .withArguments("build", "-x", "test", "--configuration-cache");
     }
 
+    private GradleRunner mavenLocalRunner(String... arguments) {
+        return GradleRunner.create()
+                .withProjectDir(projectDir.toFile())
+                .withArguments(arguments);
+    }
+
+    private static String stormPluginLine() {
+        return "id(\"st.orm\") version \"" + System.getProperty("storm.plugin.version") + "\"";
+    }
+
     @Test
     @EnabledIfSystemProperty(named = "storm.smoke", matches = "true")
     public void compilesAKotlinEntityAndGeneratesTheMetamodel() throws Exception {
-        Files.writeString(projectDir.resolve("settings.gradle.kts"), FunctionalTestSupport.SETTINGS);
+        Files.writeString(projectDir.resolve("settings.gradle.kts"), FunctionalTestSupport.SETTINGS_MAVEN_LOCAL);
+        // No KSP line: this build proves the automatically applied KSP carries a real compile.
         Files.writeString(projectDir.resolve("build.gradle.kts"), """
                 plugins {
                     id("org.jetbrains.kotlin.jvm") version "2.4.0"
-                    id("com.google.devtools.ksp") version "2.3.10"
-                    id("st.orm")
+                    %s
                 }
                 repositories {
                     mavenLocal()
@@ -61,7 +73,7 @@ public class SmokeCompileTest {
                 kotlin {
                     jvmToolchain(21)
                 }
-                """);
+                """.formatted(stormPluginLine()));
         var sourceDir = projectDir.resolve("src/main/kotlin/demo");
         Files.createDirectories(sourceDir);
         Files.writeString(sourceDir.resolve("City.kt"), """
@@ -75,14 +87,14 @@ public class SmokeCompileTest {
                     val name: String,
                 ) : Entity<Int>
                 """);
-        var result = runner().build();
+        var result = mavenLocalRunner("build", "-x", "test", "--configuration-cache").build();
         assertTrue(result.getOutput().contains("BUILD SUCCESSFUL"), result.getOutput());
         assertTrue(result.getOutput().contains("Configuration cache entry stored."), result.getOutput());
         try (var generated = Files.walk(projectDir.resolve("build/generated/ksp"))) {
             assertTrue(generated.anyMatch(path -> path.getFileName().toString().startsWith("City_")),
                     "Expected a generated City_ metamodel under build/generated/ksp.");
         }
-        var second = runner().build();
+        var second = mavenLocalRunner("build", "-x", "test", "--configuration-cache").build();
         assertTrue(second.getOutput().contains("Reusing configuration cache."), second.getOutput());
     }
 
@@ -130,12 +142,12 @@ public class SmokeCompileTest {
     @Test
     @EnabledIfSystemProperty(named = "storm.smoke", matches = "true")
     public void generatesTheMetamodelForKotlinTestSourceEntities() throws Exception {
-        Files.writeString(projectDir.resolve("settings.gradle.kts"), FunctionalTestSupport.SETTINGS);
+        Files.writeString(projectDir.resolve("settings.gradle.kts"), FunctionalTestSupport.SETTINGS_MAVEN_LOCAL);
         Files.writeString(projectDir.resolve("build.gradle.kts"), """
                 plugins {
                     id("org.jetbrains.kotlin.jvm") version "2.4.0"
                     id("com.google.devtools.ksp") version "2.3.10"
-                    id("st.orm")
+                    %s
                 }
                 repositories {
                     mavenLocal()
@@ -144,7 +156,7 @@ public class SmokeCompileTest {
                 kotlin {
                     jvmToolchain(21)
                 }
-                """);
+                """.formatted(stormPluginLine()));
         var sourceDir = projectDir.resolve("src/test/kotlin/demo");
         Files.createDirectories(sourceDir);
         Files.writeString(sourceDir.resolve("City.kt"), """
@@ -158,11 +170,7 @@ public class SmokeCompileTest {
                     val name: String,
                 ) : Entity<Int>
                 """);
-        var result = GradleRunner.create()
-                .withProjectDir(projectDir.toFile())
-                .withPluginClasspath()
-                .withArguments("testClasses")
-                .build();
+        var result = mavenLocalRunner("testClasses").build();
         assertTrue(result.getOutput().contains("BUILD SUCCESSFUL"), result.getOutput());
         try (var generated = Files.walk(projectDir.resolve("build/generated/ksp/test"))) {
             assertTrue(generated.anyMatch(path -> path.getFileName().toString().startsWith("City_")),
@@ -179,12 +187,12 @@ public class SmokeCompileTest {
     @Test
     @EnabledIfSystemProperty(named = "storm.smoke", matches = "true")
     public void kotlinCapturesAnActionThatReturnsNoRow() throws Exception {
-        Files.writeString(projectDir.resolve("settings.gradle.kts"), FunctionalTestSupport.SETTINGS);
+        Files.writeString(projectDir.resolve("settings.gradle.kts"), FunctionalTestSupport.SETTINGS_MAVEN_LOCAL);
         Files.writeString(projectDir.resolve("build.gradle.kts"), """
                 plugins {
                     id("org.jetbrains.kotlin.jvm") version "2.4.0"
                     id("com.google.devtools.ksp") version "2.3.10"
-                    id("st.orm")
+                    %s
                 }
                 repositories {
                     mavenLocal()
@@ -196,7 +204,7 @@ public class SmokeCompileTest {
                 dependencies {
                     testImplementation("st.orm:storm-test")
                 }
-                """);
+                """.formatted(stormPluginLine()));
         var sourceDir = projectDir.resolve("src/test/kotlin/demo");
         Files.createDirectories(sourceDir);
         Files.writeString(sourceDir.resolve("Capture.kt"), """
@@ -210,11 +218,7 @@ public class SmokeCompileTest {
                 fun firstNameOrThrow(capture: SqlCapture, names: List<String>): String? =
                     capture.executeThrowing { names.firstOrNull() }
                 """);
-        var result = GradleRunner.create()
-                .withProjectDir(projectDir.toFile())
-                .withPluginClasspath()
-                .withArguments("testClasses")
-                .build();
+        var result = mavenLocalRunner("testClasses").build();
         assertTrue(result.getOutput().contains("BUILD SUCCESSFUL"), result.getOutput());
     }
 
@@ -317,12 +321,12 @@ public class SmokeCompileTest {
     @Test
     @EnabledIfSystemProperty(named = "storm.smoke", matches = "true")
     public void kotlinAddressesAConvertedColumnByItsStoredType() throws Exception {
-        Files.writeString(projectDir.resolve("settings.gradle.kts"), FunctionalTestSupport.SETTINGS);
+        Files.writeString(projectDir.resolve("settings.gradle.kts"), FunctionalTestSupport.SETTINGS_MAVEN_LOCAL);
         Files.writeString(projectDir.resolve("build.gradle.kts"), """
                 plugins {
                     id("org.jetbrains.kotlin.jvm") version "2.4.0"
                     id("com.google.devtools.ksp") version "2.3.10"
-                    id("st.orm")
+                    %s
                 }
                 repositories {
                     mavenLocal()
@@ -331,7 +335,7 @@ public class SmokeCompileTest {
                 kotlin {
                     jvmToolchain(21)
                 }
-                """);
+                """.formatted(stormPluginLine()));
         var sourceDir = projectDir.resolve("src/main/kotlin/demo");
         Files.createDirectories(sourceDir);
         Files.writeString(sourceDir.resolve("Gallery.kt"), """
@@ -354,7 +358,7 @@ public class SmokeCompileTest {
                     @FK val city: Ref<City>,
                 ) : Entity<Int>
                 """);
-        var result = runner().build();
+        var result = mavenLocalRunner("build", "-x", "test", "--configuration-cache").build();
         assertTrue(result.getOutput().contains("BUILD SUCCESSFUL"), result.getOutput());
         var metamodel = Files.readString(projectDir.resolve("build/generated/ksp/main/kotlin/demo/Gallery_.kt"));
         assertTrue(metamodel.contains("AbstractMetamodel<Gallery, String, kotlin.collections.List<String>>"),

@@ -41,6 +41,29 @@ final class FunctionalTestSupport {
             rootProject.name = "storm-test-project"
             """;
 
+    /**
+     * Settings for tests that resolve the plugin from mavenLocal (published by the functionalTest task)
+     * instead of TestKit's injected classpath, so every plugin lands in one classloader scope, as in a
+     * regular build.
+     */
+    static final String SETTINGS_MAVEN_LOCAL = """
+            pluginManagement {
+                repositories {
+                    // Only the plugin under test: a Maven build leaves POM-only Kotlin artifacts in
+                    // ~/.m2, and without Gradle module metadata the Kotlin Gradle plugin resolves to a
+                    // variant for the wrong Gradle version.
+                    mavenLocal {
+                        content {
+                            includeGroup("st.orm")
+                        }
+                    }
+                    mavenCentral()
+                    gradlePluginPortal()
+                }
+            }
+            rootProject.name = "storm-test-project"
+            """;
+
     static final String DUMP_TASK = """
 
             tasks.register("stormDump") {
@@ -77,7 +100,11 @@ final class FunctionalTestSupport {
     }
 
     static void writeProject(Path directory, String buildScript) throws IOException {
-        Files.writeString(directory.resolve("settings.gradle.kts"), SETTINGS);
+        writeProject(directory, SETTINGS, buildScript);
+    }
+
+    static void writeProject(Path directory, String settings, String buildScript) throws IOException {
+        Files.writeString(directory.resolve("settings.gradle.kts"), settings);
         Files.writeString(directory.resolve("build.gradle.kts"), buildScript + DUMP_TASK);
     }
 }
