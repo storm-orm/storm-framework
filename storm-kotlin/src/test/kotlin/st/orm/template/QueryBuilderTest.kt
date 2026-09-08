@@ -4,6 +4,7 @@ import io.kotest.matchers.collections.shouldHaveSize
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.shouldNotBe
 import io.kotest.matchers.string.shouldContain
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.count
 import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.runBlocking
@@ -2469,6 +2470,8 @@ internal open class QueryBuilderTest(
         override fun build(): Query = delegate.build()
         override fun scroll(size: Int): Window<City> = delegate.scroll(size)
         override fun scroll(scrollable: Scrollable<City>): Window<City> = delegate.scroll(scrollable)
+        override fun windows(size: Int): Flow<Window<City>> = delegate.windows(size)
+        override fun windows(scrollable: Scrollable<City>): Flow<Window<City>> = delegate.windows(scrollable)
         override val resultStream: Stream<City> get() = delegate.resultStream
         override fun <V : Data> resultGroupedBy(path: TypedMetamodel<City, V, out V?>): Map<V, List<City>> = delegate.resultGroupedBy(path)
         override fun <V : Data> resultGroupedByRef(path: Metamodel<City, V>): Map<Ref<V>, List<City>> = delegate.resultGroupedByRef(path)

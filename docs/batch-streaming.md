@@ -155,16 +155,21 @@ orm.entity(User.class).insert(users, 500);
 
 ## Streaming
 
-When a query returns thousands or millions of rows, loading them all into a `List` can exhaust memory. Streaming processes rows one at a time as they arrive from the database, keeping memory usage constant regardless of result set size.
+When a query returns thousands or millions of rows, loading them all into a `List` can exhaust memory. Storm offers two streaming shapes, and they differ in what the connection may do while the rows are read.
+
+- **A result stream** (`resultFlow`, `getResultStream()`) is one open statement. Rows are read from the database as they are consumed, so memory stays bounded, and the statement stays open until the stream is closed. Until the stream has been read to its end or closed, the connection it reads from is consume-only.
+- **Windows** (`windows(size)`) run one closed statement per window of rows. Between windows the connection is free, so the loop may query, fetch references and write. This is the shape for a loop that does more than consume.
+
+### Result streams
 
 :::warning Stream Lifecycle
-Streams returned by Storm must be closed after use. Use `.use {}` (Kotlin) or try-with-resources (Java) to ensure proper cleanup. Failing to close a stream will leak database resources (cursors, connections).
+Streams returned by Storm must be closed after use. Use `.use {}` (Kotlin) or try-with-resources (Java) to ensure proper cleanup. Failing to close a stream will leak database resources (cursors, connections). Kotlin's `Flow` closes itself when collection completes or is cancelled.
 :::
 
 <Tabs groupId="language">
 <TabItem value="kotlin" label="Kotlin" default>
 
-Kotlin uses `Flow` for streaming, which provides automatic resource cleanup through structured concurrency. When the Flow completes or the coroutine is cancelled, database cursors and connections are released without explicit cleanup code.
+Kotlin uses `Flow` for streaming. The flow is cold: the query executes when the flow is collected, and the statement closes when the collection completes or the coroutine is cancelled, without explicit cleanup code.
 
 ```kotlin
 val users: Flow<User> = orm.entity<User>().select().resultFlow
@@ -210,56 +215,91 @@ try (Stream<User> users = orm.entity(User.class).select().getResultStream()) {
 </TabItem>
 </Tabs>
 
-### Filtered Streaming
+#### The connection is consume-only while a stream is open
 
-You can combine streaming with query filters to process only rows that match your criteria. This pushes the filtering to the database rather than loading all rows and filtering in application code.
+A result stream reads its rows from one open statement, and the rows not yet consumed live on the database server. What the connection may do in the meantime is up to the JDBC driver: PostgreSQL and Oracle interleave a second statement with the open result, MySQL Connector/J rejects it, and MariaDB Connector/J and the SQL Server driver read the rest of the open result into application memory before running the second statement, which turns the stream back into a whole-table list without any signal.
+
+Storm makes this one rule on every database: **a statement on a connection whose result stream still has unread rows is refused** with a `PersistenceException` that names the open stream, the refused statement and the windows form. A stream read to its end blocks nothing, closed or not, and a Kotlin flow closes itself when its last row is emitted. Inside a transaction every statement shares the transaction's connection, so a query, a `Ref.fetch()` or a write issued from inside the loop is refused there. Outside a transaction the stream holds a connection of its own, and other statements run on other connections. Because the rule does not depend on the dialect, a loop that passes its tests on H2 behaves the same in production on any database.
+
+```kotlin
+transaction {
+    orm.select<User>().resultFlow.collect { user ->
+        orm update user.copy(processed = true)   // PersistenceException: a result stream is still open
+    }
+}
+```
+
+The loop above needs the connection while it iterates. That is what windows are for.
+
+### Windows
+
+`windows(size)` iterates the query in windows of `size` rows ordered by the primary key. Each window is fetched by its own statement, which has returned and closed before the window is handed to the loop, so between windows the connection is free. The loop may query, fetch references and write, inside one transaction or with a transaction per window, and a batched write per window costs one statement instead of one per row.
 
 <Tabs groupId="language">
 <TabItem value="kotlin" label="Kotlin" default>
 
 ```kotlin
-val filteredUsers: Flow<User> = orm.entity<User>()
-    .select()
-    .where(User_.name like "A%")
-    .resultFlow
+transaction {
+    val users = orm.entity<User>()
+    users.select()
+        .where(User_.active eq true)
+        .windows(1000)
+        .collect { window ->
+            users.update(window.content().map { it.copy(processed = true) })
+        }
+}
 ```
 
 </TabItem>
 <TabItem value="java" label="Java">
 
 ```java
-try (Stream<User> users = orm.entity(User.class)
-        .select()
-        .where(User_.name, LIKE, "A%")
-        .getResultStream()) {
-    users.forEach(this::processUser);
-}
+transaction(tx -> {
+    var users = orm.entity(User.class);
+    users.select()
+        .where(User_.active, EQUALS, true)
+        .windows(1000)
+        .forEach(window ->
+            users.update(window.content().stream()
+                .map(user -> new User(user.id(), user.email(), user.name(), true, user.city()))
+                .toList()));
+    return null;
+});
 ```
 
 </TabItem>
 </Tabs>
 
-### Streaming with Transactions
+The stream of windows carries no database resource, so it needs no closing. Each element is a `Window`, the same type `scroll` returns: `content()` holds the rows, `hasNext()` says whether more rows existed when the window was read, and `next()` is a `Scrollable` that resumes the iteration after the window. A long-running job can persist `window.nextCursor()` after each window and resume from it after a restart with `windows(Scrollable.fromCursor(User_.id, cursor))`.
 
-When you need to read and update rows as part of a single atomic operation, wrap the streaming operation in a transaction. This ensures that the data you read and the updates you write are consistent, and that the entire operation either succeeds or is rolled back.
+Windows are keyset windows, so the rules of [scrolling](pagination-and-scrolling.md#scrolling) apply:
 
-```kotlin
-transaction {
-    val users: Flow<User> = orm.select<User>().resultFlow
-    users.collect { user ->
-        // Process within the same transaction
-        orm update user.copy(processed = true)
-    }
-}
-```
+- The query must not carry an `orderBy` of its own; the key orders the rows. `windows(Scrollable.of(User_.id, User_.name, 1000))` sorts by a non-unique field with the key as tiebreaker, and `.backward()` iterates in descending key order.
+- The key must be a non-nullable, single-column unique key. `windows(size)` uses the primary key and refuses a compound one; pass `windows(Scrollable.of(key, size))` with a `@UK` field in that case.
+- The result type must carry the key: `windows` refuses `selectRef()` and custom select types.
+- Each window is its own statement. It runs the query's `WHERE` clause again from the cursor position, so the key should be indexed, which a primary or unique key is. Under `READ COMMITTED` a later window sees rows committed after the previous one; rows the loop writes and that it has passed are never visited again.
+
+### Choosing between them
+
+| | Result stream | Windows |
+|---|---|---|
+| Statements | One, open until the stream closes | One closed statement per window |
+| Connection while iterating | Consume-only | Free |
+| Snapshot | One, for the whole result | One per window |
+| Requires | Nothing; any query, including templates | A unique key and no `orderBy` of its own |
+| Resource to close | The stream (Java); the Flow closes itself | None |
+| Resumable | No | Yes, from `window.next()` or a cursor string |
+
+Use a result stream to consume a large result: export it, aggregate it, map it to a file. Use windows when the loop needs the database: reading a related record, fetching a reference, writing per row.
 
 ---
 
 ## Tips
 
 1. **Always close Java streams** - use try-with-resources to prevent resource leaks (database cursors, connections)
-2. **Kotlin Flow is safer** - automatic resource management through structured concurrency
-3. **Use streaming for large datasets** - avoid loading millions of rows into memory
+2. **A result stream is consume-only** - a query, `Ref.fetch()` or write from inside the loop is refused on every database while rows remain unread; use `windows(size)` for loops that need the connection
+3. **Use streaming for large datasets** - avoid loading millions of rows into a list
 4. **Batch operations are automatic** - Storm handles JDBC batching internally for bulk inserts/updates/deletes
-5. **Wrap in transactions** - batch operations within a transaction commit atomically and perform better
-6. **Tune batch size for large imports** - use the batch size parameter for datasets with thousands of rows
+5. **Write per window, not per row** - inside `windows(size)` one batched `update` per window costs one statement instead of one per row
+6. **Wrap in transactions** - batch operations within a transaction commit atomically and perform better; a long window loop may also commit per window so its progress is durable
+7. **Tune batch size for large imports** - use the batch size parameter for datasets with thousands of rows

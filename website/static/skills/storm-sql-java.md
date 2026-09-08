@@ -34,7 +34,7 @@ Even in full SQL templates, users still benefit from bind variables (`\{value}`)
 - Regular joins — use `innerJoin()`, `leftJoin()`, etc. on QueryBuilder
 - Filtering — use `where()` with metamodel predicates or convenience methods (`findBy`, `findAllBy`)
 - Ordering — use `orderBy()`, `orderByDescending()`
-- Pagination, scrolling — use `page()`, `scroll()`
+- Pagination, scrolling, window iteration — use `page()`, `scroll()`, `windows()`
 - Simple CRUD — use `findBy`, `findAll`, `remove`, `removeAll`, `insert`, `update`
 
 **Mutations bypass dirty checking.** Entity updates through repositories compare against the
@@ -102,7 +102,7 @@ All interpolated values become bind parameters. SQL injection safe by design.
 Critical rules:
 - **Metamodel navigation depth**: Multiple levels of navigation are allowed on the root entity. However, joined (non-root) entities can only navigate one level deep. If you need deeper navigation from a joined entity, explicitly join the intermediate entity.
 
-Close any ResultStream from custom queries. Use try-with-resources for getResultStream().
+Close any ResultStream from custom queries. Use try-with-resources for getResultStream(). While rows remain unread its connection is consume-only: inside a transaction a query or write from the loop throws, on every database. A template query cannot be windowed (no key); consume it, or express the query with the builder and use `windows(size)`.
 
 ## Verification
 

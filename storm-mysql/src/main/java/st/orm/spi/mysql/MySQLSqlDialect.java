@@ -280,9 +280,10 @@ public class MySQLSqlDialect extends DefaultSqlDialect {
      *
      * <p>The MySQL row-by-row streaming mode ({@code fetchSize = Integer.MIN_VALUE}) imposes constraints on
      * the connection: the result set must be fully consumed or closed before another query can execute on the
-     * same connection. Applying this mode to eager methods (such as {@code getResultList()} or
-     * {@code getSingleResult()}) would add unnecessary per-row latency without memory benefits, since those
-     * methods collect all results immediately.</p>
+     * same connection, and the driver rejects a statement issued in between. Storm refuses such a statement
+     * itself, on every dialect, so the constraint is the same everywhere. Applying this mode to eager methods
+     * (such as {@code getResultList()} or {@code getSingleResult()}) would add unnecessary per-row latency
+     * without memory benefits, since those methods collect all results immediately.</p>
      *
      * @return {@code true}.
      * @since 1.10

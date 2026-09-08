@@ -891,6 +891,55 @@ public abstract class QueryBuilder<T extends Data, R, ID> {
      */
     public abstract Window<R> scroll(Scrollable<T> scrollable);
 
+    /**
+     * Executes the query in windows of {@code size} rows ordered by the primary key, each window one closed
+     * statement.
+     *
+     * <p>Where {@link #getResultStream()} holds one open statement on the connection for as long as the stream is
+     * consumed, a window is fetched by a statement that has returned and closed before the window is handed to
+     * the caller. Between windows the connection is free, so the loop over a window may query, fetch references
+     * and write, inside a transaction or with a transaction per window. The stream carries no database resource
+     * and needs no closing. Each window is its own statement: it runs the query's WHERE clause again from the
+     * cursor position, and under READ COMMITTED it sees rows committed since the previous window.</p>
+     *
+     * <p>Windows are keyset windows over the primary key, so the query must not carry an ORDER BY of its own, and
+     * the result type must be the entity type the key belongs to: {@code selectRef()} and custom select types
+     * are refused. A compound primary key is refused too; pass {@link #windows(Scrollable)} a single-column unique
+     * key instead. The rows come in ascending key order; pass {@code Scrollable.of(key, size).backward()} to
+     * {@link #windows(Scrollable)} for descending order.</p>
+     *
+     * <pre>{@code
+     * users.select().where(User_.active, EQUALS, true).windows(1000).forEach(window ->
+     *     users.update(window.content().stream()
+     *         .map(user -> new User(user.id(), user.email(), user.name(), true, user.city()))
+     *         .toList()));
+     * }</pre>
+     *
+     * @param size the maximum number of rows per window (must be positive).
+     * @return a stream of windows; each window's {@link Window#next()} resumes the iteration after that window.
+     * @throws IllegalArgumentException if {@code size} is not positive.
+     * @throws PersistenceException if the query has no single-column primary key, carries an explicit ORDER BY, or
+     *                              does not select the entity type.
+     * @since 1.14
+     */
+    public abstract Stream<Window<R>> windows(int size);
+
+    /**
+     * Executes the query in windows described by the given scroll request, each window one closed statement.
+     *
+     * <p>This is the form of {@link #windows(int)} that chooses the key, the sort field, the direction and the
+     * starting position: {@code Scrollable.of(key, size)} iterates from the start, a {@link Window#next()} token
+     * or {@link Scrollable#fromCursor(Metamodel.Key, String)} resumes after an earlier window, and
+     * {@code .backward()} iterates in descending order. The same key rules as {@link #scroll(Scrollable)} apply.</p>
+     *
+     * @param scrollable the scroll request describing key, sort, size, direction and starting position.
+     * @return a stream of windows; each window's {@link Window#next()} resumes the iteration after that window.
+     * @throws PersistenceException if the query carries an explicit ORDER BY, the key is nullable, or the result
+     *                              type does not carry the key.
+     * @since 1.14
+     */
+    public abstract Stream<Window<R>> windows(Scrollable<T> scrollable);
+
     //
     // Execution methods.
     //
@@ -901,6 +950,13 @@ public abstract class QueryBuilder<T extends Data, R, ID> {
      * <p>The resulting stream is lazily loaded, meaning that the records are only retrieved from the database as they
      * are consumed by the stream. This approach is efficient and minimizes the memory footprint, especially when
      * dealing with large volumes of records.</p>
+     *
+     * <p>The stream is one open statement on the connection it reads from, and that connection is consume-only
+     * until the stream is read to its end or closed: inside a transaction every statement shares the transaction's
+     * connection, so a query, a {@code Ref.fetch()} or a write issued while rows remain unread is refused with a
+     * {@link PersistenceException}, on every database. A loop that needs the connection while it iterates uses
+     * {@link #windows(int)}, which runs one closed statement per window. Outside a transaction the stream holds a
+     * connection of its own for as long as it is open.</p>
      *
      * <p><strong>Note:</strong> Calling this method does trigger the execution of the underlying query, so it should
      * only be invoked when the query is intended to run. Since the stream holds resources open while in use, it must be

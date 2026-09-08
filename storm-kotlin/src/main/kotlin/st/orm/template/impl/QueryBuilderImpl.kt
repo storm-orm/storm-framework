@@ -15,6 +15,8 @@
  */
 package st.orm.template.impl
 
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.stream.consumeAsFlow
 import st.orm.*
 import st.orm.core.template.impl.Subqueryable
 import st.orm.template.*
@@ -454,6 +456,10 @@ internal class QueryBuilderImpl<T : Data, R, ID>(
     override fun scroll(size: Int): Window<R> = core.scroll(size)
 
     override fun scroll(scrollable: Scrollable<T>): Window<R> = core.scroll(scrollable)
+
+    override fun windows(size: Int): Flow<Window<R>> = core.windows(size).consumeAsFlow()
+
+    override fun windows(scrollable: Scrollable<T>): Flow<Window<R>> = core.windows(scrollable).consumeAsFlow()
 
     override fun getSubquery(): st.orm.core.template.TemplateString = (core as Subqueryable).subquery
 }

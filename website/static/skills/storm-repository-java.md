@@ -92,10 +92,10 @@ interface UserRepository extends EntityRepository<User, Integer> {
 
 Key rules:
 1. ALL query methods have EXPLICIT BODIES with `default` keyword. Storm does NOT derive queries from method names.
-2. Inherited CRUD: insert, insertAndFetch, update, remove, removeById, removeByRef, removeAll, findById, getById, findBy(Key), findAll, findAllRef, count, existsById, page, pageRef, scroll.
+2. Inherited CRUD: insert, insertAndFetch, update, remove, removeById, removeByRef, removeAll, findById, getById, findBy(Key), findAll, findAllRef, count, existsById, page, pageRef, scroll, windows.
 3. Descriptive variable names: `var users = orm.entity(User.class)`, not `var repo`.
 4. QueryBuilder is IMMUTABLE. Always chain or capture the return value.
-5. Streaming: `select().getResultStream()` returns a `Stream`. ALWAYS use try-with-resources to avoid connection leaks.
+5. Streaming: `select().getResultStream()` returns a `Stream`. ALWAYS use try-with-resources to avoid connection leaks. While rows remain unread it is one statement and its connection is consume-only (a query, `Ref.fetch()` or write from the loop inside a transaction throws, on every database). A loop that reads or writes per row uses `windows(size)` (`Stream<Window<E>>`): one closed statement per window, nothing to close, write per window with `update(window.content().stream().map(...).toList())`.
 6. DELETE/UPDATE without WHERE throws. Use `unsafe()` for intentional bulk ops.
 7. Pagination: `page(0, 20)` for offset-based. `scroll(scrollable)` for keyset on large tables.
 8. **Prefer entity/metamodel-based methods over templates.** Use `.innerJoin(Entity.class).on(OtherEntity.class)` for joins unless it cannot be expressed with entity classes. Only fall back to template lambdas when QueryBuilder cannot express the query.
@@ -123,7 +123,7 @@ Unlike Kotlin, Java has no `select(predicate)` / `delete(predicate)` shorthand a
 - **Exists/Count:** `count()`, `exists()`, `existsById()`, `existsByRef()`, `countBy(field, value)`
 - **Write:** `insert()`, `insertAndFetch()`, `update()`, `updateAndFetch()`, `upsert()`, `upsertAndFetch()`
 - **Remove:** `remove(entity)`, `removeById(id)`, `removeByRef(ref)`, `removeAll()`, `removeAllBy(field, value)`, `remove(Iterable)`, `removeByRef(Iterable)`, `remove(Stream)`, `removeByRef(Stream)`
-- **Pagination:** `page()`, `pageRef()`, `scroll()`
+- **Pagination:** `page()`, `pageRef()`, `scroll()`, `windows()`
 
 **Level 2 — Builder** returns `QueryBuilder` for chaining ordering, pagination, or joins:
 ```java
@@ -131,7 +131,7 @@ users.select().where(User_.city, EQUALS, city)
     .orderBy(User_.name).getResultList();
 ```
 
-Terminal operations: `.getResultList()`, `.getSingleResult()`, `.getOptionalResult()`, `.getResultStream()`, `.getResultCount()`, `.page()`, `.scroll()`, `.executeUpdate()`
+Terminal operations: `.getResultList()`, `.getSingleResult()`, `.getOptionalResult()`, `.getResultStream()`, `.windows(size)`, `.getResultCount()`, `.page()`, `.scroll()`, `.executeUpdate()`
 
 The `find`/`get` distinction: `find` returns `Optional` (no result = empty), `get` throws `NoResultException`.
 
@@ -383,11 +383,18 @@ try (Stream<User> stream = users.select()
     stream.forEach(System.out::println);
 }
 
+// A stream with rows still unread is one statement: its connection is consume-only, so inside a transaction a query,
+// Ref.fetch() or write from the loop throws. Loops that need the database use windows: keyset windows
+// over the primary key, one closed statement per window, connection free in between, nothing to close.
+users.select().where(User_.active, EQUALS, true).windows(1000).forEach(window ->
+    users.update(window.content().stream().map(user -> /* copy with changes */ user).toList()));
+
 // Count via Stream
 long count = users.countById(idStream);
 long count = users.countByRef(refStream, chunkSize);
 
-// Batch insert/update/remove via Stream
+// Batch insert/update/remove via Stream. Feed an in-memory stream; a getResultStream() of the same
+// transaction is refused as soon as a batch executes while that stream still has rows unread.
 users.insert(userStream);
 users.insert(userStream, batchSize);
 users.update(userStream);
@@ -401,6 +408,46 @@ users.removeByRef(refStream, batchSize);
 ```
 
 Stream operations are lazy — entities are retrieved/processed as consumed. Use `batchSize`/`chunkSize` to control how many items are sent to the database per batch.
+
+## Streams and the Connection
+
+A `getResultStream()` is one open statement. While it still has unread rows, the connection it reads from is consume-only, on every database. Inside a transaction every statement shares the transaction's connection, so these all throw `PersistenceException` from the loop:
+
+```java
+transaction(tx -> {
+    try (var stream = users.select().getResultStream()) {
+        stream.forEach(user -> {
+            users.update(...);        // ❌ write while the stream has rows left
+            user.city().fetch();      // ❌ Ref.fetch() is a statement too
+            cities.count();           // ❌ any query
+        });
+    }
+    users.update(users.select().getResultStream());   // ❌ batched write fed by a stream of the same transaction
+    return null;
+});
+```
+
+The last line is the trap that passes small tests: a batch that executes after the stream has been read to its end is allowed, and a batch that executes while rows remain is refused, so the outcome depends on batch size versus row count. Never feed a `getResultStream()` of the current transaction into `insert`, `update`, `upsert`, `remove`, `removeByRef`, `insertAndFetch` or `countById`. Feed them an in-memory stream, or iterate in windows.
+
+`windows(size)` is the shape for a loop that needs the database. Each window is fetched by one statement that has closed before the window is handed over, there is nothing to close, and one batched write per window costs one statement rather than one per row:
+
+```java
+transaction(tx -> {
+    users.select().where(User_.active, EQUALS, true).windows(1000).forEach(window ->
+        users.update(window.content().stream().map(user -> /* copy with changes */ user).toList()));
+    return null;
+});
+
+// Resume after a restart from a stored cursor:
+users.windows(Scrollable.fromCursor(User_.id, storedCursor)).forEach(window -> {
+    process(window.content());
+    store(window.nextCursor());
+});
+```
+
+Rules for `windows`: the key is the primary key (or the `Scrollable`'s key), which must be a non-null single column; no `orderBy()` on the query; the result type must be the entity (`selectRef()` and custom select types are refused). Each window is its own statement and sees the committed state at that moment.
+
+What stays fine with `getResultStream()`: consuming it (`forEach`, `toList()`, `count()`, `map`, `filter`), stopping early (`findFirst()`, `limit(n)`, then closing it), and, once it has been read to its end, any statement. A `Ref` the loop needs is loaded by naming it in the fetch plan (`select().fetch(...)`) instead of calling `fetch()` per row. Outside a transaction a stream holds a pooled connection of its own until it is closed.
 
 ## Count, Exists, Remove
 

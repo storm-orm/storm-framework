@@ -1075,6 +1075,51 @@ public abstract class QueryBuilder<T : Data, R, ID> {
      */
     public abstract fun scroll(scrollable: Scrollable<T>): Window<R>
 
+    /**
+     * Executes the query in windows of [size] rows ordered by the primary key, each window one closed statement.
+     *
+     * Where [resultFlow] holds one open statement on the connection for as long as the flow is collected, a window
+     * is fetched by a statement that has returned and closed before the window is emitted. Between windows the
+     * connection is free, so the loop over a window may query, fetch references and write, inside a transaction or
+     * with a transaction per window. The flow carries no database resource. Each window is its own statement: it
+     * runs the query's WHERE clause again from the cursor position, and under READ COMMITTED it sees rows committed
+     * since the previous window.
+     *
+     * Windows are keyset windows over the primary key, so the query must not carry an ORDER BY of its own, and the
+     * result type must be the entity type the key belongs to: `selectRef()` and custom select types are refused. A
+     * compound primary key is refused too; pass [windows] a [Scrollable] with a single-column unique key instead.
+     * The rows come in ascending key order; pass `Scrollable.of(key, size).backward()` for descending order.
+     *
+     * ```kotlin
+     * users.select().where(User_.active eq true).windows(1000).collect { window ->
+     *     users.update(window.content().map { it.copy(processed = true) })
+     * }
+     * ```
+     *
+     * @param size the maximum number of rows per window (must be positive).
+     * @return a flow of windows; each window's [Window.next] resumes the iteration after that window.
+     * @throws IllegalArgumentException if [size] is not positive.
+     * @throws PersistenceException if the query has no single-column primary key, carries an explicit ORDER BY, or
+     * does not select the entity type.
+     * @since 1.14
+     */
+    public abstract fun windows(size: Int): Flow<Window<R>>
+
+    /**
+     * Executes the query in windows described by the given scroll request, each window one closed statement.
+     *
+     * This is the form of [windows] that chooses the key, the sort field, the direction and the starting position:
+     * `Scrollable.of(key, size)` iterates from the start, a [Window.next] token or [Scrollable.fromCursor] resumes
+     * after an earlier window, and `.backward()` iterates in descending order. The same key rules as [scroll] apply.
+     *
+     * @param scrollable the scroll request describing key, sort, size, direction and starting position.
+     * @return a flow of windows; each window's [Window.next] resumes the iteration after that window.
+     * @throws PersistenceException if the query carries an explicit ORDER BY, the key is nullable, or the result
+     * type does not carry the key.
+     * @since 1.14
+     */
+    public abstract fun windows(scrollable: Scrollable<T>): Flow<Window<R>>
+
     //
     // Execution methods.
     //
@@ -1086,10 +1131,16 @@ public abstract class QueryBuilder<T : Data, R, ID> {
      * are consumed by the stream. This approach is efficient and minimizes the memory footprint, especially when
      * dealing with large volumes of records.
      *
+     * The stream is one open statement on the connection it reads from, and that connection is consume-only until
+     * the stream is read to its end or closed: inside a transaction every statement shares the transaction's
+     * connection, so a query, a `Ref.fetch()` or a write issued while rows remain unread is refused with a
+     * [PersistenceException], on every database. A loop that needs the connection while it iterates uses [windows], which runs one closed statement
+     * per window. Outside a transaction the stream holds a connection of its own for as long as it is open.
+     *
      * **Note:** Calling this method does trigger the execution of the underlying query, so it should
      * only be invoked when the query is intended to run. Since the stream holds resources open while in use, it must be
      * closed after usage to prevent resource leaks. As the stream is `AutoCloseable`, it is recommended to use it
-     * within a `try-with-resources` block.
+     * within a `use` block.
      *
      * @return a stream of results.
      * @throws PersistenceException if the query operation fails due to underlying database issues, such as
@@ -1100,6 +1151,19 @@ public abstract class QueryBuilder<T : Data, R, ID> {
     /**
      * Executes the query and returns a flow of results.
      *
+     * The flow is cold: the query executes when the flow is collected, rows are read from the database as they are
+     * emitted, and the statement closes when collection completes or is cancelled, so no explicit cleanup is
+     * needed.
+     *
+     * The flow is one open statement on the connection it reads from, and that connection is consume-only until
+     * the last row is emitted or collection is cancelled: inside a transaction every statement shares the
+     * transaction's connection, so a query, a `Ref.fetch()` or a write issued from the collector while rows remain
+     * is refused with a [PersistenceException], on every database. A loop that needs the connection while it iterates uses [windows], which runs one closed statement
+     * per window. Outside a transaction the flow holds a connection of its own for as long as it is collected.
+     *
+     * @return a flow of results.
+     * @throws PersistenceException if the query operation fails due to underlying database issues, such as
+     * connectivity.
      * @since 1.5
      */
     public val resultFlow: Flow<R>

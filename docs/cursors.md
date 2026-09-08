@@ -40,6 +40,36 @@ var next = userRepository.scroll(scrollable);
 </TabItem>
 </Tabs>
 
+## Resuming a window iteration
+
+A cursor string also resumes a `windows` iteration, which is how a long-running job survives a restart: persist `window.nextCursor()` after each window, and on restart iterate from the stored cursor.
+
+<Tabs groupId="language">
+<TabItem value="kotlin" label="Kotlin" default>
+
+```kotlin
+val start = checkpoint.load()?.let { Scrollable.fromCursor(User_.id, it) } ?: Scrollable.of(User_.id, 1000)
+userRepository.windows(start).collect { window ->
+    process(window.content())
+    checkpoint.store(window.nextCursor())
+}
+```
+
+</TabItem>
+<TabItem value="java" label="Java">
+
+```java
+String cursor = checkpoint.load();
+var start = cursor == null ? Scrollable.of(User_.id, 1000) : Scrollable.fromCursor(User_.id, cursor);
+userRepository.windows(start).forEach(window -> {
+    process(window.content());
+    checkpoint.store(window.nextCursor());
+});
+```
+
+</TabItem>
+</Tabs>
+
 ## Cursor format
 
 The serialized cursor is a Base64 URL-safe encoded binary payload. The format is intentionally opaque: clients should treat it as an immutable token and never parse or modify it. The internal structure includes:

@@ -172,6 +172,14 @@ val count = users.count()
 val userList: List<User> = users.toList()
 ```
 
+A flow is one open statement, and the connection it reads from is consume-only until its last row is emitted or collection is cancelled: a query, a `Ref.fetch()` or a write from inside the collector is refused inside a transaction, on every database. A loop that needs the connection iterates in windows instead, one closed statement per window:
+
+```kotlin
+userRepository.windows(1000).collect { window ->
+    userRepository.update(window.content().map { it.copy(processed = true) })
+}
+```
+
 </TabItem>
 <TabItem value="java" label="Java">
 
@@ -183,8 +191,19 @@ try (Stream<User> users = userRepository.select().getResultStream()) {
 }
 ```
 
+A stream is one open statement, and the connection it reads from is consume-only until it is read to its end or closed: a query, a `Ref.fetch()` or a write from inside the loop is refused inside a transaction, on every database. A loop that needs the connection iterates in windows instead, one closed statement per window, with nothing to close:
+
+```java
+userRepository.windows(1000).forEach(window ->
+    userRepository.update(window.content().stream()
+        .map(user -> new User(user.id(), user.email(), user.name(), true, user.city()))
+        .toList()));
+```
+
 </TabItem>
 </Tabs>
+
+See [Batch Processing & Streaming](batch-streaming.md#streaming) for the two shapes side by side.
 
 ---
 

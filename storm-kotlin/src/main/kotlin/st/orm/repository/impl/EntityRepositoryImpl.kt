@@ -25,8 +25,6 @@ import st.orm.Metamodel
 import st.orm.Page
 import st.orm.Pageable
 import st.orm.Ref
-import st.orm.Scrollable
-import st.orm.Window
 import st.orm.repository.EntityRepository
 import st.orm.template.*
 import st.orm.template.impl.ModelImpl
@@ -110,8 +108,6 @@ internal class EntityRepositoryImpl<E, ID : Any>(
     override fun pageRef(pageNumber: Int, pageSize: Int): Page<Ref<E>> = core.pageRef(pageNumber, pageSize)
 
     override fun pageRef(pageable: Pageable): Page<Ref<E>> = core.pageRef(pageable)
-
-    override fun scroll(scrollable: Scrollable<E>): Window<E> = select().scroll(scrollable)
 
     override fun findById(id: ID): E? = core.findById(id).orElse(null)
 

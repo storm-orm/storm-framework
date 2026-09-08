@@ -27,6 +27,7 @@ import static st.orm.core.template.TemplateString.wrap;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 import java.util.function.Function;
 import java.util.function.Supplier;
 import org.jspecify.annotations.Nullable;
@@ -98,6 +99,11 @@ abstract class QueryBuilderImpl<T extends Data, R, ID> extends QueryBuilder<T, R
      *
      * @return the FROM clause data type.
      */
+    @Override
+    protected Optional<Metamodel<T, ?>> getPrimaryKeyMetamodel() {
+        return modelSupplier.get().getPrimaryKeyMetamodel().map(metamodel -> metamodel);
+    }
+
     @Override
     protected Class<T> getFromType() {
         return fromType;

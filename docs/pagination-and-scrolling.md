@@ -163,6 +163,8 @@ Scrolling navigates sequentially using a cursor and returns a `Window<R>`. A `Wi
 
 Under the hood, scrolling uses keyset pagination: it remembers the last value seen on the current page and asks the database for rows after (or before) that value. This avoids the performance cliff of `OFFSET` on large tables, because the database can seek directly to the cursor position using an index.
 
+To walk every window of a result in one loop, use `windows(size)` or `windows(scrollable)` on the same builders and repositories: it returns a `Flow<Window<R>>` (Kotlin) or `Stream<Window<R>>` (Java) that follows the navigation tokens for you, one closed statement per window, and is the streaming form for loops that query or write per row. See [Batch Processing & Streaming: Windows](batch-streaming.md#windows).
+
 :::info Sort Stability
 Scrolling requires a stable sort order. The final sort column must be unique (typically the primary key). Using a non-unique sort column like `createdAt` without a tiebreaker will produce duplicate or missing rows at page boundaries. Use the [sort overload](#sorting-by-non-unique-columns) (`Scrollable.of(key, sort, size)`) when sorting by a non-unique column.
 :::

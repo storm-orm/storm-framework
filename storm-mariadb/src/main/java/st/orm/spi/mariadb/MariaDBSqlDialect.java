@@ -92,9 +92,11 @@ public class MariaDBSqlDialect extends MySQLSqlDialect {
     /**
      * Returns {@code false} because the positive fetch size is safe to apply universally.
      *
-     * <p>Unlike the MySQL Connector/J row-by-row streaming mode, the MariaDB batch fetch approach does not
-     * impose connection-level constraints, so it can be applied to both streaming and eager result
-     * consumption without a performance penalty.</p>
+     * <p>A positive fetch size costs eager consumption nothing: an eager read drains the result before it
+     * returns, so it never meets another statement. A result that stays open does: when another statement
+     * executes on the connection while a batched result is still being read, MariaDB Connector/J reads the rest
+     * of that result into memory first, where MySQL Connector/J rejects the statement. Storm refuses the nested
+     * statement itself, on every dialect, so the difference never reaches the application.</p>
      *
      * @return {@code false}.
      * @since 1.10

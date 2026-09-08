@@ -408,6 +408,23 @@ class QueryImpl implements Query {
         };
     }
 
+    /**
+     * Wraps the spliterator to release the stream guard once the rows are read to the end: a result that has been
+     * fully read blocks nothing on any driver, so the connection is free from that moment on, closed or not.
+     */
+    static <T> Spliterator<T> releasing(Spliterator<T> spliterator, StreamGuard.Handle guard) {
+        return new Spliterators.AbstractSpliterator<>(spliterator.estimateSize(), spliterator.characteristics()) {
+            @Override
+            public boolean tryAdvance(Consumer<? super T> action) {
+                boolean advanced = spliterator.tryAdvance(action);
+                if (!advanced) {
+                    guard.close();
+                }
+                return advanced;
+            }
+        };
+    }
+
     private static void observationError(Observation observation, Throwable throwable) {
         try {
             observation.error(throwable);
@@ -452,6 +469,7 @@ class QueryImpl implements Query {
             boolean close = true;
             try {
                 applyFetchSize(statement);
+                StreamGuard.check(statement, environment);
                 Runnable streamingCleanup = configureStreamingTransaction(statement);
                 ResultSet resultSet = statement.executeQuery();
                 if (observation instanceof ListenedObservation listened) {
@@ -465,10 +483,14 @@ class QueryImpl implements Query {
                     if (observation instanceof ListenedObservation listened) {
                         spliterator = counting(spliterator, listened);
                     }
+                    // The stream leaves this call with rows unread; the guard holds the connection consume-only
+                    // until the last row is read or the stream closes.
+                    var guard = StreamGuard.open(statement, environment);
                     return MonitoredResource.wrap(
-                            StreamSupport.stream(spliterator, false)
+                            StreamSupport.stream(releasing(spliterator, guard), false)
                                     .onClose(() -> {
                                         try {
+                                            guard.close();
                                             close(resultSet, statement, streamingCleanup);
                                         } finally {
                                             closeObservation(observation);
@@ -522,6 +544,7 @@ class QueryImpl implements Query {
             boolean close = true;
             try {
                 applyFetchSize(statement);
+                StreamGuard.check(statement, environment);
                 Runnable streamingCleanup = configureStreamingTransaction(statement);
                 ResultSet resultSet = statement.executeQuery();
                 if (observation instanceof ListenedObservation listened) {
@@ -537,10 +560,14 @@ class QueryImpl implements Query {
                 if (observation instanceof ListenedObservation listened) {
                     spliterator = counting(spliterator, listened);
                 }
+                // The stream leaves this call with rows unread; the guard holds the connection consume-only
+                // until the last row is read or the stream closes.
+                var guard = StreamGuard.open(statement, environment);
                 return MonitoredResource.wrap(
-                        StreamSupport.stream(spliterator, false)
+                        StreamSupport.stream(releasing(spliterator, guard), false)
                                 .onClose(() -> {
                                     try {
+                                        guard.close();
                                         close(resultSet, closeableStatement, streamingCleanup);
                                     } finally {
                                         closeObservation(observation);
@@ -614,6 +641,7 @@ class QueryImpl implements Query {
             boolean closeStatementHere = true;
             try {
                 applyFetchSize(statement);
+                StreamGuard.check(statement, environment);
                 Runnable streamingCleanup = configureStreamingTransaction(statement);
                 ResultSet resultSet = statement.executeQuery();
                 if (observation instanceof ListenedObservation listened) {
@@ -774,6 +802,7 @@ class QueryImpl implements Query {
             PreparedStatement statement = getStatement();
             try {
                 try {
+                    StreamGuard.check(statement, environment);
                     int result = statement.executeUpdate();
                     if (observation instanceof ListenedObservation listened) {
                         listened.executed();
@@ -839,6 +868,7 @@ class QueryImpl implements Query {
             PreparedStatement statement = getStatement();
             try {
                 try {
+                    StreamGuard.check(statement, environment);
                     int[] result = statement.executeBatch();
                     if (observation instanceof ListenedObservation listened) {
                         listened.executed();

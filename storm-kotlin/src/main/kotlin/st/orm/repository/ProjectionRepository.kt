@@ -822,6 +822,33 @@ public interface ProjectionRepository<P, ID : Any> : Repository where P : Projec
      * @since 1.11
      */
     public fun scroll(scrollable: Scrollable<P>): Window<P> = select().scroll(scrollable)
+
+    /**
+     * Iterates the projections in windows of [size] rows ordered by the primary key, each window one closed
+     * statement.
+     *
+     * Delegates to `select().windows(size)`. Between windows the connection is free, so the loop over a window may
+     * query, fetch references and write; a flow from `resultFlow` holds the connection consume-only instead. See
+     * [QueryBuilder.windows] for the key rules.
+     *
+     * @param size the maximum number of rows per window (must be positive).
+     * @return a flow of windows; each window's [Window.next] resumes the iteration after that window.
+     * @throws st.orm.PersistenceException if the projection has no single-column primary key.
+     * @since 1.14
+     */
+    public fun windows(size: Int): Flow<Window<P>> = select().windows(size)
+
+    /**
+     * Iterates the projections in windows described by the given scroll request, each window one closed statement.
+     *
+     * Delegates to `select().windows(scrollable)`. The request chooses the key, the sort field, the direction and
+     * the starting position, so a [Window.next] token from an earlier window resumes the iteration after it.
+     *
+     * @param scrollable the scroll request describing key, sort, size, direction and starting position.
+     * @return a flow of windows; each window's [Window.next] resumes the iteration after that window.
+     * @since 1.14
+     */
+    public fun windows(scrollable: Scrollable<P>): Flow<Window<P>> = select().windows(scrollable)
 }
 
 /**

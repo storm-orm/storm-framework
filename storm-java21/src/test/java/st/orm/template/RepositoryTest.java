@@ -6,6 +6,7 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static st.orm.template.Transactions.transaction;
 
 import java.time.LocalDate;
 import java.util.List;
@@ -22,6 +23,7 @@ import st.orm.NoResultException;
 import st.orm.NonUniqueResultException;
 import st.orm.Page;
 import st.orm.Pageable;
+import st.orm.PersistenceException;
 import st.orm.Ref;
 import st.orm.Scrollable;
 import st.orm.Window;
@@ -318,6 +320,59 @@ public class RepositoryTest {
     }
 
     @Test
+    public void testEntityWindows() {
+        var cities = orm.entity(City.class);
+        List<Window<City>> windows = cities.windows(4).toList();
+        assertEquals(cities.count(), windows.stream().mapToLong(window -> window.content().size()).sum());
+        assertTrue(windows.stream().allMatch(window -> window.content().size() <= 4));
+        assertFalse(windows.getLast().hasNext());
+        var ids = windows.stream().flatMap(window -> window.content().stream()).map(City::id).toList();
+        assertEquals(ids.stream().sorted().toList(), ids);
+    }
+
+    @Test
+    public void testEntityWindowsResumeFromToken() {
+        var cities = orm.entity(City.class);
+        Window<City> first = cities.windows(2).findFirst().orElseThrow();
+        var rest = cities.windows(first.next()).toList();
+        var restIds = rest.stream().flatMap(window -> window.content().stream()).map(City::id).toList();
+        assertEquals(cities.count() - 2, restIds.size());
+        assertTrue(restIds.stream().allMatch(id -> id > first.content().getLast().id()));
+    }
+
+    @Test
+    public void testStatementWhileStreamIsOpenInTransactionIsRefused() {
+        transaction(transaction -> {
+            var cities = orm.entity(City.class);
+            try (var stream = cities.select().getResultStream()) {
+                var exception = assertThrows(PersistenceException.class, () -> stream.forEach(city -> cities.count()));
+                assertTrue(exception.getMessage().contains("result stream is still open"), exception.getMessage());
+            }
+            // The stream is closed, so the connection is free again.
+            assertTrue(cities.count() > 0);
+            return null;
+        });
+    }
+
+    @Test
+    public void testWindowsInTransactionAllowStatementsPerWindow() {
+        transaction(transaction -> {
+            var cities = orm.entity(City.class);
+            // A query and a batched write per window, on the transaction's connection.
+            cities.windows(2).forEach(window -> {
+                assertTrue(cities.count() > 0);
+                cities.update(window.content().stream()
+                        .map(city -> new City(city.id(), city.name() + " (windowed)"))
+                        .toList());
+            });
+            assertTrue(cities.select().getResultList().stream().allMatch(city -> city.name().endsWith(" (windowed)")));
+            transaction.setRollbackOnly();
+            return null;
+        });
+        assertTrue(orm.entity(City.class).select().getResultList().stream().noneMatch(city -> city.name().endsWith(" (windowed)")));
+    }
+
+    @Test
     public void testEntityScrollBeforeByKey() {
         Window<City> window = orm.entity(City.class).scroll(Scrollable.of(City_.id, 3).backward());
         assertEquals(3, window.content().size());
@@ -408,6 +463,15 @@ public class RepositoryTest {
         Window<OwnerView> window = orm.projection(OwnerView.class).scroll(Scrollable.of(OwnerView_.id, 5));
         assertEquals(5, window.content().size());
         assertTrue(window.hasNext());
+    }
+
+    @Test
+    public void testProjectionWindows() {
+        var ownerViews = orm.projection(OwnerView.class);
+        List<Window<OwnerView>> windows = ownerViews.windows(5).toList();
+        assertEquals(2, windows.size());
+        assertEquals(ownerViews.count(), windows.stream().mapToLong(window -> window.content().size()).sum());
+        assertFalse(windows.getLast().hasNext());
     }
 
     @Test

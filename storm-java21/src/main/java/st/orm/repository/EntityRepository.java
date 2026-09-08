@@ -1053,6 +1053,40 @@ public interface EntityRepository<E extends Entity<ID>, ID> extends Repository {
         return select().scroll(scrollable);
     }
 
+    /**
+     * Iterates the entities in windows of {@code size} rows ordered by the primary key, each window one closed
+     * statement.
+     *
+     * <p>This is a convenience method that delegates to {@code select().windows(size)}. Between windows the
+     * connection is free, so the loop over a window may query, fetch references and write; a stream from
+     * {@code getResultStream()} holds the connection consume-only instead. See
+     * {@link st.orm.template.QueryBuilder#windows(int)} for the key rules.</p>
+     *
+     * @param size the maximum number of rows per window (must be positive).
+     * @return a stream of windows; each window's {@link Window#next()} resumes the iteration after that window.
+     * @throws PersistenceException if the entity has no single-column primary key.
+     * @since 1.14
+     */
+    default Stream<Window<E>> windows(int size) {
+        return select().windows(size);
+    }
+
+    /**
+     * Iterates the entities in windows described by the given scroll request, each window one closed statement.
+     *
+     * <p>This is a convenience method that delegates to {@code select().windows(scrollable)}. The request chooses
+     * the key, the sort field, the direction and the starting position, so a {@link Window#next()} token from an
+     * earlier window resumes the iteration after it.</p>
+     *
+     * @param scrollable the scroll request describing key, sort, size, direction and starting position.
+     * @return a stream of windows; each window's {@link Window#next()} resumes the iteration after that window.
+     * @throws PersistenceException if the query fails due to underlying database issues.
+     * @since 1.14
+     */
+    default Stream<Window<E>> windows(Scrollable<E> scrollable) {
+        return select().windows(scrollable);
+    }
+
     // List based methods.
 
     /**

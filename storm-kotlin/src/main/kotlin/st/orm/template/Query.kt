@@ -190,6 +190,11 @@ public interface Query {
      * are consumed by the stream. This approach is efficient and minimizes the memory footprint, especially when
      * dealing with large volumes of records.
      *
+     * The stream is one open statement on the connection it reads from, and that connection is consume-only until
+     * the stream is read to its end or closed: inside a transaction every statement shares the transaction's
+     * connection, so a query, a `Ref.fetch()` or a write issued while rows remain unread is refused with a
+     * [PersistenceException], on every database. Outside a transaction the stream holds a connection of its own for as long as it is open.
+     *
      * **Note:** Calling this method does trigger the execution of the underlying query, so it should
      * only be invoked when the query is intended to run. Since the stream holds resources open while in use, it must be
      * closed after usage to prevent resource leaks. As the stream is `AutoCloseable`, it is recommended to use it
@@ -206,6 +211,12 @@ public interface Query {
      *
      * Each element in the flow represents a row in the result, where the columns of the row corresponds to the
      * order of values in the row array.
+     *
+     * The flow is cold: the query executes when the flow is collected, rows are read from the database as they are
+     * emitted, and the statement closes when collection completes or is cancelled. While rows remain to be
+     * emitted the flow is one open statement on its connection, and that connection is consume-only: inside a
+     * transaction a query, a `Ref.fetch()` or a write issued from the collector is refused with a
+     * [PersistenceException], on every database.
      *
      * @return a flow of results.
      * @throws st.orm.PersistenceException if the query operation fails due to underlying database issues, such as
@@ -225,6 +236,11 @@ public interface Query {
      * are consumed by the stream. This approach is efficient and minimizes the memory footprint, especially when
      * dealing with large volumes of records.
      *
+     * The stream is one open statement on the connection it reads from, and that connection is consume-only until
+     * the stream is read to its end or closed: inside a transaction every statement shares the transaction's
+     * connection, so a query, a `Ref.fetch()` or a write issued while rows remain unread is refused with a
+     * [PersistenceException], on every database. Outside a transaction the stream holds a connection of its own for as long as it is open.
+     *
      * **Note:** Calling this method does trigger the execution of the underlying query, so it should
      * only be invoked when the query is intended to run. Since the stream holds resources open while in use, it must be
      * closed after usage to prevent resource leaks. As the stream is `AutoCloseable`, it is recommended to use it
@@ -241,6 +257,12 @@ public interface Query {
      *
      * Each element in the flow represents a row in the result, where the columns of the row are mapped to the
      * constructor arguments of the specified `type`.
+     *
+     * The flow is cold: the query executes when the flow is collected, rows are read from the database as they are
+     * emitted, and the statement closes when collection completes or is cancelled. While rows remain to be
+     * emitted the flow is one open statement on its connection, and that connection is consume-only: inside a
+     * transaction a query, a `Ref.fetch()` or a write issued from the collector is refused with a
+     * [PersistenceException], on every database.
      *
      * @return a flow of results.
      * @throws st.orm.PersistenceException if the query operation fails due to underlying database issues, such as

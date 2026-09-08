@@ -744,6 +744,8 @@ Map<Ref<Pet>, List<Visit>> visitsByPet = orm.entity(Visit.class)
 
 For large result sets, use `select().resultFlow`, which returns a Kotlin `Flow<T>`. Rows are fetched lazily from the database as you collect, so memory usage stays constant regardless of result set size. Flow also handles resource cleanup automatically when collection completes or is cancelled.
 
+While rows remain to be emitted, the flow is one open statement and its connection is consume-only: a query, a `Ref.fetch()` or a write from inside the collector is refused inside a transaction, on every database. A loop that needs the database iterates in windows with `select().windows(size)`, one closed statement per window; see [Batch Processing & Streaming](batch-streaming.md#streaming).
+
 ```kotlin
 val users: Flow<User> = orm.entity<User>().select().resultFlow
 
@@ -767,6 +769,8 @@ try (Stream<User> users = orm.entity(User.class).select().getResultStream()) {
     List<String> emails = users.map(User::email).toList();
 }
 ```
+
+While rows remain unread, the stream is one statement and its connection is consume-only: a query, a `Ref.fetch()` or a write from inside the loop is refused inside a transaction, on every database. A loop that needs the database iterates in windows with `select().windows(size)`, one closed statement per window and nothing to close; see [Batch Processing & Streaming](batch-streaming.md#streaming).
 
 </TabItem>
 </Tabs>

@@ -206,6 +206,12 @@ public interface Query {
      * are consumed by the stream. This approach is efficient and minimizes the memory footprint, especially when
      * dealing with large volumes of records.</p>
      *
+     * <p>The stream is one open statement on the connection it reads from, and that connection is consume-only
+     * until the stream is read to its end or closed: inside a transaction every statement shares the transaction's
+     * connection, so a query, a {@code Ref.fetch()} or a write issued while rows remain unread is refused with a
+     * {@link PersistenceException}, on every database. Outside a transaction the stream holds a connection of its
+     * own for as long as it is open.</p>
+     *
      * <p><strong>Note:</strong> Calling this method does trigger the execution of the underlying query, so it should
      * only be invoked when the query is intended to run. Since the stream holds resources open while in use, it must be
      * closed after usage to prevent resource leaks. As the stream is {@code AutoCloseable}, it is recommended to use it
@@ -226,6 +232,12 @@ public interface Query {
      * <p>The resulting stream is lazily loaded, meaning that the records are only retrieved from the database as they
      * are consumed by the stream. This approach is efficient and minimizes the memory footprint, especially when
      * dealing with large volumes of records.</p>
+     *
+     * <p>The stream is one open statement on the connection it reads from, and that connection is consume-only
+     * until the stream is read to its end or closed: inside a transaction every statement shares the transaction's
+     * connection, so a query, a {@code Ref.fetch()} or a write issued while rows remain unread is refused with a
+     * {@link PersistenceException}, on every database. Outside a transaction the stream holds a connection of its
+     * own for as long as it is open.</p>
      *
      * <p><strong>Note:</strong> Calling this method does trigger the execution of the underlying query, so it should
      * only be invoked when the query is intended to run. Since the stream holds resources open while in use, it must be

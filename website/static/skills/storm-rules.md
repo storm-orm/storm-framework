@@ -35,6 +35,7 @@ The setup and repository skills listed below carry the per-framework entry point
 - **Write template expressions as lambdas** (`{ "..." }`) in Kotlin, or `RAW."""..."""` in Java. Never construct `TemplateString.raw()`.
 - **Reference columns through the metamodel** (`User_.email`), including inside templates, rather than hardcoding column names.
 - **Keep one API style per snippet.** In Kotlin, prefer the reified forms (`orm.entity<User>()`, `.innerJoin<X>().on<Y>()`, `resultList<T>()`), and never mix reified and `::class` styles within one query or code block.
+- **A result flow or stream is consume-only while it has rows left.** `resultFlow` / `getResultStream()` is one open statement; inside a transaction a query, a `Ref.fetch()` or a write from the loop throws, on every database, and so does a batched write fed by that flow or stream once a batch runs while rows remain. A loop that needs the database iterates with `windows(size)`: keyset windows over the primary key, one closed statement per window, the connection free in between, one batched write per window. Details in /storm-query-kotlin and /storm-query-java under "Flows and the Connection" / "Streams and the Connection".
 
 Use /storm-setup when the project has no Storm dependencies in its build file yet.
 

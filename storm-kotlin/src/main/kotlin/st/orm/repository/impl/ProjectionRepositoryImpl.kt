@@ -112,6 +112,4 @@ internal class ProjectionRepositoryImpl<P, ID : Any>(
     override fun pageRef(pageNumber: Int, pageSize: Int): Page<Ref<P>> = core.pageRef(pageNumber, pageSize)
 
     override fun pageRef(pageable: Pageable): Page<Ref<P>> = core.pageRef(pageable)
-
-    override fun scroll(scrollable: Scrollable<P>): Window<P> = select().scroll(scrollable)
 }

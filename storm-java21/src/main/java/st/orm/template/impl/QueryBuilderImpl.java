@@ -607,6 +607,16 @@ public final class QueryBuilderImpl<T extends Data, R, ID> extends QueryBuilder<
     }
 
     @Override
+    public Stream<Window<R>> windows(int size) {
+        return core.windows(size);
+    }
+
+    @Override
+    public Stream<Window<R>> windows(Scrollable<T> scrollable) {
+        return core.windows(scrollable);
+    }
+
+    @Override
     public TemplateString getSubquery() {
         return ((Subqueryable) core).getSubquery();
     }

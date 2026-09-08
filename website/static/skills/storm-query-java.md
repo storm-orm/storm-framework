@@ -41,7 +41,7 @@ Repository/entity methods fall into two categories:
 
 (The `select(predicate)` / `delete(predicate)` shorthands are Kotlin-only — in Java, chain `.where(...)` on the builder.)
 
-Terminal operations: `.getResultList()`, `.getSingleResult()`, `.getOptionalResult()`, `.getResultStream()`, `.getResultCount()`, `.getResultGroupedBy(path)`, `.getResultGroupedByRef(path)`, `.page()`, `.scroll()`, `.executeUpdate()`
+Terminal operations: `.getResultList()`, `.getSingleResult()`, `.getOptionalResult()`, `.getResultStream()`, `.windows(size)`, `.getResultCount()`, `.getResultGroupedBy(path)`, `.getResultGroupedByRef(path)`, `.page()`, `.scroll()`, `.executeUpdate()`
 
 **One-to-many loading:** `getResultGroupedBy(path)` groups results by a related record, typically the parent entity of a foreign key. The same select is executed (single query, no SQL change) and the results are grouped during hydration into an unmodifiable, insertion-ordered `Map<Parent, List<T>>`. Repeated parents are materialized once and grouped by instance identity, so the join's duplication is not paid during hydration. The path must resolve non-null for every result. The ref-based variant returns `Map<Ref<Parent>, List<T>>` with keys compared by primary key. For eager entity paths the keys are loaded refs (`getOrNull()` returns the already-materialized record); for `Ref` foreign-key fields it groups directly on the foreign key without fetching the parent, and `findAllByRef(map.keys)` fetches the parents in one query when needed.
 
@@ -79,7 +79,7 @@ Prefer the simplest approach that works. Three query levels, from simplest to mo
 | Parents with their children (one-to-many) | `select().getResultGroupedBy(parentPath)` | per-parent queries in a loop (N+1) or manual grouping after `getResultList()` |
 | Filtered + **ordering/pagination** | `select().where(...).orderBy(...).getResultList()` | convenience methods (can't add ordering) |
 | Filtered + **joins** | `select().innerJoin(...).on(...).getResultList()` | convenience methods (can't add joins) |
-| Filtered + **streaming** | `select().where(...).getResultStream()` | convenience methods (return List, not Stream) |
+| Filtered + **streaming** | `select().where(...).getResultStream()` (consume-only) or `.windows(size)` (loop may query/write) | convenience methods (return List, not Stream) |
 | Aggregates, CTEs, window functions | SQL Template (/storm-sql-java) | QueryBuilder (can't express these) |
 
 The rule: **escalate only when the simpler level cannot express what you need.** If you need ordering, you need Level 2. If you need CTEs or window functions, you need Level 3.
@@ -116,6 +116,8 @@ Ordering: `.orderBy(User_.name)`, `.orderByDescending(User_.createdAt)`
 Limit/Offset: `.limit(10)`, `.offset(20)`
 Pagination: `.page(0, 20)` or `.page(Pageable.ofSize(20).sortBy(User_.name))`
 Scrolling (keyset): `.scroll(Scrollable.of(User_.id, 20))` — do NOT combine with `orderBy()` (Scrollable manages ORDER BY internally, see Keyset Scrolling section)
+
+Streaming: `.getResultStream()` is one open statement; while rows remain unread its connection is consume-only, so inside a transaction a query, `Ref.fetch()` or write from the loop throws `PersistenceException`, on every database. A loop that reads or writes per row uses `.windows(size)` (`Stream<Window<R>>`): keyset windows over the primary key, one closed statement per window, the connection is free between windows, nothing to close; write per window with `update(window.content().stream().map(...).toList())`.
 Explicit joins: `.innerJoin(Entity.class).on(OtherEntity.class)`, `.leftJoin(Entity.class).on(OtherEntity.class)`, `.rightJoin(Entity.class).on(OtherEntity.class)`
 **Auto-join types follow FK nullability.** A `@FK` record component is non-null by default, so its auto-join is an INNER JOIN. Mark the component `@Nullable` (JSpecify `org.jspecify.annotations.Nullable` or `jakarta.annotation.Nullable`) when the FK column allows NULL; that produces a LEFT JOIN. If generated SQL shows INNER JOIN where you expect LEFT JOIN, the FK component is missing `@Nullable` in the entity.
 Result type: `.select(ResultType.class)` to return a different type than the root entity. **Cross-entity pitfall:** Selecting a different entity type from the wrong root repository can fail with "Cannot find alias for column" when both entities have columns with the same name (e.g., `id`). Put the query on the target entity's repository instead.
@@ -510,6 +512,46 @@ When you only have an ID (e.g., from a URL parameter), create a `Ref` — don't 
 .where(User_.city, EQUALS, Ref.of(City.class, cityId))   // ✅
 // ❌ new City(cityId, "", null)
 ```
+
+## Streams and the Connection
+
+A `getResultStream()` is one open statement. While it still has unread rows, the connection it reads from is consume-only, on every database. Inside a transaction every statement shares the transaction's connection, so these all throw `PersistenceException` from the loop:
+
+```java
+transaction(tx -> {
+    try (var stream = users.select().getResultStream()) {
+        stream.forEach(user -> {
+            users.update(...);        // ❌ write while the stream has rows left
+            user.city().fetch();      // ❌ Ref.fetch() is a statement too
+            cities.count();           // ❌ any query
+        });
+    }
+    users.update(users.select().getResultStream());   // ❌ batched write fed by a stream of the same transaction
+    return null;
+});
+```
+
+The last line is the trap that passes small tests: a batch that executes after the stream has been read to its end is allowed, and a batch that executes while rows remain is refused, so the outcome depends on batch size versus row count. Never feed a `getResultStream()` of the current transaction into `insert`, `update`, `upsert`, `remove`, `removeByRef`, `insertAndFetch` or `countById`. Feed them an in-memory stream, or iterate in windows.
+
+`windows(size)` is the shape for a loop that needs the database. Each window is fetched by one statement that has closed before the window is handed over, there is nothing to close, and one batched write per window costs one statement rather than one per row:
+
+```java
+transaction(tx -> {
+    users.select().where(User_.active, EQUALS, true).windows(1000).forEach(window ->
+        users.update(window.content().stream().map(user -> /* copy with changes */ user).toList()));
+    return null;
+});
+
+// Resume after a restart from a stored cursor:
+users.windows(Scrollable.fromCursor(User_.id, storedCursor)).forEach(window -> {
+    process(window.content());
+    store(window.nextCursor());
+});
+```
+
+Rules for `windows`: the key is the primary key (or the `Scrollable`'s key), which must be a non-null single column; no `orderBy()` on the query; the result type must be the entity (`selectRef()` and custom select types are refused). Each window is its own statement and sees the committed state at that moment.
+
+What stays fine with `getResultStream()`: consuming it (`forEach`, `toList()`, `count()`, `map`, `filter`), stopping early (`findFirst()`, `limit(n)`, then closing it), and, once it has been read to its end, any statement. A `Ref` the loop needs is loaded by naming it in the fetch plan (`select().fetch(...)`) instead of calling `fetch()` per row. Outside a transaction a stream holds a pooled connection of its own until it is closed.
 
 ## Result Retrieval
 

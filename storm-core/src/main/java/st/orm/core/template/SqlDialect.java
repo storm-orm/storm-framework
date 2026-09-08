@@ -549,6 +549,11 @@ public interface SqlDialect {
      * JDBC driver fetches from the database at a time. A value of {@code 0} (the default) leaves the fetch size
      * unset, deferring to driver defaults.</p>
      *
+     * <p>The fetch size decides how a result stream reads its rows, not what the connection may do meanwhile.
+     * Drivers differ there: some interleave a second statement with the open result, some reject it, and some
+     * read the rest of the open result into memory first. Storm refuses a statement on a connection with an
+     * open result stream on every dialect, so streaming code behaves the same on each of them.</p>
+     *
      * @return the default fetch size.
      * @since 1.10
      */

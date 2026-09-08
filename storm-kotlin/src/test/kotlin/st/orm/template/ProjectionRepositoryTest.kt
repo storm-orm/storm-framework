@@ -764,6 +764,13 @@ internal open class ProjectionRepositoryTest(
     }
 
     @Test
+    fun `windows should emit projection windows in key order`(): Unit = runBlocking {
+        val windows = orm.projection(OwnerView::class).windows(4).toList()
+        windows.map { it.content().size } shouldBe listOf(4, 4, 2)
+        windows.flatMap { it.content() }.map { it.id } shouldBe (1..10).toList()
+    }
+
+    @Test
     fun `scroll with large size should not have next`() {
         val repo = orm.projection(OwnerView::class)
         val idPath = metamodel<OwnerView, Int>(repo.model, "id")

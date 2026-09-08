@@ -34,7 +34,7 @@ Even in full SQL templates, users still benefit from bind variables (`$value`) a
 - Regular joins — use `innerJoin()`, `leftJoin()`, etc. on QueryBuilder
 - Filtering — use `where()` with metamodel predicates or convenience methods (`findAll`, `find`)
 - Ordering — use `orderBy()`, `orderByDescending()`
-- Pagination, scrolling — use `page()`, `scroll()`
+- Pagination, scrolling, window iteration — use `page()`, `scroll()`, `windows()`
 - Simple CRUD — use `find`, `findAll`, `remove`, `removeAll`, `insert`, `update`
 
 **Mutations bypass dirty checking.** Entity updates through repositories compare against the
