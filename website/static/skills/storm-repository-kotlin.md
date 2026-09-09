@@ -611,6 +611,8 @@ val refSlice: Slice<Ref<User>> = users.sliceRef(0, 20)
 val window = users.scroll(Scrollable.of(User_.id, 20))
 
 // Sort fields before the key, in any number, each in its own direction; descending() flips the key
+// ⚠️ Sort fields must be non-nullable too: a NULL never compares, so such a row would fall out of
+//    every window; Storm throws a PersistenceException rather than skip it silently.
 val window = users.scroll(Scrollable.of(User_.id, 20).sortBy(User_.email))
 val latest = users.scroll(Scrollable.of(Post_.id, 20).sortByDescending(Post_.createdAt).descending())
 

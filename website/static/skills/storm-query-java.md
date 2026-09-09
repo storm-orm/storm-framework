@@ -427,7 +427,7 @@ users.select()
     .scroll(Scrollable.of(User_.id, 20).sortBy(User_.email));
 ```
 
-**Ordering:** `Scrollable.of(key, size)` orders by the key ascending. `sortBy(field)` / `sortByDescending(field)` add sort fields before the key, in any number, each in its own direction; `descending()` orders the key itself descending. Sort fields must be non-nullable. A newest-first feed is `Scrollable.of(Post_.id, 20).sortByDescending(Post_.createdAt).descending()`.
+**Ordering:** `Scrollable.of(key, size)` orders by the key ascending. `sortBy(field)` / `sortByDescending(field)` add sort fields before the key, in any number, each in its own direction; `descending()` orders the key itself descending. **Sort fields must be non-nullable**, checked the way the key is: a NULL never compares, so such a row would fall out of every window, and Storm throws a `PersistenceException` rather than paginate over rows it would silently skip. A date or status column is the usual sort field and the usual place a nullable type slips in. A newest-first feed is `Scrollable.of(Post_.id, 20).sortByDescending(Post_.createdAt).descending()`.
 
 **Every window is in sort order.** `window.previous()` returns the window before this one in the same order as `window.next()` returns the one after it; never reverse a window for display. `hasNext()` / `hasPrevious()` say whether rows existed after / before the window at query time; the tokens are non-null whenever the window has content, and following one is always allowed.
 

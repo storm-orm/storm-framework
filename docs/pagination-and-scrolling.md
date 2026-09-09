@@ -233,7 +233,7 @@ Under the hood, scrolling remembers the row a window ended on and asks the datab
 A scroll request is a `Scrollable`: an ordering, a window size, and optionally the position to continue from.
 
 - **The key** is a unique, non-nullable field, typically the primary key. It orders last, breaks ties, and makes every row addressable. Fields annotated with `@UK` or `@PK` generate a `Metamodel.Key`; see [Metamodel](metamodel.md#unique-keys-uk-and-metamodelkey).
-- **Sort fields** order before the key, each in its own direction, and must not allow NULL values.
+- **Sort fields** order before the key, each in its own direction, and must not allow NULL values. A NULL never compares, so a row whose sort value is NULL would fall out of every window rather than appear in one of them. Scrolling checks a sort field the way it checks the key and throws a `PersistenceException`, rather than paginate over rows it would silently skip. A date or a status is the usual thing to sort by, and those are also the columns most often left nullable, so make the field non-nullable before scrolling by it.
 - **The position** names a row by its sort and key values, and says whether to continue after it or before it. It is what a `Window` hands back as `next()` and `previous()`, and what a cursor string carries across a network boundary. Like the cursor, it is opaque: the application states it through `after`, `before` or `from`, and the engine reads the row it names.
 
 <Tabs groupId="language">
