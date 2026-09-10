@@ -27,6 +27,7 @@ import st.orm.Metamodel;
 import st.orm.Page;
 import st.orm.Pageable;
 import st.orm.Ref;
+import st.orm.Slice;
 import st.orm.repository.EntityRepository;
 import st.orm.template.Model;
 import st.orm.template.ORMTemplate;
@@ -244,6 +245,26 @@ public final class EntityRepositoryImpl<E extends Entity<ID>, ID> implements Ent
     @Override
     public Page<Ref<E>> pageRef(Pageable pageable) {
         return core.pageRef(pageable);
+    }
+
+    @Override
+    public Slice<E> slice(int pageNumber, int pageSize) {
+        return core.slice(pageNumber, pageSize);
+    }
+
+    @Override
+    public Slice<E> slice(Pageable pageable) {
+        return core.slice(pageable);
+    }
+
+    @Override
+    public Slice<Ref<E>> sliceRef(int pageNumber, int pageSize) {
+        return core.sliceRef(pageNumber, pageSize);
+    }
+
+    @Override
+    public Slice<Ref<E>> sliceRef(Pageable pageable) {
+        return core.sliceRef(pageable);
     }
 
     @Override

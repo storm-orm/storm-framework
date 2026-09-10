@@ -30,19 +30,19 @@ const SQL_JPA_PAGE = [
 const CODE_STORM_PAGE = [
   K('val '), P('pageable = '), T('Pageable'), P('.'), F('ofSize'), P('('), N('10'), P(').'), F('sortBy'), P('('), T('User_'), P('.createdAt)   '), C('// type-checked sort\n\n'),
   K('val '), P('page = orm.'), F('entity'), P('<'), T('User'), P('>().'), F('select'), P('()\n'),
-  P('    .'), F('where'), P('('), T('User_'), P('.active, '), T('EQUALS'), P(', '), K('true'), P(')\n'),
+  P('    .'), F('where'), P('('), T('User_'), P('.city, '), T('EQUALS'), P(', city)\n'),
   P('    .'), F('page'), P('(pageable)\n\n'),
   P('page.content          '), C('// the rows\n'),
   P('page.totalCount       '), C('// total matches\n'),
   P('page.'), F('totalPages'), P('()     '), C('// computed\n'),
-  P('page.'), F('nextPageable'), P('()   '), C('// sort orders carry over'),
+  P('page.'), F('next'), P('()           '), C('// sort orders carry over'),
 ].join('');
 
 const SQL_STORM_PAGE = [
   QC('-- page(): a count and a data query, classic offset pagination'), '\n',
-  QK('SELECT COUNT'), '(*) ', QK('FROM'), ' "user" u ', QK('WHERE'), ' u.active = ', QQ('?'), '\n',
+  QK('SELECT COUNT'), '(*) ', QK('FROM'), ' "user" u ', QK('WHERE'), ' u.city_id = ', QQ('?'), '\n',
   QK('SELECT'), ' u.id, u.email, u.name ', QK('FROM'), ' "user" u\n',
-  QK('WHERE'), ' u.active = ', QQ('?'), ' ', QK('ORDER BY'), ' u.created_at ', QK('LIMIT'), ' ', QQ('10'), ' ', QK('OFFSET'), ' ', QQ('?'),
+  QK('WHERE'), ' u.city_id = ', QQ('?'), ' ', QK('ORDER BY'), ' u.created_at ', QK('LIMIT'), ' ', QQ('10'), ' ', QK('OFFSET'), ' ', QQ('?'),
 ].join('');
 
 const CODE_STORM_SCROLL = [
@@ -51,8 +51,8 @@ const CODE_STORM_SCROLL = [
   K('val '), P('first = users.'), F('select'), P('().'), F('scroll'), P('('), T('Scrollable'), P('.'), F('of'), P('('), T('User_'), P('.id, '), N('10'), P('))\n'),
   F('render'), P('(first.'), F('content'), P('())\n\n'),
   C('// Next window: seeks straight to the cursor position\n'),
-  P('first.'), F('next'), P('()?.'), F('let'), P(' { cursor ->\n'),
-  P('    '), K('val '), P('second = users.'), F('select'), P('().'), F('scroll'), P('(cursor)\n'),
+  P('first.'), F('next'), P('()?.'), F('let'), P(' { request ->\n'),
+  P('    '), K('val '), P('second = users.'), F('select'), P('().'), F('scroll'), P('(request)\n'),
   P('}'),
 ].join('');
 
@@ -69,7 +69,7 @@ const CODE_STORM_CURSOR = [
   C('// Serialize the position into an opaque string for the client\n'),
   K('val '), P('cursor: '), T('String'), P('? = window.'), F('nextCursor'), P('()\n\n'),
   C('// The client sends it back; reconstruct the position and continue\n'),
-  K('val '), P('scrollable = '), T('Scrollable'), P('.'), F('fromCursor'), P('('), T('User_'), P('.id, cursor)\n'),
+  K('val '), P('scrollable = '), T('Scrollable'), P('.'), F('of'), P('('), T('User_'), P('.id, '), N('10'), P(').'), F('from'), P('(cursor)\n'),
   K('val '), P('next = users.'), F('scroll'), P('(scrollable)'),
 ].join('');
 
@@ -93,12 +93,12 @@ ${navHtml('tutorials')}
   <h2><span class="hno">03</span>Classic pages, typed</h2>
   <p>When the UI genuinely needs page numbers and totals, Storm's <code>page()</code> works the way you expect, with the sort expressed against the metamodel instead of a string:</p>
   ${editor({file: 'UserService.kt', tag: 'Kotlin · Storm', code: CODE_STORM_PAGE, sql: SQL_STORM_PAGE})}
-  <p>Sort orders attach to the <code>Pageable</code> and carry over automatically when you navigate with <code>nextPageable()</code>, so page 2 cannot accidentally sort differently from page 1.</p>
+  <p>Sort orders attach to the <code>Pageable</code> and carry over automatically when you navigate with <code>next()</code>, so page 2 cannot accidentally sort differently from page 1.</p>
 
   <h2><span class="hno">04</span>Keyset scrolling</h2>
   <p>For feeds and load-more lists, <code>scroll()</code> replaces offsets with a cursor: it remembers the last key seen and asks the database for rows after it. The database seeks via the index instead of scanning:</p>
   ${editor({file: 'FeedService.kt', tag: 'Kotlin · Storm', code: CODE_STORM_SCROLL, sql: SQL_STORM_SCROLL})}
-  <p>The <code>Scrollable</code> key is a typed metamodel reference, and it must be unique so the sort is stable; sorting by a non-unique column takes an explicit sort overload with the key as tiebreaker. Two guardrails are built in: adding your own <code>orderBy()</code> to a scrolled query is rejected at runtime instead of silently corrupting page boundaries, and there is deliberately no total count, because counting a large filtered set on every request is exactly the cost scrolling exists to avoid.</p>
+  <p>The <code>Scrollable</code> key is a typed metamodel reference, and it must be unique so the sort is stable; sorting by non-unique columns adds them with <code>sortBy</code>, in any number and each in its own direction, with the key as tiebreaker. Two guardrails are built in: adding your own <code>orderBy()</code> to a scrolled query is rejected at runtime instead of silently corrupting page boundaries, and there is deliberately no total count, because counting a large filtered set on every request is exactly the cost scrolling exists to avoid.</p>
 
   <h2><span class="hno">05</span>Cursors for REST APIs</h2>
   <p>Scroll state usually needs to cross a network boundary. <code>Window</code> serializes its position to an opaque cursor string, and a <code>Scrollable</code> reconstructs from it:</p>
@@ -109,9 +109,9 @@ ${navHtml('tutorials')}
   <table class="cmp">
     <tr><th></th><th>Spring Data JPA</th><th>Storm</th></tr>
     <tr><td>Deep pages</td><td><code>OFFSET</code> walks and discards rows; keyset available via <code>ScrollPosition</code></td><td>Keyset scrolling seeks via the index</td></tr>
-    <tr><td>Total count</td><td><code>Page</code> counts on every request; <code>Slice</code> drops it</td><td><code>page()</code> includes it; <code>scroll()</code> skips it by design</td></tr>
+    <tr><td>Total count</td><td><code>Page</code> counts on every request; <code>Slice</code> drops it</td><td><code>page()</code> includes it; <code>slice()</code> and <code>scroll()</code> skip it</td></tr>
     <tr><td>Sort specification</td><td>Property name strings</td><td>Metamodel references, checked at compile time</td></tr>
-    <tr><td>REST cursors</td><td>Hand-rolled serialization</td><td><code>nextCursor()</code> and <code>Scrollable.fromCursor()</code> built in</td></tr>
+    <tr><td>REST cursors</td><td>Hand-rolled serialization</td><td><code>nextCursor()</code> and <code>Scrollable.from()</code> built in</td></tr>
   </table>
 
   <h2><span class="hno">07</span>Keep going</h2>

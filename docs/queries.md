@@ -260,7 +260,7 @@ Multiple `where()` calls on the same query builder are combined with AND. This l
 ```kotlin
 val results = orm.entity<User>()
     .select()
-    .where(User_.active eq true)
+    .where(User_.email like "%@example.com")
     .where(User_.city eq city)           // AND-combined with previous where
     .resultList
 ```
@@ -270,8 +270,8 @@ Builder-style `where()` calls (with `and`/`or` predicates) compose with other `w
 ```kotlin
 val results = orm.entity<User>()
     .select()
-    .where(User_.active eq true)
-    .where(                              // AND-combined with the active filter above
+    .where(User_.email like "%@example.com")
+    .where(                              // AND-combined with the email filter above
         (User_.role eq adminRole) or (User_.role eq superUserRole)
     )
     .resultList
@@ -283,7 +283,7 @@ val results = orm.entity<User>()
 ```java
 List<User> results = orm.entity(User.class)
     .select()
-    .where(User_.active, EQUALS, true)
+    .where(User_.email, LIKE, "%@example.com")
     .where(User_.city, EQUALS, city)     // AND-combined with previous where
     .getResultList();
 ```
@@ -293,8 +293,8 @@ Builder-style `where()` calls (with `and`/`or` predicates) compose with other `w
 ```java
 List<User> results = orm.entity(User.class)
     .select()
-    .where(User_.active, EQUALS, true)
-    .where(it -> it.where(User_.role, EQUALS, adminRole)  // AND-combined with active filter
+    .where(User_.email, LIKE, "%@example.com")
+    .where(it -> it.where(User_.role, EQUALS, adminRole)  // AND-combined with the email filter
             .or(it.where(User_.role, EQUALS, superUserRole)))
     .getResultList();
 ```
@@ -563,15 +563,16 @@ clause filters groups, so the id, ref and record matching that `where()`'s build
 
 ## Data Retrieval Strategies
 
-When working with large result sets, Storm supports three strategies for retrieving subsets: manual offset/limit, offset-based pagination, and cursor-based scrolling.
+When working with large result sets, Storm reads them in parts: a slice, a page, a window, or a stream of windows. `offset()` and `limit()` on the query builder remain the manual baseline they build on.
 
-| Strategy | Navigation | Result type | Typical use |
-|----------|------------|-------------|-------------|
-| **Offset and Limit** | manual | `List<R>` | simple queries with known bounds |
-| **Pagination** | page number | `Page<R>` | UI lists, reports |
-| **Scrolling** | sequential cursor | `Window<T>` | infinite scroll, batch processing |
+| Read | Method | Result type | Count query | Typical use |
+|------|--------|-------------|-------------|-------------|
+| **Slice** | `slice(pageable)` | `Slice<R>` | no | "load more" without a total, queries without a unique key |
+| **Page** | `page(pageable)` | `Page<R>` | yes | numbered pages, reports |
+| **Scroll** | `scroll(scrollable)` | `Window<R>` | no | infinite scroll, REST cursors |
+| **Windows** | `windows(size)` | `Stream<Window<R>>` or `Flow<Window<R>>` | no | batch jobs that write while they read |
 
-**Pagination** navigates by page number and includes a total count. It uses SQL `OFFSET` under the hood, which degrades on large tables. **Scrolling** uses keyset pagination for constant-time performance regardless of depth, but only supports sequential forward/backward navigation.
+**Slice** and **Page** navigate by offset, which the database pays for by scanning the skipped rows, so both degrade on large tables; a page adds a total count, a slice does not. **Scroll** and **Windows** navigate by keyset for constant cost at any depth, but move forward or backward from the current window only, and need a unique key.
 
 For detailed usage, sorting, composite scrolling, `Window` type parameters, GROUP BY with scrolling, and REST cursor support, see [Pagination and Scrolling](pagination-and-scrolling.md).
 
@@ -588,9 +589,14 @@ val results = orm.entity<User>().select()
     .offset(20).limit(10)
     .resultList
 
+// Slice: a page without the count query
+val slice: Slice<User> = orm.entity<User>().select()
+    .where(User_.email like "%@example.com")
+    .slice(Pageable.ofSize(10))
+
 // Pagination
 val page: Page<User> = orm.entity<User>().select()
-    .where(User_.active eq true)
+    .where(User_.email like "%@example.com")
     .page(Pageable.ofSize(10))
 
 // Scrolling
@@ -610,9 +616,14 @@ var results = orm.entity(User.class).select()
     .offset(20).limit(10)
     .getResultList();
 
+// Slice: a page without the count query
+Slice<User> slice = orm.entity(User.class).select()
+    .where(User_.email, LIKE, "%@example.com")
+    .slice(Pageable.ofSize(10));
+
 // Pagination
 Page<User> page = orm.entity(User.class).select()
-    .where(User_.active, EQUALS, true)
+    .where(User_.email, LIKE, "%@example.com")
     .page(Pageable.ofSize(10));
 
 // Scrolling
@@ -666,7 +677,7 @@ group key; the result is a map from parent to its children:
 // Load cities with their users in one query
 val usersByCity: Map<City, List<User>> = orm.entity<User>()
     .select()
-    .where(User_.active eq true)
+    .where(User_.email like "%@example.com")
     .orderBy(User_.city)
     .resultGroupedBy(User_.city)
 ```
@@ -678,7 +689,7 @@ val usersByCity: Map<City, List<User>> = orm.entity<User>()
 // Load cities with their users in one query
 Map<City, List<User>> usersByCity = orm.entity(User.class)
     .select()
-    .where(User_.active, EQUALS, true)
+    .where(User_.email, LIKE, "%@example.com")
     .orderBy(User_.city)
     .getResultGroupedBy(User_.city);
 ```

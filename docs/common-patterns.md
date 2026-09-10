@@ -376,12 +376,12 @@ val sortedPage: Page<User> = userRepository.page(pageable)
 
 // Navigate forward
 if (sortedPage.hasNext()) {
-    val nextPage = userRepository.page(sortedPage.nextPageable())
+    val nextPage = userRepository.page(sortedPage.next())
 }
 
 // Navigate backward
 if (sortedPage.hasPrevious()) {
-    val previousPage = userRepository.page(sortedPage.previousPageable())
+    val previousPage = userRepository.page(sortedPage.previous())
 }
 ```
 
@@ -398,12 +398,12 @@ Page<User> sortedPage = userRepository.page(pageable);
 
 // Navigate forward
 if (sortedPage.hasNext()) {
-    Page<User> nextPage = userRepository.page(sortedPage.nextPageable());
+    Page<User> nextPage = userRepository.page(sortedPage.next());
 }
 
 // Navigate backward
 if (sortedPage.hasPrevious()) {
-    Page<User> previousPage = userRepository.page(sortedPage.previousPageable());
+    Page<User> previousPage = userRepository.page(sortedPage.previous());
 }
 ```
 
@@ -420,7 +420,7 @@ The `Page` record carries all the metadata you need for building pagination cont
 | `pageSize()` | Maximum elements per page |
 | `totalPages()` | Computed total number of pages |
 | `hasNext()` / `hasPrevious()` | Navigation checks |
-| `nextPageable()` / `previousPageable()` | Returns a `Pageable` for the adjacent page |
+| `next()` / `previous()` | Returns a `Pageable` for the adjacent page; `previous()` is `null` on the first page |
 
 To load only primary keys instead of full entities, use `pageRef()`:
 
@@ -494,10 +494,10 @@ Each method returns a `Window` containing the page content and navigation cursor
 | Performance at page 1 | Good | Good |
 | Performance at page 1,000 | Degrades (database must skip rows) | Consistent (index seek) |
 | Handles concurrent inserts | Rows may shift between pages | Stable cursor |
-| Navigate forward | `page.nextPageable()` | `window.next()` |
-| Navigate backward | `page.previousPageable()` | `window.previous()` |
+| Navigate forward | `page.next()` | `window.next()` |
+| Navigate backward | `page.previous()` | `window.previous()` |
 
-Use pagination when you need random page access or a total count (for example, displaying "Page 3 of 12" in a UI). Use scrolling when you need consistent performance over deep result sets or when the data changes frequently between requests.
+Use pagination when you need random page access or a total count (for example, displaying "Page 3 of 12" in a UI). Use scrolling when you need consistent performance over deep result sets or when the data changes frequently between requests. For a "load more" that needs no total, `slice(pageable)` is `page` without the count query. The full comparison of every read, windows included, is in [Pagination and Scrolling: Choosing a Read](pagination-and-scrolling.md#choosing-a-read).
 
 ---
 

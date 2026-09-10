@@ -27,6 +27,7 @@ import st.orm.Page;
 import st.orm.Pageable;
 import st.orm.Projection;
 import st.orm.Ref;
+import st.orm.Slice;
 import st.orm.repository.ProjectionRepository;
 import st.orm.template.Model;
 import st.orm.template.ORMTemplate;
@@ -129,6 +130,26 @@ public final class ProjectionRepositoryImpl<P extends Projection<ID>, ID> implem
     @Override
     public Page<Ref<P>> pageRef(Pageable pageable) {
         return core.pageRef(pageable);
+    }
+
+    @Override
+    public Slice<P> slice(int pageNumber, int pageSize) {
+        return core.slice(pageNumber, pageSize);
+    }
+
+    @Override
+    public Slice<P> slice(Pageable pageable) {
+        return core.slice(pageable);
+    }
+
+    @Override
+    public Slice<Ref<P>> sliceRef(int pageNumber, int pageSize) {
+        return core.sliceRef(pageNumber, pageSize);
+    }
+
+    @Override
+    public Slice<Ref<P>> sliceRef(Pageable pageable) {
+        return core.sliceRef(pageable);
     }
 
     @Override

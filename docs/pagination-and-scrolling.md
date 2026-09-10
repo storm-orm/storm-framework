@@ -3,32 +3,49 @@ import TabItem from '@theme/TabItem';
 
 # Pagination and Scrolling
 
-Storm supports three strategies for retrieving subsets of a result set: manual offset/limit, offset-based pagination, and cursor-based scrolling. This page covers each in detail, including their trade-offs, type signatures, and advanced usage.
+Storm reads a result set in parts in four ways: a slice, a page, a window, and a stream of windows. This page covers each in detail, including their trade-offs, type signatures, and advanced usage, with raw offset and limit as the manual baseline they build on.
 
 For a quick overview, see [Queries: Data Retrieval Strategies](queries.md#data-retrieval-strategies).
 
-## Choosing a Strategy
+## Choosing a Read
 
-Storm provides three ways to retrieve a subset of query results. The right choice depends on how your application navigates the data and how large the result set is.
+The results share one shape, `Slice`, and two of them add navigation to it:
 
-| Feature | Offset and Limit | Pagination | Scrolling |
-|---------|-----------------|------------|-----------|
-| Navigation | manual | page number | cursor |
-| Result type | `List<R>` | `Page<R>` | `Window<R>` |
-| Count query | no | yes | no |
-| Random access | yes | yes | no |
-| Navigation tokens | no | `nextPageable()` / `previousPageable()` | `next()` / `previous()` |
-| Performance on large datasets | degrades with offset | degrades with offset | constant |
+```
+Slice<R>          content, hasNext, hasPrevious, iteration
+├── Page<R>       + totalCount, next() / previous() as a Pageable
+└── Window<R>     + next() / previous() as a Scrollable, cursors
+```
 
-**Offset and Limit** gives raw control with `offset()` and `limit()` on the query builder. Both pagination and offset/limit use SQL `OFFSET` under the hood, which degrades on large tables because the database must scan and discard all skipped rows.
+Each read answers a different question, so pick by what the application needs to know and how it moves through the data.
 
-**Pagination** wraps offset/limit with a `Page` container that includes total counts and page metadata. This is useful for UIs that display "Page 3 of 12" or need random page access.
+| | Slice | Page | Scroll | Windows |
+|---|---|---|---|---|
+| Method | `slice(pageable)` | `page(pageable)` | `scroll(scrollable)` | `windows(size)` |
+| Result | `Slice<R>` | `Page<R>` | `Window<R>` | `Stream<Window<R>>` or `Flow<Window<R>>` |
+| Moves by | offset | page number | row values | row values |
+| Needs | an ordering | an ordering | a unique key, sort fields that are not nullable | a primary key, or a `Scrollable` |
+| Count query | no | yes, on every full page | no | no |
+| `hasNext` from | one extra row | the count | one extra row | one extra row |
+| Next request | `pageable.next()` | `page.next()` | `window.next()` | the stream continues |
+| Random access | yes | yes | no | no |
+| Stable under inserts and deletes | no | no | yes | yes |
+| Cost of going deep | grows with the offset | grows with the offset | constant | constant |
+| Typical use | "load more" without a count, or a query without a unique key | numbered pages, "page 3 of 12" | infinite scroll, REST cursors | batch jobs that write while they read |
 
-**Scrolling** uses keyset pagination: it remembers the last value seen and asks the database for rows after (or before) that value. The database seeks directly to the cursor position using an index, so performance stays constant regardless of depth. The trade-off is that you can only move forward or backward from the current position.
+Every read here hands back a complete result, so the loop that follows may query, fetch references and write. A result stream does not: it holds the connection consume-only until it is read to its end or closed. See [Batch Processing & Streaming](batch-streaming.md#the-connection-is-consume-only-while-a-stream-is-open).
+
+**Slice** is a page without the count query. It takes the same `Pageable`, reads one row beyond the page size to report `hasNext`, and navigates through that `Pageable`. `Slice` is also the shape a `Page` and a `Window` share. It is the read for a "load more" that does not need a total, and for a query without a unique key, where scrolling is not possible.
+
+**Page** wraps offset and limit with a total count and page metadata, for UIs that show page numbers or jump to a page. The count is a second query on every full page; `page(pageable, totalCount)` reuses a count the application already has.
+
+**Scroll** navigates by keyset: the request names the row a window ended on and asks for the rows after it, or before it. The database seeks straight to that row through an index, so the cost is the same at any depth, and rows inserted or deleted elsewhere do not shift the window. The trade-off is that you move forward or backward from the current window only.
+
+**Windows** iterates scroll requests for you: each window is one closed statement, and the connection is free between windows, so the loop body can write. See [Batch Processing & Streaming](batch-streaming.md#windows).
 
 ## Offset and Limit
 
-For direct offset/limit control, use `offset` and `limit` on the query builder. Always combine these with `orderBy` to ensure deterministic ordering.
+For direct offset/limit control, use `offset` and `limit` on the query builder. Always combine these with `orderBy` to ensure deterministic ordering. Without one the database chooses the order, and the read still runs on every dialect: SQL Server accepts an offset only after an `ORDER BY`, so Storm adds a constant one there.
 
 <Tabs groupId="language">
 <TabItem value="kotlin" label="Kotlin" default>
@@ -57,6 +74,56 @@ List<User> results = orm.entity(User.class)
 </TabItem>
 </Tabs>
 
+## Slices
+
+A slice is a page without the count query. `slice(pageable)` takes the same `Pageable` as `page(pageable)`, reads the requested page with `OFFSET` and `LIMIT`, and fetches one row beyond the page size to decide `hasNext`; `hasPrevious` follows from the page number. The next slice is the request's `next()`. Use it for a "load more" that does not need a total, and for a query without a unique key, such as an aggregation, where scrolling is not possible.
+
+<Tabs groupId="language">
+<TabItem value="kotlin" label="Kotlin" default>
+
+```kotlin
+val pageable = Pageable.ofSize(20).sortBy(User_.email)
+val first: Slice<User> = userRepository.slice(pageable)
+if (first.hasNext()) {
+    val second = userRepository.slice(pageable.next())
+}
+
+// On the query builder, with the query's own ordering
+val slice = userRepository.select()
+    .where(User_.city eq city)
+    .slice(0, 20)
+```
+
+</TabItem>
+<TabItem value="java" label="Java">
+
+```java
+Pageable pageable = Pageable.ofSize(20).sortBy(User_.email);
+Slice<User> first = userRepository.slice(pageable);
+if (first.hasNext()) {
+    Slice<User> second = userRepository.slice(pageable.next());
+}
+
+// On the query builder, with the query's own ordering
+Slice<User> slice = userRepository.select()
+    .where(User_.city, EQUALS, city)
+    .slice(0, 20);
+```
+
+</TabItem>
+</Tabs>
+
+`Slice` is the shape `Page` and `Window` share, so every read in parts offers it:
+
+| Method | Description |
+|---|---|
+| `content()` | The list of results, in the order they were read |
+| `hasNext()` / `hasPrevious()` | Whether rows existed after and before the slice at query time |
+| `size()` / `isEmpty()` | The number of results |
+| `iterator()` / `stream()` | Iteration over the content, so `for (user : slice)` reads the rows |
+
+`sliceRef` reads refs instead of entities, the way `pageRef` does. As with `page`, a `Pageable` that carries sort orders cannot be combined with an explicit `orderBy` on the query.
+
 ## Pagination
 
 Pagination navigates by page number and returns a `Page<R>`. Each request runs a data query with `OFFSET`/`LIMIT` for the content, plus a `SELECT COUNT(*)` when the total cannot be derived from the fetched page. A page that is not full determines the total directly, so the count query only runs for a full page, or for an empty page beyond the first.
@@ -70,15 +137,15 @@ Use the `page` terminal method on the query builder. Pass a `Pageable` to specif
 val pageable = Pageable.ofSize(10)
 val page: Page<User> = orm.entity<User>()
     .select()
-    .where(User_.active eq true)
+    .where(User_.city eq city)
     .page(pageable)
 
 // Navigate
 if (page.hasNext()) {
     val nextPage = orm.entity<User>()
         .select()
-        .where(User_.active eq true)
-        .page(page.nextPageable())
+        .where(User_.city eq city)
+        .page(page.next())
 }
 ```
 
@@ -89,15 +156,15 @@ if (page.hasNext()) {
 Pageable pageable = Pageable.ofSize(10);
 Page<User> page = orm.entity(User.class)
     .select()
-    .where(User_.active, EQUALS, true)
+    .where(User_.city, EQUALS, city)
     .page(pageable);
 
 // Navigate
 if (page.hasNext()) {
     Page<User> nextPage = orm.entity(User.class)
         .select()
-        .where(User_.active, EQUALS, true)
-        .page(page.nextPageable());
+        .where(User_.city, EQUALS, city)
+        .page(page.next());
 }
 ```
 
@@ -114,11 +181,11 @@ The `Page` record contains everything needed to build pagination controls:
 | `pageSize()` | Maximum number of elements per page |
 | `totalPages()` | Computed total number of pages |
 | `hasNext()` / `hasPrevious()` | Whether adjacent pages exist |
-| `nextPageable()` / `previousPageable()` | Returns a `Pageable` for the adjacent page |
+| `next()` / `previous()` | Returns a `Pageable` for the adjacent page; `previous()` is `null` on the first page |
 
 ### Sorting
 
-Sort orders are specified on the `Pageable` using `sortBy` (ascending) and `sortByDescending` (descending). Multiple calls append columns to build a multi-column sort, and the orders carry over automatically when navigating with `nextPageable()` or `previousPageable()`. You do not need to call `orderBy` separately on the query builder.
+Sort orders are specified on the `Pageable` using `sortBy` (ascending) and `sortByDescending` (descending). Multiple calls append columns to build a multi-column sort, and the orders carry over automatically when navigating with `next()` or `previous()`. You do not need to call `orderBy` separately on the query builder.
 
 <Tabs groupId="language">
 <TabItem value="kotlin" label="Kotlin" default>
@@ -159,196 +226,147 @@ For the full `Page` and `Pageable` API reference, see [Repositories: Offset-Base
 
 ## Scrolling
 
-Scrolling navigates sequentially using a cursor and returns a `Window<R>`. A `Window` represents a portion of the result set: it contains the data, informational flags (`hasNext`, `hasPrevious`) that indicate whether adjacent results existed at query time, and navigation tokens for sequential traversal, but no total count or page number. The typed navigation methods `next()` and `previous()` are always available when the window has content, regardless of whether `hasNext` or `hasPrevious` is `true`. This allows the developer to decide whether to follow a cursor, since new data may appear after the query was executed.
+Scrolling navigates by keyset and returns a `Window<R>`: the results in the request's sort order, two flags that say whether rows exist after and before the window, and the tokens that continue from it. There is no total count and no page number.
 
-Under the hood, scrolling uses keyset pagination: it remembers the last value seen on the current page and asks the database for rows after (or before) that value. This avoids the performance cliff of `OFFSET` on large tables, because the database can seek directly to the cursor position using an index.
+Under the hood, scrolling remembers the row a window ended on and asks the database for the rows after it, or the row it started on and the rows before it. The database seeks to that row through an index instead of scanning and discarding skipped rows, so performance stays constant regardless of depth.
 
-To walk every window of a result in one loop, use `windows(size)` or `windows(scrollable)` on the same builders and repositories: it returns a `Flow<Window<R>>` (Kotlin) or `Stream<Window<R>>` (Java) that follows the navigation tokens for you, one closed statement per window, and is the streaming form for loops that query or write per row. See [Batch Processing & Streaming: Windows](batch-streaming.md#windows).
+A scroll request is a `Scrollable`: an ordering, a window size, and optionally the position to continue from.
 
-:::info Sort Stability
-Scrolling requires a stable sort order. The final sort column must be unique (typically the primary key). Using a non-unique sort column like `createdAt` without a tiebreaker will produce duplicate or missing rows at page boundaries. Use the [sort overload](#sorting-by-non-unique-columns) (`Scrollable.of(key, sort, size)`) when sorting by a non-unique column.
-:::
+- **The key** is a unique, non-nullable field, typically the primary key. It orders last, breaks ties, and makes every row addressable. Fields annotated with `@UK` or `@PK` generate a `Metamodel.Key`; see [Metamodel](metamodel.md#unique-keys-uk-and-metamodelkey).
+- **Sort fields** order before the key, each in its own direction, and must not allow NULL values. A NULL never compares, so a row whose sort value is NULL would fall out of every window rather than appear in one of them. Scrolling checks a sort field the way it checks the key and throws a `PersistenceException`, rather than paginate over rows it would silently skip. A date or a status is the usual thing to sort by, and those are also the columns most often left nullable, so make the field non-nullable before scrolling by it.
+- **The position** names a row by its sort and key values, and says whether to continue after it or before it. It is what a `Window` hands back as `next()` and `previous()`, and what a cursor string carries across a network boundary. Like the cursor, it is opaque: the application states it through `after`, `before` or `from`, and the engine reads the row it names.
 
-The `scroll` method is available directly on repositories and on the query builder. It accepts a `Scrollable<T>` that captures the cursor state and returns a `Window<R>` containing:
+<Tabs groupId="language">
+<TabItem value="kotlin" label="Kotlin" default>
+
+```kotlin
+// First window, twenty users ordered by id
+val window: Window<User> = userRepository.scroll(Scrollable.of(User_.id, 20))
+
+// The window after it, and the window before it, both in id order
+val next: Window<User> = userRepository.scroll(window.next())
+val previous: Window<User> = userRepository.scroll(next.previous())
+
+// Newest first: the key descending
+val latest = userRepository.scroll(Scrollable.of(User_.id, 20).descending())
+
+// Sorted by city, then birth date, with id as tiebreaker
+val byName = userRepository.scroll(Scrollable.of(User_.id, 20).sortBy(User_.city).sortBy(User_.birthDate))
+```
+
+</TabItem>
+<TabItem value="java" label="Java">
+
+```java
+// First window, twenty users ordered by id
+Window<User> window = userRepository.scroll(Scrollable.of(User_.id, 20));
+
+// The window after it, and the window before it, both in id order
+Window<User> next = userRepository.scroll(window.next());
+Window<User> previous = userRepository.scroll(next.previous());
+
+// Newest first: the key descending
+var latest = userRepository.scroll(Scrollable.of(User_.id, 20).descending());
+
+// Sorted by city, then birth date, with id as tiebreaker
+var byName = userRepository.scroll(Scrollable.of(User_.id, 20).sortBy(User_.city).sortBy(User_.birthDate));
+```
+
+</TabItem>
+</Tabs>
+
+A `Window<R>` is a `Slice`, so it iterates over its content and reports `size()` and `isEmpty()`; `for (user in window)` reads the rows without going through `content()`. It carries:
 
 | Field / Method | Description |
 |-------|-------------|
-| `content()` | The list of results for this window. |
-| `hasNext()` | `true` if more results existed beyond this window at query time. |
-| `hasPrevious()` | `true` if this window was fetched with a cursor position (i.e., not the first page). |
-| `next()` | Returns a typed `Scrollable<T>` for the next window, or `null` if the window is empty. |
-| `previous()` | Returns a typed `Scrollable<T>` for the previous window, or `null` if the window is empty. |
+| `content()` | The results, in the request's sort order. |
+| `hasNext()` | `true` if rows existed after this window, in sort order, at query time. |
+| `hasPrevious()` | `true` if rows existed before this window, in sort order, at query time. |
+| `next()` | A `Scrollable` for the window after this one, or `null` if the window is empty. |
+| `previous()` | A `Scrollable` for the window before this one, or `null` if the window is empty. |
+| `nextCursor()` / `previousCursor()` | The same positions as opaque strings, `null` when the flag says there is nothing there. |
 
-The `nextScrollable()` and `previousScrollable()` raw record component accessors also exist, returning `Scrollable<?>`. The typed `next()` and `previous()` methods are preferred for programmatic navigation.
+The tokens are always there when the window has content. The sort and key values are read from each row alongside the result, so a window of refs, of a projection read as another type, or of a custom select type navigates like a window of entities. The flags are informational: they say what existed when the query ran, and following a token is always allowed, which is what a polling loop wants when new rows may have arrived.
 
-Create a `Scrollable` using the factory methods, or obtain one from a `Window`:
+**Every window is in sort order.** A window reached through `previous()` is fetched with the ordering reversed and turned around before it is returned, so it reads exactly like a window reached through `next()`. A descending feed is a descending sort navigated forward, not a forward sort navigated backward.
 
-| Method | Purpose | SQL effect |
-|--------|---------|------------|
-| `Scrollable.of(key, size)` | Request for the first page (ascending). | `ORDER BY key ASC LIMIT size+1` |
-| `Scrollable.of(key, size).backward()` | Request for the first page (descending). | `ORDER BY key DESC LIMIT size+1` |
-| `window.next()` | Request for the next page after the current window. | `WHERE key > cursor ORDER BY key ASC LIMIT size+1` |
-| `window.previous()` | Request for the previous page before the current window. | `WHERE key < cursor ORDER BY key DESC LIMIT size+1` |
-
-The extra row (`size+1`) is used internally to determine the value of `hasNext`, then discarded from the returned content.
-
-**Result ordering.** Forward scrolling returns results in ascending key order. Backward scrolling (via `.backward()`) returns results in **descending** key order. If you need ascending order for display after navigating backward, reverse the list.
-
-**No total count.** Unlike pagination, scrolling does not include a total element count. A separate `COUNT(*)` query must execute the same joins, filters, and conditions as the main query, which can be expensive on large or complex result sets. Total counts are also inherently unstable: rows may be inserted or deleted while a user navigates through pages, so the count can become stale between requests. Scrolling is designed for sequential "load more" or infinite-scroll patterns where a total is rarely needed. If you do need a total count (for example, for a UI label like "showing 10 of 4,827 results"), call the `count` (Kotlin) or `getCount()` (Java) method on the query builder separately, keeping in mind that the value is a snapshot that may drift as the underlying data changes.
-
-**REST cursor support.** For REST APIs that need to pass scroll state as an opaque string (for example, as a query parameter), `Window` provides `nextCursor()` and `previousCursor()` methods that serialize the scroll position to a cursor string. These convenience methods are gated by the informational flags: `nextCursor()` returns `null` when `hasNext()` is `false`, and `previousCursor()` returns `null` when `hasPrevious()` is `false`. This makes them safe to use directly in REST responses without additional checks. The underlying `next()` and `previous()` methods remain available whenever the window has content, so server-side code can still follow a cursor even when the flags indicate no more results were seen at query time. To reconstruct a `Scrollable` from a cursor string, use `Scrollable.fromCursor(key, cursor)`. For details on supported cursor types, security considerations, and custom codec registration, see [Cursor Serialization](cursors.md).
+**Ordering is built in.** The request owns the `ORDER BY`. Adding your own `orderBy()` to a scrolled query is rejected at runtime with a `PersistenceException`, because it would corrupt the window boundaries.
 
 <Tabs groupId="language">
 <TabItem value="kotlin" label="Kotlin" default>
 
 ```kotlin
-// Serialize cursor for REST response
-val cursor: String? = window.nextCursor()
+// Wrong: orderBy conflicts with the request's ordering
+userRepository.select()
+    .orderBy(User_.email)         // PersistenceException at runtime
+    .scroll(Scrollable.of(User_.id, 10))
 
-// Client sends cursor back in next request
-val scrollable = Scrollable.fromCursor(User_.id, cursor)
-val next = userRepository.scroll(scrollable)
+// Right: the request orders
+userRepository.select()
+    .scroll(Scrollable.of(User_.id, 10).sortBy(User_.email))
 ```
 
 </TabItem>
 <TabItem value="java" label="Java">
 
 ```java
-// Serialize cursor for REST response
-String cursor = window.nextCursor();
+// Wrong: orderBy conflicts with the request's ordering
+userRepository.select()
+    .orderBy(User_.email)         // PersistenceException at runtime
+    .scroll(Scrollable.of(User_.id, 10));
 
-// Client sends cursor back in next request
-var scrollable = Scrollable.fromCursor(User_.id, cursor);
-var next = userRepository.scroll(scrollable);
+// Right: the request orders
+userRepository.select()
+    .scroll(Scrollable.of(User_.id, 10).sortBy(User_.email));
 ```
 
 </TabItem>
 </Tabs>
 
-**Basic usage.** Pass a `Metamodel.Key` that identifies a unique, indexed column (typically the primary key) and the desired page size. The key determines both ordering and the cursor column. Fields annotated with `@UK` or `@PK` automatically generate `Metamodel.Key` instances in the metamodel. See [Metamodel](metamodel.md#unique-keys-uk-and-metamodelkey) for details.
-
-> **Nullable keys.** If a `@UK` field is nullable and the default `nullsDistinct = true` applies, scroll methods throw a `PersistenceException` at runtime. Either use a non-nullable type, or set `@UK(nullsDistinct = false)` if the database constraint prevents duplicate NULLs. See [Nullable Unique Keys](metamodel.md#nullable-unique-keys) for details.
-
-For repository convenience methods, see [Repositories: Scrolling](repositories.md#scrolling).
-
-Use `scroll` as a terminal operation on the query builder for filtering, joins, or projections:
-
-<Tabs groupId="language">
-<TabItem value="kotlin" label="Kotlin" default>
-
-```kotlin
-val window = userRepository.select()
-    .where(User_.active eq true)
-    .scroll(Scrollable.of(User_.id, 10))
-```
-
-</TabItem>
-<TabItem value="java" label="Java">
-
-```java
-var window = userRepository.select()
-    .where(User_.active, EQUALS, true)
-    .scroll(Scrollable.of(User_.id, 10));
-```
-
-</TabItem>
-</Tabs>
-
-:::warning Ordering is built in
-The `scroll` method generates the ORDER BY clause from the key provided in the `Scrollable` (ascending for forward scrolling, descending for backward scrolling). Adding your own `orderBy()` call conflicts with the ordering that scrolling depends on, so Storm rejects the combination at runtime with a `PersistenceException`.
-
-<Tabs groupId="language">
-<TabItem value="kotlin" label="Kotlin" default>
-
-```kotlin
-// Wrong: orderBy conflicts with scroll
-userRepository.select()
-    .orderBy(User_.name)          // PersistenceException at runtime
-    .scroll(Scrollable.of(User_.id, 10))
-
-// Correct: scroll handles ordering via the key
-userRepository.select()
-    .scroll(Scrollable.of(User_.id, 10))
-```
-
-</TabItem>
-<TabItem value="java" label="Java">
-
-```java
-// Wrong: orderBy conflicts with scroll
-userRepository.select()
-    .orderBy(User_.name)          // PersistenceException at runtime
-    .scroll(Scrollable.of(User_.id, 10));
-
-// Correct: scroll handles ordering via the key
-userRepository.select()
-    .scroll(Scrollable.of(User_.id, 10));
-```
-
-</TabItem>
-</Tabs>
-:::
+**No total count.** A `COUNT(*)` over a large filtered set costs what scrolling exists to avoid, and the number drifts while a user navigates. Scrolling is for "load more" and infinite-scroll patterns where a total is rarely needed. If you need one, call `count` (Kotlin) or `getCount()` (Java) on the query builder separately.
 
 ### Sorting by Non-Unique Columns
 
-The single-key `Scrollable.of(key, size)` uses the cursor column as both the sort column and the tiebreaker, which means the column must contain unique values. When you want to sort by a non-unique column (for example, a timestamp or status), use the overload that accepts a separate sort column: `Scrollable.of(key, sort, size)`. This accepts a unique `key` column (typically the primary key) as a tiebreaker for deterministic paging, and a `sort` column for the primary sort order.
+A sort field alone cannot address a row, because its values repeat, so the key stays the tiebreaker. `sortBy` and `sortByDescending` add sort fields in precedence order, each with its own direction, and `descending()` sets the direction of the key itself.
 
 <Tabs groupId="language">
 <TabItem value="kotlin" label="Kotlin" default>
 
 ```kotlin
-// First page sorted by creation date ascending, with ID as tiebreaker
+// Oldest first: creation date ascending, id as tiebreaker
 val window = postRepository.select()
-    .scroll(Scrollable.of(Post_.id, Post_.createdAt, 20))
+    .scroll(Scrollable.of(Post_.id, 20).sortBy(Post_.createdAt))
 
-// Next page (cursor values are captured in the Scrollable automatically).
-// next() is non-null whenever the window has content.
-// hasNext() is informational; the developer decides whether to follow the cursor.
-val next = postRepository.select()
-    .scroll(window.next())
-
-// First page sorted by creation date descending (most recent first)
+// Newest first: creation date descending, and the key descending to match
 val latest = postRepository.select()
-    .scroll(Scrollable.of(Post_.id, Post_.createdAt, 20).backward())
+    .scroll(Scrollable.of(Post_.id, 20).sortByDescending(Post_.createdAt).descending())
 
-// Previous page
-val prev = postRepository.select()
-    .scroll(window.previous())
+// The next and the previous window, both in the same order as the window they came from
+val next = postRepository.select().scroll(window.next())
+val previous = postRepository.select().scroll(window.previous())
 ```
 
 </TabItem>
 <TabItem value="java" label="Java">
 
 ```java
-// First page sorted by creation date, with ID as tiebreaker
+// Oldest first: creation date ascending, id as tiebreaker
 var window = postRepository.select()
-    .scroll(Scrollable.of(Post_.id, Post_.createdAt, 20));
+    .scroll(Scrollable.of(Post_.id, 20).sortBy(Post_.createdAt));
 
-// Next page (cursor values are captured in the Scrollable automatically).
-// next() is non-null whenever the window has content.
-// You can check hasNext() if you only want to proceed when more results
-// were known to exist at query time, or follow the cursor unconditionally
-// to pick up data that may have arrived after the query.
-var next = window.next();
-if (next != null) {
-    var nextWindow = postRepository.select()
-        .scroll(next);
-}
+// Newest first: creation date descending, and the key descending to match
+var latest = postRepository.select()
+    .scroll(Scrollable.of(Post_.id, 20).sortByDescending(Post_.createdAt).descending());
 
-// Previous page
-var previous = window.previous();
-if (previous != null) {
-    var prev = postRepository.select()
-        .scroll(previous);
-}
+// The next and the previous window, both in the same order as the window they came from
+var next = postRepository.select().scroll(window.next());
+var previous = postRepository.select().scroll(window.previous());
 ```
 
 </TabItem>
 </Tabs>
 
-The `Window` carries navigation tokens (`next()`, `previous()`) that encode the cursor values internally, so the client does not need to extract cursor values manually.
-
-The generated SQL uses a composite WHERE condition that maintains correct ordering even when `sort` values repeat:
+The generated SQL is the expanded keyset condition, which stays portable to every dialect and handles a mix of directions. For `sortBy(Post_.createdAt)` continuing after a row:
 
 ```sql
 WHERE (created_at > ? OR (created_at = ? AND id > ?))
@@ -356,52 +374,48 @@ ORDER BY created_at ASC, id ASC
 LIMIT 21
 ```
 
-As with the single-key variant, scrolling manages ORDER BY internally and rejects any explicit `orderBy()` call.
+Continuing before a row flips every comparison and direction, and the content is reversed afterwards:
 
-**Indexing.** For scrolling with sort to perform well, create a composite index that covers both columns in the correct order:
+```sql
+WHERE (created_at < ? OR (created_at = ? AND id < ?))
+ORDER BY created_at DESC, id DESC
+LIMIT 21
+```
+
+Each further sort field adds one more term to the chain. A descending sort field inside an ascending key uses `<` for its own term and `>` for the key, so `sortByDescending(Post_.createdAt)` with an ascending id reads newest-first within the same date and oldest id first among equal dates.
+
+**Indexing.** For scrolling with sort fields to perform well, create a composite index that covers the sort fields and the key in that order:
 
 ```sql
 CREATE INDEX idx_post_created_id ON post (created_at, id);
 ```
 
-This allows the database to seek directly to the cursor position and scan forward, giving consistent performance regardless of page depth.
+### Programmatic Positions
 
-### GROUP BY and Aggregated Projections
-
-When a query uses GROUP BY, the grouped column produces unique values in the result set even if the column itself is not annotated with `@UK`. In this case, wrap the metamodel with `.key()` (Kotlin) or `Metamodel.key()` (Java) to indicate it can serve as a scrolling cursor:
+`next()` and `previous()` are the usual way to move, and cursor strings the usual way to cross a network boundary. A position can also be stated directly, for example from a row the application already holds. The values come in ordering order: one per sort field, then the key.
 
 <Tabs groupId="language">
 <TabItem value="kotlin" label="Kotlin" default>
 
 ```kotlin
-val window = orm.query(Order::class)
-    .select(Order_.city, "COUNT(*)")
-    .groupBy(Order_.city)
-    .scroll(Scrollable.of(Order_.city.key(), 20))
+val afterAlice = userRepository.scroll(Scrollable.of(User_.id, 20).sortBy(User_.email).after("alice@example.com", 3))
+val beforeAlice = userRepository.scroll(Scrollable.of(User_.id, 20).sortBy(User_.email).before("alice@example.com", 3))
 ```
 
 </TabItem>
 <TabItem value="java" label="Java">
 
 ```java
-var window = orm.query(Order.class)
-    .select(Order_.city, "COUNT(*)")
-    .groupBy(Order_.city)
-    .scroll(Scrollable.of(Metamodel.key(Order_.city), 20));
+var afterAlice = userRepository.scroll(Scrollable.of(User_.id, 20).sortBy(User_.email).after("alice@example.com", 3));
+var beforeAlice = userRepository.scroll(Scrollable.of(User_.id, 20).sortBy(User_.email).before("alice@example.com", 3));
 ```
 
 </TabItem>
 </Tabs>
 
-See [Manual Key Wrapping](metamodel.md#manual-key-wrapping) for more details.
+### GROUP BY and Aggregated Projections
 
-### Window Type Parameters
-
-`Window<R>` is a record with a single type parameter: `R` is the result type. It provides result content, cursor-based string navigation (`nextCursor()`, `previousCursor()`), and typed `Scrollable<T>` navigation via the generic `next()` and `previous()` convenience methods for programmatic traversal. The raw record component accessors `nextScrollable()` and `previousScrollable()` return `Scrollable<?>`.
-
-The repository convenience method `scroll()` returns `Window<E>`. The query builder `scroll()` also returns `Window<R>`. For entity queries, `Window` carries `Scrollable<?>` navigation tokens and the typed `next()` / `previous()` methods provide typed access.
-
-For queries where the result type differs from the entity type (for example, selecting into a data class that combines columns from multiple sources), `Window` does not carry navigation tokens because Storm cannot extract cursor values from a result type it does not know how to navigate. In this case, `next()` and `previous()` return `null` (even when the window has content), and `hasNext()` still works correctly as an informational flag. To continue scrolling, check `hasNext()` and construct the next `Scrollable` manually using cursor values from your result:
+When a query uses GROUP BY, the grouped column produces unique values in the result set even if the column itself is not annotated with `@UK`. In this case, wrap the metamodel with `.key()` (Kotlin) or `Metamodel.key()` (Java) to indicate it can serve as the key. A reference field's column carries the referenced key, so the position value is that id.
 
 <Tabs groupId="language">
 <TabItem value="kotlin" label="Kotlin" default>
@@ -415,13 +429,10 @@ val window: Window<OrderSummary> = orm.selectFrom<Order, OrderSummary> {
 .groupBy(Order_.city)
 .scroll(Scrollable.of(Order_.city.key(), 20))
 
-// Navigation tokens are null because OrderSummary != Order.
-// Construct the next scrollable manually from the last result.
-// hasNext() is informational; the developer decides whether to follow the cursor.
-val lastCity = window.content.last().city.id()
-val next: Window<OrderSummary> = orm.selectFrom<Order, OrderSummary> { ... }
+// The custom select type navigates like an entity: the key is read from the row
+val next = orm.selectFrom<Order, OrderSummary> { ... }
     .groupBy(Order_.city)
-    .scroll(Scrollable.of(Order_.city.key(), lastCity, 20))
+    .scroll(window.next())
 ```
 
 </TabItem>
@@ -435,24 +446,27 @@ Window<OrderSummary> window = orm.selectFrom(Order.class, OrderSummary.class,
     .groupBy(Order_.city)
     .scroll(Scrollable.of(Metamodel.key(Order_.city), 20));
 
-// Navigation tokens are null because OrderSummary != Order.
-// Construct the next scrollable manually from the last result.
-// hasNext() is informational; the developer decides whether to follow the cursor.
-var lastCity = window.content().getLast().city().id();
+// The custom select type navigates like an entity: the key is read from the row
 Window<OrderSummary> next = orm.selectFrom(Order.class, OrderSummary.class, ...)
     .groupBy(Order_.city)
-    .scroll(Scrollable.of(Metamodel.key(Order_.city), lastCity, 20));
+    .scroll(window.next());
 ```
 
 </TabItem>
 </Tabs>
 
-## Pagination vs Scrolling Summary
+See [Manual Key Wrapping](metamodel.md#manual-key-wrapping) for more details.
 
-| | Pagination | Scrolling |
-|---|---|---|
-| Request | `Pageable` | `Scrollable<T>` |
-| Result | `Page` | `Window` |
-| Method | `page(pageable)` | `scroll(scrollable)` |
-| Navigate forward | `page.nextPageable()` | `window.next()` |
-| Navigate backward | `page.previousPageable()` | `window.previous()` |
+**REST cursor support.** For REST APIs that pass scroll state as a query parameter, `Window` provides `nextCursor()` and `previousCursor()`, which serialize the position to an opaque string, and `Scrollable.from(cursor)` puts a request at that position. The cursor carries the position only; the ordering and the size stay in code, so a client may ask for another size on the next request. See [Cursor Serialization](cursors.md).
+
+## Summary
+
+| | Slice | Pagination | Scrolling |
+|---|---|---|---|
+| Request | `Pageable` | `Pageable` | `Scrollable<T>` |
+| Result | `Slice` | `Page` | `Window` |
+| Method | `slice(pageable)` | `page(pageable)` | `scroll(scrollable)` |
+| Count query | no | yes | no |
+| Navigate forward | `pageable.next()` | `page.next()` | `window.next()` |
+| Navigate backward | `pageable.previous()` | `page.previous()` | `window.previous()`, same order as forward |
+| Sorting | `sortBy` / `sortByDescending` on the request | `sortBy` / `sortByDescending` on the request | `sortBy` / `sortByDescending` on the request, key as tiebreaker |

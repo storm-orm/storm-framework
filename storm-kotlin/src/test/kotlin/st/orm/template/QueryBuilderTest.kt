@@ -1471,34 +1471,34 @@ internal open class QueryBuilderTest(
     fun `scroll with simple size should return correct page`() {
         val repo = orm.entity(City::class)
         val idPath = metamodel<City, Int>(repo.model, "id")
-        val window = repo.select().orderBy(idPath).scroll(3)
-        window.content shouldHaveSize 3
-        window.hasNext shouldBe true
+        val window = repo.select().orderBy(idPath).slice(0, 3)
+        window.content() shouldHaveSize 3
+        window.hasNext() shouldBe true
     }
 
     @Test
     fun `scroll with size greater than total should not have next`() {
         val repo = orm.entity(City::class)
         val idPath = metamodel<City, Int>(repo.model, "id")
-        val window = repo.select().orderBy(idPath).scroll(10)
-        window.content shouldHaveSize 6
-        window.hasNext shouldBe false
+        val window = repo.select().orderBy(idPath).slice(0, 10)
+        window.content() shouldHaveSize 6
+        window.hasNext() shouldBe false
     }
 
     @Test
     fun `scroll with exact size should not have next`() {
         val repo = orm.entity(City::class)
         val idPath = metamodel<City, Int>(repo.model, "id")
-        val window = repo.select().orderBy(idPath).scroll(6)
-        window.content shouldHaveSize 6
-        window.hasNext shouldBe false
+        val window = repo.select().orderBy(idPath).slice(0, 6)
+        window.content() shouldHaveSize 6
+        window.hasNext() shouldBe false
     }
 
     @Test
     fun `scroll with zero size should throw IllegalArgumentException`() {
         val repo = orm.entity(City::class)
         assertThrows<IllegalArgumentException> {
-            repo.select().scroll(0)
+            repo.select().slice(0, 0)
         }
     }
 
@@ -2160,7 +2160,7 @@ internal open class QueryBuilderTest(
         val repo = orm.entity(Owner::class)
         val idKey = metamodel<Owner, Int>(repo.model, "id").key()
         // Owners have ids 1-10. After id > 5: ids 6,7,8,9,10 = 5 owners.
-        val window = repo.select().scroll(Scrollable(idKey, 5, null, null, 10, true))
+        val window = repo.select().scroll(Scrollable.of(idKey, 10).after(5))
         window.content shouldHaveSize 5
     }
 
@@ -2169,7 +2169,7 @@ internal open class QueryBuilderTest(
         val repo = orm.entity(Owner::class)
         val idKey = metamodel<Owner, Int>(repo.model, "id").key()
         // Owners have ids 1-10. Before id < 6: ids 1,2,3,4,5 = 5 owners.
-        val window = repo.select().scroll(Scrollable(idKey, 6, null, null, 10, false))
+        val window = repo.select().scroll(Scrollable.of(idKey, 10).before(6))
         window.content shouldHaveSize 5
     }
 
@@ -2181,11 +2181,11 @@ internal open class QueryBuilderTest(
         val idKey = metamodel<City, Int>(repo.model, "id").key()
         val namePath = metamodel<City, String>(repo.model, "name")
         // Get first page sorted by name
-        val firstPage = repo.select().scroll(Scrollable.of(idKey, namePath, 3))
+        val firstPage = repo.select().scroll(Scrollable.of(idKey, 3).sortBy(namePath))
         firstPage.content shouldHaveSize 3
         val lastItem = firstPage.content.last()
         // Get next page after last item
-        val nextPage = repo.select().scroll(Scrollable(idKey, lastItem.id, namePath, lastItem.name, 3, true))
+        val nextPage = repo.select().scroll(Scrollable.of(idKey, 3).sortBy(namePath).after(lastItem.name, lastItem.id))
         nextPage.content shouldHaveSize 3
     }
 
@@ -2195,11 +2195,11 @@ internal open class QueryBuilderTest(
         val idKey = metamodel<City, Int>(repo.model, "id").key()
         val namePath = metamodel<City, String>(repo.model, "name")
         // Get last page (descending)
-        val lastPage = repo.select().scroll(Scrollable.of(idKey, namePath, 3).backward())
+        val lastPage = repo.select().scroll(Scrollable.of(idKey, 3).sortByDescending(namePath).descending())
         lastPage.content shouldHaveSize 3
         val firstItem = lastPage.content.last()
         // Get previous page before first item
-        val previousPage = repo.select().scroll(Scrollable(idKey, firstItem.id, namePath, firstItem.name, 3, false))
+        val previousPage = repo.select().scroll(Scrollable.of(idKey, 3).sortBy(namePath).before(firstItem.name, firstItem.id))
         previousPage.content shouldHaveSize 3
     }
 
@@ -2209,7 +2209,7 @@ internal open class QueryBuilderTest(
         val idKey = metamodel<Owner, Int>(repo.model, "id").key()
         val lastNamePath = metamodel<Owner, String>(repo.model, "last_name")
         // After (lastName > "A" OR (lastName = "A" AND id > 1)): all 10 owners have lastName > "A".
-        val window = repo.select().scroll(Scrollable(idKey, 1, lastNamePath, "A", 10, true))
+        val window = repo.select().scroll(Scrollable.of(idKey, 10).sortBy(lastNamePath).after("A", 1))
         window.content shouldHaveSize 10
     }
 
@@ -2219,7 +2219,7 @@ internal open class QueryBuilderTest(
         val idKey = metamodel<Owner, Int>(repo.model, "id").key()
         val lastNamePath = metamodel<Owner, String>(repo.model, "last_name")
         // Before (lastName < "Z" OR (lastName = "Z" AND id < 10)): all 10 owners have lastName < "Z".
-        val window = repo.select().scroll(Scrollable(idKey, 10, lastNamePath, "Z", 10, false))
+        val window = repo.select().scroll(Scrollable.of(idKey, 10).sortBy(lastNamePath).before("Z", 10))
         window.content shouldHaveSize 10
     }
 
@@ -2468,7 +2468,6 @@ internal open class QueryBuilderTest(
         override fun forUpdate(): QueryBuilder<City, City, Int> = delegate.forUpdate()
         override fun forLock(template: TemplateString): QueryBuilder<City, City, Int> = delegate.forLock(template)
         override fun build(): Query = delegate.build()
-        override fun scroll(size: Int): Window<City> = delegate.scroll(size)
         override fun scroll(scrollable: Scrollable<City>): Window<City> = delegate.scroll(scrollable)
         override fun windows(size: Int): Flow<Window<City>> = delegate.windows(size)
         override fun windows(scrollable: Scrollable<City>): Flow<Window<City>> = delegate.windows(scrollable)

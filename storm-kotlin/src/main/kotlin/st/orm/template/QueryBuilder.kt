@@ -81,12 +81,12 @@ import kotlin.reflect.KClass
  * ```kotlin
  * // WRONG - the where clause is lost because the return value is discarded:
  * val builder = userRepository.select()
- * builder.where(User_.active eq true)  // returns a new builder, but it's ignored
+ * builder.where(User_.email like "%@example.com")  // returns a new builder, but it's ignored
  * builder.resultList                   // executes without the WHERE clause
  *
  * // CORRECT - chain the calls or capture the returned builder:
  * val results = userRepository.select()
- *     .where(User_.active eq true)
+ *     .where(User_.email like "%@example.com")
  *     .resultList
  * ```
  *
@@ -993,7 +993,7 @@ public abstract class QueryBuilder<T : Data, R, ID> {
      * If both are present, a [PersistenceException] is thrown.
      *
      * Use [Pageable.ofSize] for the first page, then navigate with
-     * [Page.nextPageable] or [Page.previousPageable].
+     * [Page.next] or [Page.previous].
      *
      * @param pageable the pagination request specifying page number and page size.
      * @return a page containing the results and pagination metadata.
@@ -1001,7 +1001,7 @@ public abstract class QueryBuilder<T : Data, R, ID> {
      * @since 1.10
      */
     public fun page(pageable: Pageable): Page<R> {
-        val content = pageContent(pageable)
+        val content = pageContent(pageable, pageable.pageSize())
         val totalCount = if (content.size < pageable.pageSize() && (pageable.offset() == 0L || content.isNotEmpty())) {
             // A page that is not full is the last page, so the total follows from the page itself. An empty page
             // beyond the first proves nothing: the offset may lie anywhere past the end.
@@ -1030,47 +1030,76 @@ public abstract class QueryBuilder<T : Data, R, ID> {
      * @throws PersistenceException if the pageable has sort orders and the query builder has explicit orderBy calls.
      * @since 1.10
      */
-    public fun page(pageable: Pageable, totalCount: Long): Page<R> = Page(pageContent(pageable), totalCount, pageable)
+    public fun page(pageable: Pageable, totalCount: Long): Page<R> = Page(pageContent(pageable, pageable.pageSize()), totalCount, pageable)
 
     /**
      * Fetches the content for the requested page, applying the pageable's sort orders and offset/limit window.
      */
-    private fun pageContent(pageable: Pageable): List<R> {
+    /**
+     * Executes the query and returns a [Slice] of results using offset-based pagination without a count.
+     *
+     * The slice is read the way a page is, with OFFSET and LIMIT from the request, but one row beyond the page
+     * size is fetched instead of running a count query: [Slice.hasNext] says whether that row existed, and
+     * [Slice.hasPrevious] follows from the page number. Use it for a "load more" that needs no total, and for a
+     * query without a unique key, where [scroll] is not possible.
+     *
+     * Page numbers are zero-based: pass `0` for the first slice.
+     *
+     * @param pageNumber the zero-based page index.
+     * @param pageSize the maximum number of results per slice.
+     * @return the slice.
+     * @since 1.14
+     */
+    public fun slice(pageNumber: Int, pageSize: Int): Slice<R> = slice(Pageable.of(pageNumber, pageSize))
+
+    /**
+     * Executes the query and returns a [Slice] of results using offset-based pagination without a count.
+     *
+     * The slice is read the way a page is, with OFFSET and LIMIT from the request, but one row beyond the page
+     * size is fetched instead of running a count query: [Slice.hasNext] says whether that row existed, and
+     * [Slice.hasPrevious] follows from the page number. Use it for a "load more" that needs no total, and for a
+     * query without a unique key, where [scroll] is not possible.
+     *
+     * Use [Pageable.ofSize] for the first slice, then navigate with [Pageable.next] or [Pageable.previous].
+     *
+     * @param pageable the request specifying page number, page size and sort orders.
+     * @return the slice.
+     * @throws PersistenceException if the request carries sort orders and the query an explicit ORDER BY.
+     * @since 1.14
+     */
+    public fun slice(pageable: Pageable): Slice<R> {
+        val content = pageContent(pageable, pageable.pageSize() + 1)
+        val hasNext = content.size > pageable.pageSize()
+        return Slice.of(if (hasNext) content.subList(0, pageable.pageSize()) else content, hasNext, pageable.pageNumber() > 0)
+    }
+
+    private fun pageContent(pageable: Pageable, limit: Int): List<R> {
         // Forbid combining explicit orderBy with Pageable sort orders for consistency with scroll, which also
         // manages ORDER BY internally and forbids explicit orderBy calls.
         if (hasOrderBy() && pageable.orders().isNotEmpty()) {
-            throw PersistenceException("page with Pageable sort orders cannot be combined with explicit orderBy calls.")
+            throw PersistenceException("Pageable sort orders cannot be combined with explicit orderBy calls.")
         }
         var sorted: QueryBuilder<T, R, ID> = this
         for (order in pageable.orders()) {
             // The Pageable's sort field may be rooted anywhere in the query, so the column is named directly.
             sorted = sorted.orderBy(wrap(Columns(listOf(order.field()), CASCADE, if (order.descending()) ORDER_BY_DESCENDING else ORDER_BY_ASCENDING)))
         }
-        return sorted.offset(pageable.offset().toInt()).limit(pageable.pageSize()).resultList
+        return sorted.offset(pageable.offset().toInt()).limit(limit).resultList
     }
 
     /**
-     * Executes the query and returns a [Window] of results.
+     * Executes a scroll request and returns a [Window]: the results in the request's sort order, the flags that
+     * say whether rows exist after and before the window, and the tokens that continue from it.
      *
-     * This method fetches `size + 1` rows to determine whether more results are available, then returns at
-     * most `size` results along with a `hasNext` flag. The caller is responsible for managing any WHERE
-     * and ORDER BY clauses externally.
+     * The request owns the ordering, so the query must not carry an ORDER BY of its own. The sort fields and the
+     * key are read from each row alongside the result, so the tokens are there for every result type: the entity,
+     * a projection, a ref or a custom select type. A window reached through [Window.previous] comes back in the
+     * same sort order as every other window.
      *
-     * The returned window does not carry navigation tokens ([Window.next] and [Window.previous] return `null`).
-     *
-     * @param size the maximum number of results to include in the window (must be positive).
-     * @return a window containing the results and a flag indicating whether more results exist.
-     * @throws IllegalArgumentException if [size] is not positive.
-     * @since 1.11
-     */
-    public abstract fun scroll(size: Int): Window<R>
-
-    /**
-     * Executes a scroll request from a [Scrollable] token, typically obtained from
-     * [Window.next] or [Window.previous].
-     *
-     * @param scrollable the scroll request containing cursor state, key, sort, size, and direction.
+     * @param scrollable the scroll request: ordering, size and position.
      * @return a window containing the results and navigation tokens.
+     * @throws PersistenceException if the query carries an explicit ORDER BY, the key is compound or nullable, or
+     * a sort field is nullable.
      * @since 1.11
      */
     public abstract fun scroll(scrollable: Scrollable<T>): Window<R>
@@ -1088,11 +1117,11 @@ public abstract class QueryBuilder<T : Data, R, ID> {
      * Windows are keyset windows over the primary key, so the query must not carry an ORDER BY of its own, and the
      * result type must be the entity type the key belongs to: `selectRef()` and custom select types are refused. A
      * compound primary key is refused too; pass [windows] a [Scrollable] with a single-column unique key instead.
-     * The rows come in ascending key order; pass `Scrollable.of(key, size).backward()` for descending order.
+     * The rows come in ascending key order; pass `Scrollable.of(key, size).descending()` for descending order.
      *
      * ```kotlin
-     * users.select().where(User_.active eq true).windows(1000).collect { window ->
-     *     users.update(window.content().map { it.copy(processed = true) })
+     * users.select().where(User_.city eq city).windows(1000).collect { window ->
+     *     users.update(window.content().map { it.copy(email = it.email.lowercase()) })
      * }
      * ```
      *
@@ -1108,9 +1137,10 @@ public abstract class QueryBuilder<T : Data, R, ID> {
     /**
      * Executes the query in windows described by the given scroll request, each window one closed statement.
      *
-     * This is the form of [windows] that chooses the key, the sort field, the direction and the starting position:
-     * `Scrollable.of(key, size)` iterates from the start, a [Window.next] token or [Scrollable.fromCursor] resumes
-     * after an earlier window, and `.backward()` iterates in descending order. The same key rules as [scroll] apply.
+     * This is the form of [windows] that chooses the key, the sort fields, the directions and the starting
+     * position: `Scrollable.of(key, size)` iterates from the start, a [Window.next] token or [Scrollable.from]
+     * resumes after an earlier window, and `.descending()` iterates in descending key order. The same key rules as
+     * [scroll] apply.
      *
      * @param scrollable the scroll request describing key, sort, size, direction and starting position.
      * @return a flow of windows; each window's [Window.next] resumes the iteration after that window.
@@ -1477,7 +1507,7 @@ public infix fun <T : Data> PredicateBuilder<out T, *, *>.or(predicate: Predicat
  *
  * ```kotlin
  * userRepository.select {
- *     where(User_.active eq true)
+ *     where(User_.email like "%@example.com")
  *     orderBy(User_.name)
  * }.resultList
  * ```

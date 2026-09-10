@@ -287,7 +287,7 @@ public interface Templates {
      * FROM \{from(RAW."SELECT column_a, column_b FROM table", "t")}
      * }</pre>
      *
-     * </p> in this context, the alias is mandatory and auto-joining of foreign keys is not applicable.</p>
+     * <p>In this context, the alias is mandatory and auto-joining of foreign keys is not applicable.</p>
      *
      * @param template the {@link TemplateString} representing the custom SQL to be used in the FROM clause.
      * @param alias the alias to assign to the frame clause in the query. The alias must not require escaping.
@@ -872,7 +872,7 @@ public interface Templates {
      * condition on, which can include nested properties using dot notation.
      *
      * <p>The objects in the iterable must match the type of the record component found at the specified path.
-     * If the path points to a record, the objects may also match the primary key type of that record.</pz>
+     * If the path points to a record, the objects may also match the primary key type of that record.</p>
      *
      * <p>Example usage with primary keys:
      * <pre>{@code
@@ -912,7 +912,7 @@ public interface Templates {
      * condition on, which can include nested properties using dot notation.
      *
      * <p>The objects in the array must match the type of the record component found at the specified path.
-     * If the path points to a record, the objects may also match the primary key type of that record.</pz>
+     * If the path points to a record, the objects may also match the primary key type of that record.</p>
      *
      * <p>Example usage with primary keys:
      * <pre>{@code

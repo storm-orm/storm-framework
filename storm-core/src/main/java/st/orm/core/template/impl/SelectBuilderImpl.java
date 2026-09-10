@@ -29,6 +29,7 @@ import java.util.function.Supplier;
 import java.util.stream.Stream;
 import org.jspecify.annotations.Nullable;
 import st.orm.Data;
+import st.orm.Metamodel;
 import st.orm.Navigable;
 import st.orm.PersistenceException;
 import st.orm.Ref;
@@ -228,15 +229,57 @@ public class SelectBuilderImpl<T extends Data, R, ID> extends QueryBuilderImpl<T
         };
     }
 
-    private TemplateString toTemplateString() {
+    /**
+     * Executes the query with the cursor columns appended to the select list. The leading columns map to the
+     * result type exactly as they do without the cursor columns, so an entity, a projection, a ref and a custom
+     * select type all read their cursor values the same way.
+     */
+    @Override
+    @SuppressWarnings("unchecked")
+    List<KeyedQuery.Row<R>> getKeyedResultList(List<Metamodel<T, ?>> columns) {
+        var parts = new ArrayList<TemplateString>();
+        parts.add(selectClause());
+        for (var column : columns) {
+            parts.add(TemplateString.of(", "));
+            parts.add(wrap(column));
+        }
+        var query = queryTemplate.query(toTemplateString(TemplateString.combine(parts), true));
+        if (!(query instanceof KeyedQuery keyed)) {
+            throw new PersistenceException("The query template does not support reading cursor columns.");
+        }
+        Class<?>[] types = columns.stream().map(SelectBuilderImpl::cursorValueType).toArray(Class<?>[]::new);
+        if (refType != null) {
+            assert pkType != null : "Primary key type must be specified for ref queries.";
+            return (List<KeyedQuery.Row<R>>) (List<?>) keyed.getKeyedRefList(refType, pkType, types);
+        }
+        return keyed.getKeyedResultList(selectType, types);
+    }
+
+    /**
+     * Returns the type a cursor column's value decodes to. A reference field's column carries the referenced
+     * table's key, so the value takes that key's type rather than the field's own.
+     */
+    private static Class<?> cursorValueType(Metamodel<?, ?> column) {
+        var referencedKey = MetamodelFactory.referencedKey(column);
+        return referencedKey != null ? referencedKey.fieldType() : column.fieldType();
+    }
+
+    /**
+     * Returns the select clause: the select template, or the nested select of the result type with its fetch
+     * plan when references are resolved in the same statement.
+     */
+    @SuppressWarnings("unchecked")
+    private TemplateString selectClause() {
         // A resolved reference is carried by the fetch element; the compiler collects it from the template before
         // any element renders, so the element's position does not matter and the referenced table's columns take
         // the place its foreign key column would have occupied.
-        //noinspection unchecked
-        TemplateString selectClause = fetchPaths.isEmpty()
+        return fetchPaths.isEmpty()
                 ? selectTemplate
                 : TemplateString.combine(wrap(select((Class<? extends Data>) selectType, NESTED)), wrap(new Fetch(fetchPaths)));
-        return toTemplateString(selectClause, true);
+    }
+
+    private TemplateString toTemplateString() {
+        return toTemplateString(selectClause(), true);
     }
 
     private TemplateString toTemplateString(TemplateString selectClause, boolean withOrderBy) {
@@ -277,6 +320,14 @@ public class SelectBuilderImpl<T extends Data, R, ID> extends QueryBuilderImpl<T
                     .reduce((a, b) -> TemplateString.combine(a, TemplateString.of(", "), b))
                     .orElseThrow();
             template = TemplateString.combine(template, TemplateString.of("\nORDER BY "), orderByClause);
+        }
+        if (withOrderBy && orderBy.isEmpty() && offset != null) {
+            // An offset on an unordered result is refused by some databases; the dialect says what ordering, if
+            // any, satisfies them.
+            String orderByForOffset = queryTemplate.dialect().orderByForOffset();
+            if (orderByForOffset != null) {
+                template = TemplateString.combine(template, TemplateString.of("\n"), TemplateString.of(orderByForOffset));
+            }
         }
         if (!queryTemplate.dialect().applyLimitAfterSelect()) {
             if (limit != null && offset == null) {

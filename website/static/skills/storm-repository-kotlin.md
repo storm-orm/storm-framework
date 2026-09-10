@@ -102,8 +102,8 @@ val userRepository = orm.repository<UserRepository>()  // import st.orm.reposito
 interface UserRepository : EntityRepository<User, Int> {
     fun findByEmail(email: String): User? = find(User_.email eq email)
     fun findByCity(city: City): List<User> = findAll(User_.city eq city)
-    fun findActiveInCity(city: City): List<User> =
-        findAll((User_.city eq city) and (User_.active eq true))
+    fun findExampleUsersInCity(city: City): List<User> =
+        findAll((User_.city eq city) and (User_.email like "%@example.com"))
 }
 ```
 
@@ -146,7 +146,7 @@ users.select(User_.city eq city)
     .orderBy(User_.name)
     .resultList
 
-users.delete(User_.active eq false)
+users.delete(User_.postalCode.isNull())
     .executeUpdate()
 ```
 
@@ -161,7 +161,7 @@ users.select()
 **Level 3 — Block DSL** for complex queries with multiple joins and conditions:
 ```kotlin
 users.select {
-    where(User_.active eq true)
+    where(User_.email like "%@example.com")
     orderBy(User_.name)
 }.resultList
 
@@ -182,10 +182,10 @@ users.removeById(42)
 users.removeAll()
 
 // remove — with predicate (convenience, executes immediately)
-val removed: Int = users.removeAll(User_.active eq false)
+val removed: Int = users.removeAll(User_.postalCode.isNull())
 
 // delete — build a query with filtering (returns QueryBuilder)
-users.delete(User_.active eq false).executeUpdate()
+users.delete(User_.postalCode.isNull()).executeUpdate()
 users.delete { where(User_.score less 10) }.executeUpdate()
 ```
 
@@ -308,7 +308,7 @@ val alice: User? = users.find(User_.email eq "alice@example.com")
 val alice: User = users.get(User_.email eq "alice@example.com")
 
 // List of results
-val activeUsers: List<User> = users.findAll(User_.active eq true)
+val exampleUsers: List<User> = users.findAll(User_.email like "%@example.com")
 
 // Compare by entity — use the FK field directly, don't extract the ID
 val cityUsers: List<User> = users.findAll(User_.city eq city)
@@ -323,16 +323,16 @@ val cityUsers: List<User> = users.findAll(User_.city eq city)
 
 // Ref variants (return Ref<User> instead of User — lightweight, only loads PK)
 val ref: Ref<User>? = users.findRef(User_.email eq "alice@example.com")
-val refs: List<Ref<User>> = users.findAllRef(User_.active eq true)
+val refs: List<Ref<User>> = users.findAllRef(User_.email like "%@example.com")
 
 // Count by predicate
-val activeCount: Long = users.count(User_.active eq true)
+val exampleCount: Long = users.count(User_.email like "%@example.com")
 
 // Exists by predicate
-val hasActive: Boolean = users.exists(User_.active eq true)
+val hasExampleUsers: Boolean = users.exists(User_.email like "%@example.com")
 
 // Remove by predicate
-val removed: Int = users.removeAll(User_.active eq false)
+val removed: Int = users.removeAll(User_.postalCode.isNull())
 ```
 
 These accept a `PredicateBuilder` built with infix operators. Use parentheses — not braces — for predicates. Braces are reserved for the block DSL (see below).
@@ -485,13 +485,13 @@ Use Kotlin `Flow` for memory-efficient processing of large datasets:
 val allUsers: Flow<User> = users.select().resultFlow
 
 // Stream with filter (builder method + terminal)
-val activeUsers: Flow<User> = users.select(User_.active eq true).resultFlow
+val exampleUsers: Flow<User> = users.select(User_.email like "%@example.com").resultFlow
 
 // A flow with rows still to emit is one open statement: its connection is consume-only, so inside transaction { }
 // a query, Ref.fetch() or write from the collector throws. Loops that need the database use windows:
 // keyset windows over the primary key, one closed statement per window, connection free in between.
-users.select(User_.active eq true).windows(1000).collect { window ->
-    users.update(window.content().map { it.copy(processed = true) })   // one batched statement per window
+users.select(User_.city eq city).windows(1000).collect { window ->
+    users.update(window.content().map { it.copy(email = it.email.lowercase()) })   // one batched statement per window
 }
 
 // Count via Flow
@@ -521,7 +521,7 @@ A `resultFlow` is one open statement. While it still has rows to emit, the conne
 ```kotlin
 transaction {
     users.select().resultFlow.collect { user ->
-        orm update user.copy(processed = true)   // ❌ write while the flow has rows left
+        orm update user.copy(email = user.email.lowercase())   // ❌ write while the flow has rows left
         user.city.fetch()                        // ❌ Ref.fetch() is a statement too
         cities.count()                           // ❌ any query
     }
@@ -536,18 +536,18 @@ The last line is the trap that passes small tests: the flow completes and closes
 ```kotlin
 // One transaction for the whole walk:
 transaction {
-    users.select(User_.active eq true).windows(1000).collect { window ->
-        users.update(window.content().map { it.copy(processed = true) })
+    users.select(User_.city eq city).windows(1000).collect { window ->
+        users.update(window.content().map { it.copy(email = it.email.lowercase()) })
     }
 }
 
 // Or a transaction per window, so progress is durable and locks are short-lived:
 users.windows(1000).collect { window ->
-    transaction { users.update(window.content().map { it.copy(processed = true) }) }
+    transaction { users.update(window.content().map { it.copy(email = it.email.lowercase()) }) }
 }
 
 // Resume after a restart from a stored cursor:
-users.windows(Scrollable.fromCursor(User_.id, storedCursor)).collect { window ->
+users.windows(Scrollable.of(User_.id, 1000).from(storedCursor)).collect { window ->
     process(window.content())
     store(window.nextCursor())
 }
@@ -570,13 +570,22 @@ users.removeAll()   // removes all entities
 
 ## Pagination and Scrolling
 
+Pick the read by what the caller needs to know:
+
+| Read | Method | Result | Count query | Needs |
+|---|---|---|---|---|
+| Page | `page(pageable)` | `Page<R>` | yes | an ordering |
+| Slice | `slice(pageable)` | `Slice<R>` | no | an ordering; a page without the count query, the only read for a query without a unique key |
+| Scroll | `scroll(scrollable)` | `Window<R>` | no | a unique key; constant cost at any depth |
+| Windows | `windows(size)` | `Flow<Window<R>>` | no | a primary key; one closed statement per window, so the loop may write |
+
 ```kotlin
 // Offset-based pagination (executes count + select)
 // Page numbers are 0-based — page 0 is the first page.
 // When accepting 1-based page numbers from a URL (e.g., ?page=1), pass page - 1.
 val page: Page<User> = users.page(0, 20)
 val page: Page<User> = users.page(Pageable.ofSize(20).sortBy(User_.name))
-val nextPage = users.page(page.nextPageable())
+val nextPage = users.page(page.next())
 
 // Page API — Page is a Java record; ALL accessors are methods, call with ()
 // page.content()       — List<User> of results for this page
@@ -586,41 +595,43 @@ val nextPage = users.page(page.nextPageable())
 // page.pageSize()      — page size
 // page.hasNext()       — whether a next page exists
 // page.hasPrevious()   — whether a previous page exists
-// page.nextPageable()  — Pageable for the next page
+// page.next()  — Pageable for the next page
+
+// Slice: page without the count query; same Pageable, hasNext from one extra row
+val pageable = Pageable.ofSize(20).sortBy(User_.name)
+val slice: Slice<User> = users.slice(pageable)
+val more = users.slice(pageable.next())               // the request navigates
+val refSlice: Slice<Ref<User>> = users.sliceRef(0, 20)
 
 // Keyset scrolling (better for large tables — no COUNT, cursor-based)
 // Scrollable<T> takes a single type parameter (the entity type)
 // ⚠️ Scrollable manages ORDER BY internally — do NOT add orderBy() when using scroll(Scrollable)
-// ⚠️ The scroll key must be a single-column, non-nullable unique key (e.g. a simple @PK or @UK
-//    field) — junction tables with composite PKs cannot be scrolled directly.
-//    To scroll filtered results from a junction table, query the entity with a simple PK
-//    and JOIN through the junction table (e.g., scroll User with a JOIN through UserRole).
+// ⚠️ The key must be a non-nullable unique key (e.g. @PK or @UK). A compound (inline record)
+//    key is read from the mapped record and needs the entity as the result type.
 val window = users.scroll(Scrollable.of(User_.id, 20))
 
-// With custom sort order (sort column in addition to key)
-val window = users.scroll(Scrollable.of(User_.id, User_.name, 20))
+// Sort fields before the key, in any number, each in its own direction; descending() flips the key
+// ⚠️ Sort fields must be non-nullable too: a NULL never compares, so such a row would fall out of
+//    every window; Storm throws a PersistenceException rather than skip it silently.
+val window = users.scroll(Scrollable.of(User_.id, 20).sortBy(User_.email))
+val latest = users.scroll(Scrollable.of(Post_.id, 20).sortByDescending(Post_.createdAt).descending())
 
-// First request vs subsequent: use Scrollable.of() when no cursor exists,
-// Scrollable.fromCursor() when resuming. The cursor is opaque and exists for
-// client-server communication: it contains exactly what the client needs to
-// navigate the scroll window (key position, size, direction) — clients echo
-// it back unchanged, never parse or construct it. Server-side code never
-// needs the cursor: window.next()/previous() return a ready-to-use typed
-// Scrollable<T> — the cursor is merely its serialized form.
-val scrollable = if (cursor != null) {
-    Scrollable.fromCursor(User_.id, cursor)
-} else {
-    Scrollable.of(User_.id, 20)
-}
-val window = users.scroll(scrollable)
+// Refs navigate too: the key is read from the row
+val refs = users.scrollRef(Scrollable.of(User_.id, 20))
 
-// Window<R> is the scroll result record. Both scroll() methods return Window.
-// Window API — Window is a Java record; ALL accessors are methods, call with ()
+// First request vs subsequent: the ordering and the size are code, the position is
+// the client's cursor. The cursor is opaque (the row's values and after/before, under
+// a fingerprint of the ordering): clients echo it back unchanged. Server-side code
+// never needs it: window.next()/previous() are ready-to-use Scrollable<T> requests.
+val request = Scrollable.of(User_.id, 20).sortBy(User_.email)
+val window = users.scroll(if (cursor != null) request.from(cursor) else request)
+
+// Window<R> is a Slice: iterate it directly (for (user in window)), every window is in sort order.
+// Window is a Java record; the accessors are methods, call with ()
 // window.content() — List<User> of results
-// window.hasNext() / window.hasPrevious() — bounds checking
+// window.hasNext() / window.hasPrevious() — rows exist after / before the window
 // window.nextCursor() / window.previousCursor() — opaque cursors for REST APIs (see above)
-// window.next() / window.previous() — typed Scrollable<T> for programmatic navigation
-// window.nextScrollable() / window.previousScrollable() — raw Scrollable<?> record component accessors (use next()/previous() instead)
+// window.next() / window.previous() — typed Scrollable<T> for the adjacent window, same order
 ```
 
 ## Framework-Specific Repository Registration
@@ -737,14 +748,14 @@ Repository methods can use the `select { }` / `delete { }` DSL for building quer
 
 ```kotlin
 interface UserRepository : EntityRepository<User, Int> {
-    fun findActive(): List<User> = select { where(User_.active eq true) }.resultList
+    fun findExampleDomain(): List<User> = select { where(User_.email like "%@example.com") }.resultList
 
-    fun findActiveByCity(city: City): List<User> = select {
-        where((User_.active eq true) and (User_.address.city eq city))
+    fun findExampleUsersByCity(city: City): List<User> = select {
+        where((User_.email like "%@example.com") and (User_.address.city eq city))
         orderBy(User_.name)
     }.resultList
 
-    fun deleteInactive(): Int = delete { where(User_.active eq false) }.executeUpdate()
+    fun deleteWithoutPostalCode(): Int = delete { where(User_.postalCode.isNull()) }.executeUpdate()
 }
 ```
 
@@ -754,12 +765,12 @@ Both `select { }` and `delete { }` return a `QueryBuilder`, so you pick the term
 ```kotlin
 // ❌ Not valid — no block DSL overload for result type
 fun findSummaries(): List<UserSummary> = select(UserSummary::class) {
-    where(User_.active eq true)
+    where(User_.email like "%@example.com")
 }.resultList
 
 // ✅ Use chained API — note: joins use .innerJoin<A>().on<B>(), not the two-type-arg form
 fun findSummaries(): List<UserSummary> = select(UserSummary::class)
-    .where(User_.active eq true)
+    .where(User_.email like "%@example.com")
     .resultList
 ```
 
@@ -795,10 +806,10 @@ fun findFiltered(city: Ref<City>?, page: Int, size: Int): Page<User> =
 Predicate variants also return `QueryBuilder`:
 ```kotlin
 // select(predicate) returns QueryBuilder
-users.select(User_.active eq true).resultList
+users.select(User_.email like "%@example.com").resultList
 
 // delete(predicate) returns QueryBuilder
-users.delete(User_.active eq false).executeUpdate()
+users.delete(User_.postalCode.isNull()).executeUpdate()
 ```
 
 Standalone usage via `ORMTemplate` — note there is **no** `orm.select<T> { block }` reified form; get the entity repository first:

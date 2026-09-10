@@ -143,7 +143,7 @@ users.removeById(42);
 users.removeAll();
 
 // delete — build a query with filtering
-users.delete().where(User_.active, EQUALS, false).executeUpdate();
+users.delete().where(User_.postalCode, IS_NULL).executeUpdate();
 ```
 
 > ⚠️ There is **no** `delete(entity)` or `delete(id)` overload (unlike JPA / Spring Data `CrudRepository`). `delete()` returns a `QueryBuilder`, so it takes no entity argument. To delete an entity or id you already hold, use `remove(entity)` / `removeById(id)` / `removeByRef(ref)`.
@@ -378,7 +378,7 @@ try (Stream<User> stream = users.select().getResultStream()) {
 
 // Stream with filter (builder method + terminal)
 try (Stream<User> stream = users.select()
-        .where(User_.active, EQUALS, true)
+        .where(User_.email, LIKE, "%@example.com")
         .getResultStream()) {
     stream.forEach(System.out::println);
 }
@@ -386,7 +386,7 @@ try (Stream<User> stream = users.select()
 // A stream with rows still unread is one statement: its connection is consume-only, so inside a transaction a query,
 // Ref.fetch() or write from the loop throws. Loops that need the database use windows: keyset windows
 // over the primary key, one closed statement per window, connection free in between, nothing to close.
-users.select().where(User_.active, EQUALS, true).windows(1000).forEach(window ->
+users.select().where(User_.city, EQUALS, city).windows(1000).forEach(window ->
     users.update(window.content().stream().map(user -> /* copy with changes */ user).toList()));
 
 // Count via Stream
@@ -433,13 +433,13 @@ The last line is the trap that passes small tests: a batch that executes after t
 
 ```java
 transaction(tx -> {
-    users.select().where(User_.active, EQUALS, true).windows(1000).forEach(window ->
+    users.select().where(User_.city, EQUALS, city).windows(1000).forEach(window ->
         users.update(window.content().stream().map(user -> /* copy with changes */ user).toList()));
     return null;
 });
 
 // Resume after a restart from a stored cursor:
-users.windows(Scrollable.fromCursor(User_.id, storedCursor)).forEach(window -> {
+users.windows(Scrollable.of(User_.id, 1000).from(storedCursor)).forEach(window -> {
     process(window.content());
     store(window.nextCursor());
 });
@@ -463,11 +463,20 @@ users.removeAll();
 
 ## Pagination and Scrolling
 
+Pick the read by what the caller needs to know:
+
+| Read | Method | Result | Count query | Needs |
+|---|---|---|---|---|
+| Page | `page(pageable)` | `Page<R>` | yes | an ordering |
+| Slice | `slice(pageable)` | `Slice<R>` | no | an ordering; a page without the count query, the only read for a query without a unique key |
+| Scroll | `scroll(scrollable)` | `Window<R>` | no | a unique key; constant cost at any depth |
+| Windows | `windows(size)` | `Stream<Window<R>>` | no | a primary key; one closed statement per window, so the loop may write |
+
 ```java
 // Offset-based pagination (executes count + select)
 Page<User> page = users.page(0, 20);
 Page<User> page = users.page(Pageable.ofSize(20).sortBy(User_.name));
-Page<User> next = users.page(page.nextPageable());
+Page<User> next = users.page(page.next());
 
 // Page API (record accessors):
 // page.content()       — List<User> of results for this page
@@ -477,41 +486,44 @@ Page<User> next = users.page(page.nextPageable());
 // page.pageSize()      — page size
 // page.hasNext()       — whether a next page exists
 // page.hasPrevious()   — whether a previous page exists
-// page.nextPageable()  — Pageable for the next page
+// page.next()  — Pageable for the next page
 
 // Ref-based pagination
 Page<Ref<User>> refPage = users.pageRef(0, 20);
 
+// Slice: page without the count query; same Pageable, hasNext from one extra row
+Pageable pageable = Pageable.ofSize(20).sortBy(User_.name);
+Slice<User> slice = users.slice(pageable);
+Slice<User> more = users.slice(pageable.next());       // the request navigates
+Slice<Ref<User>> refSlice = users.sliceRef(0, 20);
+
 // Keyset scrolling (better for large tables — no COUNT, cursor-based)
-// ⚠️ Scrollable manages ORDER BY internally — do NOT add orderBy() when using scroll(Scrollable)
-// ⚠️ The scroll key must be a single-column, non-nullable unique key (Metamodel.Key, e.g. a simple
-//    @PK or @UK field) — junction tables with composite PKs cannot be scrolled directly.
-//    To scroll filtered results from a junction table, query the entity with a simple PK
-//    and JOIN through the junction table (e.g., scroll User with a JOIN through UserRole).
+// ⚠️ The request owns ORDER BY — do NOT add orderBy() when using scroll(Scrollable)
+// ⚠️ The key must be a non-nullable unique key (Metamodel.Key, e.g. @PK or @UK). A compound
+//    (inline record) key is read from the mapped record and needs the entity as the result type.
 var window = users.scroll(Scrollable.of(User_.id, 20));    // prefer var — avoids Window<User> verbosity
 
-// With custom sort order (sort column in addition to key)
-var window = users.scroll(Scrollable.of(User_.id, User_.name, 20));
+// Sort fields before the key, in any number, each in its own direction; descending() flips the key
+// ⚠️ Sort fields must be non-nullable too: a NULL never compares, so such a row would fall out of
+//    every window; Storm throws a PersistenceException rather than skip it silently.
+var window = users.scroll(Scrollable.of(User_.id, 20).sortBy(User_.email));
+var latest = users.scroll(Scrollable.of(Post_.id, 20).sortByDescending(Post_.createdAt).descending());
 
-// First request vs subsequent: use Scrollable.of() when no cursor exists,
-// Scrollable.fromCursor() when resuming. The cursor is opaque and exists for
-// client-server communication: it contains exactly what the client needs to
-// navigate the scroll window (key position, size, direction) — clients echo
-// it back unchanged, never parse or construct it. Server-side code never
-// needs the cursor: window.next()/previous() return a ready-to-use typed
-// Scrollable<T> — the cursor is merely its serialized form.
-var scrollable = cursor != null
-    ? Scrollable.fromCursor(User_.id, cursor)
-    : Scrollable.of(User_.id, 20);
-var window = users.scroll(scrollable);
+// Refs navigate too: the key is read from the row
+var refs = users.scrollRef(Scrollable.of(User_.id, 20));
 
-// Window<R> is the scroll result record. Both scroll() methods return Window.
-// Window API:
+// First request vs subsequent: the ordering and the size are code, the position is
+// the client's cursor. The cursor is opaque (the row's values and after/before, under
+// a fingerprint of the ordering): clients echo it back unchanged. Server-side code
+// never needs it: window.next()/previous() are ready-to-use Scrollable<T> requests.
+var request = Scrollable.of(User_.id, 20).sortBy(User_.email);
+var window = users.scroll(cursor != null ? request.from(cursor) : request);
+
+// Window<R> is a Slice: iterate it directly, every window is in sort order.
 // window.content() — List<User>
-// window.hasNext() / window.hasPrevious()
+// window.hasNext() / window.hasPrevious() — rows exist after / before the window
 // window.nextCursor() / window.previousCursor() — opaque cursors for REST APIs (see above)
-// window.next() / window.previous() — typed Scrollable<T> for programmatic navigation
-// window.nextScrollable() / window.previousScrollable() — raw Scrollable<?> record component accessors (use next()/previous() instead)
+// window.next() / window.previous() — typed Scrollable<T> for the adjacent window, same order
 ```
 
 ## Framework-Specific Repository Registration

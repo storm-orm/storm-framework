@@ -27,6 +27,7 @@ import st.orm.PersistenceException;
 import st.orm.Projection;
 import st.orm.Ref;
 import st.orm.Scrollable;
+import st.orm.Slice;
 import st.orm.Window;
 import st.orm.core.template.Model;
 import st.orm.core.template.QueryBuilder;
@@ -325,7 +326,7 @@ public interface ProjectionRepository<P extends Projection<ID>, ID> extends Repo
      * projections.</p>
      *
      * <p>Use {@link Pageable#ofSize(int)} for the first page, then navigate with
-     * {@link Page#nextPageable()} or {@link Page#previousPageable()}.</p>
+     * {@link Page#next()} or {@link Page#previous()}.</p>
      *
      * @param pageable the pagination request specifying page number and page size.
      * @return a page containing the results and pagination metadata.
@@ -365,6 +366,68 @@ public interface ProjectionRepository<P extends Projection<ID>, ID> extends Repo
     }
 
     /**
+     * Returns a slice of projections using offset-based pagination without a count.
+     *
+     * <p>This method executes a query with OFFSET and LIMIT for the requested page and one row beyond it, which
+     * decides {@link Slice#hasNext()}; no count query runs.</p>
+     *
+     * <p>Page numbers are zero-based: pass {@code 0} for the first slice.</p>
+     *
+     * @param pageNumber the zero-based page index.
+     * @param pageSize the maximum number of projections per slice.
+     * @return a slice containing the results.
+     * @since 1.14
+     */
+    default Slice<P> slice(int pageNumber, int pageSize) {
+        return slice(Pageable.of(pageNumber, pageSize));
+    }
+
+    /**
+     * Returns a slice of projections using offset-based pagination without a count.
+     *
+     * <p>This method executes a query with OFFSET and LIMIT for the requested page and one row beyond it, which
+     * decides {@link Slice#hasNext()}; no count query runs.</p>
+     *
+     * <p>Use {@link Pageable#ofSize(int)} for the first slice, then navigate with {@link Pageable#next()} or
+     * {@link Pageable#previous()}.</p>
+     *
+     * @param pageable the request specifying page number, page size and sort orders.
+     * @return a slice containing the results.
+     * @since 1.14
+     */
+    default Slice<P> slice(Pageable pageable) {
+        return select().slice(pageable);
+    }
+
+    /**
+     * Returns a slice of projection refs using offset-based pagination without a count.
+     *
+     * <p>Page numbers are zero-based: pass {@code 0} for the first slice.</p>
+     *
+     * @param pageNumber the zero-based page index.
+     * @param pageSize the maximum number of refs per slice.
+     * @return a slice containing the ref results.
+     * @since 1.14
+     */
+    default Slice<Ref<P>> sliceRef(int pageNumber, int pageSize) {
+        return sliceRef(Pageable.of(pageNumber, pageSize));
+    }
+
+    /**
+     * Returns a slice of projection refs using offset-based pagination without a count.
+     *
+     * <p>This method executes a query with OFFSET and LIMIT for the requested page and one row beyond it, which
+     * decides {@link Slice#hasNext()}; no count query runs.</p>
+     *
+     * @param pageable the request specifying page number, page size and sort orders.
+     * @return a slice containing the ref results.
+     * @since 1.14
+     */
+    default Slice<Ref<P>> sliceRef(Pageable pageable) {
+        return selectRef().slice(pageable);
+    }
+
+    /**
      * Scrolls through projections using the given scrollable request.
      *
      * <p>This is a convenience method that delegates to {@code select().scroll(scrollable)}. It is typically used
@@ -377,6 +440,21 @@ public interface ProjectionRepository<P extends Projection<ID>, ID> extends Repo
      */
     default Window<P> scroll(Scrollable<P> scrollable) {
         return select().scroll(scrollable);
+    }
+
+    /**
+     * Scrolls through projections as refs using the given scroll request.
+     *
+     * <p>This is a convenience method that delegates to {@code selectRef().scroll(scrollable)}. The window carries
+     * navigation tokens like one of full projections, since the cursor values are read from the row.</p>
+     *
+     * @param scrollable the scroll request: ordering, size and position.
+     * @return a window containing the refs and navigation tokens.
+     * @throws PersistenceException if the query fails due to underlying database issues.
+     * @since 1.14
+     */
+    default Window<Ref<P>> scrollRef(Scrollable<P> scrollable) {
+        return selectRef().scroll(scrollable);
     }
 
     /**

@@ -3,6 +3,7 @@ package st.orm.core.spi;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -186,5 +187,10 @@ public class DefaultSqlDialectTest {
         row2.put("id", 2);
         String result = dialect.multiValueIn(List.of(row1, row2), v -> "?");
         assertTrue(result.contains("OR"));
+    }
+
+    @Test
+    void unorderedOffsetNeedsNoOrdering() {
+        assertNull(new DefaultSqlDialect().orderByForOffset());
     }
 }

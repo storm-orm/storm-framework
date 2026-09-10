@@ -18,6 +18,7 @@ package st.orm;
 import static java.util.List.copyOf;
 
 import java.util.List;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Represents a page of query results for offset-based pagination.
@@ -100,21 +101,25 @@ public record Page<R>(List<R> content, long totalCount, Pageable pageable) imple
     }
 
     /**
-     * Returns the {@link Pageable} for the next page, preserving sort orders.
+     * Returns the request for the page after this one, preserving sort orders. Always available: the request is
+     * well-formed whether or not that page has content, so a caller may follow it and find an empty page, the way
+     * a window's {@link Window#next()} may be followed past the last row.
      *
-     * @return the pageable for the next page.
+     * @return the request for the next page.
      */
-    public Pageable nextPageable() {
+    public Pageable next() {
         return pageable.next();
     }
 
     /**
-     * Returns the {@link Pageable} for the previous page, or the first page if already on page 0. Sort orders are
-     * preserved.
+     * Returns the request for the page before this one, preserving sort orders, or {@code null} on the first page,
+     * where nothing precedes.
      *
-     * @return the pageable for the previous page.
+     * @return the request for the previous page, or {@code null} on the first page.
      */
-    public Pageable previousPageable() {
+    @Nullable
+    public Pageable previous() {
         return pageable.previous();
     }
+
 }

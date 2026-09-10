@@ -42,7 +42,7 @@ public class QueryBuilderScrollIntegrationTest {
                         .scroll(Scrollable.of(Vet_.id, 3)));
     }
 
-    // Scrollable.of(key, size).backward() - cursorless descending
+    // Scrollable.of(key, size).descending() - cursorless descending
 
     @Test
     public void scrollBeforeCursorlessWithKeyThrowsWhenExplicitOrderByIsPresent() {
@@ -50,10 +50,10 @@ public class QueryBuilderScrollIntegrationTest {
                 ORMTemplate.of(dataSource)
                         .selectFrom(Vet.class)
                         .orderBy(Vet_.firstName)
-                        .scroll(Scrollable.of(Vet_.id, 3).backward()));
+                        .scroll(Scrollable.of(Vet_.id, 3).descending()));
     }
 
-    // Scrollable.of(key, sort, size) with explicit orderBy should throw
+    // Scrollable.of(key, size).sortBy(sort) with explicit orderBy should throw
 
     @Test
     public void scrollCompositeWithKeyAndSortThrowsWhenExplicitOrderByIsPresent() {
@@ -61,7 +61,7 @@ public class QueryBuilderScrollIntegrationTest {
                 ORMTemplate.of(dataSource)
                         .selectFrom(Vet.class)
                         .orderBy(Vet_.firstName)
-                        .scroll(Scrollable.of(Vet_.id, Vet_.lastName, 3)));
+                        .scroll(Scrollable.of(Vet_.id, 3).sortBy(Vet_.lastName)));
     }
 
     // orderByDescendingAny with empty array should throw
@@ -103,7 +103,7 @@ public class QueryBuilderScrollIntegrationTest {
         // First page of 2 vets ordered by lastName, id.
         var firstPage = ORMTemplate.of(dataSource)
                 .selectFrom(Vet.class)
-                .scroll(Scrollable.of(Vet_.id, Vet_.lastName, 2));
+                .scroll(Scrollable.of(Vet_.id, 2).sortBy(Vet_.lastName));
         assertEquals(2, firstPage.content().size());
         assertTrue(firstPage.hasNext());
 
@@ -111,7 +111,7 @@ public class QueryBuilderScrollIntegrationTest {
         Vet lastOfFirstPage = firstPage.content().getLast();
         var secondPage = ORMTemplate.of(dataSource)
                 .selectFrom(Vet.class)
-                .scroll(Scrollable.of(Vet_.id, lastOfFirstPage.id(), Vet_.lastName, lastOfFirstPage.lastName(), 2));
+                .scroll(Scrollable.of(Vet_.id, 2).sortBy(Vet_.lastName).after(lastOfFirstPage.lastName(), lastOfFirstPage.id()));
         assertEquals(2, secondPage.content().size());
         assertTrue(secondPage.hasNext());
 
@@ -119,7 +119,7 @@ public class QueryBuilderScrollIntegrationTest {
         Vet lastOfSecondPage = secondPage.content().getLast();
         var thirdPage = ORMTemplate.of(dataSource)
                 .selectFrom(Vet.class)
-                .scroll(Scrollable.of(Vet_.id, lastOfSecondPage.id(), Vet_.lastName, lastOfSecondPage.lastName(), 2));
+                .scroll(Scrollable.of(Vet_.id, 2).sortBy(Vet_.lastName).after(lastOfSecondPage.lastName(), lastOfSecondPage.id()));
         assertEquals(2, thirdPage.content().size());
         assertFalse(thirdPage.hasNext());
     }
@@ -131,7 +131,7 @@ public class QueryBuilderScrollIntegrationTest {
         // Start from the end: first page descending.
         var lastPage = ORMTemplate.of(dataSource)
                 .selectFrom(Vet.class)
-                .scroll(Scrollable.of(Vet_.id, Vet_.lastName, 2).backward());
+                .scroll(Scrollable.of(Vet_.id, 2).sortByDescending(Vet_.lastName).descending());
         assertEquals(2, lastPage.content().size());
         assertTrue(lastPage.hasNext());
 
@@ -139,7 +139,7 @@ public class QueryBuilderScrollIntegrationTest {
         Vet firstOfLastPage = lastPage.content().getLast();
         var previousPage = ORMTemplate.of(dataSource)
                 .selectFrom(Vet.class)
-                .scroll(Scrollable.of(Vet_.id, firstOfLastPage.id(), Vet_.lastName, firstOfLastPage.lastName(), 2).backward());
+                .scroll(Scrollable.of(Vet_.id, 2).sortBy(Vet_.lastName).before(firstOfLastPage.lastName(), firstOfLastPage.id()));
         assertEquals(2, previousPage.content().size());
         assertTrue(previousPage.hasNext());
     }
@@ -150,7 +150,7 @@ public class QueryBuilderScrollIntegrationTest {
     public void scrollAfterWithValueCursorExcludesCursorValue() {
         var window = ORMTemplate.of(dataSource)
                 .selectFrom(Vet.class)
-                .scroll(Scrollable.of(Vet_.id, 3, 10));
+                .scroll(Scrollable.of(Vet_.id, 10).after(3));
         // Only vets with id > 3 should be returned (4, 5, 6).
         assertEquals(3, window.content().size());
         assertTrue(window.content().stream().allMatch(vet -> vet.id() > 3));
@@ -162,12 +162,12 @@ public class QueryBuilderScrollIntegrationTest {
     public void scrollBeforeWithValueCursorExcludesCursorValue() {
         var window = ORMTemplate.of(dataSource)
                 .selectFrom(Vet.class)
-                .scroll(Scrollable.of(Vet_.id, 4, 10).backward());
-        // Only vets with id < 4 should be returned (3, 2, 1) in descending order.
+                .scroll(Scrollable.of(Vet_.id, 10).before(4));
+        // Only vets with id < 4 should be returned (1, 2, 3), in sort order.
         assertEquals(3, window.content().size());
         assertTrue(window.content().stream().allMatch(vet -> vet.id() < 4));
-        // Verify descending order.
-        assertTrue(window.content().get(0).id() > window.content().get(1).id());
+        assertTrue(window.content().get(0).id() < window.content().get(1).id());
+        assertTrue(window.hasNext());
     }
 
     // scroll with non-positive size should throw
@@ -178,7 +178,7 @@ public class QueryBuilderScrollIntegrationTest {
                 ORMTemplate.of(dataSource)
                         .selectFrom(Vet.class)
                         .orderBy(Vet_.id)
-                        .scroll(0));
+                        .slice(0, 0));
     }
 
     @Test
@@ -187,6 +187,6 @@ public class QueryBuilderScrollIntegrationTest {
                 ORMTemplate.of(dataSource)
                         .selectFrom(Vet.class)
                         .orderBy(Vet_.id)
-                        .scroll(-1));
+                        .slice(0, -1));
     }
 }

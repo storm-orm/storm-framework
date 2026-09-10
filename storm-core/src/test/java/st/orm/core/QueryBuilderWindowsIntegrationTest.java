@@ -94,7 +94,7 @@ public class QueryBuilderWindowsIntegrationTest {
     @Test
     public void windowsBackwardIterateInDescendingKeyOrder() {
         var windows = ORMTemplate.of(dataSource).entity(Vet.class)
-                .windows(Scrollable.of(Vet_.id, 4).backward())
+                .windows(Scrollable.of(Vet_.id, 4).descending())
                 .toList();
         assertEquals(List.of(6, 5, 4, 3, 2, 1), ids(windows));
     }
@@ -102,7 +102,7 @@ public class QueryBuilderWindowsIntegrationTest {
     @Test
     public void windowsWithSortFieldIterateInSortThenKeyOrder() {
         var orm = ORMTemplate.of(dataSource);
-        var windows = orm.entity(Vet.class).windows(Scrollable.of(Vet_.id, Vet_.lastName, 2)).toList();
+        var windows = orm.entity(Vet.class).windows(Scrollable.of(Vet_.id, 2).sortBy(Vet_.lastName)).toList();
         assertEquals(3, windows.size());
         var expected = orm.entity(Vet.class).select().getResultList().stream()
                 .sorted(Comparator.comparing(Vet::lastName).thenComparing(Vet::id))
@@ -124,7 +124,7 @@ public class QueryBuilderWindowsIntegrationTest {
     public void windowsResumeFromACursorString() {
         var orm = ORMTemplate.of(dataSource);
         Window<Vet> first = orm.entity(Vet.class).windows(2).findFirst().orElseThrow();
-        var rest = orm.entity(Vet.class).windows(Scrollable.fromCursor(Vet_.id, first.nextCursor())).toList();
+        var rest = orm.entity(Vet.class).windows(Scrollable.of(Vet_.id, 2).from(first.nextCursor())).toList();
         assertEquals(List.of(3, 4, 5, 6), ids(rest));
     }
 
@@ -156,13 +156,11 @@ public class QueryBuilderWindowsIntegrationTest {
     }
 
     @Test
-    public void windowsRejectResultsThatDoNotCarryTheKey() {
-        var exception = assertThrows(PersistenceException.class, () -> ORMTemplate.of(dataSource)
-                .entity(Vet.class)
-                .selectRef()
-                .windows(Scrollable.of(Vet_.id, 2))
-                .toList());
-        assertTrue(exception.getMessage().contains("carry the key"), exception.getMessage());
+    public void windowsOverRefsReadTheKeyFromTheRow() {
+        var windows = ORMTemplate.of(dataSource).entity(Vet.class).selectRef().windows(Scrollable.of(Vet_.id, 2)).toList();
+        assertEquals(3, windows.size());
+        assertEquals(List.of(1, 2, 3, 4, 5, 6),
+                windows.stream().flatMap(window -> window.content().stream()).map(ref -> (Integer) ref.id()).toList());
     }
 
     @Test
@@ -182,10 +180,12 @@ public class QueryBuilderWindowsIntegrationTest {
     }
 
     @Test
-    public void windowsRejectCompoundPrimaryKey() {
-        var exception = assertThrows(PersistenceException.class,
-                () -> ORMTemplate.of(dataSource).entity(VetSpecialty.class).windows(2));
-        assertTrue(exception.getMessage().contains("compound"), exception.getMessage());
+    public void windowsIterateACompoundPrimaryKeyFromTheRecord() {
+        var orm = ORMTemplate.of(dataSource);
+        var windows = orm.entity(VetSpecialty.class).windows(2).toList();
+        assertEquals(orm.entity(VetSpecialty.class).count(),
+                windows.stream().mapToLong(window -> window.content().size()).sum());
+        assertTrue(windows.stream().allMatch(window -> window.content().size() <= 2));
     }
 
     @Test

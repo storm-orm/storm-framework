@@ -23,7 +23,7 @@ import java.io.IOException;
  * Encodes and decodes a single scalar value for cursor serialization.
  *
  * <p>A {@code CursorCodec} handles the binary representation of one Java type within an opaque cursor string
- * (produced by {@link st.orm.Scrollable#toCursor()} and consumed by {@link st.orm.Scrollable#fromCursor}). Storm
+ * (produced by {@link st.orm.Scrollable#toCursor()} and consumed by {@link st.orm.Scrollable#from(String)}). Storm
  * provides built-in codecs for common scalar types (primitives, {@code String}, {@code UUID}, date/time types,
  * {@code BigDecimal}). Additional codecs can be registered via {@link CursorCodecProvider}.</p>
  *

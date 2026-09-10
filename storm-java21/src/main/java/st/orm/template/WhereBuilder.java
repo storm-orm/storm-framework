@@ -41,7 +41,7 @@ import st.orm.Ref;
  * List<User> users = userRepository
  *         .select()
  *         .where(predicate -> predicate
- *             .where(User_.active, EQUALS, true)
+ *             .where(User_.email, LIKE, "%@example.com")
  *             .and(predicate.where(User_.address.city.name, EQUALS, "Sunnyvale")))
  *         .getResultList();
  * }</pre>

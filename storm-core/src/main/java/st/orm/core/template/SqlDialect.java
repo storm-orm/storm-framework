@@ -36,6 +36,7 @@ import java.util.SequencedMap;
 import java.util.UUID;
 import java.util.function.Function;
 import java.util.regex.Pattern;
+import org.jspecify.annotations.Nullable;
 import st.orm.Operator;
 import st.orm.SqlTemplateException;
 import st.orm.core.spi.JsonString;
@@ -358,6 +359,18 @@ public interface SqlDialect {
      * @since 1.2
      */
     String limit(int offset, int limit);
+
+    /**
+     * Returns the ORDER BY clause an offset needs where the database refuses an offset on an unordered result, or
+     * {@code null} where it accepts one. The clause renders only when a query applies an offset without an ordering
+     * of its own, so an unordered first page reads the same on every database.
+     *
+     * @return the ORDER BY clause for an unordered offset, or {@code null} if none is needed.
+     * @since 1.14
+     */
+    default @Nullable String orderByForOffset() {
+        return null;
+    }
 
     /**
      * Returns {@code true} if the lock hint should be applied after the FROM clause, {@code false} to apply the lock

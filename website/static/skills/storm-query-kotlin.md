@@ -44,20 +44,20 @@ Ask what data they need, filters, ordering, or pagination.
 
 ```kotlin
 // ❌ Wrong — WHERE conditions as a template string
-fun findActiveWithEmail(city: City, minAge: Int): List<User> =
+fun findWithPostalCodeAndEmail(city: City, minAge: Int): List<User> =
     select {
         where {
             """${User_.city} = ${city.id()}
-            AND ${User_.active} = true
+            AND ${User_.postalCode} IS NOT NULL
             AND ${User_.email} IS NOT NULL
             AND TIMESTAMPDIFF(YEAR, ${User_.birthDate}, CURDATE()) >= $minAge"""
         }
     }.resultList
 
 // ✅ Correct — code-based predicates where possible, template only when no alternative exists
-fun findActiveWithEmail(city: City, minAge: Int): List<User> =
+fun findWithPostalCodeAndEmail(city: City, minAge: Int): List<User> =
     select {
-        where((User_.city eq city) and (User_.active.isTrue()) and (User_.email.isNotNull()))
+        where((User_.city eq city) and (User_.postalCode.isNotNull()) and (User_.email.isNotNull()))
         where { "TIMESTAMPDIFF(YEAR, ${User_.birthDate}, CURDATE()) >= $minAge" }
     }.resultList
 ```
@@ -79,7 +79,7 @@ User_.roles inList listOf("a","b") // IN
 User_.roles notInList listOf("x")  // NOT_IN
 User_.city inRefs cityRefs         // IN over Iterable<Ref<T>> — for FK fields with refs
 User_.age.between(18, 65)          // BETWEEN
-User_.active.isTrue()              // IS_TRUE
+User_.postalCode.isNotNull()              // IS_TRUE
 User_.archived.isFalse()           // IS_FALSE
 User_.email.isNull()               // IS_NULL
 User_.email.isNotNull()            // IS_NOT_NULL
@@ -87,7 +87,7 @@ User_.email.isNotNull()            // IS_NOT_NULL
 
 Combine with `and`/`or`:
 ```kotlin
-(User_.active eq true) and User_.email.isNotNull()
+(User_.email like "%@example.com") and User_.email.isNotNull()
 (User_.role eq "admin") or (User_.role eq "superadmin")
 ```
 
@@ -209,7 +209,7 @@ The rule: **escalate only when the simpler level cannot express what you need.**
 val user = orm.find(User_.email eq email)
 val users = orm.findAll(User_.city eq city)
 val exists = orm.existsBy(User_.email, email)
-val removed = orm.removeAll(User_.active eq false)
+val removed = orm.removeAll(User_.postalCode.isNull())
 ```
 
 **Level 2 — Builder with predicate** (returns `QueryBuilder`, chain terminal + ordering/pagination):
@@ -232,7 +232,7 @@ val users = orm.entity<User>()
 Compound filters: `(A eq x) and (B eq y)`, `(A eq x) or (B eq y)`
 Nested paths: `User_.city.country.code eq "US"`
 Ordering: `.orderBy(User_.name)`, `.orderByDescending(User_.createdAt)`
-Pagination: `.page(0, 20)` or `.page(Pageable.ofSize(20).sortBy(User_.name))`. Page API methods (Java record accessors — always call with `()`): `page.content()`, `page.totalPages()`, `page.totalCount()`, `page.pageNumber()`, `page.pageSize()`, `page.hasNext()`, `page.hasPrevious()`, `page.nextPageable()`.
+Pagination: `.page(0, 20)` or `.page(Pageable.ofSize(20).sortBy(User_.name))`. Page API methods (Java record accessors — always call with `()`): `page.content()`, `page.totalPages()`, `page.totalCount()`, `page.pageNumber()`, `page.pageSize()`, `page.hasNext()`, `page.hasPrevious()`, `page.next()`.
 Scrolling (keyset, better for large tables): `.scroll(Scrollable.of(User_.id, 20))` — do NOT combine with `orderBy()` (Scrollable manages ORDER BY internally, see Keyset Scrolling section)
 Explicit joins — two syntax forms depending on context:
 - **Block DSL** (inside `select { }`): `innerJoin<UserRole, Role>()` — reified two-type-arg form, no `.on()`
@@ -322,17 +322,17 @@ val topCities = orm.entity<City>()
     .resultList
 
 // Multi-field groupBy — always use the varargs metamodel form:
-data class CityActiveCount(val city: Ref<City>, val active: Boolean, val userCount: Long)
+data class CityPostalCodeCount(val city: Ref<City>, val postalCode: String?, val userCount: Long)
 
 val counts = orm.entity<User>()
-    .select<CityActiveCount, _, _> { "${User_.city}, ${User_.active}, COUNT(*)" }
-    .groupBy(User_.city, User_.active)    // ✅ varargs metamodel form
+    .select<CityPostalCodeCount, _, _> { "${User_.city}, ${User_.postalCode}, COUNT(*)" }
+    .groupBy(User_.city, User_.postalCode)    // ✅ varargs metamodel form
     .resultList
 
 // ❌ Don't use template lambda when metamodel fields work:
-//    .groupBy { "${User_.city}, ${User_.active}" }
+//    .groupBy { "${User_.city}, ${User_.postalCode}" }
 // ✅ Use varargs metamodel form — code-first, type-safe:
-//    .groupBy(User_.city, User_.active)
+//    .groupBy(User_.city, User_.postalCode)
 ```
 
 **`Ref<T>` in aggregation result types:** When the SELECT clause references a FK field (`${User_.city}`) rather than a full entity (`${City::class}`), use `Ref<T>` in the result type — not the raw ID type and not the full entity. `Ref<City>` maps correctly to the FK column value. Use the full entity type only when the SELECT includes all its columns via `${City::class}`.
@@ -362,7 +362,7 @@ val uniqueCities = orm.entity<User>()
 
 val count = orm.entity<User>()
     .selectCount()
-    .where(User_.active eq true)
+    .where(User_.email like "%@example.com")
     .singleResult
 ```
 
@@ -477,14 +477,14 @@ Two forms build a WHERE clause: **always use `where(predicate)` unless the condi
 // ✅ Compound predicates belong in where() — infix and/or, parenthesized per group
 val users = orm.entity<User>()
     .select()
-    .where(((User_.active eq true) and User_.email.isNotNull()) or (User_.role eq "admin"))
+    .where(((User_.email like "%@example.com") and User_.email.isNotNull()) or (User_.role eq "admin"))
     .resultList
 
 // ❌ whereBuilder adds nothing here — same query, more machinery
 val users = orm.entity<User>()
     .select()
     .whereBuilder {
-        where(User_.active, EQUALS, true)
+        where(User_.email, LIKE, "%@example.com")
             .and(where(User_.email, IS_NOT_NULL))
             .or(where(User_.role, EQUALS, "admin"))
     }
@@ -496,13 +496,13 @@ Consecutive `where()` calls AND together (each clause parenthesized), and the in
 ```kotlin
 users.select()
     .innerJoin<UserRole>().on<User>()     // the join widens the query
-    .where(User_.active eq true)          // root field
+    .where(User_.email like "%@example.com")          // root field
     .where(UserRole_.role eq role)        // joined entity — same call
     .resultList
 
 users.select()
     .innerJoin<UserRole>().on<User>()
-    .where((User_.active eq true) and (UserRole_.role eq role))   // or as one compound clause
+    .where((User_.email like "%@example.com") and (UserRole_.role eq role))   // or as one compound clause
     .resultList
 ```
 
@@ -511,7 +511,7 @@ A genuine `whereBuilder { }` case — a subquery composed into compound logic (a
 ```kotlin
 users.select()
     .whereBuilder {
-        (User_.active eq true) and exists(subquery(UserRole::class).where(UserRole_.role eq role))
+        (User_.email like "%@example.com") and exists(subquery(UserRole::class).where(UserRole_.role eq role))
     }
     .resultList
 ```
@@ -538,61 +538,47 @@ Two operations are defined relative to the root and are affected by the widening
 
 ## Keyset Scrolling
 
-Keyset scrolling uses cursor-based navigation instead of offset, making it efficient for large tables. `Scrollable<T>` takes a **single type parameter** — the entity type (e.g., `Scrollable<User>`). Do not pass a second type parameter. **Scrollable manages ORDER BY internally** — do NOT add `orderBy()` when using `scroll(Scrollable)`, or Storm throws `PersistenceException`.
+Pick the read by what the caller needs to know:
 
-**Composite PK limitation:** The scroll key must be a single-column, non-nullable unique key (e.g. a simple `@PK` or `@UK` field). Entities whose only unique key is a composite PK (e.g., junction tables) cannot be scrolled directly — the key doesn't resolve to a single column. To scroll filtered results from a junction table, query the related entity with a simple PK and JOIN through the junction table for filtering:
-```kotlin
-// ❌ Cannot scroll a junction table with composite PK
-userRoles.scroll(Scrollable.of(UserRole_.id, 20))  // fails — UserRole has composite PK
+| Read | Method | Result | Count query | Needs |
+|---|---|---|---|---|
+| Page | `page(pageable)` | `Page<R>` | yes | an ordering |
+| Slice | `slice(pageable)` | `Slice<R>` | no | an ordering; a page without the count query, the only read for a query without a unique key |
+| Scroll | `scroll(scrollable)` | `Window<R>` | no | a unique key; constant cost at any depth |
+| Windows | `windows(size)` | `Flow<Window<R>>` | no | a primary key; one closed statement per window, so the loop may write |
 
-// ✅ Scroll User (simple PK) with a JOIN through UserRole for filtering
-users.select {
-    innerJoin<UserRole, User>()
-    where(UserRole_.role eq role)
-}.scroll(Scrollable.of(User_.id, 20))
-```
+Keyset scrolling navigates by position instead of offset, making it efficient for large tables. A `Scrollable<T>` takes a **single type parameter**, the entity type. It states the ordering and the size; the position to continue from comes from `window.next()` / `window.previous()` or from a client's cursor string. **The request owns ORDER BY** — do NOT add `orderBy()` when using `scroll(Scrollable)`, or Storm throws `PersistenceException`.
 
 ```kotlin
-// WRONG: orderBy conflicts with Scrollable
+// WRONG: orderBy conflicts with the request's ordering
 select {
-    where(User_.active eq true)
-    orderBy(User_.name)        // ❌ Scrollable manages ordering
+    where(User_.email like "%@example.com")
+    orderBy(User_.name)        // ❌ the Scrollable orders
 }.scroll(Scrollable.of(User_.id, 20))
 
-// CORRECT: ordering is controlled by the Scrollable's key (and optional sort field)
+// CORRECT: the request orders; sort fields go before the key, which stays the tiebreaker
 select {
-    where(User_.active eq true)
-}.scroll(Scrollable.of(User_.id, 20))
+    where(User_.email like "%@example.com")
+}.scroll(Scrollable.of(User_.id, 20).sortBy(User_.email))
 ```
 
-**First request vs subsequent requests:** On the first request there is no cursor, so use `Scrollable.of()`. On subsequent requests, use `Scrollable.fromCursor()`. The cursor is **opaque** and exists for client-server communication: it contains exactly the information the client needs to navigate the scroll window (key position, window size, direction). Clients treat it as a black box — never parse or construct it — and echo it back unchanged to fetch the adjacent window. Server-side code never needs the cursor: `window.next()` / `window.previous()` return a ready-to-use typed `Scrollable<T>` — the cursor is merely the serialized form of that same `Scrollable` for crossing the client-server boundary:
+**Ordering:** `Scrollable.of(key, size)` orders by the key ascending. `sortBy(field)` / `sortByDescending(field)` add sort fields before the key, in any number, each in its own direction; `descending()` orders the key itself descending. **Sort fields must be non-nullable**, checked the way the key is: a NULL never compares, so such a row would fall out of every window, and Storm throws a `PersistenceException` rather than paginate over rows it would silently skip. A date or status column is the usual sort field and the usual place a nullable type slips in. A newest-first feed is `Scrollable.of(Post_.id, 20).sortByDescending(Post_.createdAt).descending()`.
+
+**Every window is in sort order.** `window.previous()` returns the window before this one in the same order as `window.next()` returns the one after it; never reverse a window for display. `hasNext()` / `hasPrevious()` say whether rows existed after / before the window at query time; the tokens are non-null whenever the window has content, and following one is always allowed.
+
+**First request vs subsequent requests:** the ordering and the size are code; the position is the client's cursor. On the first request there is no cursor. On subsequent requests, put the same request at the client's cursor with `.from(cursor)`. The cursor is **opaque**: it carries the position only (the row's sort and key values, and whether to continue after or before it) under a fingerprint of the ordering, so a cursor issued for another ordering is refused. Clients treat it as a black box and echo it back unchanged. Server-side code never needs the cursor: `window.next()` / `window.previous()` are ready-to-use `Scrollable<T>` requests.
 
 ```kotlin
-val scrollable = if (cursor != null) {
-    Scrollable.fromCursor(User_.id, cursor)           // size encoded in cursor
-} else {
-    Scrollable.of(User_.id, 20)                       // first page, size 20
-}
-val window = users.scroll(scrollable)                     // prefer val — avoids Window<User> verbosity
-val nextCursor: String? = window.nextCursor()          // null if no more results
+val request = Scrollable.of(User_.id, size).sortBy(User_.email)      // ordering and size: code
+val window = users.scroll(if (cursor != null) request.from(cursor) else request)
+val nextCursor: String? = window.nextCursor()                          // null when nothing follows
 ```
 
-**Custom sort column** (non-unique sort field with key as tiebreaker):
-```kotlin
-val scrollable = Scrollable.of(User_.id, User_.name, 20)
-val window = users.scroll(scrollable)
-```
+**Tokens for every result type:** the sort and key values are read from the row, so `selectRef().scroll(...)`, `users.scrollRef(...)`, projections read as another type and custom select types all navigate. A compound (inline record) key is read from the mapped record and needs the entity type as the result.
 
-**Backward scrolling and navigation** (`Window` is a Java record — accessors are methods, call with `()`):
-```kotlin
-val window = users.scroll(Scrollable.of(User_.id, 20))
-if (window.hasNext()) {
-    val next = users.scroll(window.next()!!)
-}
-if (window.hasPrevious()) {
-    val previous = users.scroll(window.previous()!!)
-}
-```
+**Iterate windows:** `for (user in window)` works, `Window` is a `Slice` and iterates over its content; `window.size()` and `window.isEmpty()` exist too. `Window` is a Java record, so the other accessors are methods: `window.content()`, `window.hasNext()`.
+
+**Slices:** `select().slice(Pageable.ofSize(20).sortBy(User_.email))` is `page` without the count query: `hasNext()` from one extra row, `hasPrevious()` from the page number, the next slice from `pageable.next()`. `slice(0, 20)` uses the query's own ordering. `Slice` is the interface `Page` and `Window` implement, so call its accessors with `()`.
 
 ## Bulk DELETE/UPDATE
 
@@ -600,10 +586,10 @@ if (window.hasPrevious()) {
 
 ```kotlin
 // DELETE with WHERE (safe) -- builder returns QueryBuilder, terminal executes
-orm.entity<User>().delete().where(User_.active eq false).executeUpdate()
+orm.entity<User>().delete().where(User_.postalCode.isNull()).executeUpdate()
 
 // DELETE with predicate shorthand -- also returns QueryBuilder
-orm.entity<User>().delete(User_.active eq false).executeUpdate()
+orm.entity<User>().delete(User_.postalCode.isNull()).executeUpdate()
 
 // DELETE/UPDATE without WHERE throws by default. Use unsafe() to confirm intent:
 orm.entity<User>().delete().unsafe().executeUpdate()
@@ -621,7 +607,7 @@ Use `select { }` / `delete { }` to build queries without chaining. Both are **bu
 ```kotlin
 // Standalone: get the entity repository first — there is NO orm.select<T> { block } reified form
 orm.entity<User>().select {
-    where(User_.active eq true)
+    where(User_.email like "%@example.com")
     orderBy(User_.name)
     limit(10)
 }.resultList
@@ -633,17 +619,17 @@ select {
 
 // delete { } also returns QueryBuilder — call .executeUpdate() to run it
 delete {
-    where(User_.active eq false)
+    where(User_.postalCode.isNull())
 }.executeUpdate()
 ```
 
 Predicate variants also return `QueryBuilder`:
 ```kotlin
 // select(predicate) returns QueryBuilder
-users.select(User_.active eq true).resultList
+users.select(User_.email like "%@example.com").resultList
 
 // delete(predicate) returns QueryBuilder
-users.delete(User_.active eq false).executeUpdate()
+users.delete(User_.postalCode.isNull()).executeUpdate()
 ```
 
 **Conditional logic inside the block:** The block is a regular Kotlin lambda — use `if`, `when`, and loops to compose queries dynamically. This avoids duplicating shared parts (ordering, pagination, terminals) across branches:
@@ -683,12 +669,12 @@ The block DSL is typed to the root entity. There is **no** `select(ResultType::c
 ```kotlin
 // ❌ Not valid — no block DSL overload for result type
 select(UserSummary::class) {
-    where(User_.active eq true)
+    where(User_.email like "%@example.com")
 }.resultList
 
 // ✅ Use chained API for a different result type
 select(UserSummary::class)
-    .where(User_.active eq true)
+    .where(User_.email like "%@example.com")
     .resultList
 
 // ✅ With joins — chained API uses .innerJoin<A>().on<B>(), not the two-type-arg form
@@ -713,7 +699,7 @@ A `resultFlow` is one open statement. While it still has rows to emit, the conne
 ```kotlin
 transaction {
     users.select().resultFlow.collect { user ->
-        orm update user.copy(processed = true)   // ❌ write while the flow has rows left
+        orm update user.copy(email = user.email.lowercase())   // ❌ write while the flow has rows left
         user.city.fetch()                        // ❌ Ref.fetch() is a statement too
         cities.count()                           // ❌ any query
     }
@@ -728,18 +714,18 @@ The last line is the trap that passes small tests: the flow completes and closes
 ```kotlin
 // One transaction for the whole walk:
 transaction {
-    users.select(User_.active eq true).windows(1000).collect { window ->
-        users.update(window.content().map { it.copy(processed = true) })
+    users.select(User_.city eq city).windows(1000).collect { window ->
+        users.update(window.content().map { it.copy(email = it.email.lowercase()) })
     }
 }
 
 // Or a transaction per window, so progress is durable and locks are short-lived:
 users.windows(1000).collect { window ->
-    transaction { users.update(window.content().map { it.copy(processed = true) }) }
+    transaction { users.update(window.content().map { it.copy(email = it.email.lowercase()) }) }
 }
 
 // Resume after a restart from a stored cursor:
-users.windows(Scrollable.fromCursor(User_.id, storedCursor)).collect { window ->
+users.windows(Scrollable.of(User_.id, 1000).from(storedCursor)).collect { window ->
     process(window.content())
     store(window.nextCursor())
 }
@@ -788,18 +774,18 @@ Tell the user what you are doing and why: explain that `SqlCapture` records ever
 @StormTest(scripts = ["/schema.sql", "/data.sql"])
 class UserQueryTest {
     @Test
-    fun findActiveUsersInCity(orm: ORMTemplate, capture: SqlCapture) {
+    fun findExampleUsersInCity(orm: ORMTemplate, capture: SqlCapture) {
         val city = orm.entity<City, _>().getById(1)   // getById is ID-based — use the two-type-arg form
         val users = capture.execute {
             orm.entity<User>().select()
-                .where((User_.city eq city) and (User_.active eq true))
+                .where((User_.city eq city) and (User_.email like "%@example.com"))
                 .orderBy(User_.name)
                 .resultList
         }
-        // Verify intent: single query, only active users in the given city, ordered by name.
+        // Verify intent: single query, only example.com users in the given city, ordered by name.
         assertEquals(1, capture.count(Operation.SELECT))
         assertFalse(users.isEmpty())
-        assertTrue(users.all { it.city == city && it.active })
+        assertTrue(users.all { it.city == city && it.email.endsWith("@example.com") })
         assertEquals(users.sortedBy { it.name }, users)
     }
 }

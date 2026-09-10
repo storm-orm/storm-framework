@@ -150,6 +150,12 @@ class MSSQLServerSqlDialectTest {
     }
 
     @Test
+    void unorderedOffsetGetsAConstantOrdering() {
+        // OFFSET-FETCH is only valid after an ORDER BY, so an unordered offset read gets one that orders nothing.
+        assertEquals("ORDER BY (SELECT NULL)", dialect.orderByForOffset());
+    }
+
+    @Test
     void limitWithOffsetShouldGenerateOffsetFetchNext() {
         // MSSQL 2012+ uses OFFSET-FETCH, not LIMIT-OFFSET.
         assertEquals("OFFSET 10 ROWS FETCH NEXT 20 ROWS ONLY", dialect.limit(10, 20));

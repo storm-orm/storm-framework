@@ -40,6 +40,7 @@ import st.orm.Pageable;
 import st.orm.PersistenceException;
 import st.orm.Ref;
 import st.orm.Scrollable;
+import st.orm.Slice;
 import st.orm.TypedMetamodel;
 import st.orm.Window;
 import st.orm.core.template.impl.Elements.Columns;
@@ -80,7 +81,7 @@ import st.orm.core.template.impl.Elements.ObjectExpression;
  *         .select()
  *         .innerJoin(Order.class).on(User.class)
  *         .where(predicate -> predicate
- *             .where(User_.active, EQUALS, true)
+ *             .where(User_.email, LIKE, "%@example.com")
  *             .and(predicate.where(Order_.total, GREATER_THAN, 100)))
  *         .getResultList();
  * }</pre>
@@ -93,12 +94,12 @@ import st.orm.core.template.impl.Elements.ObjectExpression;
  * <pre>{@code
  * // WRONG - the where clause is lost because the return value is discarded:
  * var builder = userRepository.select();
- * builder.where(User_.active, EQUALS, true);  // returns a new builder, but it's ignored
+ * builder.where(User_.email, LIKE, "%@example.com");  // returns a new builder, but it's ignored
  * builder.getResultList();                     // executes without the WHERE clause
  *
  * // CORRECT - chain the calls or capture the returned builder:
  * var results = userRepository.select()
- *         .where(User_.active, EQUALS, true)
+ *         .where(User_.email, LIKE, "%@example.com")
  *         .getResultList();
  * }</pre>
  *
@@ -805,7 +806,7 @@ public abstract class QueryBuilder<T extends Data, R, ID> {
      * both. If both are present, a {@link PersistenceException} is thrown.</p>
      *
      * <p>Use {@link Pageable#ofSize(int)} for the first page, then navigate with
-     * {@link Page#nextPageable()} or {@link Page#previousPageable()}.</p>
+     * {@link Page#next()} or {@link Page#previous()}.</p>
      *
      * @param pageable the pagination request specifying page number and page size.
      * @return a page containing the results and pagination metadata.
@@ -813,7 +814,7 @@ public abstract class QueryBuilder<T extends Data, R, ID> {
      * @since 1.10
      */
     public final Page<R> page(Pageable pageable) {
-        List<R> content = pageContent(pageable);
+        List<R> content = pageContent(pageable, pageable.pageSize());
         long totalCount;
         if (content.size() < pageable.pageSize() && (pageable.offset() == 0 || !content.isEmpty())) {
             // A page that is not full is the last page, so the total follows from the page itself. An empty page
@@ -844,49 +845,80 @@ public abstract class QueryBuilder<T extends Data, R, ID> {
      * @since 1.10
      */
     public final Page<R> page(Pageable pageable, long totalCount) {
-        return new Page<>(pageContent(pageable), totalCount, pageable);
+        return new Page<>(pageContent(pageable, pageable.pageSize()), totalCount, pageable);
     }
 
     /**
-     * Fetches the content for the requested page, applying the pageable's sort orders and offset/limit window.
+     * Executes the query and returns a {@link Slice} of results using offset-based pagination without a count.
+     *
+     * <p>The slice is read the way a page is, with OFFSET and LIMIT from the request, but one row beyond the page
+     * size is fetched instead of running a count query: {@link Slice#hasNext()} says whether that row existed, and
+     * {@link Slice#hasPrevious()} follows from the page number. Use it for a "load more" that needs no total, and
+     * for a query without a unique key, where {@link #scroll(Scrollable)} is not possible.</p>
+     *
+     * <p>Page numbers are zero-based: pass {@code 0} for the first slice.</p>
+     *
+     * @param pageNumber the zero-based page index.
+     * @param pageSize the maximum number of results per slice.
+     * @return the slice.
+     * @since 1.14
      */
-    private List<R> pageContent(Pageable pageable) {
+    public final Slice<R> slice(int pageNumber, int pageSize) {
+        return slice(Pageable.of(pageNumber, pageSize));
+    }
+
+    /**
+     * Executes the query and returns a {@link Slice} of results using offset-based pagination without a count.
+     *
+     * <p>The slice is read the way a page is, with OFFSET and LIMIT from the request, but one row beyond the page
+     * size is fetched instead of running a count query: {@link Slice#hasNext()} says whether that row existed, and
+     * {@link Slice#hasPrevious()} follows from the page number. Use it for a "load more" that needs no total, and
+     * for a query without a unique key, where {@link #scroll(Scrollable)} is not possible.</p>
+     *
+     * <p>Use {@link Pageable#ofSize(int)} for the first slice, then navigate with {@link Pageable#next()} or
+     * {@link Pageable#previous()}.</p>
+     *
+     * @param pageable the request specifying page number, page size and sort orders.
+     * @return the slice.
+     * @throws PersistenceException if the request carries sort orders and the query an explicit ORDER BY.
+     * @since 1.14
+     */
+    public final Slice<R> slice(Pageable pageable) {
+        List<R> content = pageContent(pageable, pageable.pageSize() + 1);
+        boolean hasNext = content.size() > pageable.pageSize();
+        return Slice.of(hasNext ? content.subList(0, pageable.pageSize()) : content, hasNext, pageable.pageNumber() > 0);
+    }
+
+    /**
+     * Fetches the content for the requested page, applying the pageable's sort orders and offset, and the limit.
+     */
+    private List<R> pageContent(Pageable pageable, int limit) {
         // Forbid combining explicit orderBy with Pageable sort orders for consistency with scroll, which also
         // manages ORDER BY internally and forbids explicit orderBy calls.
         if (hasOrderBy() && !pageable.orders().isEmpty()) {
-            throw new PersistenceException("page with Pageable sort orders cannot be combined with explicit orderBy calls.");
+            throw new PersistenceException("Pageable sort orders cannot be combined with explicit orderBy calls.");
         }
         QueryBuilder<T, R, ID> sorted = this;
         for (var order : pageable.orders()) {
             // The Pageable's sort field may be rooted anywhere in the query, so the column is named directly.
             sorted = sorted.orderBy(RAW."\{new Columns(List.of(order.field()), CASCADE, order.descending() ? ORDER_BY_DESCENDING : ORDER_BY_ASCENDING)}");
         }
-        return sorted.offset((int) pageable.offset()).limit(pageable.pageSize()).getResultList();
+        return sorted.offset((int) pageable.offset()).limit(limit).getResultList();
     }
 
     /**
-     * Executes the query and returns a {@link Window} of results.
+     * Executes a scroll request and returns a {@link Window}: the results in the request's sort order, the flags
+     * that say whether rows exist after and before the window, and the tokens that continue from it.
      *
-     * <p>This method fetches {@code size + 1} rows to determine whether more results are available, then returns at
-     * most {@code size} results along with a {@code hasNext} flag. The caller is responsible for managing any WHERE
-     * and ORDER BY clauses externally.</p>
+     * <p>The request owns the ordering, so the query must not carry an ORDER BY of its own. The sort fields and the
+     * key are read from each row alongside the result, so the tokens are there for every result type: the entity,
+     * a projection, a ref or a custom select type. A window reached through {@link Window#previous()} comes back in
+     * the same sort order as every other window.</p>
      *
-     * <p>The returned window does not carry navigation tokens ({@code next()} and
-     * {@code previous()} return {@code null}).</p>
-     *
-     * @param size the maximum number of results to include in the window (must be positive).
-     * @return a window containing the results and a flag indicating whether more results exist.
-     * @throws IllegalArgumentException if {@code size} is not positive.
-     * @since 1.11
-     */
-    public abstract Window<R> scroll(int size);
-
-    /**
-     * Executes a scroll request from a {@link Scrollable} token, typically obtained from
-     * {@link Window#next()} or {@link Window#previous()}.
-     *
-     * @param scrollable the scroll request containing cursor state, key, sort, size, and direction.
+     * @param scrollable the scroll request: ordering, size and position.
      * @return a window containing the results and navigation tokens.
+     * @throws PersistenceException if the query carries an explicit ORDER BY, the key is compound or nullable, or a
+     *                              sort field is nullable.
      * @since 1.11
      */
     public abstract Window<R> scroll(Scrollable<T> scrollable);
@@ -905,13 +937,13 @@ public abstract class QueryBuilder<T extends Data, R, ID> {
      * <p>Windows are keyset windows over the primary key, so the query must not carry an ORDER BY of its own, and
      * the result type must be the entity type the key belongs to: {@code selectRef()} and custom select types
      * are refused. A compound primary key is refused too; pass {@link #windows(Scrollable)} a single-column unique
-     * key instead. The rows come in ascending key order; pass {@code Scrollable.of(key, size).backward()} to
+     * key instead. The rows come in ascending key order; pass {@code Scrollable.of(key, size).descending()} to
      * {@link #windows(Scrollable)} for descending order.</p>
      *
      * <pre>{@code
-     * users.select().where(User_.active, EQUALS, true).windows(1000).forEach(window ->
+     * users.select().where(User_.city, EQUALS, city).windows(1000).forEach(window ->
      *     users.update(window.content().stream()
-     *         .map(user -> new User(user.id(), user.email(), user.name(), true, user.city()))
+     *         .map(user -> new User(user.id(), user.email().toLowerCase(), user.birthDate(), user.street(), user.postalCode(), user.city()))
      *         .toList()));
      * }</pre>
      *
@@ -927,10 +959,10 @@ public abstract class QueryBuilder<T extends Data, R, ID> {
     /**
      * Executes the query in windows described by the given scroll request, each window one closed statement.
      *
-     * <p>This is the form of {@link #windows(int)} that chooses the key, the sort field, the direction and the
+     * <p>This is the form of {@link #windows(int)} that chooses the key, the sort fields, the directions and the
      * starting position: {@code Scrollable.of(key, size)} iterates from the start, a {@link Window#next()} token
-     * or {@link Scrollable#fromCursor(Metamodel.Key, String)} resumes after an earlier window, and
-     * {@code .backward()} iterates in descending order. The same key rules as {@link #scroll(Scrollable)} apply.</p>
+     * or {@link Scrollable#from(String)} resumes after an earlier window, and {@code .descending()} iterates in
+     * descending key order. The same key rules as {@link #scroll(Scrollable)} apply.</p>
      *
      * @param scrollable the scroll request describing key, sort, size, direction and starting position.
      * @return a stream of windows; each window's {@link Window#next()} resumes the iteration after that window.

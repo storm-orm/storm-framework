@@ -435,7 +435,7 @@ public final class TransactionScope {
      * When the scope was never materialized this is a no-op, except that a rollback outcome is propagated to the
      * parent scope when this scope's propagation joins the outer transaction.</p>
      *
-     * <p>This method does not uninstall the scope from the current thread; callers opened via {@link #open(TransactionOptions)}
+     * <p>This method does not uninstall the scope from the current thread; callers opened via {@link #open(TransactionOptions, boolean)}
      * must additionally call {@link #close()}.</p>
      *
      * @param rollback whether the transactional block failed and the transaction must be rolled back.
@@ -480,7 +480,7 @@ public final class TransactionScope {
     /**
      * Uninstalls this scope from the current thread, restoring its parent as the current scope.
      *
-     * <p>Must be called on the thread that opened the scope via {@link #open(TransactionOptions)}, after {@link #complete}.</p>
+     * <p>Must be called on the thread that opened the scope via {@link #open(TransactionOptions, boolean)}, after {@link #complete(boolean)}.</p>
      *
      * @throws IllegalStateException if this scope is not the current scope of this thread.
      */

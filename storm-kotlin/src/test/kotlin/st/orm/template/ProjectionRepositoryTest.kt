@@ -758,9 +758,20 @@ internal open class ProjectionRepositoryTest(
     fun `scroll should return first page of projections`() {
         val repo = orm.projection(OwnerView::class)
         val idPath = metamodel<OwnerView, Int>(repo.model, "id")
-        val window = repo.select().orderBy(idPath).scroll(3)
-        window.content shouldHaveSize 3
-        window.hasNext shouldBe true
+        val window = repo.select().orderBy(idPath).slice(0, 3)
+        window.content() shouldHaveSize 3
+        window.hasNext() shouldBe true
+    }
+
+    @Test
+    fun `scrollRef should navigate projections in sort order`() {
+        val repo = orm.projection(OwnerView::class)
+        val idKey = metamodel<OwnerView, Int>(repo.model, "id").key()
+        val first = repo.scrollRef(Scrollable.of(idKey, 4))
+        first.content.map { it.id() } shouldBe listOf(1, 2, 3, 4)
+        val second = repo.scrollRef(first.next<OwnerView>()!!)
+        second.content.map { it.id() } shouldBe listOf(5, 6, 7, 8)
+        repo.scrollRef(second.previous<OwnerView>()!!).content shouldBe first.content
     }
 
     @Test
@@ -774,9 +785,9 @@ internal open class ProjectionRepositoryTest(
     fun `scroll with large size should not have next`() {
         val repo = orm.projection(OwnerView::class)
         val idPath = metamodel<OwnerView, Int>(repo.model, "id")
-        val window = repo.select().orderBy(idPath).scroll(100)
-        window.content shouldHaveSize 10
-        window.hasNext shouldBe false
+        val window = repo.select().orderBy(idPath).slice(0, 100)
+        window.content() shouldHaveSize 10
+        window.hasNext() shouldBe false
     }
 
     @Test
@@ -1278,7 +1289,7 @@ internal open class ProjectionRepositoryTest(
     fun `scrollBefore with Metamodel Key should return descending first page`() {
         val repo = orm.projection(OwnerView::class)
         val idKey = metamodel<OwnerView, Int>(repo.model, "id").key()
-        val window = repo.scroll(Scrollable.of(idKey, 3).backward())
+        val window = repo.scroll(Scrollable.of(idKey, 3).descending())
         window.content shouldHaveSize 3
         window.hasNext shouldBe true
         // First item should be the highest id
@@ -1298,7 +1309,7 @@ internal open class ProjectionRepositoryTest(
     fun `scrollBeforeRef with Metamodel Key should return descending first page of refs`() {
         val repo = orm.projection(OwnerView::class)
         val idKey = metamodel<OwnerView, Int>(repo.model, "id").key()
-        val window = repo.selectRef().scroll(Scrollable.of(idKey, 3).backward())
+        val window = repo.selectRef().scroll(Scrollable.of(idKey, 3).descending())
         window.content shouldHaveSize 3
         window.hasNext shouldBe true
     }
@@ -1350,7 +1361,7 @@ internal open class ProjectionRepositoryTest(
         val repo = orm.projection(OwnerView::class)
         val idKey = metamodel<OwnerView, Int>(repo.model, "id").key()
         val lastNamePath = metamodel<OwnerView, String>(repo.model, "last_name")
-        val window = repo.select().where(lastNamePath eq "Davis").scroll(Scrollable.of(idKey, 10).backward())
+        val window = repo.select().where(lastNamePath eq "Davis").scroll(Scrollable.of(idKey, 10).descending())
         window.content shouldHaveSize 2
         window.hasNext shouldBe false
     }
@@ -1361,7 +1372,7 @@ internal open class ProjectionRepositoryTest(
         val idKey = metamodel<OwnerView, Int>(repo.model, "id").key()
         val lastNamePath = metamodel<OwnerView, String>(repo.model, "last_name")
         val predicate = lastNamePath eq "Davis"
-        val window = repo.select().where(predicate).scroll(Scrollable.of(idKey, 10).backward())
+        val window = repo.select().where(predicate).scroll(Scrollable.of(idKey, 10).descending())
         window.content shouldHaveSize 2
         window.hasNext shouldBe false
     }
@@ -1374,7 +1385,7 @@ internal open class ProjectionRepositoryTest(
         firstWindow.content shouldHaveSize 3
         // Get the last ID from the first scroll to use as cursor
         val lastId = firstWindow.content.last().id
-        val nextWindow = repo.select().scroll(Scrollable(idKey, lastId, null, null, 3, true))
+        val nextWindow = repo.select().scroll(Scrollable.of(idKey, 3).after(lastId))
         nextWindow.content shouldHaveSize 3
         // All IDs in next scroll should be greater than lastId
         nextWindow.content.forEach { it.id shouldBe (it.id).also { id -> assert(id > lastId) } }
@@ -1385,11 +1396,11 @@ internal open class ProjectionRepositoryTest(
         val repo = orm.projection(OwnerView::class)
         val idKey = metamodel<OwnerView, Int>(repo.model, "id").key()
         // Get the last page first
-        val lastWindow = repo.scroll(Scrollable.of(idKey, 3).backward())
+        val lastWindow = repo.scroll(Scrollable.of(idKey, 3).descending())
         lastWindow.content shouldHaveSize 3
         // Navigate backward
         val firstId = lastWindow.content.last().id
-        val previousWindow = repo.select().scroll(Scrollable(idKey, firstId, null, null, 3, false))
+        val previousWindow = repo.select().scroll(Scrollable.of(idKey, 3).before(firstId))
         previousWindow.content shouldHaveSize 3
     }
 
@@ -1439,7 +1450,7 @@ internal open class ProjectionRepositoryTest(
     fun `projection query builder scrollBefore should return descending first page`() {
         val repo = orm.projection(OwnerView::class)
         val idKey = metamodel<OwnerView, Int>(repo.model, "id").key()
-        val window = repo.select().scroll(Scrollable.of(idKey, 4).backward())
+        val window = repo.select().scroll(Scrollable.of(idKey, 4).descending())
         window.content shouldHaveSize 4
         window.hasNext shouldBe true
     }
@@ -1466,7 +1477,7 @@ internal open class ProjectionRepositoryTest(
     fun `repo scrollBefore with key and size should return last page`() {
         val repo = orm.projection(OwnerView::class)
         val idKey = metamodel<OwnerView, Int>(repo.model, "id").key()
-        val window = repo.scroll(Scrollable.of(idKey, 4).backward())
+        val window = repo.scroll(Scrollable.of(idKey, 4).descending())
         window.content shouldHaveSize 4
         window.hasNext shouldBe true
     }
@@ -1475,7 +1486,7 @@ internal open class ProjectionRepositoryTest(
     fun `repo scrollBeforeRef with key and size should return refs`() {
         val repo = orm.projection(OwnerView::class)
         val idKey = metamodel<OwnerView, Int>(repo.model, "id").key()
-        val window = repo.selectRef().scroll(Scrollable.of(idKey, 4).backward())
+        val window = repo.selectRef().scroll(Scrollable.of(idKey, 4).descending())
         window.content shouldHaveSize 4
         window.hasNext shouldBe true
     }
@@ -1485,7 +1496,7 @@ internal open class ProjectionRepositoryTest(
         val repo = orm.projection(OwnerView::class)
         val idKey = metamodel<OwnerView, Int>(repo.model, "id").key()
         val lastNamePath = metamodel<OwnerView, String>(repo.model, "last_name")
-        val window = repo.selectRef().where(lastNamePath eq "Davis").scroll(Scrollable.of(idKey, 10).backward())
+        val window = repo.selectRef().where(lastNamePath eq "Davis").scroll(Scrollable.of(idKey, 10).descending())
         window.content shouldHaveSize 2
         window.hasNext shouldBe false
     }
@@ -1494,7 +1505,7 @@ internal open class ProjectionRepositoryTest(
     fun `repo scrollAfter with key after value and size should return next page`() {
         val repo = orm.projection(OwnerView::class)
         val idKey = metamodel<OwnerView, Int>(repo.model, "id").key()
-        val window = repo.select().scroll(Scrollable(idKey, 3, null, null, 4, true))
+        val window = repo.select().scroll(Scrollable.of(idKey, 4).after(3))
         window.content shouldHaveSize 4
     }
 
@@ -1502,7 +1513,7 @@ internal open class ProjectionRepositoryTest(
     fun `repo scrollAfterRef with key after value and size should return next page refs`() {
         val repo = orm.projection(OwnerView::class)
         val idKey = metamodel<OwnerView, Int>(repo.model, "id").key()
-        val window = repo.selectRef().scroll(Scrollable(idKey, 3, null, null, 4, true))
+        val window = repo.selectRef().scroll(Scrollable.of(idKey, 4).after(3))
         window.content shouldHaveSize 4
     }
 
@@ -1510,7 +1521,7 @@ internal open class ProjectionRepositoryTest(
     fun `repo scrollBefore with key before value and size should return previous page`() {
         val repo = orm.projection(OwnerView::class)
         val idKey = metamodel<OwnerView, Int>(repo.model, "id").key()
-        val window = repo.select().scroll(Scrollable(idKey, 8, null, null, 4, false))
+        val window = repo.select().scroll(Scrollable.of(idKey, 4).before(8))
         window.content shouldHaveSize 4
     }
 
@@ -1518,7 +1529,7 @@ internal open class ProjectionRepositoryTest(
     fun `repo scrollBeforeRef with key before value and size should return previous page refs`() {
         val repo = orm.projection(OwnerView::class)
         val idKey = metamodel<OwnerView, Int>(repo.model, "id").key()
-        val window = repo.selectRef().scroll(Scrollable(idKey, 8, null, null, 4, false))
+        val window = repo.selectRef().scroll(Scrollable.of(idKey, 4).before(8))
         window.content shouldHaveSize 4
     }
 
@@ -1527,7 +1538,7 @@ internal open class ProjectionRepositoryTest(
         val repo = orm.projection(OwnerView::class)
         val idKey = metamodel<OwnerView, Int>(repo.model, "id").key()
         val lastNamePath = metamodel<OwnerView, String>(repo.model, "last_name")
-        val window = repo.select().where(lastNamePath eq "Davis").scroll(Scrollable(idKey, 1, null, null, 10, true))
+        val window = repo.select().where(lastNamePath eq "Davis").scroll(Scrollable.of(idKey, 10).after(1))
         window.content shouldHaveSize 1
     }
 
@@ -1536,7 +1547,7 @@ internal open class ProjectionRepositoryTest(
         val repo = orm.projection(OwnerView::class)
         val idKey = metamodel<OwnerView, Int>(repo.model, "id").key()
         val lastNamePath = metamodel<OwnerView, String>(repo.model, "last_name")
-        val window = repo.selectRef().where(lastNamePath eq "Davis").scroll(Scrollable(idKey, 1, null, null, 10, true))
+        val window = repo.selectRef().where(lastNamePath eq "Davis").scroll(Scrollable.of(idKey, 10).after(1))
         window.content shouldHaveSize 1
     }
 
@@ -1545,7 +1556,7 @@ internal open class ProjectionRepositoryTest(
         val repo = orm.projection(OwnerView::class)
         val idKey = metamodel<OwnerView, Int>(repo.model, "id").key()
         val lastNamePath = metamodel<OwnerView, String>(repo.model, "last_name")
-        val window = repo.select().where(lastNamePath eq "Davis").scroll(Scrollable(idKey, 10, null, null, 10, false))
+        val window = repo.select().where(lastNamePath eq "Davis").scroll(Scrollable.of(idKey, 10).before(10))
         window.content shouldHaveSize 2
     }
 
@@ -1554,7 +1565,7 @@ internal open class ProjectionRepositoryTest(
         val repo = orm.projection(OwnerView::class)
         val idKey = metamodel<OwnerView, Int>(repo.model, "id").key()
         val lastNamePath = metamodel<OwnerView, String>(repo.model, "last_name")
-        val window = repo.selectRef().where(lastNamePath eq "Davis").scroll(Scrollable(idKey, 10, null, null, 10, false))
+        val window = repo.selectRef().where(lastNamePath eq "Davis").scroll(Scrollable.of(idKey, 10).before(10))
         window.content shouldHaveSize 2
     }
 
@@ -1563,7 +1574,7 @@ internal open class ProjectionRepositoryTest(
         val repo = orm.projection(OwnerView::class)
         val idKey = metamodel<OwnerView, Int>(repo.model, "id").key()
         val lastNamePath = metamodel<OwnerView, String>(repo.model, "last_name")
-        val window = repo.scroll(Scrollable.of(idKey, lastNamePath, 4))
+        val window = repo.scroll(Scrollable.of(idKey, 4).sortBy(lastNamePath))
         window.content shouldHaveSize 4
         window.hasNext shouldBe true
     }
@@ -1573,7 +1584,7 @@ internal open class ProjectionRepositoryTest(
         val repo = orm.projection(OwnerView::class)
         val idKey = metamodel<OwnerView, Int>(repo.model, "id").key()
         val lastNamePath = metamodel<OwnerView, String>(repo.model, "last_name")
-        val window = repo.scroll(Scrollable.of(idKey, lastNamePath, 4).backward())
+        val window = repo.scroll(Scrollable.of(idKey, 4).sortByDescending(lastNamePath).descending())
         window.content shouldHaveSize 4
         window.hasNext shouldBe true
     }
@@ -1583,7 +1594,7 @@ internal open class ProjectionRepositoryTest(
         val repo = orm.projection(OwnerView::class)
         val idKey = metamodel<OwnerView, Int>(repo.model, "id").key()
         val lastNamePath = metamodel<OwnerView, String>(repo.model, "last_name")
-        val window = repo.selectRef().scroll(Scrollable.of(idKey, lastNamePath, 4))
+        val window = repo.selectRef().scroll(Scrollable.of(idKey, 4).sortBy(lastNamePath))
         window.content shouldHaveSize 4
         window.hasNext shouldBe true
     }
@@ -1593,7 +1604,7 @@ internal open class ProjectionRepositoryTest(
         val repo = orm.projection(OwnerView::class)
         val idKey = metamodel<OwnerView, Int>(repo.model, "id").key()
         val lastNamePath = metamodel<OwnerView, String>(repo.model, "last_name")
-        val window = repo.selectRef().scroll(Scrollable.of(idKey, lastNamePath, 4).backward())
+        val window = repo.selectRef().scroll(Scrollable.of(idKey, 4).sortByDescending(lastNamePath).descending())
         window.content shouldHaveSize 4
         window.hasNext shouldBe true
     }
@@ -1603,7 +1614,7 @@ internal open class ProjectionRepositoryTest(
         val repo = orm.projection(OwnerView::class)
         val idKey = metamodel<OwnerView, Int>(repo.model, "id").key()
         val lastNamePath = metamodel<OwnerView, String>(repo.model, "last_name")
-        val window = repo.select().scroll(Scrollable(idKey, 3, lastNamePath, "Davis", 4, true))
+        val window = repo.select().scroll(Scrollable.of(idKey, 4).sortBy(lastNamePath).after("Davis", 3))
         window.content shouldHaveSize 4
     }
 
@@ -1612,7 +1623,7 @@ internal open class ProjectionRepositoryTest(
         val repo = orm.projection(OwnerView::class)
         val idKey = metamodel<OwnerView, Int>(repo.model, "id").key()
         val lastNamePath = metamodel<OwnerView, String>(repo.model, "last_name")
-        val window = repo.select().scroll(Scrollable(idKey, 8, lastNamePath, "Smith", 4, false))
+        val window = repo.select().scroll(Scrollable.of(idKey, 4).sortBy(lastNamePath).before("Smith", 8))
         window.content shouldHaveSize 4
     }
 
@@ -1621,7 +1632,7 @@ internal open class ProjectionRepositoryTest(
         val repo = orm.projection(OwnerView::class)
         val idKey = metamodel<OwnerView, Int>(repo.model, "id").key()
         val lastNamePath = metamodel<OwnerView, String>(repo.model, "last_name")
-        val window = repo.selectRef().scroll(Scrollable(idKey, 3, lastNamePath, "Davis", 4, true))
+        val window = repo.selectRef().scroll(Scrollable.of(idKey, 4).sortBy(lastNamePath).after("Davis", 3))
         window.content shouldHaveSize 4
     }
 
@@ -1630,7 +1641,7 @@ internal open class ProjectionRepositoryTest(
         val repo = orm.projection(OwnerView::class)
         val idKey = metamodel<OwnerView, Int>(repo.model, "id").key()
         val lastNamePath = metamodel<OwnerView, String>(repo.model, "last_name")
-        val window = repo.selectRef().scroll(Scrollable(idKey, 8, lastNamePath, "Smith", 4, false))
+        val window = repo.selectRef().scroll(Scrollable.of(idKey, 4).sortBy(lastNamePath).before("Smith", 8))
         window.content shouldHaveSize 4
     }
 

@@ -393,7 +393,7 @@ public class QueryBuilderPredicateIntegrationTest {
     public void testScrollNonPositiveSizeThrows() {
         var orm = ORMTemplate.of(dataSource);
         assertThrows(IllegalArgumentException.class, () ->
-                orm.selectFrom(City.class).orderBy(City_.id).scroll(0));
+                orm.selectFrom(City.class).orderBy(City_.id).slice(0, 0));
     }
 
     // QueryBuilder.scroll basic without key
@@ -403,7 +403,7 @@ public class QueryBuilderPredicateIntegrationTest {
         var orm = ORMTemplate.of(dataSource);
         var window = orm.selectFrom(City.class)
                 .orderBy(City_.id)
-                .scroll(3);
+                .slice(0, 3);
         assertEquals(3, window.content().size());
         assertTrue(window.hasNext(), "Expected hasNext=true since there are 6 cities");
     }
@@ -414,7 +414,7 @@ public class QueryBuilderPredicateIntegrationTest {
     public void testScrollBeforeCursorless() {
         var orm = ORMTemplate.of(dataSource);
         var window = orm.selectFrom(City.class)
-                .scroll(Scrollable.of(City_.id, 3).backward());
+                .scroll(Scrollable.of(City_.id, 3).descending());
         assertEquals(3, window.content().size());
         assertTrue(window.hasNext(), "Expected hasNext since there are 6 cities");
         for (int i = 0; i < window.content().size() - 1; i++) {
@@ -428,7 +428,7 @@ public class QueryBuilderPredicateIntegrationTest {
     public void testScrollAfterWithValueCursor() {
         var orm = ORMTemplate.of(dataSource);
         var window = orm.selectFrom(City.class)
-                .scroll(new Scrollable<>(City_.id, 2, null, null, 3, true));
+                .scroll(Scrollable.of(City_.id, 3).after(2));
         assertEquals(3, window.content().size());
         assertTrue(window.hasNext());
         for (City city : window.content()) {
@@ -442,7 +442,7 @@ public class QueryBuilderPredicateIntegrationTest {
     public void testScrollBeforeWithValueCursor() {
         var orm = ORMTemplate.of(dataSource);
         var window = orm.selectFrom(City.class)
-                .scroll(new Scrollable<>(City_.id, 5, null, null, 3, false));
+                .scroll(Scrollable.of(City_.id, 3).before(5));
         assertEquals(3, window.content().size());
         assertTrue(window.hasNext());
         for (City city : window.content()) {
@@ -458,7 +458,7 @@ public class QueryBuilderPredicateIntegrationTest {
         assertThrows(PersistenceException.class, () ->
                 orm.selectFrom(City.class)
                         .orderBy(City_.name)
-                        .scroll(new Scrollable<>(City_.id, 1, null, null, 3, true)));
+                        .scroll(Scrollable.of(City_.id, 3).after(1)));
     }
 
     @Test
@@ -467,7 +467,7 @@ public class QueryBuilderPredicateIntegrationTest {
         assertThrows(PersistenceException.class, () ->
                 orm.selectFrom(City.class)
                         .orderBy(City_.name)
-                        .scroll(new Scrollable<>(City_.id, 5, null, null, 3, false)));
+                        .scroll(Scrollable.of(City_.id, 3).before(5)));
     }
 
     // Composite scrolling: first page
@@ -476,7 +476,7 @@ public class QueryBuilderPredicateIntegrationTest {
     public void testCompositeScrollFirstPage() {
         var orm = ORMTemplate.of(dataSource);
         var window = orm.selectFrom(City.class)
-                .scroll(Scrollable.of(City_.id, City_.name, 3));
+                .scroll(Scrollable.of(City_.id, 3).sortBy(City_.name));
         assertEquals(3, window.content().size());
         assertTrue(window.hasNext());
     }
@@ -487,10 +487,10 @@ public class QueryBuilderPredicateIntegrationTest {
     public void testCompositeScrollAfter() {
         var orm = ORMTemplate.of(dataSource);
         var firstPage = orm.selectFrom(City.class)
-                .scroll(Scrollable.of(City_.id, City_.name, 3));
+                .scroll(Scrollable.of(City_.id, 3).sortBy(City_.name));
         City lastCity = firstPage.content().getLast();
         var secondPage = orm.selectFrom(City.class)
-                .scroll(new Scrollable<>(City_.id, lastCity.id(), City_.name, lastCity.name(), 3, true));
+                .scroll(Scrollable.of(City_.id, 3).sortBy(City_.name).after(lastCity.name(), lastCity.id()));
         assertNotNull(secondPage);
         assertFalse(secondPage.content().isEmpty());
     }
@@ -501,11 +501,11 @@ public class QueryBuilderPredicateIntegrationTest {
     public void testCompositeScrollBefore() {
         var orm = ORMTemplate.of(dataSource);
         var lastPage = orm.selectFrom(City.class)
-                .scroll(Scrollable.of(City_.id, City_.name, 3).backward());
+                .scroll(Scrollable.of(City_.id, 3).sortByDescending(City_.name).descending());
         assertNotNull(lastPage);
         City firstCity = lastPage.content().getLast();
         var previousPage = orm.selectFrom(City.class)
-                .scroll(new Scrollable<>(City_.id, firstCity.id(), City_.name, firstCity.name(), 3, false));
+                .scroll(Scrollable.of(City_.id, 3).sortBy(City_.name).before(firstCity.name(), firstCity.id()));
         assertNotNull(previousPage);
     }
 
@@ -515,7 +515,7 @@ public class QueryBuilderPredicateIntegrationTest {
     public void testCompositeScrollBeforeCursorless() {
         var orm = ORMTemplate.of(dataSource);
         var window = orm.selectFrom(City.class)
-                .scroll(Scrollable.of(City_.id, City_.name, 3).backward());
+                .scroll(Scrollable.of(City_.id, 3).sortByDescending(City_.name).descending());
         assertEquals(3, window.content().size());
         assertTrue(window.hasNext());
     }

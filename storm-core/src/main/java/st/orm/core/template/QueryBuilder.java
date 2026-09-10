@@ -17,9 +17,7 @@ package st.orm.core.template;
 
 import static java.util.Objects.requireNonNull;
 import static st.orm.Operator.EQUALS;
-import static st.orm.Operator.GREATER_THAN;
 import static st.orm.Operator.IN;
-import static st.orm.Operator.LESS_THAN;
 import static st.orm.ResolveScope.CASCADE;
 import static st.orm.core.template.TemplateString.wrap;
 import static st.orm.core.template.impl.Elements.Clause.GROUP_BY;
@@ -54,6 +52,7 @@ import st.orm.Pageable;
 import st.orm.PersistenceException;
 import st.orm.Ref;
 import st.orm.Scrollable;
+import st.orm.Slice;
 import st.orm.TypedMetamodel;
 import st.orm.Window;
 import st.orm.core.template.impl.Elements.Columns;
@@ -800,7 +799,7 @@ public abstract class QueryBuilder<T extends Data, R, ID> {
      * both. If both are present, a {@link PersistenceException} is thrown.</p>
      *
      * <p>Use {@link Pageable#ofSize(int)} for the first page, then navigate with
-     * {@link Page#nextPageable()} or {@link Page#previousPageable()}.</p>
+     * {@link Page#next()} or {@link Page#previous()}.</p>
      *
      * @param pageable the pagination request specifying page number and page size.
      * @return a page containing the results and pagination metadata.
@@ -808,7 +807,7 @@ public abstract class QueryBuilder<T extends Data, R, ID> {
      * @since 1.10
      */
     public final Page<R> page(Pageable pageable) {
-        List<R> content = pageContent(pageable);
+        List<R> content = pageContent(pageable, pageable.pageSize());
         long totalCount;
         if (content.size() < pageable.pageSize() && (pageable.offset() == 0 || !content.isEmpty())) {
             // A page that is not full is the last page, so the total follows from the page itself. An empty page
@@ -839,169 +838,83 @@ public abstract class QueryBuilder<T extends Data, R, ID> {
      * @since 1.10
      */
     public final Page<R> page(Pageable pageable, long totalCount) {
-        return new Page<>(pageContent(pageable), totalCount, pageable);
+        return new Page<>(pageContent(pageable, pageable.pageSize()), totalCount, pageable);
     }
 
     /**
-     * Fetches the content for the requested page, applying the pageable's sort orders and offset/limit window.
+     * Executes the query and returns a {@link Slice} of results using offset-based pagination without a count.
+     *
+     * <p>The slice is read the way a page is, with OFFSET and LIMIT from the request, but one row beyond the page
+     * size is fetched instead of running a count query: {@link Slice#hasNext()} says whether that row existed, and
+     * {@link Slice#hasPrevious()} follows from the page number. Use it for a "load more" that needs no total, and
+     * for a query without a unique key, where {@link #scroll(Scrollable)} is not possible.</p>
+     *
+     * <p>Page numbers are zero-based: pass {@code 0} for the first slice.</p>
+     *
+     * @param pageNumber the zero-based page index.
+     * @param pageSize the maximum number of results per slice.
+     * @return the slice.
+     * @since 1.14
      */
-    private List<R> pageContent(Pageable pageable) {
+    public final Slice<R> slice(int pageNumber, int pageSize) {
+        return slice(Pageable.of(pageNumber, pageSize));
+    }
+
+    /**
+     * Executes the query and returns a {@link Slice} of results using offset-based pagination without a count.
+     *
+     * <p>The slice is read the way a page is, with OFFSET and LIMIT from the request, but one row beyond the page
+     * size is fetched instead of running a count query: {@link Slice#hasNext()} says whether that row existed, and
+     * {@link Slice#hasPrevious()} follows from the page number. Use it for a "load more" that needs no total, and
+     * for a query without a unique key, where {@link #scroll(Scrollable)} is not possible.</p>
+     *
+     * <p>Use {@link Pageable#ofSize(int)} for the first slice, then navigate with {@link Pageable#next()} or
+     * {@link Pageable#previous()}.</p>
+     *
+     * @param pageable the request specifying page number, page size and sort orders.
+     * @return the slice.
+     * @throws PersistenceException if the request carries sort orders and the query an explicit ORDER BY.
+     * @since 1.14
+     */
+    public final Slice<R> slice(Pageable pageable) {
+        List<R> content = pageContent(pageable, pageable.pageSize() + 1);
+        boolean hasNext = content.size() > pageable.pageSize();
+        return Slice.of(hasNext ? content.subList(0, pageable.pageSize()) : content, hasNext, pageable.pageNumber() > 0);
+    }
+
+    /**
+     * Fetches the content for the requested page, applying the pageable's sort orders and offset, and the limit.
+     */
+    private List<R> pageContent(Pageable pageable, int limit) {
         // Forbid combining explicit orderBy with Pageable sort orders for consistency with scroll, which also
         // manages ORDER BY internally and forbids explicit orderBy calls.
         if (hasOrderBy() && !pageable.orders().isEmpty()) {
-            throw new PersistenceException("page with Pageable sort orders cannot be combined with explicit orderBy calls.");
+            throw new PersistenceException("Pageable sort orders cannot be combined with explicit orderBy calls.");
         }
         QueryBuilder<T, R, ID> sorted = this;
         for (var order : pageable.orders()) {
             // The Pageable's sort field may be rooted anywhere in the query, so the column is named directly.
             sorted = sorted.orderBy(wrap(new Columns(List.of(order.field()), CASCADE, order.descending() ? ORDER_BY_DESCENDING : ORDER_BY_ASCENDING)));
         }
-        return sorted.offset((int) pageable.offset()).limit(pageable.pageSize()).getResultList();
+        return sorted.offset((int) pageable.offset()).limit(limit).getResultList();
     }
 
     /**
-     * Executes the query and returns a {@link Window} of results.
+     * Executes a scroll request and returns a {@link Window}: the results in the request's sort order, the flags
+     * that say whether rows exist after and before the window, and the tokens that continue from it.
      *
-     * <p>This method fetches {@code size + 1} rows to determine whether more results are available, then returns at
-     * most {@code size} results along with a {@code hasNext} flag. The caller is responsible for managing any WHERE
-     * and ORDER BY clauses externally.</p>
+     * <p>The request owns the ordering, so the query must not carry an ORDER BY of its own. The sort fields and the
+     * key are read from each row alongside the result, so the tokens are there for every result type: the entity,
+     * a projection, a ref or a custom select type. A window reached through {@link Window#previous()} comes back in
+     * the same sort order as every other window.</p>
      *
-     * <p>Because this method has no key or sort information, the returned window does not carry navigation tokens
-     * ({@code next()} and {@code previous()} return {@code null}).</p>
-     *
-     * @param size the maximum number of results to include in the window (must be positive).
-     * @return a window containing the results and a flag indicating whether more results exist.
-     * @throws IllegalArgumentException if {@code size} is not positive.
-     * @since 1.11
-     */
-    public final Window<R> scroll(int size) {
-        if (size <= 0) {
-            throw new IllegalArgumentException("size must be positive.");
-        }
-        List<R> results = this.limit(size + 1).getResultList();
-        boolean hasNext = results.size() > size;
-        List<R> content = hasNext ? results.subList(0, size) : results;
-        return new Window<>(content, hasNext, false, null, null);
-    }
-
-    /**
-     * Constructs a {@link Window} with pre-computed navigation tokens from a raw window result.
-     *
-     * <p>This helper extracts cursor values from the first and last items in the content using the provided key (and
-     * optionally sort) metamodel, then creates {@link Scrollable} tokens for forward and backward navigation.</p>
-     *
-     * @param raw the raw window from {@link #scroll(int)}.
-     * @param key the unique key metamodel for cursor extraction.
-     * @param sort the sort metamodel for composite cursor extraction, or {@code null} for single-key scrolling.
-     * @param size the page size.
-     * @param forward {@code true} if this was a forward scroll, {@code false} for backward.
-     * @param hasCursor {@code true} if this scroll used a cursor (i.e., not the first page).
-     * @return a new window with navigation tokens.
-     * @since 1.11
-     */
-    @SuppressWarnings("unchecked")
-    private Window<R> toWindow(Window<R> raw, Metamodel.Key<T, ?> key,
-                               @Nullable Metamodel<T, ?> sort, int size, boolean forward, boolean hasCursor) {
-        if (raw.content().isEmpty()) {
-            return raw;
-        }
-        R first = raw.content().getFirst();
-        R last = raw.content().getLast();
-        assert first != null;
-        assert last != null;
-        Scrollable<T> nextScrollable = null;
-        Scrollable<T> previousScrollable = null;
-        if (getFromType().isAssignableFrom(first.getClass())) {
-            // nextScrollable continues in the scroll direction from the last item in the window.
-            // previousScrollable reverses from the first item in the window.
-            // This holds regardless of whether the scroll is forward or backward, because the last item
-            // is always the boundary in the scroll direction.
-            nextScrollable = new Scrollable<>(key,
-                key.getValue((T) last),
-                sort,
-                sort != null ? sort.getValue((T) last) : null,
-                size, forward);
-            previousScrollable = new Scrollable<>(key,
-                key.getValue((T) first),
-                sort,
-                sort != null ? sort.getValue((T) first) : null,
-                size, !forward);
-        }
-        return new Window<>(raw.content(), raw.hasNext(), hasCursor, nextScrollable, previousScrollable);
-    }
-
-    /**
-     * Validates that the given key is not nullable. Nullable keys are unsafe for scrolling because
-     * {@code WHERE key > cursor} silently excludes NULL rows.
-     *
-     * <p>If the key is an inline record, each leaf metamodel that implements {@link Metamodel.Key} is checked.</p>
-     *
-     * @param key the key to validate.
-     * @param <E> the type of the key.
-     * @throws PersistenceException if the key is nullable.
-     */
-    private static <T extends Data, E> void validateKeyNotNullable(Metamodel.Key<T, E> key) {
-        if (key.isNullable()) {
-            throw new PersistenceException(
-                    ("Scrolling requires a non-nullable unique key, but '%s' allows NULL values. "
-                    + "SQL comparisons with NULL silently exclude rows from the result set. "
-                    + "Either make the field non-nullable (or a primitive type), or set "
-                    + "@UK(nullsDistinct = false) if the database constraint prevents duplicate NULLs.")
-                    .formatted(key.fieldPath()));
-        }
-    }
-
-    /**
-     * Executes a scroll request from a {@link Scrollable} token, typically obtained from
-     * {@link Window#next()} or {@link Window#previous()}.
-     *
-     * @param scrollable the scroll request containing cursor state, key, sort, size, and direction.
+     * @param scrollable the scroll request: ordering, size and position.
      * @return a window containing the results and navigation tokens.
+     * @throws PersistenceException if the query carries an explicit ORDER BY, the key is compound or nullable, or a
+     *                              sort field is nullable.
      * @since 1.11
      */
-    @SuppressWarnings("unchecked")
-    public final Window<R> scroll(Scrollable<T> scrollable) {
-        var key = (Metamodel.Key<T, Object>) scrollable.key();
-        int size = scrollable.size();
-        boolean forward = scrollable.isForward();
-        validateKeyNotNullable(key);
-        if (hasOrderBy()) {
-            throw new PersistenceException("scroll with Scrollable manages ORDER BY internally; remove explicit orderBy calls.");
-        }
-        if (scrollable.isComposite()) {
-            @SuppressWarnings("unchecked")
-            var sort = (Metamodel<T, Object>) requireNonNull(scrollable.sort(),
-                    "Composite scrollable has null sort field.");
-            if (!scrollable.hasCursor()) {
-                var ordered = forward ? this.orderBy(sort, key) : this.orderByDescending(sort, key);
-                return toWindow(ordered.scroll(size), key, sort, size, forward, false);
-            }
-            Object keyCursor = scrollable.keyCursor();
-            Object sortCursor = scrollable.sortCursor();
-            var filtered = forward
-                    ? this.where(wb -> wb.where(sort, GREATER_THAN, sortCursor)
-                                         .or(wb.where(sort, EQUALS, sortCursor)
-                                               .and(wb.where(key, GREATER_THAN, keyCursor))))
-                    : this.where(wb -> wb.where(sort, LESS_THAN, sortCursor)
-                                         .or(wb.where(sort, EQUALS, sortCursor)
-                                               .and(wb.where(key, LESS_THAN, keyCursor))));
-            var ordered = forward
-                    ? filtered.orderBy(sort, key)
-                    : filtered.orderByDescending(sort).orderByDescending(key);
-            return toWindow(ordered.scroll(size), key, sort, size, forward, true);
-        } else {
-            if (!scrollable.hasCursor()) {
-                var ordered = forward ? this.orderBy(key) : this.orderByDescending(key);
-                return toWindow(ordered.scroll(size), key, null, size, forward, false);
-            }
-            Object keyCursor = scrollable.keyCursor();
-            var filtered = forward
-                    ? this.where(key, GREATER_THAN, keyCursor)
-                    : this.where(key, LESS_THAN, keyCursor);
-            var ordered = forward ? filtered.orderBy(key) : filtered.orderByDescending(key);
-            return toWindow(ordered.scroll(size), key, null, size, forward, true);
-        }
-    }
+    public abstract Window<R> scroll(Scrollable<T> scrollable);
 
     /**
      * Executes the query in windows of {@code size} rows ordered by the primary key, each window one closed
@@ -1014,46 +927,39 @@ public abstract class QueryBuilder<T extends Data, R, ID> {
      * and needs no closing. Each window is its own statement: it runs the query's WHERE clause again from the
      * cursor position, and under READ COMMITTED it sees rows committed since the previous window.</p>
      *
-     * <p>Windows are keyset windows over the primary key, so the query must not carry an ORDER BY of its own, and
-     * the result type must be the entity type the key belongs to: {@code selectRef()} and custom select types
-     * are refused. A compound primary key is refused too; pass {@link #windows(Scrollable)} a single-column unique
-     * key instead. The rows come in ascending key order; pass {@code Scrollable.of(key, size).backward()} to
-     * {@link #windows(Scrollable)} for descending order.</p>
+     * <p>Windows are keyset windows over the primary key, so the query must not carry an ORDER BY of its own. The
+     * key is read from each row alongside the result, so refs and custom select types iterate too; a compound
+     * primary key is read from the mapped record and needs the entity type as the result. The rows come in
+     * ascending key order; pass {@code Scrollable.of(key, size).descending()} to {@link #windows(Scrollable)} for
+     * descending order.</p>
      *
      * <pre>{@code
-     * users.select().where(User_.active, EQUALS, true).windows(1000).forEach(window ->
+     * users.select().where(User_.city, EQUALS, city).windows(1000).forEach(window ->
      *     users.update(window.content().stream()
-     *         .map(user -> new User(user.id(), user.email(), user.name(), true, user.city()))
+     *         .map(user -> new User(user.id(), user.email().toLowerCase(), user.birthDate(), user.street(), user.postalCode(), user.city()))
      *         .toList()));
      * }</pre>
      *
      * @param size the maximum number of rows per window (must be positive).
      * @return a stream of windows; each window's {@link Window#next()} resumes the iteration after that window.
      * @throws IllegalArgumentException if {@code size} is not positive.
-     * @throws PersistenceException if the query has no single-column primary key, carries an explicit ORDER BY, or
-     *                              does not select the entity type.
+     * @throws PersistenceException if the query has no primary key or carries an explicit ORDER BY.
      * @since 1.14
      */
     public final Stream<Window<R>> windows(int size) {
         var primaryKey = getPrimaryKeyMetamodel().orElseThrow(() -> new PersistenceException(
                 "windows(size) orders by the primary key, but %s has none; pass windows(Scrollable.of(key, size)) with a unique key."
                         .formatted(getFromType().getSimpleName())));
-        if (primaryKey.isInline()) {
-            throw new PersistenceException(
-                    ("windows(size) orders by the primary key, but the primary key of %s is compound; pass "
-                    + "windows(Scrollable.of(key, size)) with a single-column unique key.")
-                            .formatted(getFromType().getSimpleName()));
-        }
         return windows(Scrollable.of(Metamodel.key(primaryKey), size));
     }
 
     /**
      * Executes the query in windows described by the given scroll request, each window one closed statement.
      *
-     * <p>This is the form of {@link #windows(int)} that chooses the key, the sort field, the direction and the
+     * <p>This is the form of {@link #windows(int)} that chooses the key, the sort fields, the directions and the
      * starting position: {@code Scrollable.of(key, size)} iterates from the start, a {@link Window#next()} token
-     * or {@link Scrollable#fromCursor(Metamodel.Key, String)} resumes after an earlier window, and
-     * {@code .backward()} iterates in descending order. The same key rules as {@link #scroll(Scrollable)} apply.</p>
+     * or {@link Scrollable#from(String)} resumes after an earlier window, and {@code .descending()} iterates in
+     * descending key order. The same key rules as {@link #scroll(Scrollable)} apply.</p>
      *
      * @param scrollable the scroll request describing key, sort, size, direction and starting position.
      * @return a stream of windows; each window's {@link Window#next()} resumes the iteration after that window.
@@ -1063,6 +969,11 @@ public abstract class QueryBuilder<T extends Data, R, ID> {
      */
     public final Stream<Window<R>> windows(Scrollable<T> scrollable) {
         requireNonNull(scrollable, "scrollable");
+        if (scrollable.position() != null && !scrollable.position().after()) {
+            throw new PersistenceException(
+                    "windows iterates in sort order from its start, so the start is a position after a row or the "
+                    + "beginning; a position before a row belongs to scroll.");
+        }
         return StreamSupport.stream(new WindowSpliterator(scrollable), false);
     }
 

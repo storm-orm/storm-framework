@@ -21,7 +21,9 @@ import static st.orm.JoinType.inner;
 import static st.orm.JoinType.left;
 import static st.orm.JoinType.right;
 import static st.orm.Operator.EQUALS;
+import static st.orm.Operator.GREATER_THAN;
 import static st.orm.Operator.IN;
+import static st.orm.Operator.LESS_THAN;
 import static st.orm.core.template.TemplateString.combine;
 import static st.orm.core.template.TemplateString.wrap;
 
@@ -36,9 +38,12 @@ import st.orm.JoinType;
 import st.orm.Metamodel;
 import st.orm.Navigable;
 import st.orm.Operator;
+import st.orm.Order;
 import st.orm.PersistenceException;
 import st.orm.Ref;
+import st.orm.Scrollable;
 import st.orm.SqlTemplateException;
+import st.orm.Window;
 import st.orm.core.template.JoinBuilder;
 import st.orm.core.template.Model;
 import st.orm.core.template.PredicateBuilder;
@@ -99,6 +104,153 @@ abstract class QueryBuilderImpl<T extends Data, R, ID> extends QueryBuilder<T, R
      *
      * @return the FROM clause data type.
      */
+    /**
+     * Executes the query with the given cursor columns appended to its select list, reading them from each row
+     * alongside the mapped result.
+     *
+     * @param columns the cursor columns, in the order their values are wanted.
+     * @return the rows with their cursor values.
+     */
+    abstract List<KeyedQuery.Row<R>> getKeyedResultList(List<Metamodel<T, ?>> columns);
+
+    @Override
+    @SuppressWarnings("unchecked")
+    public final Window<R> scroll(Scrollable<T> scrollable) {
+        requireNonNull(scrollable, "scrollable");
+        if (hasOrderBy()) {
+            throw new PersistenceException("scroll manages ORDER BY internally; remove explicit orderBy calls.");
+        }
+        validateKey(scrollable.key());
+        for (var order : scrollable.sort()) {
+            validateSortField(order.field());
+        }
+        var orders = scrollable.orders();
+        var position = scrollable.position();
+        // A window before a row is read in the reversed ordering and turned around, so it comes back in the
+        // request's sort order like every other window.
+        boolean reverse = position != null && !position.after();
+        QueryBuilder<T, R, ID> query = this;
+        if (position != null) {
+            var values = PositionImpl.of(position).values();
+            if (values.size() != orders.size()) {
+                throw new IllegalArgumentException(
+                        "A position carries one value per sort field and one for the key: expected %d values, got %d."
+                                .formatted(orders.size(), values.size()));
+            }
+            query = query.where(wb -> keysetPredicate(wb, orders, values, reverse));
+        }
+        for (var order : orders) {
+            var field = (Metamodel<T, Object>) order.field();
+            query = order.descending() ^ reverse ? query.orderByDescending(field) : query.orderBy(field);
+        }
+        int size = scrollable.size();
+        var limited = (QueryBuilderImpl<T, R, ID>) query.limit(size + 1);
+        List<KeyedQuery.Row<R>> rows = scrollable.key().isInline()
+                ? limited.keyedRowsFromRecords(orders)
+                : limited.getKeyedResultList(orders.stream().<Metamodel<T, ?>>map(order -> (Metamodel<T, ?>) order.field()).toList());
+        boolean more = rows.size() > size;
+        if (more) {
+            rows = rows.subList(0, size);
+        }
+        if (reverse) {
+            rows = rows.reversed();
+        }
+        List<R> content = rows.stream().map(KeyedQuery.Row::value).toList();
+        Scrollable<T> next = null;
+        Scrollable<T> previous = null;
+        if (!rows.isEmpty()) {
+            next = scrollable.after(rows.getLast().cursor());
+            previous = scrollable.before(rows.getFirst().cursor());
+        }
+        // The anchor row of a position lies on the side the request continued from, so that side has rows; the
+        // other side is decided by the extra row fetched.
+        boolean hasNext = reverse || more;
+        boolean hasPrevious = reverse ? more : position != null;
+        return new Window<>(content, hasNext, hasPrevious, next, previous);
+    }
+
+    /**
+     * Reads the cursor values from the mapped records rather than from the row. An inline record key spans several
+     * columns and is compared as a whole, so its value is the record's own field, which only a result of the root
+     * type carries.
+     */
+    @SuppressWarnings("unchecked")
+    private List<KeyedQuery.Row<R>> keyedRowsFromRecords(List<Order> orders) {
+        var rows = new ArrayList<KeyedQuery.Row<R>>();
+        for (R value : getResultList()) {
+            if (!getFromType().isInstance(value)) {
+                throw new PersistenceException(
+                        ("Scrolling by the inline key requires the result type to be %s, but the query selects %s; "
+                        + "select the entity type, or scroll by a single-column key.")
+                                .formatted(getFromType().getSimpleName(), value.getClass().getSimpleName()));
+            }
+            Object[] cursor = new Object[orders.size()];
+            for (int i = 0; i < orders.size(); i++) {
+                cursor[i] = ((Metamodel<T, Object>) orders.get(i).field()).getValue((T) value);
+            }
+            rows.add(new KeyedQuery.Row<>(value, cursor));
+        }
+        return rows;
+    }
+
+    /**
+     * Builds the keyset predicate for continuing from a row: for each field in precedence, the fields before it
+     * equal the row's values and the field itself lies beyond the row's value in its direction, all joined by OR.
+     * Reversing flips every comparison, which reads the rows on the other side of the row.
+     */
+    @SuppressWarnings("unchecked")
+    private static <T extends Data, R, ID> PredicateBuilder<T, ?, ?> keysetPredicate(WhereBuilder<T, R, ID> wb,
+                                                                                    List<Order> orders,
+                                                                                    List<Object> values,
+                                                                                    boolean reverse) {
+        PredicateBuilder<T, R, ID> chain = null;
+        for (int i = 0; i < orders.size(); i++) {
+            PredicateBuilder<T, R, ID> term = null;
+            for (int j = 0; j < i; j++) {
+                var field = (Metamodel<T, Object>) orders.get(j).field();
+                var equal = wb.where(field, EQUALS, new Object[] {values.get(j)});
+                term = term == null ? equal : term.and(equal);
+            }
+            var field = (Metamodel<T, Object>) orders.get(i).field();
+            boolean descending = orders.get(i).descending() ^ reverse;
+            var beyond = wb.where(field, descending ? LESS_THAN : GREATER_THAN, new Object[] {values.get(i)});
+            term = term == null ? beyond : term.and(beyond);
+            chain = chain == null ? term : chain.or(term);
+        }
+        return requireNonNull(chain);
+    }
+
+    /**
+     * Validates that the key can address a row: it must not allow NULL, because {@code WHERE key > cursor} silently
+     * excludes NULL rows.
+     */
+    private static <T extends Data> void validateKey(Metamodel.Key<T, ?> key) {
+        if (key.isNullable()) {
+            throw new PersistenceException(
+                    ("Scrolling requires a non-nullable unique key, but '%s' allows NULL values. "
+                    + "SQL comparisons with NULL silently exclude rows from the result set. "
+                    + "Either make the field non-nullable (or a primitive type), or set "
+                    + "@UK(nullsDistinct = false) if the database constraint prevents duplicate NULLs.")
+                    .formatted(key.fieldPath()));
+        }
+    }
+
+    /**
+     * Validates that a sort field can position a row: a single column that cannot be NULL.
+     */
+    private static void validateSortField(Metamodel<?, ?> field) {
+        if (field.isInline()) {
+            throw new PersistenceException(
+                    "Scrolling sorts by columns, but '%s' is an inline record.".formatted(field.fieldPath()));
+        }
+        if (MetamodelFactory.isNullable(field)) {
+            throw new PersistenceException(
+                    ("Scrolling requires non-nullable sort fields, but '%s' allows NULL values. "
+                    + "SQL comparisons with NULL silently exclude rows from the result set.")
+                    .formatted(field.fieldPath()));
+        }
+    }
+
     @Override
     protected Optional<Metamodel<T, ?>> getPrimaryKeyMetamodel() {
         return modelSupplier.get().getPrimaryKeyMetamodel().map(metamodel -> metamodel);

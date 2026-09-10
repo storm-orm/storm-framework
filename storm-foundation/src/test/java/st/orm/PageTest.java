@@ -2,6 +2,7 @@ package st.orm;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -107,25 +108,24 @@ class PageTest {
     @Test
     void nextPageableIncrementsPage() {
         Page<String> page = new Page<>(List.of("a"), 20, 0, 10);
-        Pageable next = page.nextPageable();
+        Pageable next = page.next();
         assertEquals(1, next.pageNumber());
         assertEquals(10, next.pageSize());
     }
 
     @Test
-    void previousPageableDecrementsPage() {
+    void previousDecrementsPage() {
         Page<String> page = new Page<>(List.of("a"), 20, 2, 10);
-        Pageable prev = page.previousPageable();
+        Pageable prev = page.previous();
         assertEquals(1, prev.pageNumber());
         assertEquals(10, prev.pageSize());
     }
 
     @Test
-    void previousPageableOnFirstPageReturnsFirstPage() {
+    void previousOnFirstPageIsNull() {
         Page<String> page = new Page<>(List.of("a"), 20, 0, 10);
-        Pageable prev = page.previousPageable();
-        assertEquals(0, prev.pageNumber());
-        assertEquals(10, prev.pageSize());
+        assertNull(page.previous());
+        assertFalse(page.hasPrevious());
     }
 
     @Test

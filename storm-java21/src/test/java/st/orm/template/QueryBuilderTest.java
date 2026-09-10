@@ -40,6 +40,7 @@ import st.orm.Pageable;
 import st.orm.PersistenceException;
 import st.orm.Ref;
 import st.orm.Scrollable;
+import st.orm.Slice;
 import st.orm.Window;
 import st.orm.template.model.City;
 import st.orm.template.model.City_;
@@ -536,14 +537,14 @@ public class QueryBuilderTest {
 
     @Test
     public void testScroll() {
-        Window<City> window = orm.entity(City.class).select().scroll(3);
+        Slice<City> window = orm.entity(City.class).select().slice(0, 3);
         assertEquals(3, window.content().size());
         assertTrue(window.hasNext());
     }
 
     @Test
     public void testScrollNoMore() {
-        Window<City> window = orm.entity(City.class).select().scroll(100);
+        Slice<City> window = orm.entity(City.class).select().slice(0, 100);
         assertEquals(6, window.content().size());
         assertFalse(window.hasNext());
     }
@@ -891,14 +892,14 @@ public class QueryBuilderTest {
     @Test
     public void testScrollAfterWithMetamodelKey() {
         Window<City> window = orm.entity(City.class).select()
-                .scroll(Scrollable.of(City_.id, 2, 3));
+                .scroll(Scrollable.of(City_.id, 3).after(2));
         assertFalse(window.content().isEmpty());
     }
 
     @Test
     public void testScrollBeforeWithMetamodelKey() {
         Window<City> window = orm.entity(City.class).select()
-                .scroll(Scrollable.of(City_.id, 5, 3).backward());
+                .scroll(Scrollable.of(City_.id, 3).before(5));
         assertFalse(window.content().isEmpty());
     }
 
@@ -911,14 +912,14 @@ public class QueryBuilderTest {
     @Test
     public void testScrollAfterRefWithMetamodelKey() {
         Window<Ref<City>> window = orm.entity(City.class).selectRef()
-                .scroll(Scrollable.of(City_.id, 2, 3));
+                .scroll(Scrollable.of(City_.id, 3).after(2));
         assertFalse(window.content().isEmpty());
     }
 
     @Test
     public void testScrollBeforeRefWithMetamodelKey() {
         Window<Ref<City>> window = orm.entity(City.class).selectRef()
-                .scroll(Scrollable.of(City_.id, 5, 3).backward());
+                .scroll(Scrollable.of(City_.id, 3).before(5));
         assertFalse(window.content().isEmpty());
     }
 
@@ -1104,14 +1105,14 @@ public class QueryBuilderTest {
     @Test
     public void testScrollAfterComposite() {
         Window<City> window = orm.entity(City.class).select()
-                .scroll(Scrollable.of(City_.id, 2, City_.name, "A", 3));
+                .scroll(Scrollable.of(City_.id, 3).sortBy(City_.name).after("A", 2));
         assertNotNull(window);
     }
 
     @Test
     public void testScrollBeforeComposite() {
         Window<City> window = orm.entity(City.class).select()
-                .scroll(Scrollable.of(City_.id, 5, City_.name, "Z", 3).backward());
+                .scroll(Scrollable.of(City_.id, 3).sortBy(City_.name).before("Z", 5));
         assertNotNull(window);
     }
 
@@ -1126,43 +1127,43 @@ public class QueryBuilderTest {
     @Test
     public void testScrollBeforeWithKeyThrowsIfOrderBySet() {
         assertThrows(PersistenceException.class, () ->
-                orm.entity(City.class).select().orderBy(City_.name).scroll(Scrollable.of(City_.id, 3).backward()));
+                orm.entity(City.class).select().orderBy(City_.name).scroll(Scrollable.of(City_.id, 3).descending()));
     }
 
     @Test
     public void testScrollAfterThrowsIfOrderBySet() {
         assertThrows(PersistenceException.class, () ->
-                orm.entity(City.class).select().orderBy(City_.name).scroll(Scrollable.of(City_.id, 2, 3)));
+                orm.entity(City.class).select().orderBy(City_.name).scroll(Scrollable.of(City_.id, 3).after(2)));
     }
 
     @Test
     public void testScrollBeforeValueThrowsIfOrderBySet() {
         assertThrows(PersistenceException.class, () ->
-                orm.entity(City.class).select().orderBy(City_.name).scroll(Scrollable.of(City_.id, 5, 3).backward()));
+                orm.entity(City.class).select().orderBy(City_.name).scroll(Scrollable.of(City_.id, 3).before(5)));
     }
 
     @Test
     public void testScrollCompositeThrowsIfOrderBySet() {
         assertThrows(PersistenceException.class, () ->
-                orm.entity(City.class).select().orderBy(City_.name).scroll(Scrollable.of(City_.id, City_.name, 3)));
+                orm.entity(City.class).select().orderBy(City_.name).scroll(Scrollable.of(City_.id, 3).sortBy(City_.name)));
     }
 
     @Test
     public void testScrollBeforeCompositeThrowsIfOrderBySet() {
         assertThrows(PersistenceException.class, () ->
-                orm.entity(City.class).select().orderBy(City_.name).scroll(Scrollable.of(City_.id, City_.name, 3).backward()));
+                orm.entity(City.class).select().orderBy(City_.name).scroll(Scrollable.of(City_.id, 3).sortByDescending(City_.name).descending()));
     }
 
     @Test
     public void testScrollAfterCompositeThrowsIfOrderBySet() {
         assertThrows(PersistenceException.class, () ->
-                orm.entity(City.class).select().orderBy(City_.name).scroll(Scrollable.of(City_.id, 2, City_.name, "A", 3)));
+                orm.entity(City.class).select().orderBy(City_.name).scroll(Scrollable.of(City_.id, 3).sortBy(City_.name).after("A", 2)));
     }
 
     @Test
     public void testScrollBeforeCompositeValueThrowsIfOrderBySet() {
         assertThrows(PersistenceException.class, () ->
-                orm.entity(City.class).select().orderBy(City_.name).scroll(Scrollable.of(City_.id, 5, City_.name, "Z", 3).backward()));
+                orm.entity(City.class).select().orderBy(City_.name).scroll(Scrollable.of(City_.id, 3).sortBy(City_.name).before("Z", 5)));
     }
 
     // QueryBuilder - forShare
@@ -1193,13 +1194,13 @@ public class QueryBuilderTest {
     @Test
     public void testScrollSizeZeroThrows() {
         assertThrows(IllegalArgumentException.class, () ->
-                orm.entity(City.class).select().scroll(0));
+                orm.entity(City.class).select().slice(0, 0));
     }
 
     @Test
     public void testScrollSizeNegativeThrows() {
         assertThrows(IllegalArgumentException.class, () ->
-                orm.entity(City.class).select().scroll(-1));
+                orm.entity(City.class).select().slice(0, -1));
     }
 
     // QueryBuilder - getResultList / getResultCount via default methods

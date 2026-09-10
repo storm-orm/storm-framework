@@ -224,7 +224,7 @@ Storm makes this one rule on every database: **a statement on a connection whose
 ```kotlin
 transaction {
     orm.select<User>().resultFlow.collect { user ->
-        orm update user.copy(processed = true)   // PersistenceException: a result stream is still open
+        orm update user.copy(email = user.email.lowercase())   // PersistenceException: a result stream is still open
     }
 }
 ```
@@ -242,10 +242,10 @@ The loop above needs the connection while it iterates. That is what windows are 
 transaction {
     val users = orm.entity<User>()
     users.select()
-        .where(User_.active eq true)
+        .where(User_.city eq city)
         .windows(1000)
         .collect { window ->
-            users.update(window.content().map { it.copy(processed = true) })
+            users.update(window.content().map { it.copy(email = it.email.lowercase()) })
         }
 }
 ```
@@ -257,11 +257,11 @@ transaction {
 transaction(tx -> {
     var users = orm.entity(User.class);
     users.select()
-        .where(User_.active, EQUALS, true)
+        .where(User_.city, EQUALS, city)
         .windows(1000)
         .forEach(window ->
             users.update(window.content().stream()
-                .map(user -> new User(user.id(), user.email(), user.name(), true, user.city()))
+                .map(user -> new User(user.id(), user.email().toLowerCase(), user.birthDate(), user.street(), user.postalCode(), user.city()))
                 .toList()));
     return null;
 });
@@ -270,14 +270,14 @@ transaction(tx -> {
 </TabItem>
 </Tabs>
 
-The stream of windows carries no database resource, so it needs no closing. Each element is a `Window`, the same type `scroll` returns: `content()` holds the rows, `hasNext()` says whether more rows existed when the window was read, and `next()` is a `Scrollable` that resumes the iteration after the window. A long-running job can persist `window.nextCursor()` after each window and resume from it after a restart with `windows(Scrollable.fromCursor(User_.id, cursor))`.
+The stream of windows carries no database resource, so it needs no closing. Each element is a `Window`, the same type `scroll` returns: `content()` holds the rows, `hasNext()` says whether more rows existed when the window was read, and `next()` is a `Scrollable` that resumes the iteration after the window. A long-running job can persist `window.nextCursor()` after each window and resume from it after a restart with `windows(Scrollable.of(User_.id, 1000).from(cursor))`.
 
 Windows are keyset windows, so the rules of [scrolling](pagination-and-scrolling.md#scrolling) apply:
 
-- The query must not carry an `orderBy` of its own; the key orders the rows. `windows(Scrollable.of(User_.id, User_.name, 1000))` sorts by a non-unique field with the key as tiebreaker, and `.backward()` iterates in descending key order.
-- The key must be a non-nullable, single-column unique key. `windows(size)` uses the primary key and refuses a compound one; pass `windows(Scrollable.of(key, size))` with a `@UK` field in that case.
-- The result type must carry the key: `windows` refuses `selectRef()` and custom select types.
-- Each window is its own statement. It runs the query's `WHERE` clause again from the cursor position, so the key should be indexed, which a primary or unique key is. Under `READ COMMITTED` a later window sees rows committed after the previous one; rows the loop writes and that it has passed are never visited again.
+- The query must not carry an `orderBy` of its own; the request orders. `windows(Scrollable.of(User_.id, 1000).sortBy(User_.birthDate))` sorts by a non-unique field with the key as tiebreaker, and `.descending()` iterates in descending key order.
+- The key must be a non-nullable unique key. `windows(size)` uses the primary key.
+- The key is read from each row alongside the result, so refs and custom select types iterate too. An inline record key is read from the mapped record and needs the entity type as the result.
+- Each window is its own statement. It runs the query's `WHERE` clause again from the position, so the key should be indexed, which a primary or unique key is. Under `READ COMMITTED` a later window sees rows committed after the previous one; rows the loop writes and that it has passed are never visited again.
 
 ### Choosing between them
 
