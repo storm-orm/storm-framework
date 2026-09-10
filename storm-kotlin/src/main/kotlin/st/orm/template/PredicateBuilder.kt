@@ -34,7 +34,7 @@ import st.orm.Data
  * val users = userRepository
  *     .select()
  *     .whereBuilder {
- *         (User_.active eq true)
+ *         (User_.email like "%@example.com")
  *             .and(User_.email.isNotNull())
  *             .or(User_.role eq "admin")
  *     }

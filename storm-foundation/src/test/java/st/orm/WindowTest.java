@@ -1,3 +1,18 @@
+/*
+ * Copyright 2024 - 2026 the original author or authors.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *      https://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
 package st.orm;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -32,6 +47,8 @@ class WindowTest {
     void emptyWindowHasNoNavigation() {
         var window = new Window<>(List.of(), false, false, null, null);
         assertTrue(window.content().isEmpty());
+        assertTrue(window.isEmpty());
+        assertEquals(0, window.size());
         assertFalse(window.hasNext());
         assertFalse(window.hasPrevious());
         assertNull(window.nextScrollable());
@@ -40,7 +57,7 @@ class WindowTest {
 
     @Test
     void windowWithNextScrollableHasNext() {
-        var next = Scrollable.of(KEY, 42, 20);
+        var next = Scrollable.of(KEY, 20);
         var window = new Window<>(List.of("a", "b"), true, false, next, null);
         assertTrue(window.hasNext());
         assertFalse(window.hasPrevious());
@@ -50,7 +67,7 @@ class WindowTest {
 
     @Test
     void windowWithPreviousScrollableHasPrevious() {
-        var prev = Scrollable.of(KEY, 1, 20).backward();
+        var prev = Scrollable.of(KEY, 10);
         var window = new Window<>(List.of("a", "b"), false, true, null, prev);
         assertFalse(window.hasNext());
         assertTrue(window.hasPrevious());
@@ -60,8 +77,8 @@ class WindowTest {
 
     @Test
     void windowWithBothNavigations() {
-        var next = Scrollable.of(KEY, 42, 20);
-        var prev = Scrollable.of(KEY, 1, 20).backward();
+        var next = Scrollable.of(KEY, 20);
+        var prev = Scrollable.of(KEY, 10);
         var window = new Window<>(List.of("a", "b"), true, true, next, prev);
         assertTrue(window.hasNext());
         assertTrue(window.hasPrevious());
@@ -76,23 +93,34 @@ class WindowTest {
     }
 
     @Test
+    void windowIteratesOverItsContent() {
+        var window = new Window<>(List.of("a", "b"), false, false, null, null);
+        var seen = new ArrayList<String>();
+        for (var element : window) {
+            seen.add(element);
+        }
+        assertEquals(List.of("a", "b"), seen);
+        assertEquals(List.of("a", "b"), window.stream().toList());
+        assertEquals(2, window.size());
+    }
+
+    @Test
     void nextReturnsTypedScrollable() {
-        var scrollable = Scrollable.of(KEY, 42, 20);
+        var scrollable = Scrollable.of(KEY, 20);
         var window = new Window<>(List.of("a", "b"), true, false, scrollable, null);
         Scrollable<Data> typed = window.next();
         assertNotNull(typed);
-        assertEquals(42, typed.keyCursor());
+        assertEquals(scrollable, typed);
         assertEquals(20, typed.size());
     }
 
     @Test
     void previousReturnsTypedScrollable() {
-        var scrollable = Scrollable.of(KEY, 1, 20).backward();
+        var scrollable = Scrollable.of(KEY, 10);
         var window = new Window<>(List.of("a", "b"), false, true, null, scrollable);
         Scrollable<Data> typed = window.previous();
         assertNotNull(typed);
-        assertEquals(1, typed.keyCursor());
-        assertFalse(typed.isForward());
+        assertEquals(scrollable, typed);
     }
 
     @Test

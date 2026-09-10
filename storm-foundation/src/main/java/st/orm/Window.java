@@ -23,9 +23,9 @@ import org.jspecify.annotations.Nullable;
 /**
  * Represents a window of query results from a scrolling operation with {@link Scrollable} navigation tokens.
  *
- * <p>A {@code Window} implements {@link Slice} and provides cursor-based navigation for sequential traversal
- * through large result sets. Use {@link #next()} and {@link #previous()} for typed programmatic navigation,
- * or {@link #nextCursor()} and {@link #previousCursor()} for serialized cursor strings suitable for REST APIs.</p>
+ * <p>A {@code Window} is a {@link Slice} that navigates by keyset for sequential traversal through large result
+ * sets. Use {@link #next()} and {@link #previous()} for typed programmatic navigation, or {@link #nextCursor()}
+ * and {@link #previousCursor()} for serialized cursor strings suitable for REST APIs.</p>
  *
  * <pre>{@code
  * Window<User> window = userRepository.scroll(Scrollable.of(User_.id, 20));
@@ -42,8 +42,8 @@ import org.jspecify.annotations.Nullable;
  * the cursor is left to the developer.</p>
  *
  * @param content the list of results in this window; never contains {@code null} elements.
- * @param hasNext {@code true} if more results existed beyond this window in the scroll direction at query time.
- * @param hasPrevious {@code true} if this window was fetched with a cursor position (i.e., not the first page).
+ * @param hasNext {@code true} if rows existed after this window, in sort order, at query time.
+ * @param hasPrevious {@code true} if rows existed before this window, in sort order, at query time.
  * @param nextScrollable the scrollable to fetch the next window, or {@code null} if the window is empty.
  * @param previousScrollable the scrollable to fetch the previous window, or {@code null} if the window is empty.
  * @param <R> the result type (e.g., {@code User} for entity queries, {@code Ref<User>} for ref queries).
@@ -119,7 +119,7 @@ public record Window<R>(
      *
      * @return the cursor string, or {@code null}.
      * @see Scrollable#toCursor()
-     * @see Scrollable#fromCursor(Metamodel.Key, String)
+     * @see Scrollable#from(String)
      */
     @Nullable
     public String nextCursor() {
@@ -135,10 +135,11 @@ public record Window<R>(
      *
      * @return the cursor string, or {@code null}.
      * @see Scrollable#toCursor()
-     * @see Scrollable#fromCursor(Metamodel.Key, String)
+     * @see Scrollable#from(String)
      */
     @Nullable
     public String previousCursor() {
         return hasPrevious && previousScrollable != null ? previousScrollable.toCursor() : null;
     }
+
 }

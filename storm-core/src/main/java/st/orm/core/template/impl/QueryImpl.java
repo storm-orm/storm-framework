@@ -35,6 +35,7 @@ import java.time.LocalTime;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
 import java.time.ZonedDateTime;
+import java.util.ArrayList;
 import java.util.Calendar;
 import java.util.List;
 import java.util.Optional;
@@ -72,7 +73,7 @@ import st.orm.spi.SqlOperation;
 import st.orm.spi.StatementOrigin;
 
 @SuppressWarnings("ALL")
-class QueryImpl implements Query {
+class QueryImpl implements Query, KeyedQuery {
 
     /**
      * The template-scoped services and statement metadata shared by a query and the prepared queries derived from it.
@@ -664,6 +665,95 @@ class QueryImpl implements Query {
                     }
                     //noinspection unchecked
                     return new SingleRow<>(present, (T) holder[0]);
+                } finally {
+                    close(resultSet, statement, streamingCleanup);
+                }
+            } finally {
+                if (closeStatementHere && closeStatement()) {
+                    statement.close();
+                }
+            }
+        } catch (Exception e) {
+            observationError(observation, e);
+            throw exceptionTransformer.apply(e);
+        } finally {
+            closeObservation(observation);
+        }
+    }
+
+    @Override
+    public <T> List<KeyedQuery.Row<T>> getKeyedResultList(Class<T> type, Class<?>[] trailingTypes) {
+        if (streamOnlyFetchSize && defaultFetchSize != 0) {
+            return withoutFetchSize().getKeyedResultList(type, trailingTypes);
+        }
+        return readKeyedRows(type, trailingTypes);
+    }
+
+    @Override
+    public <T extends Data> List<KeyedQuery.Row<Ref<T>>> getKeyedRefList(Class<T> type, Class<?> pkType,
+                                                                    Class<?>[] trailingTypes) {
+        var interner = new WeakInterner();
+        return getKeyedResultList(pkType, trailingTypes).stream()
+                .map(row -> {
+                    if (row.value() == null) {
+                        throw new PersistenceException(
+                                "Primary key for %s is NULL. This usually indicates an invalid query result or incorrect mapping."
+                                        .formatted(type.getName()));
+                    }
+                    return new KeyedQuery.Row<>(interner.intern(refFactory.create(type, row.value())), row.cursor());
+                })
+                .toList();
+    }
+
+    /**
+     * Executes the query and reads every row eagerly: the leading columns mapped to the type, the trailing columns
+     * decoded to their target types as cursor values. Consumed and closed within the call, like
+     * {@link #readSingleRow(Class)}.
+     */
+    private <T> List<KeyedQuery.Row<T>> readKeyedRows(Class<T> type, Class<?>[] trailingTypes) {
+        var observation = observe(ExecutionKind.QUERY);
+        try {
+            PreparedStatement statement = getStatement();
+            boolean closeStatementHere = true;
+            try {
+                applyFetchSize(statement);
+                StreamGuard.check(statement, environment);
+                Runnable streamingCleanup = configureStreamingTransaction(statement);
+                ResultSet resultSet = statement.executeQuery();
+                if (observation instanceof ListenedObservation listened) {
+                    listened.executed();
+                }
+                closeStatementHere = false;  // close(resultSet, statement, ...) below owns the statement from here.
+                try {
+                    int columnCount = resultSet.getMetaData().getColumnCount() - trailingTypes.length;
+                    var mapper = getObjectMapper(columnCount, type, refFactory, environment.fetchPlanFor(type))
+                            .orElseThrow(() -> new SqlTemplateException("No suitable constructor found for %s.".formatted(type.getName())));
+                    ColumnReader[] trailingReaders = new ColumnReader[trailingTypes.length];
+                    for (int i = 0; i < trailingTypes.length; i++) {
+                        trailingReaders[i] = columnReaderFor(trailingTypes[i]);
+                    }
+                    var calendarSupplier = lazy(() -> Calendar.getInstance(TimeZone.getTimeZone(ZoneOffset.UTC)));
+                    var spliterator = rowSpliterator(resultSet, columnCount, mapper);
+                    var rows = new ArrayList<KeyedQuery.Row<T>>();
+                    // The spliterator hands the mapped value over while the result set still sits on the row, so
+                    // the trailing columns are read from the same row.
+                    while (spliterator.tryAdvance(value -> {
+                        Object[] cursor = new Object[trailingReaders.length];
+                        try {
+                            for (int i = 0; i < trailingReaders.length; i++) {
+                                cursor[i] = trailingReaders[i].read(resultSet, columnCount + i + 1, calendarSupplier);
+                            }
+                        } catch (SQLException e) {
+                            throw new PersistenceException(e);
+                        }
+                        rows.add(new KeyedQuery.Row<>(value, cursor));
+                    })) {
+                        // Reading continues until the spliterator reports the end.
+                    }
+                    if (observation instanceof ListenedObservation listened) {
+                        listened.rows(rows.size());
+                    }
+                    return rows;
                 } finally {
                     close(resultSet, statement, streamingCleanup);
                 }

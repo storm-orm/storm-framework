@@ -515,12 +515,12 @@ When you read an entity within a transaction, Storm stores the original field va
 ```kotlin
 // Wrong: the where clause is discarded
 val builder = userRepository.select()
-builder.where(User_.active eq true)   // returns a new builder, but it's ignored
+builder.where(User_.email like "%@example.com")   // returns a new builder, but it's ignored
 builder.resultList                    // executes without the WHERE clause
 
 // Correct: chain the calls
 val results = userRepository.select()
-    .where(User_.active eq true)
+    .where(User_.email like "%@example.com")
     .resultList
 ```
 
@@ -530,12 +530,12 @@ val results = userRepository.select()
 ```java
 // Wrong: the where clause is discarded
 var builder = userRepository.select();
-builder.where(User_.active, EQUALS, true);   // returns a new builder, but it's ignored
+builder.where(User_.email, LIKE, "%@example.com");   // returns a new builder, but it's ignored
 builder.getResultList();                      // executes without the WHERE clause
 
 // Correct: chain the calls
 var results = userRepository.select()
-        .where(User_.active, EQUALS, true)
+        .where(User_.email, LIKE, "%@example.com")
         .getResultList();
 ```
 

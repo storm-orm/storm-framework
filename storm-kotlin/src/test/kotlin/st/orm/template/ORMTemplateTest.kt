@@ -185,7 +185,7 @@ internal open class ORMTemplateTest(
         val repo = orm.entity(City::class)
         val idMetamodel = Metamodel.of<City, Int>(City::class.java, "id")
         val key = Metamodel.key(idMetamodel)
-        val window = repo.scroll(Scrollable.of(key, 3).backward())
+        val window = repo.scroll(Scrollable.of(key, 3).descending())
         window.content shouldHaveSize 3
         window.hasNext shouldBe true
     }
@@ -205,7 +205,7 @@ internal open class ORMTemplateTest(
         val repo = orm.entity(City::class)
         val idMetamodel = Metamodel.of<City, Int>(City::class.java, "id")
         val key = Metamodel.key(idMetamodel)
-        val window = repo.selectRef().scroll(Scrollable.of(key, 3).backward())
+        val window = repo.selectRef().scroll(Scrollable.of(key, 3).descending())
         window.content shouldHaveSize 3
         window.hasNext shouldBe true
     }
@@ -236,7 +236,7 @@ internal open class ORMTemplateTest(
         val repo = orm.entity(City::class)
         val idMetamodel = Metamodel.of<City, Int>(City::class.java, "id")
         val key = Metamodel.key(idMetamodel)
-        val window = repo.select().scroll(Scrollable(key, 3, null, null, 3, true))
+        val window = repo.select().scroll(Scrollable.of(key, 3).after(3))
         window.content shouldHaveSize 3
         window.hasNext shouldBe false
     }
@@ -246,7 +246,7 @@ internal open class ORMTemplateTest(
         val repo = orm.entity(City::class)
         val idMetamodel = Metamodel.of<City, Int>(City::class.java, "id")
         val key = Metamodel.key(idMetamodel)
-        val window = repo.selectRef().scroll(Scrollable(key, 3, null, null, 3, true))
+        val window = repo.selectRef().scroll(Scrollable.of(key, 3).after(3))
         window.content shouldHaveSize 3
         window.hasNext shouldBe false
     }
@@ -256,9 +256,11 @@ internal open class ORMTemplateTest(
         val repo = orm.entity(City::class)
         val idMetamodel = Metamodel.of<City, Int>(City::class.java, "id")
         val key = Metamodel.key(idMetamodel)
-        val window = repo.select().scroll(Scrollable(key, 4, null, null, 3, false))
+        val window = repo.select().scroll(Scrollable.of(key, 3).before(4))
         window.content shouldHaveSize 3
-        window.hasNext shouldBe false
+        window.content.map { it.id } shouldBe listOf(1, 2, 3)
+        window.hasNext shouldBe true // the anchor row follows the window
+        window.hasPrevious shouldBe false
     }
 
     @Test
@@ -266,7 +268,7 @@ internal open class ORMTemplateTest(
         val repo = orm.entity(City::class)
         val idMetamodel = Metamodel.of<City, Int>(City::class.java, "id")
         val key = Metamodel.key(idMetamodel)
-        val window = repo.selectRef().scroll(Scrollable(key, 4, null, null, 3, false))
+        val window = repo.selectRef().scroll(Scrollable.of(key, 3).before(4))
         window.content shouldHaveSize 3
     }
 
@@ -276,7 +278,7 @@ internal open class ORMTemplateTest(
         val idMetamodel = Metamodel.of<City, Int>(City::class.java, "id")
         val key = Metamodel.key(idMetamodel)
         val namePath = metamodel<City, String>(repo.model, "name")
-        val window = repo.select().where(namePath eq "Madison").scroll(Scrollable(key, 1, null, null, 10, true))
+        val window = repo.select().where(namePath eq "Madison").scroll(Scrollable.of(key, 10).after(1))
         window.content shouldHaveSize 1
     }
 
@@ -286,7 +288,7 @@ internal open class ORMTemplateTest(
         val idMetamodel = Metamodel.of<City, Int>(City::class.java, "id")
         val key = Metamodel.key(idMetamodel)
         val namePath = metamodel<City, String>(repo.model, "name")
-        val window = repo.selectRef().where(namePath eq "Madison").scroll(Scrollable(key, 1, null, null, 10, true))
+        val window = repo.selectRef().where(namePath eq "Madison").scroll(Scrollable.of(key, 10).after(1))
         window.content shouldHaveSize 1
     }
 
@@ -296,7 +298,7 @@ internal open class ORMTemplateTest(
         val idMetamodel = Metamodel.of<City, Int>(City::class.java, "id")
         val key = Metamodel.key(idMetamodel)
         val namePath = metamodel<City, String>(repo.model, "name")
-        val window = repo.select().where(namePath eq "Madison").scroll(Scrollable(key, 6, null, null, 10, false))
+        val window = repo.select().where(namePath eq "Madison").scroll(Scrollable.of(key, 10).before(6))
         window.content shouldHaveSize 1
     }
 
@@ -306,7 +308,7 @@ internal open class ORMTemplateTest(
         val idMetamodel = Metamodel.of<City, Int>(City::class.java, "id")
         val key = Metamodel.key(idMetamodel)
         val namePath = metamodel<City, String>(repo.model, "name")
-        val window = repo.selectRef().where(namePath eq "Madison").scroll(Scrollable(key, 6, null, null, 10, false))
+        val window = repo.selectRef().where(namePath eq "Madison").scroll(Scrollable.of(key, 10).before(6))
         window.content shouldHaveSize 1
     }
 
@@ -339,7 +341,7 @@ internal open class ORMTemplateTest(
         val idMetamodel = Metamodel.of<City, Int>(City::class.java, "id")
         val key = Metamodel.key(idMetamodel)
         val namePath = metamodel<City, String>(cities.model, "name")
-        val window = cities.select().where(namePath eq "Madison").scroll(Scrollable(key, 1, null, null, 10, true))
+        val window = cities.select().where(namePath eq "Madison").scroll(Scrollable.of(key, 10).after(1))
         window.content shouldHaveSize 1
     }
 
@@ -349,7 +351,7 @@ internal open class ORMTemplateTest(
         val idMetamodel = Metamodel.of<City, Int>(City::class.java, "id")
         val key = Metamodel.key(idMetamodel)
         val namePath = metamodel<City, String>(cities.model, "name")
-        val window = cities.selectRef().where(namePath eq "Madison").scroll(Scrollable(key, 1, null, null, 10, true))
+        val window = cities.selectRef().where(namePath eq "Madison").scroll(Scrollable.of(key, 10).after(1))
         window.content shouldHaveSize 1
     }
 
@@ -359,7 +361,7 @@ internal open class ORMTemplateTest(
         val idMetamodel = Metamodel.of<City, Int>(City::class.java, "id")
         val key = Metamodel.key(idMetamodel)
         val namePath = metamodel<City, String>(cities.model, "name")
-        val window = cities.select().where(namePath eq "Madison").scroll(Scrollable(key, 6, null, null, 10, false))
+        val window = cities.select().where(namePath eq "Madison").scroll(Scrollable.of(key, 10).before(6))
         window.content shouldHaveSize 1
     }
 
@@ -369,7 +371,7 @@ internal open class ORMTemplateTest(
         val idMetamodel = Metamodel.of<City, Int>(City::class.java, "id")
         val key = Metamodel.key(idMetamodel)
         val namePath = metamodel<City, String>(cities.model, "name")
-        val window = cities.selectRef().where(namePath eq "Madison").scroll(Scrollable(key, 6, null, null, 10, false))
+        val window = cities.selectRef().where(namePath eq "Madison").scroll(Scrollable.of(key, 10).before(6))
         window.content shouldHaveSize 1
     }
 
@@ -381,7 +383,7 @@ internal open class ORMTemplateTest(
         val idMetamodel = Metamodel.of<City, Int>(City::class.java, "id")
         val key = Metamodel.key(idMetamodel)
         val namePath = metamodel<City, String>(repo.model, "name")
-        val window = repo.scroll(Scrollable.of(key, namePath, 3))
+        val window = repo.scroll(Scrollable.of(key, 3).sortBy(namePath))
         window.content shouldHaveSize 3
         window.hasNext shouldBe true
     }
@@ -392,7 +394,7 @@ internal open class ORMTemplateTest(
         val idMetamodel = Metamodel.of<City, Int>(City::class.java, "id")
         val key = Metamodel.key(idMetamodel)
         val namePath = metamodel<City, String>(repo.model, "name")
-        val window = repo.scroll(Scrollable.of(key, namePath, 3).backward())
+        val window = repo.scroll(Scrollable.of(key, 3).sortByDescending(namePath).descending())
         window.content shouldHaveSize 3
         window.hasNext shouldBe true
     }
@@ -403,7 +405,7 @@ internal open class ORMTemplateTest(
         val idMetamodel = Metamodel.of<City, Int>(City::class.java, "id")
         val key = Metamodel.key(idMetamodel)
         val namePath = metamodel<City, String>(repo.model, "name")
-        val window = repo.selectRef().scroll(Scrollable.of(key, namePath, 3))
+        val window = repo.selectRef().scroll(Scrollable.of(key, 3).sortBy(namePath))
         window.content shouldHaveSize 3
         window.hasNext shouldBe true
     }
@@ -414,7 +416,7 @@ internal open class ORMTemplateTest(
         val idMetamodel = Metamodel.of<City, Int>(City::class.java, "id")
         val key = Metamodel.key(idMetamodel)
         val namePath = metamodel<City, String>(repo.model, "name")
-        val window = repo.selectRef().scroll(Scrollable.of(key, namePath, 3).backward())
+        val window = repo.selectRef().scroll(Scrollable.of(key, 3).sortByDescending(namePath).descending())
         window.content shouldHaveSize 3
         window.hasNext shouldBe true
     }
@@ -1078,7 +1080,7 @@ internal open class ORMTemplateTest(
         val repo = orm.entity(City::class)
         val idMetamodel = Metamodel.of<City, Int>(City::class.java, "id")
         val key = Metamodel.key(idMetamodel)
-        val window = repo.select().scroll(Scrollable(key, 4, null, null, 3, false))
+        val window = repo.select().scroll(Scrollable.of(key, 3).before(4))
         window.content shouldHaveSize 3
     }
 
@@ -1087,7 +1089,7 @@ internal open class ORMTemplateTest(
         val repo = orm.entity(City::class)
         val idMetamodel = Metamodel.of<City, Int>(City::class.java, "id")
         val key = Metamodel.key(idMetamodel)
-        val window = repo.select().scroll(Scrollable.of(key, 3).backward())
+        val window = repo.select().scroll(Scrollable.of(key, 3).descending())
         window.content shouldHaveSize 3
         window.hasNext shouldBe true
     }

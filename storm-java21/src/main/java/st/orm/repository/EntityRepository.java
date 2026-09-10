@@ -34,6 +34,7 @@ import st.orm.Pageable;
 import st.orm.PersistenceException;
 import st.orm.Ref;
 import st.orm.Scrollable;
+import st.orm.Slice;
 import st.orm.Window;
 import st.orm.template.Model;
 import st.orm.template.QueryBuilder;
@@ -1008,7 +1009,7 @@ public interface EntityRepository<E extends Entity<ID>, ID> extends Repository {
      * entities.</p>
      *
      * <p>Use {@link Pageable#ofSize(int)} for the first page, then navigate with
-     * {@link Page#nextPageable()} or {@link Page#previousPageable()}.</p>
+     * {@link Page#next()} or {@link Page#previous()}.</p>
      *
      * @param pageable the pagination request specifying page number and page size.
      * @return a page containing the results and pagination metadata.
@@ -1042,6 +1043,60 @@ public interface EntityRepository<E extends Entity<ID>, ID> extends Repository {
     Page<Ref<E>> pageRef(Pageable pageable);
 
     /**
+     * Returns a slice of entities using offset-based pagination without a count.
+     *
+     * <p>This method executes a query with OFFSET and LIMIT for the requested page and one row beyond it, which
+     * decides {@link Slice#hasNext()}; no count query runs.</p>
+     *
+     * <p>Page numbers are zero-based: pass {@code 0} for the first slice.</p>
+     *
+     * @param pageNumber the zero-based page index.
+     * @param pageSize the maximum number of entities per slice.
+     * @return a slice containing the results.
+     * @since 1.14
+     */
+    Slice<E> slice(int pageNumber, int pageSize);
+
+    /**
+     * Returns a slice of entities using offset-based pagination without a count.
+     *
+     * <p>This method executes a query with OFFSET and LIMIT for the requested page and one row beyond it, which
+     * decides {@link Slice#hasNext()}; no count query runs.</p>
+     *
+     * <p>Use {@link Pageable#ofSize(int)} for the first slice, then navigate with {@link Pageable#next()} or
+     * {@link Pageable#previous()}.</p>
+     *
+     * @param pageable the request specifying page number, page size and sort orders.
+     * @return a slice containing the results.
+     * @since 1.14
+     */
+    Slice<E> slice(Pageable pageable);
+
+    /**
+     * Returns a slice of entity refs using offset-based pagination without a count.
+     *
+     * <p>Page numbers are zero-based: pass {@code 0} for the first slice.</p>
+     *
+     * @param pageNumber the zero-based page index.
+     * @param pageSize the maximum number of refs per slice.
+     * @return a slice containing the ref results.
+     * @since 1.14
+     */
+    Slice<Ref<E>> sliceRef(int pageNumber, int pageSize);
+
+    /**
+     * Returns a slice of entity refs using offset-based pagination without a count.
+     *
+     * <p>This method executes a query with OFFSET and LIMIT for the requested page and one row beyond it, which
+     * decides {@link Slice#hasNext()}; no count query runs.</p>
+     *
+     * @param pageable the request specifying page number, page size and sort orders.
+     * @return a slice containing the ref results.
+     * @since 1.14
+     */
+    Slice<Ref<E>> sliceRef(Pageable pageable);
+
+    /**
      * Executes a scroll request from a {@link Scrollable} token, typically obtained from
      * {@link Window#next()} or {@link Window#previous()}.
      *
@@ -1051,6 +1106,18 @@ public interface EntityRepository<E extends Entity<ID>, ID> extends Repository {
      */
     default Window<E> scroll(Scrollable<E> scrollable) {
         return select().scroll(scrollable);
+    }
+
+    /**
+     * Scrolls through entities as refs using the given scroll request. The window carries navigation tokens like
+     * one of full entities, since the cursor values are read from the row.
+     *
+     * @param scrollable the scroll request: ordering, size and position.
+     * @return a window containing the refs and navigation tokens.
+     * @since 1.14
+     */
+    default Window<Ref<E>> scrollRef(Scrollable<E> scrollable) {
+        return selectRef().scroll(scrollable);
     }
 
     /**

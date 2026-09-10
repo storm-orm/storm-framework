@@ -177,7 +177,7 @@ public class PageCountInferenceIntegrationTest {
             page = orm.selectFrom(Visit.class).page(pageable);
             assertEquals(total, page.totalCount());
             seen += page.content().size();
-            pageable = page.nextPageable();
+            pageable = page.next();
         } while (page.hasNext());
         assertEquals(total, seen);
     }

@@ -7,34 +7,30 @@ This page covers the low-level details of cursor serialization for scrolling. Fo
 
 ## Overview
 
-When a `Window` is returned from a scroll operation, it carries `Scrollable` navigation tokens that encode the cursor position. These tokens can be serialized to opaque, URL-safe strings using `toCursor()` and deserialized using `Scrollable.fromCursor()`. This allows REST APIs to pass scroll state as a query parameter between requests.
+A `Window` names the rows it ended and started on through `next()` and `previous()`, typed `Scrollable` requests that continue after or before those rows. For a REST API the same positions travel as opaque, URL-safe strings: `nextCursor()` and `previousCursor()` serialize them, and `Scrollable.from(cursor)` puts a request at the position a client sends back. The cursor carries the position only. The ordering and the window size stay in code, so the client may ask for another size on the next request, and a cursor issued for one ordering is refused by a request that states another.
 
 <Tabs groupId="language">
 <TabItem value="kotlin" label="Kotlin" default>
 
 ```kotlin
-// Server: serialize cursor into response
+// Server: serialize the position into the response
 val cursor: String? = window.nextCursor()
 
-// Client sends cursor back in next request
-// Server: reconstruct scrollable
-cursor?.let {
-    val scrollable = Scrollable.fromCursor(User_.id, it)
-    val next = userRepository.scroll(scrollable)
-}
+// Client sends the cursor back with the next request
+// Server: the ordering is code, the position is the client's cursor, the size is the client's parameter
+val next = userRepository.scroll(Scrollable.of(User_.id, size).sortBy(User_.email).from(cursor))
 ```
 
 </TabItem>
 <TabItem value="java" label="Java">
 
 ```java
-// Server: serialize cursor into response
+// Server: serialize the position into the response
 String cursor = window.nextCursor();
 
-// Client sends cursor string back in next request
-// Server: reconstruct scrollable
-var scrollable = Scrollable.fromCursor(User_.id, cursor);
-var next = userRepository.scroll(scrollable);
+// Client sends the cursor back with the next request
+// Server: the ordering is code, the position is the client's cursor, the size is the client's parameter
+var next = userRepository.scroll(Scrollable.of(User_.id, size).sortBy(User_.email).from(cursor));
 ```
 
 </TabItem>
@@ -48,7 +44,7 @@ A cursor string also resumes a `windows` iteration, which is how a long-running 
 <TabItem value="kotlin" label="Kotlin" default>
 
 ```kotlin
-val start = checkpoint.load()?.let { Scrollable.fromCursor(User_.id, it) } ?: Scrollable.of(User_.id, 1000)
+val start = checkpoint.load()?.let { Scrollable.of(User_.id, 1000).from(it) } ?: Scrollable.of(User_.id, 1000)
 userRepository.windows(start).collect { window ->
     process(window.content())
     checkpoint.store(window.nextCursor())
@@ -60,7 +56,7 @@ userRepository.windows(start).collect { window ->
 
 ```java
 String cursor = checkpoint.load();
-var start = cursor == null ? Scrollable.of(User_.id, 1000) : Scrollable.fromCursor(User_.id, cursor);
+var start = cursor == null ? Scrollable.of(User_.id, 1000) : Scrollable.of(User_.id, 1000).from(cursor);
 userRepository.windows(start).forEach(window -> {
     process(window.content());
     checkpoint.store(window.nextCursor());
@@ -75,12 +71,41 @@ userRepository.windows(start).forEach(window -> {
 The serialized cursor is a Base64 URL-safe encoded binary payload. The format is intentionally opaque: clients should treat it as an immutable token and never parse or modify it. The internal structure includes:
 
 - A version byte for forward compatibility
-- Fingerprints of the metamodel key/sort paths and the codec registry, used to detect mismatches on deserialization
-- The scroll direction (forward or backward)
-- The page size
-- The cursor value(s) for the key and optional sort fields
+- A fingerprint of the ordering, that is the key and sort field paths with their directions, and a fingerprint of the codec registry, used to detect mismatches on deserialization
+- Whether the request continues after or before the row
+- The row's values, one per sort field and one for the key
 
-Cursors produced by one application instance can be consumed by another, as long as both use the same entity model and codec registry. A cursor becomes invalid if the metamodel paths change (for example, renaming the key field) or if the codec registry changes (for example, adding or removing a custom codec).
+Cursors produced by one application instance can be consumed by another, as long as both state the same ordering and use the same entity model and codec registry. A cursor becomes invalid if the ordering changes (for example, adding a sort field or flipping a direction), if the metamodel paths change (for example, renaming the key field), or if the codec registry changes (for example, adding or removing a custom codec). Cursors issued before Storm 1.14.1 carry an earlier format and are refused by the version check.
+
+A refused cursor throws `InvalidCursorException`, a `PersistenceException`. A cursor comes from a client, so a web layer maps this one exception to its "start over from the first window" response and never has to inspect a message:
+
+<Tabs groupId="language">
+<TabItem value="kotlin" label="Kotlin" default>
+
+```kotlin
+val request = Scrollable.of(User_.id, size).sortBy(User_.email)
+val window = try {
+    userRepository.scroll(if (cursor != null) request.from(cursor) else request)
+} catch (e: InvalidCursorException) {
+    userRepository.scroll(request)   // the client's cursor no longer fits: first window again
+}
+```
+
+</TabItem>
+<TabItem value="java" label="Java">
+
+```java
+var request = Scrollable.of(User_.id, size).sortBy(User_.email);
+Window<User> window;
+try {
+    window = userRepository.scroll(cursor != null ? request.from(cursor) : request);
+} catch (InvalidCursorException e) {
+    window = userRepository.scroll(request);   // the client's cursor no longer fits: first window again
+}
+```
+
+</TabItem>
+</Tabs>
 
 ## Security
 
@@ -88,7 +113,7 @@ The cursor format is opaque but **not tamper-proof**. A malicious client can dec
 
 If your cursors are exposed to untrusted clients (for example, in a public REST API), consider one of the following mitigations:
 
-- **HMAC wrapping.** Sign the cursor string with a server-side secret and verify the signature before passing it to `fromCursor()`. This prevents modification without detection.
+- **HMAC wrapping.** Sign the cursor string with a server-side secret and verify the signature before passing it to `from(cursor)`. This prevents modification without detection.
 - **Encryption.** Encrypt the cursor string before sending it to the client and decrypt it on the server. This prevents both reading and modification.
 - **Server-side storage.** Store the cursor state on the server (for example, in a session or cache) and give the client an opaque session key instead of the actual cursor.
 
@@ -113,7 +138,7 @@ The following Java types can be used as cursor values (key or sort fields) out o
 | `OffsetDateTime` | 15 bytes | LocalDateTime (11) + offset seconds (4) |
 | `BigDecimal` | 4 + length | Serialized as plain string |
 
-If your key or sort field uses a type not in this list, serialization via `toCursor()` will throw an `IllegalStateException`. You can either use one of the supported types for your key/sort columns, or register a custom codec.
+If your key or sort field uses a type not in this list, serialization via `toCursor()` will throw an `IllegalStateException`. You can either use one of the supported types for your key/sort columns, or register a custom codec. A reference field's column carries the referenced key, so its cursor value is that key's type.
 
 Note that in-memory navigation (using `next()` and `previous()` directly, without serializing to a cursor string) works with any type, including inline records and other composite types. The type restriction only applies to `toCursor()` serialization.
 
@@ -185,7 +210,3 @@ com.example.MyCursorCodecProvider
 - Each tag and each type can only be registered once. Duplicate registrations throw an `IllegalArgumentException` at startup.
 - The codec registry is built once at class load time. Adding or removing codecs changes the registry fingerprint, which invalidates all previously serialized cursors.
 - The `write` method receives a non-null value; null handling is done by the framework. The `read` method must return a non-null value.
-
-## Size limit
-
-Cursor strings carry a page size that is validated during deserialization. The maximum size defaults to 1000 and can be configured via the `st.orm.scrollable.maxSize` system property. This limit only applies to cursors deserialized from external input via `fromCursor()`, not to programmatic `Scrollable.of()` calls.

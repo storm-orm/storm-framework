@@ -170,7 +170,7 @@ internal open class RefsAndKeysTest(
 
         // Next page using scrolling with cursor value from last item.
         val lastId = firstWindow.content.last().id
-        val nextWindow = orm.entity(City::class).select().scroll(Scrollable(key, lastId, null, null, 3, true))
+        val nextWindow = orm.entity(City::class).select().scroll(Scrollable.of(key, 3).after(lastId))
         nextWindow.content shouldHaveSize 3
         nextWindow.hasNext shouldBe false
     }

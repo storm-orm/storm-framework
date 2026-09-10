@@ -21,7 +21,7 @@ import java.util.List;
  * Service provider interface for registering custom cursor codecs.
  *
  * <p>Implementations are discovered via {@link java.util.ServiceLoader} and used to extend the set of types that
- * {@link st.orm.Scrollable#toCursor()} and {@link st.orm.Scrollable#fromCursor} can serialize. To register a custom
+ * {@link st.orm.Scrollable#toCursor()} and {@link st.orm.Scrollable#from(String)} can serialize. To register a custom
  * codec, implement this interface and add the fully qualified class name to
  * {@code META-INF/services/st.orm.spi.CursorCodecProvider}.</p>
  *

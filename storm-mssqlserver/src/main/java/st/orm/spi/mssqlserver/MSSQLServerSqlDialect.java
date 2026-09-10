@@ -185,6 +185,13 @@ public class MSSQLServerSqlDialect extends DefaultSqlDialect {
         return "OFFSET %d ROWS FETCH NEXT %d ROWS ONLY".formatted(offset, limit);
     }
 
+    @Override
+    public String orderByForOffset() {
+        // OFFSET and OFFSET-FETCH are only valid after an ORDER BY. A constant ordering satisfies the grammar
+        // without imposing an order the query did not ask for.
+        return "ORDER BY (SELECT NULL)";
+    }
+
     /**
      * Returns {@code true} if the lock hint should be applied after the FROM clause.
      *

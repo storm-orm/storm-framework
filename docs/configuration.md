@@ -24,7 +24,6 @@ Storm can be configured through `StormConfig`, system properties, Spring Boot's 
 | `storm.sql_log.call_site_skip` | — | Comma-separated package prefixes or source file names skipped in SQL log call-site attribution |
 | `storm.sql_log.slow.threshold` | — | Database time above which a single statement execution is reported under `st.orm.sql.slow`, such as `200ms`. In the Spring and Ktor integrations, unset alongside an enabled performance log it takes that log's duration threshold (see [The Slow Statement Log](sql-logging.md#the-slow-statement-log)) |
 | `storm.sql_log.slow.limit` | `5` | Slow statement lines reported per shape per minute before the rest are suppressed and counted; `0` for no limit |
-| `st.orm.scrollable.maxSize` | `1000` | Maximum window size allowed in a serialized cursor (system property only) |
 
 ### Setting Properties
 
@@ -531,20 +530,6 @@ record Order(@PK Integer id,
 ---
 
 ## Scrolling Properties
-
-### st.orm.scrollable.maxSize
-
-Sets the maximum window size that a deserialized cursor (via `Scrollable.fromCursor()`) is allowed to carry. This is a safety limit that prevents untrusted clients from requesting excessively large pages through cursor manipulation. The limit is only enforced when deserializing a cursor string; programmatic usage via `Scrollable.of()` is not restricted.
-
-This property is a JVM system property only; it is not configurable through `StormConfig` or `application.yml`, because it applies at the `Scrollable` record level in storm-foundation, before any ORM template is created.
-
-```bash
-java -Dst.orm.scrollable.maxSize=5000 -jar myapp.jar
-```
-
-Repository or API layers may choose to enforce stricter per-endpoint limits on top of this framework-level bound.
-
----
 
 ## Dirty Checking Properties
 

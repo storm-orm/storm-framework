@@ -102,7 +102,7 @@ orm remove user
 orm.removeBy(User_.city, city)
 
 // Remove by predicate
-orm.removeAll(User_.active eq false)
+orm.removeAll(User_.postalCode.isNull())
 
 // Remove all
 orm.removeAll<User>()
@@ -176,7 +176,7 @@ A flow is one open statement, and the connection it reads from is consume-only u
 
 ```kotlin
 userRepository.windows(1000).collect { window ->
-    userRepository.update(window.content().map { it.copy(processed = true) })
+    userRepository.update(window.content().map { it.copy(email = it.email.lowercase()) })
 }
 ```
 
@@ -196,7 +196,7 @@ A stream is one open statement, and the connection it reads from is consume-only
 ```java
 userRepository.windows(1000).forEach(window ->
     userRepository.update(window.content().stream()
-        .map(user -> new User(user.id(), user.email(), user.name(), true, user.city()))
+        .map(user -> new User(user.id(), user.email().toLowerCase(), user.birthDate(), user.street(), user.postalCode(), user.city()))
         .toList()));
 ```
 
@@ -253,8 +253,8 @@ A `Pageable` describes a pagination request: which page to fetch, how many resul
 | `totalPages()` | Total number of pages |
 | `hasNext()` | Whether a next page exists |
 | `hasPrevious()` | Whether a previous page exists |
-| `nextPageable()` | Returns a `Pageable` for the next page (preserves sort orders) |
-| `previousPageable()` | Returns a `Pageable` for the previous page (preserves sort orders) |
+| `next()` | Returns a `Pageable` for the next page (preserves sort orders) |
+| `previous()` | Returns a `Pageable` for the previous page (preserves sort orders), or `null` on the first page |
 
 Create a `Pageable` using one of the factory methods:
 
@@ -279,7 +279,7 @@ val page: Page<User> = userRepository.page(pageable)
 
 // Navigate to next page
 if (page.hasNext()) {
-    val nextPage = userRepository.page(page.nextPageable())
+    val nextPage = userRepository.page(page.next())
 }
 ```
 
@@ -296,7 +296,36 @@ Page<User> page = userRepository.page(pageable);
 
 // Navigate to next page
 if (page.hasNext()) {
-    Page<User> nextPage = userRepository.page(page.nextPageable());
+    Page<User> nextPage = userRepository.page(page.next());
+}
+```
+
+</TabItem>
+</Tabs>
+
+### Slices
+
+`slice` is `page` without the count query: the same `Pageable`, one row beyond the page size to decide `hasNext`, and the request's `next()` and `previous()` to navigate. Use it for a "load more" that needs no total.
+
+<Tabs groupId="language">
+<TabItem value="kotlin" label="Kotlin" default>
+
+```kotlin
+val pageable = Pageable.ofSize(20).sortBy(User_.email)
+val slice: Slice<User> = userRepository.slice(pageable)
+if (slice.hasNext()) {
+    val more = userRepository.slice(pageable.next())
+}
+```
+
+</TabItem>
+<TabItem value="java" label="Java">
+
+```java
+Pageable pageable = Pageable.ofSize(20).sortBy(User_.email);
+Slice<User> slice = userRepository.slice(pageable);
+if (slice.hasNext()) {
+    Slice<User> more = userRepository.slice(pageable.next());
 }
 ```
 
@@ -305,7 +334,7 @@ if (page.hasNext()) {
 
 ### Ref Variants
 
-Use `pageRef` to load only primary keys instead of full entities, returning a `Page<Ref<E>>`. This is useful when you need identifiers for a subsequent batch operation without the overhead of fetching full entity data.
+Use `pageRef` and `sliceRef` to load only primary keys instead of full entities, returning a `Page<Ref<E>>` or a `Slice<Ref<E>>`. This is useful when you need identifiers for a subsequent batch operation without the overhead of fetching full entity data.
 
 <Tabs groupId="language">
 <TabItem value="kotlin" label="Kotlin" default>
@@ -328,131 +357,131 @@ Page<Ref<User>> refPage = userRepository.pageRef(0, 20);
 
 ## Scrolling
 
-Repositories provide convenience methods for scrolling through result sets, where a unique column value (typically the primary key) acts as a cursor. This approach avoids the performance issues of `OFFSET` on large tables, because the database can seek directly to the cursor position using an index rather than scanning and discarding skipped rows.
+Repositories provide convenience methods for scrolling through result sets by keyset, where a unique column value (typically the primary key) makes every row addressable. This approach avoids the performance issues of `OFFSET` on large tables, because the database can seek directly to a row using an index rather than scanning and discarding skipped rows.
 
 The key parameter must be a `Metamodel.Key`, which is generated for fields annotated with `@UK` or `@PK`. See [Metamodel](metamodel.md#unique-keys-uk-and-metamodelkey) for details.
 
-The `scroll` method accepts a `Scrollable<E>` that captures the cursor state (key, page size, direction, and cursor values) and returns a `Window<E>` containing the page content, informational `hasNext`/`hasPrevious` flags, and `Scrollable<E>` navigation tokens for fetching the adjacent window. Navigation tokens (`next()`, `previous()`) are always present when the window has content; they are only `null` when the window is empty. The `hasNext` and `hasPrevious` flags indicate whether more results existed at query time, but they do not gate access to the navigation tokens. Since new data may appear after the query, the developer decides whether to follow a cursor.
-
-Create a `Scrollable` using the factory methods, then use the navigation tokens on the returned `Window` to move forward or backward:
+The `scroll` method accepts a `Scrollable<E>`, which states the ordering, the window size and optionally the position to continue from, and returns a `Window<E>`: the content in the request's sort order, informational `hasNext`/`hasPrevious` flags, and `Scrollable<E>` navigation tokens for the adjacent windows. Navigation tokens (`next()`, `previous()`) are always present when the window has content; they are only `null` when the window is empty. The flags say whether rows existed after and before the window at query time, but they do not gate access to the tokens. Since new data may appear after the query, the developer decides whether to follow a token.
 
 <Tabs groupId="language">
 <TabItem value="kotlin" label="Kotlin" default>
 
 ```kotlin
-// First page of 20 users ordered by ID
+// First window of 20 users ordered by id
 val window: Window<User> = userRepository.scroll(Scrollable.of(User_.id, 20))
 
-// Next page (next() is non-null whenever the window has content)
+// The window after it, and the window before that, both in id order
 val next: Window<User> = userRepository.scroll(window.next())
+val previous: Window<User> = userRepository.scroll(next.previous())
 
-// Previous page
-val previous: Window<User> = userRepository.scroll(window.previous())
+// Newest first: the key descending
+val latest: Window<User> = userRepository.scroll(Scrollable.of(User_.id, 20).descending())
 
-// Optionally check hasNext/hasPrevious to decide whether to follow the cursor.
+// Optionally check hasNext/hasPrevious to decide whether to follow a token.
 // These flags reflect a snapshot at query time; new data may appear afterward.
 if (window.hasNext()) {
-    // more results existed when the query ran
+    // more rows existed after this window when the query ran
 }
 ```
 
-To scroll through a filtered subset, use the query builder with `scroll` as a terminal operation. The filter and cursor conditions are combined with AND.
+To scroll through a filtered subset, use the query builder with `scroll` as a terminal operation. The filter and the keyset condition are combined with AND.
 
 ```kotlin
-val activeWindow = userRepository.select()
-    .where(User_.active eq true)
+val cityWindow = userRepository.select()
+    .where(User_.city eq city)
     .scroll(Scrollable.of(User_.id, 20))
-val nextActive = userRepository.select()
-    .where(User_.active eq true)
-    .scroll(activeWindow.next())
+val nextInCity = userRepository.select()
+    .where(User_.city eq city)
+    .scroll(cityWindow.next())
 ```
 
-For backward scrolling (starting from the end of the result set), use `.backward()`:
-
-```kotlin
-val lastWindow: Window<User> = userRepository.scroll(Scrollable.of(User_.id, 20).backward())
-```
-
-The scroll methods handle ordering internally and reject explicit `orderBy()` calls. Backward scrolling returns results in descending key order; reverse the list if you need ascending order for display. See [Pagination and Scrolling: Scrolling](pagination-and-scrolling.md#scrolling) for full details on ordering constraints.
+The request owns the ordering, so the scroll methods reject explicit `orderBy()` calls. Every window comes back in the request's sort order, the one reached through `previous()` included. See [Pagination and Scrolling: Scrolling](pagination-and-scrolling.md#scrolling) for full details.
 
 </TabItem>
 <TabItem value="java" label="Java">
 
-The same scrolling methods described in the Kotlin section are available on Java repositories. The `scroll` method accepts a `Scrollable<E>` and returns a `Window<E>` containing the page `content()`, informational `hasNext()`/`hasPrevious()` flags, and `Scrollable<E>` navigation tokens (`next()`, `previous()`) that are always present when the window has content.
+The same scrolling methods described in the Kotlin section are available on Java repositories. The `scroll` method accepts a `Scrollable<E>` and returns a `Window<E>` containing the `content()`, informational `hasNext()`/`hasPrevious()` flags, and `Scrollable<E>` navigation tokens (`next()`, `previous()`) that are always present when the window has content.
 
 ```java
-// First page of 20 users ordered by ID
+// First window of 20 users ordered by id
 Window<User> window = userRepository.scroll(Scrollable.of(User_.id, 20));
 
-// Next page (next() is non-null whenever the window has content)
+// The window after it, and the window before that, both in id order
 Window<User> next = userRepository.scroll(window.next());
+Window<User> previous = userRepository.scroll(next.previous());
 
-// Previous page
-Window<User> previous = userRepository.scroll(window.previous());
+// Newest first: the key descending
+Window<User> latest = userRepository.scroll(Scrollable.of(User_.id, 20).descending());
 
-// Optionally check hasNext/hasPrevious to decide whether to follow the cursor.
+// Optionally check hasNext/hasPrevious to decide whether to follow a token.
 // These flags reflect a snapshot at query time; new data may appear afterward.
 if (window.hasNext()) {
-    // more results existed when the query ran
+    // more rows existed after this window when the query ran
 }
 ```
 
-For filtered results, use the query builder and call `scroll` as a terminal operation. The filter and cursor conditions are combined with AND.
+For filtered results, use the query builder and call `scroll` as a terminal operation. The filter and the keyset condition are combined with AND.
 
 ```java
-Window<User> activeWindow = userRepository.select()
-    .where(User_.active, EQUALS, true)
+Window<User> cityWindow = userRepository.select()
+    .where(User_.city, EQUALS, city)
     .scroll(Scrollable.of(User_.id, 20));
 ```
 
-For backward scrolling (starting from the end of the result set), use `.backward()`:
-
-```java
-Window<User> lastWindow = userRepository.scroll(Scrollable.of(User_.id, 20).backward());
-```
-
-As with Kotlin, the scroll methods handle ordering internally and reject explicit `orderBy()` calls. Backward scrolling returns results in descending key order. See [Pagination and Scrolling: Scrolling](pagination-and-scrolling.md#scrolling) for full details.
+As with Kotlin, the request owns the ordering, so the scroll methods reject explicit `orderBy()` calls, and every window comes back in the request's sort order. See [Pagination and Scrolling: Scrolling](pagination-and-scrolling.md#scrolling) for full details.
 
 </TabItem>
 </Tabs>
 
 ### Scrolling with Sort
 
-When you need to sort by a non-unique column (for example, a date or status), use the `Scrollable.of` overload that accepts a separate sort column. This accepts a `key` column (typically the primary key) as a unique tiebreaker, and a `sort` column for the primary sort order, to guarantee deterministic paging even when `sort` values repeat.
+When you need to sort by a non-unique column (for example, a date or status), add sort fields to the request with `sortBy` and `sortByDescending`. They order before the key, each in its own direction, and the key stays the tiebreaker, so paging is deterministic even when sort values repeat. Sort fields must not allow NULL values.
 
 <Tabs groupId="language">
 <TabItem value="kotlin" label="Kotlin" default>
 
 ```kotlin
-// First page sorted by creation date, with ID as tiebreaker
-val window: Window<Post> = postRepository.scroll(Scrollable.of(Post_.id, Post_.createdAt, 20))
+// Oldest first: creation date ascending, id as tiebreaker
+val window: Window<Post> = postRepository.scroll(Scrollable.of(Post_.id, 20).sortBy(Post_.createdAt))
 
-// Next page
+// Newest first: creation date descending, key descending to match
+val latest: Window<Post> = postRepository.scroll(Scrollable.of(Post_.id, 20).sortByDescending(Post_.createdAt).descending())
+
+// City, then birth date, then id
+val byName: Window<User> = userRepository.scroll(Scrollable.of(User_.id, 20).sortBy(User_.city).sortBy(User_.birthDate))
+
+// Next window
 val next: Window<Post> = postRepository.scroll(window.next())
 
 // With filter (use query builder)
-val activeWindow = postRepository.select()
-    .where(Post_.active eq true)
-    .scroll(Scrollable.of(Post_.id, Post_.createdAt, 20))
+val matching = postRepository.select()
+    .where(Post_.title like "%storm%")
+    .scroll(Scrollable.of(Post_.id, 20).sortBy(Post_.createdAt))
 ```
 
 </TabItem>
 <TabItem value="java" label="Java">
 
 ```java
-// First page sorted by creation date, with ID as tiebreaker
-Window<Post> window = postRepository.scroll(Scrollable.of(Post_.id, Post_.createdAt, 20));
+// Oldest first: creation date ascending, id as tiebreaker
+Window<Post> window = postRepository.scroll(Scrollable.of(Post_.id, 20).sortBy(Post_.createdAt));
 
-// Next page
+// Newest first: creation date descending, key descending to match
+Window<Post> latest = postRepository.scroll(Scrollable.of(Post_.id, 20).sortByDescending(Post_.createdAt).descending());
+
+// City, then birth date, then id
+Window<User> byName = userRepository.scroll(Scrollable.of(User_.id, 20).sortBy(User_.city).sortBy(User_.birthDate));
+
+// Next window
 Window<Post> next = postRepository.scroll(window.next());
 ```
 
 </TabItem>
 </Tabs>
 
-The `Window` carries navigation tokens (`next()`, `previous()`) that encode the cursor values internally, so the client does not need to extract cursor values manually. These tokens are always non-null when the window contains content. For REST APIs, `nextCursor()` and `previousCursor()` provide a convenient serialized form: `nextCursor()` returns `null` when `hasNext` is false, and `previousCursor()` returns `null` when `hasPrevious` is false.
+The `Window` carries navigation tokens (`next()`, `previous()`) that hold the row's sort and key values, so the client does not need to extract them. The values are read from the row alongside the result, which is why `scrollRef` and `selectRef().scroll(...)` navigate exactly like a window of entities. For REST APIs, `nextCursor()` and `previousCursor()` provide a serialized form: `nextCursor()` returns `null` when `hasNext` is false, and `previousCursor()` returns `null` when `hasPrevious` is false.
 
-For queries that need joins, projections, or more complex filtering, use the query builder and call `scroll` as a terminal operation. See [Pagination and Scrolling: Scrolling](pagination-and-scrolling.md#scrolling) for full details on how scrolling composes with WHERE and ORDER BY clauses, including indexing recommendations.
+For queries that need joins, projections, or more complex filtering, use the query builder and call `scroll` as a terminal operation. See [Pagination and Scrolling: Scrolling](pagination-and-scrolling.md#scrolling) for full details on how scrolling composes with WHERE clauses, including indexing recommendations.
 
 ## Pagination vs. Scrolling
 
@@ -468,8 +497,8 @@ Storm supports two strategies for traversing large result sets. The table below 
 | Performance at page 1 | Good | Good |
 | Performance at page 1,000 | Degrades (database must skip rows) | Consistent (index seek) |
 | Handles concurrent inserts | Rows may shift between pages | Stable cursor |
-| Navigate forward | `page.nextPageable()` | `window.next()` |
-| Navigate backward | `page.previousPageable()` | `window.previous()` |
+| Navigate forward | `page.next()` | `window.next()` |
+| Navigate backward | `page.previous()` | `window.previous()`, same order as forward |
 
 Use pagination when you need random page access or a total count (for example, displaying "Page 3 of 12" in a UI). Use scrolling when you need consistent performance over deep result sets or when the data changes frequently between requests.
 

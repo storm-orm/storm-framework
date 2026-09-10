@@ -173,7 +173,7 @@ So the naming rule stands unchanged for single-column foreign keys, which is the
 
 ```java
 long userCount = orm.entity(User.class).selectCount()
-    .where(User_.active, EQUALS, true)
+    .where(User_.email, LIKE, "%@example.com")
     .getSingleResult();
 
 List<CitySummary> citySummaries = orm.entity(City.class)
@@ -215,17 +215,17 @@ List<CityUserStats> topCities = orm.entity(City.class)
     .getResultList();
 
 // Multi-field groupBy — always use the varargs metamodel form:
-record CityActiveCount(@FK Ref<City> city, boolean active, long userCount) {}
+record CityPostalCodeCount(@FK Ref<City> city, String postalCode, long userCount) {}
 
-List<CityActiveCount> counts = orm.entity(User.class)
-    .select(CityActiveCount.class, RAW."\{User_.city}, \{User_.active}, COUNT(*)")
-    .groupBy(User_.city, User_.active)    // ✅ varargs metamodel form
+List<CityPostalCodeCount> counts = orm.entity(User.class)
+    .select(CityPostalCodeCount.class, RAW."\{User_.city}, \{User_.postalCode}, COUNT(*)")
+    .groupBy(User_.city, User_.postalCode)    // ✅ varargs metamodel form
     .getResultList();
 
 // ❌ Don't use template when metamodel fields work:
-//    .groupBy(RAW."\{User_.city}, \{User_.active}")
+//    .groupBy(RAW."\{User_.city}, \{User_.postalCode}")
 // ✅ Use varargs metamodel form — code-first, type-safe:
-//    .groupBy(User_.city, User_.active)
+//    .groupBy(User_.city, User_.postalCode)
 ```
 
 **`Ref<T>` in aggregation result types:** When the SELECT clause references a FK field (`\{User_.city}`) rather than a full entity (`\{City.class}`), use `Ref<T>` in the result type — not the raw ID type and not the full entity. `Ref<City>` maps correctly to the FK column value. Use the full entity type only when the SELECT includes all its columns via `\{City.class}`.
@@ -252,9 +252,9 @@ List<City> uniqueCities = orm.entity(User.class)
     .distinct()
     .getResultList();
 
-long activeCount = orm.entity(User.class)
+long exampleCount = orm.entity(User.class)
     .selectCount()
-    .where(User_.active, EQUALS, true)
+    .where(User_.email, LIKE, "%@example.com")
     .getSingleResult();
 ```
 
@@ -358,19 +358,19 @@ List<City> citiesWithoutUsers = orm.entity(City.class)
 
 Two preferences govern every WHERE clause, and both say: **use the weakest form that compiles**.
 
-- **Typed overloads over the lambda.** `where(User_.active, EQUALS, true)` beats `where(it -> it.where(User_.active, EQUALS, true))`. Before a join the chained `where(path, ...)` overloads take root-typed paths — and a nested path from the root (`User_.city.country.code`) is root-typed, so navigating through a foreign key never forces the lambda. **A join widens the query**: from the join onward the same overloads accept paths from any entity in the query, so joined-entity fields need no special form. Reach for the `where(it -> ...)` lambda only for what the typed overloads cannot express: AND/OR grouping and EXISTS/NOT EXISTS.
+- **Typed overloads over the lambda.** `where(User_.email, LIKE, "%@example.com")` beats `where(it -> it.where(User_.email, LIKE, "%@example.com"))`. Before a join the chained `where(path, ...)` overloads take root-typed paths — and a nested path from the root (`User_.city.country.code`) is root-typed, so navigating through a foreign key never forces the lambda. **A join widens the query**: from the join onward the same overloads accept paths from any entity in the query, so joined-entity fields need no special form. Reach for the `where(it -> ...)` lambda only for what the typed overloads cannot express: AND/OR grouping and EXISTS/NOT EXISTS.
 
 ```java
 // ✅ Single condition — typed overload, no lambda
-.where(User_.active, EQUALS, true)
+.where(User_.email, LIKE, "%@example.com")
 
 // ❌ Lambda adds nothing for a single condition
-.where(it -> it.where(User_.active, EQUALS, true))
+.where(it -> it.where(User_.email, LIKE, "%@example.com"))
 
 // ✅ Lambda earns its place for AND/OR grouping
 List<User> users = orm.entity(User.class)
     .select()
-    .where(it -> it.where(User_.active, EQUALS, true)
+    .where(it -> it.where(User_.email, LIKE, "%@example.com")
             .and(it.where(User_.email, IS_NOT_NULL))
             .or(it.where(User_.role, EQUALS, "admin")))
     .getResultList();
@@ -381,7 +381,7 @@ Consecutive `where()` calls AND together (each clause parenthesized), so an AND 
 ```java
 users.select()
     .innerJoin(UserRole.class).on(User.class)     // the join widens the query
-    .where(User_.active, EQUALS, true)            // root field
+    .where(User_.email, LIKE, "%@example.com")            // root field
     .where(UserRole_.role, EQUALS, role)          // joined entity — same overload
     .getResultList();
 ```
@@ -403,58 +403,47 @@ Two operations are defined relative to the root and are affected by the widening
 
 ## Keyset Scrolling
 
-Keyset scrolling uses cursor-based navigation instead of offset, making it efficient for large tables. **Scrollable manages ORDER BY internally** — do NOT add `orderBy()` when using `scroll(Scrollable)`, or Storm throws `PersistenceException`.
+Pick the read by what the caller needs to know:
 
-**Composite PK limitation:** The scroll key must be a single-column, non-nullable unique key (a `Metamodel.Key`, e.g. a simple `@PK` or `@UK` field). Entities whose only unique key is a composite PK (e.g., junction tables) cannot be scrolled directly — the key doesn't resolve to a single column. To scroll filtered results from a junction table, query the related entity with a simple PK and JOIN through the junction table for filtering:
-```java
-// ❌ Cannot scroll a junction table with composite PK
-userRoles.scroll(Scrollable.of(UserRole_.id, 20));  // fails — UserRole has composite PK
+| Read | Method | Result | Count query | Needs |
+|---|---|---|---|---|
+| Page | `page(pageable)` | `Page<R>` | yes | an ordering |
+| Slice | `slice(pageable)` | `Slice<R>` | no | an ordering; a page without the count query, the only read for a query without a unique key |
+| Scroll | `scroll(scrollable)` | `Window<R>` | no | a unique key; constant cost at any depth |
+| Windows | `windows(size)` | `Stream<Window<R>>` | no | a primary key; one closed statement per window, so the loop may write |
 
-// ✅ Scroll User (simple PK) with a JOIN through UserRole for filtering
-users.select()
-    .innerJoin(UserRole.class).on(User.class)
-    .where(UserRole_.role, EQUALS, role)
-    .scroll(Scrollable.of(User_.id, 20));
-```
+Keyset scrolling navigates by position instead of offset, making it efficient for large tables. A `Scrollable<T>` states the ordering and the size; the position to continue from comes from `window.next()` / `window.previous()` or from a client's cursor string. **The request owns ORDER BY** — do NOT add `orderBy()` when using `scroll(Scrollable)`, or Storm throws `PersistenceException`.
 
 ```java
-// WRONG: orderBy conflicts with Scrollable
+// WRONG: orderBy conflicts with the request's ordering
 users.select()
-    .where(User_.active, EQUALS, true)
-    .orderBy(User_.name)        // ❌ Scrollable manages ordering
+    .where(User_.email, LIKE, "%@example.com")
+    .orderBy(User_.name)        // ❌ the Scrollable orders
     .scroll(Scrollable.of(User_.id, 20));
 
-// CORRECT: ordering is controlled by the Scrollable's key (and optional sort field)
+// CORRECT: the request orders; sort fields go before the key, which stays the tiebreaker
 users.select()
-    .where(User_.active, EQUALS, true)
-    .scroll(Scrollable.of(User_.id, 20));
+    .where(User_.email, LIKE, "%@example.com")
+    .scroll(Scrollable.of(User_.id, 20).sortBy(User_.email));
 ```
 
-**First request vs subsequent requests:** On the first request there is no cursor, so use `Scrollable.of()`. On subsequent requests, use `Scrollable.fromCursor()`. The cursor is **opaque** and exists for client-server communication: it contains exactly the information the client needs to navigate the scroll window (key position, window size, direction). Clients treat it as a black box — never parse or construct it — and echo it back unchanged to fetch the adjacent window. Server-side code never needs the cursor: `window.next()` / `window.previous()` return a ready-to-use typed `Scrollable<T>` — the cursor is merely the serialized form of that same `Scrollable` for crossing the client-server boundary:
+**Ordering:** `Scrollable.of(key, size)` orders by the key ascending. `sortBy(field)` / `sortByDescending(field)` add sort fields before the key, in any number, each in its own direction; `descending()` orders the key itself descending. **Sort fields must be non-nullable**, checked the way the key is: a NULL never compares, so such a row would fall out of every window, and Storm throws a `PersistenceException` rather than paginate over rows it would silently skip. A date or status column is the usual sort field and the usual place a nullable type slips in. A newest-first feed is `Scrollable.of(Post_.id, 20).sortByDescending(Post_.createdAt).descending()`.
+
+**Every window is in sort order.** `window.previous()` returns the window before this one in the same order as `window.next()` returns the one after it; never reverse a window for display. `hasNext()` / `hasPrevious()` say whether rows existed after / before the window at query time; the tokens are non-null whenever the window has content, and following one is always allowed.
+
+**First request vs subsequent requests:** the ordering and the size are code; the position is the client's cursor. On the first request there is no cursor. On subsequent requests, put the same request at the client's cursor with `.from(cursor)`. The cursor is **opaque**: it carries the position only (the row's sort and key values, and whether to continue after or before it) under a fingerprint of the ordering, so a cursor issued for another ordering is refused. Clients treat it as a black box and echo it back unchanged. Server-side code never needs the cursor: `window.next()` / `window.previous()` are ready-to-use `Scrollable<T>` requests.
 
 ```java
-var scrollable = cursor != null
-    ? Scrollable.fromCursor(User_.id, cursor)       // size encoded in cursor
-    : Scrollable.of(User_.id, 20);                  // first page, size 20
-var window = users.scroll(scrollable);                     // prefer var — avoids Window<User> verbosity
-String nextCursor = window.nextCursor();             // null if no more results
+var request = Scrollable.of(User_.id, size).sortBy(User_.email);      // ordering and size: code
+var window = users.scroll(cursor != null ? request.from(cursor) : request);
+String nextCursor = window.nextCursor();                              // null when nothing follows
 ```
 
-**Custom sort column** (non-unique sort field with key as tiebreaker):
-```java
-var scrollable = Scrollable.of(User_.id, User_.name, 20);
-```
+**Tokens for every result type:** the sort and key values are read from the row, so `selectRef().scroll(...)`, `users.scrollRef(...)`, projections read as another type and custom select types all navigate. A compound (inline record) key is read from the mapped record and needs the entity type as the result.
 
-**Backward scrolling and navigation:**
-```java
-var window = users.scroll(Scrollable.of(User_.id, 20));
-if (window.hasNext()) {
-    var next = users.scroll(window.next());
-}
-if (window.hasPrevious()) {
-    var previous = users.scroll(window.previous());
-}
-```
+**Iterate windows:** `for (User user : window)` works, `Window` is a `Slice` and iterates over its content; `window.size()`, `window.isEmpty()` and `window.stream()` exist too.
+
+**Slices:** `select().slice(Pageable.ofSize(20).sortBy(User_.email))` is `page` without the count query: `hasNext()` from one extra row, `hasPrevious()` from the page number, the next slice from `pageable.next()`. `slice(0, 20)` uses the query's own ordering. `Slice` is the interface `Page` and `Window` implement.
 
 ## Bulk DELETE/UPDATE
 
@@ -462,7 +451,7 @@ if (window.hasPrevious()) {
 
 ```java
 // DELETE with WHERE (safe) -- builder returns QueryBuilder, terminal executes
-orm.entity(User.class).delete().where(User_.active, EQUALS, false).executeUpdate();
+orm.entity(User.class).delete().where(User_.postalCode, IS_NULL).executeUpdate();
 
 // DELETE/UPDATE without WHERE throws by default. Use unsafe() to confirm intent:
 orm.entity(User.class).delete().unsafe().executeUpdate();
@@ -537,13 +526,13 @@ The last line is the trap that passes small tests: a batch that executes after t
 
 ```java
 transaction(tx -> {
-    users.select().where(User_.active, EQUALS, true).windows(1000).forEach(window ->
+    users.select().where(User_.city, EQUALS, city).windows(1000).forEach(window ->
         users.update(window.content().stream().map(user -> /* copy with changes */ user).toList()));
     return null;
 });
 
 // Resume after a restart from a stored cursor:
-users.windows(Scrollable.fromCursor(User_.id, storedCursor)).forEach(window -> {
+users.windows(Scrollable.of(User_.id, 1000).from(storedCursor)).forEach(window -> {
     process(window.content());
     store(window.nextCursor());
 });
@@ -585,17 +574,17 @@ Tell the user what you are doing and why: explain that `SqlCapture` records ever
 @StormTest(scripts = {"/schema.sql", "/data.sql"})
 class UserQueryTest {
     @Test
-    void findActiveUsersInCity(ORMTemplate orm, SqlCapture capture) {
+    void findExampleUsersInCity(ORMTemplate orm, SqlCapture capture) {
         City city = orm.entity(City.class).findById(1).orElseThrow();
         List<User> users = capture.execute(() ->
             orm.entity(User.class).select()
                 .where(User_.city, EQUALS, city)
                 .orderBy(User_.name)
                 .getResultList());
-        // Verify intent: single query, only active users in the given city, ordered by name.
+        // Verify intent: single query, only example.com users in the given city, ordered by name.
         assertEquals(1, capture.count(Operation.SELECT));
         assertFalse(users.isEmpty());
-        assertTrue(users.stream().allMatch(u -> u.city().equals(city) && u.active()));
+        assertTrue(users.stream().allMatch(u -> u.city().equals(city) && u.email().endsWith("@example.com")));
     }
 }
 ```

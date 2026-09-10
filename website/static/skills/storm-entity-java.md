@@ -130,6 +130,7 @@ Generation rules:
    - **Single-column** (apply by default): `@UK String email`. Generates a `Metamodel.Key` for type-safe lookups and scrolling. Always add `@UK` when the database has a single-column unique constraint — it's one annotation for free value.
    - **Composite** (only when needed in code): use an inline record + `@UK @Persist(insertable = false, updatable = false)`. Only add this when the user explicitly needs a composite `Metamodel.Key` for keyset pagination or type-safe lookups. Composite unique constraints that don't need a Key don't need to be modeled.
    - `@UK(constraint = false)` suppresses schema validation when no database constraint exists.
+   - **A field you scroll by must be non-nullable**, the key and the sort fields alike. Keyset comparisons never hold for NULL, so such a row falls out of every window and Storm refuses the query with a `PersistenceException`. Settle this while modelling the field: a nullable timestamp is the usual thing to trip over, since a date is the usual thing to sort by.
 
 11. Embedded components, enums, optimistic locking: same rules as Kotlin. Enums are stored by name (string) by default; `@DbEnum(ORDINAL)` for integer storage (import `st.orm.EnumType.ORDINAL`).
 

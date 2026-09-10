@@ -2557,7 +2557,7 @@ public class RepositoryPreparedStatementIntegrationTest {
         var cursor = allOwners.get(4).address();
         var window = ORMTemplate.of(dataSource)
                 .selectFrom(Owner.class)
-                .scroll(new Scrollable<>(Metamodel.key(Owner_.address), cursor, null, null, 10, true));
+                .scroll(Scrollable.of(Metamodel.key(Owner_.address), 10).after(cursor));
         // Should return remaining owners after the cursor.
         assertFalse(window.content().isEmpty());
     }
@@ -2567,7 +2567,7 @@ public class RepositoryPreparedStatementIntegrationTest {
         // scrollBefore (cursorless, descending) should expand inline record for ORDER BY.
         var window = ORMTemplate.of(dataSource)
                 .selectFrom(Owner.class)
-                .scroll(Scrollable.of(Metamodel.key(Owner_.address), 5).backward());
+                .scroll(Scrollable.of(Metamodel.key(Owner_.address), 5).descending());
         assertEquals(5, window.content().size());
         assertTrue(window.hasNext());
     }
@@ -2681,8 +2681,8 @@ public class RepositoryPreparedStatementIntegrationTest {
         assertEquals(6, firstPage.totalCount());
         assertEquals(0, firstPage.pageNumber());
         assertTrue(firstPage.hasNext());
-        // Navigate to the next page using nextPageable().
-        var secondPage = ORMTemplate.of(dataSource).entity(City.class).page(firstPage.nextPageable());
+        // Navigate to the next page using next().
+        var secondPage = ORMTemplate.of(dataSource).entity(City.class).page(firstPage.next());
         assertEquals(2, secondPage.content().size());
         assertEquals(1, secondPage.pageNumber());
         assertTrue(secondPage.hasNext());

@@ -23,6 +23,7 @@ import java.util.List;
 import java.util.function.Supplier;
 import java.util.stream.Stream;
 import st.orm.Data;
+import st.orm.Metamodel;
 import st.orm.PersistenceException;
 import st.orm.core.template.Column;
 import st.orm.core.template.Model;
@@ -253,22 +254,11 @@ public class DeleteBuilderImpl<T extends Data, ID> extends QueryBuilderImpl<T, O
         };
     }
 
-    /**
-     * Executes the query and returns a stream of results.
-     *
-     * <p>The resulting stream is lazily loaded, meaning that the records are only retrieved from the database as they
-     * are consumed by the stream. This approach is efficient and minimizes the memory footprint, especially when
-     * dealing with large volumes of records.</p>
-     *
-     * <p><strong>Note:</strong> Calling this method does trigger the execution of the underlying query, so it should
-     * only be invoked when the query is intended to run. Since the stream holds resources open while in use, it must be
-     * closed after usage to prevent resource leaks. As the stream is {@code AutoCloseable}, it is recommended to use it
-     * within a {@code try-with-resources} block.</p>
-     *
-     * @return a stream of results.
-     * @throws PersistenceException if the query operation fails due to underlying database issues, such as
-     *                              connectivity.
-     */
+    @Override
+    List<KeyedQuery.Row<Object>> getKeyedResultList(List<Metamodel<T, ?>> columns) {
+        throw new PersistenceException("A delete query cannot be scrolled.");
+    }
+
     @Override
     public Stream<Object> getResultStream() {
         throw new PersistenceException("Cannot get a result stream from a DELETE query.");

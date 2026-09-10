@@ -309,7 +309,7 @@ public class BuilderPreparedStatementIntegrationTest {
         var window = ORMTemplate.of(dataSource)
                 .selectFrom(Vet.class)
                 .orderBy(Vet_.id)
-                .scroll(3);
+                .slice(0, 3);
         assertEquals(3, window.content().size());
         assertTrue(window.hasNext());
     }
@@ -320,7 +320,7 @@ public class BuilderPreparedStatementIntegrationTest {
         var window = ORMTemplate.of(dataSource)
                 .selectFrom(Vet.class)
                 .orderBy(Vet_.id)
-                .scroll(10);
+                .slice(0, 10);
         assertEquals(6, window.content().size());
         assertFalse(window.hasNext());
     }
@@ -340,7 +340,7 @@ public class BuilderPreparedStatementIntegrationTest {
         // Get vets after id=3, ascending. Should get vets 4, 5, 6.
         var window = ORMTemplate.of(dataSource)
                 .selectFrom(Vet.class)
-                .scroll(Scrollable.of(Vet_.id, 3, 10));
+                .scroll(Scrollable.of(Vet_.id, 10).after(3));
         assertEquals(3, window.content().size());
         assertFalse(window.hasNext());
         assertTrue(window.content().stream().allMatch(v -> v.id() > 3));
@@ -348,13 +348,14 @@ public class BuilderPreparedStatementIntegrationTest {
 
     @Test
     public void testScrollBefore() {
-        // Get vets before id=4, descending. Should get vets 3, 2, 1.
+        // Get vets before id=4, in id order: 1, 2, 3. The anchor row follows, so hasNext holds; nothing precedes.
         var window = ORMTemplate.of(dataSource)
                 .selectFrom(Vet.class)
-                .scroll(Scrollable.of(Vet_.id, 4, 10).backward());
+                .scroll(Scrollable.of(Vet_.id, 10).before(4));
         assertEquals(3, window.content().size());
-        assertFalse(window.hasNext());
-        assertTrue(window.content().stream().allMatch(v -> v.id() < 4));
+        assertTrue(window.hasNext());
+        assertFalse(window.hasPrevious());
+        assertEquals(List.of(1, 2, 3), window.content().stream().map(Vet::id).toList());
     }
 
     @Test
@@ -363,7 +364,7 @@ public class BuilderPreparedStatementIntegrationTest {
         var window = ORMTemplate.of(dataSource)
                 .selectFrom(Vet.class)
                 .where(Vet_.firstName, EQUALS, "James")
-                .scroll(Scrollable.of(Vet_.id, 0, 10));
+                .scroll(Scrollable.of(Vet_.id, 10).after(0));
         // There's one vet named James (James Carter, id=1).
         assertEquals(1, window.content().size());
         assertFalse(window.hasNext());
@@ -376,7 +377,7 @@ public class BuilderPreparedStatementIntegrationTest {
             ORMTemplate.of(dataSource)
                     .selectFrom(Vet.class)
                     .orderBy(Vet_.lastName)
-                    .scroll(Scrollable.of(Vet_.id, 0, 10));
+                    .scroll(Scrollable.of(Vet_.id, 10).after(0));
         });
     }
 
@@ -387,7 +388,7 @@ public class BuilderPreparedStatementIntegrationTest {
             ORMTemplate.of(dataSource)
                     .selectFrom(Vet.class)
                     .orderBy(Vet_.lastName)
-                    .scroll(Scrollable.of(Vet_.id, 10, 10).backward());
+                    .scroll(Scrollable.of(Vet_.id, 10).before(10));
         });
     }
 
@@ -399,7 +400,7 @@ public class BuilderPreparedStatementIntegrationTest {
         // There are 6 vets, so hasNext=true. Expected ids: 6, 5, 4.
         var window = ORMTemplate.of(dataSource)
                 .selectFrom(Vet.class)
-                .scroll(Scrollable.of(Vet_.id, 3).backward());
+                .scroll(Scrollable.of(Vet_.id, 3).descending());
         assertEquals(3, window.content().size());
         assertTrue(window.hasNext());
         assertEquals(6, window.content().get(0).id());
@@ -412,7 +413,7 @@ public class BuilderPreparedStatementIntegrationTest {
         // Request more than available: all 6 vets in descending order.
         var window = ORMTemplate.of(dataSource)
                 .selectFrom(Vet.class)
-                .scroll(Scrollable.of(Vet_.id, 10).backward());
+                .scroll(Scrollable.of(Vet_.id, 10).descending());
         assertEquals(6, window.content().size());
         assertFalse(window.hasNext());
         assertEquals(6, window.content().get(0).id());
@@ -425,7 +426,7 @@ public class BuilderPreparedStatementIntegrationTest {
             ORMTemplate.of(dataSource)
                     .selectFrom(Vet.class)
                     .orderBy(Vet_.lastName)
-                    .scroll(Scrollable.of(Vet_.id, 10).backward());
+                    .scroll(Scrollable.of(Vet_.id, 10).descending());
         });
     }
 
@@ -435,7 +436,7 @@ public class BuilderPreparedStatementIntegrationTest {
         // Expected order: Stevens(5), Ortega(4), Leary(2), Jenkins(6), Douglas(3), Carter(1).
         var window = ORMTemplate.of(dataSource)
                 .selectFrom(Vet.class)
-                .scroll(Scrollable.of(Vet_.id, Vet_.lastName, 3).backward());
+                .scroll(Scrollable.of(Vet_.id, 3).sortByDescending(Vet_.lastName).descending());
         assertEquals(3, window.content().size());
         assertTrue(window.hasNext());
         assertEquals("Stevens", window.content().get(0).lastName());
@@ -448,7 +449,7 @@ public class BuilderPreparedStatementIntegrationTest {
         // Request more than available: all 6 vets in descending composite order.
         var window = ORMTemplate.of(dataSource)
                 .selectFrom(Vet.class)
-                .scroll(Scrollable.of(Vet_.id, Vet_.lastName, 10).backward());
+                .scroll(Scrollable.of(Vet_.id, 10).sortByDescending(Vet_.lastName).descending());
         assertEquals(6, window.content().size());
         assertFalse(window.hasNext());
         assertEquals("Stevens", window.content().get(0).lastName());
@@ -461,7 +462,7 @@ public class BuilderPreparedStatementIntegrationTest {
             ORMTemplate.of(dataSource)
                     .selectFrom(Vet.class)
                     .orderBy(Vet_.lastName)
-                    .scroll(Scrollable.of(Vet_.id, Vet_.lastName, 10).backward());
+                    .scroll(Scrollable.of(Vet_.id, 10).sortByDescending(Vet_.lastName).descending());
         });
     }
 
@@ -473,7 +474,7 @@ public class BuilderPreparedStatementIntegrationTest {
         // Expected order: Carter(1), Douglas(3), Jenkins(6), Leary(2), Ortega(4), Stevens(5).
         var window = ORMTemplate.of(dataSource)
                 .selectFrom(Vet.class)
-                .scroll(Scrollable.of(Vet_.id, Vet_.lastName, 3));
+                .scroll(Scrollable.of(Vet_.id, 3).sortBy(Vet_.lastName));
         assertEquals(3, window.content().size());
         assertTrue(window.hasNext());
         assertEquals("Carter", window.content().get(0).lastName());
@@ -487,7 +488,7 @@ public class BuilderPreparedStatementIntegrationTest {
         // Should get: Jenkins(6), Leary(2), Ortega(4), Stevens(5).
         var window = ORMTemplate.of(dataSource)
                 .selectFrom(Vet.class)
-                .scroll(Scrollable.of(Vet_.id, 3, Vet_.lastName, "Douglas", 10));
+                .scroll(Scrollable.of(Vet_.id, 10).sortBy(Vet_.lastName).after("Douglas", 3));
         assertEquals(4, window.content().size());
         assertFalse(window.hasNext());
         assertEquals("Jenkins", window.content().get(0).lastName());
@@ -498,17 +499,16 @@ public class BuilderPreparedStatementIntegrationTest {
 
     @Test
     public void testCompositeWindowBefore() {
-        // Get vets before (lastName="Leary", id=2), descending.
-        // Should get: Jenkins(6), Douglas(3), Carter(1).
+        // Get vets before (lastName="Leary", id=2), in sort order: Carter(1), Douglas(3), Jenkins(6).
         var window = ORMTemplate.of(dataSource)
                 .selectFrom(Vet.class)
-                .scroll(Scrollable.of(Vet_.id, 2, Vet_.lastName, "Leary", 10).backward());
+                .scroll(Scrollable.of(Vet_.id, 10).sortBy(Vet_.lastName).before("Leary", 2));
         assertEquals(3, window.content().size());
-        assertFalse(window.hasNext());
-        // Results are in descending order.
-        assertEquals("Jenkins", window.content().get(0).lastName());
+        assertTrue(window.hasNext());
+        assertFalse(window.hasPrevious());
+        assertEquals("Carter", window.content().get(0).lastName());
         assertEquals("Douglas", window.content().get(1).lastName());
-        assertEquals("Carter", window.content().get(2).lastName());
+        assertEquals("Jenkins", window.content().get(2).lastName());
     }
 
     @Test
@@ -518,7 +518,7 @@ public class BuilderPreparedStatementIntegrationTest {
         var window = ORMTemplate.of(dataSource)
                 .selectFrom(Vet.class)
                 .where(Vet_.lastName, GREATER_THAN, "D")
-                .scroll(Scrollable.of(Vet_.id, 6, Vet_.lastName, "Jenkins", 10));
+                .scroll(Scrollable.of(Vet_.id, 10).sortBy(Vet_.lastName).after("Jenkins", 6));
         // Remaining after "Jenkins": Leary(2), Ortega(4), Stevens(5).
         assertEquals(3, window.content().size());
         assertFalse(window.hasNext());
@@ -531,7 +531,7 @@ public class BuilderPreparedStatementIntegrationTest {
             ORMTemplate.of(dataSource)
                     .selectFrom(Vet.class)
                     .orderBy(Vet_.firstName)
-                    .scroll(Scrollable.of(Vet_.id, 1, Vet_.lastName, "Carter", 10));
+                    .scroll(Scrollable.of(Vet_.id, 10).sortBy(Vet_.lastName).after("Carter", 1));
         });
     }
 
@@ -541,7 +541,7 @@ public class BuilderPreparedStatementIntegrationTest {
             ORMTemplate.of(dataSource)
                     .selectFrom(Vet.class)
                     .orderBy(Vet_.firstName)
-                    .scroll(Scrollable.of(Vet_.id, 5, Vet_.lastName, "Stevens", 10).backward());
+                    .scroll(Scrollable.of(Vet_.id, 10).sortBy(Vet_.lastName).before("Stevens", 5));
         });
     }
 
@@ -551,7 +551,7 @@ public class BuilderPreparedStatementIntegrationTest {
         // Page 1: Carter(1), Douglas(3).
         var page1 = ORMTemplate.of(dataSource)
                 .selectFrom(Vet.class)
-                .scroll(Scrollable.of(Vet_.id, Vet_.lastName, 2));
+                .scroll(Scrollable.of(Vet_.id, 2).sortBy(Vet_.lastName));
         assertEquals(2, page1.content().size());
         assertTrue(page1.hasNext());
         assertEquals("Carter", page1.content().get(0).lastName());
@@ -561,7 +561,7 @@ public class BuilderPreparedStatementIntegrationTest {
         Vet lastPage1 = page1.content().get(page1.content().size() - 1);
         var page2 = ORMTemplate.of(dataSource)
                 .selectFrom(Vet.class)
-                .scroll(Scrollable.of(Vet_.id, lastPage1.id(), Vet_.lastName, lastPage1.lastName(), 2));
+                .scroll(Scrollable.of(Vet_.id, 2).sortBy(Vet_.lastName).after(lastPage1.lastName(), lastPage1.id()));
         assertEquals(2, page2.content().size());
         assertTrue(page2.hasNext());
         assertEquals("Jenkins", page2.content().get(0).lastName());
@@ -571,7 +571,7 @@ public class BuilderPreparedStatementIntegrationTest {
         Vet lastPage2 = page2.content().get(page2.content().size() - 1);
         var page3 = ORMTemplate.of(dataSource)
                 .selectFrom(Vet.class)
-                .scroll(Scrollable.of(Vet_.id, lastPage2.id(), Vet_.lastName, lastPage2.lastName(), 2));
+                .scroll(Scrollable.of(Vet_.id, 2).sortBy(Vet_.lastName).after(lastPage2.lastName(), lastPage2.id()));
         assertEquals(2, page3.content().size());
         assertFalse(page3.hasNext());
         assertEquals("Ortega", page3.content().get(0).lastName());
@@ -605,14 +605,16 @@ public class BuilderPreparedStatementIntegrationTest {
         assertEquals(5, nextWindow.content().get(1).id());
         assertEquals(6, nextWindow.content().get(2).id());
 
-        // Navigate backward: should return the same vets as the first window, but in descending order (3, 2, 1).
+        // Navigate backward: the same vets as the first window, in the same order (1, 2, 3).
         var backWindow = ORMTemplate.of(dataSource)
                 .selectFrom(Vet.class)
                 .scroll(nextWindow.previous());
         assertEquals(3, backWindow.content().size());
-        assertEquals(3, backWindow.content().get(0).id());
+        assertEquals(1, backWindow.content().get(0).id());
         assertEquals(2, backWindow.content().get(1).id());
-        assertEquals(1, backWindow.content().get(2).id());
+        assertEquals(3, backWindow.content().get(2).id());
+        assertTrue(backWindow.hasNext());
+        assertFalse(backWindow.hasPrevious());
     }
 
     @Test
@@ -632,7 +634,7 @@ public class BuilderPreparedStatementIntegrationTest {
         assertFalse(cursor == null || cursor.isEmpty());
 
         // Reconstruct a scrollable from the cursor string.
-        var reconstructed = Scrollable.fromCursor(Vet_.id, cursor);
+        var reconstructed = Scrollable.of(Vet_.id, 3).from(cursor);
 
         // Scroll using the reconstructed scrollable.
         var cursorWindow = ORMTemplate.of(dataSource)
@@ -659,7 +661,7 @@ public class BuilderPreparedStatementIntegrationTest {
         // First backward window: vets 6, 5, 4.
         var firstWindow = ORMTemplate.of(dataSource)
                 .selectFrom(Vet.class)
-                .scroll(Scrollable.of(Vet_.id, 3).backward());
+                .scroll(Scrollable.of(Vet_.id, 3).descending());
         assertEquals(3, firstWindow.content().size());
         assertTrue(firstWindow.hasNext());
         assertEquals(6, firstWindow.content().get(0).id());

@@ -17,14 +17,12 @@ package st.orm;
 
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
-import org.jspecify.annotations.Nullable;
 
 /**
- * Bridge to cursor serialization implementation in storm-core. Mirrors the {@link MetamodelHelper} pattern:
- * foundation defines the public API ({@link Scrollable#toCursor()}, {@link Scrollable#fromCursor}), and this
- * helper delegates to {@code st.orm.core.spi.CursorFactory} via reflection.
+ * Bridges cursor serialization to the codec registry in storm-core, so the foundation carries the types and the
+ * engine carries the codecs.
  */
-class CursorHelper {
+final class CursorHelper {
 
     private static final Method TO_CURSOR_METHOD;
     private static final Method FROM_CURSOR_METHOD;
@@ -32,10 +30,8 @@ class CursorHelper {
     static {
         try {
             Class<?> factoryClass = Class.forName("st.orm.core.spi.CursorFactory");
-            TO_CURSOR_METHOD = factoryClass.getMethod(
-                    "toCursor", int.class, boolean.class, int.class, Object.class, Object.class);
-            FROM_CURSOR_METHOD = factoryClass.getMethod(
-                    "fromCursor", int.class, String.class, Class.class, Class.class);
+            TO_CURSOR_METHOD = factoryClass.getMethod("toCursor", int.class, Position.class);
+            FROM_CURSOR_METHOD = factoryClass.getMethod("fromCursor", int.class, String.class, Class[].class);
         } catch (ReflectiveOperationException e) {
             var ex = new ExceptionInInitializerError(
                     "Failed to initialize cursor serialization. "
@@ -48,39 +44,28 @@ class CursorHelper {
     private CursorHelper() {}
 
     /**
-     * Serializes cursor values into a Base64 URL-safe string.
+     * Serializes a position into a Base64 URL-safe string under the fingerprint of its ordering.
      */
-    static String toCursor(int metamodelFingerprint, boolean isForward, int size,
-                            @Nullable Object keyCursor, @Nullable Object sortCursor) {
-        try {
-            try {
-                return (String) TO_CURSOR_METHOD.invoke(null, metamodelFingerprint, isForward, size,
-                        keyCursor, sortCursor);
-            } catch (InvocationTargetException e) {
-                throw e.getTargetException();
-            } catch (ReflectiveOperationException e) {
-                throw new PersistenceException("Reflection invocation failed for CursorFactory.toCursor.", e);
-            }
-        } catch (RuntimeException | Error e) {
-            throw e;
-        } catch (Throwable t) {
-            throw new PersistenceException(t);
-        }
+    static String toCursor(int orderingFingerprint, Position position) {
+        return (String) invoke(TO_CURSOR_METHOD, orderingFingerprint, position);
     }
 
     /**
-     * Deserializes a cursor string. Returns {isForward, size, keyCursor, sortCursor}.
+     * Deserializes a cursor string issued under the given ordering fingerprint into a position, checking each value
+     * against the declared field type where that type is a plain value type.
      */
-    static Object[] fromCursor(int metamodelFingerprint, String cursor,
-                                @Nullable Class<?> keyFieldType, @Nullable Class<?> sortFieldType) {
+    static Position fromCursor(int orderingFingerprint, String cursor, Class<?>[] valueTypes) {
+        return (Position) invoke(FROM_CURSOR_METHOD, orderingFingerprint, cursor, valueTypes);
+    }
+
+    private static Object invoke(Method method, Object... arguments) {
         try {
             try {
-                return (Object[]) FROM_CURSOR_METHOD.invoke(null, metamodelFingerprint, cursor,
-                        keyFieldType, sortFieldType);
+                return method.invoke(null, arguments);
             } catch (InvocationTargetException e) {
                 throw e.getTargetException();
             } catch (ReflectiveOperationException e) {
-                throw new PersistenceException("Reflection invocation failed for CursorFactory.fromCursor.", e);
+                throw new PersistenceException("Reflection invocation failed for CursorFactory." + method.getName() + ".", e);
             }
         } catch (RuntimeException | Error e) {
             throw e;

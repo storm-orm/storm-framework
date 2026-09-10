@@ -33,7 +33,7 @@ import st.orm.Data;
  * List<User> users = userRepository
  *         .select()
  *         .where(predicate -> predicate
- *             .where(User_.active, EQUALS, true)
+ *             .where(User_.email, LIKE, "%@example.com")
  *             .and(predicate.where(User_.email, IS_NOT_NULL))
  *             .or(predicate.where(User_.role, EQUALS, "admin")))
  *         .getResultList();

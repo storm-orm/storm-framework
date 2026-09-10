@@ -3,7 +3,6 @@ package st.orm.core;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
-import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -16,6 +15,7 @@ import java.time.ZoneOffset;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import st.orm.Data;
+import st.orm.InvalidCursorException;
 import st.orm.Metamodel;
 import st.orm.Scrollable;
 import st.orm.Window;
@@ -41,129 +41,98 @@ class CursorSerializationTest {
 
     // Single-key round trips
 
+    private static <T extends st.orm.Data> Scrollable<T> after(Metamodel.Key<T, ?> key, Object value) {
+        return Scrollable.of(key, 20).after(value);
+    }
+
+    private static void assertRoundTrip(Scrollable<?> original) {
+        var restored = Scrollable.of(original.key(), original.size()).from(original.toCursor());
+        assertEquals(original.position(), restored.position());
+    }
+
     @Test
     void roundTripIntegerCursor() {
         var key = Metamodel.key(Metamodel.of(StubEntity.class, "id"));
-        var original = new Scrollable<>(key, 42, null, null, 20, true);
-        String cursor = original.toCursor();
-        assertNotNull(cursor);
-        var restored = Scrollable.fromCursor(key, cursor);
-        assertEquals(42, restored.keyCursor());
-        assertEquals(20, restored.size());
-        assertTrue(restored.isForward());
-        assertNull(restored.sortCursor());
+        assertRoundTrip(after(key, 42));
     }
 
     @Test
     void roundTripLongCursor() {
         var key = Metamodel.key(Metamodel.of(LongEntity.class, "id"));
-        var original = new Scrollable<>(key, 123456789012345L, null, null, 10, false);
-        var restored = Scrollable.fromCursor(key, original.toCursor());
-        assertEquals(123456789012345L, restored.keyCursor());
-        assertFalse(restored.isForward());
+        assertRoundTrip(Scrollable.of(key, 10).before(123456789012345L));
     }
 
     @Test
     void roundTripStringCursor() {
         var key = Metamodel.key(Metamodel.of(StringEntity.class, "id"));
-        var original = new Scrollable<>(key, "hello world", null, null, 5, true);
-        var restored = Scrollable.fromCursor(key, original.toCursor());
-        assertEquals("hello world", restored.keyCursor());
+        assertRoundTrip(after(key, "hello world"));
     }
 
     @Test
     void roundTripStringWithSpecialCharacters() {
         var key = Metamodel.key(Metamodel.of(StringEntity.class, "id"));
         String value = "line1\nline2\ttab|pipe:colon\"quote\\backslash\0null";
-        var original = new Scrollable<>(key, value, null, null, 5, true);
-        var restored = Scrollable.fromCursor(key, original.toCursor());
-        assertEquals(value, restored.keyCursor());
+        assertRoundTrip(after(key, value));
     }
 
     @Test
     void roundTripUuidCursor() {
         var key = Metamodel.key(Metamodel.of(UuidEntity.class, "id"));
         UUID uuid = UUID.randomUUID();
-        var original = new Scrollable<>(key, uuid, null, null, 15, true);
-        var restored = Scrollable.fromCursor(key, original.toCursor());
-        assertEquals(uuid, restored.keyCursor());
+        assertRoundTrip(after(key, uuid));
     }
 
     @Test
     void roundTripInstantCursor() {
         var key = Metamodel.key(Metamodel.of(InstantEntity.class, "id"));
         Instant instant = Instant.parse("2026-03-16T12:30:45.123456789Z");
-        var original = new Scrollable<>(key, instant, null, null, 20, true);
-        var restored = Scrollable.fromCursor(key, original.toCursor());
-        assertEquals(instant, restored.keyCursor());
+        assertRoundTrip(after(key, instant));
     }
 
     @Test
     void roundTripLocalDateCursor() {
         var key = Metamodel.key(Metamodel.of(LocalDateEntity.class, "id"));
         LocalDate date = LocalDate.of(2026, 3, 16);
-        var original = new Scrollable<>(key, date, null, null, 20, true);
-        var restored = Scrollable.fromCursor(key, original.toCursor());
-        assertEquals(date, restored.keyCursor());
+        assertRoundTrip(after(key, date));
     }
 
     @Test
     void roundTripLocalDateTimeCursor() {
         var key = Metamodel.key(Metamodel.of(LocalDateTimeEntity.class, "id"));
         LocalDateTime dateTime = LocalDateTime.of(2026, 3, 16, 14, 30, 45, 123456789);
-        var original = new Scrollable<>(key, dateTime, null, null, 20, true);
-        var restored = Scrollable.fromCursor(key, original.toCursor());
-        assertEquals(dateTime, restored.keyCursor());
+        assertRoundTrip(after(key, dateTime));
     }
 
     @Test
     void roundTripOffsetDateTimeCursor() {
         var key = Metamodel.key(Metamodel.of(OffsetDateTimeEntity.class, "id"));
         OffsetDateTime dateTime = OffsetDateTime.of(2026, 3, 16, 14, 30, 45, 0, ZoneOffset.ofHours(2));
-        var original = new Scrollable<>(key, dateTime, null, null, 20, true);
-        var restored = Scrollable.fromCursor(key, original.toCursor());
-        assertEquals(dateTime, restored.keyCursor());
+        assertRoundTrip(after(key, dateTime));
     }
 
     @Test
     void roundTripBigDecimalCursor() {
         var key = Metamodel.key(Metamodel.of(BigDecimalEntity.class, "id"));
         BigDecimal value = new BigDecimal("12345.6789012345");
-        var original = new Scrollable<>(key, value, null, null, 20, true);
-        var restored = Scrollable.fromCursor(key, original.toCursor());
-        assertEquals(value, restored.keyCursor());
+        assertRoundTrip(after(key, value));
     }
 
     @Test
     void roundTripBooleanCursor() {
         var key = Metamodel.key(Metamodel.of(BooleanEntity.class, "id"));
-        var original = new Scrollable<>(key, true, null, null, 20, true);
-        var restored = Scrollable.fromCursor(key, original.toCursor());
-        assertEquals(true, restored.keyCursor());
+        assertRoundTrip(after(key, true));
     }
 
     @Test
     void roundTripShortCursor() {
         var key = Metamodel.key(Metamodel.of(ShortEntity.class, "id"));
-        var original = new Scrollable<>(key, (short) 32000, null, null, 20, true);
-        var restored = Scrollable.fromCursor(key, original.toCursor());
-        assertEquals((short) 32000, restored.keyCursor());
+        assertRoundTrip(after(key, (short) 32000));
     }
 
     @Test
     void roundTripByteCursor() {
         var key = Metamodel.key(Metamodel.of(ByteEntity.class, "id"));
-        var original = new Scrollable<>(key, (byte) 127, null, null, 20, true);
-        var restored = Scrollable.fromCursor(key, original.toCursor());
-        assertEquals((byte) 127, restored.keyCursor());
-    }
-
-    @Test
-    void roundTripNullCursor() {
-        var key = Metamodel.key(Metamodel.of(StubEntity.class, "id"));
-        var original = new Scrollable<>(key, null, null, null, 20, true);
-        var restored = Scrollable.fromCursor(key, original.toCursor());
-        assertNull(restored.keyCursor());
+        assertRoundTrip(after(key, (byte) 127));
     }
 
     // Float/Double are excluded from default codecs
@@ -171,42 +140,46 @@ class CursorSerializationTest {
     @Test
     void doubleIsNotSupportedByDefaultCodecs() {
         var key = Metamodel.key(Metamodel.of(StubEntity.class, "id"));
-        var original = new Scrollable<>(key, 3.14159, null, null, 20, true);
-        assertThrows(IllegalStateException.class, original::toCursor);
+        assertThrows(IllegalStateException.class, after(key, 3.14159)::toCursor);
     }
 
     @Test
     void floatIsNotSupportedByDefaultCodecs() {
         var key = Metamodel.key(Metamodel.of(StubEntity.class, "id"));
-        var original = new Scrollable<>(key, 2.5f, null, null, 20, true);
-        assertThrows(IllegalStateException.class, original::toCursor);
+        assertThrows(IllegalStateException.class, after(key, 2.5f)::toCursor);
     }
 
-    // Composite cursor round trips
+    // Multi-field round trips
 
     @Test
-    void roundTripCompositeCursor() {
+    void roundTripSortedCursor() {
         var key = Metamodel.key(Metamodel.of(CompositeEntity.class, "id"));
         var sort = Metamodel.of(CompositeEntity.class, "createdAt");
         Instant sortValue = Instant.parse("2026-01-15T08:00:00Z");
-        var original = new Scrollable<>(key, 42, sort, sortValue, 20, true);
-        var restored = Scrollable.fromCursor(key, sort, original.toCursor());
-        assertEquals(42, restored.keyCursor());
-        assertEquals(sortValue, restored.sortCursor());
-        assertEquals(20, restored.size());
-        assertTrue(restored.isForward());
+        var original = Scrollable.of(key, 20).sortBy(sort).after(sortValue, 42);
+        var restored = Scrollable.of(key, 20).sortBy(sort).from(original.toCursor());
+        assertEquals(original.position(), restored.position());
+        assertTrue(restored.position().after());
     }
 
     @Test
-    void roundTripCompositeBackwardCursor() {
+    void roundTripBeforeCursorWithTwoSortFields() {
         var key = Metamodel.key(Metamodel.of(CompositeEntity.class, "id"));
-        var sort = Metamodel.of(CompositeEntity.class, "label");
-        var original = new Scrollable<>(key, 99, sort, "desc_value", 15, false);
-        var restored = Scrollable.fromCursor(key, sort, original.toCursor());
-        assertEquals(99, restored.keyCursor());
-        assertEquals("desc_value", restored.sortCursor());
-        assertEquals(15, restored.size());
-        assertFalse(restored.isForward());
+        var label = Metamodel.of(CompositeEntity.class, "label");
+        var createdAt = Metamodel.of(CompositeEntity.class, "createdAt");
+        Instant instant = Instant.parse("2026-01-15T08:00:00Z");
+        var original = Scrollable.of(key, 15).sortByDescending(label).sortBy(createdAt).before("desc_value", instant, 99);
+        var restored = Scrollable.of(key, 15).sortByDescending(label).sortBy(createdAt).from(original.toCursor());
+        assertEquals(original.position(), restored.position());
+        assertFalse(restored.position().after());
+    }
+
+    @Test
+    void sizeIsNotPartOfTheCursor() {
+        var key = Metamodel.key(Metamodel.of(StubEntity.class, "id"));
+        var restored = Scrollable.of(key, 50).from(after(key, 42).toCursor());
+        assertEquals(50, restored.size());
+        assertEquals(after(key, 42).position(), restored.position());
     }
 
     // Error cases
@@ -214,25 +187,22 @@ class CursorSerializationTest {
     @Test
     void fromCursorRejectsInvalidBase64() {
         var key = Metamodel.key(Metamodel.of(StubEntity.class, "id"));
-        assertThrows(IllegalArgumentException.class,
-                () -> Scrollable.fromCursor(key, "not-valid-base64!!!"));
+        assertThrows(InvalidCursorException.class,
+                () -> Scrollable.of(key, 20).from("not-valid-base64!!!"));
     }
 
     @Test
     void fromCursorRejectsTruncatedCursor() {
         var key = Metamodel.key(Metamodel.of(StubEntity.class, "id"));
-        var original = new Scrollable<>(key, 42, null, null, 20, true);
-        String cursor = original.toCursor();
+        String cursor = after(key, 42).toCursor();
         String truncated = cursor.substring(0, cursor.length() / 2);
-        assertThrows(IllegalArgumentException.class,
-                () -> Scrollable.fromCursor(key, truncated));
+        assertThrows(InvalidCursorException.class, () -> Scrollable.of(key, 20).from(truncated));
     }
 
     @Test
     void toCursorProducesUrlSafeString() {
         var key = Metamodel.key(Metamodel.of(StringEntity.class, "id"));
-        var original = new Scrollable<>(key, "some/value+with=special&chars", null, null, 20, true);
-        String cursor = original.toCursor();
+        String cursor = after(key, "some/value+with=special&chars").toCursor();
         assertFalse(cursor.contains("+"), "Cursor should not contain '+'");
         assertFalse(cursor.contains("/"), "Cursor should not contain '/'");
         assertFalse(cursor.contains("="), "Cursor should not contain '='");
@@ -243,67 +213,114 @@ class CursorSerializationTest {
     @Test
     void windowNextCursorProducesStringFromScrollable() {
         var key = Metamodel.key(Metamodel.of(StubEntity.class, "id"));
-        var next = new Scrollable<>(key, 42, null, null, 20, true);
-        var window = new Window<>(java.util.List.of("a"), true, false, next, null);
+        var window = new Window<>(java.util.List.of("a"), true, false, after(key, 42), null);
         String cursor = window.nextCursor();
         assertNotNull(cursor);
-        var restored = Scrollable.fromCursor(key, cursor);
-        assertEquals(42, restored.keyCursor());
-        assertEquals(20, restored.size());
-        assertTrue(restored.isForward());
+        var restored = Scrollable.of(key, 20).from(cursor);
+        assertEquals(after(key, 42).position(), restored.position());
+        assertTrue(restored.position().after());
     }
 
     @Test
     void windowPreviousCursorProducesStringFromScrollable() {
         var key = Metamodel.key(Metamodel.of(StubEntity.class, "id"));
-        var prev = new Scrollable<>(key, 5, null, null, 10, false);
-        var window = new Window<>(java.util.List.of("a"), false, true, null, prev);
+        var window = new Window<>(java.util.List.of("a"), false, true, null, Scrollable.of(key, 10).before(5));
         String cursor = window.previousCursor();
         assertNotNull(cursor);
-        var restored = Scrollable.fromCursor(key, cursor);
-        assertEquals(5, restored.keyCursor());
-        assertEquals(10, restored.size());
-        assertFalse(restored.isForward());
+        var restored = Scrollable.of(key, 10).from(cursor);
+        assertEquals(Scrollable.of(key, 10).before(5).position(), restored.position());
+        assertFalse(restored.position().after());
     }
 
-    // Size and metamodel validation
+    // Tampered and foreign cursors
+
+    private static String tampered(String cursor, java.util.function.UnaryOperator<byte[]> change) {
+        byte[] bytes = java.util.Base64.getUrlDecoder().decode(cursor);
+        return java.util.Base64.getUrlEncoder().withoutPadding().encodeToString(change.apply(bytes));
+    }
 
     @Test
-    void fromCursorRejectsExcessiveSize() {
+    void fromCursorRejectsAnotherFormatVersion() {
         var key = Metamodel.key(Metamodel.of(StubEntity.class, "id"));
-        var original = new Scrollable<>(key, 1, null, null, 5000, true);
-        String cursor = original.toCursor();
-        assertThrows(IllegalArgumentException.class,
-                () -> Scrollable.fromCursor(key, cursor));
+        String earlier = tampered(after(key, 42).toCursor(), bytes -> { bytes[0] = 1; return bytes; });
+        var exception = assertThrows(InvalidCursorException.class, () -> Scrollable.of(key, 20).from(earlier));
+        assertTrue(exception.getMessage().contains("version"), exception.getMessage());
     }
+
+    @Test
+    void fromCursorRejectsTrailingBytes() {
+        var key = Metamodel.key(Metamodel.of(StubEntity.class, "id"));
+        String longer = tampered(after(key, 42).toCursor(), bytes -> java.util.Arrays.copyOf(bytes, bytes.length + 1));
+        var exception = assertThrows(InvalidCursorException.class, () -> Scrollable.of(key, 20).from(longer));
+        assertTrue(exception.getMessage().contains("trailing"), exception.getMessage());
+    }
+
+    @Test
+    void fromCursorRejectsAValueCountThatDoesNotMatchTheOrdering() {
+        var key = Metamodel.key(Metamodel.of(CompositeEntity.class, "id"));
+        var sort = Metamodel.of(CompositeEntity.class, "label");
+        // The value count sits right after the version, the two fingerprints and the direction flag.
+        String twoValues = tampered(Scrollable.of(key, 20).sortBy(sort).after("x", 42).toCursor(), bytes -> {
+            bytes[1 + 4 + 4 + 1] = 1;
+            return bytes;
+        });
+        // The fingerprint still matches the sorted ordering, so the count is what is refused.
+        var exception = assertThrows(InvalidCursorException.class,
+                () -> Scrollable.of(key, 20).sortBy(sort).from(twoValues));
+        assertTrue(exception.getMessage().contains("values"), exception.getMessage());
+    }
+
+    @Test
+    void fromCursorRejectsANullValue() {
+        var key = Metamodel.key(Metamodel.of(StubEntity.class, "id"));
+        // The value's type tag follows the count; tag 0 is the null marker.
+        String withNull = tampered(after(key, 42).toCursor(), bytes -> {
+            int tag = 1 + 4 + 4 + 1 + 1;
+            bytes[tag] = 0;
+            return java.util.Arrays.copyOf(bytes, tag + 1);
+        });
+        var exception = assertThrows(InvalidCursorException.class, () -> Scrollable.of(key, 20).from(withNull));
+        assertTrue(exception.getMessage().contains("null"), exception.getMessage());
+    }
+
+    @Test
+    void invalidCursorIsAPersistenceException() {
+        var key = Metamodel.key(Metamodel.of(StubEntity.class, "id"));
+        assertThrows(st.orm.PersistenceException.class, () -> Scrollable.of(key, 20).from("nope"));
+    }
+
+    // Ordering validation
 
     @Test
     void fromCursorWithMismatchedKeyRejects() {
         var stubKey = Metamodel.key(Metamodel.of(StubEntity.class, "id"));
-        var original = new Scrollable<>(stubKey, 42, null, null, 20, true);
-        String cursor = original.toCursor();
+        String cursor = after(stubKey, 42).toCursor();
         var longKey = Metamodel.key(Metamodel.of(LongEntity.class, "id"));
-        assertThrows(IllegalArgumentException.class,
-                () -> Scrollable.fromCursor(longKey, cursor));
+        assertThrows(InvalidCursorException.class, () -> Scrollable.of(longKey, 20).from(cursor));
     }
 
     @Test
     void fromCursorWithMismatchedSortRejects() {
         var key = Metamodel.key(Metamodel.of(CompositeEntity.class, "id"));
         var sort = Metamodel.of(CompositeEntity.class, "createdAt");
-        var original = new Scrollable<>(key, 42, sort, Instant.parse("2026-01-15T08:00:00Z"), 20, true);
-        String cursor = original.toCursor();
+        String cursor = Scrollable.of(key, 20).sortBy(sort).after(Instant.parse("2026-01-15T08:00:00Z"), 42).toCursor();
         var differentSort = Metamodel.of(CompositeEntity.class, "label");
-        assertThrows(IllegalArgumentException.class,
-                () -> Scrollable.fromCursor(key, differentSort, cursor));
+        assertThrows(InvalidCursorException.class, () -> Scrollable.of(key, 20).sortBy(differentSort).from(cursor));
     }
 
     @Test
-    void programmaticScrollableAllowsLargeSize() {
+    void fromCursorWithMismatchedDirectionRejects() {
         var key = Metamodel.key(Metamodel.of(StubEntity.class, "id"));
-        var scrollable = Scrollable.of(key, 5000);
-        assertEquals(5000, scrollable.size());
-        var large = new Scrollable<>(key, null, null, null, 10_000, true);
-        assertEquals(10_000, large.size());
+        String cursor = after(key, 42).toCursor();
+        assertThrows(InvalidCursorException.class, () -> Scrollable.of(key, 20).descending().from(cursor));
+    }
+
+    @Test
+    void fromCursorWithWrongValueTypeRejects() {
+        var stringKey = Metamodel.key(Metamodel.of(StringEntity.class, "id"));
+        var intKey = Metamodel.key(Metamodel.of(StubEntity.class, "id"));
+        // Same path and direction, so the ordering fingerprints agree; the value type does not.
+        String cursor = after(stringKey, "text").toCursor();
+        assertThrows(InvalidCursorException.class, () -> Scrollable.of(intKey, 20).from(cursor));
     }
 }

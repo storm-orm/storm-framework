@@ -30,6 +30,7 @@ import st.orm.Pageable;
 import st.orm.PersistenceException;
 import st.orm.Ref;
 import st.orm.Scrollable;
+import st.orm.Slice;
 import st.orm.Window;
 import st.orm.core.template.Model;
 import st.orm.core.template.QueryBuilder;
@@ -38,14 +39,14 @@ import st.orm.core.template.TemplateString;
 /**
  * Provides a generic interface with CRUD operations for entities.
  *
- * <h1>Using Entity Repositories</h1>
+ * <h2>Using Entity Repositories</h2>
  *
  * <p>Entity repositories provide a high-level abstraction for managing entities in the database. They offer a set of
  * methods for creating, reading, updating, and deleting entities, as well as querying and filtering entities based on
  * specific criteria. The {@code EntityRepository} interface is designed to work with entity records that implement the
  * {@link Entity} interface, providing a consistent and type-safe way to interact with the database.</p>
  *
- * <h2>Entity Definition</h2>
+ * <h3>Entity Definition</h3>
  * <p>Define the entity records to use them to in combination with repositories. The {@link Entity} interface is a
  * marker interface that indicates that the record is an entity and has a primary key of type {@code ID}. The {@link PK}
  * annotation is used to mark the primary key field of the entity record. The {@link FK} annotation is used to mark
@@ -68,7 +69,7 @@ import st.orm.core.template.TemplateString;
  * ) implements Entity<Integer> {};
  * }</pre>
  *
- * <h2>Repository Lookup</h2>
+ * <h3>Repository Lookup</h3>
  * <p>An entity repository can be obtained by invoking {@code entity} on an {@code ORMTemplate} with the desired entity
  * class. The orm template can be requested as demonstrated below. Note that orm templates are supported for
  * Data Sources, JDBC Connections and JPA Entity Managers.</p>
@@ -95,16 +96,16 @@ import st.orm.core.template.TemplateString;
  * UserRepository userRepository = orm.repository(UserRepository.class)
  * }</pre>
  *
- * <h2>Repository Injection</h2>
+ * <h3>Repository Injection</h3>
  * <p>A specialized repository can also be injected using Spring's dependency injection mechanism when the
  * {@code storm-spring} package is included in the project. Check the storm-spring package to lean how to make
  * repositories available to the application for dependency injection.</p>
  *
- * <h2>CRUD Operations</h2>
+ * <h3>CRUD Operations</h3>
  * <p>Entity repositories provide a set of methods for creating, reading, updating, and deleting entities in the
  * database. The following sections provide examples of how to use these methods to interact with the database.</p>
  *
- * <h3>Create</h3>
+ * <h4>Create</h4>
  *
  * <p>Insert a user into the database. The template engine also supports insertion of multiple entries in batch mode by
  * passing a list of entities. Alternatively, insertion can also be executed using a stream of entities.</p>
@@ -113,7 +114,7 @@ import st.orm.core.template.TemplateString;
  * userRepository.insert(user);
  * }</pre>
  *
- * <h3>Read</h3>
+ * <h4>Read</h4>
  *
  * <p>Select all users from the database that are linked to cities with the name "Sunnyvale". The static metamodel is
  * used to specify the City entity in the QueryBuilder's entity graph.</p>
@@ -144,7 +145,7 @@ import st.orm.core.template.TemplateString;
  * userRepository.update(user);
  * }</pre>
  *
- * <h3>Delete</h3>
+ * <h4>Delete</h4>
  *
  * <p>Remove user from the database. The repository also supports removals for multiple entries in batch mode by passing a
  * list entities or primary keys. Alternatively, removal can be executed using a stream of entities.
@@ -679,7 +680,7 @@ public interface EntityRepository<E extends Entity<ID>, ID> extends Repository {
      * entities.</p>
      *
      * <p>Use {@link Pageable#ofSize(int)} for the first page, then navigate with
-     * {@link Page#nextPageable()} or {@link Page#previousPageable()}.</p>
+     * {@link Page#next()} or {@link Page#previous()}.</p>
      *
      * @param pageable the pagination request specifying page number and page size.
      * @return a page containing the results and pagination metadata.
@@ -719,6 +720,68 @@ public interface EntityRepository<E extends Entity<ID>, ID> extends Repository {
     }
 
     /**
+     * Returns a slice of entities using offset-based pagination without a count.
+     *
+     * <p>This method executes a query with OFFSET and LIMIT for the requested page and one row beyond it, which
+     * decides {@link Slice#hasNext()}; no count query runs.</p>
+     *
+     * <p>Page numbers are zero-based: pass {@code 0} for the first slice.</p>
+     *
+     * @param pageNumber the zero-based page index.
+     * @param pageSize the maximum number of entities per slice.
+     * @return a slice containing the results.
+     * @since 1.14
+     */
+    default Slice<E> slice(int pageNumber, int pageSize) {
+        return slice(Pageable.of(pageNumber, pageSize));
+    }
+
+    /**
+     * Returns a slice of entities using offset-based pagination without a count.
+     *
+     * <p>This method executes a query with OFFSET and LIMIT for the requested page and one row beyond it, which
+     * decides {@link Slice#hasNext()}; no count query runs.</p>
+     *
+     * <p>Use {@link Pageable#ofSize(int)} for the first slice, then navigate with {@link Pageable#next()} or
+     * {@link Pageable#previous()}.</p>
+     *
+     * @param pageable the request specifying page number, page size and sort orders.
+     * @return a slice containing the results.
+     * @since 1.14
+     */
+    default Slice<E> slice(Pageable pageable) {
+        return select().slice(pageable);
+    }
+
+    /**
+     * Returns a slice of entity refs using offset-based pagination without a count.
+     *
+     * <p>Page numbers are zero-based: pass {@code 0} for the first slice.</p>
+     *
+     * @param pageNumber the zero-based page index.
+     * @param pageSize the maximum number of refs per slice.
+     * @return a slice containing the ref results.
+     * @since 1.14
+     */
+    default Slice<Ref<E>> sliceRef(int pageNumber, int pageSize) {
+        return sliceRef(Pageable.of(pageNumber, pageSize));
+    }
+
+    /**
+     * Returns a slice of entity refs using offset-based pagination without a count.
+     *
+     * <p>This method executes a query with OFFSET and LIMIT for the requested page and one row beyond it, which
+     * decides {@link Slice#hasNext()}; no count query runs.</p>
+     *
+     * @param pageable the request specifying page number, page size and sort orders.
+     * @return a slice containing the ref results.
+     * @since 1.14
+     */
+    default Slice<Ref<E>> sliceRef(Pageable pageable) {
+        return selectRef().slice(pageable);
+    }
+
+    /**
      * Scrolls through entities using the given scrollable request.
      *
      * <p>This is a convenience method that delegates to {@code select().scroll(scrollable)}. It is typically used
@@ -731,6 +794,21 @@ public interface EntityRepository<E extends Entity<ID>, ID> extends Repository {
      */
     default Window<E> scroll(Scrollable<E> scrollable) {
         return select().scroll(scrollable);
+    }
+
+    /**
+     * Scrolls through entities as refs using the given scroll request.
+     *
+     * <p>This is a convenience method that delegates to {@code selectRef().scroll(scrollable)}. The window carries
+     * navigation tokens like one of full entities, since the cursor values are read from the row.</p>
+     *
+     * @param scrollable the scroll request: ordering, size and position.
+     * @return a window containing the refs and navigation tokens.
+     * @throws PersistenceException if the query fails due to underlying database issues.
+     * @since 1.14
+     */
+    default Window<Ref<E>> scrollRef(Scrollable<E> scrollable) {
+        return selectRef().scroll(scrollable);
     }
 
     /**

@@ -19,6 +19,7 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.fold
 import kotlinx.coroutines.flow.map
 import st.orm.*
+import st.orm.Slice
 import st.orm.repository.ProjectionRepository
 import st.orm.template.*
 import st.orm.template.impl.ModelImpl
@@ -112,4 +113,12 @@ internal class ProjectionRepositoryImpl<P, ID : Any>(
     override fun pageRef(pageNumber: Int, pageSize: Int): Page<Ref<P>> = core.pageRef(pageNumber, pageSize)
 
     override fun pageRef(pageable: Pageable): Page<Ref<P>> = core.pageRef(pageable)
+
+    override fun slice(pageNumber: Int, pageSize: Int): Slice<P> = core.slice(pageNumber, pageSize)
+
+    override fun slice(pageable: Pageable): Slice<P> = core.slice(pageable)
+
+    override fun sliceRef(pageNumber: Int, pageSize: Int): Slice<Ref<P>> = core.sliceRef(pageNumber, pageSize)
+
+    override fun sliceRef(pageable: Pageable): Slice<Ref<P>> = core.sliceRef(pageable)
 }

@@ -20,6 +20,11 @@
     "allPublicMethods": true
   },
   {
+    "condition": { "typeReachable": "st.orm.PositionHelper" },
+    "name": "st.orm.core.spi.PositionFactory",
+    "allPublicMethods": true
+  },
+  {
     "condition": { "typeReachable": "st.orm.core.spi.Nullability" },
     "name": "org.jspecify.annotations.NullMarked"
   },

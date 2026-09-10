@@ -19,6 +19,7 @@ import static java.util.List.copyOf;
 
 import java.util.ArrayList;
 import java.util.List;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Represents a pagination request with a zero-based page number, page size, and optional sort orders.
@@ -33,14 +34,6 @@ import java.util.List;
  * @since 1.10
  */
 public record Pageable(int pageNumber, int pageSize, List<Order> orders) {
-
-    /**
-     * Represents a sort order for a single metamodel field.
-     *
-     * @param field the metamodel field to sort by.
-     * @param descending {@code true} for descending order, {@code false} for ascending.
-     */
-    public record Order(Metamodel<?, ?> field, boolean descending) {}
 
     public Pageable {
         orders = copyOf(orders);
@@ -117,13 +110,14 @@ public record Pageable(int pageNumber, int pageSize, List<Order> orders) {
     }
 
     /**
-     * Returns a pageable request for the previous page, or the first page if already on page 0. Sort orders are
-     * preserved.
+     * Returns a pageable request for the previous page, preserving sort orders, or {@code null} on page 0, where
+     * nothing precedes. A request that answered with itself would let a loop step backwards forever.
      *
-     * @return a pageable for the previous page.
+     * @return a pageable for the previous page, or {@code null} on the first page.
      */
+    @Nullable
     public Pageable previous() {
-        return pageNumber > 0 ? new Pageable(pageNumber - 1, pageSize, orders) : this;
+        return pageNumber > 0 ? new Pageable(pageNumber - 1, pageSize, orders) : null;
     }
 
     /**

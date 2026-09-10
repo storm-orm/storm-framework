@@ -37,7 +37,7 @@ import st.orm.template.TemplateString.Companion.raw
  * val users = userRepository
  *     .select()
  *     .whereBuilder {
- *         (User_.active eq true) and (User_.address.city.name eq "Sunnyvale")
+ *         (User_.email like "%@example.com") and (User_.address.city.name eq "Sunnyvale")
  *     }
  *     .resultList
  * ```

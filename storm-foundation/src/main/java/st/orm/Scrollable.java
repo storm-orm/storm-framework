@@ -15,281 +15,230 @@
  */
 package st.orm;
 
+import static java.util.List.copyOf;
 import static java.util.Objects.requireNonNull;
 
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Objects;
 import org.jspecify.annotations.Nullable;
 
 /**
- * Represents a scroll request that captures the cursor state needed to fetch a window of results.
+ * A scroll request: an ordering, a window size, and the position to continue from.
  *
- * <p>A {@code Scrollable} is the scrolling counterpart of {@link Pageable}. While a {@code Pageable} navigates by
- * page number, a {@code Scrollable} navigates by cursor position. Scrollable instances are typically obtained from
- * {@link Window#next()} or {@link Window#previous()}, but can also be created directly using
- * the factory methods.</p>
+ * <p>A {@code Scrollable} is the scrolling counterpart of {@link Pageable}. Where a {@code Pageable} navigates by
+ * page number, a {@code Scrollable} navigates by keyset: it names the sort fields, a unique key that breaks ties
+ * and makes every row addressable, and optionally the row to continue after or before. The ordering and the size
+ * belong to the request; the position is what a {@link Window} hands back as {@link Window#next()} and
+ * {@link Window#previous()}, and what a cursor string carries across a network boundary.</p>
+ *
+ * <pre>{@code
+ * // Newest first, tiebreak on id, twenty per window
+ * var latest = Scrollable.of(Post_.id, 20).sortByDescending(Post_.createdAt);
+ *
+ * // Last name, then first name, then id
+ * var byName = Scrollable.of(User_.id, 20).sortBy(User_.lastName).sortBy(User_.firstName);
+ *
+ * // The next request from a client's cursor string, with the size the client asks for
+ * var next = Scrollable.of(User_.id, size).sortBy(User_.lastName).from(cursor);
+ * }</pre>
  *
  * <p>The serialized cursor is opaque and URL-safe, but it is not tamper-proof. If the cursor is exposed to
  * untrusted clients, sign or wrap it at a higher layer.</p>
  *
- * @param key the unique key field used for cursor positioning and ordering.
- * @param keyCursor the cursor value for the key field, or {@code null} for the first page.
- * @param sort the non-unique sort field, or {@code null} for single-key scrolling.
- * @param sortCursor the cursor value for the sort field, or {@code null} for single-key scrolling.
+ * @param key the unique key that breaks ties and addresses a row; it orders last.
+ * @param keyDescending {@code true} to order the key descending.
+ * @param sort the sort fields that order before the key, in precedence order; each carries its own direction.
  * @param size the maximum number of results per window (must be positive).
- * @param isForward {@code true} for forward scrolling (ascending key order), {@code false} for backward scrolling
- *                  (descending key order).
+ * @param position the row to continue after or before, or {@code null} to start at the beginning.
  * @since 1.11
  */
 public record Scrollable<T extends Data>(
         Metamodel.Key<T, ?> key,
-        @Nullable Object keyCursor,
-        @Nullable Metamodel<T, ?> sort,
-        @Nullable Object sortCursor,
+        boolean keyDescending,
+        List<Order> sort,
         int size,
-        boolean isForward) {
-
-    /**
-     * Framework-level upper bound for a window size carried inside a cursor. Configurable via the
-     * {@code st.orm.scrollable.maxSize} system property. Defaults to 1000. Repository or API layers may choose
-     * stricter limits.
-     */
-    private static final int MAX_SIZE = Integer.getInteger("st.orm.scrollable.maxSize", 1_000);
+        @Nullable Position position) {
 
     public Scrollable {
         requireNonNull(key, "key must not be null.");
+        sort = copyOf(sort);
         if (size <= 0) {
             throw new IllegalArgumentException("size must be positive.");
         }
-        if (sort == null && sortCursor != null) {
-            throw new IllegalArgumentException("sortCursor requires a sort field.");
+    }
+
+    /**
+     * Creates a request for the first window, ordered by the key ascending.
+     *
+     * @param key the unique key field.
+     * @param size the maximum number of results per window.
+     * @param <T> the entity type.
+     * @return the request.
+     */
+    public static <T extends Data> Scrollable<T> of(Metamodel.Key<T, ?> key, int size) {
+        return new Scrollable<>(key, false, List.of(), size, null);
+    }
+
+    /**
+     * Returns this request with the key ordered descending. Sort fields keep their own direction.
+     *
+     * <pre>{@code
+     * // Newest ids first
+     * var latest = users.scroll(Scrollable.of(User_.id, 20).descending());
+     * }</pre>
+     *
+     * @return the request with the key descending.
+     * @since 1.14
+     */
+    public Scrollable<T> descending() {
+        return new Scrollable<>(key, true, sort, size, position);
+    }
+
+    /**
+     * Returns this request with an ascending sort field appended before the key.
+     *
+     * @param field the field to sort by; must not allow NULL values.
+     * @return the request with the sort field added.
+     * @since 1.14
+     */
+    public Scrollable<T> sortBy(Metamodel<T, ?> field) {
+        return withSort(Order.asc(field));
+    }
+
+    /**
+     * Returns this request with a descending sort field appended before the key.
+     *
+     * @param field the field to sort by; must not allow NULL values.
+     * @return the request with the sort field added.
+     * @since 1.14
+     */
+    public Scrollable<T> sortByDescending(Metamodel<T, ?> field) {
+        return withSort(Order.desc(field));
+    }
+
+    private Scrollable<T> withSort(Order order) {
+        if (position != null) {
+            throw new IllegalStateException("Add sort fields before the position; the position names their values.");
         }
-        if (sort != null && ((keyCursor == null) != (sortCursor == null))) {
+        var orders = new ArrayList<>(sort);
+        orders.add(order);
+        return new Scrollable<>(key, keyDescending, orders, size, null);
+    }
+
+    /**
+     * Returns this request with a different window size.
+     *
+     * @param size the maximum number of results per window.
+     * @return the request with the size.
+     * @since 1.14
+     */
+    public Scrollable<T> size(int size) {
+        return new Scrollable<>(key, keyDescending, sort, size, position);
+    }
+
+    /**
+     * Returns this request continuing after the row with the given values.
+     *
+     * @param values one value per sort field in sort order, then the key value.
+     * @return the request positioned after that row.
+     * @since 1.14
+     */
+    public Scrollable<T> after(Object... values) {
+        return at(position(values, true));
+    }
+
+    /**
+     * Returns this request continuing before the row with the given values. The window comes back in sort order,
+     * the same as a window reached by {@link #after(Object...)}.
+     *
+     * @param values one value per sort field in sort order, then the key value.
+     * @return the request positioned before that row.
+     * @since 1.14
+     */
+    public Scrollable<T> before(Object... values) {
+        return at(position(values, false));
+    }
+
+    private Position position(Object[] values, boolean after) {
+        if (values.length != sort.size() + 1) {
             throw new IllegalArgumentException(
-                    "Composite scrolling requires both keyCursor and sortCursor, or neither.");
+                    "A position carries one value per sort field and one for the key: expected %d values, got %d."
+                            .formatted(sort.size() + 1, values.length));
         }
-        // Cursor value types are validated lazily in toCursor(), not here. This allows inline records and other
-        // complex types to be used as cursor values for in-memory scrolling (via Window navigation tokens), even
-        // though they cannot be serialized to cursor strings.
+        return PositionHelper.position(List.of(values), after);
+    }
+
+    private Scrollable<T> at(Position position) {
+        return new Scrollable<>(key, keyDescending, sort, size, position);
     }
 
     /**
-     * Creates a scrollable request for the first page in ascending key order.
+     * Returns this request at the position a cursor string carries, as produced by {@link #toCursor()},
+     * {@link Window#nextCursor()} or {@link Window#previousCursor()}.
      *
-     * @param key the unique key field.
-     * @param size the maximum number of results per window.
-     * @param <T> the entity type.
-     * @param <E> the key field type.
-     * @return a scrollable for the first page.
+     * <p>The cursor was issued for one ordering, and this request must state the same key, sort fields and
+     * directions; a cursor from another ordering is refused.</p>
+     *
+     * @param cursor the cursor string.
+     * @return the request at the cursor's position.
+     * @throws InvalidCursorException if the cursor is malformed, from an earlier format, issued for another ordering
+     *                                or codec registry, or carries a value of the wrong type.
+     * @since 1.14
      */
-    public static <T extends Data, E> Scrollable<T> of(Metamodel.Key<T, E> key, int size) {
-        return new Scrollable<>(key, null, null, null, size, true);
+    public Scrollable<T> from(String cursor) {
+        requireNonNull(cursor, "cursor must not be null.");
+        return at(CursorHelper.fromCursor(fingerprint(), cursor, valueTypes()));
     }
 
     /**
-     * Creates a scrollable request starting after the given cursor value, in ascending key order.
+     * Returns the complete ordering: the sort fields, then the key with its direction.
      *
-     * @param key the unique key field.
-     * @param keyCursor the cursor value to start after.
-     * @param size the maximum number of results per window.
-     * @param <T> the entity type.
-     * @param <E> the key field type.
-     * @return a scrollable starting after the cursor.
+     * @return the orders, in precedence.
+     * @since 1.14
      */
-    public static <T extends Data, E> Scrollable<T> of(
-            Metamodel.Key<T, E> key, E keyCursor, int size) {
-        return new Scrollable<>(key, keyCursor, null, null, size, true);
+    public List<Order> orders() {
+        var orders = new ArrayList<>(sort);
+        orders.add(new Order(key, keyDescending));
+        return List.copyOf(orders);
     }
 
     /**
-     * Creates a scrollable request for the first page in ascending key order, sorted by the given field.
-     *
-     * @param key the unique key field (tiebreaker).
-     * @param sort the non-unique sort field.
-     * @param size the maximum number of results per window.
-     * @param <T> the entity type.
-     * @param <E> the key field type.
-     * @param <S> the sort field type.
-     * @return a scrollable for the first page.
-     */
-    public static <T extends Data, E, S> Scrollable<T> of(
-            Metamodel.Key<T, E> key, Metamodel<T, S> sort, int size) {
-        requireNonNull(sort, "sort must not be null.");
-        return new Scrollable<>(key, null, sort, null, size, true);
-    }
-
-    /**
-     * Creates a scrollable request starting after the given cursor values, in ascending key order, sorted by the
-     * given field.
-     *
-     * @param key the unique key field (tiebreaker).
-     * @param keyCursor the cursor value for the key field.
-     * @param sort the non-unique sort field.
-     * @param sortCursor the cursor value for the sort field.
-     * @param size the maximum number of results per window.
-     * @param <T> the entity type.
-     * @param <E> the key field type.
-     * @param <S> the sort field type.
-     * @return a scrollable starting after the cursor values.
-     */
-    public static <T extends Data, E, S> Scrollable<T> of(
-            Metamodel.Key<T, E> key, E keyCursor,
-            Metamodel<T, S> sort, S sortCursor, int size) {
-        requireNonNull(sort, "sort must not be null.");
-        return new Scrollable<>(key, keyCursor, sort, sortCursor, size, true);
-    }
-
-    /**
-     * Returns a new scrollable with forward direction. Returns {@code this} if already forward.
-     *
-     * @return a scrollable with forward direction.
-     */
-    public Scrollable<T> forward() {
-        if (isForward) {
-            return this;
-        }
-        return new Scrollable<>(key, keyCursor, sort, sortCursor, size, true);
-    }
-
-    /**
-     * Returns a new scrollable with backward direction. Returns {@code this} if already backward.
-     *
-     * <pre>{@code
-     * // First page from the end (descending)
-     * var window = repo.scroll(Scrollable.of(User_.id, 20).backward());
-     * }</pre>
-     *
-     * @return a scrollable with backward direction.
-     */
-    public Scrollable<T> backward() {
-        if (!isForward) {
-            return this;
-        }
-        return new Scrollable<>(key, keyCursor, sort, sortCursor, size, false);
-    }
-
-    /**
-     * Returns a new scrollable with the direction reversed.
-     *
-     * @return a new scrollable with the opposite direction.
-     */
-    public Scrollable<T> reverse() {
-        return new Scrollable<>(key, keyCursor, sort, sortCursor, size, !isForward);
-    }
-
-    /**
-     * Returns {@code true} if this scrollable has a cursor position (i.e., is not a first-page request).
-     *
-     * @return {@code true} if a cursor is set.
-     */
-    public boolean hasCursor() {
-        return keyCursor != null;
-    }
-
-    /**
-     * Returns {@code true} if this scrollable uses a composite cursor with a separate sort field.
-     *
-     * @return {@code true} if a sort field is set.
-     */
-    public boolean isComposite() {
-        return sort != null;
-    }
-
-    /**
-     * Serializes the cursor state of this scrollable into an opaque, URL-safe string. The cursor encodes the cursor
-     * values, size, direction, a metamodel fingerprint, and a registry fingerprint.
-     *
-     * <p>This is useful for REST APIs where the cursor is passed as a query parameter:</p>
-     *
-     * <pre>{@code
-     * // Server: include cursor in response
-     * String cursor = window.nextCursor();
-     *
-     * // Client sends cursor back as query parameter
-     * // Server: reconstruct scrollable
-     * var scrollable = Scrollable.fromCursor(User_.id, cursor);
-     * var next = repo.scroll(scrollable);
-     * }</pre>
+     * Serializes the position of this request into an opaque, URL-safe string. The cursor carries the position
+     * only: a fingerprint of the ordering, whether to continue after or before the row, and the row's values.
+     * The size stays with the request, so a client may ask for another size on the next request.
      *
      * @return a URL-safe Base64-encoded cursor string.
-     * @throws IllegalStateException if a cursor value type is unsupported or serialization fails.
+     * @throws IllegalStateException if this request has no position, or a value type is unsupported.
      * @since 1.11
      */
     public String toCursor() {
-        return CursorHelper.toCursor(metamodelFingerprint(key, sort), isForward, size, keyCursor, sortCursor);
+        if (position == null) {
+            throw new IllegalStateException("A request for the first window has no position to serialize.");
+        }
+        return CursorHelper.toCursor(fingerprint(), position);
+    }
+
+    private Class<?>[] valueTypes() {
+        var types = new Class<?>[sort.size() + 1];
+        for (int i = 0; i < sort.size(); i++) {
+            types[i] = sort.get(i).field().fieldType();
+        }
+        types[sort.size()] = key.fieldType();
+        return types;
     }
 
     /**
-     * Deserializes a cursor string (produced by {@link #toCursor()}) into a {@code Scrollable} for single-key
-     * scrolling.
-     *
-     * @param key the unique key field (must match the key used when the cursor was created).
-     * @param cursor the cursor string.
-     * @param <T> the entity type.
-     * @param <E> the key field type.
-     * @return a scrollable reconstructed from the cursor.
-     * @throws IllegalArgumentException if the cursor string is invalid.
-     * @since 1.11
+     * A stable fingerprint of the ordering: the key and sort paths with their directions.
      */
-    public static <T extends Data, E> Scrollable<T> fromCursor(
-            Metamodel.Key<T, E> key, String cursor) {
-        return fromCursor(key, null, cursor);
-    }
-
-    /**
-     * Deserializes a cursor string (produced by {@link #toCursor()}) into a {@code Scrollable} for composite
-     * scrolling with a sort field.
-     *
-     * @param key the unique key field (must match the key used when the cursor was created).
-     * @param sort the sort field, or {@code null} for single-key scrolling.
-     * @param cursor the cursor string.
-     * @param <T> the entity type.
-     * @param <E> the key field type.
-     * @param <S> the sort field type.
-     * @return a scrollable reconstructed from the cursor.
-     * @throws IllegalArgumentException if the cursor string is invalid.
-     * @since 1.11
-     */
-    public static <T extends Data, E, S> Scrollable<T> fromCursor(
-            Metamodel.Key<T, E> key,
-            @Nullable Metamodel<T, S> sort,
-            String cursor) {
-        requireNonNull(key, "key must not be null.");
-        requireNonNull(cursor, "cursor must not be null.");
-        int metamodelFingerprint = metamodelFingerprint(key, sort);
-        Class<?> keyFieldType = key.fieldType();
-        Class<?> sortFieldType = sort != null ? sort.fieldType() : null;
-        Object[] result = CursorHelper.fromCursor(metamodelFingerprint, cursor, keyFieldType, sortFieldType);
-        boolean isForward = (boolean) result[0];
-        int size = (int) result[1];
-        validateCursorSize(size);
-        Object keyCursor = result[2];
-        Object sortCursor = result[3];
-        if (sort == null && sortCursor != null) {
-            throw new IllegalArgumentException("Invalid cursor: sortCursor present but no sort field provided.");
+    private int fingerprint() {
+        var parts = new ArrayList<Object>();
+        for (var order : sort) {
+            parts.add(order.field().fieldPath());
+            parts.add(order.descending());
         }
-        return new Scrollable<>(key, keyCursor, sort, sortCursor, size, isForward);
-    }
-
-    /**
-     * Validates the size extracted from a deserialized cursor. This limit only applies to cursors from untrusted
-     * clients, not to programmatic usage via {@link #of}.
-     */
-    private static void validateCursorSize(int size) {
-        if (size <= 0) {
-            throw new IllegalArgumentException("Invalid cursor: size must be positive.");
-        }
-        if (size > MAX_SIZE) {
-            throw new IllegalArgumentException("Invalid cursor: size must not exceed " + MAX_SIZE + ".");
-        }
-    }
-
-    /**
-     * Produces a stable metamodel fingerprint from the key and sort paths using the Metamodel API.
-     */
-    private static int metamodelFingerprint(Metamodel.Key<?, ?> key, @Nullable Metamodel<?, ?> sort) {
-        if (sort == null) {
-            return key.fieldPath().hashCode();
-        }
-        return Objects.hash(key.fieldPath(), sort.fieldPath());
+        parts.add(key.fieldPath());
+        parts.add(keyDescending);
+        return Objects.hash(parts.toArray());
     }
 }

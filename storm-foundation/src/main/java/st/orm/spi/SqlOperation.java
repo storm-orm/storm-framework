@@ -18,7 +18,7 @@ package st.orm.spi;
 /**
  * Represents the SQL mode.
  *
- * <p>The SQL mode provides context for the {@link SqlTemplate} processor, enabling validation and inference by the
+ * <p>The SQL mode provides context for the {@code SqlTemplate} processor, enabling validation and inference by the
  * SQL template logic. Each mode indicates the type of SQL operation being performed, which allows the framework to
  * adapt behavior accordingly.</p>
  */

@@ -25,6 +25,7 @@ import st.orm.Metamodel
 import st.orm.Page
 import st.orm.Pageable
 import st.orm.Ref
+import st.orm.Slice
 import st.orm.repository.EntityRepository
 import st.orm.template.*
 import st.orm.template.impl.ModelImpl
@@ -108,6 +109,14 @@ internal class EntityRepositoryImpl<E, ID : Any>(
     override fun pageRef(pageNumber: Int, pageSize: Int): Page<Ref<E>> = core.pageRef(pageNumber, pageSize)
 
     override fun pageRef(pageable: Pageable): Page<Ref<E>> = core.pageRef(pageable)
+
+    override fun slice(pageNumber: Int, pageSize: Int): Slice<E> = core.slice(pageNumber, pageSize)
+
+    override fun slice(pageable: Pageable): Slice<E> = core.slice(pageable)
+
+    override fun sliceRef(pageNumber: Int, pageSize: Int): Slice<Ref<E>> = core.sliceRef(pageNumber, pageSize)
+
+    override fun sliceRef(pageable: Pageable): Slice<Ref<E>> = core.sliceRef(pageable)
 
     override fun findById(id: ID): E? = core.findById(id).orElse(null)
 

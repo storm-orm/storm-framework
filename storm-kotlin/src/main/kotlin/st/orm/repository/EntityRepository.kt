@@ -23,6 +23,7 @@ import st.orm.Page
 import st.orm.Pageable
 import st.orm.Ref
 import st.orm.Scrollable
+import st.orm.Slice
 import st.orm.Window
 import st.orm.template.*
 import kotlin.reflect.KClass
@@ -230,8 +231,8 @@ public interface EntityRepository<E, ID : Any> : Repository where E : Entity<ID>
      *
      * ```kotlin
      * interface UserRepository : EntityRepository<User, Int> {
-     *     fun findActive(): List<User> = select {
-     *         where(User_.active eq true)
+     *     fun findExampleDomain(): List<User> = select {
+     *         where(User_.email like "%@example.com")
      *         orderBy(User_.name)
      *     }.resultList
      * }
@@ -251,7 +252,7 @@ public interface EntityRepository<E, ID : Any> : Repository where E : Entity<ID>
      * Constructs a SELECT query filtered by the given predicate.
      *
      * ```kotlin
-     * userRepository.select(User_.active eq true).resultList
+     * userRepository.select(User_.email like "%@example.com").resultList
      * ```
      */
     public fun select(predicate: PredicateBuilder<E, *, *>): QueryBuilder<E, E, ID> = select().where(predicate)
@@ -290,7 +291,7 @@ public interface EntityRepository<E, ID : Any> : Repository where E : Entity<ID>
      * Constructs a SELECT query for refs, filtered by the given predicate.
      *
      * ```kotlin
-     * userRepository.selectRef(User_.active eq true).resultList
+     * userRepository.selectRef(User_.email like "%@example.com").resultList
      * ```
      *
      * @since 1.3
@@ -343,7 +344,7 @@ public interface EntityRepository<E, ID : Any> : Repository where E : Entity<ID>
      * Constructs a DELETE query filtered by the given predicate.
      *
      * ```kotlin
-     * userRepository.delete(User_.active eq false).executeUpdate()
+     * userRepository.delete(User_.postalCode.isNull()).executeUpdate()
      * ```
      */
     public fun delete(predicate: PredicateBuilder<E, *, *>): QueryBuilder<E, *, ID> = delete().where(predicate)
@@ -1738,7 +1739,7 @@ public interface EntityRepository<E, ID : Any> : Repository where E : Entity<ID>
      * entities.
      *
      * Use [Pageable.ofSize] for the first page, then navigate with
-     * [Page.nextPageable] or [Page.previousPageable].
+     * [Page.next] or [Page.previous].
      *
      * @param pageable the pagination request specifying page number and page size.
      * @return a page containing the results and pagination metadata.
@@ -1772,6 +1773,59 @@ public interface EntityRepository<E, ID : Any> : Repository where E : Entity<ID>
     public fun pageRef(pageable: Pageable): Page<Ref<E>>
 
     /**
+     * Returns a slice of entities using offset-based pagination without a count.
+     *
+     * This method executes a query with OFFSET and LIMIT for the requested page and one row beyond it, which
+     * decides [Slice.hasNext]; no count query runs.
+     *
+     * Page numbers are zero-based: pass `0` for the first slice.
+     *
+     * @param pageNumber the zero-based page index.
+     * @param pageSize the maximum number of entities per slice.
+     * @return a slice containing the results.
+     * @since 1.14
+     */
+    public fun slice(pageNumber: Int, pageSize: Int): Slice<E>
+
+    /**
+     * Returns a slice of entities using offset-based pagination without a count.
+     *
+     * This method executes a query with OFFSET and LIMIT for the requested page and one row beyond it, which
+     * decides [Slice.hasNext]; no count query runs.
+     *
+     * Use [Pageable.ofSize] for the first slice, then navigate with [Pageable.next] or [Pageable.previous].
+     *
+     * @param pageable the request specifying page number, page size and sort orders.
+     * @return a slice containing the results.
+     * @since 1.14
+     */
+    public fun slice(pageable: Pageable): Slice<E>
+
+    /**
+     * Returns a slice of entity refs using offset-based pagination without a count.
+     *
+     * Page numbers are zero-based: pass `0` for the first slice.
+     *
+     * @param pageNumber the zero-based page index.
+     * @param pageSize the maximum number of refs per slice.
+     * @return a slice containing the ref results.
+     * @since 1.14
+     */
+    public fun sliceRef(pageNumber: Int, pageSize: Int): Slice<Ref<E>>
+
+    /**
+     * Returns a slice of entity refs using offset-based pagination without a count.
+     *
+     * This method executes a query with OFFSET and LIMIT for the requested page and one row beyond it, which
+     * decides [Slice.hasNext]; no count query runs.
+     *
+     * @param pageable the request specifying page number, page size and sort orders.
+     * @return a slice containing the ref results.
+     * @since 1.14
+     */
+    public fun sliceRef(pageable: Pageable): Slice<Ref<E>>
+
+    /**
      * Executes a scroll request from a [Scrollable] token, typically obtained from
      * [Window.next] or [Window.previous].
      *
@@ -1780,6 +1834,16 @@ public interface EntityRepository<E, ID : Any> : Repository where E : Entity<ID>
      * @since 1.11
      */
     public fun scroll(scrollable: Scrollable<E>): Window<E> = select().scroll(scrollable)
+
+    /**
+     * Scrolls through entities as refs using the given scroll request. The window carries navigation tokens like
+     * one of full entities, since the cursor values are read from the row.
+     *
+     * @param scrollable the scroll request: ordering, size and position.
+     * @return a window containing the refs and navigation tokens.
+     * @since 1.14
+     */
+    public fun scrollRef(scrollable: Scrollable<E>): Window<Ref<E>> = selectRef().scroll(scrollable)
 
     /**
      * Iterates the entities in windows of [size] rows ordered by the primary key, each window one closed

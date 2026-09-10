@@ -28,12 +28,18 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
+import java.util.ArrayList;
 import java.util.Base64;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.ServiceLoader;
 import java.util.UUID;
 import org.jspecify.annotations.Nullable;
+import st.orm.Data;
+import st.orm.InvalidCursorException;
+import st.orm.Position;
+import st.orm.Ref;
+import st.orm.core.template.impl.PositionImpl;
 import st.orm.spi.CursorCodec;
 import st.orm.spi.CursorCodecEntry;
 import st.orm.spi.CursorCodecProvider;
@@ -47,7 +53,7 @@ import st.orm.spi.CursorCodecProvider;
  */
 public final class CursorFactory {
 
-    private static final int CURSOR_VERSION = 1;
+    private static final int CURSOR_VERSION = 2;
 
     private static final byte TYPE_NULL = 0;
 
@@ -170,27 +176,30 @@ public final class CursorFactory {
 
     private CursorFactory() {}
 
+
     /**
-     * Serializes cursor values into a Base64 URL-safe string.
+     * Serializes a position into a Base64 URL-safe string.
      *
-     * @param metamodelFingerprint the metamodel fingerprint (key/sort paths).
-     * @param isForward the scroll direction.
-     * @param size the page size.
-     * @param keyCursor the key cursor value, or null.
-     * @param sortCursor the sort cursor value, or null.
+     * <p>The cursor carries the fingerprint of the ordering it was issued for, the registry fingerprint, whether
+     * the request continues after or before the row, and the row's values, one per sort field and one for the
+     * key. The window size is not part of it: the size belongs to the request.</p>
+     *
+     * @param orderingFingerprint the fingerprint of the key and sort fields with their directions.
+     * @param position the position to serialize.
      * @return the encoded cursor string.
      */
-    public static String toCursor(int metamodelFingerprint, boolean isForward, int size,
-                                   @Nullable Object keyCursor, @Nullable Object sortCursor) {
+    public static String toCursor(int orderingFingerprint, Position position) {
+        var values = PositionImpl.of(position).values();
         try (var byteStream = new ByteArrayOutputStream();
              var dataStream = new DataOutputStream(byteStream)) {
             dataStream.writeByte(CURSOR_VERSION);
-            dataStream.writeInt(metamodelFingerprint);
+            dataStream.writeInt(orderingFingerprint);
             dataStream.writeInt(REGISTRY_FINGERPRINT);
-            dataStream.writeBoolean(isForward);
-            dataStream.writeInt(size);
-            writeValue(dataStream, keyCursor);
-            writeValue(dataStream, sortCursor);
+            dataStream.writeBoolean(position.after());
+            dataStream.writeByte(values.size());
+            for (var value : values) {
+                writeValue(dataStream, value);
+            }
             dataStream.flush();
             return Base64.getUrlEncoder().withoutPadding().encodeToString(byteStream.toByteArray());
         } catch (IOException e) {
@@ -199,58 +208,73 @@ public final class CursorFactory {
     }
 
     /**
-     * Deserializes a cursor string. Returns an Object array: {isForward, size, keyCursor, sortCursor}.
+     * Deserializes a cursor string into a position.
      *
-     * @param metamodelFingerprint the expected metamodel fingerprint.
+     * @param orderingFingerprint the fingerprint of the ordering the request states; the cursor must match it.
      * @param cursor the cursor string.
-     * @param keyFieldType the expected key field type (for validation), or null to skip.
-     * @param sortFieldType the expected sort field type (for validation), or null to skip.
-     * @return Object[] {Boolean isForward, Integer size, Object keyCursor, Object sortCursor}.
+     * @param valueTypes the declared field types, one per sort field and one for the key; a value is checked
+     *                   against its type where the type is a plain value type, and left alone where the field is
+     *                   a reference, whose column carries the referenced key.
+     * @return the position the cursor carries.
+     * @throws InvalidCursorException if the cursor is invalid, was issued for another ordering or registry, or
+     *                                carries a value of the wrong type.
      */
-    public static Object[] fromCursor(int metamodelFingerprint, String cursor,
-                                       @Nullable Class<?> keyFieldType, @Nullable Class<?> sortFieldType) {
+    public static Position fromCursor(int orderingFingerprint, String cursor, Class<?>[] valueTypes) {
         try (var byteStream = new ByteArrayInputStream(Base64.getUrlDecoder().decode(cursor));
              var dataStream = new DataInputStream(byteStream)) {
             int version = dataStream.readUnsignedByte();
             if (version != CURSOR_VERSION) {
-                throw new IllegalArgumentException("Unsupported cursor version: " + version + ".");
+                throw new InvalidCursorException("Unsupported cursor version: " + version + ".");
             }
-            int actualMetamodelFingerprint = dataStream.readInt();
-            if (metamodelFingerprint != actualMetamodelFingerprint) {
-                throw new IllegalArgumentException("Cursor does not match the requested key/sort definition.");
+            int actualOrderingFingerprint = dataStream.readInt();
+            if (orderingFingerprint != actualOrderingFingerprint) {
+                throw new InvalidCursorException("Cursor does not match the requested key and sort definition.");
             }
             int actualRegistryFingerprint = dataStream.readInt();
             if (REGISTRY_FINGERPRINT != actualRegistryFingerprint) {
-                throw new IllegalArgumentException(
+                throw new InvalidCursorException(
                         "Cursor was produced with a different codec registry configuration.");
             }
-            boolean isForward = dataStream.readBoolean();
-            int size = dataStream.readInt();
-            Object keyCursor = readValue(dataStream);
-            Object sortCursor = readValue(dataStream);
+            boolean after = dataStream.readBoolean();
+            int count = dataStream.readUnsignedByte();
+            if (count != valueTypes.length) {
+                throw new InvalidCursorException(
+                        "Invalid cursor: carries " + count + " values, the ordering has " + valueTypes.length + ".");
+            }
+            var values = new ArrayList<>(count);
+            for (int i = 0; i < count; i++) {
+                Object value = readValue(dataStream);
+                if (value == null) {
+                    throw new InvalidCursorException("Invalid cursor: value " + i + " is null.");
+                }
+                if (isValueType(valueTypes[i])) {
+                    validateType("value " + i, value, valueTypes[i]);
+                }
+                values.add(value);
+            }
             if (dataStream.read() != -1) {
-                throw new IllegalArgumentException("Invalid cursor: trailing bytes found.");
+                throw new InvalidCursorException("Invalid cursor: trailing bytes found.");
             }
-            // Validate decoded value types against metamodel.
-            if (keyCursor != null && keyFieldType != null) {
-                validateType("keyCursor", keyCursor, keyFieldType);
-            }
-            if (sortCursor != null && sortFieldType != null) {
-                validateType("sortCursor", sortCursor, sortFieldType);
-            }
-            return new Object[] { isForward, size, keyCursor, sortCursor };
-        } catch (IllegalArgumentException e) {
+            return new PositionImpl(values, after);
+        } catch (InvalidCursorException e) {
             throw e;
         } catch (IOException | RuntimeException e) {
-            throw new IllegalArgumentException("Invalid cursor.", e);
+            throw new InvalidCursorException("Invalid cursor.", e);
         }
+    }
+
+    /**
+     * A reference field's column carries the referenced key, so its declared type says nothing about the value.
+     */
+    private static boolean isValueType(Class<?> type) {
+        return type != Object.class && !Data.class.isAssignableFrom(type) && !Ref.class.isAssignableFrom(type);
     }
 
     private static void validateType(String label, Object value, Class<?> expectedType) {
         Class<?> boxed = box(expectedType);
         // Object.class means "accept any type" (used in tests or untyped metamodels).
         if (boxed != Object.class && !boxed.isInstance(value)) {
-            throw new IllegalArgumentException(
+            throw new InvalidCursorException(
                     "Invalid cursor: " + label + " has type " + value.getClass().getName()
                             + " but metamodel expects " + boxed.getName() + ".");
         }
