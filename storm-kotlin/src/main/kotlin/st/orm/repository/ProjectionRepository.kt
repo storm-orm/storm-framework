@@ -471,7 +471,7 @@ public interface ProjectionRepository<P, ID : Any> : Repository where P : Projec
      * @param value the value to match against.
      * @return an optional entity, or null if none found.
      */
-    public fun <V> findBy(field: Metamodel<P, V>, value: V): P? = select().where(field eq value).optionalResult
+    public fun <V : Any> findBy(field: Metamodel<P, V>, value: V): P? = select().where(field eq value).optionalResult
 
     /**
      * Retrieves an optional entity of type [P] based on a single field and its value.
@@ -491,7 +491,7 @@ public interface ProjectionRepository<P, ID : Any> : Repository where P : Projec
      * @param value the value to match against.
      * @return list of matching entities.
      */
-    public fun <V> findAllBy(field: Metamodel<P, V>, value: V): List<P> = select().where(field eq value).resultList
+    public fun <V : Any> findAllBy(field: Metamodel<P, V>, value: V): List<P> = select().where(field eq value).resultList
 
     /**
      * Retrieves entities of type [P] matching a single field and a single value.
@@ -511,7 +511,7 @@ public interface ProjectionRepository<P, ID : Any> : Repository where P : Projec
      * @param values Iterable of values to match against.
      * @return list of matching entities.
      */
-    public fun <V> findAllBy(field: Metamodel<P, V>, values: Iterable<V>): List<P> = select().where(field inList values).resultList
+    public fun <V : Any> findAllBy(field: Metamodel<P, V>, values: Iterable<V>): List<P> = select().where(field inList values).resultList
 
     /**
      * Retrieves entities of type [P] matching a single field against multiple values.
@@ -533,7 +533,7 @@ public interface ProjectionRepository<P, ID : Any> : Repository where P : Projec
      * @throws st.orm.NoResultException if there is no result.
      * @throws st.orm.NonUniqueResultException if more than one result.
      */
-    public fun <V> getBy(field: Metamodel<P, V>, value: V): P = select().where(field eq value).singleResult
+    public fun <V : Any> getBy(field: Metamodel<P, V>, value: V): P = select().where(field eq value).singleResult
 
     /**
      * Retrieves exactly one entity of type [P] based on a single field and its value.
@@ -555,7 +555,7 @@ public interface ProjectionRepository<P, ID : Any> : Repository where P : Projec
      * @param value the value to match against.
      * @return a ref to the matching projection, or null if none found.
      */
-    public fun <V> findRefBy(field: Metamodel<P, V>, value: V): Ref<P>? = selectRef().where(field eq value).optionalResult
+    public fun <V : Any> findRefBy(field: Metamodel<P, V>, value: V): Ref<P>? = selectRef().where(field eq value).optionalResult
 
     /**
      * Retrieves an optional ref to a projection of type [P] based on a single field and its value.
@@ -575,7 +575,7 @@ public interface ProjectionRepository<P, ID : Any> : Repository where P : Projec
      * @param value the value to match against.
      * @return a list of matching entities.
      */
-    public fun <V> findAllRefBy(field: Metamodel<P, V>, value: V): List<Ref<P>> = selectRef().where(field eq value).resultList
+    public fun <V : Any> findAllRefBy(field: Metamodel<P, V>, value: V): List<Ref<P>> = selectRef().where(field eq value).resultList
 
     /**
      * Retrieves entities of type [P] matching a single field and a single value.
@@ -595,7 +595,7 @@ public interface ProjectionRepository<P, ID : Any> : Repository where P : Projec
      * @param values Iterable of values to match against.
      * @return a list of matching entities.
      */
-    public fun <V> findAllRefBy(field: Metamodel<P, V>, values: Iterable<V>): List<Ref<P>> = selectRef().where(field inList values).resultList
+    public fun <V : Any> findAllRefBy(field: Metamodel<P, V>, values: Iterable<V>): List<Ref<P>> = selectRef().where(field inList values).resultList
 
     /**
      * Retrieves entities of type [P] matching a single field against multiple values.
@@ -617,7 +617,7 @@ public interface ProjectionRepository<P, ID : Any> : Repository where P : Projec
      * @throws st.orm.NoResultException if there is no result.
      * @throws st.orm.NonUniqueResultException if more than one result.
      */
-    public fun <V> getRefBy(field: Metamodel<P, V>, value: V): Ref<P> = selectRef().where(field eq value).singleResult
+    public fun <V : Any> getRefBy(field: Metamodel<P, V>, value: V): Ref<P> = selectRef().where(field eq value).singleResult
 
     /**
      * Retrieves exactly one entity of type [P] based on a single field and its value.
@@ -696,7 +696,7 @@ public interface ProjectionRepository<P, ID : Any> : Repository where P : Projec
      * @param value the value to match against.
      * @return the count of matching entities.
      */
-    public fun <V> countBy(
+    public fun <V : Any> countBy(
         field: Metamodel<P, V>,
         value: V,
     ): Long = selectCount().where(field eq value).singleResult
@@ -730,7 +730,7 @@ public interface ProjectionRepository<P, ID : Any> : Repository where P : Projec
      * @param value the value to match against.
      * @return true if any matching entities exist, false otherwise.
      */
-    public fun <V> existsBy(
+    public fun <V : Any> existsBy(
         field: Metamodel<P, V>,
         value: V,
     ): Boolean = selectCount().where(field eq value).singleResult > 0

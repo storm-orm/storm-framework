@@ -350,8 +350,8 @@ public interface EntityRepository<E, ID : Any> : Repository where E : Entity<ID>
     public fun delete(predicate: PredicateBuilder<E, *, *>): QueryBuilder<E, *, ID> = delete().where(predicate)
 
     @Suppress("UNCHECKED_CAST")
-    public fun delete(block: SqlScope<E, Any?, ID>.() -> Any?): QueryBuilder<Data, Any?, ID> {
-        val scope = SqlScope<E, Any?, ID>(delete() as QueryBuilder<Data, Any?, ID>)
+    public fun delete(block: SqlScope<E, Any, ID>.() -> Any?): QueryBuilder<Data, Any, ID> {
+        val scope = SqlScope<E, Any, ID>(delete() as QueryBuilder<Data, Any, ID>)
         scope.validateResult(scope.block())
         return scope.builder
     }
@@ -1371,7 +1371,7 @@ public interface EntityRepository<E, ID : Any> : Repository where E : Entity<ID>
      * @param value the value to match against.
      * @return an optional entity, or null if none found.
      */
-    public fun <V> findBy(field: Metamodel<E, V>, value: V): E? = select().where(field eq value).optionalResult
+    public fun <V : Any> findBy(field: Metamodel<E, V>, value: V): E? = select().where(field eq value).optionalResult
 
     /**
      * Retrieves an optional entity of type [E] based on a single field and its value.
@@ -1391,7 +1391,7 @@ public interface EntityRepository<E, ID : Any> : Repository where E : Entity<ID>
      * @param value the value to match against.
      * @return list of matching entities.
      */
-    public fun <V> findAllBy(field: Metamodel<E, V>, value: V): List<E> = select().where(field eq value).resultList
+    public fun <V : Any> findAllBy(field: Metamodel<E, V>, value: V): List<E> = select().where(field eq value).resultList
 
     /**
      * Retrieves entities of type [E] matching a single field and a single value.
@@ -1411,7 +1411,7 @@ public interface EntityRepository<E, ID : Any> : Repository where E : Entity<ID>
      * @param values Iterable of values to match against.
      * @return list of matching entities.
      */
-    public fun <V> findAllBy(field: Metamodel<E, V>, values: Iterable<V>): List<E> = select().where(field inList values).resultList
+    public fun <V : Any> findAllBy(field: Metamodel<E, V>, values: Iterable<V>): List<E> = select().where(field inList values).resultList
 
     /**
      * Retrieves entities of type [E] matching a single field against multiple values.
@@ -1433,7 +1433,7 @@ public interface EntityRepository<E, ID : Any> : Repository where E : Entity<ID>
      * @throws st.orm.NoResultException if there is no result.
      * @throws st.orm.NonUniqueResultException if more than one result.
      */
-    public fun <V> getBy(field: Metamodel<E, V>, value: V): E = select().where(field eq value).singleResult
+    public fun <V : Any> getBy(field: Metamodel<E, V>, value: V): E = select().where(field eq value).singleResult
 
     /**
      * Retrieves exactly one entity of type [E] based on a single field and its value.
@@ -1455,7 +1455,7 @@ public interface EntityRepository<E, ID : Any> : Repository where E : Entity<ID>
      * @param value the value to match against.
      * @return a ref to the matching entity, or null if none found.
      */
-    public fun <V> findRefBy(field: Metamodel<E, V>, value: V): Ref<E>? = selectRef().where(field eq value).optionalResult
+    public fun <V : Any> findRefBy(field: Metamodel<E, V>, value: V): Ref<E>? = selectRef().where(field eq value).optionalResult
 
     /**
      * Retrieves an optional ref to an entity of type [E] based on a single field and its value.
@@ -1475,7 +1475,7 @@ public interface EntityRepository<E, ID : Any> : Repository where E : Entity<ID>
      * @param value the value to match against.
      * @return a list of matching entities.
      */
-    public fun <V> findAllRefBy(field: Metamodel<E, V>, value: V): List<Ref<E>> = selectRef().where(field eq value).resultList
+    public fun <V : Any> findAllRefBy(field: Metamodel<E, V>, value: V): List<Ref<E>> = selectRef().where(field eq value).resultList
 
     /**
      * Retrieves entities of type [E] matching a single field and a single value.
@@ -1495,7 +1495,7 @@ public interface EntityRepository<E, ID : Any> : Repository where E : Entity<ID>
      * @param values Iterable of values to match against.
      * @return a list of matching entities.
      */
-    public fun <V> findAllRefBy(field: Metamodel<E, V>, values: Iterable<V>): List<Ref<E>> = selectRef().where(field inList values).resultList
+    public fun <V : Any> findAllRefBy(field: Metamodel<E, V>, values: Iterable<V>): List<Ref<E>> = selectRef().where(field inList values).resultList
 
     /**
      * Retrieves entities of type [E] matching a single field against multiple values.
@@ -1517,7 +1517,7 @@ public interface EntityRepository<E, ID : Any> : Repository where E : Entity<ID>
      * @throws st.orm.NoResultException if there is no result.
      * @throws st.orm.NonUniqueResultException if more than one result.
      */
-    public fun <V> getRefBy(field: Metamodel<E, V>, value: V): Ref<E> = selectRef().where(field eq value).singleResult
+    public fun <V : Any> getRefBy(field: Metamodel<E, V>, value: V): Ref<E> = selectRef().where(field eq value).singleResult
 
     /**
      * Retrieves exactly one entity of type [E] based on a single field and its value.
@@ -1596,7 +1596,7 @@ public interface EntityRepository<E, ID : Any> : Repository where E : Entity<ID>
      * @param value the value to match against.
      * @return the count of matching entities.
      */
-    public fun <V> countBy(
+    public fun <V : Any> countBy(
         field: Metamodel<E, V>,
         value: V,
     ): Long = selectCount().where(field eq value).singleResult
@@ -1630,7 +1630,7 @@ public interface EntityRepository<E, ID : Any> : Repository where E : Entity<ID>
      * @param value the value to match against.
      * @return true if any matching entities exist, false otherwise.
      */
-    public fun <V> existsBy(
+    public fun <V : Any> existsBy(
         field: Metamodel<E, V>,
         value: V,
     ): Boolean = selectCount().where(field eq value).singleResult > 0
@@ -1674,7 +1674,7 @@ public interface EntityRepository<E, ID : Any> : Repository where E : Entity<ID>
      * @param value the value to match against.
      * @return the number of entities removed.
      */
-    public fun <V> removeAllBy(
+    public fun <V : Any> removeAllBy(
         field: Metamodel<E, V>,
         value: V,
     ): Int = delete().where(field eq value).executeUpdate()
@@ -1698,7 +1698,7 @@ public interface EntityRepository<E, ID : Any> : Repository where E : Entity<ID>
      * @param values Iterable of values to match against.
      * @return the number of entities removed.
      */
-    public fun <V> removeAllBy(
+    public fun <V : Any> removeAllBy(
         field: Metamodel<E, V>,
         values: Iterable<V>,
     ): Int = delete().where(field inList values).executeUpdate()

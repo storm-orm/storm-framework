@@ -48,7 +48,7 @@ import kotlin.reflect.KClass
  * @see JoinBuilder
  * @see QueryBuilder
  */
-public abstract class TypedJoinBuilder<T : Data, R, ID> : JoinBuilder<T, R, ID>() {
+public abstract class TypedJoinBuilder<T : Data, R : Any, ID : Any> : JoinBuilder<T, R, ID>() {
     /**
      * Specifies the relation to join on.
      *

@@ -29,7 +29,7 @@ import st.orm.Data
  * @see TypedJoinBuilder
  * @see QueryBuilder
  */
-public abstract class JoinBuilder<T : Data, R, ID> {
+public abstract class JoinBuilder<T : Data, R : Any, ID : Any> {
     /**
      * Specifies the join condition using a custom expression.
      *

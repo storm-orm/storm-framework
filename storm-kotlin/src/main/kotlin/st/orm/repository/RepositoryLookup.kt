@@ -244,7 +244,7 @@ public inline fun <reified T : Data> RepositoryLookup.findAllRef(): List<Ref<T>>
  * @param value the value to match against.
  * @return an optional record, or null if none found.
  */
-public inline fun <reified T : Data, V> RepositoryLookup.findBy(field: Metamodel<T, V>, value: V): T? = select<T>().where(field eq value).optionalResult
+public inline fun <reified T : Data, V : Any> RepositoryLookup.findBy(field: Metamodel<T, V>, value: V): T? = select<T>().where(field eq value).optionalResult
 
 /**
  * Retrieves an optional record of type [T] based on a single field and its value.
@@ -268,7 +268,7 @@ public inline fun <reified T : Data, V : Data> RepositoryLookup.findBy(field: Me
  * @param value the value to match against.
  * @return list of matching records.
  */
-public inline fun <reified T : Data, V> RepositoryLookup.findAllBy(field: Metamodel<T, V>, value: V): List<T> = select<T>().where(field eq value).resultList
+public inline fun <reified T : Data, V : Any> RepositoryLookup.findAllBy(field: Metamodel<T, V>, value: V): List<T> = select<T>().where(field eq value).resultList
 
 /**
  * Retrieves records of type [T] matching a single field and a single value.
@@ -292,7 +292,7 @@ public inline fun <reified T : Data, V : Data> RepositoryLookup.findAllBy(field:
  * @param values Iterable of values to match against.
  * @return list of matching records.
  */
-public inline fun <reified T : Data, V> RepositoryLookup.findAllBy(field: Metamodel<T, V>, values: Iterable<V>): List<T> = select<T>().where(field inList values).resultList
+public inline fun <reified T : Data, V : Any> RepositoryLookup.findAllBy(field: Metamodel<T, V>, values: Iterable<V>): List<T> = select<T>().where(field inList values).resultList
 
 /**
  * Retrieves records of type [T] matching a single field against multiple values.
@@ -318,7 +318,7 @@ public inline fun <reified T : Data, V : Data> RepositoryLookup.findAllByRef(fie
  * @throws st.orm.NoResultException if there is no result.
  * @throws st.orm.NonUniqueResultException if more than one result.
  */
-public inline fun <reified T : Data, V> RepositoryLookup.getBy(field: Metamodel<T, V>, value: V): T = select<T>().where(field eq value).singleResult
+public inline fun <reified T : Data, V : Any> RepositoryLookup.getBy(field: Metamodel<T, V>, value: V): T = select<T>().where(field eq value).singleResult
 
 /**
  * Retrieves exactly one record of type [T] based on a single field and its value.
@@ -342,7 +342,7 @@ public inline fun <reified T : Data, V : Data> RepositoryLookup.getBy(field: Met
  * @param value the value to match against.
  * @return a ref to the matching record, or null if none found.
  */
-public inline fun <reified T : Data, V> RepositoryLookup.findRefBy(field: Metamodel<T, V>, value: V): Ref<T>? = selectRef<T>().where(field eq value).optionalResult
+public inline fun <reified T : Data, V : Any> RepositoryLookup.findRefBy(field: Metamodel<T, V>, value: V): Ref<T>? = selectRef<T>().where(field eq value).optionalResult
 
 /**
  * Retrieves an optional ref to a record of type [T] based on a single field and its value.
@@ -362,7 +362,7 @@ public inline fun <reified T : Data, V : Data> RepositoryLookup.findRefBy(field:
  * @param value the value to match against.
  * @return list of matching entities.
  */
-public inline fun <reified T : Data, V> RepositoryLookup.findAllRefBy(field: Metamodel<T, V>, value: V): List<Ref<T>> = selectRef<T>().where(field eq value).resultList
+public inline fun <reified T : Data, V : Any> RepositoryLookup.findAllRefBy(field: Metamodel<T, V>, value: V): List<Ref<T>> = selectRef<T>().where(field eq value).resultList
 
 /**
  * Retrieves entities of type [T] matching a single field and a single value.
@@ -382,7 +382,7 @@ public inline fun <reified T : Data, V : Data> RepositoryLookup.findAllRefBy(fie
  * @param values Iterable of values to match against.
  * @return list of matching entities.
  */
-public inline fun <reified T : Data, V> RepositoryLookup.findAllRefBy(field: Metamodel<T, V>, values: Iterable<V>): List<Ref<T>> = selectRef<T>().where(field inList values).resultList
+public inline fun <reified T : Data, V : Any> RepositoryLookup.findAllRefBy(field: Metamodel<T, V>, values: Iterable<V>): List<Ref<T>> = selectRef<T>().where(field inList values).resultList
 
 /**
  * Retrieves entities of type [T] matching a single field against multiple values.
@@ -404,7 +404,7 @@ public inline fun <reified T : Data, V : Data> RepositoryLookup.findAllRefByRef(
  * @throws st.orm.NoResultException if there is no result.
  * @throws st.orm.NonUniqueResultException if more than one result.
  */
-public inline fun <reified T : Data, V> RepositoryLookup.getRefBy(field: Metamodel<T, V>, value: V): Ref<T> = selectRef<T>().where(field eq value).singleResult
+public inline fun <reified T : Data, V : Any> RepositoryLookup.getRefBy(field: Metamodel<T, V>, value: V): Ref<T> = selectRef<T>().where(field eq value).singleResult
 
 /**
  * Retrieves exactly one entity of type [T] based on a single field and its value.
@@ -545,7 +545,7 @@ internal inline fun <reified T : Data> RepositoryLookup.selectCount(): QueryBuil
  * @param value the value to match against.
  * @return the count of matching entities.
  */
-public inline fun <reified T : Data, V> RepositoryLookup.countBy(field: Metamodel<T, V>, value: V): Long = selectCount<T>().where(field eq value).singleResult
+public inline fun <reified T : Data, V : Any> RepositoryLookup.countBy(field: Metamodel<T, V>, value: V): Long = selectCount<T>().where(field eq value).singleResult
 
 /**
  * Counts entities of type [T] matching the specified field and referenced value.
@@ -583,7 +583,7 @@ public inline fun <reified T : Data> RepositoryLookup.count(predicate: Predicate
  * @param value the value to match against.
  * @return true if any matching entities exist, false otherwise.
  */
-public inline fun <reified T : Data, V> RepositoryLookup.existsBy(field: Metamodel<T, V>, value: V): Boolean = selectCount<T>().where(field eq value).singleResult > 0
+public inline fun <reified T : Data, V : Any> RepositoryLookup.existsBy(field: Metamodel<T, V>, value: V): Boolean = selectCount<T>().where(field eq value).singleResult > 0
 
 /**
  * Checks if entities of type [T] matching the specified field and referenced value exists.
@@ -776,7 +776,7 @@ public inline fun <reified T : Entity<*>> RepositoryLookup.removeBy(field: Metam
  * @param value the value to match against.
  * @return the number of entities removed.
  */
-public inline fun <reified T : Entity<*>, V> RepositoryLookup.removeAllBy(field: Metamodel<T, V>, value: V): Int = entity<T>().delete().where(field eq value).executeUpdate()
+public inline fun <reified T : Entity<*>, V : Any> RepositoryLookup.removeAllBy(field: Metamodel<T, V>, value: V): Int = entity<T>().delete().where(field eq value).executeUpdate()
 
 /**
  * Removes entities of type [T] matching the specified field and referenced value.
@@ -794,7 +794,7 @@ public inline fun <reified T : Entity<*>, V : Data> RepositoryLookup.removeAllBy
  * @param values Iterable of values to match against.
  * @return the number of entities removed.
  */
-public inline fun <reified T : Entity<*>, V> RepositoryLookup.removeAllBy(field: Metamodel<T, V>, values: Iterable<V>): Int = entity<T>().delete().where(field inList values).executeUpdate()
+public inline fun <reified T : Entity<*>, V : Any> RepositoryLookup.removeAllBy(field: Metamodel<T, V>, values: Iterable<V>): Int = entity<T>().delete().where(field inList values).executeUpdate()
 
 /**
  * Removes entities of type [T] matching the specified field against multiple referenced values.

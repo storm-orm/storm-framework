@@ -97,7 +97,7 @@ import kotlin.reflect.KClass
  * @see st.orm.repository.ProjectionRepository
  * @see QueryTemplate
  */
-public abstract class QueryBuilder<T : Data, R, ID> {
+public abstract class QueryBuilder<T : Data, R : Any, ID : Any> {
     /**
      * Returns a query builder whose primary key type is [pkType], so the operations that take an id can be used.
      *
@@ -539,7 +539,7 @@ public abstract class QueryBuilder<T : Data, R, ID> {
      * @param <V> the type of the object that the metamodel represents.
      * @since 1.2
      */
-    public fun <V> where(
+    public fun <V : Any> where(
         path: Navigable<out T, V>,
         operator: Operator,
         it: Iterable<V>,
@@ -556,7 +556,7 @@ public abstract class QueryBuilder<T : Data, R, ID> {
      * @param <V> the type of the object that the metamodel represents.
      * @since 1.2
      */
-    public fun <V> where(
+    public fun <V : Any> where(
         path: Navigable<out T, V>,
         operator: Operator,
         vararg o: V,
@@ -712,7 +712,7 @@ public abstract class QueryBuilder<T : Data, R, ID> {
      * @return the query builder.
      * @since 1.2
      */
-    public fun <V> having(
+    public fun <V : Any> having(
         path: Navigable<out T, V>,
         operator: Operator,
         vararg o: V,
@@ -1373,7 +1373,7 @@ public abstract class QueryBuilder<T : Data, R, ID> {
 /**
  * Infix function to create a predicate to check if a field is in a list of values.
  */
-public infix fun <T : Data, V> Navigable<T, V>.inList(value: Iterable<V>): PredicateBuilder<T, T, *> = create(this.asMetamodel(), IN, value)
+public infix fun <T : Data, V : Any> Navigable<T, V>.inList(value: Iterable<V>): PredicateBuilder<T, T, *> = create(this.asMetamodel(), IN, value)
 
 /**
  * Infix function to create a predicate to check if a field is in a list of references.
@@ -1383,7 +1383,7 @@ public infix fun <T : Data, V : Data> Metamodel<T, V>.inRefs(value: Iterable<Ref
 /**
  * Infix function to create a predicate to check if a field is not in a list of values.
  */
-public infix fun <T : Data, V> Navigable<T, V>.notInList(value: Iterable<V>): PredicateBuilder<T, T, *> = create(this.asMetamodel(), NOT_IN, value)
+public infix fun <T : Data, V : Any> Navigable<T, V>.notInList(value: Iterable<V>): PredicateBuilder<T, T, *> = create(this.asMetamodel(), NOT_IN, value)
 
 /**
  * Infix function to create a predicate to check if a field is not in a list of references.
@@ -1393,7 +1393,7 @@ public infix fun <T : Data, V : Data> Metamodel<T, V>.notInRefs(value: Iterable<
 /**
  * Infix functions to create a predicate to check if a field is equal to a value.
  */
-public infix fun <T : Data, V> Navigable<T, V>.eq(value: V): PredicateBuilder<T, T, *> = create(this.asMetamodel(), EQUALS, listOf(value))
+public infix fun <T : Data, V : Any> Navigable<T, V>.eq(value: V): PredicateBuilder<T, T, *> = create(this.asMetamodel(), EQUALS, listOf(value))
 
 /**
  * Infix functions to create a predicate to check if a field is equal to a reference.
@@ -1403,7 +1403,7 @@ public infix fun <T : Data, V : Data> Metamodel<T, V>.eq(value: Ref<V>): Predica
 /**
  * Infix functions to create a predicate to check if a field is not equal to a value.
  */
-public infix fun <T : Data, V> Navigable<T, V>.neq(value: V): PredicateBuilder<T, T, *> = create(this.asMetamodel(), NOT_EQUALS, listOf(value))
+public infix fun <T : Data, V : Any> Navigable<T, V>.neq(value: V): PredicateBuilder<T, T, *> = create(this.asMetamodel(), NOT_EQUALS, listOf(value))
 
 /**
  * Infix functions to create a predicate to check if a field is not equal to a reference.
@@ -1413,57 +1413,57 @@ public infix fun <T : Data, V : Data> Metamodel<T, V>.neq(value: Ref<V>): Predic
 /**
  * Infix functions to create a predicate to check if a field is like a value.
  */
-public infix fun <T : Data, V> Navigable<T, V>.like(value: V): PredicateBuilder<T, T, *> = create(this.asMetamodel(), LIKE, listOf(value))
+public infix fun <T : Data, V : Any> Navigable<T, V>.like(value: V): PredicateBuilder<T, T, *> = create(this.asMetamodel(), LIKE, listOf(value))
 
 /**
  * Infix functions to create a predicate to check if a field is not like a value.
  */
-public infix fun <T : Data, V> Navigable<T, V>.notLike(value: V): PredicateBuilder<T, T, *> = create(this.asMetamodel(), NOT_LIKE, listOf(value))
+public infix fun <T : Data, V : Any> Navigable<T, V>.notLike(value: V): PredicateBuilder<T, T, *> = create(this.asMetamodel(), NOT_LIKE, listOf(value))
 
 /**
  * Infix functions to create a predicate to check if a field is greater than a value.
  */
-public infix fun <T : Data, V> Navigable<T, V>.greater(value: V): PredicateBuilder<T, T, *> = create(this.asMetamodel(), GREATER_THAN, listOf(value))
+public infix fun <T : Data, V : Any> Navigable<T, V>.greater(value: V): PredicateBuilder<T, T, *> = create(this.asMetamodel(), GREATER_THAN, listOf(value))
 
 /**
  * Infix functions to create a predicate to check if a field is less than a value.
  */
-public infix fun <T : Data, V> Navigable<T, V>.less(value: V): PredicateBuilder<T, T, *> = create(this.asMetamodel(), LESS_THAN, listOf(value))
+public infix fun <T : Data, V : Any> Navigable<T, V>.less(value: V): PredicateBuilder<T, T, *> = create(this.asMetamodel(), LESS_THAN, listOf(value))
 
 /**
  * Infix functions to create a predicate to check if a field is greater than or equal to a value.
  */
-public infix fun <T : Data, V> Navigable<T, V>.greaterEq(value: V): PredicateBuilder<T, T, *> = create(this.asMetamodel(), GREATER_THAN_OR_EQUAL, listOf(value))
+public infix fun <T : Data, V : Any> Navigable<T, V>.greaterEq(value: V): PredicateBuilder<T, T, *> = create(this.asMetamodel(), GREATER_THAN_OR_EQUAL, listOf(value))
 
 /**
  * Infix functions to create a predicate to check if a field is less than or equal to a value.
  */
-public infix fun <T : Data, V> Navigable<T, V>.lessEq(value: V): PredicateBuilder<T, T, *> = create(this.asMetamodel(), LESS_THAN_OR_EQUAL, listOf(value))
+public infix fun <T : Data, V : Any> Navigable<T, V>.lessEq(value: V): PredicateBuilder<T, T, *> = create(this.asMetamodel(), LESS_THAN_OR_EQUAL, listOf(value))
 
 /**
  * Infix functions to create a predicate to check if a field is between two values.
  */
-public fun <T : Data, V> Navigable<T, V>.between(left: V, right: V): PredicateBuilder<T, T, *> = create(this.asMetamodel(), BETWEEN, listOf(left, right))
+public fun <T : Data, V : Any> Navigable<T, V>.between(left: V, right: V): PredicateBuilder<T, T, *> = create(this.asMetamodel(), BETWEEN, listOf(left, right))
 
 /**
  * Infix functions to create a predicate to check if a field is true.
  */
-public fun <T : Data, V> Navigable<T, V>.isTrue(): PredicateBuilder<T, T, *> = create(this.asMetamodel(), IS_TRUE, emptyList())
+public fun <T : Data, V : Any> Navigable<T, V>.isTrue(): PredicateBuilder<T, T, *> = create(this.asMetamodel(), IS_TRUE, emptyList())
 
 /**
  * Infix functions to create a predicate to check if a field is false.
  */
-public fun <T : Data, V> Navigable<T, V>.isFalse(): PredicateBuilder<T, T, *> = create(this.asMetamodel(), IS_FALSE, emptyList())
+public fun <T : Data, V : Any> Navigable<T, V>.isFalse(): PredicateBuilder<T, T, *> = create(this.asMetamodel(), IS_FALSE, emptyList())
 
 /**
  * Infix functions to create a predicate to check if a field is null.
  */
-public fun <T : Data, V> Navigable<T, V>.isNull(): PredicateBuilder<T, T, *> = create(this.asMetamodel(), IS_NULL, emptyList())
+public fun <T : Data, V : Any> Navigable<T, V>.isNull(): PredicateBuilder<T, T, *> = create(this.asMetamodel(), IS_NULL, emptyList())
 
 /**
  * Infix functions to create a predicate to check if a field is not null.
  */
-public fun <T : Data, V> Navigable<T, V>.isNotNull(): PredicateBuilder<T, T, *> = create(this.asMetamodel(), IS_NOT_NULL, emptyList())
+public fun <T : Data, V : Any> Navigable<T, V>.isNotNull(): PredicateBuilder<T, T, *> = create(this.asMetamodel(), IS_NOT_NULL, emptyList())
 
 /**
  * Combines two predicates using an AND condition.
@@ -1523,7 +1523,7 @@ public infix fun <T : Data> PredicateBuilder<out T, *, *>.or(predicate: Predicat
  * @param ID the primary key type.
  */
 @SqlDsl
-public class SqlScope<T : Data, R, ID : Any> @PublishedApi internal constructor(
+public class SqlScope<T : Data, R : Any, ID : Any> @PublishedApi internal constructor(
     @PublishedApi internal var builder: QueryBuilder<Data, R, ID>,
 ) {
     /** Adds a WHERE clause using a predicate built with metamodel infix operators (e.g., `User_.name eq "Alice"`). */
@@ -1532,7 +1532,7 @@ public class SqlScope<T : Data, R, ID : Any> @PublishedApi internal constructor(
     }
 
     /** Adds a WHERE clause matching a metamodel path to value(s) using an [Operator]. */
-    public fun <V> where(path: Navigable<*, V>, operator: Operator, vararg value: V) {
+    public fun <V : Any> where(path: Navigable<*, V>, operator: Operator, vararg value: V) {
         builder = builder.where(path, operator, *value)
     }
 
@@ -1552,7 +1552,7 @@ public class SqlScope<T : Data, R, ID : Any> @PublishedApi internal constructor(
     }
 
     /** Adds a WHERE clause matching a metamodel path to value(s) using an [Operator]. */
-    public fun <V> where(path: Navigable<*, V>, operator: Operator, it: Iterable<V>) {
+    public fun <V : Any> where(path: Navigable<*, V>, operator: Operator, it: Iterable<V>) {
         builder = builder.where(path, operator, it)
     }
 
@@ -1751,7 +1751,7 @@ public class SqlScope<T : Data, R, ID : Any> @PublishedApi internal constructor(
     }
 
     /** Adds a HAVING clause matching a metamodel path to value(s) using an [Operator]. */
-    public fun <V> having(path: Navigable<*, V>, operator: Operator, vararg value: V) {
+    public fun <V : Any> having(path: Navigable<*, V>, operator: Operator, vararg value: V) {
         builder = builder.having(path, operator, *value)
     }
 

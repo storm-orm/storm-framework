@@ -23,7 +23,7 @@ import st.orm.template.*
 import java.util.stream.Stream
 import kotlin.reflect.KClass
 
-internal class QueryBuilderImpl<T : Data, R, ID>(
+internal class QueryBuilderImpl<T : Data, R : Any, ID : Any>(
     private val core: st.orm.core.template.QueryBuilder<T, R, ID>,
 ) : QueryBuilder<T, R, ID>(),
     Subqueryable {
@@ -323,7 +323,7 @@ internal class QueryBuilderImpl<T : Data, R, ID>(
         }
     }
 
-    internal class PredicateBuilderImpl<TX : Data, RX, IDX>(
+    internal class PredicateBuilderImpl<TX : Data, RX : Any, IDX : Any>(
         val core: st.orm.core.template.PredicateBuilder<TX, RX, IDX>,
     ) : PredicateBuilder<TX, RX, IDX> {
         override fun and(template: TemplateString): PredicateBuilder<TX, RX, IDX> = PredicateBuilderImpl<TX, RX, IDX>(core.and(template.unwrap))
@@ -331,7 +331,7 @@ internal class QueryBuilderImpl<T : Data, R, ID>(
         override fun or(template: TemplateString): PredicateBuilder<TX, RX, IDX> = PredicateBuilderImpl<TX, RX, IDX>(core.or(template.unwrap))
     }
 
-    internal class WhereBuilderImpl<TX : Data, RX, IDX>(
+    internal class WhereBuilderImpl<TX : Data, RX : Any, IDX : Any>(
         val core: st.orm.core.template.WhereBuilder<TX, RX, IDX>,
     ) : WhereBuilder<TX, RX, IDX> {
         override fun <T : Data> subquery(fromType: KClass<T>, template: TemplateString): QueryBuilder<T, *, *> = QueryBuilderImpl(core.subquery(fromType.java, template.unwrap))
@@ -372,7 +372,7 @@ internal class QueryBuilderImpl<T : Data, R, ID>(
             it: Iterable<Ref<V>>,
         ): PredicateBuilder<TX, RX, IDX> = PredicateBuilderImpl<TX, RX, IDX>(core.whereRef<V>(path, it))
 
-        override fun <V> where(
+        override fun <V : Any> where(
             path: Navigable<out TX, V>,
             operator: Operator,
             it: Iterable<V>,
@@ -380,9 +380,19 @@ internal class QueryBuilderImpl<T : Data, R, ID>(
 
         override fun where(template: TemplateString): PredicateBuilder<TX, RX, IDX> = PredicateBuilderImpl<TX, RX, IDX>(core.where((template as TemplateStringHolder).templateString))
 
-        override infix fun PredicateBuilder<out TX, *, *>.and(predicate: PredicateBuilder<out TX, *, *>): PredicateBuilder<TX, RX, IDX> = PredicateBuilderImpl((this as PredicateBuilderImpl<TX, RX, IDX>).core.and((predicate as PredicateBuilderImpl<TX, *, *>).core))
+        override infix fun PredicateBuilder<out TX, *, *>.and(predicate: PredicateBuilder<out TX, *, *>): PredicateBuilder<TX, RX, IDX> {
+            // The operands' cores carry only the predicate and the result is rooted at the builder's own parameters,
+            // so re-labelling the covariant receiver to the core's invariant parameters is safe.
+            @Suppress("UNCHECKED_CAST")
+            return PredicateBuilderImpl((this as PredicateBuilderImpl<TX, RX, IDX>).core.and((predicate as PredicateBuilderImpl<out TX, *, *>).core))
+        }
 
-        override infix fun PredicateBuilder<out TX, *, *>.or(predicate: PredicateBuilder<out TX, *, *>): PredicateBuilder<TX, RX, IDX> = PredicateBuilderImpl((this as PredicateBuilderImpl<TX, RX, IDX>).core.or((predicate as PredicateBuilderImpl<TX, *, *>).core))
+        override infix fun PredicateBuilder<out TX, *, *>.or(predicate: PredicateBuilder<out TX, *, *>): PredicateBuilder<TX, RX, IDX> {
+            // The operands' cores carry only the predicate and the result is rooted at the builder's own parameters,
+            // so re-labelling the covariant receiver to the core's invariant parameters is safe.
+            @Suppress("UNCHECKED_CAST")
+            return PredicateBuilderImpl((this as PredicateBuilderImpl<TX, RX, IDX>).core.or((predicate as PredicateBuilderImpl<out TX, *, *>).core))
+        }
     }
 
     /**
