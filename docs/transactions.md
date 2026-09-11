@@ -1022,6 +1022,20 @@ withTransactionOptionsBlocking(isolation = SERIALIZABLE) {
 }
 ```
 
+Options a transaction does not state itself come from the nearest scope: the coroutine context's, set with `withTransactionOptions`; otherwise the calling thread's, set with `withTransactionOptionsBlocking`; otherwise the global defaults. Explicit arguments win over all three. A coroutine bridged from a thread with `runBlocking`, the shape of a Spring MVC handler calling a suspending service, carries no scoped options of its own and so inherits what the thread declared. That is how a servlet filter declares a reading request read only once and every transaction the request opens, blocking or suspending, follows it:
+
+```kotlin
+withTransactionOptionsBlocking(readOnly = true) {   // a servlet filter, around the dispatch
+    runBlocking {                                    // the handler's bridge into the service
+        transaction {                                // read only
+            users.findAll()
+        }
+    }
+}
+```
+
+The thread's defaults are read where the coroutine still runs on that thread. A coroutine that switches dispatchers before opening its transaction reads the thread it lands on, so a bridge that switches opens `withTransactionOptions { }` first, without arguments, which pins the thread's defaults into the coroutine context.
+
 ### How Transactions Bind to Templates
 
 Since 1.13, a `transaction` or `transactionBlocking` block binds to the first `ORMTemplate` that executes inside it. Opening the block only records the requested options (propagation, isolation, timeout, read-only); the actual transaction is opened by that first template's transaction provider. This means the block automatically uses whatever transaction system the template is configured with, whether that is Storm's own JDBC transactions or a platform bridge such as Spring's transaction management. A block that never touches a template completes as a no-op; callbacks it registered and a rollback-only mark still settle against the transaction that surrounds it, whether that is an outer Storm block or a detected externally managed transaction (see [Mixed-Usage Caveats](#mixed-usage-caveats)).
