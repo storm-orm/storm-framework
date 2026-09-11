@@ -97,6 +97,11 @@ public fun <T> transactionBlocking(
  * requested options, and the template's transaction provider opens the actual transaction on first use. A block that
  * never touches a template completes as a no-op.
  *
+ * The options not given here come from the defaults in scope: the coroutine context's, set with
+ * [withTransactionOptions]; otherwise the calling thread's, set with [withTransactionOptionsBlocking], which is how a
+ * coroutine bridged from a thread with `runBlocking` inherits what that thread declared; otherwise the global defaults
+ * of [setGlobalTransactionOptions].
+ *
  * ## Propagation behavior matrix
  *
  * | Propagation       | Inner commit                                     | Inner rollback                                                   | Outer commit                                         | Outer rollback                                                      |
@@ -128,7 +133,9 @@ public suspend fun <T> transaction(
     block: suspend Transaction.() -> T,
 ): T {
     val currentContext = currentCoroutineContext()
-    val options = currentContext[Scoped]?.options ?: globalTransactionOptions.get()
+    // The coroutine context's defaults win; a coroutine bridged from a thread carries none and takes the thread's,
+    // as the blocking variant does, before the global ones.
+    val options = currentContext[Scoped]?.options ?: localTransactionOptions.get() ?: globalTransactionOptions.get()
     val resolvedPropagation = propagation ?: options.propagation
     val scopeOptions = TransactionOptions(
         resolvedPropagation,
@@ -298,7 +305,8 @@ private class Scoped(val options: TransactionDefaults) : AbstractCoroutineContex
 }
 
 /**
- * Thread-local transaction options that are applied to all transactions started in the current thread.
+ * Thread-local transaction options that are applied to all transactions started in the current thread: the blocking
+ * ones, and the suspending ones whose coroutine context carries no scoped options of its own.
  */
 private val localTransactionOptions: ThreadLocal<TransactionDefaults?> = ThreadLocal.withInitial { null }
 
@@ -335,7 +343,11 @@ public fun setGlobalTransactionOptions(
 /**
  * Set the default transaction options for the current coroutine context.
  *
- * This function is intended to be used in combination with [transaction].
+ * This function is intended to be used in combination with [transaction]. The options not given here are inherited
+ * from the defaults already in scope: the enclosing coroutine context's, otherwise the calling thread's, set with
+ * [withTransactionOptionsBlocking], otherwise the global ones. Opened without arguments at the start of a coroutine
+ * bridged from a thread, it pins the thread's defaults into the coroutine context, so they survive a later dispatcher
+ * switch.
  *
  * @param propagation The transaction propagation behavior.
  * @param isolation The transaction isolation level.
@@ -353,7 +365,7 @@ public suspend fun <T> withTransactionOptions(
     block: suspend () -> T,
 ): T {
     val currentContext = currentCoroutineContext()
-    val current = currentContext[Scoped]?.options ?: globalTransactionOptions.get()
+    val current = currentContext[Scoped]?.options ?: localTransactionOptions.get() ?: globalTransactionOptions.get()
     val scoped = TransactionDefaults().copy(
         propagation = propagation ?: current.propagation,
         isolation = isolation ?: current.isolation,
@@ -370,7 +382,10 @@ public suspend fun <T> withTransactionOptions(
 /**
  * Set the default transaction options for the current thread.
  *
- * This function is intended to be used in combination with [transactionBlocking].
+ * This function is intended to be used in combination with [transactionBlocking]. A suspending [transaction] or
+ * [withTransactionOptions] entered on this thread whose coroutine context carries no scoped options of its own, as one
+ * bridged with `runBlocking` does, inherits them as well: a servlet filter that declares a reading request read only
+ * here reaches every transaction the request opens, blocking or suspending.
  *
  * @param propagation The transaction propagation behavior.
  * @param isolation The transaction isolation level.

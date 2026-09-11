@@ -743,6 +743,58 @@ internal open class TransactionTest(
     }
 
     /**
+     * Thread-scoped defaults reach the coroutines bridged from the thread.
+     */
+
+    @Test
+    fun `withThreadDefaults reaches a suspend transaction bridged with runBlocking`() {
+        setGlobalTransactionOptions(timeoutSeconds = 5) // Relaxed global
+        withTransactionOptionsBlocking(timeoutSeconds = 1) {
+            // A runBlocking coroutine carries no scoped options of its own, so the thread's apply.
+            assertThrows<TransactionTimedOutException> {
+                runBlocking {
+                    transaction {
+                        orm.removeAll<Visit>()
+                        delay(1500)
+                    }
+                }
+            }
+        }
+        // Rolled back
+        orm.exists<Visit>().shouldBeTrue()
+    }
+
+    @Test
+    fun `withDefaults inside a bridged coroutine builds on the thread defaults`() {
+        withTransactionOptionsBlocking(timeoutSeconds = 1) {
+            assertThrows<TransactionTimedOutException> {
+                runBlocking {
+                    // Says nothing about the timeout, so the thread's 1s stands.
+                    withTransactionOptions(readOnly = true) {
+                        transaction {
+                            delay(1500)
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    @Test
+    fun `scoped defaults in the coroutine context win over the thread defaults`() {
+        withTransactionOptionsBlocking(timeoutSeconds = 1) {
+            runBlocking {
+                withTransactionOptions(timeoutSeconds = 5) {
+                    transaction {
+                        // Should not throw
+                        delay(1500)
+                    }
+                }
+            }
+        }
+    }
+
+    /**
      * Explicit args override defaults.
      */
 
