@@ -852,7 +852,7 @@ public object Templates {
      * @param it an [Iterable] of values or records for the condition.
      * @return an [Element] representing the WHERE clause.
      */
-    public fun <V> where(
+    public fun <V : Any> where(
         path: Metamodel<*, V>,
         operator: Operator,
         it: Iterable<V>,
@@ -884,7 +884,7 @@ public object Templates {
      * @param o the values or records for the condition.
      * @return an [Element] representing the WHERE clause.
      */
-    public fun <V> where(path: Metamodel<*, V>, operator: Operator, vararg o: V): Element = Elements.Where(ObjectExpression(path, operator, o), null)
+    public fun <V : Any> where(path: Metamodel<*, V>, operator: Operator, vararg o: V): Element = Elements.Where(ObjectExpression(path, operator, o), null)
 
     /**
      * Generates a WHERE clause using the specified [BindVars] for batch operations.

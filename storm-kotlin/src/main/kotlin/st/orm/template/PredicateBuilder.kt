@@ -47,7 +47,7 @@ import st.orm.Data
  * @see WhereBuilder
  * @see QueryBuilder
  */
-public interface PredicateBuilder<T : Data, R, ID> {
+public interface PredicateBuilder<T : Data, R : Any, ID : Any> {
     /**
      * Adds a predicate to the WHERE clause using an AND condition.
      *

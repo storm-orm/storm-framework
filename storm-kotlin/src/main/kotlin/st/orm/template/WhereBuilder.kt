@@ -49,7 +49,7 @@ import st.orm.template.TemplateString.Companion.raw
  * @see PredicateBuilder
  */
 @SqlDsl
-public interface WhereBuilder<T : Data, R, ID> : SubqueryTemplate {
+public interface WhereBuilder<T : Data, R : Any, ID : Any> : SubqueryTemplate {
 
     /**
      * A predicate that always evaluates to true.
@@ -255,7 +255,7 @@ public interface WhereBuilder<T : Data, R, ID> : SubqueryTemplate {
      * @return the query builder.
      * @since 1.2
      */
-    public fun <V> where(
+    public fun <V : Any> where(
         path: Navigable<out T, V>,
         operator: Operator,
         it: Iterable<V>,
@@ -273,7 +273,7 @@ public interface WhereBuilder<T : Data, R, ID> : SubqueryTemplate {
      * @return the query builder.
      * @since 1.2
      */
-    public fun <V> where(
+    public fun <V : Any> where(
         path: Navigable<out T, V>,
         operator: Operator,
         vararg o: V,

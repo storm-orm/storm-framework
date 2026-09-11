@@ -36,4 +36,4 @@ import st.orm.Metamodel
  *
  * @see Metamodel.key
  */
-public fun <T : Data, E> Metamodel<T, E>.key(): Metamodel.Key<T, E> = Metamodel.key(this)
+public fun <T : Data, E : Any> Metamodel<T, E>.key(): Metamodel.Key<T, E> = Metamodel.key(this)
