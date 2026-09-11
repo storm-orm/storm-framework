@@ -13,23 +13,22 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package st.orm.core.spi;
+package st.orm.spring;
 
 import java.util.Optional;
 import st.orm.StormConfig;
+import st.orm.core.spi.DefaultSqlDialect;
+import st.orm.core.spi.Orderable;
+import st.orm.core.spi.SqlDialectProvider;
 import st.orm.core.template.SqlDialect;
 
 /**
- * Test dialect provider that returns a non-zero default fetch size.
- * Ensures the fetch size code paths in PreparedStatementTemplateImpl and QueryImpl are exercised during tests.
+ * The test dialect of this module: the default dialect with a read-only transaction statement H2 accepts, a user
+ * variable assignment, so a test can observe that the statement was sent and where.
  */
 @Orderable.BeforeAny
-public class FetchSizeSqlDialectProviderImpl implements SqlDialectProvider {
+public class ReadOnlyStatementSqlDialectProviderImpl implements SqlDialectProvider {
 
-    /**
-     * The statement the test dialect sends to open a read-only transaction on the server: a user variable H2
-     * accepts, so a test can observe that the statement was sent and where.
-     */
     public static final String READ_ONLY_TRANSACTION_STATEMENT = "SET @STORM_READ_ONLY = 1";
 
     @Override
@@ -37,12 +36,7 @@ public class FetchSizeSqlDialectProviderImpl implements SqlDialectProvider {
         return new DefaultSqlDialect(config) {
             @Override
             public String name() {
-                return "FetchSizeTest";
-            }
-
-            @Override
-            public int defaultFetchSize() {
-                return 100;
+                return "ReadOnlyStatementTest";
             }
 
             @Override

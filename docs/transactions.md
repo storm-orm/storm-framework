@@ -598,7 +598,7 @@ transaction(timeoutSeconds = 30) {
 
 ### Read-Only Transactions
 
-Marking a transaction as read-only allows the database to apply optimizations such as skipping write-ahead logging or acquiring lighter locks, and Storm holds the promise on its side: an `INSERT`, `UPDATE` or `DELETE` issued inside a read-only transaction, through a repository or as a template, is refused with `ReadOnlyTransactionException` before it reaches the database, on every database alike. A write in a form Storm does not recognise as one, such as a stored procedure call or a `MERGE`, reaches the database, which may or may not reject it depending on the driver and database engine.
+JDBC defines the read-only flag as a hint, and drivers treat it as one: some carry it to the server, some keep it to themselves. Storm makes read-only mean the same thing on every database, in two layers. An `INSERT`, `UPDATE` or `DELETE` issued inside a read-only transaction, through a repository or as a template, is refused with `ReadOnlyTransactionException` before it reaches the database. A write in a form Storm does not recognise, such as a stored procedure call or a `MERGE`, reaches the database, and where the driver does not carry the flag, the dialect opens the transaction read-only on the server itself: on Oracle and MariaDB, Storm sends `SET TRANSACTION READ ONLY` as the transaction's first statement. PostgreSQL, MySQL and MariaDB refuse such a write with SQL state 25006 or the driver's own state, Oracle with ORA-01456; H2, SQL Server and SQLite have no server-side mode and execute it. Marking a transaction read-only also lets the database take lighter locks, and on Oracle it reads the whole transaction from one snapshot.
 
 ```kotlin
 transaction(readOnly = true) {
@@ -607,7 +607,7 @@ transaction(readOnly = true) {
 }
 ```
 
-The mode belongs to the transaction that owns the connection. A `REQUIRED` block inside a read-only transaction joins it and is read-only too, whatever it declares; a write from inside one needs a transaction of its own, opened with `REQUIRES_NEW`, or a read-write enclosing transaction. The same holds under Spring-managed transactions, `@Transactional(readOnly = true)` included.
+The mode belongs to the transaction that owns the connection. A `REQUIRED` block inside a read-only transaction joins it and is read-only too, whatever it declares; a write from inside one needs a transaction of its own, opened with `REQUIRES_NEW`, or a read-write enclosing transaction. The same holds under Spring-managed transactions, `@Transactional(readOnly = true)` included; inside a Spring transaction Storm did not open, the transaction manager's `enforceReadOnly` setting stands in for the dialect's statement.
 
 ### Manual Rollback
 
