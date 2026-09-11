@@ -106,6 +106,9 @@ public final class SpringTransactionContext implements TransactionContext {
         @Nullable PlatformTransactionManager transactionManager;
         @Nullable DataSource dataSource;
         @Nullable TransactionDefinition transactionDefinition;
+        // Set when Spring starts a new transaction for this frame, cleared when the template takes it to run the
+        // dialect's transaction-opening statements.
+        boolean freshTransaction;
         boolean rollbackOnly;
         @Nullable Integer timeoutSeconds;
         @Nullable Long deadlineNanos;
@@ -298,6 +301,20 @@ public final class SpringTransactionContext implements TransactionContext {
         // enclosing transaction here.
         return definition.getPropagationBehavior() != PROPAGATION_REQUIRES_NEW
                 && TransactionSynchronizationManager.isCurrentTransactionReadOnly();
+    }
+
+    @Override
+    public boolean takeFreshTransaction() {
+        var state = lastOrNull();
+        if (state == null) {
+            return false;
+        }
+        var owner = stack.get(state.ownerIndex);
+        if (!owner.freshTransaction) {
+            return false;
+        }
+        owner.freshTransaction = false;
+        return true;
     }
 
     @SuppressWarnings("unchecked")
@@ -621,6 +638,8 @@ public final class SpringTransactionContext implements TransactionContext {
         // else: root, deadline already set in begin(); keep it.
         var transactionStatus = getTransaction(state.transactionManager, definition);
         state.transactionStatus = transactionStatus;
+        // A transaction Spring started here has run no statement yet; one it joined may have.
+        state.freshTransaction = transactionStatus.isNewTransaction();
         if (state.rollbackOnly) {
             transactionStatus.setRollbackOnly();
         }

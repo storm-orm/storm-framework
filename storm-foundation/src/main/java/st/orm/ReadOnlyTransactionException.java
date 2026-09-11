@@ -25,7 +25,7 @@ package st.orm;
  * {@code REQUIRES_NEW}, or a read-write enclosing transaction. A write in a form Storm does not recognise as one,
  * such as a stored procedure call, reaches the database, which may refuse it under its own rules.</p>
  *
- * @since 1.14.1
+ * @since 1.14
  */
 public class ReadOnlyTransactionException extends PersistenceException {
 

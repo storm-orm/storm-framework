@@ -104,6 +104,9 @@ public final class JdbcTransactionContext implements TransactionContext {
         @Nullable DataSource dataSource;
         volatile @Nullable Connection connection;
         boolean ownsConnection;
+        // Set when this frame opens a physical transaction, cleared when the template takes it to run the
+        // dialect's transaction-opening statements.
+        boolean freshTransaction;
         @Nullable Integer originalIsolationLevel;
         @Nullable Boolean originalReadOnly;
         @Nullable Boolean originalAutoCommit;
@@ -263,6 +266,20 @@ public final class JdbcTransactionContext implements TransactionContext {
         }
         var owner = stack.get(state.ownerIndex);
         return owner.transactional && Boolean.TRUE.equals(owner.readOnly);
+    }
+
+    @Override
+    public boolean takeFreshTransaction() {
+        var state = lastOrNull();
+        if (state == null) {
+            return false;
+        }
+        var owner = stack.get(state.ownerIndex);
+        if (!owner.freshTransaction) {
+            return false;
+        }
+        owner.freshTransaction = false;
+        return true;
     }
 
     @SuppressWarnings("unchecked")
@@ -697,6 +714,7 @@ public final class JdbcTransactionContext implements TransactionContext {
             }
             state.dataSource = dataSource;
             state.ownsConnection = true;
+            state.freshTransaction = true;
             if (state.deadlineNanos == null && state.timeoutSeconds != null) {
                 state.deadlineNanos = deadlineFromNow(state.timeoutSeconds);
             }
