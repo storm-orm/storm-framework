@@ -15,6 +15,7 @@
  */
 package st.orm.spi.mysql;
 
+import java.util.Optional;
 import javax.sql.DataSource;
 import org.testcontainers.containers.MySQLContainer;
 import st.orm.tck.AbstractTransactionConformanceTest;
@@ -46,5 +47,14 @@ public class MySQLTransactionConformanceTest extends AbstractTransactionConforma
     @Override
     protected String readOnlyViolationSqlState() {
         return "S1009";
+    }
+
+    /**
+     * {@code REPLACE} carries no operation Storm recognises, so it reaches the driver as the write the driver
+     * refuses.
+     */
+    @Override
+    protected Optional<String> unrecognisedWriteStatement() {
+        return Optional.of("REPLACE INTO vet (first_name, last_name) VALUES ('Read', '" + INSERTED_LAST_NAME + "')");
     }
 }

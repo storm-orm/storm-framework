@@ -58,6 +58,18 @@ public interface TransactionContext {
     }
 
     /**
+     * Whether the statements of the current frame run in a read-only transaction. The mode is that of the frame
+     * owning the physical transaction, since a joined frame runs on its connection; a frame that runs outside a
+     * transaction is never read-only.
+     *
+     * @return {@code true} when a write issued now would break the transaction's read-only promise.
+     * @since 1.14.1
+     */
+    default boolean isReadOnly() {
+        return false;
+    }
+
+    /**
      * Returns a transaction-local cache for entities of the given type, creating one with the specified retention
      * behavior if it does not yet exist.
      *

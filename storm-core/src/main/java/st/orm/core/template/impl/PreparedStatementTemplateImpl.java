@@ -50,6 +50,7 @@ import javax.sql.DataSource;
 import org.jspecify.annotations.Nullable;
 import st.orm.BindVars;
 import st.orm.PersistenceException;
+import st.orm.ReadOnlyTransactionException;
 import st.orm.SqlTemplateException;
 import st.orm.StormConfig;
 import st.orm.core.spi.ConnectionProvider;
@@ -310,6 +311,25 @@ public final class PreparedStatementTemplateImpl implements PreparedStatementTem
         this.sqlTemplate = createSqlTemplate();
     }
 
+    /**
+     * Refuses a statement Storm recognises as a write, an {@code INSERT}, {@code UPDATE} or {@code DELETE}, when
+     * the transaction owning the connection is read-only. The refusal happens before a connection is acquired, so
+     * it is the same on every driver; a statement of undefined operation, such as a stored procedure call or a
+     * {@code MERGE}, is left to the database. The context is the transaction the statement runs in, Storm's own
+     * or one it joined, so a template outside any transaction is never refused.
+     */
+    private static void refuseWriteInReadOnlyTransaction(Sql sql, @Nullable TransactionContext transactionContext) {
+        if (transactionContext == null || !transactionContext.isReadOnly()) {
+            return;
+        }
+        switch (sql.operation()) {
+            case INSERT, UPDATE, DELETE -> throw new ReadOnlyTransactionException(
+                    "Cannot execute %s in a read-only transaction; a write needs a transaction of its own, opened with REQUIRES_NEW, or a read-write enclosing transaction."
+                            .formatted(sql.operation()));
+            default -> {}
+        }
+    }
+
     private static TemplateProcessor createDataSourceProcessor(DataSource dataSource,
                                                                 IntegrationStrategies strategies,
                                                                 SqlDialect dialect) {
@@ -328,6 +348,7 @@ public final class PreparedStatementTemplateImpl implements PreparedStatementTem
             var generatedKeys = sql.generatedKeys();
             var transactionContext = TransactionScope.resolveContext(transactionTemplateProvider,
                     strategies.queryObserver());
+            refuseWriteInReadOnlyTransaction(sql, transactionContext);
             Connection connection = connectionProvider.getConnection(dataSource, transactionContext);
             PreparedStatement preparedStatement = null;
             boolean success = false;
@@ -400,6 +421,7 @@ public final class PreparedStatementTemplateImpl implements PreparedStatementTem
                 // Connection backed templates never materialize a transaction scope; the caller manages the
                 // connection. The context is only observed for statement decoration, such as timeouts.
                 var transactionContext = TransactionScope.peekContext(transactionTemplateProvider);
+                refuseWriteInReadOnlyTransaction(sql, transactionContext);
                 if (transactionContext != null) {
                     preparedStatement = transactionContext.getDecorator(PreparedStatement.class)
                             .decorate(preparedStatement);

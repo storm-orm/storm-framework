@@ -15,6 +15,7 @@
  */
 package st.orm.spi.postgresql;
 
+import java.util.Optional;
 import javax.sql.DataSource;
 import org.testcontainers.containers.PostgreSQLContainer;
 import st.orm.tck.AbstractTransactionConformanceTest;
@@ -36,5 +37,16 @@ public class PostgreSQLTransactionConformanceTest extends AbstractTransactionCon
             container.start();
         }
         return ContainerDataSource.of(container.getJdbcUrl(), container.getUsername(), container.getPassword());
+    }
+
+    /**
+     * {@code MERGE} carries no operation Storm recognises, so it reaches the server as the write the server
+     * refuses.
+     */
+    @Override
+    protected Optional<String> unrecognisedWriteStatement() {
+        return Optional.of("""
+                MERGE INTO vet USING (SELECT 1 AS one) AS source ON FALSE
+                WHEN NOT MATCHED THEN INSERT (first_name, last_name) VALUES ('Read', '""" + INSERTED_LAST_NAME + "')");
     }
 }

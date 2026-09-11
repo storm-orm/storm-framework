@@ -274,6 +274,32 @@ public final class SpringTransactionContext implements TransactionContext {
         return isolationLevel >= TRANSACTION_REPEATABLE_READ;
     }
 
+    @Override
+    public boolean isReadOnly() {
+        var state = lastOrNull();
+        if (state == null) {
+            // No frame of Storm's own: the statement runs inside whatever Spring transaction surrounds it.
+            return TransactionSynchronizationManager.isCurrentTransactionReadOnly();
+        }
+        var owner = stack.get(state.ownerIndex);
+        if (!owner.transactional) {
+            return false;
+        }
+        var definition = owner.transactionDefinition;
+        if (definition == null) {
+            return TransactionSynchronizationManager.isCurrentTransactionReadOnly();
+        }
+        if (definition.isReadOnly()) {
+            return true;
+        }
+        // A frame that starts a transaction of its own has its own mode. Any other owning frame may have joined a
+        // Spring transaction that was already open, such as a @Transactional method's, whose mode then applies.
+        // The frame's own Spring status starts on its first statement, so the manager's flag still describes that
+        // enclosing transaction here.
+        return definition.getPropagationBehavior() != PROPAGATION_REQUIRES_NEW
+                && TransactionSynchronizationManager.isCurrentTransactionReadOnly();
+    }
+
     @SuppressWarnings("unchecked")
     @Override
     public EntityCache<? extends Entity<?>, ?> entityCache(Class<? extends Entity<?>> entityType,

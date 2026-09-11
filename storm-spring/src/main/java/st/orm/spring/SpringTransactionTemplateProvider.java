@@ -254,6 +254,13 @@ public class SpringTransactionTemplateProvider implements TransactionTemplatePro
         }
 
         @Override
+        public boolean isReadOnly() {
+            // The statement runs in the Spring transaction that was already open, whose mode Spring records when it
+            // begins or joins it.
+            return TransactionSynchronizationManager.isCurrentTransactionReadOnly();
+        }
+
+        @Override
         public EntityCache<? extends Entity<?>, ?> entityCache(Class<? extends Entity<?>> entityType,
                                                                CacheRetention retention) {
             // The context is bound once per physical Spring transaction, which gives correct cache scoping for
