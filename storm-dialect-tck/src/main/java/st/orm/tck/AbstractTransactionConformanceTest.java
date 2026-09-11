@@ -31,12 +31,14 @@ import java.lang.reflect.Proxy;
 import java.sql.Connection;
 import java.sql.SQLException;
 import java.sql.SQLFeatureNotSupportedException;
+import java.util.Optional;
 import java.util.logging.Logger;
 import javax.sql.DataSource;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import st.orm.PersistenceException;
+import st.orm.ReadOnlyTransactionException;
 import st.orm.TransactionOptions;
 import st.orm.core.spi.JdbcConnectionProviderImpl;
 import st.orm.core.spi.JdbcTransactionTemplateProviderImpl;
@@ -46,20 +48,22 @@ import st.orm.core.template.TemplateString;
 import st.orm.tck.model.Vet;
 
 /**
- * Read-only transaction conformance: a read-only transaction reaches the server as one, so the server refuses a
- * write in it, and the transaction leaves its connection as it found it, so the next borrower of that connection
+ * Read-only transaction conformance: a write Storm recognises is refused inside a read-only transaction before it
+ * reaches the database, a write Storm cannot recognise is refused by the database where the driver carries the mode
+ * to the server, and the transaction leaves its connection as it found it, so the next borrower of that connection
  * writes again.
  *
- * <p>The read-only flag travels through the driver, which is where it may be lost: a driver may leave the server
- * unaware of the flag, and the server then executes the write the application meant to rule out. The suite states
- * the behaviour Storm's transaction handling produces on the driver the dialect module tests with, and a dialect
- * whose driver does not carry the flag says so by overriding {@link #enforcesReadOnly()}, which keeps the exception
- * in one place instead of leaving a test absent.</p>
+ * <p>The two refusals are asserted apart. An {@code INSERT}, {@code UPDATE} or {@code DELETE} carries its operation,
+ * and Storm refuses it with {@link ReadOnlyTransactionException} on every dialect alike, whatever the driver does
+ * with the flag. A write in a form Storm does not recognise, which the dialect supplies through
+ * {@link #unrecognisedWriteStatement()}, travels through the driver to the server, which is where the mode may be
+ * lost; a dialect whose driver keeps the flag to itself says so by overriding {@link #enforcesReadOnly()}, which
+ * keeps the exception in one place instead of leaving a test absent.</p>
  *
- * <p>The propagation cases assert the part of the contract that is independent of enforcement: a
+ * <p>The propagation cases assert the part of the contract that is independent of the driver: a
  * {@code REQUIRES_NEW} or {@code NOT_SUPPORTED} frame opens a connection of its own and does not inherit the
  * enclosing frame's mode, while a joined {@code REQUIRED} frame runs on the enclosing frame's connection and cannot
- * lift its mode. On a dialect that enforces the flag the server observes each of these.</p>
+ * lift its mode.</p>
  *
  * <p>The suite commits, so a dialect module runs it with {@code rollback = false} and the suite removes the rows it
  * inserts. The shared seed data holds six vets; the rows the suite inserts carry the last name
@@ -69,7 +73,10 @@ import st.orm.tck.model.Vet;
  */
 public abstract class AbstractTransactionConformanceTest {
 
-    private static final String INSERTED_LAST_NAME = "ReadOnlyConformance";
+    /**
+     * The last name of every vet the suite inserts, on which it removes them again.
+     */
+    protected static final String INSERTED_LAST_NAME = "ReadOnlyConformance";
 
     private static final TransactionOptions READ_ONLY = new TransactionOptions(REQUIRED, null, null, true);
     private static final TransactionOptions READ_WRITE = new TransactionOptions(REQUIRED, null, null, false);
@@ -115,7 +122,7 @@ public abstract class AbstractTransactionConformanceTest {
 
     /**
      * Whether the server refuses a write in a transaction the driver marked read-only. A driver that keeps the flag
-     * to itself leaves the server executing the write, and the enforcement cases do not apply.
+     * to itself leaves the server executing the write, and the server-side cases do not apply.
      */
     protected boolean enforcesReadOnly() {
         return true;
@@ -127,6 +134,16 @@ public abstract class AbstractTransactionConformanceTest {
      */
     protected String readOnlyViolationSqlState() {
         return "25006";
+    }
+
+    /**
+     * A statement that inserts a vet with the last name {@value #INSERTED_LAST_NAME} in a form Storm does not
+     * recognise as a write, such as {@code MERGE} or {@code REPLACE}, so the statement reaches the database and the
+     * database's own refusal can be observed. Empty when the dialect has no such statement, which skips the
+     * server-side cases.
+     */
+    protected Optional<String> unrecognisedWriteStatement() {
+        return Optional.empty();
     }
 
     @Test
@@ -141,12 +158,9 @@ public abstract class AbstractTransactionConformanceTest {
     @Test
     public void readOnlyTransactionRefusesAWrite() {
         assumeTrue(supportsReadOnlyTransactions());
-        assumeTrue(enforcesReadOnly());
         var orm = template(dataSource);
         long seeded = orm.entity(Vet.class).count();
-        var thrown = assertThrows(PersistenceException.class,
-                () -> transaction(READ_ONLY, () -> insertVet(orm)));
-        assertEquals(readOnlyViolationSqlState(), sqlState(thrown));
+        assertThrows(ReadOnlyTransactionException.class, () -> transaction(READ_ONLY, () -> insertVet(orm)));
         assertEquals(seeded, orm.entity(Vet.class).count());
     }
 
@@ -166,14 +180,12 @@ public abstract class AbstractTransactionConformanceTest {
     @Test
     public void outerStaysReadOnlyAfterRequiresNewCompletes() {
         assumeTrue(supportsReadOnlyTransactions());
-        assumeTrue(enforcesReadOnly());
         var orm = template(dataSource);
         long seeded = orm.entity(Vet.class).count();
-        var thrown = assertThrows(PersistenceException.class, () -> transaction(READ_ONLY, () -> {
+        assertThrows(ReadOnlyTransactionException.class, () -> transaction(READ_ONLY, () -> {
             transaction(READ_WRITE_NEW, () -> insertVet(orm));
             return insertVet(orm);
         }));
-        assertEquals(readOnlyViolationSqlState(), sqlState(thrown));
         // The inner frame committed on its own connection before the outer frame's write was refused.
         assertEquals(seeded + 1, orm.entity(Vet.class).count());
     }
@@ -181,13 +193,11 @@ public abstract class AbstractTransactionConformanceTest {
     @Test
     public void readOnlyRequiresNewInsideWritableOuterIsRefusedAndTheOuterStillWrites() {
         assumeTrue(supportsReadOnlyTransactions());
-        assumeTrue(enforcesReadOnly());
         var orm = template(dataSource);
         long seeded = orm.entity(Vet.class).count();
         transaction(READ_WRITE, () -> {
-            var thrown = assertThrows(PersistenceException.class,
+            assertThrows(ReadOnlyTransactionException.class,
                     () -> transaction(READ_ONLY_NEW, () -> insertVet(orm)));
-            assertEquals(readOnlyViolationSqlState(), sqlState(thrown));
             return insertVet(orm);
         });
         assertEquals(seeded + 1, orm.entity(Vet.class).count());
@@ -196,14 +206,12 @@ public abstract class AbstractTransactionConformanceTest {
     @Test
     public void joinedFrameCannotLiftTheOwnersReadOnly() {
         assumeTrue(supportsReadOnlyTransactions());
-        assumeTrue(enforcesReadOnly());
         var orm = template(dataSource);
         long seeded = orm.entity(Vet.class).count();
         // A REQUIRED frame joins the enclosing transaction and runs on its connection; asking for read-write there
         // changes nothing, since the mode belongs to the frame that owns the connection.
-        var thrown = assertThrows(PersistenceException.class,
+        assertThrows(ReadOnlyTransactionException.class,
                 () -> transaction(READ_ONLY, () -> transaction(READ_WRITE, () -> insertVet(orm))));
-        assertEquals(readOnlyViolationSqlState(), sqlState(thrown));
         assertEquals(seeded, orm.entity(Vet.class).count());
     }
 
@@ -213,6 +221,37 @@ public abstract class AbstractTransactionConformanceTest {
         var orm = template(dataSource);
         long seeded = orm.entity(Vet.class).count();
         transaction(READ_ONLY, () -> transaction(READ_WRITE_NOT_SUPPORTED, () -> insertVet(orm)));
+        assertEquals(seeded + 1, orm.entity(Vet.class).count());
+    }
+
+    @Test
+    public void serverRefusesAWriteStormDoesNotRecognise() {
+        assumeTrue(supportsReadOnlyTransactions());
+        assumeTrue(enforcesReadOnly());
+        var statement = unrecognisedWriteStatement();
+        assumeTrue(statement.isPresent());
+        var orm = template(dataSource);
+        long seeded = orm.entity(Vet.class).count();
+        var thrown = assertThrows(PersistenceException.class,
+                () -> transaction(READ_ONLY, () -> executeUpdate(orm, statement.get())));
+        assertEquals(readOnlyViolationSqlState(), sqlState(thrown));
+        assertEquals(seeded, orm.entity(Vet.class).count());
+    }
+
+    @Test
+    public void serverKeepsTheOuterReadOnlyAfterRequiresNewCompletes() {
+        assumeTrue(supportsReadOnlyTransactions());
+        assumeTrue(enforcesReadOnly());
+        var statement = unrecognisedWriteStatement();
+        assumeTrue(statement.isPresent());
+        var orm = template(dataSource);
+        long seeded = orm.entity(Vet.class).count();
+        var thrown = assertThrows(PersistenceException.class, () -> transaction(READ_ONLY, () -> {
+            transaction(READ_WRITE_NEW, () -> insertVet(orm));
+            return executeUpdate(orm, statement.get());
+        }));
+        assertEquals(readOnlyViolationSqlState(), sqlState(thrown));
+        // The inner frame committed on its own connection before the outer frame's write was refused.
         assertEquals(seeded + 1, orm.entity(Vet.class).count());
     }
 
@@ -240,6 +279,11 @@ public abstract class AbstractTransactionConformanceTest {
 
     private static Object insertVet(ORMTemplate orm) {
         orm.entity(Vet.class).insert(Vet.builder().firstName("Read").lastName(INSERTED_LAST_NAME).build());
+        return null;
+    }
+
+    private static Object executeUpdate(ORMTemplate orm, String statement) {
+        orm.query(TemplateString.of(statement)).executeUpdate();
         return null;
     }
 

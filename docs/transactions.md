@@ -598,14 +598,16 @@ transaction(timeoutSeconds = 30) {
 
 ### Read-Only Transactions
 
-Marking a transaction as read-only allows the database to apply optimizations such as skipping write-ahead logging or acquiring lighter locks. This is a hint, not an enforcement mechanism; the database may or may not reject writes depending on the driver and database engine.
+Marking a transaction as read-only allows the database to apply optimizations such as skipping write-ahead logging or acquiring lighter locks, and Storm holds the promise on its side: an `INSERT`, `UPDATE` or `DELETE` issued inside a read-only transaction, through a repository or as a template, is refused with `ReadOnlyTransactionException` before it reaches the database, on every database alike. A write in a form Storm does not recognise as one, such as a stored procedure call or a `MERGE`, reaches the database, which may or may not reject it depending on the driver and database engine.
 
 ```kotlin
 transaction(readOnly = true) {
-    // Hints to the database that no modifications will occur
     val users = orm.findAll<User>()
+    orm remove users.first()  // ReadOnlyTransactionException
 }
 ```
+
+The mode belongs to the transaction that owns the connection. A `REQUIRED` block inside a read-only transaction joins it and is read-only too, whatever it declares; a write from inside one needs a transaction of its own, opened with `REQUIRES_NEW`, or a read-write enclosing transaction. The same holds under Spring-managed transactions, `@Transactional(readOnly = true)` included.
 
 ### Manual Rollback
 

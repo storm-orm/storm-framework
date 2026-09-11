@@ -15,6 +15,7 @@
  */
 package st.orm.spi.mariadb;
 
+import java.util.Optional;
 import javax.sql.DataSource;
 import org.testcontainers.containers.MariaDBContainer;
 import st.orm.tck.AbstractTransactionConformanceTest;
@@ -36,5 +37,14 @@ public class MariaDBTransactionConformanceTest extends AbstractTransactionConfor
             container.start();
         }
         return ContainerDataSource.of(container.getJdbcUrl(), container.getUsername(), container.getPassword());
+    }
+
+    /**
+     * {@code REPLACE} carries no operation Storm recognises, so it reaches the server as the write the server
+     * refuses.
+     */
+    @Override
+    protected Optional<String> unrecognisedWriteStatement() {
+        return Optional.of("REPLACE INTO vet (first_name, last_name) VALUES ('Read', '" + INSERTED_LAST_NAME + "')");
     }
 }
