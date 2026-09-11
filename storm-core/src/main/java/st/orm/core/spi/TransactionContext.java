@@ -70,6 +70,20 @@ public interface TransactionContext {
     }
 
     /**
+     * Returns whether the connection this context last handed out carries a physical transaction the context
+     * opened on that request, with no statement run on it yet, and clears that state. The template runs the
+     * dialect's transaction-opening statements, such as {@link st.orm.core.template.SqlDialect#readOnlyTransactionStatement()},
+     * on the connection right after, so they are the transaction's first statements.
+     *
+     * @return {@code true} once, right after this context opened a physical transaction; {@code false} on a joined
+     * frame, on a transaction opened elsewhere, and on every later request.
+     * @since 1.14.1
+     */
+    default boolean takeFreshTransaction() {
+        return false;
+    }
+
+    /**
      * Returns a transaction-local cache for entities of the given type, creating one with the specified retention
      * behavior if it does not yet exist.
      *

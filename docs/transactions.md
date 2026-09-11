@@ -609,6 +609,8 @@ transaction(readOnly = true) {
 
 The mode belongs to the transaction that owns the connection. A `REQUIRED` block inside a read-only transaction joins it and is read-only too, whatever it declares; a write from inside one needs a transaction of its own, opened with `REQUIRES_NEW`, or a read-write enclosing transaction. The same holds under Spring-managed transactions, `@Transactional(readOnly = true)` included.
 
+Where the driver does not carry the connection's read-only flag to the server, the dialect opens the transaction read-only there itself: on Oracle and MariaDB, Storm sends `SET TRANSACTION READ ONLY` as the first statement of every read-only transaction it opens, so the database refuses every write, in whatever form. Inside a Spring transaction Storm did not open, the transaction manager's `enforceReadOnly` setting does the same.
+
 ### Manual Rollback
 
 Sometimes you need to abort a transaction based on a runtime condition rather than an exception. Calling `setRollbackOnly()` marks the transaction for rollback without throwing. The block continues executing, but the transaction rolls back when it completes instead of committing.

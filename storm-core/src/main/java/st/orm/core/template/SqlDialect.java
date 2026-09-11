@@ -32,6 +32,7 @@ import java.util.ArrayList;
 import java.util.Calendar;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.SequencedMap;
 import java.util.UUID;
 import java.util.function.Function;
@@ -368,6 +369,25 @@ public interface SqlDialect {
      * @return the ORDER BY clause for an unordered offset, or {@code null} if none is needed.
      * @since 1.14
      */
+    /**
+     * The statement that makes the database itself refuse writes in the transaction that has just begun. Storm
+     * sends it as the first statement of every read-only transaction it opens, right after the connection's
+     * read-only flag is set and autocommit is switched off, so the database enforces the mode whatever the driver
+     * does with the flag.
+     *
+     * <p>Empty by default: a database without such a statement has nothing to send, and a dialect whose driver
+     * already carries the flag to the server, as the PostgreSQL and MySQL drivers do, keeps it empty as well,
+     * since a second statement would only cost a round trip. A dialect whose driver keeps the flag to itself, or
+     * carries it only from some release on, returns the statement.</p>
+     *
+     * @return the statement that opens the transaction read-only on the server, or empty when there is none to
+     * send.
+     * @since 1.14.1
+     */
+    default Optional<String> readOnlyTransactionStatement() {
+        return Optional.empty();
+    }
+
     default @Nullable String orderByForOffset() {
         return null;
     }

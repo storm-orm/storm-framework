@@ -99,20 +99,14 @@
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-surefire-plugin</artifactId>
                 <configuration>
+                    <!-- Run tests on the classpath: the test suite registers a SqlDialectProvider via
+                         META-INF/services (see st.orm.spring.ReadOnlyStatementSqlDialectProviderImpl), which
+                         ServiceLoader only picks up for the unnamed module. -->
+                    <useModulePath>false</useModulePath>
                     <argLine>
                         @{argLine}
                         --enable-preview
                         --add-opens java.base/java.lang=ALL-UNNAMED
-                        --add-opens storm.spring/st.orm.spring=ALL-UNNAMED
-                        --add-opens storm.spring/st.orm.spring.impl=ALL-UNNAMED
-                        --add-opens storm.spring/st.orm.spring.model=ALL-UNNAMED
-                        --add-opens storm.spring/st.orm.spring.boot=ALL-UNNAMED
-                        --add-opens storm.spring/st.orm.spring=spring.core
-                        --add-opens storm.spring/st.orm.spring.boot=spring.core
-                        --add-reads storm.spring=ch.qos.logback.classic
-                        --add-reads storm.spring=ch.qos.logback.core
-                        --add-opens storm.spring/st.orm.spring.model=storm.java
-                        --add-opens storm.spring/st.orm.spring.model=storm.core
                         -Dstorm.ansi_escaping=true
                     </argLine>
                 </configuration>

@@ -15,6 +15,7 @@
  */
 package st.orm.spi.oracle;
 
+import java.util.Optional;
 import javax.sql.DataSource;
 import org.testcontainers.oracle.OracleContainer;
 import st.orm.tck.AbstractTransactionConformanceTest;
@@ -39,11 +40,23 @@ public class OracleTransactionConformanceTest extends AbstractTransactionConform
     }
 
     /**
-     * The Oracle driver keeps the flag to itself, as the JDBC specification allows, so the database executes a
-     * write in a read-only transaction.
+     * The Oracle driver keeps the flag to itself, so the dialect opens the transaction read-only on the server
+     * itself; Oracle then reports a write as ORA-01456, under the SQL state it assigns to errors of the execute
+     * phase rather than the standard's read-only state.
      */
     @Override
-    protected boolean enforcesReadOnly() {
-        return false;
+    protected String readOnlyViolationSqlState() {
+        return "72000";
+    }
+
+    /**
+     * {@code MERGE} carries no operation Storm recognises, so it reaches the server as the write the server
+     * refuses.
+     */
+    @Override
+    protected Optional<String> unrecognisedWriteStatement() {
+        return Optional.of("""
+                MERGE INTO vet USING (SELECT 1 AS one FROM dual) source ON (1 = 0)
+                WHEN NOT MATCHED THEN INSERT (first_name, last_name) VALUES ('Read', '""" + INSERTED_LAST_NAME + "')");
     }
 }

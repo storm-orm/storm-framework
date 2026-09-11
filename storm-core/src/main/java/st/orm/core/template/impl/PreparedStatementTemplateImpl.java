@@ -330,6 +330,23 @@ public final class PreparedStatementTemplateImpl implements PreparedStatementTem
         }
     }
 
+    /**
+     * Sends the dialect's read-only statement, if it has one, as the first statement of the read-only transaction
+     * that has just been opened on the connection, so the database enforces the mode whatever the driver does
+     * with the connection's flag.
+     */
+    private static void openReadOnlyTransaction(Connection connection, SqlDialect dialect) {
+        var statement = dialect.readOnlyTransactionStatement().orElse(null);
+        if (statement == null) {
+            return;
+        }
+        try (var jdbcStatement = connection.createStatement()) {
+            jdbcStatement.execute(statement);
+        } catch (SQLException e) {
+            throw new PersistenceException("Failed to open the read-only transaction.", e);
+        }
+    }
+
     private static TemplateProcessor createDataSourceProcessor(DataSource dataSource,
                                                                 IntegrationStrategies strategies,
                                                                 SqlDialect dialect) {
@@ -353,6 +370,10 @@ public final class PreparedStatementTemplateImpl implements PreparedStatementTem
             PreparedStatement preparedStatement = null;
             boolean success = false;
             try {
+                if (transactionContext != null && transactionContext.takeFreshTransaction()
+                        && transactionContext.isReadOnly()) {
+                    openReadOnlyTransaction(connection, dialect);
+                }
                 if (!generatedKeys.isEmpty()) {
                     try {
                         //noinspection SqlSourceToSinkFlow

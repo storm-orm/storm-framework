@@ -23,6 +23,7 @@ import static st.orm.Operator.LESS_THAN;
 import static st.orm.Operator.LESS_THAN_OR_EQUAL;
 
 import java.util.List;
+import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Stream;
 import st.orm.Operator;
@@ -137,6 +138,15 @@ public class OracleSqlDialect extends DefaultSqlDialect {
      * @return {@code 1000}.
      * @since 1.10
      */
+    /**
+     * The Oracle driver keeps the connection's read-only flag to itself, so the transaction is opened read-only on
+     * the server here, which also gives it transaction-level read consistency.
+     */
+    @Override
+    public Optional<String> readOnlyTransactionStatement() {
+        return Optional.of("SET TRANSACTION READ ONLY");
+    }
+
     @Override
     public int defaultFetchSize() {
         return 1000;
