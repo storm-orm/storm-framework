@@ -255,6 +255,16 @@ public final class JdbcTransactionContext implements TransactionContext {
         return isolationLevel >= TRANSACTION_REPEATABLE_READ;
     }
 
+    @Override
+    public boolean isReadOnly() {
+        var state = lastOrNull();
+        if (state == null) {
+            return false;
+        }
+        var owner = stack.get(state.ownerIndex);
+        return owner.transactional && Boolean.TRUE.equals(owner.readOnly);
+    }
+
     @SuppressWarnings("unchecked")
     @Override
     public EntityCache<? extends Entity<?>, ?> entityCache(Class<? extends Entity<?>> entityType,

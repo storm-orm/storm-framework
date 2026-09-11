@@ -282,7 +282,7 @@ get("/reports/summary") {
 }
 ```
 
-Read-only is a hint, not an enforcement mechanism: it lets the database optimize for reads, such as taking lighter locks, and the database may or may not reject writes. See [Transactions](transactions.md#read-only-transactions) for the details.
+Read-only lets the database optimize for reads, such as taking lighter locks, and Storm refuses an `INSERT`, `UPDATE` or `DELETE` inside the transaction with `ReadOnlyTransactionException` before it reaches the database. See [Transactions](transactions.md#read-only-transactions) for the details.
 
 ---
 
