@@ -163,7 +163,8 @@
         <dependency>
             <groupId>org.mariadb.jdbc</groupId>
             <artifactId>mariadb-java-client</artifactId>
-            <version>3.3.3</version>
+            <!-- 3.5.10 is the first release whose single-host connections carry setReadOnly to the server (CONJ-1307). -->
+            <version>3.5.10</version>
             <scope>test</scope>
         </dependency>
     </dependencies>
