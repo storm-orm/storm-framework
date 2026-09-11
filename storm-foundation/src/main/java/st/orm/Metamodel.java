@@ -65,7 +65,7 @@ import org.jspecify.annotations.Nullable;
  * @param <E> the field type of the designated element.
  * @since 1.2
  */
-public interface Metamodel<T extends Data, E> extends Navigable<T, E> {
+public interface Metamodel<T extends Data, E extends @Nullable Object> extends Navigable<T, E> {
 
     /**
      * Creates a new metamodel for the given record type.
@@ -91,7 +91,7 @@ public interface Metamodel<T extends Data, E> extends Navigable<T, E> {
      * @param <E> the record component type of the designated component.
      * @throws PersistenceException if the metamodel cannot be created for the root rootTable and path.
      */
-    static <T extends Data, E> Metamodel<T, E> of(Class<T> rootTable, String path) {
+    static <T extends Data, E extends @Nullable Object> Metamodel<T, E> of(Class<T> rootTable, String path) {
         return MetamodelHelper.of(rootTable, path);
     }
 
@@ -192,7 +192,7 @@ public interface Metamodel<T extends Data, E> extends Navigable<T, E> {
      * @see UK
      * @since 1.9
      */
-    interface Key<T extends Data, E> extends Metamodel<T, E> {
+    interface Key<T extends Data, E extends @Nullable Object> extends Metamodel<T, E> {
 
         /**
          * Returns {@code true} if this key field allows NULL values with standard SQL distinct-NULL semantics,
@@ -232,7 +232,7 @@ public interface Metamodel<T extends Data, E> extends Navigable<T, E> {
      * @param <E> the field type.
      * @since 1.9
      */
-    static <T extends Data, E> Key<T, E> key(Metamodel<T, E> metamodel) {
+    static <T extends Data, E extends @Nullable Object> Key<T, E> key(Metamodel<T, E> metamodel) {
         requireNonNull(metamodel, "metamodel");
         if (metamodel instanceof Key<T, E> key) {
             return key;
@@ -250,7 +250,7 @@ public interface Metamodel<T extends Data, E> extends Navigable<T, E> {
      * @param <T> the root table type.
      * @param <E> the field type.
      */
-    record KeyDelegate<T extends Data, E>(Metamodel<T, E> delegate) implements Key<T, E> {
+    record KeyDelegate<T extends Data, E extends @Nullable Object>(Metamodel<T, E> delegate) implements Key<T, E> {
 
         public KeyDelegate {
             requireNonNull(delegate, "delegate");

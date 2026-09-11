@@ -18,6 +18,7 @@ package st.orm.core.repository;
 import java.util.List;
 import java.util.Optional;
 import java.util.stream.Stream;
+import org.jspecify.annotations.Nullable;
 import st.orm.Data;
 import st.orm.Entity;
 import st.orm.FK;
@@ -614,7 +615,7 @@ public interface EntityRepository<E extends Entity<ID>, ID> extends Repository {
      * @throws PersistenceException if the retrieval operation fails due to underlying database issues.
      * @since 1.9
      */
-    <V> Optional<E> findBy(Metamodel.Key<E, V> key, V value);
+    <V extends @Nullable Object> Optional<E> findBy(Metamodel.Key<E, V> key, V value);
 
     /**
      * Retrieves an entity by the value of a unique key field.
@@ -627,7 +628,7 @@ public interface EntityRepository<E extends Entity<ID>, ID> extends Repository {
      * @throws PersistenceException if the retrieval operation fails due to underlying database issues.
      * @since 1.9
      */
-    <V> E getBy(Metamodel.Key<E, V> key, V value);
+    <V extends @Nullable Object> E getBy(Metamodel.Key<E, V> key, V value);
 
     /**
      * Retrieves an entity by the ref value of a unique key field that references another entity.

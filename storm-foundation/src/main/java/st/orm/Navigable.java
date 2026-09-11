@@ -16,6 +16,7 @@
 package st.orm;
 
 import java.util.List;
+import org.jspecify.annotations.Nullable;
 
 /**
  * The navigational part of a {@link Metamodel}: everything needed to locate a field within the entity graph and use it
@@ -32,7 +33,7 @@ import java.util.List;
  * @param <E> the field type of the designated element.
  * @since 1.13
  */
-public interface Navigable<T extends Data, E> {
+public interface Navigable<T extends Data, E extends @Nullable Object> {
 
     /**
      * Returns the canonical metamodel for the field represented by {@code this}. The result captures only the table

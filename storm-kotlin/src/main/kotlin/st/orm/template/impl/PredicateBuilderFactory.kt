@@ -67,7 +67,12 @@ internal fun <T : Data, R, V : Data> createRef(
 internal fun <T : Data> combineAnd(
     left: PredicateBuilder<out T, *, *>,
     right: PredicateBuilder<out T, *, *>,
-): PredicateBuilder<T, *, *> = PredicateBuilderImpl((left as PredicateBuilderImpl<T, Any, Any>).core.and((right as PredicateBuilderImpl<T, Any, Any>).core))
+): PredicateBuilder<T, *, *> {
+    // The operands' cores carry only the predicate and the result is rooted at [T], so re-labelling the covariant
+    // left operand to the core's invariant parameters is safe.
+    @Suppress("UNCHECKED_CAST")
+    return PredicateBuilderImpl((left as PredicateBuilderImpl<T, Any, Any>).core.and((right as PredicateBuilderImpl<out T, *, *>).core))
+}
 
 /**
  * Combines two predicates using an OR condition, rooting the result at the operands' least common root.
@@ -79,4 +84,9 @@ internal fun <T : Data> combineAnd(
 internal fun <T : Data> combineOr(
     left: PredicateBuilder<out T, *, *>,
     right: PredicateBuilder<out T, *, *>,
-): PredicateBuilder<T, *, *> = PredicateBuilderImpl((left as PredicateBuilderImpl<T, Any, Any>).core.or((right as PredicateBuilderImpl<T, Any, Any>).core))
+): PredicateBuilder<T, *, *> {
+    // The operands' cores carry only the predicate and the result is rooted at [T], so re-labelling the covariant
+    // left operand to the core's invariant parameters is safe.
+    @Suppress("UNCHECKED_CAST")
+    return PredicateBuilderImpl((left as PredicateBuilderImpl<T, Any, Any>).core.or((right as PredicateBuilderImpl<out T, *, *>).core))
+}

@@ -900,7 +900,7 @@ public interface Templates {
      * @param it an {@link Iterable} of values or records for the condition.
      * @return an {@link Element} representing the WHERE clause.
      */
-    static <V> Element where(Metamodel<?, V> path, Operator operator, Iterable<? extends V> it) {
+    static <V extends @Nullable Object> Element where(Metamodel<?, V> path, Operator operator, Iterable<? extends V> it) {
         return new Where(new ObjectExpression(path, operator, it), null);
     }
 
@@ -930,7 +930,7 @@ public interface Templates {
      * @return an {@link Element} representing the WHERE clause.
      */
     @SafeVarargs
-    static <V> Element where(Metamodel<?, V> path, Operator operator, V... o) {
+    static <V extends @Nullable Object> Element where(Metamodel<?, V> path, Operator operator, V... o) {
         return new Where(new ObjectExpression(path, operator, o), null);
     }
 

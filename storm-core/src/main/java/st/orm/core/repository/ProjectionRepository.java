@@ -18,6 +18,7 @@ package st.orm.core.repository;
 import java.util.List;
 import java.util.Optional;
 import java.util.stream.Stream;
+import org.jspecify.annotations.Nullable;
 import st.orm.Data;
 import st.orm.Metamodel;
 import st.orm.NoResultException;
@@ -260,7 +261,7 @@ public interface ProjectionRepository<P extends Projection<ID>, ID> extends Repo
      * @throws PersistenceException if the retrieval operation fails due to underlying database issues.
      * @since 1.9
      */
-    <V> Optional<P> findBy(Metamodel.Key<P, V> key, V value);
+    <V extends @Nullable Object> Optional<P> findBy(Metamodel.Key<P, V> key, V value);
 
     /**
      * Retrieves a projection by the value of a unique key field.
@@ -273,7 +274,7 @@ public interface ProjectionRepository<P extends Projection<ID>, ID> extends Repo
      * @throws PersistenceException if the retrieval operation fails due to underlying database issues.
      * @since 1.9
      */
-    <V> P getBy(Metamodel.Key<P, V> key, V value);
+    <V extends @Nullable Object> P getBy(Metamodel.Key<P, V> key, V value);
 
     /**
      * Retrieves a projection by the ref value of a unique key field that references another entity.

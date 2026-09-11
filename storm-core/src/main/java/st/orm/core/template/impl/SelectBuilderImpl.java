@@ -50,7 +50,7 @@ import st.orm.core.template.impl.Elements.Where;
  * @param <R> the type of the result.
  * @param <ID> the type of the primary key.
  */
-public class SelectBuilderImpl<T extends Data, R, ID> extends QueryBuilderImpl<T, R, ID> {
+public class SelectBuilderImpl<T extends Data, R extends @Nullable Object, ID extends @Nullable Object> extends QueryBuilderImpl<T, R, ID> {
     private final TemplateString forLock;
     private final TemplateString selectTemplate;
     private final Class<R> selectType;

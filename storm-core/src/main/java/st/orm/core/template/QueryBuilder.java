@@ -70,7 +70,7 @@ import st.orm.core.template.impl.Elements.ObjectExpression;
  * @param <R> the type of the result.
  * @param <ID> the type of the primary key.
  */
-public abstract class QueryBuilder<T extends Data, R, ID> {
+public abstract class QueryBuilder<T extends Data, R extends @Nullable Object, ID extends @Nullable Object> {
 
     /**
      * Returns the data type used in the FROM clause of the query. This is the entity or projection type {@code T}
@@ -415,7 +415,7 @@ public abstract class QueryBuilder<T extends Data, R, ID> {
      * @param <V> the type of the object that the metamodel represents.
      * @since 1.2
      */
-    public final <V> QueryBuilder<T, R, ID> where(Navigable<? extends T, V> path,
+    public final <V extends @Nullable Object> QueryBuilder<T, R, ID> where(Navigable<? extends T, V> path,
                                                   Operator operator,
                                                   Iterable<? extends V> it) {
         Metamodel<? extends T, V> metamodel = path.asMetamodel();
@@ -434,7 +434,7 @@ public abstract class QueryBuilder<T extends Data, R, ID> {
      * @since 1.2
      */
     @SafeVarargs
-    public final <V> QueryBuilder<T, R, ID> where(Navigable<? extends T, V> path,
+    public final <V extends @Nullable Object> QueryBuilder<T, R, ID> where(Navigable<? extends T, V> path,
                                                   Operator operator,
                                                   V... o) {
         Metamodel<? extends T, V> metamodel = path.asMetamodel();
@@ -542,7 +542,7 @@ public abstract class QueryBuilder<T extends Data, R, ID> {
      * @since 1.2
      */
     @SafeVarargs
-    public final <V> QueryBuilder<T, R, ID> having(Navigable<? extends T, V> path,
+    public final <V extends @Nullable Object> QueryBuilder<T, R, ID> having(Navigable<? extends T, V> path,
                                                    Operator operator,
                                                    V... o) {
         return having(wrap(new ObjectExpression(path.asMetamodel(), operator, o)));

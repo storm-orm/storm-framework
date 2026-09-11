@@ -35,7 +35,7 @@ import org.jspecify.annotations.Nullable;
  * @param <R> the type of the results.
  * @since 1.10
  */
-public record Page<R>(List<R> content, long totalCount, Pageable pageable) implements Slice<R> {
+public record Page<R extends @Nullable Object>(List<R> content, long totalCount, Pageable pageable) implements Slice<R> {
     public Page {
         content = copyOf(content);
         if (totalCount < 0) {

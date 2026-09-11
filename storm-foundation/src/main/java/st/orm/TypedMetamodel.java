@@ -35,7 +35,7 @@ import org.jspecify.annotations.Nullable;
  * @param <V> the declared component type, possibly nullable.
  * @since 1.13
  */
-public interface TypedMetamodel<T extends Data, E, V extends @Nullable Object> extends Metamodel<T, E> {
+public interface TypedMetamodel<T extends Data, E extends @Nullable Object, V extends @Nullable Object> extends Metamodel<T, E> {
 
     /**
      * Extracts the value of the field represented by this metamodel from the given record, typed as the declared

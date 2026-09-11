@@ -17,6 +17,7 @@ package st.orm.core.template.impl;
 
 import static java.util.Objects.requireNonNull;
 
+import org.jspecify.annotations.Nullable;
 import st.orm.BindVars;
 import st.orm.Data;
 import st.orm.PersistenceException;
@@ -147,7 +148,7 @@ class QueryTemplateImpl implements QueryTemplate {
      * @param <R> the result type.
      */
     @Override
-    public <T extends Data, R> QueryBuilder<T, R, ?> selectFrom(Class<T> fromType, Class<R> selectType, TemplateString template) {
+    public <T extends Data, R extends @Nullable Object> QueryBuilder<T, R, ?> selectFrom(Class<T> fromType, Class<R> selectType, TemplateString template) {
         return Providers.selectFrom(this, fromType, selectType, template, false, modelBuilder.supplier(fromType, true));
     }
 

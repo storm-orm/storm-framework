@@ -204,7 +204,7 @@ public final class Providers {
                         .orElseThrow()));
     }
 
-    public static <T extends Data, R, ID> QueryBuilder<T, R, ID> selectFrom(
+    public static <T extends Data, R extends @Nullable Object, ID extends @Nullable Object> QueryBuilder<T, R, ID> selectFrom(
             QueryTemplate queryTemplate,
             Class<T> fromType,
             Class<R> selectType,
@@ -214,7 +214,7 @@ public final class Providers {
         return queryBuilderProvider().selectFrom(queryTemplate, fromType, selectType, template, subquery, modelSupplier);
     }
 
-    public static <T extends Data, R extends Data, ID> QueryBuilder<T, Ref<R>, ID> selectRefFrom(
+    public static <T extends Data, R extends Data, ID extends @Nullable Object> QueryBuilder<T, Ref<R>, ID> selectRefFrom(
             QueryTemplate queryTemplate,
             Class<T> fromType,
             Class<R> refType,

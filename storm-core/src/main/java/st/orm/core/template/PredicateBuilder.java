@@ -15,6 +15,7 @@
  */
 package st.orm.core.template;
 
+import org.jspecify.annotations.Nullable;
 import st.orm.Data;
 
 /**
@@ -24,7 +25,7 @@ import st.orm.Data;
  * @param <R>  the type of the result.
  * @param <ID> the type of the primary key.
  */
-public interface PredicateBuilder<T extends Data, R, ID> {
+public interface PredicateBuilder<T extends Data, R extends @Nullable Object, ID extends @Nullable Object> {
 
     /**
      * Adds a predicate to the WHERE clause using an AND condition.

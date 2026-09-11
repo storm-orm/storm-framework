@@ -125,7 +125,7 @@ public final class MetamodelFactory {
     /**
      * Creates a new metamodel for the given root table and path.
      */
-    public static <T extends Data, E> Metamodel<T, E> of(Class<T> rootTable, String path) {
+    public static <T extends Data, E extends @Nullable Object> Metamodel<T, E> of(Class<T> rootTable, String path) {
         //noinspection unchecked
         return (Metamodel<T, E>) METAMODEL_CACHE.get(rootTable)
                 .computeIfAbsent(path, ignore -> getModel(rootTable, path));
@@ -363,7 +363,7 @@ public final class MetamodelFactory {
      * Creates a new metamodel for the given root table and path.
      */
     @SuppressWarnings({"unchecked", "rawtypes"})
-    private static <T extends Data, E> Metamodel<T, E> getModel(Class<T> rootTable, String path) {
+    private static <T extends Data, E extends @Nullable Object> Metamodel<T, E> getModel(Class<T> rootTable, String path) {
         Metamodel<T, ?> generated = lookupGeneratedMetamodel(rootTable, path);
         if (generated != null) {
             return (Metamodel<T, E>) generated;
@@ -750,7 +750,7 @@ public final class MetamodelFactory {
         return true;
     }
 
-    private static final class SimpleKeyMetamodel<T extends Data, E>
+    private static final class SimpleKeyMetamodel<T extends Data, E extends @Nullable Object>
             extends AbstractKeyMetamodel<T, E, Object> {
 
         private final Class<T> root;
@@ -854,7 +854,7 @@ public final class MetamodelFactory {
         }
     }
 
-    private static final class SimpleMetamodel<T extends Data, E>
+    private static final class SimpleMetamodel<T extends Data, E extends @Nullable Object>
             extends AbstractMetamodel<T, E, Object> {
 
         private final Class<T> root;

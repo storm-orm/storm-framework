@@ -17,6 +17,7 @@ package st.orm.core.template;
 
 import static st.orm.core.template.TemplateString.wrap;
 
+import org.jspecify.annotations.Nullable;
 import st.orm.BindVars;
 import st.orm.Data;
 import st.orm.PersistenceException;
@@ -135,7 +136,7 @@ public interface QueryTemplate extends SubqueryTemplate {
      * @param <T> the table type to select from.
      * @param <R> the result type.
      */
-    default <T extends Data, R> QueryBuilder<T, R, ?> selectFrom(Class<T> fromType,
+    default <T extends Data, R extends @Nullable Object> QueryBuilder<T, R, ?> selectFrom(Class<T> fromType,
                                                                  Class<R> selectType) {
         return selectFrom(fromType, selectType, wrap(fromType));
     }
@@ -150,7 +151,7 @@ public interface QueryTemplate extends SubqueryTemplate {
      * @param <T> the table type to select from.
      * @param <R> the result type.
      */
-    <T extends Data, R> QueryBuilder<T, R, ?> selectFrom(Class<T> fromType,
+    <T extends Data, R extends @Nullable Object> QueryBuilder<T, R, ?> selectFrom(Class<T> fromType,
                                                          Class<R> selectType,
                                                          TemplateString template);
 

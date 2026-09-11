@@ -69,7 +69,7 @@ import st.orm.core.template.impl.Elements.Where;
  * @param <R> the type of the result.
  * @param <ID> the type of the primary key.
  */
-abstract class QueryBuilderImpl<T extends Data, R, ID> extends QueryBuilder<T, R, ID> implements Subqueryable {
+abstract class QueryBuilderImpl<T extends Data, R extends @Nullable Object, ID extends @Nullable Object> extends QueryBuilder<T, R, ID> implements Subqueryable {
 
     protected final QueryTemplate queryTemplate;
     protected final Class<T> fromType;
@@ -199,7 +199,7 @@ abstract class QueryBuilderImpl<T extends Data, R, ID> extends QueryBuilder<T, R
      * Reversing flips every comparison, which reads the rows on the other side of the row.
      */
     @SuppressWarnings("unchecked")
-    private static <T extends Data, R, ID> PredicateBuilder<T, ?, ?> keysetPredicate(WhereBuilder<T, R, ID> wb,
+    private static <T extends Data, R extends @Nullable Object, ID extends @Nullable Object> PredicateBuilder<T, ?, ?> keysetPredicate(WhereBuilder<T, R, ID> wb,
                                                                                     List<Order> orders,
                                                                                     List<Object> values,
                                                                                     boolean reverse) {
@@ -614,7 +614,7 @@ abstract class QueryBuilderImpl<T extends Data, R, ID> extends QueryBuilder<T, R
     private static final TemplateString RAW_OPEN = TemplateString.of("(");
     private static final TemplateString RAW_CLOSE = TemplateString.of(")");
 
-    static class PredicateBuilderImpl<TX extends Data, RX, IDX> implements PredicateBuilder<TX, RX, IDX> {
+    static class PredicateBuilderImpl<TX extends Data, RX extends @Nullable Object, IDX extends @Nullable Object> implements PredicateBuilder<TX, RX, IDX> {
         private final List<TemplateString> templates = new ArrayList<>();
         private final boolean safe;
 
@@ -684,7 +684,7 @@ abstract class QueryBuilderImpl<T extends Data, R, ID> extends QueryBuilder<T, R
         }
     }
 
-    static class WhereBuilderImpl<TX extends Data, RX, IDX> extends WhereBuilder<TX, RX, IDX> {
+    static class WhereBuilderImpl<TX extends Data, RX extends @Nullable Object, IDX extends @Nullable Object> extends WhereBuilder<TX, RX, IDX> {
         private final QueryBuilderImpl<TX, RX, IDX> queryBuilder;
 
         WhereBuilderImpl(QueryBuilderImpl<TX, RX, IDX> queryBuilder) {
@@ -762,7 +762,7 @@ abstract class QueryBuilderImpl<T extends Data, R, ID> extends QueryBuilder<T, R
         }
 
         @Override
-        public <V> PredicateBuilder<TX, RX, IDX> where(Navigable<? extends TX, V> path, Operator operator, Iterable<? extends V> it) {
+        public <V extends @Nullable Object> PredicateBuilder<TX, RX, IDX> where(Navigable<? extends TX, V> path, Operator operator, Iterable<? extends V> it) {
             return new PredicateBuilderImpl<>(wrap(new ObjectExpression(path.asMetamodel(), operator, it)));
         }
 
@@ -772,7 +772,7 @@ abstract class QueryBuilderImpl<T extends Data, R, ID> extends QueryBuilder<T, R
         }
 
         @Override
-        protected <V> PredicateBuilder<TX, RX, IDX> whereImpl(Navigable<?, V> path, Operator operator, V[] o) {
+        protected <V extends @Nullable Object> PredicateBuilder<TX, RX, IDX> whereImpl(Navigable<?, V> path, Operator operator, V[] o) {
             try {
                 try {
                     return PredicateBuilderFactory.createWithId(path.asMetamodel(), operator, List.of(o));

@@ -421,7 +421,7 @@ abstract class BaseRepositoryImpl<E extends Data, ID> implements Repository {
      * @param <V> the type of the key field.
      * @throws PersistenceException if the retrieval operation fails due to underlying database issues.
      */
-    public <V> Optional<E> findBy(Metamodel.Key<E, V> key, V value) {
+    public <V extends @Nullable Object> Optional<E> findBy(Metamodel.Key<E, V> key, V value) {
         var query = findByKeyQuery(key, value);
         if (query != null) {
             return query.getOptionalResult(model.type());
@@ -439,7 +439,7 @@ abstract class BaseRepositoryImpl<E extends Data, ID> implements Repository {
      * @throws NoResultException if no entity is found matching the given key value.
      * @throws PersistenceException if the retrieval operation fails due to underlying database issues.
      */
-    public <V> E getBy(Metamodel.Key<E, V> key, V value) {
+    public <V extends @Nullable Object> E getBy(Metamodel.Key<E, V> key, V value) {
         var query = findByKeyQuery(key, value);
         if (query != null) {
             return query.getSingleResult(model.type());

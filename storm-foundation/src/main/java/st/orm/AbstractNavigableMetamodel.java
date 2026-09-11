@@ -32,7 +32,7 @@ import org.jspecify.annotations.Nullable;
  * @param <E> the field type of the designated element.
  * @since 1.13
  */
-public abstract class AbstractNavigableMetamodel<T extends Data, E> implements Navigable<T, E> {
+public abstract class AbstractNavigableMetamodel<T extends Data, E extends @Nullable Object> implements Navigable<T, E> {
 
     private final Class<E> fieldType;
     private final String path;

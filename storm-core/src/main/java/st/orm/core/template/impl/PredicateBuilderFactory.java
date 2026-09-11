@@ -17,6 +17,7 @@ package st.orm.core.template.impl;
 
 import static st.orm.core.template.TemplateString.wrap;
 
+import org.jspecify.annotations.Nullable;
 import st.orm.Data;
 import st.orm.Metamodel;
 import st.orm.Operator;
@@ -46,7 +47,7 @@ public interface PredicateBuilderFactory {
      * @param <V> the type of the values
      * @return a new instance of {@link PredicateBuilder}
      */
-    static <T extends Data, R, V> PredicateBuilder<T, R, ?> create(
+    static <T extends Data, R extends @Nullable Object, V extends @Nullable Object> PredicateBuilder<T, R, ?> create(
             Metamodel<?, V> path,
             Operator operator,
             Iterable<V> o) {
@@ -64,7 +65,7 @@ public interface PredicateBuilderFactory {
      * @param <V> the type of the values
      * @return a new instance of {@link PredicateBuilder}
      */
-    static <T extends Data, R, V extends Data> PredicateBuilder<T, R, ?> createRef(
+    static <T extends Data, R extends @Nullable Object, V extends Data> PredicateBuilder<T, R, ?> createRef(
             Metamodel<?, V> path,
             Operator operator,
             Iterable<Ref<V>> o) {
@@ -83,7 +84,7 @@ public interface PredicateBuilderFactory {
      * @param <V> the type of the values
      * @return a new instance of {@link PredicateBuilder}
      */
-    static <T extends Data, R, ID, V> PredicateBuilder<T, R, ID> createWithId(
+    static <T extends Data, R extends @Nullable Object, ID extends @Nullable Object, V extends @Nullable Object> PredicateBuilder<T, R, ID> createWithId(
             Metamodel<?, V> path,
             Operator operator,
             Iterable<V> o) {

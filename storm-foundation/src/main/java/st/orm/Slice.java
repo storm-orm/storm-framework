@@ -18,6 +18,7 @@ package st.orm;
 import java.util.Iterator;
 import java.util.List;
 import java.util.stream.Stream;
+import org.jspecify.annotations.Nullable;
 
 /**
  * A slice of query results: the shape a {@link Page}, a {@link Window} and a plain slice share.
@@ -30,7 +31,7 @@ import java.util.stream.Stream;
  * @param <R> the type of the results.
  * @since 1.10
  */
-public interface Slice<R> extends Iterable<R> {
+public interface Slice<R extends @Nullable Object> extends Iterable<R> {
 
     /**
      * Returns the results in this slice, in the order they were read.
@@ -95,7 +96,7 @@ public interface Slice<R> extends Iterable<R> {
      * @return the slice.
      * @since 1.14
      */
-    static <R> Slice<R> of(List<R> content, boolean hasNext, boolean hasPrevious) {
+    static <R extends @Nullable Object> Slice<R> of(List<R> content, boolean hasNext, boolean hasPrevious) {
         return new SliceImpl<>(content, hasNext, hasPrevious);
     }
 }

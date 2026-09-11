@@ -49,7 +49,7 @@ import org.jspecify.annotations.Nullable;
  * @param <R> the result type (e.g., {@code User} for entity queries, {@code Ref<User>} for ref queries).
  * @since 1.11
  */
-public record Window<R>(
+public record Window<R extends @Nullable Object>(
         List<R> content,
         boolean hasNext,
         boolean hasPrevious,
@@ -67,7 +67,7 @@ public record Window<R>(
      * @param <R> the result type.
      * @return an empty window.
      */
-    public static <R> Window<R> empty() {
+    public static <R extends @Nullable Object> Window<R> empty() {
         return new Window<>(List.of(), false, false, null, null);
     }
 

@@ -3,6 +3,7 @@ package st.orm;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.util.List;
+import org.jspecify.annotations.Nullable;
 
 class MetamodelHelper {
 
@@ -47,7 +48,7 @@ class MetamodelHelper {
     }
 
     @SuppressWarnings("unchecked")
-    static <T extends Data, E> Metamodel<T, E> of(Class<T> rootTable, String path) {
+    static <T extends Data, E extends @Nullable Object> Metamodel<T, E> of(Class<T> rootTable, String path) {
         try {
             try {
                 return (Metamodel<T, E>) OF_METHOD.invoke(null, rootTable, path);

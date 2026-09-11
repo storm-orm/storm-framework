@@ -15,6 +15,7 @@
  */
 package st.orm.core.template;
 
+import org.jspecify.annotations.Nullable;
 import st.orm.Data;
 
 /**
@@ -24,7 +25,7 @@ import st.orm.Data;
  * @param <R>  the type of the result.
  * @param <ID> the type of the primary key.
  */
-public interface TypedJoinBuilder<T extends Data, R, ID> extends JoinBuilder<T, R, ID> {
+public interface TypedJoinBuilder<T extends Data, R extends @Nullable Object, ID extends @Nullable Object> extends JoinBuilder<T, R, ID> {
 
     /**
      * Specifies the relation to join on.

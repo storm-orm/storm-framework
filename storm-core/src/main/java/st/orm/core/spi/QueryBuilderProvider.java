@@ -28,6 +28,9 @@ import st.orm.core.template.TemplateString;
  *
  * @since 1.1
  */
+// The type parameters of this interface and of its default implementation carry no nullness bound: module-info.java
+// names both, and the source parser the compiler plugin runs over the classes a module descriptor names (QDox) rejects
+// an annotation inside a type-parameter bound.
 public interface QueryBuilderProvider extends Provider {
 
     /**

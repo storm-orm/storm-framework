@@ -380,9 +380,19 @@ internal class QueryBuilderImpl<T : Data, R, ID>(
 
         override fun where(template: TemplateString): PredicateBuilder<TX, RX, IDX> = PredicateBuilderImpl<TX, RX, IDX>(core.where((template as TemplateStringHolder).templateString))
 
-        override infix fun PredicateBuilder<out TX, *, *>.and(predicate: PredicateBuilder<out TX, *, *>): PredicateBuilder<TX, RX, IDX> = PredicateBuilderImpl((this as PredicateBuilderImpl<TX, RX, IDX>).core.and((predicate as PredicateBuilderImpl<TX, *, *>).core))
+        override infix fun PredicateBuilder<out TX, *, *>.and(predicate: PredicateBuilder<out TX, *, *>): PredicateBuilder<TX, RX, IDX> {
+            // The operands' cores carry only the predicate and the result is rooted at the builder's own parameters,
+            // so re-labelling the covariant receiver to the core's invariant parameters is safe.
+            @Suppress("UNCHECKED_CAST")
+            return PredicateBuilderImpl((this as PredicateBuilderImpl<TX, RX, IDX>).core.and((predicate as PredicateBuilderImpl<out TX, *, *>).core))
+        }
 
-        override infix fun PredicateBuilder<out TX, *, *>.or(predicate: PredicateBuilder<out TX, *, *>): PredicateBuilder<TX, RX, IDX> = PredicateBuilderImpl((this as PredicateBuilderImpl<TX, RX, IDX>).core.or((predicate as PredicateBuilderImpl<TX, *, *>).core))
+        override infix fun PredicateBuilder<out TX, *, *>.or(predicate: PredicateBuilder<out TX, *, *>): PredicateBuilder<TX, RX, IDX> {
+            // The operands' cores carry only the predicate and the result is rooted at the builder's own parameters,
+            // so re-labelling the covariant receiver to the core's invariant parameters is safe.
+            @Suppress("UNCHECKED_CAST")
+            return PredicateBuilderImpl((this as PredicateBuilderImpl<TX, RX, IDX>).core.or((predicate as PredicateBuilderImpl<out TX, *, *>).core))
+        }
     }
 
     /**

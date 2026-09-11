@@ -18,6 +18,7 @@ package st.orm.core.template;
 import static st.orm.Operator.EQUALS;
 import static st.orm.Operator.IN;
 
+import org.jspecify.annotations.Nullable;
 import st.orm.Data;
 import st.orm.Navigable;
 import st.orm.Operator;
@@ -30,7 +31,7 @@ import st.orm.Ref;
  * @param <R>  the type of the result.
  * @param <ID> the type of the primary key.
  */
-public abstract class WhereBuilder<T extends Data, R, ID> implements SubqueryTemplate {
+public abstract class WhereBuilder<T extends Data, R extends @Nullable Object, ID extends @Nullable Object> implements SubqueryTemplate {
 
     /**
      * A predicate that always evaluates to true.
@@ -181,7 +182,7 @@ public abstract class WhereBuilder<T extends Data, R, ID> implements SubqueryTem
      * @return the query builder.
      * @since 1.2
      */
-    public abstract <V> PredicateBuilder<T, R, ID> where(Navigable<? extends T, V> path,
+    public abstract <V extends @Nullable Object> PredicateBuilder<T, R, ID> where(Navigable<? extends T, V> path,
                                                          Operator operator,
                                                          Iterable<? extends V> it);
 
@@ -198,7 +199,7 @@ public abstract class WhereBuilder<T extends Data, R, ID> implements SubqueryTem
      * @since 1.2
      */
     @SafeVarargs
-    public final <V> PredicateBuilder<T, R, ID> where(Navigable<? extends T, V> path,
+    public final <V extends @Nullable Object> PredicateBuilder<T, R, ID> where(Navigable<? extends T, V> path,
                                                       Operator operator,
                                                       V... o) {
         return whereImpl(path, operator, o);
@@ -224,7 +225,7 @@ public abstract class WhereBuilder<T extends Data, R, ID> implements SubqueryTem
      * @return the query builder.
      * @since 1.2
      */
-    protected abstract <V> PredicateBuilder<T, R, ID> whereImpl(Navigable<?, V> path,
+    protected abstract <V extends @Nullable Object> PredicateBuilder<T, R, ID> whereImpl(Navigable<?, V> path,
                                                                 Operator operator,
                                                                 V[] o);
 }
