@@ -52,7 +52,7 @@ public final class TransactionRunner {
      * @param <E> the checked exception type thrown by the block, if any.
      */
     @FunctionalInterface
-    public interface Block<R, E extends Exception> {
+    public interface Block<R extends @Nullable Object, E extends Exception> {
         R execute(Transaction transaction) throws E;
     }
 
@@ -81,7 +81,7 @@ public final class TransactionRunner {
      * @param <R> the result type.
      * @param <E> the checked exception type thrown by the block, if any.
      */
-    public static <R, E extends Exception> R execute(TransactionOptions options,
+    public static <R extends @Nullable Object, E extends Exception> R execute(TransactionOptions options,
                                                      Block<R, E> block) throws E {
         var scope = TransactionScope.open(options, false);
         var parentCallbacks = CURRENT_CALLBACKS.get();

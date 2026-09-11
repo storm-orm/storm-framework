@@ -15,6 +15,8 @@
  */
 package st.orm;
 
+import org.jspecify.annotations.Nullable;
+
 /**
  * Options for a transactional block. A {@code null} component means the option is inherited from the
  * surrounding defaults: the thread-scoped options, then the global options, then the baseline
@@ -27,10 +29,10 @@ package st.orm;
  * @since 1.13
  */
 public record TransactionOptions(
-        TransactionPropagation propagation,
-        TransactionIsolation isolation,
-        Integer timeoutSeconds,
-        Boolean readOnly
+        @Nullable TransactionPropagation propagation,
+        @Nullable TransactionIsolation isolation,
+        @Nullable Integer timeoutSeconds,
+        @Nullable Boolean readOnly
 ) {
 
     private static final TransactionOptions DEFAULTS = new TransactionOptions(null, null, null, null);
