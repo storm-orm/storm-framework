@@ -63,7 +63,7 @@ public interface TransactionContext {
      * transaction is never read-only.
      *
      * @return {@code true} when a write issued now would break the transaction's read-only promise.
-     * @since 1.14.1
+     * @since 1.14
      */
     default boolean isReadOnly() {
         return false;
@@ -77,7 +77,7 @@ public interface TransactionContext {
      *
      * @return {@code true} once, right after this context opened a physical transaction; {@code false} on a joined
      * frame, on a transaction opened elsewhere, and on every later request.
-     * @since 1.14.1
+     * @since 1.14
      */
     default boolean takeFreshTransaction() {
         return false;

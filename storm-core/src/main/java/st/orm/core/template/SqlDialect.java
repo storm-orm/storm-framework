@@ -382,7 +382,7 @@ public interface SqlDialect {
      *
      * @return the statement that opens the transaction read-only on the server, or empty when there is none to
      * send.
-     * @since 1.14.1
+     * @since 1.14
      */
     default Optional<String> readOnlyTransactionStatement() {
         return Optional.empty();
