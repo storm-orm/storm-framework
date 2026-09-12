@@ -85,16 +85,6 @@ public class MariaDBSqlDialect extends MySQLSqlDialect {
      * @return {@code 1000}.
      * @since 1.10
      */
-    /**
-     * MariaDB Connector/J carries the connection's read-only flag to the server only from 3.5.10, so the
-     * transaction is opened read-only on the server here as well; on a driver that carries the flag the statement
-     * repeats what the driver sent.
-     */
-    @Override
-    public Optional<String> readOnlyTransactionStatement() {
-        return Optional.of("SET TRANSACTION READ ONLY");
-    }
-
     @Override
     public int defaultFetchSize() {
         return 1000;
@@ -115,6 +105,18 @@ public class MariaDBSqlDialect extends MySQLSqlDialect {
     @Override
     public boolean streamOnlyFetchSize() {
         return false;
+    }
+
+    /**
+     * MariaDB Connector/J carries the connection's read-only flag to the server only from 3.5.10, so the
+     * transaction is opened read-only on the server here as well; on a driver that carries the flag the statement
+     * repeats what the driver sent.
+     *
+     * @since 1.14
+     */
+    @Override
+    public Optional<String> readOnlyTransactionStatement() {
+        return Optional.of("SET TRANSACTION READ ONLY");
     }
 
     /**

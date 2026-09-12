@@ -138,18 +138,20 @@ public class OracleSqlDialect extends DefaultSqlDialect {
      * @return {@code 1000}.
      * @since 1.10
      */
+    @Override
+    public int defaultFetchSize() {
+        return 1000;
+    }
+
     /**
      * The Oracle driver keeps the connection's read-only flag to itself, so the transaction is opened read-only on
      * the server here, which also gives it transaction-level read consistency.
+     *
+     * @since 1.14
      */
     @Override
     public Optional<String> readOnlyTransactionStatement() {
         return Optional.of("SET TRANSACTION READ ONLY");
-    }
-
-    @Override
-    public int defaultFetchSize() {
-        return 1000;
     }
 
     /**
