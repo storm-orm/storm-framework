@@ -369,6 +369,10 @@ public interface SqlDialect {
      * @return the ORDER BY clause for an unordered offset, or {@code null} if none is needed.
      * @since 1.14
      */
+    default @Nullable String orderByForOffset() {
+        return null;
+    }
+
     /**
      * The statement that makes the database itself refuse writes in the transaction that has just begun. Storm
      * sends it as the first statement of every read-only transaction it opens, right after the connection's
@@ -386,10 +390,6 @@ public interface SqlDialect {
      */
     default Optional<String> readOnlyTransactionStatement() {
         return Optional.empty();
-    }
-
-    default @Nullable String orderByForOffset() {
-        return null;
     }
 
     /**

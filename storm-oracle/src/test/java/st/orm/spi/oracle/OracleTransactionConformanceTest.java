@@ -15,8 +15,12 @@
  */
 package st.orm.spi.oracle;
 
+import static java.util.concurrent.TimeUnit.SECONDS;
+
+import java.sql.SQLException;
 import java.util.Optional;
 import javax.sql.DataSource;
+import org.junit.jupiter.api.BeforeEach;
 import org.testcontainers.oracle.OracleContainer;
 import st.orm.tck.AbstractTransactionConformanceTest;
 import st.orm.tck.ContainerDataSource;
@@ -29,7 +33,16 @@ import st.orm.test.StormTest;
 @StormTest(scripts = "/data.sql", rollback = false)
 public class OracleTransactionConformanceTest extends AbstractTransactionConformanceTest {
 
+    /**
+     * ORA-01466, the error Oracle reports for a read from a snapshot older than the table it reads.
+     */
+    private static final int TABLE_DEFINITION_HAS_CHANGED = 1466;
+
+    private static final long SNAPSHOT_TIMEOUT_NANOS = SECONDS.toNanos(30);
+    private static final long SNAPSHOT_RETRY_MILLIS = 100;
+
     private static OracleContainer container;
+    private static boolean snapshotClearsTheSchema;
 
     public static synchronized DataSource dataSource() {
         if (container == null) {
@@ -37,6 +50,41 @@ public class OracleTransactionConformanceTest extends AbstractTransactionConform
             container.start();
         }
         return ContainerDataSource.of(container.getJdbcUrl(), container.getUsername(), container.getPassword());
+    }
+
+    /**
+     * Oracle's read-only transaction reads the whole transaction from one snapshot, and refuses a table whose
+     * definition changed in the second that snapshot was taken with ORA-01466. The suite's schema is created
+     * moments before its first test runs, which puts the first read-only reads inside that window, so the read is
+     * repeated here until the snapshot clears the schema's creation. It settles within a second or two, and once
+     * it has, no further DDL follows.
+     */
+    @BeforeEach
+    void awaitASnapshotThatClearsTheSchema() throws SQLException, InterruptedException {
+        if (snapshotClearsTheSchema) {
+            return;
+        }
+        long started = System.nanoTime();
+        while (true) {
+            try (var connection = dataSource.getConnection()) {
+                connection.setAutoCommit(false);
+                try (var statement = connection.createStatement()) {
+                    statement.execute("SET TRANSACTION READ ONLY");
+                    try (var resultSet = statement.executeQuery("SELECT COUNT(*) FROM vet")) {
+                        resultSet.next();
+                    }
+                }
+                connection.commit();
+                snapshotClearsTheSchema = true;
+                return;
+            } catch (SQLException e) {
+                if (e.getErrorCode() != TABLE_DEFINITION_HAS_CHANGED
+                        || System.nanoTime() - started > SNAPSHOT_TIMEOUT_NANOS) {
+                    throw e;
+                }
+            }
+            Thread.sleep(SNAPSHOT_RETRY_MILLIS);
+        }
     }
 
     /**
