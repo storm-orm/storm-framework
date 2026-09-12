@@ -1,0 +1,111 @@
+{
+  "docs": [
+    "index",
+    {
+      "type": "category",
+      "label": "Getting Started",
+      "collapsed": false,
+      "items": [
+        "getting-started",
+        "installation",
+        "first-entity",
+        "first-query",
+        "glossary"
+      ]
+    },
+    {
+      "type": "category",
+      "label": "Core Concepts",
+      "items": [
+        "entities",
+        "projections",
+        "relationships",
+        "repositories",
+        "queries",
+        "pagination-and-scrolling",
+        "metamodel",
+        "refs",
+        "entity-design",
+        "transactions",
+        "spring-integration",
+        "ktor-integration",
+        "graalvm",
+        "dialects",
+        "testing"
+      ]
+    },
+    {
+      "type": "category",
+      "label": "Advanced Topics",
+      "items": [
+        {
+          "type": "category",
+          "label": "Entity Modeling",
+          "items": [
+            "converters",
+            "json",
+            "polymorphism",
+            "entity-lifecycle",
+            "serialization",
+            "validation"
+          ]
+        },
+        {
+          "type": "category",
+          "label": "Operations",
+          "items": [
+            "batch-streaming",
+            "upserts",
+            "write-sets"
+          ]
+        },
+        {
+          "type": "category",
+          "label": "Internals",
+          "items": [
+            "sql-templates",
+            "string-templates",
+            "hydration",
+            "dirty-checking",
+            "entity-cache",
+            "cursors"
+          ]
+        },
+        {
+          "type": "category",
+          "label": "Operational",
+          "items": [
+            "configuration",
+            "sql-logging",
+            "metrics",
+            "security",
+            "error-handling",
+            "performance"
+          ]
+        }
+      ]
+    },
+    {
+      "type": "category",
+      "label": "Resources",
+      "items": [
+        "common-patterns",
+        "comparison",
+        "faq",
+        "migration-from-jpa",
+        "jpa-cascades-vs-write-sets",
+        "ai",
+        "ai-reference",
+        "database-and-mcp"
+      ]
+    },
+    {
+      "type": "category",
+      "label": "API Reference",
+      "items": [
+        "api-kotlin",
+        "api-java"
+      ]
+    }
+  ]
+}

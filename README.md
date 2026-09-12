@@ -83,7 +83,7 @@ The Storm Gradle plugin is the whole setup in one block: it imports the BOM, add
 plugins {
     kotlin("jvm") version "2.4.0"
     id("com.google.devtools.ksp") version "2.3.10"
-    id("st.orm") version "1.14.0"
+    id("st.orm") version "1.14.1"
 }
 ```
 
@@ -92,7 +92,7 @@ For Java, drop the Kotlin and KSP plugins:
 ```kotlin
 plugins {
     java
-    id("st.orm") version "1.14.0"
+    id("st.orm") version "1.14.1"
 }
 ```
 
@@ -135,7 +135,7 @@ Without the Gradle plugin, import the BOM once and add the modules yourself. On 
         <dependency>
             <groupId>st.orm</groupId>
             <artifactId>storm-bom</artifactId>
-            <version>1.14.0</version>
+            <version>1.14.1</version>
             <type>pom</type>
             <scope>import</scope>
         </dependency>
@@ -147,7 +147,7 @@ Without the Gradle plugin, import the BOM once and add the modules yourself. On 
 
 ```kotlin
 dependencies {
-    implementation(platform("st.orm:storm-bom:1.14.0"))
+    implementation(platform("st.orm:storm-bom:1.14.1"))
     implementation("st.orm:storm-kotlin")
     runtimeOnly("st.orm:storm-core")
     ksp("st.orm:storm-metamodel-ksp")
@@ -159,7 +159,7 @@ dependencies {
 
 ```kotlin
 dependencies {
-    implementation(platform("st.orm:storm-bom:1.14.0"))
+    implementation(platform("st.orm:storm-bom:1.14.1"))
     implementation("st.orm:storm-java21")
     runtimeOnly("st.orm:storm-core")
     annotationProcessor("st.orm:storm-metamodel-processor")
