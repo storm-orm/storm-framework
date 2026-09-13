@@ -678,7 +678,7 @@ group key; the result is a map from parent to its children:
 val usersByCity: Map<City, List<User>> = orm.entity<User>()
     .select()
     .where(User_.email like "%@example.com")
-    .orderBy(User_.city)
+    .orderBy(User_.city)   // optional: fixes the order of the groups and of the users in each
     .resultGroupedBy(User_.city)
 ```
 
@@ -690,7 +690,7 @@ val usersByCity: Map<City, List<User>> = orm.entity<User>()
 Map<City, List<User>> usersByCity = orm.entity(User.class)
     .select()
     .where(User_.email, LIKE, "%@example.com")
-    .orderBy(User_.city)
+    .orderBy(User_.city)   // optional: fixes the order of the groups and of the users in each
     .getResultGroupedBy(User_.city);
 ```
 
@@ -701,8 +701,10 @@ The SQL is not affected by the grouping: the same select is executed and the res
 hydration, so the whole graph loads in a single query. Hydration does not pay for the duplication in the join
 result: repeated group records are materialized once and grouped by instance identity, not by comparing record
 fields. The returned map and its lists are unmodifiable and insertion-ordered; use `orderBy()` to control the
-order of groups and of results within each group. Because duplicate entities within a result set share the same
-instance, each result's reference to its group key is the map key itself.
+order of groups and of results within each group. Grouping itself does not depend on it: a group collects its
+results wherever they fall in the result set, so the ordering decides the order of the map, not its contents.
+Because duplicate entities within a result set share the same instance, each result's reference to its group key
+is the map key itself.
 
 The where clause keeps its normal meaning: it filters the results, and a group appears only when at least one of
 its results matches. The path must resolve to a non-null record for every result; narrow queries over nullable

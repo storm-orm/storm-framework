@@ -156,7 +156,7 @@ results are grouped during hydration:
 // Load cities with their users in one query
 val usersByCity: Map<City, List<User>> = orm.entity<User>()
     .select()
-    .orderBy(User_.city)
+    .orderBy(User_.city)   // optional: fixes the order of the groups and of the users in each
     .resultGroupedBy(User_.city)
 ```
 
@@ -178,7 +178,7 @@ results are grouped during hydration:
 // Load cities with their users in one query
 Map<City, List<User>> usersByCity = orm.entity(User.class)
     .select()
-    .orderBy(User_.city)
+    .orderBy(User_.city)   // optional: fixes the order of the groups and of the users in each
     .getResultGroupedBy(User_.city);
 ```
 
@@ -186,9 +186,11 @@ Map<City, List<User>> usersByCity = orm.entity(User.class)
 </Tabs>
 
 The grouped terminal returns an unmodifiable, insertion-ordered map: parents appear in the order
-their first row is encountered, children in row order within each parent. Because duplicate entities within a
-result set are guaranteed to share the same instance, each child's reference to its parent is the map key itself, and repeated
-parents are materialized once rather than once per row. The path must resolve to a non-null record for every
+their first row is encountered, children in row order within each parent. The grouping does not depend on that
+order: a parent collects its children wherever they fall in the result set, so `orderBy()` decides the order of
+the map rather than its contents. Because duplicate entities within a result set are guaranteed to share the
+same instance, each child's reference to its parent is the map key itself, and repeated parents are materialized
+once rather than once per row. The path must resolve to a non-null record for every
 result; narrow queries over nullable foreign keys with a `where()` clause first. This replaces the manual
 pattern of querying the many side and grouping in memory, and it loads the whole graph in a single query,
 without the N+1 queries or the join duplication handling that collection-based ORMs need.
