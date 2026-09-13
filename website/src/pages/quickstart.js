@@ -32,12 +32,15 @@ function buildBody(version) {
   const cli = C("# from the root of your project's workspace\n") + P(cliCommand);
 
   // One install snippet per supported Kotlin line (KOTLIN_VARIANTS in the
-  // shared theme), switchable in the editor title bar.
-  const installFor = ({kotlin, ksp}) =>
+  // shared theme), switchable in the editor title bar. The Storm plugin applies
+  // its bundled KSP itself, so only the Kotlin-paired lines declare KSP.
+  const installFor = ({kotlin, ksp, kspRequired}) =>
     C('// build.gradle.kts\n') +
     F('plugins') + P(' {\n') +
     P('    ') + F('kotlin') + P('(') + S('"jvm"') + P(') version ') + S(`"${kotlin}"`) + P('\n') +
-    P('    ') + F('id') + P('(') + S('"com.google.devtools.ksp"') + P(') version ') + S(`"${ksp}"`) + P('\n') +
+    (kspRequired
+      ? P('    ') + F('id') + P('(') + S('"com.google.devtools.ksp"') + P(') version ') + S(`"${ksp}"`) + P('\n')
+      : '') +
     P('    ') + F('id') + P('(') + S('"st.orm"') + P(') version ') + S(`"${version}"`) + P('\n') +
     P('}\n\n') +
     F('dependencies') + P(' {\n') +

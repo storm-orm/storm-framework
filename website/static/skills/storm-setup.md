@@ -12,24 +12,33 @@ Before suggesting dependencies, read the project's build file (pom.xml, build.gr
 - Existing dependencies (Spring Boot, Ktor, database driver, etc.)
 - If no Storm version is specified in the project, use version `@@STORM_VERSION@@`
 - If no Kotlin version is specified in the project, use the latest stable Kotlin release that Storm supports (any 2.0.x–2.4.x — the compiler plugin ships variants `storm-compiler-plugin-2.0` through `-2.4`)
-- KSP plugin versions are always prefixed with the Kotlin version: `<kotlin-version>-<ksp-release>` (e.g. `2.0.21-1.0.28` for Kotlin 2.0.21). Pick the KSP release matching the project's Kotlin version — a bare version like `2.3.6` is NOT a valid KSP plugin version
+- KSP plugin versions come in two shapes. KSP for Kotlin 2.0 through 2.2 is paired to the Kotlin version, `<kotlin-version>-<ksp-release>` (e.g. `2.0.21-1.0.28` for Kotlin 2.0.21); from KSP 2.3 on it versions independently of Kotlin, so a bare version such as `2.3.10` is valid there. On Kotlin 2.3 and newer the `st.orm` plugin supplies KSP itself, so the project needs no KSP line at all
 - If no Spring Boot version is specified, use the current stable Spring Boot release (3.x works with `storm-jackson2`, 4.x with `storm-jackson3`)
 
 ## Core Dependencies
 
 ### Kotlin (Gradle) - Recommended
 
-Prefer the Storm Gradle plugin (`id("st.orm")`, Gradle 8.5+). It imports the BOM, adds `storm-kotlin` and `storm-core`, wires the KSP metamodel processor, and selects the Storm compiler-plugin variant matching the project's Kotlin version. Apply it alongside the Kotlin and KSP plugins:
+Prefer the Storm Gradle plugin (`id("st.orm")`, Gradle 8.5+). It imports the BOM, adds `storm-kotlin` and `storm-core`, wires the KSP metamodel processor, and selects the Storm compiler-plugin variant matching the project's Kotlin version. Apply it alongside the Kotlin plugin:
 
 ```kotlin
 plugins {
     kotlin("jvm") version "<kotlin-version>"
-    id("com.google.devtools.ksp") version "<kotlin-version>-<ksp-release>"  // e.g., 2.0.21-1.0.28 for Kotlin 2.0.21
     id("st.orm") version "@@STORM_VERSION@@"
 }
 ```
 
-**Important:** The KSP plugin version must match the project's Kotlin version — it is always `<kotlin-version>-<ksp-release>`. KSP stays in `plugins { }` because its version is paired to Kotlin; if it is missing, the build fails with the exact line to add. The `st.orm` plugin version drives all Storm coordinates, so no BOM or per-module versions are needed — add only the extra modules the project needs, without versions:
+**Important:** On Kotlin 2.3 and newer the `st.orm` plugin applies KSP itself, provided the Kotlin plugin is declared before it. On Kotlin 2.0 through 2.2, add the KSP plugin explicitly, with the version paired to the project's Kotlin version:
+
+```kotlin
+plugins {
+    kotlin("jvm") version "2.0.21"
+    id("com.google.devtools.ksp") version "2.0.21-1.0.28"
+    id("st.orm") version "@@STORM_VERSION@@"
+}
+```
+
+Where KSP is required and missing, the build fails with the exact line to add. The `st.orm` plugin version drives all Storm coordinates, so no BOM or per-module versions are needed — add only the extra modules the project needs, without versions:
 
 ```kotlin
 dependencies {

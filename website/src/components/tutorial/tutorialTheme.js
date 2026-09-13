@@ -44,12 +44,15 @@ export const QC = (x) => `<span class="sqlc">${esc(x)}</span>`;
 // shared by every page that renders a build.gradle.kts block. KSP versions are
 // Kotlin-paired (<kotlin>-<ksp>) up to Kotlin 2.2; from Kotlin 2.3 on, KSP
 // versions independently and its latest release covers recent Kotlin versions.
+// That independent release is the one the Storm Gradle plugin bundles and
+// applies itself, so the KSP plugin line only belongs in the snippet on the
+// Kotlin-paired lines (kspRequired).
 // The storm-compiler-plugin suffix tracks the Kotlin major.minor.
 // Keep in sync with KotlinVariants in storm-gradle-plugin and docs/installation.md.
 export const KOTLIN_VARIANTS = [
-  {label: 'Kotlin 2.0', kotlin: '2.0.21', ksp: '2.0.21-1.0.28', plugin: '2.0'},
-  {label: 'Kotlin 2.1', kotlin: '2.1.21', ksp: '2.1.21-2.0.2', plugin: '2.1'},
-  {label: 'Kotlin 2.2', kotlin: '2.2.21', ksp: '2.2.21-2.0.5', plugin: '2.2'},
+  {label: 'Kotlin 2.0', kotlin: '2.0.21', ksp: '2.0.21-1.0.28', plugin: '2.0', kspRequired: true},
+  {label: 'Kotlin 2.1', kotlin: '2.1.21', ksp: '2.1.21-2.0.2', plugin: '2.1', kspRequired: true},
+  {label: 'Kotlin 2.2', kotlin: '2.2.21', ksp: '2.2.21-2.0.5', plugin: '2.2', kspRequired: true},
   {label: 'Kotlin 2.3', kotlin: '2.3.21', ksp: '2.3.10', plugin: '2.3'},
   {label: 'Kotlin 2.4', kotlin: '2.4.0', ksp: '2.3.10', plugin: '2.4', selected: true},
 ];

@@ -23,12 +23,16 @@ const DESC =
   'routes, and assert the SQL with a test.';
 
 function buildBody(version) {
-  const gradleFor = ({kotlin, ksp}) =>
+  // The Storm plugin applies its bundled KSP itself, so only the Kotlin-paired
+  // lines (kspRequired in KOTLIN_VARIANTS) declare KSP.
+  const gradleFor = ({kotlin, ksp, kspRequired}) =>
     C('// build.gradle.kts\n') +
     F('plugins') + P(' {\n') +
     P('    ') + F('kotlin') + P('(') + S('"jvm"') + P(') version ') + S(`"${kotlin}"`) + P('\n') +
     P('    ') + F('id') + P('(') + S('"io.ktor.plugin"') + P(') version ') + S('"3.4.3"') + P('\n') +
-    P('    ') + F('id') + P('(') + S('"com.google.devtools.ksp"') + P(') version ') + S(`"${ksp}"`) + P('\n') +
+    (kspRequired
+      ? P('    ') + F('id') + P('(') + S('"com.google.devtools.ksp"') + P(') version ') + S(`"${ksp}"`) + P('\n')
+      : '') +
     P('    ') + F('id') + P('(') + S('"st.orm"') + P(') version ') + S(`"${version}"`) + P('\n') +
     P('}\n\n') +
     F('dependencies') + P(' {\n') +
