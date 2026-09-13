@@ -251,11 +251,10 @@ Nodes beyond a Ref are navigation-only: usable in where/orderBy/groupBy/having/s
 
 ### Dependencies (BOM)
 
-Kotlin (Gradle) — apply the Storm plugin (id "st.orm", Gradle 8.5+). It imports the BOM and adds storm-kotlin, storm-core, the KSP metamodel processor, and the compiler plugin, so no Storm dependencies are declared by hand:
+Kotlin (Gradle) — apply the Storm plugin (id "st.orm", Gradle 8.5+). It imports the BOM and adds storm-kotlin, storm-core, the KSP metamodel processor, and the compiler plugin, so no Storm dependencies are declared by hand. On Kotlin 2.3 and newer it also applies KSP itself, as long as the Kotlin plugin is declared before it; on Kotlin 2.0 through 2.2, add id("com.google.devtools.ksp") with the version paired to the Kotlin version (e.g. 2.0.21-1.0.28 for Kotlin 2.0.21):
 ```kotlin
 plugins {
     kotlin("jvm") version "2.4.0"
-    id("com.google.devtools.ksp") version "2.3.10"
     id("st.orm") version "@@STORM_VERSION@@"
 }
 ```
@@ -292,7 +291,6 @@ Kotlin (Gradle) — apply the Storm plugin, then add the starter:
 ```kotlin
 plugins {
     kotlin("jvm") version "2.4.0"
-    id("com.google.devtools.ksp") version "2.3.10"
     id("st.orm") version "@@STORM_VERSION@@"
 }
 
@@ -315,7 +313,6 @@ Kotlin (Gradle) — apply the Storm plugin, then add the Ktor module:
 ```kotlin
 plugins {
     kotlin("jvm") version "2.4.0"
-    id("com.google.devtools.ksp") version "2.3.10"
     id("st.orm") version "@@STORM_VERSION@@"
 }
 
