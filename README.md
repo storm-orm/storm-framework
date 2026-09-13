@@ -82,12 +82,13 @@ The Storm Gradle plugin is the whole setup in one block: it imports the BOM, add
 ```kotlin
 plugins {
     kotlin("jvm") version "2.4.0"
-    id("com.google.devtools.ksp") version "2.3.10"
     id("st.orm") version "1.14.1"
 }
 ```
 
-For Java, drop the Kotlin and KSP plugins:
+On Kotlin 2.3 and newer the plugin applies KSP itself; on Kotlin 2.2 and older, add `id("com.google.devtools.ksp")` with the version paired to your Kotlin line.
+
+For Java, drop the Kotlin plugin:
 
 ```kotlin
 plugins {

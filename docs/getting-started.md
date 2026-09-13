@@ -43,12 +43,11 @@ One plugin application imports the BOM, adds the core dependencies, wires the me
 ```kotlin
 plugins {
     kotlin("jvm") version "2.4.0"
-    id("com.google.devtools.ksp") version "2.3.10"
     id("st.orm") version "@@STORM_VERSION@@"
 }
 ```
 
-Add the dialect module and JDBC driver for your database, and you are done. See [Installation](installation.md#gradle-plugin-recommended) for the plugin's configuration options and the per-Kotlin-version matrix.
+On Kotlin 2.3 and newer the plugin applies KSP itself; on Kotlin 2.2 and older, add `id("com.google.devtools.ksp")` with the version paired to your Kotlin line. Add the dialect module and JDBC driver for your database, and you are done. See [Installation](installation.md#gradle-plugin-recommended) for the plugin's configuration options and the per-Kotlin-version matrix.
 
 </TabItem>
 <TabItem value="maven" label="Maven BOM">

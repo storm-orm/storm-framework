@@ -33,7 +33,7 @@ plugins {
 }
 ```
 
-That is the entire Storm setup: on Kotlin 2.3 and newer the plugin applies KSP itself, and a KSP version you apply in the plugins block always takes precedence. Kotlin 2.2 and older pair with their own KSP builds, so add the `com.google.devtools.ksp` plugin there yourself; when it is missing, the build fails with the exact line to add.
+That is the entire Storm setup: on Kotlin 2.3 and newer the plugin applies KSP itself, provided the Kotlin plugin is declared before `st.orm` as above, and a KSP version you apply in the plugins block always takes precedence. Kotlin 2.2 and older pair with their own KSP builds, so add the `com.google.devtools.ksp` plugin there yourself; when it is missing, the build fails with the exact line to add.
 
 </TabItem>
 <TabItem value="java" label="Java">
