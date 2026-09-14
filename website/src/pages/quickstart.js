@@ -134,6 +134,7 @@ ${navHtml('')}
     variants: KOTLIN_VARIANTS.map((v) => ({label: v.label, code: installFor(v), selected: v.selected})),
   })}
   <p>The plugin generates the type-safe metamodel (<code>Movie_</code>) through KSP and makes SQL templates injection-safe by default through the compiler plugin, with no extra dependencies to declare. On a real database, swap <code>storm-h2</code> for your dialect and add its JDBC driver. See the <a class="tlink" href="/docs/installation">installation guide</a> for all options.</p>
+  <p>Starting a project rather than reading along? A <a class="tlink" href="/templates/">starter template</a> is this build file with an application already around it: two entities and their migration, a repository query, a service, two endpoints and their tests, on Ktor or Spring Boot, in Kotlin or Java. Press <b>Use this template</b> on GitHub and it runs on H2 before you change a line.</p>
   <p>Working with an AI coding assistant? One command, run from the root of your project's workspace, installs Storm-aware rules and skills for it (Claude, Cursor, Copilot, Windsurf, Codex) and sets up a schema-aware MCP server, so the entities and queries it generates match your real schema.</p>
   ${editor({file: 'terminal', tag: 'shell', code: cli, copy: cliCommand})}
 
@@ -159,6 +160,7 @@ ${navHtml('')}
     <a href="/tutorials/build-a-rest-api">Build a REST API from scratch</a>
     <a href="/docs/first-query">First Query</a>
     <a href="/docs/entities">Entities</a>
+    <a href="/templates/">Starter templates</a>
     <a href="/examples/">Example apps</a>
     <a href="/comparison">How Storm compares</a>
   </div>
