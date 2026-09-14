@@ -243,9 +243,10 @@ jobs:
           git commit -m "docs: snapshot version ${{ steps.version.outputs.VERSION }}"
           git push
 
-  # The storm-example-* repos are GitHub templates (issue #213). Keep the Storm
-  # version they pin current so "Use this template" always starts on the release.
-  sync-example-templates:
+  # The storm-template-* starter templates and the storm-example-* applications are
+  # GitHub template repositories. Keep the Storm version they pin current, so that
+  # "Use this template" and a fresh clone always start on the release.
+  sync-template-repos:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     needs: publish-gradle-plugin
@@ -257,13 +258,13 @@ jobs:
         id: version
         run: echo "VERSION=${GITHUB_REF_NAME#v}" >> $GITHUB_OUTPUT
 
-      # The example build files pin the st.orm Gradle plugin version; the Storm
-      # artifacts themselves are managed by the plugin's BOM, so only that
-      # coordinate needs bumping. Toolchain versions (Kotlin, Ktor) track their
-      # own upstreams and are left untouched. RELEASE_TOKEN must have write access
-      # to each storm-orm/storm-example-* repository listed below.
-      - name: Bump the st.orm plugin version in each template
-        # The templates are a post-release convenience: by the time this job runs
+      # These build files pin the st.orm Gradle plugin version; the Storm artifacts
+      # themselves are managed by the plugin's BOM, so only that coordinate needs
+      # bumping. Toolchain versions (Kotlin, Ktor, Spring Boot) track their own
+      # upstreams and are left untouched. RELEASE_TOKEN must have write access to
+      # each storm-orm repository listed below, starter templates included.
+      - name: Bump the st.orm plugin version in each template and example
+        # The repos are a post-release convenience: by the time this job runs
         # the release artifacts are already on Central, npm and the Plugin Portal,
         # so a failed sync must not mark the release run red. Failures surface as
         # warning annotations on the run and the step exits non-zero so the repos
@@ -295,7 +296,12 @@ jobs:
             fi
           }
           FAILED=()
+          # Starter templates first: they are what a new project begins as, so a
+          # partial failure should leave them synced rather than the demos.
           for repo in \
+            storm-template-kotlin-ktor \
+            storm-template-kotlin-spring-boot \
+            storm-template-java-spring-boot \
             storm-example-java-spring-boot-4 \
             storm-example-kotlin-spring-boot-4 \
             storm-example-kotlin-spring-boot-4-graalvm \
@@ -307,6 +313,6 @@ jobs:
             fi
           done
           if [ "${#FAILED[@]}" -gt 0 ]; then
-            echo "::warning::Release ${V} itself succeeded, but ${#FAILED[@]} example template(s) were not synced: ${FAILED[*]}"
+            echo "::warning::Release ${V} itself succeeded, but ${#FAILED[@]} template or example repo(s) were not synced: ${FAILED[*]}"
             exit 1
           fi
