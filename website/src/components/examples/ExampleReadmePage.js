@@ -2,11 +2,12 @@ import React, {useEffect} from 'react';
 import Head from '@docusaurus/Head';
 import {TUT_CSS, navHtml, FOOT_HTML, clonebar, wireSqlToggles} from '../tutorial/tutorialTheme';
 
-// Route component for the /examples/<slug> pages added by the
-// example-readmes plugin. Receives the example (title, description, chips,
-// repo, rendered README html) as a JSON module prop and renders it in the
-// landing-page style: hero with the clone command and GitHub link, then the
-// README content.
+// Route component for the /examples/<slug> and /templates/<slug> pages added by
+// the example-readmes plugin. Receives the project (title, description, chips,
+// repo, rendered README html, and the base it lives under) as a JSON module
+// prop and renders it in the landing-page style: hero with the clone command
+// and GitHub link, then the README content. A template leads with its
+// "Use this template" button, since starting from it is the point.
 
 const README_CSS = `
   .storm-tut .readme{max-width:860px;margin:0 auto;padding:0 24px 48px}
@@ -42,22 +43,25 @@ const README_CSS = `
 `;
 
 export default function ExampleReadmePage({example}) {
-  const {slug, repo, title, description, chips, html} = example;
-  const url = `https://orm.st/examples/${slug}/`;
+  const {slug, repo, title, description, chips, html, base = 'examples'} = example;
+  const isTemplate = base === 'templates';
+  const url = `https://orm.st/${base}/${slug}/`;
   const githubUrl = `https://github.com/storm-orm/${repo}`;
-  const pageTitle = `${title} · ST/ORM Example Projects`;
+  const section = isTemplate ? 'Starter Templates' : 'Example Projects';
+  const pageTitle = `${title} · ST/ORM ${section}`;
 
   useEffect(() => wireSqlToggles(), []);
 
   const body = `
-${navHtml('examples')}
+${navHtml(base)}
 
 <div class="exhero">
-  <div class="crumbs"><a href="/examples/">Examples</a><span class="sep">/</span>${title}</div>
+  <div class="crumbs"><a href="/${base}/">${isTemplate ? 'Templates' : 'Examples'}</a><span class="sep">/</span>${title}</div>
   <h1>${title}</h1>
   <p class="dek">${description}</p>
   <div class="meta">${chips.map((chip) => `<span>${chip}</span>`).join('')}</div>
   <div class="getit">
+    ${isTemplate ? `<a class="btn primary" href="${githubUrl}/generate">Use this template →</a>` : ''}
     ${clonebar(`git clone ${githubUrl}.git`)}
     <a class="btn" href="${githubUrl}">View on GitHub →</a>
   </div>

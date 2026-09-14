@@ -77,13 +77,13 @@ See [Installation](installation.md) for the full `pom.xml`, including the proces
 
 ### Start from a template
 
-Each example application is a GitHub template with the build, schema, entities, and tests already wired. Click **Use this template** to generate a repository, then replace the sample entities with your own:
+Each starter template is a GitHub template repository holding one vertical slice of a working application: two entities with their migration, a repository query, a service, two endpoints, and the tests that cover them. Around three hundred lines, running on H2 the moment it is cloned, with nothing to delete before your own code goes in. Click **Use this template**, rename the package, and replace the schema:
 
-- [Kotlin + Ktor](https://github.com/storm-orm/storm-example-kotlin-ktor/generate)
-- [Kotlin + Spring Boot](https://github.com/storm-orm/storm-example-kotlin-spring-boot-4/generate)
-- [Java + Spring Boot](https://github.com/storm-orm/storm-example-java-spring-boot-4/generate)
+- [Kotlin + Ktor](https://github.com/storm-orm/storm-template-kotlin-ktor/generate)
+- [Kotlin + Spring Boot](https://github.com/storm-orm/storm-template-kotlin-spring-boot/generate)
+- [Java + Spring Boot](https://github.com/storm-orm/storm-template-java-spring-boot/generate)
 
-The full set, with what each one demonstrates, is on the [example projects page](/examples/).
+What each one contains is on the [starter templates page](/templates/). The [example projects](/examples/) are a different thing: complete applications on the public IMDB dataset, written to be read and run rather than started from.
 
 </TabItem>
 <TabItem value="ai" label="AI-assisted">

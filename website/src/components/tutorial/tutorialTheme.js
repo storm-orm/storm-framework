@@ -342,7 +342,7 @@ export const heroArt = (page, {priority = false} = {}) => `
 export const FOOT_HTML = `
 <footer><div class="wrap foot">
   <div class="brand"><img class="logo" src="/img/storm-light.png" alt="Storm" /></div>
-  <div class="links"><a href="/">orm.st</a><a href="/quickstart">Quickstart</a><a href="/docs/">Documentation</a><a href="/tutorials/">Tutorials</a><a href="/examples/">Examples</a><a href="/comparison">Comparison</a><a href="/benchmarks">Benchmarks</a><a href="/blog/">Blog</a><a href="${GH}" target="_blank" rel="noopener">GitHub</a><a href="${DISCORD}" target="_blank" rel="noopener">Discord</a><a href="https://central.sonatype.com/namespace/st.orm">Maven Central</a></div>
+  <div class="links"><a href="/">orm.st</a><a href="/quickstart">Quickstart</a><a href="/docs/">Documentation</a><a href="/tutorials/">Tutorials</a><a href="/templates/">Templates</a><a href="/examples/">Examples</a><a href="/comparison">Comparison</a><a href="/benchmarks">Benchmarks</a><a href="/blog/">Blog</a><a href="${GH}" target="_blank" rel="noopener">GitHub</a><a href="${DISCORD}" target="_blank" rel="noopener">Discord</a><a href="https://central.sonatype.com/namespace/st.orm">Maven Central</a></div>
 </div></footer>`;
 
 export const TUT_CSS = `
