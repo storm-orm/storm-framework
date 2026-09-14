@@ -468,28 +468,29 @@ const SQL = [
   '<span class="sqlk">WHERE</span> c.country = <span class="sqlq">?</span>',
 ];
 
-// Storm-vs-X figures from the published 5-fork benchmark run of 2026-09-03
-// (median fork; differences within 3% count as level, which is wider than the
-// run-to-run noise measured by repeating the suite on identical hardware). Counts
-// are the ones that hold across both runs, so none of them turns on which way the
-// noise fell. Hibernate is the default because it is the framework most visitors
+// Storm-vs-X figures from the published 5-fork benchmark runs of 2026-09-03 and
+// 2026-09-13 (median fork; differences within 3% count as level, which is wider
+// than the run-to-run noise measured by repeating the suite on identical hardware).
+// Counts are the ones that hold in both runs, so none of them turns on which way
+// the noise fell, and where a workload changed hands it is named rather than
+// averaged away. Hibernate is the default because it is the framework most visitors
 // are coming from; the rest are one click away. Nothing here changes on a timer.
 const VS = {
   hibernate: {
     label: 'Hibernate',
-    speed: ['9 of 12', 'workloads faster than Hibernate', 'Level on the other three; Storm is behind on none of the twelve, and leads by up to 1.6x.'],
+    speed: ['8 of 12', 'workloads faster than Hibernate', 'Level on the rest; Storm is behind on none of the twelve, and leads by up to 1.5x.'],
     entities: ['78%', 'fewer entity lines', 'The five-table model: 31 lines in Storm, 141 in Hibernate.'],
     queries: ['14%', 'fewer query lines', 'All twelve workloads: 161 lines in Storm, 188 in Hibernate, with no query strings.'],
   },
   jooq: {
     label: 'jOOQ',
-    speed: ['10 of 12', 'workloads faster than jOOQ', 'jOOQ takes only the object graph, with a clever JSON-aggregate query; Storm leads the other ten, including all four writes.'],
+    speed: ['9 of 12', 'workloads faster than jOOQ', 'jOOQ takes only the object graph, with a clever JSON-aggregate query; Storm leads nine of the remaining eleven, including all four writes.'],
     entities: ['31 lines', 'instead of manual mapping', 'jOOQ maps results by hand into DTOs; Storm turns one 31-line model into typed rows everywhere.'],
     queries: ['17%', 'fewer query lines', 'All twelve workloads: 161 lines in Storm, 194 in jOOQ, no hand-written row mapping.'],
   },
   exposed: {
     label: 'Exposed',
-    speed: ['10 of 12', 'workloads faster than Exposed', 'Level on the other two; Storm is behind on none of the twelve, and leads by up to 1.9x.'],
+    speed: ['10 of 12', 'workloads faster than Exposed', 'Level on the other two; Storm is behind on none of the twelve, and leads by up to 1.8x.'],
     entities: ['47%', 'fewer entity lines', 'The five-table model: 31 lines in Storm, 58 lines of Exposed table objects and data classes.'],
     queries: ['16%', 'fewer query lines', 'All twelve workloads: 161 lines in Storm, 191 in Exposed, no hand-written row mapping.'],
   },
@@ -507,13 +508,13 @@ const VS = {
   },
   jimmer: {
     label: 'Jimmer',
-    speed: ['10 of 12', 'workloads faster than Jimmer', 'Level on the other two; Storm is behind on none of the twelve, and leads by up to 1.8x.'],
+    speed: ['9 of 12', 'workloads faster than Jimmer', 'Level on two; Jimmer takes the ten-row join by 3%, and Storm leads by up to 1.8x elsewhere.'],
     entities: ['46%', 'fewer entity lines', 'The five-table model: 31 lines of data classes in Storm, 57 lines of interfaces in Jimmer.'],
     queries: ['40%', 'fewer query lines', 'All twelve workloads: 161 lines in Storm, 270 in Jimmer.'],
   },
   jdbc: {
     label: 'JDBC',
-    speed: ['Within 12%', 'of hand-written JDBC speed', 'averaged across the twelve workloads, and 34% on its most expensive one; the next-closest framework averages 25%, and its most expensive workload costs about 90%. The trade: typed entities and compile-checked queries instead of strings and hand-mapped rows.'],
+    speed: ['Within 12%', 'of hand-written JDBC speed', 'averaged across the twelve workloads, and about a third on its most expensive one; the next-closest framework averages 25%, and its most expensive workload costs about 90%. The trade: typed entities and compile-checked queries instead of strings and hand-mapped rows.'],
     entities: ['31 lines', 'instead of manual mapping', 'JDBC has no entities: every row stays untyped until you map it by hand.'],
     queries: ['59%', 'fewer query lines', 'All twelve workloads: 161 lines in Storm, 395 of hand-written JDBC and mapping.'],
   },
