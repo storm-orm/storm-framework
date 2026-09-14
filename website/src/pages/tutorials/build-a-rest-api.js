@@ -208,6 +208,7 @@ ${navHtml('tutorials')}
     copy: true,
     variants: KOTLIN_VARIANTS.map((v) => ({label: v.label, code: gradleFor(v), selected: v.selected})),
   })}
+  <p>Assembling it by hand is the point of this tutorial. When you are starting real work instead, the <a class="tlink" href="/templates/kotlin-ktor">Ktor starter template</a> is this project already assembled: the same plugin block, two entities with their migration, a repository query, a service, two endpoints and their tests. Press <b>Use this template</b> on GitHub and it runs on H2 before you change a line.</p>
 
   <h2><span class="hno">2</span>Create the schema</h2>
   <p>Storm maps to an existing schema rather than generating one, which keeps migrations under your control. For this tutorial a small script is enough; H2 runs it on startup, so there is no migration tool to set up yet. On another database, pick it in the block below.</p>
@@ -255,6 +256,7 @@ ${navHtml('tutorials')}
     <a href="/docs/repositories">Repositories</a>
     <a href="/docs/ktor-integration">Ktor integration</a>
     <a href="/docs/testing">Testing</a>
+    <a href="/templates/kotlin-ktor">The Ktor starter template</a>
     <a href="/examples/kotlin-ktor">The full Ktor example app</a>
   </div>
 
