@@ -468,16 +468,16 @@ const SQL = [
   '<span class="sqlk">WHERE</span> c.country = <span class="sqlq">?</span>',
 ];
 
-// Storm-vs-X figures from the published 5-fork benchmark run of 2026-09-03
-// (median fork; differences within 3% count as level, which is wider than the
-// run-to-run noise measured by repeating the suite on identical hardware). Counts
-// are the ones that hold across both runs, so none of them turns on which way the
-// noise fell. Hibernate is the default because it is the framework most visitors
+// Storm-vs-X figures from the published 5-fork benchmark run, median fork, with
+// differences within 3% reported as level rather than ranked. Every figure comes
+// from that one run: a score only means anything against the others measured
+// beside it, so nothing here is carried over from an earlier table, and a
+// workload another framework takes is named rather than averaged away. Hibernate is the default because it is the framework most visitors
 // are coming from; the rest are one click away. Nothing here changes on a timer.
 const VS = {
   hibernate: {
     label: 'Hibernate',
-    speed: ['9 of 12', 'workloads faster than Hibernate', 'Level on the other three; Storm is behind on none of the twelve, and leads by up to 1.6x.'],
+    speed: ['11 of 12', 'workloads faster than Hibernate', 'Level on the dynamic query; Storm is behind on none of the twelve, and leads by up to 1.5x.'],
     entities: ['78%', 'fewer entity lines', 'The five-table model: 31 lines in Storm, 141 in Hibernate.'],
     queries: ['14%', 'fewer query lines', 'All twelve workloads: 161 lines in Storm, 188 in Hibernate, with no query strings.'],
   },
@@ -501,19 +501,19 @@ const VS = {
   },
   ktorm: {
     label: 'Ktorm',
-    speed: ['7 of 12', 'workloads faster than Ktorm', 'Level on the rest, the batch writes among them; Storm is behind on none of the twelve, and leads by up to 2.2x.'],
+    speed: ['10 of 12', 'workloads faster than Ktorm', 'Level on the other two, the graph insert among them; Storm is behind on none of the twelve, and leads by up to 2.2x.'],
     entities: ['48%', 'fewer entity lines', 'The five-table model: 31 lines in Storm, 60 lines of Ktorm tables and entity interfaces.'],
     queries: ['9%', 'fewer query lines', 'All twelve workloads: 161 lines in Storm, 177 in Ktorm.'],
   },
   jimmer: {
     label: 'Jimmer',
-    speed: ['10 of 12', 'workloads faster than Jimmer', 'Level on the other two; Storm is behind on none of the twelve, and leads by up to 1.8x.'],
+    speed: ['9 of 12', 'workloads faster than Jimmer', 'Level on two; Jimmer takes the ten-row join by 3%, and Storm leads by up to 1.8x elsewhere.'],
     entities: ['46%', 'fewer entity lines', 'The five-table model: 31 lines of data classes in Storm, 57 lines of interfaces in Jimmer.'],
     queries: ['40%', 'fewer query lines', 'All twelve workloads: 161 lines in Storm, 270 in Jimmer.'],
   },
   jdbc: {
     label: 'JDBC',
-    speed: ['Within 12%', 'of hand-written JDBC speed', 'averaged across the twelve workloads, and 34% on its most expensive one; the next-closest framework averages 25%, and its most expensive workload costs about 90%. The trade: typed entities and compile-checked queries instead of strings and hand-mapped rows.'],
+    speed: ['Within 12%', 'of hand-written JDBC speed', 'averaged across the twelve workloads, and 32% on its most expensive one; the next-closest framework averages 25%, and its most expensive workload costs 92%. The trade: typed entities and compile-checked queries instead of strings and hand-mapped rows.'],
     entities: ['31 lines', 'instead of manual mapping', 'JDBC has no entities: every row stays untyped until you map it by hand.'],
     queries: ['59%', 'fewer query lines', 'All twelve workloads: 161 lines in Storm, 395 of hand-written JDBC and mapping.'],
   },
