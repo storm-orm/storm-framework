@@ -165,7 +165,7 @@ Terminal operations: `.resultList`, `.singleResult`, `.optionalResult`, `.result
 // Load cities with their users in one query
 val usersByCity: Map<City, List<User>> = orm.entity<User>()
     .select()
-    .orderBy(User_.city)   // optional: fixes the order of the groups and of the users in each
+    .orderBy(User_.city)   // optional: decides the order of the groups and of the users in each
     .resultGroupedBy(User_.city)
 ```
 

@@ -49,7 +49,7 @@ Terminal operations: `.getResultList()`, `.getSingleResult()`, `.getOptionalResu
 // Load cities with their users in one query
 Map<City, List<User>> usersByCity = orm.entity(User.class)
     .select()
-    .orderBy(User_.city)   // optional: fixes the order of the groups and of the users in each
+    .orderBy(User_.city)   // optional: decides the order of the groups and of the users in each
     .getResultGroupedBy(User_.city);
 ```
 

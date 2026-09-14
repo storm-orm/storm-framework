@@ -678,7 +678,7 @@ group key; the result is a map from parent to its children:
 val usersByCity: Map<City, List<User>> = orm.entity<User>()
     .select()
     .where(User_.email like "%@example.com")
-    .orderBy(User_.city)   // optional: fixes the order of the groups and of the users in each
+    .orderBy(User_.city)   // optional: decides the order of the groups and of the users in each
     .resultGroupedBy(User_.city)
 ```
 
@@ -690,7 +690,7 @@ val usersByCity: Map<City, List<User>> = orm.entity<User>()
 Map<City, List<User>> usersByCity = orm.entity(User.class)
     .select()
     .where(User_.email, LIKE, "%@example.com")
-    .orderBy(User_.city)   // optional: fixes the order of the groups and of the users in each
+    .orderBy(User_.city)   // optional: decides the order of the groups and of the users in each
     .getResultGroupedBy(User_.city);
 ```
 
