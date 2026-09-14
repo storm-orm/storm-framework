@@ -1,13 +1,50 @@
 const {marked} = require('marked');
 
-// Build-time fetch of the example-project READMEs, rendered inline at
-// /examples/<slug> so visitors stay in the orm.st funnel (tutorials ->
+// Build-time fetch of the project READMEs, rendered inline at /examples/<slug>
+// and /templates/<slug> so visitors stay in the orm.st funnel (tutorials ->
 // examples -> getting started) and the content is indexable on our domain.
 // The READMEs stay canonical in their repos; the site rebuilds on every docs
 // push and release, which keeps the rendered copies fresh without any manual
 // syncing. Each page shows the clone command and a GitHub link up front.
+//
+// The two sets answer different questions and are kept apart everywhere on the
+// site: a template is what a new project starts from, an example is a complete
+// application to read.
 
 const GITHUB_ORG = 'storm-orm';
+
+const TEMPLATES = [
+  {
+    slug: 'kotlin-ktor',
+    repo: 'storm-template-kotlin-ktor',
+    title: 'Starter template · Kotlin + Ktor',
+    description:
+      'A runnable Ktor application with one vertical slice: two entities, a ' +
+      'repository query, a service, two endpoints, and the tests that cover ' +
+      'them. Runs on H2 out of the box; PostgreSQL is a configuration change.',
+    chips: ['Kotlin', 'Ktor 3', 'H2 or PostgreSQL'],
+  },
+  {
+    slug: 'kotlin-spring-boot',
+    repo: 'storm-template-kotlin-spring-boot',
+    title: 'Starter template · Kotlin + Spring Boot',
+    description:
+      'The same slice on Spring Boot: the starter builds the ORMTemplate, ' +
+      'registers the repositories, bridges the transactions, and validates ' +
+      'every entity against the schema at startup.',
+    chips: ['Kotlin', 'Spring Boot 4', 'H2 or PostgreSQL'],
+  },
+  {
+    slug: 'java-spring-boot',
+    repo: 'storm-template-java-spring-boot',
+    title: 'Starter template · Java + Spring Boot',
+    description:
+      'The Java flavor on Java 21: immutable record entities, a metamodel ' +
+      'query, a Spring-managed transaction, and the same two tests. No JPA, ' +
+      'no proxies, no persistence context.',
+    chips: ['Java 21', 'Spring Boot 4', 'H2 or PostgreSQL'],
+  },
+];
 
 const EXAMPLES = [
   {
@@ -102,28 +139,39 @@ function renderReadme(markdown, repo) {
   return html;
 }
 
+const SETS = [
+  {base: 'examples', projects: EXAMPLES},
+  {base: 'templates', projects: TEMPLATES},
+];
+
 module.exports = function exampleReadmesPlugin() {
   return {
     name: 'example-readmes',
 
     async loadContent() {
-      const readmes = await Promise.all(
-        EXAMPLES.map((example) => fetchReadme(example.repo))
+      const sets = await Promise.all(
+        SETS.map(async ({base, projects}) => {
+          const readmes = await Promise.all(
+            projects.map((project) => fetchReadme(project.repo))
+          );
+          return projects.map((project, index) => ({
+            ...project,
+            base,
+            html: renderReadme(readmes[index], project.repo),
+          }));
+        })
       );
-      return EXAMPLES.map((example, index) => ({
-        ...example,
-        html: renderReadme(readmes[index], example.repo),
-      }));
+      return sets.flat();
     },
 
     async contentLoaded({content, actions}) {
-      for (const example of content) {
+      for (const project of content) {
         const dataPath = await actions.createData(
-          `example-${example.slug}.json`,
-          JSON.stringify(example)
+          `${project.base}-${project.slug}.json`,
+          JSON.stringify(project)
         );
         actions.addRoute({
-          path: `/examples/${example.slug}`,
+          path: `/${project.base}/${project.slug}`,
           component: '@site/src/components/examples/ExampleReadmePage.js',
           modules: {example: dataPath},
           exact: true,

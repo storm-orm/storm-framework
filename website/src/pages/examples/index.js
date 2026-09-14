@@ -7,23 +7,27 @@ import {TUT_CSS, navHtml, FOOT_HTML, heroArt} from '../../components/tutorial/tu
 // the public IMDB dataset: the same app on Ktor and Spring Boot, in Kotlin
 // and Java. Each card links to its detail page (README rendered inline by
 // the example-readmes plugin, with the clone command and GitHub link).
+//
+// These are applications to read and run, not to start from: a project begins
+// at /templates, where the same stacks are one vertical slice each.
 
 const TITLE = 'ST/ORM Example Projects · Complete applications built with Storm';
 const DESC =
   'Complete example applications built with Storm ORM: a movie browser on ' +
   'the public IMDB dataset, implemented on Spring Boot 4 and Ktor, in Kotlin ' +
-  'and Java. Clone one, run it, and explore idiomatic Storm in a real project.';
+  'and Java. Clone one, run it, and read idiomatic Storm in a real project; ' +
+  'to begin a project of your own, start from a template instead.';
 
 const BODY = `
 ${navHtml('examples')}
 
 <div class="pagehero">
   <h1>Real applications,<br><span class="grad">built with Storm.</span></h1>
-  <p class="sub">The same movie browser on the public IMDB dataset, built on Ktor and Spring Boot, in Kotlin and Java, with GraalVM native-image variants. Each one shows idiomatic Storm in a real project. Clone one and run it with Docker and Gradle.</p>
+  <p class="sub">The same movie browser on the public IMDB dataset, built on Ktor and Spring Boot, in Kotlin and Java, with GraalVM native-image variants. Each one shows idiomatic Storm at the scale of a real application. Clone one and run it with Docker and Gradle. Beginning a project of your own? Start from a <a href="/templates/">template</a>: the same stacks, one vertical slice each, with nothing to delete first.</p>
   ${heroArt('examples', {priority: true})}
 </div>
 
-<div class="shead" id="projects"><span class="mark">//</span>Example projects<span class="sdesc">Server-rendered movie browsers: entities, repositories, projections, pagination, transactions, and tests in a working application.</span></div>
+<div class="shead" id="projects"><span class="mark">//</span>Example projects<span class="sdesc">Server-rendered movie browsers: entities, repositories, projections, pagination, transactions, and tests in a working application. Written to be read, not to be started from.</span></div>
 <div class="cards">
   <a class="tcard" href="/examples/kotlin-ktor/">
     <div class="tt">Storm Movies · Kotlin + Ktor<span class="arrow">→</span></div>
@@ -53,6 +57,14 @@ ${navHtml('examples')}
     <div class="tt">Storm Movies · Ktor · GraalVM<span class="arrow">→</span></div>
     <div class="td">The Ktor movie browser as a native image: storm-core ships a GraalVM feature that registers entities and repositories from the compile-time type index, so the data layer needs no native configuration at all.</div>
     <div class="tm"><span>Kotlin</span><span>Ktor 3</span><span>GraalVM</span></div>
+  </a>
+</div>
+
+<div class="shead" id="templates"><span class="mark">//</span>Starting a project?<span class="sdesc">An example is an application to read. A template is what your own project begins as.</span></div>
+<div class="cards">
+  <a class="tcard" href="/templates/">
+    <div class="tt">Starter templates<span class="arrow">→</span></div>
+    <div class="td">The same three stacks at their smallest: two entities, one repository query, one service, two endpoints and their tests, around three hundred lines. Each is a GitHub template that runs on H2 the moment you clone it.</div>
   </a>
 </div>
 

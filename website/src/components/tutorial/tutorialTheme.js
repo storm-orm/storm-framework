@@ -306,6 +306,7 @@ export const navHtml = (active) => `
   <label for="storm-nav-toggle" class="nav-toggle" aria-hidden="true"><span></span><span></span><span></span></label>
   <div class="nav-links">
     <a href="/tutorials/"${active === 'tutorials' ? ' class="on"' : ''}>Tutorials</a>
+    <a href="/templates/"${active === 'templates' ? ' class="on"' : ''}>Templates</a>
     <a href="/examples/"${active === 'examples' ? ' class="on"' : ''}>Examples</a>
     <a href="/comparison"${active === 'comparison' ? ' class="on"' : ''}>Comparison</a>
     <a href="/benchmarks"${active === 'benchmarks' ? ' class="on"' : ''}>Benchmarks</a>

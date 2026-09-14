@@ -200,7 +200,13 @@ Three complete, runnable **Storm Movies** applications, each importing the publi
 | [Kotlin + Spring Boot](https://orm.st/examples/kotlin-spring-boot) | Kotlin, Spring Boot 4, PostgreSQL | [storm-example-kotlin-spring-boot-4](https://github.com/storm-orm/storm-example-kotlin-spring-boot-4) |
 | [Java + Spring Boot](https://orm.st/examples/java-spring-boot) | Java 21, Spring Boot 4, PostgreSQL | [storm-example-java-spring-boot-4](https://github.com/storm-orm/storm-example-java-spring-boot-4) |
 
-Each repository is a GitHub template. Click **Use this template** to start your own project: [Kotlin + Ktor](https://github.com/storm-orm/storm-example-kotlin-ktor/generate) · [Kotlin + Spring Boot](https://github.com/storm-orm/storm-example-kotlin-spring-boot-4/generate) · [Java + Spring Boot](https://github.com/storm-orm/storm-example-java-spring-boot-4/generate).
+These are applications to read and run. To start a project of your own, begin from a starter template instead: one vertical slice of a working application, around three hundred lines, running on H2 the moment it is cloned.
+
+| Template | Stack | Repository |
+|----------|-------|------------|
+| [Kotlin + Ktor](https://orm.st/templates/kotlin-ktor) | Kotlin, Ktor 3, H2 or PostgreSQL | [storm-template-kotlin-ktor](https://github.com/storm-orm/storm-template-kotlin-ktor/generate) |
+| [Kotlin + Spring Boot](https://orm.st/templates/kotlin-spring-boot) | Kotlin, Spring Boot 4, H2 or PostgreSQL | [storm-template-kotlin-spring-boot](https://github.com/storm-orm/storm-template-kotlin-spring-boot/generate) |
+| [Java + Spring Boot](https://orm.st/templates/java-spring-boot) | Java 21, Spring Boot 4, H2 or PostgreSQL | [storm-template-java-spring-boot](https://github.com/storm-orm/storm-template-java-spring-boot/generate) |
 
 ## Documentation
 
