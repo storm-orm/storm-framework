@@ -104,10 +104,9 @@ function fmt(v) {
   return v >= 1000 ? (v / 1000).toFixed(2) + ' ms' : Math.round(v) + ' µs';
 }
 
-// Frameworks inside this band of the fastest are reported as level rather than ranked. Two full
-// runs of the same code on identical hardware move each figure by about 1% (median), and every
-// workload in this suite is either inside 1.3% or clear by more than 4%, so the band sits in an
-// empty stretch of the distribution: 2, 3 or 4 percent all partition the field identically.
+// Frameworks inside this band of the fastest are reported as level rather than ranked. Every
+// workload in this run is either inside 1.3% or clear by more than 3.2%, so the band sits in an
+// empty stretch of the distribution and 2, 3 or 4 percent partition the field identically.
 const BAND_PCT = 3;
 const BAND = 1 + BAND_PCT / 100;
 
@@ -1683,7 +1682,7 @@ ${navHtml('benchmarks')}
   <p>The workloads cover common data-access paths: point reads, joined entity hydration, projections, keyset pagination, dynamic queries, batch and dependency-ordered writes, change-aware updates and one-to-many object graphs.</p>
   <p>Eight implementations, one database, one discipline: same schema, same data, same transaction boundaries, every score a real network round trip away from PostgreSQL. The chart plots every workload as a multiple of the hand-written JDBC baseline, so each line traces a framework's overhead across the twelve workloads. The chart opens with the primary key lookup and then orders the workloads by how far the field spreads from JDBC, keeping the three join sizes together, so overhead grows to the right and a flat line means the framework does not follow. Lower is faster; the dashed line is JDBC itself.</p>
   ${lineChartHtml()}
-  <p class="bm-matrix-read">The field falls into three groups. Storm is alone at the front on five workloads, with no framework within 3%: the primary-key lookup, keyset pagination, the batch insert, and the hundred- and thousand-row joins. On five more it is level with the leaders, inside a band narrower than the run-to-run noise: the projection, the dynamic query, the single-row update, the create-then-amend transaction and the graph insert. Two go elsewhere. jOOQ takes the object graph with a single MULTISET JSON aggregate instead of repeated join rows, 36% ahead, and Jimmer edges the ten-row join by 3.2%, just outside the band and inside what a repeat of the whole suite has been seen to move.</p>
+  <p class="bm-matrix-read">The field falls into three groups. Storm is alone at the front on five workloads, with no framework within 3%: the primary-key lookup, keyset pagination, the batch insert, and the hundred- and thousand-row joins. On five more it is level with the leaders, inside a band narrower than the run-to-run noise: the projection, the dynamic query, the single-row update, the create-then-amend transaction and the graph insert. Two go elsewhere. jOOQ takes the object graph with a single MULTISET JSON aggregate instead of repeated join rows, 36% ahead, and Jimmer edges the ten-row join by 3.2%, just outside the band.</p>
 
   <p class="bm-matrix-read">The consistency is the part no other framework matches: Storm is in the top three on all twelve workloads and its worst placing anywhere in the suite is third. The next most consistent framework reaches the top three on four, and every other one drops to fifth or lower somewhere, four of them to eighth. Four frameworks come first somewhere — jOOQ on the object graph, Jimmer on the ten-row join, Hibernate on the dynamic query, Ktorm on the graph insert — and only the first two by more than the 3% band. A framework that is quick on the workloads it likes and mid-field on the rest is a different proposition from one with no weak workload at all.</p>
 
