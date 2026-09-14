@@ -1673,7 +1673,7 @@ ${navHtml('benchmarks')}
   <div class="bm-stats">
     <div class="bm-stat"><b>5 of 12</b><span>workloads where Storm is fastest, with no framework within 3%.</span></div>
     <div class="bm-stat"><b>10 of 12</b><span>workloads where Storm is within 3% of the fastest.</span></div>
-    <div class="bm-stat"><b>Only one</b><span>framework in the top three on every workload. The next most consistent manages seven, and Storm's worst placing across the suite is third.</span></div>
+    <div class="bm-stat"><b>Only one</b><span>framework in the top three on every workload. The next most consistent manages four, and Storm's worst placing across the suite is third.</span></div>
   </div>
   ${heroArt('benchmarks', {priority: true})}
 </div>
@@ -1685,7 +1685,7 @@ ${navHtml('benchmarks')}
   ${lineChartHtml()}
   <p class="bm-matrix-read">The field falls into three groups. Storm is alone at the front on five workloads, with no framework within 3%: the primary-key lookup, keyset pagination, the batch insert, and the hundred- and thousand-row joins. On five more it is level with the leaders, inside a band narrower than the run-to-run noise: the projection, the dynamic query, the single-row update, the create-then-amend transaction and the graph insert. Two go elsewhere. jOOQ takes the object graph with a single MULTISET JSON aggregate instead of repeated join rows, 36% ahead, and Jimmer edges the ten-row join by 3.2%, just outside the band and inside what a repeat of the whole suite has been seen to move.</p>
 
-  <p class="bm-matrix-read">The consistency is the part no other framework matches: Storm is in the top three on all twelve workloads and its worst placing anywhere in the suite is third. The next most consistent framework reaches the top three on seven, and every other one drops to fifth or lower somewhere, three of them to seventh. Four frameworks come first somewhere — jOOQ on the object graph, Jimmer on the ten-row join, Hibernate on the dynamic query, Ktorm on the graph insert — and only the first two by more than the 3% band. A framework that is quick on the workloads it likes and mid-field on the rest is a different proposition from one with no weak workload at all.</p>
+  <p class="bm-matrix-read">The consistency is the part no other framework matches: Storm is in the top three on all twelve workloads and its worst placing anywhere in the suite is third. The next most consistent framework reaches the top three on four, and every other one drops to fifth or lower somewhere, four of them to eighth. Four frameworks come first somewhere — jOOQ on the object graph, Jimmer on the ten-row join, Hibernate on the dynamic query, Ktorm on the graph insert — and only the first two by more than the 3% band. A framework that is quick on the workloads it likes and mid-field on the rest is a different proposition from one with no weak workload at all.</p>
 
   <p class="bm-matrix-read">Hydration is where the field spreads furthest: on the thousand-row join Storm's overhead over hand-written JDBC is 47% smaller than the closest framework's, and the rest of the field pays between 1.9x and 6.1x it.</p>
 
