@@ -32,7 +32,7 @@ internal open class TransactionTest(
 
     @AfterEach
     fun resetDefaults() {
-        // Restore baseline defaults: REQUIRED, isolation=null, timeout=null, readOnly=false.
+        // Restore baseline defaults: REQUIRED, isolation=null, timeout=null, readOnly=null.
         setGlobalTransactionOptions()
     }
 
