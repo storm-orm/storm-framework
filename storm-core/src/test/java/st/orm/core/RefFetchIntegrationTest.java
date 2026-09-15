@@ -4,6 +4,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static st.orm.Operator.EQUALS;
@@ -20,7 +21,10 @@ import org.springframework.test.context.ContextConfiguration;
 import org.springframework.test.context.junit.jupiter.SpringExtension;
 import st.orm.PersistenceException;
 import st.orm.Ref;
+import st.orm.core.model.CapitalCity;
+import st.orm.core.model.CapitalCity_;
 import st.orm.core.model.City;
+import st.orm.core.model.Country;
 import st.orm.core.model.Owner;
 import st.orm.core.model.OwnerCityRef;
 import st.orm.core.model.Pet;
@@ -351,5 +355,50 @@ public class RefFetchIntegrationTest {
         for (PetOwnerRef pet : pets) {
             assertEquals("Betty", pet.owner().fetch().firstName());
         }
+    }
+
+    @Test
+    public void testFetchedReferenceStaysLoadedWhenTheRowHoldsAnUnloadedReferenceToTheSameRecord() {
+        var orm = ORMTemplate.of(dataSource);
+        // A country carries its capital as an entity, and the capital refers back to its country. Resolving the
+        // capital's country therefore builds, while mapping that country, an unloaded reference to the very
+        // record the fetch plan resolves. The reference handed back is the loaded one.
+        List<String> observed = new ArrayList<>();
+        CapitalCity amsterdam = SqlInterceptor.observe(
+                sql -> observed.add(sql.statement().toLowerCase()),
+                () -> orm.entity(CapitalCity.class).select()
+                        .fetch(CapitalCity_.country)
+                        .where(CapitalCity_.name, EQUALS, "Amsterdam")
+                        .getSingleResult());
+        assertEquals(1, observed.size());
+        assertTrue(observed.getFirst().contains("join country"), observed.getFirst());
+        assertTrue(amsterdam.country().isLoaded());
+        Country netherlands = SqlInterceptor.observe(
+                sql -> observed.add(sql.statement()),
+                () -> amsterdam.country().getOrThrow());
+        assertEquals(1, observed.size(), "Reading the resolved reference must not query.");
+        assertEquals("Netherlands", netherlands.name());
+        // The capital mapped inside the country was built before the reference was resolved and keeps its own
+        // unloaded reference: its field was not in the fetch plan. Both references identify the same record.
+        assertEquals("Amsterdam", netherlands.capital().name());
+        assertFalse(netherlands.capital().country().isLoaded());
+        assertEquals(amsterdam.country(), netherlands.capital().country());
+    }
+
+    @Test
+    public void testFetchedReferenceIsSharedAcrossRowsOfTheSameRecord() {
+        var orm = ORMTemplate.of(dataSource);
+        // Every Dutch city resolves to one loaded reference: the first row's loaded reference is the canonical
+        // instance, and the later rows share it.
+        List<CapitalCity> cities = orm.entity(CapitalCity.class).select()
+                .fetch(CapitalCity_.country)
+                .getResultList();
+        assertTrue(cities.size() > 1);
+        for (CapitalCity city : cities) {
+            assertTrue(city.country().isLoaded(), city.name());
+        }
+        var dutch = cities.stream().filter(city -> city.country().getOrThrow().name().equals("Netherlands")).toList();
+        assertEquals(2, dutch.size());
+        assertSame(dutch.get(0).country(), dutch.get(1).country());
     }
 }

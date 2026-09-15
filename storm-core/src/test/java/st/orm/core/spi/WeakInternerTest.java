@@ -1,13 +1,16 @@
 package st.orm.core.spi;
 
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import org.junit.jupiter.api.Test;
 import st.orm.Entity;
 import st.orm.PK;
+import st.orm.Ref;
 
 /**
  * Tests for {@link WeakInterner}.
@@ -155,5 +158,49 @@ public class WeakInternerTest {
         assertSame(entity1, interner.get(TestEntity.class, 1));
         assertSame(entity2, interner.get(TestEntity.class, 2));
         assertNull(interner.get(TestEntity.class, 3));
+    }
+
+    @Test
+    public void testLoadedRefMeetingAnUnloadedRefBecomesTheCanonicalInstance() {
+        WeakInterner interner = new WeakInterner();
+        Ref<TestEntity> unloaded = Ref.of(TestEntity.class, 1);
+        Ref<TestEntity> loaded = Ref.of(new TestEntity(1, "Alice"));
+        assertSame(unloaded, interner.intern(unloaded));
+
+        // The loaded reference is handed back, not the unloaded one interned a moment earlier.
+        assertSame(loaded, interner.intern(loaded));
+        // The loaded reference is the canonical instance from then on: an unloaded reference to the same record
+        // resolves to it.
+        Ref<TestEntity> later = Ref.of(TestEntity.class, 1);
+        assertSame(loaded, interner.intern(later));
+        assertTrue(interner.intern(later).isLoaded());
+    }
+
+    @Test
+    public void testUnloadedRefMeetingALoadedRefReceivesTheLoadedInstance() {
+        WeakInterner interner = new WeakInterner();
+        Ref<TestEntity> loaded = Ref.of(new TestEntity(1, "Alice"));
+        Ref<TestEntity> unloaded = Ref.of(TestEntity.class, 1);
+        assertSame(loaded, interner.intern(loaded));
+        assertSame(loaded, interner.intern(unloaded));
+    }
+
+    @Test
+    public void testTwoUnloadedRefsKeepTheFirst() {
+        WeakInterner interner = new WeakInterner();
+        Ref<TestEntity> first = Ref.of(TestEntity.class, 1);
+        Ref<TestEntity> second = Ref.of(TestEntity.class, 1);
+        assertSame(first, interner.intern(first));
+        assertSame(first, interner.intern(second));
+        assertFalse(interner.intern(second).isLoaded());
+    }
+
+    @Test
+    public void testTwoLoadedRefsKeepTheFirst() {
+        WeakInterner interner = new WeakInterner();
+        Ref<TestEntity> first = Ref.of(new TestEntity(1, "Alice"));
+        Ref<TestEntity> second = Ref.of(new TestEntity(1, "Alice"));
+        assertSame(first, interner.intern(first));
+        assertSame(first, interner.intern(second));
     }
 }
