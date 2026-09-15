@@ -59,7 +59,8 @@ import kotlin.coroutines.CoroutineContext
  *                       - `NESTED`: create JDBC savepoint
  * @param isolation      The isolation level for the transaction. If `null`, uses the provider default.
  * @param timeoutSeconds The transaction timeout in seconds. If `null`, uses provider default.
- * @param readOnly       Whether the transaction is read-only. Defaults to `false`.
+ * @param readOnly       Whether the transaction is read-only. If `null`, no mode is requested and the connection
+ *                       keeps the mode it arrives with.
  * @param block          The transactional logic to execute.
  * @return The result of executing [block].
  * @throws st.orm.PersistenceException if transaction execution fails.
@@ -118,7 +119,8 @@ public fun <T> transactionBlocking(
  *                          - `NESTED`: create JDBC savepoint
  * @param isolation         The isolation level for the transaction. If `null`, uses the provider default.
  * @param timeoutSeconds    The transaction timeout in seconds. If `null`, uses the provider's default.
- * @param readOnly          Whether the transaction is read-only. Defaults to `false`.
+ * @param readOnly          Whether the transaction is read-only. If `null`, no mode is requested and the
+ *                          connection keeps the mode it arrives with.
  * @param block             The transactional logic to execute, with `this` bound to a [Transaction].
  * @return The result of executing [block].
  * @throws st.orm.PersistenceException if transaction execution or rollback/commit fails.

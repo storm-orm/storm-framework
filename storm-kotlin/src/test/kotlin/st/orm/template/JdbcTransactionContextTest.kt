@@ -37,12 +37,7 @@ internal open class JdbcTransactionContextTest(
 
     @AfterEach
     fun resetDefaults() {
-        setGlobalTransactionOptions(
-            propagation = REQUIRED,
-            isolation = null,
-            timeoutSeconds = null,
-            readOnly = false,
-        )
+        setGlobalTransactionOptions()
     }
 
     // Entity cache behavior

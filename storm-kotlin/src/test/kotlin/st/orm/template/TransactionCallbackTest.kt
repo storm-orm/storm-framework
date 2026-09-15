@@ -28,12 +28,7 @@ internal open class TransactionCallbackTest(
 
     @AfterEach
     fun resetDefaults() {
-        setGlobalTransactionOptions(
-            propagation = REQUIRED,
-            isolation = null,
-            timeoutSeconds = null,
-            readOnly = false,
-        )
+        setGlobalTransactionOptions()
     }
 
     @Test

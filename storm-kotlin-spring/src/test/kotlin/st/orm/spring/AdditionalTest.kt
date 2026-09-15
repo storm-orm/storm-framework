@@ -57,12 +57,7 @@ internal open class AdditionalTest(
 
     @AfterEach
     fun resetDefaults() {
-        setGlobalTransactionOptions(
-            propagation = REQUIRED,
-            isolation = null,
-            timeoutSeconds = null,
-            readOnly = false,
-        )
+        setGlobalTransactionOptions()
     }
 
     // SpringTransactionContext: entity cache (getEntityCache, findEntityCache)

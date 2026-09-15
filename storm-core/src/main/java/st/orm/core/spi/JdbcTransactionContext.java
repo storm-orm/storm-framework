@@ -59,6 +59,11 @@ import st.orm.UnexpectedRollbackException;
  * connection, savepoint, and transaction attributes; nested transactions are supported through savepoints; the
  * physical connection is bound lazily, when the first data source touches this context.</p>
  *
+ * <p>Connection settings are touched only when requested. A frame that opens a connection states the isolation
+ * level and the read-only mode it was given, the read-only mode only when it differs from the mode the connection
+ * arrived with, and restores on release what it changed; a frame given no isolation level or no mode makes no
+ * call for it at all.</p>
+ *
  * <p>What a frame joins, and which frames share a connection, follows from the frame structure alone, decided
  * when the frame begins and independent of what is bound at the time. A frame is transactional by its
  * propagation, with {@code SUPPORTS} taking after its enclosing frame, and a joining propagation joins the
@@ -697,9 +702,15 @@ public final class JdbcTransactionContext implements TransactionContext {
                     state.originalIsolationLevel = connection.getTransactionIsolation();
                     connection.setTransactionIsolation(state.isolationLevel);
                 }
+                // The read-only mode is stated only when it differs from the mode the connection arrived with:
+                // a driver that carries the flag to the server spends a round trip on every change, so a mode
+                // the connection already has is left alone and nothing is restored for it on close().
                 if (state.readOnly != null) {
-                    state.originalReadOnly = connection.isReadOnly();
-                    connection.setReadOnly(state.readOnly);
+                    boolean arrivedReadOnly = connection.isReadOnly();
+                    if (arrivedReadOnly != state.readOnly) {
+                        connection.setReadOnly(state.readOnly);
+                        state.originalReadOnly = arrivedReadOnly;
+                    }
                 }
                 // A declared manual-commit pool hands the connection out with auto-commit already disabled (the
                 // arrival state is verified above), so the transactional path performs no flips and the

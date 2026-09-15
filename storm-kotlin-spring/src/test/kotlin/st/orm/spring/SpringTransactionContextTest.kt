@@ -36,12 +36,7 @@ internal open class SpringTransactionContextTest(
 
     @AfterEach
     fun resetDefaults() {
-        setGlobalTransactionOptions(
-            propagation = REQUIRED,
-            isolation = null,
-            timeoutSeconds = null,
-            readOnly = false,
-        )
+        setGlobalTransactionOptions()
     }
 
     // isRepeatableRead behavior
