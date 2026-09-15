@@ -16,6 +16,7 @@
 package st.orm.gradle;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -45,10 +46,36 @@ public class KotlinVariantsTest {
     public void recommendsThePairedKspVersion() {
         assertEquals("2.0.21-1.0.28", KotlinVariants.kspFor("2.0.21"));
         assertEquals("2.1.21-2.0.2", KotlinVariants.kspFor("2.1.21"));
-        assertEquals("2.2.21-2.0.5", KotlinVariants.kspFor("2.2.21"));
+        assertEquals("2.3.10", KotlinVariants.kspFor("2.2.21"));
         assertEquals("2.3.10", KotlinVariants.kspFor("2.3.21"));
         assertEquals("2.3.10", KotlinVariants.kspFor("2.4.0"));
         // Unknown versions fall back to the newest known recommendation.
         assertEquals("2.3.10", KotlinVariants.kspFor("2.5.0"));
+    }
+
+    @Test
+    public void aKotlinPairedKspPairsWithItsOwnKotlinLineOnly() {
+        assertTrue(KotlinVariants.pairs("2.1.21", "2.1.21-2.0.2"));
+        // A patch release on the same line pairs as well.
+        assertTrue(KotlinVariants.pairs("2.1.21", "2.1.20-2.0.1"));
+        assertFalse(KotlinVariants.pairs("2.0.21", "2.1.21-2.0.2"));
+        assertFalse(KotlinVariants.pairs("2.4.0", "2.2.21-2.0.5"));
+    }
+
+    @Test
+    public void aKotlinIndependentKspPairsWithKotlin22AndNewer() {
+        assertTrue(KotlinVariants.pairs("2.2.21", "2.3.10"));
+        assertTrue(KotlinVariants.pairs("2.3.21", "2.3.10"));
+        assertTrue(KotlinVariants.pairs("2.4.0", "2.3.11"));
+        // Unknown newer Kotlin versions take the newest recommendation, which is Kotlin-independent.
+        assertTrue(KotlinVariants.pairs("2.5.0", "2.3.10"));
+        assertFalse(KotlinVariants.pairs("2.1.21", "2.3.10"));
+        assertFalse(KotlinVariants.pairs("2.0.21", "2.3.10"));
+    }
+
+    @Test
+    public void theBundledKspAppliesFromKotlin22() {
+        assertEquals("2.2", KotlinVariants.oldestKotlinFor("2.3.10"));
+        assertThrows(IllegalArgumentException.class, () -> KotlinVariants.oldestKotlinFor("9.9.9"));
     }
 }

@@ -45,8 +45,11 @@ import org.gradle.external.javadoc.CoreJavadocOptions;
  * so a KSP version the build applies itself always wins the classpath) and is applied automatically when
  * the Kotlin plugin is declared before {@code st.orm} and the bundled version is the recommended one for
  * the project's Kotlin version. Kotlin versions that pair with their own KSP builds are left to apply it
- * explicitly; when it is missing there, the build fails with the exact line to add. Set the Gradle
- * property {@code storm.autoApplyKsp=false} to opt out of the automatic application.</p>
+ * explicitly; when it is missing there, the build fails with the exact line to add, and a KSP that does
+ * not pair with the project's Kotlin version, such as the bundled one inherited by a subproject, is refused
+ * with the same line, since the metamodel processor runs inside that KSP and a mismatch fails later in
+ * the Kotlin Gradle plugin with an error that names neither. Set the Gradle property
+ * {@code storm.autoApplyKsp=false} to opt out of the automatic application.</p>
  */
 public class StormPlugin implements Plugin<Project> {
 
@@ -186,22 +189,78 @@ public class StormPlugin implements Plugin<Project> {
                     }
                 }));
         project.afterEvaluate(evaluated -> {
-            // Reached only when the automatic application declined: a Kotlin version that pairs with its
-            // own KSP build, an opt-out through storm.autoApplyKsp=false, or an undetectable Kotlin
-            // version. The message carries the exact paired plugin line to add. KSP's presence is read
-            // from the configuration it creates: a plugin-id lookup would load the bundled KSP class,
-            // which cannot link when the Kotlin Gradle plugin API sits in another classloader scope.
-            if (kotlin.get() && extension.getMetamodel().get()
-                    && evaluated.getConfigurations().findByName("ksp") == null) {
+            if (!kotlin.get() || !extension.getMetamodel().get()) {
+                return;
+            }
+            // Reached without KSP only when the automatic application declined: a Kotlin version that
+            // pairs with its own KSP build, an opt-out through storm.autoApplyKsp=false, or an
+            // undetectable Kotlin version. The message carries the exact paired plugin line to add. KSP's
+            // presence is read from the configuration it creates: a plugin-id lookup would load the
+            // bundled KSP class, which cannot link when the Kotlin Gradle plugin API sits in another
+            // classloader scope.
+            if (evaluated.getConfigurations().findByName("ksp") == null) {
                 throw new GradleException(("""
                         Storm: the Kotlin metamodel processor requires KSP. Add it to your plugins block:
                             id("com.google.devtools.ksp") version "%s"
                         declare the Kotlin JVM plugin before st.orm so Storm applies its bundled KSP \
-                        (Kotlin 2.3+), or disable metamodel generation with:
+                        (Kotlin %s+), or disable metamodel generation with:
                             storm { metamodel.set(false) }""")
-                        .formatted(KotlinVariants.kspFor(detectKotlinVersion(evaluated))));
+                        .formatted(KotlinVariants.kspFor(detectKotlinVersion(evaluated)),
+                                KotlinVariants.oldestKotlinFor(StormVersion.bundledKspVersion())));
+            }
+            // The metamodel processor runs inside whichever KSP the build resolved, so that KSP has to
+            // pair with the project's Kotlin version. A subproject that applies KSP without a version
+            // inherits the one on the root classpath, which is the bundled one as soon as st.orm sits
+            // there; on a Kotlin line that pairs with its own KSP builds that KSP fails inside the
+            // Kotlin Gradle plugin with a linkage error naming neither KSP nor Kotlin.
+            String kspVersion = appliedKspVersion(evaluated);
+            if (kspVersion == null) {
+                return;
+            }
+            String kotlinVersion;
+            try {
+                kotlinVersion = detectKotlinVersion(evaluated);
+            } catch (GradleException e) {
+                // The compiler-plugin path reports an undetectable Kotlin version with actionable advice.
+                return;
+            }
+            if (!KotlinVariants.pairs(kotlinVersion, kspVersion)) {
+                String paired = KotlinVariants.kspFor(kotlinVersion);
+                throw new GradleException(("""
+                        Storm: KSP %s does not pair with Kotlin %s, which pairs with KSP %s. Declare that \
+                        version in your plugins block:
+                            id("com.google.devtools.ksp") version "%s"
+                        In a multi-project build, declare it once in the root project's plugins block with \
+                        `apply false` and apply it in each subproject without a version; a subproject that \
+                        applies KSP without a version otherwise inherits the KSP that st.orm bundles. Or \
+                        disable metamodel generation with:
+                            storm { metamodel.set(false) }""")
+                        .formatted(kspVersion, kotlinVersion, paired, paired));
             }
         });
+    }
+
+    /**
+     * Returns the version of the KSP plugin applied to the project, read from the version constant the KSP
+     * Gradle plugin carries, through the classloader of the plugin instance the project holds, so the
+     * lookup reaches the KSP that actually resolved, the bundled one or one the build declared. Returns
+     * {@code null} when no KSP plugin instance is found or the constant cannot be read, in which case
+     * there is nothing to compare.
+     */
+    private static String appliedKspVersion(Project project) {
+        for (Plugin<?> plugin : project.getPlugins()) {
+            if (!"com.google.devtools.ksp.gradle.KspGradleSubplugin".equals(plugin.getClass().getName())) {
+                continue;
+            }
+            try {
+                var versions = Class.forName("com.google.devtools.ksp.gradle.KSPVersionsKt", true,
+                        plugin.getClass().getClassLoader());
+                return (String) versions.getMethod("getKSP_VERSION").invoke(null);
+            } catch (ReflectiveOperationException | LinkageError e) {
+                return null;
+            }
+        }
+        return null;
     }
 
     /**
@@ -232,7 +291,8 @@ public class StormPlugin implements Plugin<Project> {
      * and because the bundled dependency only prefers its version, a version the build declares itself wins
      * the classpath, so the id-based application below picks that version up. The application is limited to
      * Kotlin versions whose recommended KSP equals the bundled one; older Kotlin versions pair with their
-     * own KSP builds and keep the instructive failure from the metamodel validation. The Gradle property
+     * own KSP builds and keep the instructive failures from the metamodel validation, for a missing KSP
+     * and for one that does not pair with the Kotlin version alike. The Gradle property
      * {@code storm.autoApplyKsp=false} opts out.
      */
     private static void applyBundledKsp(Project project) {

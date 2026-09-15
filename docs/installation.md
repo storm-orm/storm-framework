@@ -33,7 +33,27 @@ plugins {
 }
 ```
 
-That is the entire Storm setup: on Kotlin 2.3 and newer the plugin applies KSP itself, provided the Kotlin plugin is declared before `st.orm` as above, and a KSP version you apply in the plugins block always takes precedence. Kotlin 2.2 and older pair with their own KSP builds, so add the `com.google.devtools.ksp` plugin there yourself; when it is missing, the build fails with the exact line to add.
+That is the entire Storm setup: on Kotlin 2.2 and newer the plugin applies KSP itself, provided the Kotlin plugin is declared before `st.orm` as above, and a KSP version you apply in the plugins block always takes precedence. Kotlin 2.0 and 2.1 pair with their own KSP builds, so add the `com.google.devtools.ksp` plugin there yourself; when it is missing, the build fails with the exact line to add, and a KSP that does not pair with your Kotlin version is refused with the same line, since the metamodel processor runs inside it.
+
+In a multi-project build on Kotlin 2.0 or 2.1, declare the paired KSP once in the root project's plugins block with `apply false`, and apply it in each subproject without a version:
+
+```kotlin
+// root build.gradle.kts
+plugins {
+    kotlin("jvm") version "2.1.21" apply false
+    id("com.google.devtools.ksp") version "2.1.21-2.0.2" apply false
+    id("st.orm") version "@@STORM_VERSION@@" apply false
+}
+
+// app/build.gradle.kts
+plugins {
+    kotlin("jvm")
+    id("com.google.devtools.ksp")
+    id("st.orm")
+}
+```
+
+A version declared on the root classpath beats the one the plugin bundles, so the subproject inherits the paired KSP. Without that root line the subproject inherits the bundled KSP, which the plugin refuses on those Kotlin lines; a version declared in the subproject itself fails resolution, since `st.orm` already put a KSP on the classpath.
 
 </TabItem>
 <TabItem value="java" label="Java">
@@ -76,7 +96,7 @@ storm {
 
 In mixed Kotlin/Java projects the Kotlin path wins: KSP processes Java declarations too. If you specifically need the Java annotation processor as well, add `annotationProcessor("st.orm:storm-metamodel-processor")` manually.
 
-The automatic KSP application can be disabled with the Gradle property `storm.autoApplyKsp=false`; the plugin then expects KSP in your plugins block, exactly as on older Kotlin versions.
+The automatic KSP application can be disabled with the Gradle property `storm.autoApplyKsp=false`; the plugin then expects KSP in your plugins block, exactly as on Kotlin 2.0 and 2.1.
 
 Maven users and Gradle users who prefer explicit configuration continue with the manual setup below.
 

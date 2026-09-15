@@ -48,6 +48,7 @@ public class KotlinPathFunctionalTest {
     @ParameterizedTest
     @CsvSource({
             "2.0.21, 2.0.21-1.0.28, 2.0",
+            "2.2.21, 2.3.10, 2.2",
             "2.4.0, 2.3.10, 2.4",
     })
     public void wiresTheKotlinPathWithTheMatchingVariant(String kotlinVersion, String kspVersion, String variant)

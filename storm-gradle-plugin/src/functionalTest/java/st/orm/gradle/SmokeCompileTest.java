@@ -100,6 +100,47 @@ public class SmokeCompileTest {
 
     @Test
     @EnabledIfSystemProperty(named = "storm.smoke", matches = "true")
+    public void compilesAKotlin22EntityWithTheBundledKsp() throws Exception {
+        // Kotlin 2.2 is the oldest line the bundled KSP pairs with, which is what puts it on the automatic
+        // path in KotlinVariants: this compile is the evidence. On Kotlin 2.1 and 2.0 the same KSP fails
+        // inside the Kotlin Gradle plugin, which is what the mismatch refusal stands in front of.
+        Files.writeString(projectDir.resolve("settings.gradle.kts"), FunctionalTestSupport.SETTINGS_MAVEN_LOCAL);
+        Files.writeString(projectDir.resolve("build.gradle.kts"), """
+                plugins {
+                    id("org.jetbrains.kotlin.jvm") version "2.2.21"
+                    %s
+                }
+                repositories {
+                    mavenLocal()
+                    mavenCentral()
+                }
+                kotlin {
+                    jvmToolchain(21)
+                }
+                """.formatted(stormPluginLine()));
+        var sourceDir = projectDir.resolve("src/main/kotlin/demo");
+        Files.createDirectories(sourceDir);
+        Files.writeString(sourceDir.resolve("City.kt"), """
+                package demo
+
+                import st.orm.Entity
+                import st.orm.PK
+
+                data class City(
+                    @PK val id: Int = 0,
+                    val name: String,
+                ) : Entity<Int>
+                """);
+        var result = mavenLocalRunner("build", "-x", "test").build();
+        assertTrue(result.getOutput().contains("BUILD SUCCESSFUL"), result.getOutput());
+        try (var generated = Files.walk(projectDir.resolve("build/generated/ksp"))) {
+            assertTrue(generated.anyMatch(path -> path.getFileName().toString().startsWith("City_")),
+                    "Expected a generated City_ metamodel under build/generated/ksp on Kotlin 2.2.");
+        }
+    }
+
+    @Test
+    @EnabledIfSystemProperty(named = "storm.smoke", matches = "true")
     public void compilesAJavaEntityAndGeneratesTheMetamodel() throws Exception {
         Files.writeString(projectDir.resolve("settings.gradle.kts"), FunctionalTestSupport.SETTINGS);
         Files.writeString(projectDir.resolve("build.gradle.kts"), """

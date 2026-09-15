@@ -9,7 +9,7 @@ The integration follows Ktor's plugin-based architecture. You `install(Storm)` l
 
 ## Installation
 
-Apply the Storm Gradle plugin, then add the Ktor module alongside it. The plugin imports the BOM and wires the core dependencies, the metamodel processor (applying KSP itself on Kotlin 2.3+), and the Kotlin compiler plugin, so the Ktor setup only adds the module itself, a connection pool, and a dialect:
+Apply the Storm Gradle plugin, then add the Ktor module alongside it. The plugin imports the BOM and wires the core dependencies, the metamodel processor (applying KSP itself on Kotlin 2.2+), and the Kotlin compiler plugin, so the Ktor setup only adds the module itself, a connection pool, and a dialect:
 
 ```kotlin
 plugins {
