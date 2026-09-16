@@ -39,7 +39,7 @@ public final class JdbcTransactionTemplateProviderImpl implements TransactionTem
             private TransactionPropagation propagation = TransactionPropagation.REQUIRED;
             private @Nullable TransactionIsolation isolation;
             private @Nullable Integer timeoutSeconds;
-            private boolean readOnly = false;
+            private @Nullable Boolean readOnly;
 
             @Override
             public TransactionTemplate propagation(TransactionPropagation propagation) {

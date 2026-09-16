@@ -30,13 +30,8 @@ internal open class SpringManagedTransactionTest(
 
     @AfterEach
     fun resetDefaults() {
-        // Restore baseline defaults: REQUIRED, isolation=null, timeout=null, readOnly=false.
-        setGlobalTransactionOptions(
-            propagation = REQUIRED,
-            isolation = null,
-            timeoutSeconds = null,
-            readOnly = false,
-        )
+        // Restore baseline defaults: REQUIRED, isolation=null, timeout=null, readOnly=null.
+        setGlobalTransactionOptions()
     }
 
     /**

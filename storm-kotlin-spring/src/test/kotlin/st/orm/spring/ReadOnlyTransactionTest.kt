@@ -50,12 +50,7 @@ internal open class ReadOnlyTransactionTest(
 ) {
     @AfterEach
     fun resetDefaults() {
-        setGlobalTransactionOptions(
-            propagation = REQUIRED,
-            isolation = null,
-            timeoutSeconds = null,
-            readOnly = false,
-        )
+        setGlobalTransactionOptions()
     }
 
     private fun springTransaction(readOnly: Boolean): TransactionTemplate = TransactionTemplate(transactionManager).apply { isReadOnly = readOnly }

@@ -19,9 +19,11 @@ import io.kotest.matchers.shouldBe
 import org.h2.jdbcx.JdbcDataSource
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
+import st.orm.TransactionOptions
 import st.orm.TransactionPropagation.NOT_SUPPORTED
 import st.orm.TransactionPropagation.REQUIRED
 import st.orm.TransactionPropagation.REQUIRES_NEW
+import st.orm.core.spi.TransactionRunner
 import java.lang.reflect.InvocationTargetException
 import java.lang.reflect.Proxy
 import java.sql.Connection
@@ -32,11 +34,12 @@ import javax.sql.DataSource
  * each frame makes them on. The driver decides what a call means to the server; this test states what Storm asks
  * of the driver, which holds on every driver alike.
  *
- * The contract: an owning frame states its mode on the connection it opens, read-only and read-write alike, and
- * restores the mode it found before the connection returns to the pool. A `REQUIRES_NEW` frame opens a connection
- * of its own and states its own mode there, a `NOT_SUPPORTED` frame opens a connection of its own and states
- * nothing, and a joined `REQUIRED` frame runs on the enclosing frame's connection and states nothing, since the
- * mode belongs to the frame that owns the connection.
+ * The contract: an owning frame given a mode reads the mode of the connection it opens once, states its own only
+ * when the two differ, and restores the mode it found before the connection returns to the pool; a frame given no
+ * mode, the default under the Java and the Kotlin API alike, makes no read-only call at all. A `REQUIRES_NEW`
+ * frame opens a connection of its own and follows the same rule there, a `NOT_SUPPORTED` frame opens a connection
+ * of its own and states nothing, and a joined `REQUIRED` frame runs on the enclosing frame's connection and states
+ * nothing, since the mode belongs to the frame that owns the connection.
  *
  * A frame binds its connection on its first touch, so each enclosing frame runs a query before opening the inner
  * one; that keeps the connection numbers in the order the frames appear.
@@ -58,6 +61,8 @@ internal class ReadOnlyCallSequenceTest {
                 statement.execute("DELETE FROM call_sequence")
             }
         }
+        // The sequences state Storm's defaults, so the globals another test may have set are put back first.
+        setGlobalTransactionOptions()
         recording = RecordingDataSource(h2)
         orm = ORMTemplate.of(recording)
         // The template opens a connection of its own once, to detect the dialect; that one is not part of any
@@ -68,9 +73,14 @@ internal class ReadOnlyCallSequenceTest {
 
     /**
      * Hands out proxies over the target's connections, numbered in the order they are opened, and records every
-     * `setReadOnly` and `close` call with the number of the connection it lands on.
+     * `isReadOnly`, `setReadOnly` and `close` call with the number of the connection it lands on. The proxy keeps
+     * the read-only flag itself, since the H2 driver ignores it, and each connection arrives with the flag set to
+     * [arrivesReadOnly], as a pool configured for read-only connections would hand it out.
      */
-    private class RecordingDataSource(private val target: DataSource) : DataSource by target {
+    private class RecordingDataSource(
+        private val target: DataSource,
+        private val arrivesReadOnly: Boolean = false,
+    ) : DataSource by target {
         val calls = mutableListOf<String>()
         private var opened = 0
 
@@ -82,9 +92,17 @@ internal class ReadOnlyCallSequenceTest {
         override fun getConnection(): Connection {
             val physical = target.connection
             val number = ++opened
+            var readOnly = arrivesReadOnly
             return Proxy.newProxyInstance(Connection::class.java.classLoader, arrayOf(Connection::class.java)) { _, method, arguments ->
                 when (method.name) {
-                    "setReadOnly" -> calls += "$number:setReadOnly(${arguments[0]})"
+                    "isReadOnly" -> {
+                        calls += "$number:isReadOnly"
+                        return@newProxyInstance readOnly
+                    }
+                    "setReadOnly" -> {
+                        calls += "$number:setReadOnly(${arguments[0]})"
+                        readOnly = arguments[0] as Boolean
+                    }
                     "close" -> if (method.parameterCount == 0) calls += "$number:close"
                 }
                 try {
@@ -104,20 +122,61 @@ internal class ReadOnlyCallSequenceTest {
         orm.query("INSERT INTO call_sequence (name) VALUES ('row')").executeUpdate()
     }
 
+    private fun useReadOnlyConnections() {
+        recording = RecordingDataSource(h2, arrivesReadOnly = true)
+        orm = ORMTemplate.of(recording)
+        read()
+        recording.reset()
+    }
+
     @Test
     fun `a read-only frame states its mode on open and restores it before the connection closes`() {
         transactionBlocking(readOnly = true) {
             read()
         }
-        recording.calls shouldBe listOf("1:setReadOnly(true)", "1:setReadOnly(false)", "1:close")
+        recording.calls shouldBe listOf("1:isReadOnly", "1:setReadOnly(true)", "1:setReadOnly(false)", "1:close")
     }
 
     @Test
-    fun `a read-write frame states its mode as well`() {
+    fun `a frame given no mode makes no read-only call`() {
         transactionBlocking {
             write()
         }
-        recording.calls shouldBe listOf("1:setReadOnly(false)", "1:setReadOnly(false)", "1:close")
+        recording.calls shouldBe listOf("1:close")
+    }
+
+    @Test
+    fun `a frame opened through the Java API with default options makes no read-only call either`() {
+        TransactionRunner.execute<Unit, RuntimeException>(TransactionOptions.defaults()) {
+            write()
+        }
+        recording.calls shouldBe listOf("1:close")
+    }
+
+    @Test
+    fun `a read-write frame reads the mode and leaves a read-write connection alone`() {
+        transactionBlocking(readOnly = false) {
+            write()
+        }
+        recording.calls shouldBe listOf("1:isReadOnly", "1:close")
+    }
+
+    @Test
+    fun `a read-write frame lifts the mode of a connection that arrives read-only and puts it back`() {
+        useReadOnlyConnections()
+        transactionBlocking(readOnly = false) {
+            read()
+        }
+        recording.calls shouldBe listOf("1:isReadOnly", "1:setReadOnly(false)", "1:setReadOnly(true)", "1:close")
+    }
+
+    @Test
+    fun `a read-only frame leaves a connection that arrives read-only alone`() {
+        useReadOnlyConnections()
+        transactionBlocking(readOnly = true) {
+            read()
+        }
+        recording.calls shouldBe listOf("1:isReadOnly", "1:close")
     }
 
     @Test
@@ -130,9 +189,9 @@ internal class ReadOnlyCallSequenceTest {
             read()
         }
         recording.calls shouldBe listOf(
+            "1:isReadOnly",
             "1:setReadOnly(true)",
-            "2:setReadOnly(false)",
-            "2:setReadOnly(false)",
+            "2:isReadOnly",
             "2:close",
             "1:setReadOnly(false)",
             "1:close",
@@ -147,7 +206,7 @@ internal class ReadOnlyCallSequenceTest {
                 read()
             }
         }
-        recording.calls shouldBe listOf("1:setReadOnly(true)", "1:setReadOnly(false)", "1:close")
+        recording.calls shouldBe listOf("1:isReadOnly", "1:setReadOnly(true)", "1:setReadOnly(false)", "1:close")
     }
 
     @Test
@@ -158,7 +217,7 @@ internal class ReadOnlyCallSequenceTest {
                 write()
             }
         }
-        recording.calls shouldBe listOf("1:setReadOnly(true)", "2:close", "1:setReadOnly(false)", "1:close")
+        recording.calls shouldBe listOf("1:isReadOnly", "1:setReadOnly(true)", "2:close", "1:setReadOnly(false)", "1:close")
     }
 
     @Test
@@ -170,11 +229,10 @@ internal class ReadOnlyCallSequenceTest {
             write()
         }
         recording.calls shouldBe listOf(
+            "1:isReadOnly",
             "1:setReadOnly(true)",
             "1:setReadOnly(false)",
             "1:close",
-            "2:setReadOnly(false)",
-            "2:setReadOnly(false)",
             "2:close",
         )
     }

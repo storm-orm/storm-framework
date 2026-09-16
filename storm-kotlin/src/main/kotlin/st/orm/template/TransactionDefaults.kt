@@ -24,12 +24,13 @@ import st.orm.TransactionPropagation
  * @param propagation The transaction propagation behavior.
  * @param isolation The transaction isolation level.
  * @param timeoutSeconds The transaction timeout in seconds.
- * @param readOnly Whether the transaction is read-only.
+ * @param readOnly Whether the transaction is read-only; `null` requests no mode and leaves the connection the mode
+ * it arrives with.
  * @since 1.6
  */
 internal data class TransactionDefaults(
     val propagation: TransactionPropagation = TransactionPropagation.REQUIRED,
     val isolation: TransactionIsolation? = null,
     val timeoutSeconds: Int? = null,
-    val readOnly: Boolean = false,
+    val readOnly: Boolean? = null,
 )

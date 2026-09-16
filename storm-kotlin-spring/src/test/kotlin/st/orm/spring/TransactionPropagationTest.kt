@@ -35,12 +35,7 @@ internal open class TransactionPropagationTest(
 
     @AfterEach
     fun resetDefaults() {
-        setGlobalTransactionOptions(
-            propagation = REQUIRED,
-            isolation = null,
-            timeoutSeconds = null,
-            readOnly = false,
-        )
+        setGlobalTransactionOptions()
     }
 
     // SUPPORTS propagation
