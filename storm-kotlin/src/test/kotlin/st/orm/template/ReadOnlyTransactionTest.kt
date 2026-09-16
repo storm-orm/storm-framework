@@ -118,14 +118,43 @@ internal open class ReadOnlyTransactionTest(
     }
 
     @Test
-    fun `a read-only frame joining a read-write transaction takes the enclosing mode`() {
+    fun `a read-only frame joining a read-write transaction refuses its own writes and the outer still writes`() {
         transactionBlocking {
             orm.countAll<Visit>()
             transactionBlocking(REQUIRED, readOnly = true) {
-                orm.removeAll<Visit>()
+                orm.countAll<Visit>() shouldBe 14
+                assertThrows<ReadOnlyTransactionException> {
+                    orm.removeAll<Visit>()
+                }
             }
+            orm.removeAll<Visit>()
         }
         orm.countAll<Visit>() shouldBe 0
+    }
+
+    @Test
+    fun `a frame joining a read-only joined frame is refused too, whatever it declares`() {
+        assertThrows<ReadOnlyTransactionException> {
+            transactionBlocking {
+                orm.countAll<Visit>()
+                transactionBlocking(REQUIRED, readOnly = true) {
+                    transactionBlocking(REQUIRED) {
+                        orm.removeAll<Visit>()
+                    }
+                }
+            }
+        }
+        assertThrows<ReadOnlyTransactionException> {
+            transactionBlocking {
+                orm.countAll<Visit>()
+                transactionBlocking(REQUIRED, readOnly = true) {
+                    transactionBlocking(REQUIRED, readOnly = false) {
+                        orm.removeAll<Visit>()
+                    }
+                }
+            }
+        }
+        orm.countAll<Visit>() shouldBe 14
     }
 
     @Test

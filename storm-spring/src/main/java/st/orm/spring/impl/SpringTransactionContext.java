@@ -53,6 +53,7 @@ import org.springframework.transaction.support.ResourceTransactionManager;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.springframework.util.ClassUtils;
 import st.orm.Entity;
+import st.orm.IllegalTransactionStateException;
 import st.orm.PersistenceException;
 import st.orm.TransactionTimedOutException;
 import st.orm.UnexpectedRollbackException;
@@ -78,6 +79,16 @@ import st.orm.core.spi.TransactionContext;
  * enclosing frame is not transactional. Touching a data source starts the range the touching frame belongs
  * to, bottom-up, and the data source is checked for consistency within that range only, so a boundary may
  * switch to another data source and the frames beyond it stay unstarted until their own first touch.</p>
+ *
+ * <p>A joined frame runs in the transaction it joins and changes nothing about it: the isolation level and the
+ * read-only mode belong to the transaction owning the connection, Storm's own or a Spring-managed one that was
+ * already open, and neither can change once that transaction is open. A joined frame may therefore state the
+ * owner's isolation level or a lower one, which the owner's already honours, and is refused when it begins if it
+ * states a stricter one, or any level inside an owner running at the database's default, whose level is not
+ * known here. The read-only mode is held on Storm's side, so a joined frame that declares read-only has its own
+ * writes refused whatever the owner's mode, while a read-write frame inside a read-only owner joins it and is
+ * refused on write. A manager configured to validate participation itself applies Spring's stricter rule, and
+ * its refusal is reported the same way.</p>
  *
  * @since 1.13
  */
@@ -157,6 +168,65 @@ public final class SpringTransactionContext implements TransactionContext {
 
     private static long deadlineFromNow(int timeoutSeconds) {
         return nowNanos() + (long) timeoutSeconds * NANOS_PER_SECOND;
+    }
+
+    /**
+     * Refuses a joining frame that states a stricter isolation level than the transaction it joins runs at. The
+     * level belongs to the transaction owning the connection and cannot change once that transaction is open, so
+     * a frame stating a higher level would run below what it declares without a signal; a lower or equal level is
+     * honoured by what the owner already has. An owner at the database's default runs at a level that is not
+     * known here, so any level stated inside it is refused as well.
+     */
+    private static void refuseStricterIsolation(int propagation, int isolation, @Nullable Integer ownerIsolation) {
+        if (isolation == ISOLATION_DEFAULT) {
+            return;
+        }
+        if (ownerIsolation == null) {
+            throw new IllegalTransactionStateException(("A %s block states %s isolation but joins a transaction running at the " +
+                    "database's default isolation level, which is not known to be as strict; the isolation level " +
+                    "belongs to the transaction owning the connection and cannot change once it is open. State the " +
+                    "level on the transaction it joins, open the block with REQUIRES_NEW for a transaction of its " +
+                    "own, or leave its isolation unstated.").formatted(propagationName(propagation),
+                    isolationName(isolation)));
+        }
+        if (isolation > ownerIsolation) {
+            throw new IllegalTransactionStateException(("A %s block states %s isolation but joins a %s transaction; the isolation " +
+                    "level belongs to the transaction owning the connection and cannot change once it is open. State " +
+                    "at least %s on the transaction it joins, open the block with REQUIRES_NEW for a transaction of " +
+                    "its own, or leave its isolation unstated.").formatted(propagationName(propagation),
+                    isolationName(isolation), isolationName(ownerIsolation), isolationName(isolation)));
+        }
+    }
+
+    /**
+     * Returns the isolation level the transaction manager reports for the Spring transaction active on the
+     * thread, or {@code null} when there is none or it runs at the database's default.
+     */
+    @Nullable
+    private static Integer currentSpringIsolationLevel() {
+        Integer isolationLevel = TransactionSynchronizationManager.getCurrentTransactionIsolationLevel();
+        return isolationLevel == null || isolationLevel < 0 ? null : isolationLevel;
+    }
+
+    /**
+     * Returns the isolation level of the transaction an owning frame runs in: the level its definition states,
+     * or else, for a frame that may have joined a Spring transaction already open on the thread, the level the
+     * manager reports for that transaction. {@code null} means the database's default.
+     */
+    @Nullable
+    private static Integer effectiveIsolationLevel(TransactionState owner) {
+        var definition = owner.transactionDefinition;
+        if (definition == null) {
+            return currentSpringIsolationLevel();
+        }
+        if (definition.getIsolationLevel() != ISOLATION_DEFAULT) {
+            return definition.getIsolationLevel();
+        }
+        // A frame that starts a transaction of its own runs at the default. Any other owning frame may have
+        // joined a Spring transaction that was already open, such as a @Transactional method's, whose level then
+        // applies; the manager still describes that transaction here, since the frame's own Spring status
+        // starts on its first statement and inherits the level when it joins.
+        return definition.getPropagationBehavior() == PROPAGATION_REQUIRES_NEW ? null : currentSpringIsolationLevel();
     }
 
     private static String isolationName(@Nullable Integer isolation) {
@@ -262,19 +332,18 @@ public final class SpringTransactionContext implements TransactionContext {
      * Returns true if the transaction has repeatable-read semantics: the isolation level is
      * {@code REPEATABLE_READ} or higher. Spring uses {@code ISOLATION_DEFAULT} (-1) when no specific isolation
      * level is set; since most databases default to {@code READ_COMMITTED}, this returns false so fresh data is
-     * fetched on each read.
+     * fetched on each read. The level is that of the frame owning the physical transaction, since a joined frame
+     * runs in it and the level it declares is never applied; a frame outside a transaction reads no snapshot,
+     * whatever it declares.
      */
     @Override
     public boolean isRepeatableRead() {
-        var definition = currentState().transactionDefinition;
-        if (definition == null) {
+        var owner = stack.get(currentState().ownerIndex);
+        if (!owner.transactional) {
             return false;
         }
-        int isolationLevel = definition.getIsolationLevel();
-        if (isolationLevel < 0) {
-            return false;
-        }
-        return isolationLevel >= TRANSACTION_REPEATABLE_READ;
+        Integer isolationLevel = effectiveIsolationLevel(owner);
+        return isolationLevel != null && isolationLevel >= TRANSACTION_REPEATABLE_READ;
     }
 
     @Override
@@ -288,12 +357,18 @@ public final class SpringTransactionContext implements TransactionContext {
         if (!owner.transactional) {
             return false;
         }
+        // The owner's mode is the transaction's. A joined frame that declares read-only never reaches the
+        // connection, but its declaration is a promise about its own body, the frames it encloses included, so
+        // a write issued inside it is refused whatever the owner's mode.
+        for (int i = state.ownerIndex; i <= state.index; i++) {
+            var frameDefinition = stack.get(i).transactionDefinition;
+            if (frameDefinition != null && frameDefinition.isReadOnly()) {
+                return true;
+            }
+        }
         var definition = owner.transactionDefinition;
         if (definition == null) {
             return TransactionSynchronizationManager.isCurrentTransactionReadOnly();
-        }
-        if (definition.isReadOnly()) {
-            return true;
         }
         // A frame that starts a transaction of its own has its own mode. Any other owning frame may have joined a
         // Spring transaction that was already open, such as a @Transactional method's, whose mode then applies.
@@ -388,8 +463,9 @@ public final class SpringTransactionContext implements TransactionContext {
      * transaction the enclosing block declares rather than against whatever Spring has started so far. The
      * outermost frame's enclosing transaction is the Spring transaction active on the thread, if any.</p>
      *
-     * @throws PersistenceException if the propagation is {@code MANDATORY} and no enclosing transaction exists,
-     * or {@code NEVER} and one does.
+     * @throws IllegalTransactionStateException if the propagation is {@code MANDATORY} and no enclosing transaction
+     * exists, {@code NEVER} and one does, or the frame joins a transaction and states a stricter isolation level than
+     * that transaction runs at.
      */
     public void begin(TransactionDefinition definition) {
         var enclosing = lastOrNull();
@@ -402,13 +478,13 @@ public final class SpringTransactionContext implements TransactionContext {
             case PROPAGATION_REQUIRED, PROPAGATION_REQUIRES_NEW, PROPAGATION_NESTED -> true;
             case PROPAGATION_MANDATORY -> {
                 if (!enclosingTransactional) {
-                    throw new PersistenceException("No existing transaction for MANDATORY propagation.");
+                    throw new IllegalTransactionStateException("No existing transaction for MANDATORY propagation.");
                 }
                 yield true;
             }
             case PROPAGATION_NEVER -> {
                 if (enclosingTransactional) {
-                    throw new PersistenceException("Existing transaction found for NEVER propagation.");
+                    throw new IllegalTransactionStateException("Existing transaction found for NEVER propagation.");
                 }
                 yield false;
             }
@@ -422,6 +498,14 @@ public final class SpringTransactionContext implements TransactionContext {
             // a non-transactional frame, or as the outermost frame, it opens its own.
             default -> enclosing != null && enclosingTransactional ? enclosing.ownerIndex : index;
         };
+        if (ownerIndex != index) {
+            refuseStricterIsolation(propagation, definition.getIsolationLevel(),
+                    effectiveIsolationLevel(stack.get(ownerIndex)));
+        } else if (transactional && enclosing == null && enclosingTransactional
+                && propagation != PROPAGATION_REQUIRES_NEW) {
+            // The outermost frame joins the Spring transaction active on the thread.
+            refuseStricterIsolation(propagation, definition.getIsolationLevel(), currentSpringIsolationLevel());
+        }
         var state = new TransactionState(index, ownerIndex, transactional);
         state.transactionDefinition = definition;
         state.timeoutSeconds = definition.getTimeout() > 0 ? definition.getTimeout() : null;
@@ -682,6 +766,21 @@ public final class SpringTransactionContext implements TransactionContext {
                                                     TransactionDefinition definition) {
         try {
             return transactionManager.getTransaction(definition);
+        } catch (org.springframework.transaction.IllegalTransactionStateException e) {
+            // A manager with validateExistingTransaction refuses a participating definition whose isolation
+            // differs from the existing transaction's, or that is read-write inside a read-only one. Spring's
+            // other uses of the exception, MANDATORY without and NEVER inside a transaction, are refused here
+            // before the manager is asked.
+            if (e.getMessage() == null || !e.getMessage().startsWith("Participating transaction")) {
+                throw e;
+            }
+            throw new IllegalTransactionStateException(
+                    "Transaction manager " + transactionManager.getClass().getName() + " refused the "
+                            + propagationName(definition.getPropagationBehavior()) + " block's participation in the "
+                            + "surrounding transaction, whose settings it validates: " + e.getMessage() + " A joined "
+                            + "block runs with the isolation level and the read-only mode of the transaction it "
+                            + "joins; open it with REQUIRES_NEW for a transaction of its own, or leave the option "
+                            + "unstated.", e);
         } catch (InvalidIsolationLevelException e) {
             throw new PersistenceException(
                     "Transaction manager " + transactionManager.getClass().getName() + " does not support "

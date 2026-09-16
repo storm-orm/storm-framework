@@ -20,9 +20,12 @@ Storm uses unchecked exceptions for most error conditions. The root type is `Per
 | `NonUniqueResultException` | `PersistenceException` | `getSingleResult()` or `getOptionalResult()` returns more than one row. |
 | `OptimisticLockException` | `PersistenceException` | An update or delete detects a version conflict (the row was modified by another transaction). |
 | `SchemaValidationException` | `PersistenceException` | Schema validation finds mismatches between entity definitions and the database schema. |
+| `IllegalTransactionStateException` | `PersistenceException` | A transaction block cannot open against the transaction state it finds: `MANDATORY` without a transaction, `NEVER` inside one, or a joined block stating a stricter isolation level than the transaction it joins. |
 | `TransactionTimedOutException` | `PersistenceException` | A transaction exceeds its configured timeout. |
 | `UnexpectedRollbackException` | `PersistenceException` | A commit was attempted but the transaction had been marked rollback-only, for example by a joined inner scope. |
 | `TransactionCallbackException` | `PersistenceException` | A transaction completion callback failed. The transaction itself completed; `isCommitted()` says which way, so a failed side effect is distinguishable from a failed transaction. |
+| `ReadOnlyTransactionException` | `PersistenceException` | An `INSERT`, `UPDATE` or `DELETE` is issued inside a read-only transaction, or inside a block that declared itself read-only. |
+| `InvalidCursorException` | `PersistenceException` | A scroll cursor is refused: malformed, from an earlier format, issued for another ordering, or carrying a value of the wrong type. |
 | `SqlTemplateException` | `SQLException` | An error occurred during SQL template processing. Often attached as a suppressed exception to provide the generated SQL alongside the original error. |
 
 The hierarchy is intentionally flat. Most code only needs to catch `PersistenceException` and, occasionally, its specific subtypes.
@@ -34,9 +37,12 @@ RuntimeException
       ├── NonUniqueResultException
       ├── OptimisticLockException
       ├── SchemaValidationException
+      ├── IllegalTransactionStateException
       ├── TransactionTimedOutException
       ├── UnexpectedRollbackException
-      └── TransactionCallbackException
+      ├── TransactionCallbackException
+      ├── ReadOnlyTransactionException
+      └── InvalidCursorException
 
 SQLException
  └── SqlTemplateException

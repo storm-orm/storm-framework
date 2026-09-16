@@ -216,11 +216,11 @@ transaction {
 
 #### MANDATORY
 
-Requires an active transaction; throws `PersistenceException` if none exists. Use this to enforce that a method is never called outside a transactional context. This is a defensive programming technique to catch integration errors early.
+Requires an active transaction; throws `IllegalTransactionStateException` if none exists. Use this to enforce that a method is never called outside a transactional context. This is a defensive programming technique to catch integration errors early.
 
 ```
 No transaction active:
-   transaction(MANDATORY) → ✗ PersistenceException
+   transaction(MANDATORY) → ✗ IllegalTransactionStateException
 
 Transaction active:
    [BEGIN]
@@ -314,7 +314,7 @@ transaction {
 
 #### NEVER
 
-Fails with `PersistenceException` if a transaction is active. Use this to enforce that code runs outside any transactional context. This is the opposite of `MANDATORY`, serving as a defensive check to prevent accidental transactional execution.
+Fails with `IllegalTransactionStateException` if a transaction is active. Use this to enforce that code runs outside any transactional context. This is the opposite of `MANDATORY`, serving as a defensive check to prevent accidental transactional execution.
 
 ```
 No transaction active:
@@ -323,7 +323,7 @@ No transaction active:
 Transaction active:
    [BEGIN]
       ↓
-      transaction(NEVER) → ✗ PersistenceException
+      transaction(NEVER) → ✗ IllegalTransactionStateException
 ```
 
 This pattern is useful for operations that should never participate in a transaction, such as batch jobs that manage their own transaction boundaries:
@@ -549,6 +549,26 @@ transaction(isolation = SERIALIZABLE) {
 
 *Some databases (e.g., PostgreSQL, MySQL/InnoDB) also prevent phantom reads at `REPEATABLE_READ` using snapshot isolation.
 
+#### Isolation in Joined Blocks
+
+The isolation level belongs to the transaction that owns the connection, and a database refuses to change it once a statement has run in the transaction. A `REQUIRED`, `SUPPORTS`, `MANDATORY` or `NESTED` block inside an open transaction therefore runs at that transaction's level. It may state that level or a lower one, which the transaction already honours. A block that states a stricter level is refused with an `IllegalTransactionStateException` naming both levels, as is any stated level inside a transaction running at the database default, whose level Storm does not know. A refused block fails as a joined block does, so the transaction it joined rolls back with it. State the level on the outermost block, open the block with `REQUIRES_NEW` for a transaction of its own, or leave its level unstated.
+
+```kotlin
+transaction(isolation = READ_COMMITTED) {
+    transaction(isolation = SERIALIZABLE) {
+        // IllegalTransactionStateException: states SERIALIZABLE but joins a READ_COMMITTED transaction
+    }
+    transaction(isolation = READ_UNCOMMITTED) {
+        // Joins, and runs at READ_COMMITTED
+    }
+    transaction(propagation = REQUIRES_NEW, isolation = SERIALIZABLE) {
+        // A transaction of its own, at SERIALIZABLE
+    }
+}
+```
+
+A default set with `setGlobalTransactionOptions` or `withTransactionOptions` is what a block states when it names no level of its own, and it counts the same way: a stricter default inside an outer block that explicitly lowered the level is refused as well. The [entity cache](entity-cache.md) follows the transaction that owns the connection. A joined block inside a `REPEATABLE_READ` transaction returns cached instances whether or not it states a level, and a block outside any transaction, opened with `NOT_SUPPORTED` or `NEVER`, reads no snapshot and returns fresh instances whatever it states. The same rules hold for a block inside a Spring-managed transaction, `@Transactional(isolation = ...)` included. A manager configured with `validateExistingTransaction` applies Spring's stricter rule, that a stated level must equal the transaction's, and its refusal is reported against the block the same way.
+
 #### Choosing an Isolation Level
 
 Start with `READ_COMMITTED` (often the database default) and only increase isolation when you have a specific consistency requirement. Here's a guide for common scenarios:
@@ -607,7 +627,7 @@ transaction(readOnly = true) {
 }
 ```
 
-The mode belongs to the transaction that owns the connection. A `REQUIRED` block inside a read-only transaction joins it and is read-only too, whatever it declares; a write from inside one needs a transaction of its own, opened with `REQUIRES_NEW`, or a read-write enclosing transaction. The same holds under Spring-managed transactions, `@Transactional(readOnly = true)` included; inside a Spring transaction Storm did not open, the transaction manager's `enforceReadOnly` setting stands in for the dialect's statement.
+The mode belongs to the transaction that owns the connection, and a block that declares itself read-only holds that promise for its own body. A `REQUIRED` block inside a read-only transaction joins it and is read-only too, whatever it declares; a write from inside one needs a transaction of its own, opened with `REQUIRES_NEW`, or a read-write enclosing transaction. A block that declares `readOnly = true` inside a read-write transaction joins it without changing the connection's mode, and Storm refuses the writes issued inside it, from the blocks it encloses included; the database side of the mode, the lighter locks and the dialect's statement, belongs to the transaction and is not applied for the block. The same holds under Spring-managed transactions, `@Transactional(readOnly = true)` included; inside a Spring transaction Storm did not open, the transaction manager's `enforceReadOnly` setting stands in for the dialect's statement.
 
 ### Manual Rollback
 
@@ -1321,7 +1341,7 @@ transaction(TransactionOptions.defaults()
         .withReadOnly(true), tx -> reports.generate());
 ```
 
-The propagation semantics are identical to the Kotlin API; see the propagation behavior matrix in the Kotlin tab. `MANDATORY` without an active transaction and `NEVER` inside one fail with a `PersistenceException`; an expired timeout raises `TransactionTimedOutException`; a joined inner scope that marks the transaction rollback-only makes the outer commit raise `UnexpectedRollbackException`.
+The propagation semantics are identical to the Kotlin API; see the propagation behavior matrix in the Kotlin tab. `MANDATORY` without an active transaction and `NEVER` inside one fail with an `IllegalTransactionStateException`, and so does a joined block that states a stricter isolation level than the transaction it joins, or any level inside a transaction at the database default; an expired timeout raises `TransactionTimedOutException`; a joined inner scope that marks the transaction rollback-only makes the outer commit raise `UnexpectedRollbackException`. A joined block that declares read-only has its own writes refused with `ReadOnlyTransactionException`, whatever the mode of the transaction it joins.
 
 ### Rollback Control and Callbacks
 

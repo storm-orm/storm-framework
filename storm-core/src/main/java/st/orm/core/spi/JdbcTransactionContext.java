@@ -37,6 +37,7 @@ import org.jspecify.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import st.orm.Entity;
+import st.orm.IllegalTransactionStateException;
 import st.orm.PersistenceException;
 import st.orm.TransactionPropagation;
 import st.orm.TransactionTimedOutException;
@@ -63,6 +64,14 @@ import st.orm.UnexpectedRollbackException;
  * level and the read-only mode it was given, the read-only mode only when it differs from the mode the connection
  * arrived with, and restores on release what it changed; a frame given no isolation level or no mode makes no
  * call for it at all.</p>
+ *
+ * <p>A joined frame runs on the owner's connection and changes nothing on it: the isolation level and the
+ * read-only mode belong to the transaction that owns the connection, and neither can change once that
+ * transaction is open. A joined frame may therefore state the owner's isolation level or a lower one, which the
+ * owner's already honours, and is refused when it begins if it states a stricter one, or any level inside an
+ * owner running at the database's default, whose level is not known here. The read-only mode is held on
+ * Storm's side, so a joined frame that declares read-only has its own writes refused whatever the owner's
+ * mode, while a read-write frame inside a read-only owner joins it and is refused on write.</p>
  *
  * <p>What a frame joins, and which frames share a connection, follows from the frame structure alone, decided
  * when the frame begins and independent of what is bound at the time. A frame is transactional by its
@@ -186,6 +195,35 @@ public final class JdbcTransactionContext implements TransactionContext {
         };
     }
 
+    /**
+     * Refuses a joining frame that states a stricter isolation level than the transaction it joins runs at. The
+     * level belongs to the transaction owning the connection and cannot change once that transaction is open, so
+     * a frame stating a higher level would run below what it declares without a signal; a lower or equal level is
+     * honoured by what the owner already has. An owner that states no level runs at the database's default,
+     * which is not known here, so any level stated inside it is refused as well.
+     */
+    private static void refuseStricterIsolation(TransactionPropagation propagation,
+                                                @Nullable Integer isolation,
+                                                @Nullable Integer ownerIsolation) {
+        if (isolation == null) {
+            return;
+        }
+        if (ownerIsolation == null) {
+            throw new IllegalTransactionStateException(("A %s block states %s isolation but joins a transaction running at the " +
+                    "database's default isolation level, which is not known to be as strict; the isolation level " +
+                    "belongs to the transaction owning the connection and cannot change once it is open. State the " +
+                    "level on the transaction it joins, open the block with REQUIRES_NEW for a transaction of its " +
+                    "own, or leave its isolation unstated.").formatted(propagation, isolationName(isolation)));
+        }
+        if (isolation > ownerIsolation) {
+            throw new IllegalTransactionStateException(("A %s block states %s isolation but joins a %s transaction; the isolation " +
+                    "level belongs to the transaction owning the connection and cannot change once it is open. State " +
+                    "at least %s on the transaction it joins, open the block with REQUIRES_NEW for a transaction of " +
+                    "its own, or leave its isolation unstated.").formatted(propagation, isolationName(isolation),
+                    isolationName(ownerIsolation), isolationName(isolation)));
+        }
+    }
+
     private TransactionState currentState() {
         if (stack.isEmpty()) {
             throw new IllegalStateException("No transaction active.");
@@ -252,15 +290,17 @@ public final class JdbcTransactionContext implements TransactionContext {
      * Returns true if the transaction has repeatable-read semantics: the isolation level is
      * {@code REPEATABLE_READ} or higher. When the isolation level is not explicitly set, the database default is
      * used; since most databases default to {@code READ_COMMITTED}, this returns false so fresh data is fetched
-     * on each read.
+     * on each read. The level is that of the frame owning the physical transaction, since a joined frame runs on
+     * its connection and the level it declares is never applied there; a frame outside a transaction reads no
+     * snapshot, whatever it declares.
      */
     @Override
     public boolean isRepeatableRead() {
-        var isolationLevel = currentState().isolationLevel;
-        if (isolationLevel == null) {
+        var owner = stack.get(currentState().ownerIndex);
+        if (!owner.transactional || owner.isolationLevel == null) {
             return false;
         }
-        return isolationLevel >= TRANSACTION_REPEATABLE_READ;
+        return owner.isolationLevel >= TRANSACTION_REPEATABLE_READ;
     }
 
     @Override
@@ -270,7 +310,18 @@ public final class JdbcTransactionContext implements TransactionContext {
             return false;
         }
         var owner = stack.get(state.ownerIndex);
-        return owner.transactional && Boolean.TRUE.equals(owner.readOnly);
+        if (!owner.transactional) {
+            return false;
+        }
+        // The owner's mode is the connection's. A joined frame that declares read-only never reaches the
+        // connection, but its declaration is a promise about its own body, the frames it encloses included, so
+        // a write issued inside it is refused whatever the owner's mode.
+        for (int i = state.ownerIndex; i <= state.index; i++) {
+            if (Boolean.TRUE.equals(stack.get(i).readOnly)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     @Override
@@ -360,8 +411,9 @@ public final class JdbcTransactionContext implements TransactionContext {
      * decided here from the enclosing frame, so {@code MANDATORY} and {@code NEVER} are checked against the
      * transaction the enclosing block declares rather than against whatever it has bound so far.</p>
      *
-     * @throws PersistenceException if the propagation is {@code MANDATORY} and no enclosing transaction exists,
-     * or {@code NEVER} and one does.
+     * @throws IllegalTransactionStateException if the propagation is {@code MANDATORY} and no enclosing transaction
+     * exists, {@code NEVER} and one does, or the frame joins a transaction and states a stricter isolation level than
+     * that transaction runs at.
      */
     public void begin(TransactionPropagation propagation,
                @Nullable Integer isolation,
@@ -374,13 +426,13 @@ public final class JdbcTransactionContext implements TransactionContext {
             case REQUIRED, REQUIRES_NEW, NESTED -> true;
             case MANDATORY -> {
                 if (!enclosingTransactional) {
-                    throw new PersistenceException("No existing transaction for MANDATORY propagation.");
+                    throw new IllegalTransactionStateException("No existing transaction for MANDATORY propagation.");
                 }
                 yield true;
             }
             case NEVER -> {
                 if (enclosingTransactional) {
-                    throw new PersistenceException("Existing transaction found for NEVER propagation.");
+                    throw new IllegalTransactionStateException("Existing transaction found for NEVER propagation.");
                 }
                 yield false;
             }
@@ -394,6 +446,9 @@ public final class JdbcTransactionContext implements TransactionContext {
             // transactionality says.
             case REQUIRED, SUPPORTS, MANDATORY, NESTED -> enclosingTransactional ? enclosing.ownerIndex : index;
         };
+        if (ownerIndex != index) {
+            refuseStricterIsolation(propagation, isolation, stack.get(ownerIndex).isolationLevel);
+        }
         var state = new TransactionState(propagation, isolation, timeoutSeconds, readOnly, index, ownerIndex,
                 transactional);
         if (LOGGER.isDebugEnabled()) {
