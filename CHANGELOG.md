@@ -12,6 +12,8 @@ for the CLI, to [npm](https://www.npmjs.com/package/@storm-orm/cli)
 
 ## [Unreleased]
 
+## [1.14.1] - 2026-09-12
+
 A patch release around two fixes. A result stream keeps its connection to itself on every database, and the keyset reads are adjusted so that windows, the shape that leaves the connection free, can take a stream's place wherever a loop needs the database. A read-only transaction is a promise Storm holds on its own side rather than leaving to the driver: the writes it recognises are refused before they reach the database, and the transaction opens read-only on the server where the driver keeps the flag to itself.
 
 - The Gradle plugin refuses a KSP that does not pair with the project's Kotlin version, with the paired plugin line to declare and where to put it, in the shape of the failure for a missing KSP. The metamodel processor runs inside whichever KSP the build resolved, and on Kotlin 2.0 and 2.1 the bundled KSP fails inside the Kotlin Gradle plugin with a linkage error that names neither KSP nor Kotlin; a subproject that applies KSP without a version inherits the bundled one from a root classpath that carries `st.orm`, so that build used to run the wrong KSP without a word. In a multi-project build the paired KSP is declared once in the root project's plugins block with `apply false` and applied in each subproject without a version; a declared version beats the bundled preference. Kotlin 2.2 joins the automatic path: the bundled KSP compiles a metamodel there, which a functional test settles, so a Kotlin 2.2 project needs no KSP line, and the refusal covers Kotlin 2.0 and 2.1.
@@ -249,6 +251,9 @@ Feature release centered on the reified Kotlin query API. Breaking changes are a
 For releases prior to 1.3.2, see the
 [GitHub Releases](https://github.com/storm-orm/storm-framework/releases) page.
 
+[1.14.1]: https://github.com/storm-orm/storm-framework/releases/tag/v1.14.1
+[1.14.0]: https://github.com/storm-orm/storm-framework/releases/tag/v1.14.0
+[1.13.1]: https://github.com/storm-orm/storm-framework/releases/tag/v1.13.1
 [1.13.0]: https://github.com/storm-orm/storm-framework/releases/tag/v1.13.0
 [1.12.1]: https://github.com/storm-orm/storm-framework/releases/tag/v1.12.1
 [1.12.0]: https://github.com/storm-orm/storm-framework/releases/tag/v1.12.0
