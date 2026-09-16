@@ -12,6 +12,8 @@ for the CLI, to [npm](https://www.npmjs.com/package/@storm-orm/cli)
 
 ## [Unreleased]
 
+## [1.14.1] - 2026-09-12
+
 A patch release around two fixes. A result stream keeps its connection to itself on every database, and the keyset reads are adjusted so that windows, the shape that leaves the connection free, can take a stream's place wherever a loop needs the database. A read-only transaction is a promise Storm holds on its own side rather than leaving to the driver: the writes it recognises are refused before they reach the database, and the transaction opens read-only on the server where the driver keeps the flag to itself.
 
 - A result stream holds its connection consume-only until it is read to its end or closed, on every database. Inside a transaction the stream and every other statement share the transaction's connection, and what the driver does with a second statement differs: MySQL Connector/J rejects it, MariaDB Connector/J and the SQL Server driver first read the rest of the open result into memory, which turns a bounded stream into a whole-table list without any signal. Storm now refuses the statement itself, with a `PersistenceException` naming the open stream, the refused statement and the windows form, so a loop that passes its tests on H2 behaves the same in production on any dialect. A `Ref.fetch()` from inside the loop is named as such, with the fetch plan as the fix.
@@ -247,6 +249,9 @@ Feature release centered on the reified Kotlin query API. Breaking changes are a
 For releases prior to 1.3.2, see the
 [GitHub Releases](https://github.com/storm-orm/storm-framework/releases) page.
 
+[1.14.1]: https://github.com/storm-orm/storm-framework/releases/tag/v1.14.1
+[1.14.0]: https://github.com/storm-orm/storm-framework/releases/tag/v1.14.0
+[1.13.1]: https://github.com/storm-orm/storm-framework/releases/tag/v1.13.1
 [1.13.0]: https://github.com/storm-orm/storm-framework/releases/tag/v1.13.0
 [1.12.1]: https://github.com/storm-orm/storm-framework/releases/tag/v1.12.1
 [1.12.0]: https://github.com/storm-orm/storm-framework/releases/tag/v1.12.0
