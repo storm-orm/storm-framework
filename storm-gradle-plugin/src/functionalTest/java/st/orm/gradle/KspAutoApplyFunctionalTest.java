@@ -57,6 +57,21 @@ public class KspAutoApplyFunctionalTest {
     }
 
     @Test
+    public void kotlin22GetsTheBundledKspApplied() throws Exception {
+        // Kotlin 2.2 is the oldest line the bundled KSP pairs with; SmokeCompileTest proves the compile.
+        FunctionalTestSupport.writeProject(projectDir, FunctionalTestSupport.SETTINGS_MAVEN_LOCAL,
+                pluginBlock().replace("2.4.0", "2.2.21"));
+        var result = GradleRunner.create()
+                .withProjectDir(projectDir.toFile())
+                .withArguments("stormDump", "-q")
+                .build();
+        assertTrue(result.getOutput().contains("DEP ksp st.orm:storm-metamodel-ksp:"),
+                "Expected the auto-applied KSP plugin to carry the metamodel processor on Kotlin 2.2:\n"
+                        + result.getOutput());
+        assertTrue(result.getOutput().contains("DEP kotlinCompilerPluginClasspath st.orm:storm-compiler-plugin-2.2:"));
+    }
+
+    @Test
     public void optOutKeepsTheInstructiveFailure() throws Exception {
         FunctionalTestSupport.writeProject(projectDir, FunctionalTestSupport.SETTINGS_MAVEN_LOCAL, pluginBlock());
         var result = GradleRunner.create()
@@ -65,6 +80,7 @@ public class KspAutoApplyFunctionalTest {
                 .buildAndFail();
         assertTrue(result.getOutput().contains("id(\"com.google.devtools.ksp\") version \"2.3.10\""),
                 "Expected the copy-pasteable KSP plugin line:\n" + result.getOutput());
+        assertTrue(result.getOutput().contains("(Kotlin 2.2+)"), result.getOutput());
         assertTrue(result.getOutput().contains("storm { metamodel.set(false) }"));
     }
 

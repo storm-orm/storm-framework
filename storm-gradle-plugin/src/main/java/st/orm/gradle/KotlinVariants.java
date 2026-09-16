@@ -24,20 +24,24 @@ import org.gradle.api.GradleException;
  * compiler API, and to the recommended KSP version.
  *
  * <p>Keep this matrix in sync with {@code website/src/components/tutorial/tutorialTheme.js}
- * (KOTLIN_VARIANTS) and {@code docs/installation.md}.</p>
+ * (KOTLIN_VARIANTS), {@code website/static/skills/storm-setup.md}, {@code docs/installation.md},
+ * {@code docs/getting-started.md} and {@code README.md}.</p>
  */
 final class KotlinVariants {
 
     /**
-     * Kotlin major.minor to recommended KSP version. Kotlin 2.0 and 2.1 require Kotlin-paired KSP builds;
-     * KSP 2.3+ is Kotlin-version-independent and supports Kotlin 2.2 and newer.
+     * Kotlin major.minor to recommended KSP version. Kotlin 2.0 and 2.1 pair with their own KSP builds,
+     * versioned {@code <kotlin>-<ksp>}; from KSP 2.3 on, KSP versions independently of Kotlin and one release
+     * covers Kotlin 2.2 and newer. The Kotlin 2.2 boundary is settled by a functional test that compiles a
+     * metamodel on Kotlin 2.2 with the bundled KSP; on Kotlin 2.1 and 2.0 the same KSP fails inside the
+     * Kotlin Gradle plugin with a linkage error that names neither KSP nor Kotlin.
      */
     private static final Map<String, String> KSP_BY_KOTLIN = new LinkedHashMap<>();
 
     static {
         KSP_BY_KOTLIN.put("2.0", "2.0.21-1.0.28");
         KSP_BY_KOTLIN.put("2.1", "2.1.21-2.0.2");
-        KSP_BY_KOTLIN.put("2.2", "2.2.21-2.0.5");
+        KSP_BY_KOTLIN.put("2.2", "2.3.10");
         KSP_BY_KOTLIN.put("2.3", "2.3.10");
         KSP_BY_KOTLIN.put("2.4", "2.3.10");
     }
@@ -74,6 +78,39 @@ final class KotlinVariants {
      */
     static String kspFor(String kotlinVersion) {
         return KSP_BY_KOTLIN.getOrDefault(majorMinor(kotlinVersion), KSP_BY_KOTLIN.get(newestVariant()));
+    }
+
+    /**
+     * Returns whether the given KSP version pairs with the given Kotlin version: a Kotlin-paired KSP build,
+     * versioned {@code <kotlin>-<ksp>}, pairs with the Kotlin line its prefix names, and a KSP that versions
+     * independently of Kotlin pairs with every Kotlin line whose recommendation is such a build. Patch
+     * releases within a line pair alike, so a newer KSP patch than the recommended one is not refused.
+     *
+     * @param kotlinVersion the full Kotlin version, such as {@code 2.1.21}.
+     * @param kspVersion the full KSP version, such as {@code 2.1.21-2.0.2} or {@code 2.3.10}.
+     */
+    static boolean pairs(String kotlinVersion, String kspVersion) {
+        int dash = kspVersion.indexOf('-');
+        if (dash > 0) {
+            return majorMinor(kspVersion.substring(0, dash)).equals(majorMinor(kotlinVersion));
+        }
+        return kspFor(kotlinVersion).indexOf('-') < 0;
+    }
+
+    /**
+     * Returns the oldest Kotlin line whose recommended KSP is the given Kotlin-independent KSP version, the
+     * line from which the bundled KSP applies automatically, such as {@code 2.2}.
+     *
+     * @param kspVersion a KSP version that versions independently of Kotlin, such as {@code 2.3.10}.
+     * @throws IllegalArgumentException if no Kotlin line recommends the given KSP version.
+     */
+    static String oldestKotlinFor(String kspVersion) {
+        for (var entry : KSP_BY_KOTLIN.entrySet()) {
+            if (entry.getValue().equals(kspVersion)) {
+                return entry.getKey();
+            }
+        }
+        throw new IllegalArgumentException("No Kotlin line recommends KSP " + kspVersion + ".");
     }
 
     private static String majorMinor(String kotlinVersion) {

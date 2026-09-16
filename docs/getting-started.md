@@ -47,7 +47,7 @@ plugins {
 }
 ```
 
-On Kotlin 2.3 and newer the plugin applies KSP itself; on Kotlin 2.2 and older, add `id("com.google.devtools.ksp")` with the version paired to your Kotlin line. Add the dialect module and JDBC driver for your database, and you are done. See [Installation](installation.md#gradle-plugin-recommended) for the plugin's configuration options and the per-Kotlin-version matrix.
+On Kotlin 2.2 and newer the plugin applies KSP itself; on Kotlin 2.0 and 2.1, add `id("com.google.devtools.ksp")` with the version paired to your Kotlin line. Add the dialect module and JDBC driver for your database, and you are done. See [Installation](installation.md#gradle-plugin-recommended) for the plugin's configuration options and the per-Kotlin-version matrix.
 
 </TabItem>
 <TabItem value="maven" label="Maven BOM">

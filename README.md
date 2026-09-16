@@ -86,7 +86,7 @@ plugins {
 }
 ```
 
-On Kotlin 2.3 and newer the plugin applies KSP itself; on Kotlin 2.2 and older, add `id("com.google.devtools.ksp")` with the version paired to your Kotlin line.
+On Kotlin 2.2 and newer the plugin applies KSP itself; on Kotlin 2.0 and 2.1, add `id("com.google.devtools.ksp")` with the version paired to your Kotlin line.
 
 For Java, drop the Kotlin plugin:
 
