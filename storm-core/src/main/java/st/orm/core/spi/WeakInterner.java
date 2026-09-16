@@ -23,6 +23,7 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.WeakHashMap;
 import st.orm.Entity;
+import st.orm.Ref;
 
 /**
  * A weak interner that ensures canonical instances of objects while holding them weakly to permit garbage collection.
@@ -44,6 +45,13 @@ import st.orm.Entity;
  * instance, later equivalent objects resolve to that same instance. A caller in a position to compare two duplicates
  * necessarily still holds the first one, which is exactly what keeps its entry alive, so duplicates can never be
  * observed as distinct instances.</p>
+ *
+ * <p>A {@link Ref} equals any other reference to the same record, loaded or not, and interning never trades a loaded
+ * reference for an unloaded one. A row can build both: an unloaded reference while mapping a record that points back
+ * at the referenced row, and a loaded one when the referenced record itself is in the fetch plan. The loaded
+ * reference is the canonical instance from the moment it is interned, so later rows share the resolved record, and
+ * an unloaded reference meeting a loaded one receives the loaded instance. A record built earlier with the unloaded
+ * instance keeps it, since its own field was not in the plan.</p>
  *
  * <p>This class is not thread-safe. A new instance is expected to be created for each result set processing call,
  * ensuring that interning is scoped to a single query execution.</p>
@@ -174,6 +182,20 @@ public final class WeakInterner {
             // Equivalent object found; return existing instance
             var result = existing.get();
             if (result != null) {
+                if (object instanceof Ref<?> incoming && result instanceof Ref<?> present) {
+                    // A reference is identified by its type and row identity, whichever implementation carries
+                    // it. A loaded reference takes over from an unloaded one as the canonical instance. The
+                    // entry is re-keyed on the loaded instance: putting under the equal key would keep the
+                    // unloaded instance as the key, and the entry would be cleared with it rather than with
+                    // the reference it hands out.
+                    if (incoming.isLoaded() && !present.isLoaded()) {
+                        map.remove(present);
+                        map.put(object, new WeakReference<>(object));
+                        return object;
+                    }
+                    //noinspection unchecked
+                    return (T) result;
+                }
                 if (result.getClass() != object.getClass()) {
                     throw new IllegalArgumentException("Cannot intern objects of different classes.");
                 }
