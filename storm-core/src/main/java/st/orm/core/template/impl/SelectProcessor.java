@@ -15,8 +15,6 @@
  */
 package st.orm.core.template.impl;
 
-import static java.util.stream.Collectors.joining;
-
 import st.orm.core.template.impl.Elements.Select;
 
 final class SelectProcessor implements ElementProcessor<Select> {
@@ -55,10 +53,13 @@ final class SelectProcessor implements ElementProcessor<Select> {
         FetchPlan fetchPlan = compiler.getFetchPlan();
         // The closed plan is what shaped the select list, so that is the form the row mapper has to read back.
         compiler.setFetchPaths(fetchPlan.toList());
-        return new CompiledElement(compiler.getQueryModel()
+        var columns = compiler.getQueryModel()
                 .getColumns(select.table(), select.mode(), fetchPlan).stream()
                 .map(ColumnExpression::toSql)
-                .collect(joining(", ")));
+                .toList();
+        // The list is what a cursor element finds its columns in.
+        compiler.setSelectColumns(columns);
+        return new CompiledElement(String.join(", ", columns));
     }
 
     /**

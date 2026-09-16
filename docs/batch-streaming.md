@@ -276,7 +276,7 @@ Windows are keyset windows, so the rules of [scrolling](pagination-and-scrolling
 
 - The query must not carry an `orderBy` of its own; the request orders. `windows(Scrollable.of(User_.id, 1000).sortBy(User_.birthDate))` sorts by a non-unique field with the key as tiebreaker, and `.descending()` iterates in descending key order.
 - The key must be a non-nullable unique key. `windows(size)` uses the primary key.
-- The key is read from each row alongside the result, so refs and custom select types iterate too. An inline record key is read from the mapped record and needs the entity type as the result.
+- The key is read from each row alongside the result, so refs and custom select types iterate too. A key or sort field the select list already carries is read where it is; one it lacks is appended to the statement. An inline record key is built from its columns the way a row is, so its components are columns or refs, not entities.
 - Each window is its own statement. It runs the query's `WHERE` clause again from the position, so the key should be indexed, which a primary or unique key is. Under `READ COMMITTED` a later window sees rows committed after the previous one; rows the loop writes and that it has passed are never visited again.
 
 ### Choosing between them

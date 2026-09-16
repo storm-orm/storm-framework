@@ -30,6 +30,7 @@ import java.lang.reflect.Method;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import org.jspecify.annotations.Nullable;
@@ -72,6 +73,17 @@ public final class MetamodelFactory {
     private static final ClassValue<ConcurrentMap<String, Metamodel<?, ?>>> METAMODEL_CACHE = new ClassValue<>() {
         @Override
         protected ConcurrentMap<String, Metamodel<?, ?>> computeValue(Class<?> table) {
+            return new ConcurrentHashMap<>();
+        }
+    };
+
+    /**
+     * The key a reference path's column carries, per root table and path, since deriving it walks the record's
+     * fields and every scroll window asks for it. An empty optional records a path that is no reference.
+     */
+    private static final ClassValue<ConcurrentMap<String, Optional<Metamodel<?, ?>>>> REFERENCED_KEY_CACHE = new ClassValue<>() {
+        @Override
+        protected ConcurrentMap<String, Optional<Metamodel<?, ?>>> computeValue(Class<?> table) {
             return new ConcurrentHashMap<>();
         }
     };
@@ -286,6 +298,12 @@ public final class MetamodelFactory {
      */
     @SuppressWarnings({"unchecked", "rawtypes"})
     public static @Nullable Metamodel<?, ?> referencedKey(Metamodel<?, ?> metamodel) {
+        return REFERENCED_KEY_CACHE.get(metamodel.root())
+                .computeIfAbsent(metamodel.fieldPath(), ignore -> Optional.ofNullable(deriveReferencedKey(metamodel)))
+                .orElse(null);
+    }
+
+    private static @Nullable Metamodel<?, ?> deriveReferencedKey(Metamodel<?, ?> metamodel) {
         try {
             String path = metamodel.fieldPath();
             if (path.isEmpty()) {

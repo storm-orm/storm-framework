@@ -26,6 +26,8 @@ import static st.orm.Operator.IN;
 import static st.orm.Operator.LESS_THAN;
 import static st.orm.core.template.TemplateString.combine;
 import static st.orm.core.template.TemplateString.wrap;
+import static st.orm.core.template.impl.RecordReflection.getRecordType;
+import static st.orm.core.template.impl.RecordReflection.isRecord;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -61,6 +63,7 @@ import st.orm.core.template.impl.Elements.TemplateExpression;
 import st.orm.core.template.impl.Elements.TemplateSource;
 import st.orm.core.template.impl.Elements.TemplateTarget;
 import st.orm.core.template.impl.Elements.Where;
+import st.orm.mapping.RecordField;
 
 /**
  * Abstract query builder implementation.
@@ -99,14 +102,8 @@ abstract class QueryBuilderImpl<T extends Data, R, ID> extends QueryBuilder<T, R
     }
 
     /**
-     * Returns the data type used in the FROM clause of the query. This is the entity or projection type {@code T}
-     * that the query is built against.
-     *
-     * @return the FROM clause data type.
-     */
-    /**
-     * Executes the query with the given cursor columns appended to its select list, reading them from each row
-     * alongside the mapped result.
+     * Executes the query reading the given columns from each row alongside the mapped result, without selecting a
+     * column the select list already carries again.
      *
      * @param columns the cursor columns, in the order their values are wanted.
      * @return the rows with their cursor values.
@@ -145,9 +142,11 @@ abstract class QueryBuilderImpl<T extends Data, R, ID> extends QueryBuilder<T, R
         }
         int size = scrollable.size();
         var limited = (QueryBuilderImpl<T, R, ID>) query.limit(size + 1);
-        List<KeyedQuery.Row<R>> rows = scrollable.key().isInline()
-                ? limited.keyedRowsFromRecords(orders)
-                : limited.getKeyedResultList(orders.stream().<Metamodel<T, ?>>map(order -> (Metamodel<T, ?>) order.field()).toList());
+        var columns = new ArrayList<Metamodel<T, ?>>(orders.size());
+        for (var order : orders) {
+            columns.add((Metamodel<T, ?>) order.field());
+        }
+        List<KeyedQuery.Row<R>> rows = limited.getKeyedResultList(columns);
         boolean more = rows.size() > size;
         if (more) {
             rows = rows.subList(0, size);
@@ -167,30 +166,6 @@ abstract class QueryBuilderImpl<T extends Data, R, ID> extends QueryBuilder<T, R
         boolean hasNext = reverse || more;
         boolean hasPrevious = reverse ? more : position != null;
         return new Window<>(content, hasNext, hasPrevious, next, previous);
-    }
-
-    /**
-     * Reads the cursor values from the mapped records rather than from the row. An inline record key spans several
-     * columns and is compared as a whole, so its value is the record's own field, which only a result of the root
-     * type carries.
-     */
-    @SuppressWarnings("unchecked")
-    private List<KeyedQuery.Row<R>> keyedRowsFromRecords(List<Order> orders) {
-        var rows = new ArrayList<KeyedQuery.Row<R>>();
-        for (R value : getResultList()) {
-            if (!getFromType().isInstance(value)) {
-                throw new PersistenceException(
-                        ("Scrolling by the inline key requires the result type to be %s, but the query selects %s; "
-                        + "select the entity type, or scroll by a single-column key.")
-                                .formatted(getFromType().getSimpleName(), value.getClass().getSimpleName()));
-            }
-            Object[] cursor = new Object[orders.size()];
-            for (int i = 0; i < orders.size(); i++) {
-                cursor[i] = ((Metamodel<T, Object>) orders.get(i).field()).getValue((T) value);
-            }
-            rows.add(new KeyedQuery.Row<>(value, cursor));
-        }
-        return rows;
     }
 
     /**
@@ -222,7 +197,9 @@ abstract class QueryBuilderImpl<T extends Data, R, ID> extends QueryBuilder<T, R
 
     /**
      * Validates that the key can address a row: it must not allow NULL, because {@code WHERE key > cursor} silently
-     * excludes NULL rows.
+     * excludes NULL rows, and an inline record key must be buildable from its own columns, because its value is read
+     * from the row. A component holding an entity or projection takes that record's columns, which the key's columns
+     * are not; a reference component takes its key column and is fine.
      */
     private static <T extends Data> void validateKey(Metamodel.Key<T, ?> key) {
         if (key.isNullable()) {
@@ -233,6 +210,35 @@ abstract class QueryBuilderImpl<T extends Data, R, ID> extends QueryBuilder<T, R
                     + "@UK(nullsDistinct = false) if the database constraint prevents duplicate NULLs.")
                     .formatted(key.fieldPath()));
         }
+        if (key.isInline()) {
+            var component = dataComponent(key.fieldType(), "");
+            if (component != null) {
+                throw new PersistenceException(
+                        ("Scrolling by the inline key '%s' reads the key from the row, but its component '%s' holds a "
+                        + "%s, which the key's columns cannot rebuild. Reference it as a Ref, or scroll by a "
+                        + "single-column key.")
+                                .formatted(key.fieldPath(), component.name(), component.type().getSimpleName()));
+            }
+        }
+    }
+
+    /**
+     * Returns the first component of the record, searched depth-first, that holds an entity or projection, or
+     * {@code null} when every component is a column or a reference.
+     */
+    private static @Nullable RecordField dataComponent(Class<?> recordType, String prefix) {
+        for (var field : getRecordType(recordType).fields()) {
+            if (Data.class.isAssignableFrom(field.type())) {
+                return field;
+            }
+            if (isRecord(field.type())) {
+                var nested = dataComponent(field.type(), prefix + field.name() + ".");
+                if (nested != null) {
+                    return nested;
+                }
+            }
+        }
+        return null;
     }
 
     /**

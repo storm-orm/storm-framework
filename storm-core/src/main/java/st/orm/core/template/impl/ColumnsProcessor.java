@@ -18,8 +18,10 @@ package st.orm.core.template.impl;
 import static java.util.stream.Collectors.joining;
 import static st.orm.core.template.impl.Elements.Clause.GROUP_BY;
 
+import java.util.List;
 import st.orm.Metamodel;
 import st.orm.SqlTemplateException;
+import st.orm.core.template.Column;
 import st.orm.core.template.impl.Elements.Columns;
 
 /**
@@ -79,27 +81,29 @@ final class ColumnsProcessor implements ElementProcessor<Columns> {
      */
     private static String render(Metamodel<?, ?> metamodel, Columns columns, TemplateCompiler compiler)
             throws SqlTemplateException {
-        var model = compiler.getModel(metamodel.tableType());
-        String alias = compiler.findQueryModel()
-                .map(QueryModel::getTable)
-                .filter(table -> table.type() == metamodel.root() && metamodel.path().isEmpty())
-                .map(AliasedTable::alias)
-                .orElseGet(() -> compiler.getAlias(metamodel, columns.scope()));
-        var resolved = model.getColumns(metamodel);
-        if (resolved.isEmpty()) {
-            throw new SqlTemplateException("No columns found for metamodel: %s.%s.%s"
-                    .formatted(metamodel.fieldType(), metamodel.path(), metamodel.field()));
-        }
+        var resolved = resolve(metamodel, compiler);
         if (columns.clause() == GROUP_BY && MetamodelFactory.identityPath(metamodel) != null) {
             // An identity grouping: the caller stated one row per row of this table, and the dialect states what it
             // takes to express that. A value grouping is emitted as written, because it names the rows itself.
-            resolved = compiler.dialect().groupBy(resolved, model.declaredColumns());
+            resolved = compiler.dialect().groupBy(resolved, compiler.getModel(metamodel.tableType()).declaredColumns());
         }
-        String prefix = alias.isEmpty() ? "" : alias + ".";
+        String prefix = ColumnProcessor.aliasPrefix(metamodel, columns.scope(), compiler);
         String suffix = columns.clause().isDescending() ? " DESC" : "";
         return resolved.stream()
                 .map(column -> prefix + column.qualifiedName(compiler.dialect()) + suffix)
                 .collect(joining(", "));
+    }
+
+    /**
+     * Returns the columns a path resolves to on the table that holds them, in model column order.
+     */
+    static List<Column> resolve(Metamodel<?, ?> metamodel, TemplateCompiler compiler) throws SqlTemplateException {
+        var resolved = compiler.getModel(metamodel.tableType()).getColumns(metamodel);
+        if (resolved.isEmpty()) {
+            throw new SqlTemplateException("No columns found for metamodel: %s.%s.%s"
+                    .formatted(metamodel.fieldType(), metamodel.path(), metamodel.field()));
+        }
+        return resolved;
     }
 
     /**

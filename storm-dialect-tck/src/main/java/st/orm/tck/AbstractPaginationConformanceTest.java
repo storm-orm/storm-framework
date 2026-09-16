@@ -33,10 +33,13 @@ import st.orm.Ref;
 import st.orm.Scrollable;
 import st.orm.Window;
 import st.orm.core.template.ORMTemplate;
+import st.orm.core.template.SqlInterceptor;
 import st.orm.core.template.TemplateString;
 import st.orm.tck.model.Owner;
 import st.orm.tck.model.Pet;
 import st.orm.tck.model.Vet;
+import st.orm.tck.model.VetSpecialty;
+import st.orm.tck.model.VetSpecialtyPK;
 
 /**
  * Read-in-parts conformance: every dialect renders the keyset predicate, the ordering and the window limit, every
@@ -63,6 +66,8 @@ public abstract class AbstractPaginationConformanceTest {
     private static final Metamodel<Owner, Object> OWNER_FIRST_NAME = Metamodel.of(Owner.class, "firstName");
     private static final Metamodel.Key<Pet, Object> PET_ID = Metamodel.key(Metamodel.of(Pet.class, "id"));
     private static final Metamodel<Pet, Object> PET_TYPE = Metamodel.of(Pet.class, "type");
+    private static final Metamodel.Key<VetSpecialty, Object> VET_SPECIALTY_ID =
+            Metamodel.key(Metamodel.of(VetSpecialty.class, "id"));
 
     private static final Comparator<Owner> BY_LAST_THEN_FIRST_THEN_ID = Comparator.comparing(Owner::lastName)
             .thenComparing(Owner::firstName)
@@ -252,6 +257,57 @@ public abstract class AbstractPaginationConformanceTest {
         assertEquals(List.of(5, 6), counted.stream().map(Vet::id).toList());
         assertEquals(6, counted.totalCount());
         assertFalse(counted.hasNext());
+    }
+
+    @Test
+    public void compoundKeyIsReadFromTheRowForEntitiesAndRefs() {
+        // The inline key expands into its columns for the keyset predicate and the ordering, and comes back from
+        // the row as the record, for the entity and for a ref that carries the key as its id.
+        var orm = ORMTemplate.of(dataSource);
+        var expected = orm.entity(VetSpecialty.class).select().getResultList().stream()
+                .map(VetSpecialty::id)
+                .sorted(Comparator.comparing(VetSpecialtyPK::vetId).thenComparing(VetSpecialtyPK::specialtyId))
+                .toList();
+        var first = orm.entity(VetSpecialty.class).scroll(Scrollable.of(VET_SPECIALTY_ID, 2));
+        assertEquals(expected.subList(0, 2), first.content().stream().map(VetSpecialty::id).toList());
+        var second = orm.entity(VetSpecialty.class).scroll(first.next());
+        assertEquals(expected.subList(2, 4), second.content().stream().map(VetSpecialty::id).toList());
+        assertEquals(first.content(), orm.entity(VetSpecialty.class).scroll(second.previous()).content());
+        var refs = orm.entity(VetSpecialty.class).selectRef().scroll(first.next());
+        assertEquals(expected.subList(2, 4), refs.content().stream().map(Ref::id).toList());
+        var last = orm.entity(VetSpecialty.class).scroll(Scrollable.of(VET_SPECIALTY_ID, 2).descending());
+        assertEquals(expected.reversed().subList(0, 2), last.content().stream().map(VetSpecialty::id).toList());
+    }
+
+    @Test
+    public void cursorColumnsTheSelectListCarriesAreNotSelectedAgain() {
+        // A window reads its sort and key values from the row without widening the select list for a column it
+        // already carries: an entity scrolled by its key runs the plain select, and a ref scrolled by a sort field
+        // appends that field once.
+        var orm = ORMTemplate.of(dataSource);
+        var plain = selectList(captureSql(() -> orm.entity(Vet.class).select().limit(5).getResultList()));
+        var scrolled = selectList(captureSql(() -> orm.entity(Vet.class).scroll(Scrollable.of(VET_ID, 4))));
+        assertEquals(plain, scrolled);
+        var refs = selectList(captureSql(() ->
+                orm.entity(Owner.class).selectRef().scroll(Scrollable.of(OWNER_ID, 4).sortBy(OWNER_LAST_NAME))));
+        assertEquals(2, refs.size(), refs.toString());
+    }
+
+    private static String captureSql(Runnable action) {
+        var statements = new ArrayList<String>();
+        SqlInterceptor.intercept(sql -> {
+            statements.add(sql.statement());
+            return sql;
+        }, action);
+        assertEquals(1, statements.size(), statements.toString());
+        return statements.getFirst();
+    }
+
+    /** The select list of a statement as rendered, one entry per column. */
+    private static List<String> selectList(String sql) {
+        int from = sql.indexOf("\nFROM ");
+        String select = sql.substring(sql.indexOf("SELECT ") + 7, from);
+        return List.of(select.split(", "));
     }
 
     @Test

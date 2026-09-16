@@ -245,4 +245,31 @@ interface TemplateCompiler {
      * @return the fetch plan, or the empty plan when the statement resolves no reference.
      */
     FetchPlan getFetchPlan();
+
+    /**
+     * Records the select list the query model generated, one rendered column per position, so an element that
+     * follows the select clause can find a column in it. The first recorded list wins, as with
+     * {@link #setFetchPaths(List)}.
+     *
+     * @param columns the rendered select-list columns, in select order.
+     * @since 1.14
+     */
+    void setSelectColumns(List<String> columns);
+
+    /**
+     * Returns the select list the query model generated, empty when the caller wrote the select list.
+     *
+     * @return the rendered select-list columns, in select order.
+     * @since 1.14
+     */
+    Optional<List<String>> getSelectColumns();
+
+    /**
+     * Records where the values the statement reads alongside its mapped result are found; see
+     * {@link st.orm.core.template.Sql#cursorColumns()} for the shape.
+     *
+     * @param positions the cursor column positions, one entry per field.
+     * @since 1.14
+     */
+    void setCursorColumns(List<List<Integer>> positions);
 }

@@ -82,6 +82,7 @@ public class FetchSizeTest {
                 st.orm.spi.SqlOperation.SELECT,
                 null,
                 FetchPlan.NONE,
+                List.of(),
                 sql,
                 st.orm.spi.StatementOrigin.DIRECT,
                 0L,

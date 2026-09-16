@@ -182,6 +182,19 @@ class TemplateProcessor {
     private List<String> fetchPaths;
 
     /**
+     * Compile-time only: the select list the query model generated, which a cursor element finds its columns in.
+     */
+    @Nullable
+    private List<String> selectColumns;
+
+    /**
+     * Compile-time only: where the values the statement reads alongside its mapped result are found, reported
+     * through {@link Sql#cursorColumns()}.
+     */
+    @Nullable
+    private List<List<Integer>> cursorColumns;
+
+    /**
      * The fetch plan of the compilation in progress, collected from the {@link Fetch} elements of the context before
      * its elements compile, so the select list can read it whatever position the element occupies. Nested
      * compilations save and restore the enclosing plan.
@@ -643,6 +656,7 @@ class TemplateProcessor {
                 ofNullable(affectedType),
                 ofNullable(dataType != null ? dataType : affectedType),
                 fetchPaths != null ? fetchPaths : List.of(),
+                cursorColumns != null ? cursorColumns : List.of(),
                 versionAware != null && versionAware,
                 warning,
                 StatementOrigin.DIRECT,
@@ -974,6 +988,37 @@ class TemplateProcessor {
             if (fetchPaths == null) {
                 fetchPaths = List.copyOf(paths);
             }
+        }
+
+        /**
+         * Records the select list the query model generated. The first recorded list wins, so the outermost select
+         * takes precedence over the sources it queries.
+         *
+         * @param columns the rendered select-list columns, in select order.
+         */
+        @Override
+        public void setSelectColumns(List<String> columns) {
+            if (selectColumns == null) {
+                selectColumns = List.copyOf(columns);
+            }
+        }
+
+        /**
+         * Returns the select list the query model generated, empty when the caller wrote the select list.
+         */
+        @Override
+        public Optional<List<String>> getSelectColumns() {
+            return ofNullable(selectColumns);
+        }
+
+        /**
+         * Records where the values the statement reads alongside its mapped result are found.
+         *
+         * @param positions the cursor column positions, one entry per field.
+         */
+        @Override
+        public void setCursorColumns(List<List<Integer>> positions) {
+            cursorColumns = List.copyOf(positions);
         }
 
         /**
