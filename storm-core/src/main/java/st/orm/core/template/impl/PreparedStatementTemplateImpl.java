@@ -771,6 +771,7 @@ public final class PreparedStatementTemplateImpl implements PreparedStatementTem
                 sql.operation(),
                 sql.dataType().orElse(null),
                 FetchPlan.of(sql.fetchPaths()),
+                sql.cursorColumns(),
                 sql.statement(),
                 sql.origin(),
                 sql.shapeId(),

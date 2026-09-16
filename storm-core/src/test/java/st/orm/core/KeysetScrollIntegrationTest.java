@@ -47,10 +47,14 @@ import st.orm.core.model.Pet;
 import st.orm.core.model.PetType;
 import st.orm.core.model.Pet_;
 import st.orm.core.model.Vet;
+import st.orm.core.model.VetSpecialty;
+import st.orm.core.model.VetSpecialtyPK;
+import st.orm.core.model.VetSpecialty_;
 import st.orm.core.model.VetView;
 import st.orm.core.model.VetView_;
 import st.orm.core.model.Vet_;
 import st.orm.core.template.ORMTemplate;
+import st.orm.core.template.SqlInterceptor;
 import st.orm.core.template.SqlLog;
 
 /**
@@ -68,6 +72,49 @@ public class KeysetScrollIntegrationTest {
     private static final Comparator<Owner> BY_LAST_THEN_FIRST_THEN_ID = Comparator.comparing(Owner::lastName)
             .thenComparing(Owner::firstName)
             .thenComparing(Owner::id);
+
+    private static String captureSql(Runnable action) {
+        var statements = new ArrayList<String>();
+        SqlInterceptor.intercept(sql -> {
+            statements.add(sql.statement());
+            return sql;
+        }, action);
+        assertEquals(1, statements.size(), statements.toString());
+        return statements.getFirst();
+    }
+
+    private static List<String> selectList(String sql) {
+        return List.of(sql.substring(sql.indexOf("SELECT ") + 7, sql.indexOf("\nFROM ")).split(", "));
+    }
+
+    @Test
+    public void entityScrolledByItsKeySelectsTheKeyOnce() {
+        var orm = ORMTemplate.of(dataSource);
+        var plain = selectList(captureSql(() -> orm.entity(Vet.class).select().limit(5).getResultList()));
+        var scrolled = selectList(captureSql(() -> orm.entity(Vet.class).scroll(Scrollable.of(Vet_.id, 4))));
+        assertEquals(plain, scrolled);
+    }
+
+    @Test
+    public void sortFieldTheSelectListLacksIsAppendedOnce() {
+        var owners = ORMTemplate.of(dataSource).entity(Owner.class);
+        var columns = selectList(captureSql(() ->
+                owners.selectRef().scroll(Scrollable.of(Owner_.id, 4).sortBy(Owner_.lastName))));
+        assertEquals(2, columns.size(), columns.toString());
+        assertTrue(columns.get(0).endsWith(".id"), columns.toString());
+        assertTrue(columns.get(1).endsWith(".last_name"), columns.toString());
+    }
+
+    @Test
+    public void callerWrittenSelectListGetsEveryCursorColumnAppended() {
+        var orm = ORMTemplate.of(dataSource);
+        var columns = selectList(captureSql(() ->
+                orm.selectFrom(Pet.class, TypeCount.class, raw("\0, COUNT(*)", Pet_.type))
+                        .groupBy(Pet_.type)
+                        .scroll(Scrollable.of(Metamodel.key(Pet_.type), 2))));
+        assertEquals(3, columns.size(), columns.toString());
+        assertEquals(columns.get(0), columns.get(2), columns.toString());
+    }
 
     @Test
     public void sortFieldsOrderBeforeTheKeyEachInItsOwnDirection() {
@@ -242,26 +289,30 @@ public class KeysetScrollIntegrationTest {
     }
 
     @Test
-    public void inlineRecordKeyNeedsTheEntityAsResult() {
-        // An inline key is read from the mapped record, which a ref does not carry.
+    public void inlineRecordKeyWithAnEntityComponentIsRefused() {
+        // The key is read from the row, and a City is not rebuilt from the key's city_id column.
         var exception = assertThrows(PersistenceException.class, () -> ORMTemplate.of(dataSource).entity(Owner.class)
-                .selectRef()
                 .scroll(Scrollable.of(Metamodel.key(Owner_.address), 5)));
-        assertTrue(exception.getMessage().contains("result type to be Owner"), exception.getMessage());
+        assertTrue(exception.getMessage().contains("'city' holds a City"), exception.getMessage());
     }
 
     @Test
-    public void inlineRecordKeyScrollsTheEntityFromTheRecord() {
+    public void inlineRecordKeyIsReadFromTheRowForEveryResultType() {
         var orm = ORMTemplate.of(dataSource);
-        var first = orm.entity(Owner.class).scroll(Scrollable.of(Metamodel.key(Owner_.address), 4));
-        assertEquals(4, first.size());
-        assertNotNull(first.<Owner>next());
-        var second = orm.entity(Owner.class).scroll(first.next());
-        assertFalse(second.isEmpty());
-        assertTrue(second.hasPrevious());
-        var ids = new ArrayList<>(first.content().stream().map(Owner::id).toList());
-        ids.addAll(second.content().stream().map(Owner::id).toList());
-        assertEquals(ids.size(), ids.stream().distinct().count());
+        var expected = orm.entity(VetSpecialty.class).select().getResultList().stream()
+                .map(VetSpecialty::id)
+                .sorted(Comparator.comparing(VetSpecialtyPK::vetId).thenComparing(VetSpecialtyPK::specialtyId))
+                .toList();
+        var first = orm.entity(VetSpecialty.class).scroll(Scrollable.of(VetSpecialty_.id, 2));
+        assertEquals(expected.subList(0, 2), first.content().stream().map(VetSpecialty::id).toList());
+        var second = orm.entity(VetSpecialty.class).scroll(first.next());
+        assertEquals(expected.subList(2, 4), second.content().stream().map(VetSpecialty::id).toList());
+        assertEquals(first.content(), orm.entity(VetSpecialty.class).scroll(second.previous()).content());
+        // A ref carries the key as its id, and the key columns are the select list, so nothing is appended.
+        var columns = selectList(captureSql(() -> orm.entity(VetSpecialty.class).selectRef().scroll(Scrollable.of(VetSpecialty_.id, 2))));
+        assertEquals(2, columns.size(), columns.toString());
+        var refs = orm.entity(VetSpecialty.class).selectRef().scroll(first.next());
+        assertEquals(expected.subList(2, 4), refs.content().stream().map(Ref::id).toList());
     }
 
     @Test

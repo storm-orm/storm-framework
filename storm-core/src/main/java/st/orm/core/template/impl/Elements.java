@@ -87,6 +87,28 @@ public final class Elements {
     }
 
     /**
+     * Names fields whose values are read from each row alongside the mapped result, without widening the select
+     * list for a field it already carries.
+     *
+     * <p>The element follows the select clause. A column the select list already carries is read where it is; a
+     * column it lacks is appended after it, so the statement returns every value exactly once and the leading
+     * columns map to the result type as they would without the cursor. Where each value is found is reported
+     * through {@link st.orm.core.template.Sql#cursorColumns()}. A multi-column path (an inline record) expands to
+     * each of its columns, in model column order. A scroll window reads its sort and key values this way.</p>
+     *
+     * @param fields the fields to read, in the order their values are wanted.
+     * @since 1.14
+     */
+    public record Cursor(List<Metamodel<?, ?>> fields) implements Element {
+        public Cursor {
+            fields = List.copyOf(requireNonNull(fields, "fields"));
+            if (fields.isEmpty()) {
+                throw new IllegalArgumentException("A cursor names at least one field.");
+            }
+        }
+    }
+
+    /**
      * Renders the INSERT target: the table name and its insertable column list.
      *
      * <p>{@code ignoreAutoGenerate} includes auto-generated primary key columns, so caller-supplied keys are written

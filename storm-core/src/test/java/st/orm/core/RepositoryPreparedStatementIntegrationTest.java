@@ -2538,37 +2538,35 @@ public class RepositoryPreparedStatementIntegrationTest {
 
     @Test
     public void testScrollWithInlineRecordKey() {
-        // scroll with inline record key should expand inline record for ORDER BY.
+        // The inline record key expands into its columns for ORDER BY and is read back from the row.
         var window = ORMTemplate.of(dataSource)
-                .selectFrom(Owner.class)
-                .scroll(Scrollable.of(Metamodel.key(Owner_.address), 5));
-        assertEquals(5, window.content().size());
+                .selectFrom(VetSpecialty.class)
+                .scroll(Scrollable.of(VetSpecialty_.id, 2));
+        assertEquals(2, window.content().size());
         assertTrue(window.hasNext());
     }
 
     @Test
     public void testScrollAfterWithInlineRecordKey() {
-        // scrollAfter should expand inline record for both WHERE and ORDER BY.
-        var allOwners = ORMTemplate.of(dataSource)
-                .selectFrom(Owner.class)
-                .orderBy(Owner_.address)
+        // A position after an inline record key expands the key for both WHERE and ORDER BY.
+        var all = ORMTemplate.of(dataSource)
+                .selectFrom(VetSpecialty.class)
+                .orderBy(VetSpecialty_.id)
                 .getResultList();
-        // Get the address of the 5th owner (index 4) as cursor.
-        var cursor = allOwners.get(4).address();
+        var cursor = all.get(1).id();
         var window = ORMTemplate.of(dataSource)
-                .selectFrom(Owner.class)
-                .scroll(Scrollable.of(Metamodel.key(Owner_.address), 10).after(cursor));
-        // Should return remaining owners after the cursor.
-        assertFalse(window.content().isEmpty());
+                .selectFrom(VetSpecialty.class)
+                .scroll(Scrollable.of(VetSpecialty_.id, 10).after(cursor));
+        assertEquals(all.subList(2, all.size()), window.content());
     }
 
     @Test
     public void testScrollBeforeWithInlineRecordKey() {
-        // scrollBefore (cursorless, descending) should expand inline record for ORDER BY.
+        // A descending key expands the inline record for ORDER BY in that direction.
         var window = ORMTemplate.of(dataSource)
-                .selectFrom(Owner.class)
-                .scroll(Scrollable.of(Metamodel.key(Owner_.address), 5).descending());
-        assertEquals(5, window.content().size());
+                .selectFrom(VetSpecialty.class)
+                .scroll(Scrollable.of(VetSpecialty_.id, 2).descending());
+        assertEquals(2, window.content().size());
         assertTrue(window.hasNext());
     }
 

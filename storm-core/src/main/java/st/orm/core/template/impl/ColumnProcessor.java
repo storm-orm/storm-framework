@@ -15,6 +15,8 @@
  */
 package st.orm.core.template.impl;
 
+import st.orm.Metamodel;
+import st.orm.ResolveScope;
 import st.orm.SqlTemplateException;
 import st.orm.core.template.impl.Elements.Column;
 
@@ -54,13 +56,21 @@ final class ColumnProcessor implements ElementProcessor<Column> {
             throws SqlTemplateException {
         var metamodel = MetamodelFactory.canonical(column.field());
         var model = compiler.getModel(metamodel.tableType());
+        var columnName = model.getSingleColumn(metamodel).qualifiedName(compiler.dialect());
+        return new CompiledElement(aliasPrefix(metamodel, column.scope(), compiler) + columnName);
+    }
+
+    /**
+     * Returns the alias prefix of the table occurrence the metamodel's columns belong to: the query's own table for
+     * a path on the root, the occurrence the path reaches otherwise; empty when that occurrence has no alias.
+     */
+    static String aliasPrefix(Metamodel<?, ?> metamodel, ResolveScope scope, TemplateCompiler compiler) {
         String alias = compiler.findQueryModel()
                 .map(QueryModel::getTable)
                 .filter(table -> table.type() == metamodel.root() && metamodel.path().isEmpty())
                 .map(AliasedTable::alias)
-                .orElseGet(() -> compiler.getAlias(metamodel, column.scope()));
-        var columnName = model.getSingleColumn(metamodel).qualifiedName(compiler.dialect());
-        return new CompiledElement("%s%s".formatted(alias.isEmpty() ? "" : alias + ".", columnName));
+                .orElseGet(() -> compiler.getAlias(metamodel, scope));
+        return alias.isEmpty() ? "" : alias + ".";
     }
 
     /**

@@ -39,6 +39,7 @@ import st.orm.core.template.QueryBuilder;
 import st.orm.core.template.QueryPlan;
 import st.orm.core.template.QueryTemplate;
 import st.orm.core.template.TemplateString;
+import st.orm.core.template.impl.Elements.Cursor;
 import st.orm.core.template.impl.Elements.Fetch;
 import st.orm.core.template.impl.Elements.Select;
 import st.orm.core.template.impl.Elements.Where;
@@ -55,11 +56,11 @@ public class SelectBuilderImpl<T extends Data, R, ID> extends QueryBuilderImpl<T
     private final TemplateString selectTemplate;
     private final Class<R> selectType;
     private final boolean distinct;
-    private final Integer limit;
-    private final Integer offset;
+    private final @Nullable Integer limit;
+    private final @Nullable Integer offset;
     private final boolean subquery;
-    private final Class<? extends Data> refType;
-    private final Class<?> pkType;
+    private final @Nullable Class<? extends Data> refType;
+    private final @Nullable Class<?> pkType;
     private final List<String> fetchPaths;
 
     public SelectBuilderImpl(QueryTemplate queryTemplate,
@@ -230,24 +231,23 @@ public class SelectBuilderImpl<T extends Data, R, ID> extends QueryBuilderImpl<T
     }
 
     /**
-     * Executes the query with the cursor columns appended to the select list. The leading columns map to the
-     * result type exactly as they do without the cursor columns, so an entity, a projection, a ref and a custom
-     * select type all read their cursor values the same way.
+     * Executes the query reading the given columns from each row alongside the mapped result. A column the select
+     * list carries is read where it is and one it lacks is appended, so the leading columns map to the result type
+     * exactly as they do without the cursor, and an entity, a projection, a ref and a custom select type all read
+     * the values the same way.
      */
     @Override
     @SuppressWarnings("unchecked")
     List<KeyedQuery.Row<R>> getKeyedResultList(List<Metamodel<T, ?>> columns) {
-        var parts = new ArrayList<TemplateString>();
-        parts.add(selectClause());
-        for (var column : columns) {
-            parts.add(TemplateString.of(", "));
-            parts.add(wrap(column));
-        }
-        var query = queryTemplate.query(toTemplateString(TemplateString.combine(parts), true));
+        var select = TemplateString.combine(selectClause(), wrap(new Cursor(List.copyOf(columns))));
+        var query = queryTemplate.query(toTemplateString(select, true));
         if (!(query instanceof KeyedQuery keyed)) {
             throw new PersistenceException("The query template does not support reading cursor columns.");
         }
-        Class<?>[] types = columns.stream().map(SelectBuilderImpl::cursorValueType).toArray(Class<?>[]::new);
+        Class<?>[] types = new Class<?>[columns.size()];
+        for (int i = 0; i < types.length; i++) {
+            types[i] = cursorValueType(columns.get(i));
+        }
         if (refType != null) {
             assert pkType != null : "Primary key type must be specified for ref queries.";
             return (List<KeyedQuery.Row<R>>) (List<?>) keyed.getKeyedRefList(refType, pkType, types);

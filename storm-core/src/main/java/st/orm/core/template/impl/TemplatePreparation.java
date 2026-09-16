@@ -84,6 +84,7 @@ import st.orm.core.template.impl.Elements.Alias;
 import st.orm.core.template.impl.Elements.Clause;
 import st.orm.core.template.impl.Elements.Column;
 import st.orm.core.template.impl.Elements.Columns;
+import st.orm.core.template.impl.Elements.Cursor;
 import st.orm.core.template.impl.Elements.Delete;
 import st.orm.core.template.impl.Elements.Expression;
 import st.orm.core.template.impl.Elements.From;
@@ -1352,6 +1353,11 @@ class TemplatePreparation {
             case Column column -> addReferencedTablePath(rootTable, MetamodelFactory.canonical(column.field()), paths);
             case Columns columns -> {
                 for (var field : columns.fields()) {
+                    addReferencedTablePath(rootTable, MetamodelFactory.canonical(field), paths);
+                }
+            }
+            case Cursor cursor -> {
+                for (var field : cursor.fields()) {
                     addReferencedTablePath(rootTable, MetamodelFactory.canonical(field), paths);
                 }
             }

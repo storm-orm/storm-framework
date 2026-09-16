@@ -20,6 +20,7 @@ import st.orm.core.template.impl.Elements.Alias;
 import st.orm.core.template.impl.Elements.BindVar;
 import st.orm.core.template.impl.Elements.Column;
 import st.orm.core.template.impl.Elements.Columns;
+import st.orm.core.template.impl.Elements.Cursor;
 import st.orm.core.template.impl.Elements.Delete;
 import st.orm.core.template.impl.Elements.Fetch;
 import st.orm.core.template.impl.Elements.From;
@@ -49,6 +50,7 @@ class ElementRouter {
     private static final ColumnProcessor COLUMN_PROCESSOR = new ColumnProcessor();
     private static final ColumnsProcessor COLUMNS_PROCESSOR = new ColumnsProcessor();
     private static final FetchProcessor FETCH_PROCESSOR = new FetchProcessor();
+    private static final CursorProcessor CURSOR_PROCESSOR = new CursorProcessor();
     private static final SetProcessor SET_PROCESSOR = new SetProcessor();
     private static final WhereProcessor WHERE_PROCESSOR = new WhereProcessor();
     private static final ValuesProcessor VALUES_PROCESSOR = new ValuesProcessor();
@@ -73,6 +75,7 @@ class ElementRouter {
             case Column ignored -> COLUMN_PROCESSOR;
             case Columns ignored -> COLUMNS_PROCESSOR;
             case Fetch ignored -> FETCH_PROCESSOR;
+            case Cursor ignored -> CURSOR_PROCESSOR;
             case Set ignored -> SET_PROCESSOR;
             case Where ignored -> WHERE_PROCESSOR;
             case Values ignored -> VALUES_PROCESSOR;

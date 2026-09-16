@@ -20,39 +20,39 @@ import st.orm.Data;
 import st.orm.Ref;
 
 /**
- * A query that reads a number of trailing columns of each row alongside the mapped result, for the cursor values
- * of a scroll window. The select list of such a query ends with the cursor columns; the columns before them are
- * mapped to the result type the way every other query maps its rows.
+ * A query that reads the values of a cursor's fields from each row alongside the mapped result. The statement
+ * reports where each value is found; a column the select list lacks follows the select list, so the leading
+ * columns are mapped to the result type the way every other query maps its rows. A scroll window reads its sort
+ * and key values this way.
  */
 interface KeyedQuery {
 
     /**
-     * A result row with the values of its cursor columns, read from the row itself rather than from the mapped
-     * result, so a scroll window can hand out navigation tokens whatever type the row was mapped to.
+     * A result row with the values of the cursor's fields, read from the row itself rather than from the mapped
+     * result, so they are available whatever type the row was mapped to.
      *
      * @param value the mapped result.
-     * @param cursor the cursor column values, in the order the columns were requested.
+     * @param cursor the cursor values, in the order the fields were requested.
      * @param <R> the result type.
      */
     record Row<R>(R value, Object[] cursor) {}
 
     /**
-     * Executes the query and maps every row to the given type, reading the trailing columns as cursor values.
+     * Executes the query and maps every row to the given type, reading the cursor values alongside it.
      *
      * @param type the result type mapped from the leading columns.
-     * @param trailingTypes the target types of the trailing columns, one per cursor column.
+     * @param cursorTypes the types the cursor values decode to, one per cursor field.
      * @return the rows with their cursor values.
      */
-    <T> List<Row<T>> getKeyedResultList(Class<T> type, Class<?>[] trailingTypes);
+    <T> List<Row<T>> getKeyedResultList(Class<T> type, Class<?>[] cursorTypes);
 
     /**
-     * Executes the query and maps every row to a ref of the given type, reading the trailing columns as cursor
-     * values.
+     * Executes the query and maps every row to a ref of the given type, reading the cursor values alongside it.
      *
      * @param type the referenced type.
      * @param pkType the primary key type mapped from the leading columns.
-     * @param trailingTypes the target types of the trailing columns, one per cursor column.
+     * @param cursorTypes the types the cursor values decode to, one per cursor field.
      * @return the rows with their cursor values.
      */
-    <T extends Data> List<Row<Ref<T>>> getKeyedRefList(Class<T> type, Class<?> pkType, Class<?>[] trailingTypes);
+    <T extends Data> List<Row<Ref<T>>> getKeyedRefList(Class<T> type, Class<?> pkType, Class<?>[] cursorTypes);
 }

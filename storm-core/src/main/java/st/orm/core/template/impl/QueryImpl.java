@@ -85,6 +85,7 @@ class QueryImpl implements Query, KeyedQuery {
                        SqlOperation operation,
                        @Nullable Class<? extends Data> dataType,
                        FetchPlan fetchPlan,
+                       List<List<Integer>> cursorColumns,
                        @Nullable String statementText,
                        StatementOrigin origin,
                        long shapeId,
@@ -682,18 +683,18 @@ class QueryImpl implements Query, KeyedQuery {
     }
 
     @Override
-    public <T> List<KeyedQuery.Row<T>> getKeyedResultList(Class<T> type, Class<?>[] trailingTypes) {
+    public <T> List<KeyedQuery.Row<T>> getKeyedResultList(Class<T> type, Class<?>[] cursorTypes) {
         if (streamOnlyFetchSize && defaultFetchSize != 0) {
-            return withoutFetchSize().getKeyedResultList(type, trailingTypes);
+            return withoutFetchSize().getKeyedResultList(type, cursorTypes);
         }
-        return readKeyedRows(type, trailingTypes);
+        return readKeyedRows(type, cursorTypes);
     }
 
     @Override
     public <T extends Data> List<KeyedQuery.Row<Ref<T>>> getKeyedRefList(Class<T> type, Class<?> pkType,
-                                                                    Class<?>[] trailingTypes) {
+                                                                    Class<?>[] cursorTypes) {
         var interner = new WeakInterner();
-        return getKeyedResultList(pkType, trailingTypes).stream()
+        return getKeyedResultList(pkType, cursorTypes).stream()
                 .map(row -> {
                     if (row.value() == null) {
                         throw new PersistenceException(
@@ -706,11 +707,11 @@ class QueryImpl implements Query, KeyedQuery {
     }
 
     /**
-     * Executes the query and reads every row eagerly: the leading columns mapped to the type, the trailing columns
-     * decoded to their target types as cursor values. Consumed and closed within the call, like
+     * Executes the query and reads every row eagerly: the leading columns mapped to the type, the cursor values
+     * decoded from the columns the statement reports for them. Consumed and closed within the call, like
      * {@link #readSingleRow(Class)}.
      */
-    private <T> List<KeyedQuery.Row<T>> readKeyedRows(Class<T> type, Class<?>[] trailingTypes) {
+    private <T> List<KeyedQuery.Row<T>> readKeyedRows(Class<T> type, Class<?>[] cursorTypes) {
         var observation = observe(ExecutionKind.QUERY);
         try {
             PreparedStatement statement = getStatement();
@@ -725,28 +726,21 @@ class QueryImpl implements Query, KeyedQuery {
                 }
                 closeStatementHere = false;  // close(resultSet, statement, ...) below owns the statement from here.
                 try {
-                    int columnCount = resultSet.getMetaData().getColumnCount() - trailingTypes.length;
-                    var mapper = getObjectMapper(columnCount, type, refFactory, environment.fetchPlanFor(type))
+                    var cursor = CursorReader.of(environment.cursorColumns(), cursorTypes,
+                            resultSet.getMetaData().getColumnCount(), refFactory);
+                    var mapper = getObjectMapper(cursor.columnCount(), type, refFactory, environment.fetchPlanFor(type))
                             .orElseThrow(() -> new SqlTemplateException("No suitable constructor found for %s.".formatted(type.getName())));
-                    ColumnReader[] trailingReaders = new ColumnReader[trailingTypes.length];
-                    for (int i = 0; i < trailingTypes.length; i++) {
-                        trailingReaders[i] = columnReaderFor(trailingTypes[i]);
-                    }
                     var calendarSupplier = lazy(() -> Calendar.getInstance(TimeZone.getTimeZone(ZoneOffset.UTC)));
-                    var spliterator = rowSpliterator(resultSet, columnCount, mapper);
+                    var spliterator = rowSpliterator(resultSet, cursor.columnCount(), mapper);
                     var rows = new ArrayList<KeyedQuery.Row<T>>();
                     // The spliterator hands the mapped value over while the result set still sits on the row, so
-                    // the trailing columns are read from the same row.
+                    // the cursor values are read from the same row.
                     while (spliterator.tryAdvance(value -> {
-                        Object[] cursor = new Object[trailingReaders.length];
                         try {
-                            for (int i = 0; i < trailingReaders.length; i++) {
-                                cursor[i] = trailingReaders[i].read(resultSet, columnCount + i + 1, calendarSupplier);
-                            }
+                            rows.add(new KeyedQuery.Row<>(value, cursor.read(resultSet, calendarSupplier)));
                         } catch (SQLException e) {
                             throw new PersistenceException(e);
                         }
-                        rows.add(new KeyedQuery.Row<>(value, cursor));
                     })) {
                         // Reading continues until the spliterator reports the end.
                     }
@@ -1070,6 +1064,72 @@ class QueryImpl implements Query, KeyedQuery {
                 }
             }
         };
+    }
+
+    /**
+     * Reads the values of a cursor's fields from a row at the positions the statement reports. Each value is built
+     * from the columns its field spans the way a result row is built from its columns, so an inline record comes
+     * back as the record and a single column as its decoded value.
+     *
+     * @param columnCount the number of leading columns, which map to the result type.
+     * @param positions the one-based column positions of each cursor value, in row order.
+     * @param readers the column readers of each cursor value, one per position.
+     * @param mappers the mapper building each cursor value from its columns.
+     */
+    private record CursorReader(int columnCount, int[][] positions, ColumnReader[][] readers, ObjectMapper<?>[] mappers) {
+
+        /**
+         * Resolves the reported positions against the row: a negative position {@code -n} is the {@code n}-th
+         * column after the leading columns, and the leading columns are what remains once the appended columns are
+         * taken from the row's total.
+         */
+        static CursorReader of(List<List<Integer>> cursorColumns, Class<?>[] types, int totalColumns, RefFactory refFactory)
+                throws SqlTemplateException {
+            if (cursorColumns.size() != types.length) {
+                throw new SqlTemplateException("The statement reports %d cursor fields, but %d are read."
+                        .formatted(cursorColumns.size(), types.length));
+            }
+            int appended = 0;
+            for (var field : cursorColumns) {
+                for (int position : field) {
+                    if (position < 0) {
+                        appended++;
+                    }
+                }
+            }
+            int columnCount = totalColumns - appended;
+            int[][] positions = new int[types.length][];
+            ColumnReader[][] readers = new ColumnReader[types.length][];
+            ObjectMapper<?>[] mappers = new ObjectMapper<?>[types.length];
+            for (int i = 0; i < types.length; i++) {
+                var field = cursorColumns.get(i);
+                var type = types[i];
+                var mapper = getObjectMapper(field.size(), type, refFactory)
+                        .orElseThrow(() -> new SqlTemplateException("No suitable constructor found for %s.".formatted(type.getName())));
+                Class<?>[] columnTypes = mapper.getParameterTypes();
+                positions[i] = new int[field.size()];
+                readers[i] = new ColumnReader[field.size()];
+                for (int j = 0; j < field.size(); j++) {
+                    int position = field.get(j);
+                    positions[i][j] = position > 0 ? position : columnCount - position;
+                    readers[i][j] = columnReaderFor(columnTypes[j]);
+                }
+                mappers[i] = mapper;
+            }
+            return new CursorReader(columnCount, positions, readers, mappers);
+        }
+
+        Object[] read(ResultSet resultSet, Supplier<Calendar> calendarSupplier) throws SQLException {
+            Object[] cursor = new Object[positions.length];
+            for (int i = 0; i < positions.length; i++) {
+                Object[] args = new Object[positions[i].length];
+                for (int j = 0; j < args.length; j++) {
+                    args[j] = readers[i][j].read(resultSet, positions[i][j], calendarSupplier);
+                }
+                cursor[i] = mappers[i].newInstance(args);
+            }
+            return cursor;
+        }
     }
 
     /**

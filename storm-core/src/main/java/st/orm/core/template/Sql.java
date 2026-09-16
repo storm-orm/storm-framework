@@ -167,6 +167,21 @@ public interface Sql {
     List<String> fetchPaths();
 
     /**
+     * Returns where the values this statement reads alongside its mapped result are found: one entry per field, in
+     * the order the fields were requested, listing the columns the field's value spans.
+     *
+     * <p>A field the select list already carries is not selected again. A positive number is the one-based
+     * position of such a column; a negative number {@code -n} is the {@code n}-th column appended after the select
+     * list, so the leading columns of a row map to the result type exactly as they would without the cursor. An
+     * inline record spans several columns; every other field spans one. A scroll window reads its sort and key
+     * values this way.</p>
+     *
+     * @return the cursor column positions, empty for a statement that reads nothing alongside its result.
+     * @since 1.14
+     */
+    List<List<Integer>> cursorColumns();
+
+    /**
      * Returns what caused this statement to execute.
      *
      * <p>A statement resolving a reference is shaped exactly like a primary key lookup the application could have
