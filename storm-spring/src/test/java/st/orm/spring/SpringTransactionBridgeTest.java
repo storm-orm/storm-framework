@@ -16,8 +16,16 @@
 package st.orm.spring;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotSame;
+import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.springframework.transaction.TransactionDefinition.ISOLATION_READ_COMMITTED;
+import static org.springframework.transaction.TransactionDefinition.ISOLATION_REPEATABLE_READ;
+import static org.springframework.transaction.TransactionDefinition.ISOLATION_SERIALIZABLE;
+import static st.orm.TransactionIsolation.READ_COMMITTED;
+import static st.orm.TransactionIsolation.REPEATABLE_READ;
+import static st.orm.TransactionIsolation.SERIALIZABLE;
 import static st.orm.TransactionPropagation.MANDATORY;
 import static st.orm.TransactionPropagation.REQUIRES_NEW;
 import static st.orm.template.Transactions.transaction;
@@ -33,7 +41,11 @@ import org.springframework.boot.jdbc.DataSourceBuilder;
 import org.springframework.core.io.ClassPathResource;
 import org.springframework.jdbc.datasource.DataSourceTransactionManager;
 import org.springframework.jdbc.datasource.init.ResourceDatabasePopulator;
+import org.springframework.transaction.support.TransactionTemplate;
+import st.orm.IllegalTransactionStateException;
 import st.orm.PersistenceException;
+import st.orm.ReadOnlyTransactionException;
+import st.orm.TransactionOptions;
 import st.orm.repository.EntityRepository;
 import st.orm.spring.model.Pet;
 import st.orm.spring.model.Visit;
@@ -71,6 +83,16 @@ class SpringTransactionBridgeTest {
 
     private void insertVisit(String description) {
         visits.insert(new Visit(null, LocalDate.now(), description, pet, Instant.now()));
+    }
+
+    private TransactionTemplate springTransaction(int isolationLevel) {
+        var springTransaction = new TransactionTemplate(transactionManager);
+        springTransaction.setIsolationLevel(isolationLevel);
+        return springTransaction;
+    }
+
+    private static TransactionOptions isolation(st.orm.TransactionIsolation isolation) {
+        return TransactionOptions.defaults().withIsolation(isolation);
     }
 
     @Test
@@ -162,6 +184,103 @@ class SpringTransactionBridgeTest {
         });
         // The Spring rollback discarded the write made by the joined Storm block.
         assertEquals(before, visits.count());
+    }
+
+    @Test
+    void blockStatingAnIsolationInsideASpringTransactionAtTheDefaultIsRefused() {
+        // The refused block fails as a joined block does, so the transaction it joined rolls back with it.
+        IllegalTransactionStateException thrown = assertThrows(IllegalTransactionStateException.class, () ->
+                new TransactionTemplate(transactionManager).executeWithoutResult(status ->
+                        transaction(isolation(REPEATABLE_READ), tx -> visits.count())));
+        assertTrue(thrown.getMessage().startsWith("A REQUIRED block states REPEATABLE_READ isolation but joins a "
+                + "transaction running at the database's default isolation level"), thrown.getMessage());
+    }
+
+    @Test
+    void blockStatingAStricterIsolationThanTheSpringTransactionIsRefused() {
+        IllegalTransactionStateException thrown = assertThrows(IllegalTransactionStateException.class, () ->
+                springTransaction(ISOLATION_READ_COMMITTED).executeWithoutResult(status ->
+                        transaction(isolation(SERIALIZABLE), tx -> visits.count())));
+        assertTrue(thrown.getMessage().startsWith("A REQUIRED block states SERIALIZABLE isolation but joins a "
+                + "READ_COMMITTED transaction"), thrown.getMessage());
+    }
+
+    @Test
+    void joinedBlockStatingAStricterIsolationThanTheStormTransactionIsRefused() {
+        IllegalTransactionStateException thrown = assertThrows(IllegalTransactionStateException.class, () ->
+                transaction(isolation(READ_COMMITTED), outer -> {
+                    visits.count();
+                    return transaction(isolation(SERIALIZABLE), tx -> visits.count());
+                }));
+        assertTrue(thrown.getMessage().startsWith("A REQUIRED block states SERIALIZABLE isolation but joins a "
+                + "READ_COMMITTED transaction"), thrown.getMessage());
+    }
+
+    @Test
+    void joinedBlockStatingTheSameOrALowerIsolationJoins() {
+        springTransaction(ISOLATION_SERIALIZABLE).executeWithoutResult(status -> {
+            long count = visits.count();
+            assertEquals(count, (long) transaction(isolation(SERIALIZABLE), tx -> visits.count()));
+            assertEquals(count, (long) transaction(isolation(READ_COMMITTED), tx -> visits.count()));
+        });
+    }
+
+    @Test
+    void joinedBlockFollowsTheSpringTransactionsIsolationForTheEntityCache() {
+        // The block states no level of its own, so the entity cache takes the level of the Spring transaction
+        // the block joined.
+        springTransaction(ISOLATION_REPEATABLE_READ).executeWithoutResult(status ->
+                transaction(tx -> {
+                    Visit first = visits.getById(1);
+                    assertSame(first, visits.getById(1));
+                    return null;
+                }));
+        springTransaction(ISOLATION_READ_COMMITTED).executeWithoutResult(status ->
+                transaction(tx -> {
+                    Visit first = visits.getById(1);
+                    assertNotSame(first, visits.getById(1));
+                    return null;
+                }));
+    }
+
+    @Test
+    void readOnlyBlockInsideAReadWriteSpringTransactionRefusesItsOwnWrites() {
+        long before = visits.count();
+        new TransactionTemplate(transactionManager).executeWithoutResult(status -> {
+            transaction(TransactionOptions.defaults().withReadOnly(true), tx -> {
+                assertEquals(before, visits.count());
+                assertThrows(ReadOnlyTransactionException.class, () -> insertVisit("refused"));
+                return null;
+            });
+            insertVisit("written by the Spring transaction");
+        });
+        assertEquals(before + 1, visits.count());
+    }
+
+    @Test
+    void blockJoiningAReadOnlyJoinedBlockIsRefusedWhateverItDeclares() {
+        long before = visits.count();
+        assertThrows(ReadOnlyTransactionException.class, () ->
+                new TransactionTemplate(transactionManager).executeWithoutResult(status ->
+                        transaction(TransactionOptions.defaults().withReadOnly(true), tx ->
+                                transaction(TransactionOptions.defaults().withReadOnly(false), inner -> {
+                                    insertVisit("refused inside a read-only block");
+                                    return null;
+                                }))));
+        assertEquals(before, visits.count());
+    }
+
+    @Test
+    void aValidatingManagersRefusalIsReportedAgainstTheBlock() {
+        transactionManager.setValidateExistingTransaction(true);
+        IllegalTransactionStateException thrown = assertThrows(IllegalTransactionStateException.class, () ->
+                springTransaction(ISOLATION_SERIALIZABLE).executeWithoutResult(status ->
+                        transaction(isolation(READ_COMMITTED), tx -> visits.count())));
+        assertTrue(thrown.getMessage().startsWith("Transaction manager "
+                + DataSourceTransactionManager.class.getName()
+                + " refused the REQUIRED block's participation in the surrounding transaction"),
+                thrown.getMessage());
+        assertTrue(thrown.getMessage().contains("REQUIRES_NEW"), thrown.getMessage());
     }
 
     @Test

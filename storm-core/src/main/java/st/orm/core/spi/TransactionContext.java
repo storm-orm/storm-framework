@@ -42,7 +42,9 @@ public interface TransactionContext {
     /**
      * Returns true if the transaction has repeatable-read semantics.
      *
-     * <p>This is true when the isolation level is {@code REPEATABLE_READ} or higher.</p>
+     * <p>This is true when the isolation level is {@code REPEATABLE_READ} or higher. The level is that of the
+     * frame owning the physical transaction, since a joined frame runs on its connection and the level it declares
+     * is never applied there; a frame outside a transaction reads no snapshot, whatever it declares.</p>
      *
      * <p>When {@code true}, cached entities are returned when re-reading the same entity, preserving
      * entity identity within the transaction. When {@code false}, fresh data is fetched from the database.</p>
@@ -59,8 +61,9 @@ public interface TransactionContext {
 
     /**
      * Whether the statements of the current frame run in a read-only transaction. The mode is that of the frame
-     * owning the physical transaction, since a joined frame runs on its connection; a frame that runs outside a
-     * transaction is never read-only.
+     * owning the physical transaction, since a joined frame runs on its connection, or of any joined frame between
+     * that owner and the current frame that declares read-only, since such a frame holds the promise for its own
+     * body; a frame that runs outside a transaction is never read-only.
      *
      * @return {@code true} when a write issued now would break the transaction's read-only promise.
      * @since 1.14

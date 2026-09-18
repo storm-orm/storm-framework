@@ -3,6 +3,8 @@ package st.orm.template
 import io.kotest.matchers.booleans.shouldBeFalse
 import io.kotest.matchers.booleans.shouldBeTrue
 import io.kotest.matchers.shouldBe
+import io.kotest.matchers.types.shouldBeSameInstanceAs
+import io.kotest.matchers.types.shouldNotBeSameInstanceAs
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
 import org.junit.jupiter.api.AfterEach
@@ -13,6 +15,7 @@ import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.test.context.ContextConfiguration
 import org.springframework.test.context.jdbc.Sql
 import org.springframework.test.context.junit.jupiter.SpringExtension
+import st.orm.IllegalTransactionStateException
 import st.orm.PersistenceException
 import st.orm.TransactionIsolation.*
 import st.orm.TransactionPropagation.*
@@ -59,6 +62,121 @@ internal open class JdbcTransactionContextTest(
             val city2 = orm.entity(City::class).select().where(1).singleResult
             city1.name shouldBe "Sun Paririe"
             city2.name shouldBe "Sun Paririe"
+        }
+    }
+
+    // Joined frames: the isolation belongs to the transaction owning the connection.
+
+    @Test
+    fun `a joined frame stating a stricter isolation than the transaction it joins is refused`() {
+        // The refused frame fails as a joined block does, so the transaction it joined rolls back with it.
+        val thrown = assertThrows<IllegalTransactionStateException> {
+            transactionBlocking(isolation = READ_COMMITTED) {
+                orm.countAll<City>() shouldBe 6
+                transactionBlocking(isolation = REPEATABLE_READ) {
+                    orm.countAll<City>()
+                }
+            }
+        }
+        thrown.message shouldBe "A REQUIRED block states REPEATABLE_READ isolation but joins a READ_COMMITTED " +
+            "transaction; the isolation level belongs to the transaction owning the connection and cannot " +
+            "change once it is open. State at least REPEATABLE_READ on the transaction it joins, open the " +
+            "block with REQUIRES_NEW for a transaction of its own, or leave its isolation unstated."
+    }
+
+    @Test
+    fun `a NESTED frame stating a stricter isolation is refused the same way`() {
+        val thrown = assertThrows<IllegalTransactionStateException> {
+            transactionBlocking(isolation = READ_COMMITTED) {
+                orm.countAll<City>() shouldBe 6
+                transactionBlocking(NESTED, isolation = SERIALIZABLE) {
+                    orm.countAll<City>()
+                }
+            }
+        }
+        thrown.message shouldBe "A NESTED block states SERIALIZABLE isolation but joins a READ_COMMITTED " +
+            "transaction; the isolation level belongs to the transaction owning the connection and cannot " +
+            "change once it is open. State at least SERIALIZABLE on the transaction it joins, open the " +
+            "block with REQUIRES_NEW for a transaction of its own, or leave its isolation unstated."
+    }
+
+    @Test
+    fun `a joined frame stating a level inside a transaction at the database default is refused`() {
+        val thrown = assertThrows<IllegalTransactionStateException> {
+            transactionBlocking {
+                orm.countAll<City>() shouldBe 6
+                transactionBlocking(isolation = READ_COMMITTED) {
+                    orm.countAll<City>()
+                }
+            }
+        }
+        thrown.message shouldBe "A REQUIRED block states READ_COMMITTED isolation but joins a transaction running " +
+            "at the database's default isolation level, which is not known to be as strict; the isolation " +
+            "level belongs to the transaction owning the connection and cannot change once it is open. State " +
+            "the level on the transaction it joins, open the block with REQUIRES_NEW for a transaction of its " +
+            "own, or leave its isolation unstated."
+    }
+
+    @Test
+    fun `a joined frame stating the owner's level or a lower one joins`() {
+        transactionBlocking(isolation = REPEATABLE_READ) {
+            transactionBlocking(isolation = REPEATABLE_READ) {
+                orm.countAll<City>() shouldBe 6
+            }
+            transactionBlocking(isolation = READ_COMMITTED) {
+                orm.countAll<City>() shouldBe 6
+            }
+            transactionBlocking(SUPPORTS, isolation = READ_UNCOMMITTED) {
+                orm.countAll<City>() shouldBe 6
+            }
+        }
+    }
+
+    @Test
+    fun `a REQUIRES_NEW frame states any isolation inside a transaction at the database default`() {
+        transactionBlocking {
+            orm.countAll<City>() shouldBe 6
+            transactionBlocking(REQUIRES_NEW, isolation = SERIALIZABLE) {
+                orm.countAll<City>() shouldBe 6
+            }
+        }
+    }
+
+    @Test
+    fun `a global isolation default does not trip a joined frame inside a stricter transaction`() {
+        setGlobalTransactionOptions(isolation = REPEATABLE_READ)
+        transactionBlocking(isolation = SERIALIZABLE) {
+            transactionBlocking {
+                orm.countAll<City>() shouldBe 6
+            }
+        }
+    }
+
+    @Test
+    fun `a joined frame follows the transaction it joins for the entity cache`() {
+        transactionBlocking(isolation = REPEATABLE_READ) {
+            val outer = orm.entity(City::class).select().where(1).singleResult
+            transactionBlocking {
+                orm.entity(City::class).select().where(1).singleResult shouldBeSameInstanceAs outer
+            }
+            transactionBlocking(isolation = READ_COMMITTED) {
+                // The stated level is lower than the owner's, so the frame joins and runs at the owner's.
+                orm.entity(City::class).select().where(1).singleResult shouldBeSameInstanceAs outer
+            }
+        }
+        transactionBlocking(isolation = READ_COMMITTED) {
+            val outer = orm.entity(City::class).select().where(1).singleResult
+            transactionBlocking {
+                orm.entity(City::class).select().where(1).singleResult shouldNotBeSameInstanceAs outer
+            }
+        }
+    }
+
+    @Test
+    fun `a frame outside a transaction reads no snapshot whatever it declares`() {
+        transactionBlocking(NOT_SUPPORTED, isolation = REPEATABLE_READ) {
+            val first = orm.entity(City::class).select().where(1).singleResult
+            orm.entity(City::class).select().where(1).singleResult shouldNotBeSameInstanceAs first
         }
     }
 

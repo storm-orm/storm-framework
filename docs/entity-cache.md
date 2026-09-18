@@ -265,7 +265,7 @@ The entity cache is scoped to a single transaction. When the transaction commits
 
 ### Nested Transactions
 
-Cache behavior with nested transactions follows from the underlying transaction semantics. Propagation modes that share the parent transaction also share the parent cache. Propagation modes that create a new transaction (or suspend the current one) start with a fresh, empty cache.
+Cache behavior with nested transactions follows from the underlying transaction semantics. Propagation modes that share the parent transaction also share the parent cache, and its isolation level: a joined block runs at the level of the transaction that owns the connection, so a joined block inside a `REPEATABLE_READ` transaction returns cached instances even when it states no level of its own, and a joined block may not state a stricter level than that transaction (see [Isolation in Joined Blocks](transactions.md#isolation-in-joined-blocks)). Propagation modes that create a new transaction (or suspend the current one) start with a fresh, empty cache; a block outside any transaction reads no snapshot and returns fresh instances whatever level it states.
 
 | Propagation | Cache Behavior |
 |-------------|----------------|
@@ -275,11 +275,11 @@ Cache behavior with nested transactions follows from the underlying transaction 
 | `NOT_SUPPORTED`, `NEVER` | Fresh cache (no transaction) |
 
 ```kotlin
-transaction {
+transaction(isolation = REPEATABLE_READ) {
     val user = userRepository.findById(1)  // Cached in outer transaction
 
     transaction(propagation = NESTED) {
-        val sameUser = userRepository.findById(1)  // Cache hit from outer
+        val sameUser = userRepository.findById(1)  // Cache hit from outer, at the outer's REPEATABLE_READ
         // sameUser === user
     }
 
