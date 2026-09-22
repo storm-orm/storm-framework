@@ -169,7 +169,7 @@ Streams returned by Storm must be closed after use. Use `.use {}` (Kotlin) or tr
 <Tabs groupId="language">
 <TabItem value="kotlin" label="Kotlin" default>
 
-Kotlin uses `Flow` for streaming. The flow is cold: the query executes when the flow is collected, and the statement closes when the collection completes or the coroutine is cancelled, without explicit cleanup code.
+Kotlin uses `Flow` for streaming. The flow is cold: building it runs nothing, the query executes when the flow is collected, and the statement closes when the collection completes or the coroutine is cancelled, without explicit cleanup code. Several flows may be built up front and collected one after the other, a flow that is never collected holds no connection, and each collection runs the query again.
 
 ```kotlin
 val users: Flow<User> = orm.entity<User>().select().resultFlow
@@ -270,6 +270,8 @@ transaction(tx -> {
 </TabItem>
 </Tabs>
 
+For a loop that handles one row at a time, `windows(size).rows()` in Kotlin and `windows(size).flatMap(Slice::stream)` in Java read the windows as one stream of rows. Every row comes from a window whose statement has closed, so the connection is free at each row while memory stays bounded by the window size; where the loop writes, the per-window form batches better.
+
 The stream of windows carries no database resource, so it needs no closing. Each element is a `Window`, the same type `scroll` returns: `content()` holds the rows, `hasNext()` says whether more rows existed when the window was read, and `next()` is a `Scrollable` that resumes the iteration after the window. A long-running job can persist `window.nextCursor()` after each window and resume from it after a restart with `windows(Scrollable.of(User_.id, 1000).from(cursor))`.
 
 Windows are keyset windows, so the rules of [scrolling](pagination-and-scrolling.md#scrolling) apply:
@@ -290,7 +292,7 @@ Windows are keyset windows, so the rules of [scrolling](pagination-and-scrolling
 | Resource to close | The stream (Java); the Flow closes itself | None |
 | Resumable | No | Yes, from `window.next()` or a cursor string |
 
-Use a result stream to consume a large result: export it, aggregate it, map it to a file. Use windows when the loop needs the database: reading a related record, fetching a reference, writing per row.
+Use a result stream to consume a large result: export it, aggregate it, map it to a file. Use windows when the loop needs the database: reading a related record, fetching a reference, writing per row. The reasoning behind the two shapes and the refusal is on [Streaming: Design Notes](streaming-design.md).
 
 ---
 

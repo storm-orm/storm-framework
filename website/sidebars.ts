@@ -81,6 +81,7 @@ const sidebars: SidebarsConfig = {
             'dirty-checking',
             'entity-cache',
             'cursors',
+            'streaming-design',
           ],
         },
         {

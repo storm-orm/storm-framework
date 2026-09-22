@@ -162,7 +162,9 @@ final class StreamGuard {
         }
         message.append("Read the stream to its end or close it before executing other statements, or iterate in windows: ")
                 .append("windows(size) runs one closed statement per window and leaves the connection free ")
-                .append("between windows. This holds on every database: MySQL Connector/J rejects a statement ")
+                .append("between windows, and windows(size).rows() in Kotlin or windows(size).flatMap(Slice::stream) ")
+                .append("in Java reads them as one stream of rows with the connection free at every row. ")
+                .append("This holds on every database: MySQL Connector/J rejects a statement ")
                 .append("while a stream is open, and MariaDB Connector/J and the SQL Server driver first read ")
                 .append("the rest of the open result into memory.");
         return message.toString();

@@ -57,6 +57,7 @@ DOCS=(
   dirty-checking.md
   entity-cache.md
   cursors.md
+  streaming-design.md
   # Advanced Topics - Operational
   configuration.md
   sql-logging.md

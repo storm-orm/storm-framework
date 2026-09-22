@@ -537,6 +537,8 @@ users.windows(Scrollable.of(User_.id, 1000).from(storedCursor)).forEach(window -
 });
 ```
 
+`windows(size).flatMap(Slice::stream)` reads the windows as one `Stream<R>` for a loop that handles one row at a time: every row comes from a window whose statement has closed, so the connection is free at each row and memory stays bounded by the window size. It carries no database resource, so it needs no closing; where the loop writes, the per-window form batches better.
+
 Rules for `windows`: the key is the primary key (or the `Scrollable`'s key), which must be a non-null single column; no `orderBy()` on the query; the result type must be the entity (`selectRef()` and custom select types are refused). Each window is its own statement and sees the committed state at that moment.
 
 What stays fine with `getResultStream()`: consuming it (`forEach`, `toList()`, `count()`, `map`, `filter`), stopping early (`findFirst()`, `limit(n)`, then closing it), and, once it has been read to its end, any statement. A `Ref` the loop needs is loaded by naming it in the fetch plan (`select().fetch(...)`) instead of calling `fetch()` per row. Outside a transaction a stream holds a pooled connection of its own until it is closed.

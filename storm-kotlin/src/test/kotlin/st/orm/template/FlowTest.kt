@@ -41,6 +41,13 @@ internal open class FlowTest(
         repository.count() shouldBe 0
     }
 
+    @Test
+    fun `result flow runs its query again on every collection`(): Unit = runBlocking {
+        val visits = orm.entity(Visit::class).select().resultFlow
+        visits.count() shouldBe 14
+        visits.count() shouldBe 14
+    }
+
     // Flow operations within a suspend transaction
 
     @Test
@@ -48,6 +55,27 @@ internal open class FlowTest(
         // Same as above but within a suspend transaction; data.sql inserts 14 visits.
         transaction {
             orm.select<Visit>().resultFlow.count() shouldBe 14
+        }
+    }
+
+    @Test
+    fun `flows built before either is collected are read one after the other within a transaction`(): Unit = runBlocking {
+        // A flow holds the connection only while it is collected, so a caller may build several and hand them on.
+        transaction {
+            val repository = orm.entity(Visit::class)
+            val visits = repository.select().resultFlow
+            val refs = repository.selectRef().resultFlow
+            visits.count() shouldBe 14
+            refs.count() shouldBe 14
+        }
+    }
+
+    @Test
+    fun `flow built within a transaction and never collected leaves the connection free`(): Unit = runBlocking {
+        transaction {
+            val repository = orm.entity(Visit::class)
+            repository.select().resultFlow
+            repository.count() shouldBe 14
         }
     }
 
@@ -106,6 +134,24 @@ internal open class FlowTest(
             repository.windows(5).collect { window ->
                 repository.count() shouldBe 14 - (window.content().first().id - 1)
                 repository.remove(window.content())
+            }
+            repository.count() shouldBe 0
+        }
+    }
+
+    @Test
+    fun `rows read the windows as one flow in key order`(): Unit = runBlocking {
+        orm.entity(Visit::class).windows(4).rows().toList().map { it.id } shouldBe (1..14).toList()
+    }
+
+    @Test
+    fun `rows within suspend transaction allow a write at every row`(): Unit = runBlocking {
+        // Every row comes from a window whose statement has closed, so the connection is free at each of them.
+        transaction {
+            val repository = orm.entity(Visit::class)
+            repository.windows(5).rows().collect { visit ->
+                repository.count() shouldBe 14 - (visit.id - 1)
+                repository.remove(visit)
             }
             repository.count() shouldBe 0
         }
