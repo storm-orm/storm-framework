@@ -3,7 +3,7 @@ import TabItem from '@theme/TabItem';
 
 # Streaming: Design Notes
 
-Storm streams a large result in two shapes: a result stream (`resultFlow`, `getResultStream()`), which is one open statement, and windows (`windows(size)`), which are one closed statement per window. A statement issued on a connection whose result stream still has rows to read is refused, on every database. This page records why the API has that shape, what else was considered, and why a flow in Kotlin is cold. The how-to is on [Batch Processing & Streaming](batch-streaming.md#streaming).
+Storm streams a large result in two shapes: a result stream (`resultStream` / `getResultStream()`, and its flow form `resultFlow` / `getResultFlow()`), which is one open statement, and windows (`windows(size)`), which are one closed statement per window. A statement issued on a connection whose result stream still has rows to read is refused, on every database. This page records why the API has that shape, what else was considered, and why a flow in Kotlin is cold. The how-to is on [Batch Processing & Streaming](batch-streaming.md#streaming).
 
 ## The constraint is the wire protocol
 
@@ -49,6 +49,6 @@ Keyset resumption is the only portable way to free the connection. Offset pagina
 
 ## Why a Kotlin flow is cold
 
-A `Flow` in Kotlin is cold by convention: nothing runs until it is collected, and each collection runs it again. Storm's `resultFlow` follows that convention. Building the flow runs nothing, so several flows may be built up front and collected one after the other, a flow handed to another function as a value holds no connection until that function collects it, a flow that is never collected leaks nothing, and a failure surfaces from `collect`, where the caller is reading, rather than from the line that built the flow. The consume-only rule applies only while a collection is under way, which is the only time a statement is actually open.
+A `Flow` in Kotlin is cold by convention: nothing runs until it is collected, and each collection runs it again. Storm's `resultFlow` / `getResultFlow()` follows that convention. Building the flow runs nothing, so several flows may be built up front and collected one after the other, a flow handed to another function as a value holds no connection until that function collects it, a flow that is never collected leaks nothing, and a failure surfaces from `collect`, where the caller is reading, rather than from the line that built the flow. The consume-only rule applies only while a collection is under way, which is the only time a statement is actually open.
 
-The Java `Stream` is deliberately not cold. It is the idiom of `getResultStream()` in JPA and of the other JDBC-based libraries, it is single-use, and the caller closes it with try-with-resources, so an open statement is visibly the caller's from the moment the method returns.
+The `Stream` (`resultStream` / `getResultStream()`) is deliberately not cold. It is the idiom of `getResultStream()` in JPA and of the other JDBC-based libraries, it is single-use, and the caller closes it with try-with-resources, so an open statement is visibly the caller's from the moment the method returns.
