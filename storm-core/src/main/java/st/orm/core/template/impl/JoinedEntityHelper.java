@@ -213,7 +213,7 @@ public final class JoinedEntityHelper {
      * extension tables.
      *
      * <p>This method is intended for use by dialect-specific implementations that need to perform the base table
-     * insert (Phase 1) using a different mechanism (e.g., SQL Server's {@code OUTPUT INSERTED} clause) while
+     * insert (Phase 1) using a different mechanism (such as an output clause on the insert statement) while
      * reusing the standard extension table insert logic.</p>
      *
      * @param queryTemplate the query template for executing SQL.

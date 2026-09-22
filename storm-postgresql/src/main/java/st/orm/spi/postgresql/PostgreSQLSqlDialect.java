@@ -178,7 +178,11 @@ public class PostgreSQLSqlDialect extends DefaultSqlDialect {
     }
 
     /**
-     * Returns a PostgreSQL limit clause.
+     * Returns a PostgreSQL limit clause, with the value inlined.
+     *
+     * <p>A prepared {@code LIMIT ?} uses a value-aware custom plan for its first executions and then degrades to a
+     * generic plan for an unknown row count, so the literal is what keeps the early-terminating plan pagination
+     * wants.</p>
      *
      * @param limit the maximum number of records to return.
      * @return the limit clause.

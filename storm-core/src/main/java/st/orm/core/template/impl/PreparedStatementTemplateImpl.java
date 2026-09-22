@@ -108,8 +108,8 @@ public final class PreparedStatementTemplateImpl implements PreparedStatementTem
      * commenter must never be able to alter the statement: content containing the comment terminator is
      * rejected (the only escape from a block comment), and so are semicolons (inert to the SQL parser inside
      * a comment, but naive statement splitters in drivers and proxies split on them; sqlcommenter values
-     * URL-encode them instead). The content is padded with spaces, which keeps MySQL and MariaDB from
-     * interpreting leading {@code !} or {@code +} as an executable comment or optimizer hint.
+     * URL-encode them instead). The content is padded with spaces, which keeps a database that reads a comment
+     * starting with {@code !} or {@code +} as executable SQL or an optimizer hint from doing so.
      */
     private static String applySqlCommenter(@Nullable SqlCommenter sqlCommenter, String statement) {
         if (sqlCommenter == null) {

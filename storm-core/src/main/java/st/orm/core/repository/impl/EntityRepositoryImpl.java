@@ -150,7 +150,7 @@ public class EntityRepositoryImpl<E extends Entity<ID>, ID>
     /**
      * Returns {@code true} if the given entity should be routed to {@link #insert(Entity)} when
      * {@link #upsert(Entity)} is called. This is the case for databases that cannot perform a
-     * SQL-level upsert (MERGE) with auto-generated primary keys (e.g., Oracle, SQL Server).
+     * SQL-level upsert (MERGE) with auto-generated primary keys.
      *
      * <p>The default implementation returns {@code false}. Dialect-specific subclasses override
      * this method to return {@code true} when appropriate.</p>
@@ -964,8 +964,8 @@ public class EntityRepositoryImpl<E extends Entity<ID>, ID>
      * Performs the SQL-level upsert operation for a single entity, without lifecycle callbacks.
      *
      * <p>Dialect-specific subclasses must override this method to provide the actual upsert SQL logic
-     * (e.g., {@code INSERT ... ON CONFLICT} for PostgreSQL, {@code INSERT ... ON DUPLICATE KEY} for MySQL,
-     * {@code MERGE} for Oracle/SQL Server).</p>
+     * ({@code INSERT ... ON CONFLICT}, {@code INSERT ... ON DUPLICATE KEY} or {@code MERGE}, whichever the database
+     * offers).</p>
      *
      * @param entity the entity to upsert.
      * @throws PersistenceException if the upsert operation is not available or fails.
@@ -1168,8 +1168,8 @@ public class EntityRepositoryImpl<E extends Entity<ID>, ID>
      * Inserts a batch of joined (sealed/polymorphic) entities into both base and extension tables.
      *
      * <p>This method delegates to {@link JoinedEntityHelper#insertBatch} by default. Dialect-specific
-     * implementations may override this method to handle database-specific limitations, such as SQL Server's
-     * lack of support for {@code getGeneratedKeys()} after {@code executeBatch()}.</p>
+     * implementations may override this method to handle database-specific limitations, such as a driver that
+     * does not report {@code getGeneratedKeys()} after {@code executeBatch()}.</p>
      *
      * @param entities the entities to insert (already validated and transformed by callbacks).
      * @return the list of generated (or provided) primary keys, one per entity.

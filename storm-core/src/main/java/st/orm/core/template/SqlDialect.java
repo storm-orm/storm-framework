@@ -327,8 +327,8 @@ public interface SqlDialect {
      * <p>Inlining is deliberate. A literal lets the planner see the value at plan time and choose an
      * early-terminating plan (an index scan plus a nested loop that stops after {@code limit} rows), which is exactly
      * what pagination wants. A bound limit forces a generic plan for an unknown row count, which is materially slower
-     * for small pages over large tables; on PostgreSQL a prepared {@code LIMIT ?} also degrades to that generic plan
-     * once it stops using a value-aware custom plan. Limits come from a small, fixed set of page sizes, so inlining
+     * for small pages over large tables, and a planner that caches a generic plan for a prepared statement degrades
+     * to it after a few executions. Limits come from a small, fixed set of page sizes, so inlining
      * them costs negligible plan-cache churn in return.</p>
      *
      * @param limit the maximum number of records to return.
@@ -380,7 +380,7 @@ public interface SqlDialect {
      * does with the flag.
      *
      * <p>Empty by default: a database without such a statement has nothing to send, and a dialect whose driver
-     * already carries the flag to the server, as the PostgreSQL and MySQL drivers do, keeps it empty as well,
+     * already carries the flag to the server keeps it empty as well,
      * since a second statement would only cost a round trip. A dialect whose driver keeps the flag to itself, or
      * carries it only from some release on, returns the statement.</p>
      *
@@ -461,8 +461,8 @@ public interface SqlDialect {
      *
      * <p>The default implementation sets the JSON as a string, which is compatible with databases that store JSON
      * in character types or have implicit string-to-JSON conversion. Dialects with strictly typed native JSON
-     * columns should override this method — PostgreSQL, for example, binds the value as an untyped parameter so
-     * the server casts it to {@code json} or {@code jsonb}.</p>
+     * columns override this method, for example to bind the value as an untyped parameter so the server casts it to
+     * its native JSON type.</p>
      *
      * @param preparedStatement the prepared statement.
      * @param index the parameter index.
@@ -643,7 +643,7 @@ public interface SqlDialect {
      * <p>When {@code true}, batch {@code insertAndFetchIds} emits a single multi-row
      * {@code INSERT INTO t (...) VALUES (...),(...) RETURNING <pk>} statement and reads the keys from the result set.
      * This is the preferred multi-row key-fetch mechanism: the keys come back explicitly and in row order, with no
-     * reliance on driver-specific {@code getGeneratedKeys} behavior. Supported by PostgreSQL, SQLite and MariaDB.</p>
+     * reliance on driver-specific {@code getGeneratedKeys} behavior.</p>
      *
      * @return {@code true} if the dialect supports {@code INSERT ... RETURNING}.
      * @since 1.13
@@ -659,7 +659,7 @@ public interface SqlDialect {
      * <p>This is the fallback multi-row key-fetch mechanism for dialects that have no {@code RETURNING} clause (see
      * {@link #supportsInsertReturning()}). When {@code true}, batch {@code insertAndFetchIds} emits a single multi-row
      * {@code INSERT INTO t (...) VALUES (...),(...)} statement and reads the keys back with {@code getGeneratedKeys},
-     * rather than issuing a JDBC {@code executeBatch}. Enabled for MySQL and H2.</p>
+     * rather than issuing a JDBC {@code executeBatch}.</p>
      *
      * <p>Defaults to {@code false} because not every driver returns all keys for a multi-row insert (some return only
      * the first), so dialects opt in explicitly.</p>
@@ -681,8 +681,8 @@ public interface SqlDialect {
      * When {@code false}, the keys have to come from the insert statement itself, so those callers go through
      * {@code insertAndFetchIds} and let the dialect emit the statement that carries them.</p>
      *
-     * <p>Defaults to {@code true}, which is what the JDBC contract asks of a driver. Disabled for SQL Server, whose
-     * driver rejects reading a batch's generated keys.</p>
+     * <p>Defaults to {@code true}, which is what the JDBC contract asks of a driver; a dialect whose driver rejects
+     * reading a batch's generated keys returns {@code false}.</p>
      *
      * @return {@code true} if a prepared batch reports its generated keys.
      * @since 1.13
@@ -695,8 +695,8 @@ public interface SqlDialect {
      * Returns the maximum number of bind parameters a single statement may carry.
      *
      * <p>Multi-row inserts are chunked so that the total number of bound values ({@code rows × bound columns}) never
-     * exceeds this limit. The default is a conservative {@code 32767}, matching the smallest common driver limit;
-     * PostgreSQL's protocol allows {@code 65535}, which that dialect overrides.</p>
+     * exceeds this limit. The default is a conservative {@code 32767}, matching the smallest common driver limit; a
+     * dialect whose protocol allows more overrides it.</p>
      *
      * @return the maximum number of bind parameters per statement.
      * @since 1.13

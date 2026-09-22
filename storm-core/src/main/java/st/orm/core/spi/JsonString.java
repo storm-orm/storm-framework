@@ -21,8 +21,8 @@ package st.orm.core.spi;
  *
  * <p>Carrying the JSON as a distinct type instead of a plain string lets dialects choose the appropriate JDBC
  * binding via the {@code SqlDialect.setParameter} overload for this type: most databases bind JSON as a plain
- * string, while PostgreSQL requires an untyped parameter so the server can cast it to native {@code json} or
- * {@code jsonb} columns.</p>
+ * string, while a database with a strictly typed native JSON column needs an untyped parameter so the server can
+ * cast it.</p>
  *
  * @param value the serialized JSON text.
  * @since 1.12

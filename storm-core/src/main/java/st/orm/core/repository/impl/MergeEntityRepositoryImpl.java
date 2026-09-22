@@ -50,15 +50,14 @@ import st.orm.core.template.TemplateString;
 
 /**
  * Shared support for dialects that implement upsert with a SQL {@code MERGE} statement backed by a source query
- * ({@code MERGE INTO t USING (SELECT ... ) src ON (...) WHEN MATCHED ... WHEN NOT MATCHED ...}), such as H2,
- * Oracle and SQL Server.
+ * ({@code MERGE INTO t USING (SELECT ... ) src ON (...) WHEN MATCHED ... WHEN NOT MATCHED ...}).
  *
  * <p>The source query only projects the entity's declared columns — columns of expanded foreign relations are
  * never referenced by the ON, UPDATE or INSERT clauses and are therefore not bound.</p>
  *
  * <p>Dialect differences are expressed as hooks: {@link #castType(Column)} for dialects whose parser cannot infer
- * the type of a bare parameter in the source query (H2), {@link #mergeSourceSuffix()} for dialects that require a
- * FROM clause (Oracle), {@link #statementSuffix()} for dialects that require a statement terminator (SQL Server),
+ * the type of a bare parameter in the source query, {@link #mergeSourceSuffix()} for dialects that require a
+ * FROM clause, {@link #statementSuffix()} for dialects that require a statement terminator,
  * the version expressions, and {@link #mergeInsert()} for the dialect-specific WHEN NOT MATCHED clause.</p>
  *
  * @since 1.12
@@ -100,7 +99,7 @@ public abstract class MergeEntityRepositoryImpl<E extends Entity<ID>, ID> extend
     }
 
     /**
-     * Returns the suffix appended to the MERGE source query, such as {@code " FROM DUAL"} on Oracle. The default
+     * Returns the suffix appended to the MERGE source query, for a dialect whose SELECT needs a FROM clause. The default
      * implementation returns an empty string.
      */
     protected String mergeSourceSuffix() {
@@ -108,7 +107,7 @@ public abstract class MergeEntityRepositoryImpl<E extends Entity<ID>, ID> extend
     }
 
     /**
-     * Returns the terminator appended to the MERGE statement, such as {@code ";"} on SQL Server. The default
+     * Returns the terminator appended to the MERGE statement, for a dialect that requires one. The default
      * implementation returns an empty string.
      */
     protected String statementSuffix() {
@@ -116,8 +115,8 @@ public abstract class MergeEntityRepositoryImpl<E extends Entity<ID>, ID> extend
     }
 
     /**
-     * Returns the expression used to touch a temporal version column on update, such as {@code SYSTIMESTAMP} on
-     * Oracle. The default implementation returns {@code CURRENT_TIMESTAMP}.
+     * Returns the expression used to touch a temporal version column on update. The default implementation returns
+     * {@code CURRENT_TIMESTAMP}; a dialect with a timestamp function of its own overrides it.
      */
     protected String versionTimestampExpression() {
         return "CURRENT_TIMESTAMP";
