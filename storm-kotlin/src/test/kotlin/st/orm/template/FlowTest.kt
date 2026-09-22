@@ -3,8 +3,11 @@ package st.orm.template
 import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.string.shouldContain
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.buffer
 import kotlinx.coroutines.flow.count
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.runBlocking
 import org.junit.jupiter.api.Test
@@ -68,6 +71,20 @@ internal open class FlowTest(
             visits.count() shouldBe 14
             refs.count() shouldBe 14
         }
+    }
+
+    @Test
+    fun `flow collected on another dispatcher within a transaction reads on the transaction's connection`(): Unit = runBlocking {
+        // The transaction travels in the coroutine context, so a collection moved to another dispatcher, or run in the
+        // producer coroutine a buffer introduces, still reads the transaction's own uncommitted state.
+        transaction {
+            val repository = orm.entity(Visit::class)
+            repository.removeById(1)
+            repository.select().resultFlow.flowOn(Dispatchers.IO).count() shouldBe 13
+            repository.select().resultFlow.buffer().count() shouldBe 13
+            setRollbackOnly()
+        }
+        orm.entity(Visit::class).count() shouldBe 14
     }
 
     @Test
