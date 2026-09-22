@@ -23,6 +23,10 @@ const GH = 'https://github.com/storm-orm/storm-framework';
 // facts a reader can check, and a chat link is a different kind of claim.
 const DISCORD = 'https://discord.gg/SgQpcweUJD';
 
+// The address that reaches the engineers behind Storm directly. Security and
+// conduct reports have their own address, dev@orm.st.
+const CONTACT_EMAIL = 'hello@orm.st';
+
 const CSS = `
   :root{
     --bg:#070709; --panel:#0f0f14; --panel-2:#0b0b0f; --statusbg:#08080b;
@@ -149,6 +153,8 @@ const CSS = `
     .storm-home .sub-lead{font-size:16.5px;margin-top:16px}
     .storm-home .hero-cta{margin-top:20px}
     .storm-home .hero-cta .btn{flex:1 1 100%;justify-content:center;height:44px}
+    .storm-home .hero-talk{align-items:flex-start;margin-top:14px;font-size:13.5px}
+    .storm-home .hero-talk .ico{margin-top:2px}
     .storm-home .stage{margin-top:34px}
   }
   .storm-home .sub{max-width:600px;margin:24px 0 0;color:var(--muted);font-size:18px;line-height:1.62}
@@ -164,6 +170,14 @@ const CSS = `
   /* Hero CTA: the primary conversion action, kept high so it sits above the
      fold on phones. */
   .storm-home .hero-cta{margin-top:26px}
+  /* The invitation to talk sits under the buttons, quieter than them, so it
+     reads as the next option rather than a third call to action. The address
+     is the link text so a reader whose browser has no mail client behind
+     mailto can still copy it. */
+  .storm-home .hero-talk{display:flex;align-items:center;gap:9px;margin:18px 0 0;color:var(--muted);font-size:14.5px;line-height:1.5}
+  .storm-home .hero-talk .ico{width:16px;height:16px;flex:none;color:var(--accent)}
+  .storm-home .hero-talk a{color:var(--accent);font-weight:600;white-space:nowrap}
+  .storm-home .hero-talk a:hover{text-decoration:underline}
 
   /* editor */
   .storm-home .stage{margin:54px 0 0;max-width:880px}
@@ -281,6 +295,19 @@ const CSS = `
   .storm-home .scope a{display:inline-block;margin-top:12px;margin-right:18px;color:var(--accent);font-size:14px;font-weight:600}
   .storm-home .scope a:last-child{margin-right:0}
   .storm-home .scope a:hover{text-decoration:underline}
+  /* Direct contact with the engineers behind Storm: questions from teams
+     evaluating it, and word from teams already using it. The card above
+     carries the community channels. */
+  .storm-home .contact{margin-top:20px;border:1px solid var(--border-soft);border-radius:14px;padding:26px 28px;background:var(--panel-2)}
+  .storm-home .contact .clabel{font-family:var(--mono);font-size:10.5px;letter-spacing:.14em;text-transform:uppercase;color:var(--muted)}
+  .storm-home .contact h3{margin:8px 0 10px;font-size:19px;font-weight:650;letter-spacing:-.01em}
+  .storm-home .contact p{margin:0;color:var(--muted);font-size:14.5px;line-height:1.65;max-width:780px}
+  .storm-home .contact p + p{margin-top:10px}
+  .storm-home .contact .btn{margin-top:18px}
+  .storm-home .contact .btn .ico{width:15px;height:15px}
+  @media(max-width:600px){
+    .storm-home .contact{padding:22px}
+  }
   .storm-home .verify{margin-top:34px;border-top:1px solid var(--border-soft);padding-top:22px}
   .storm-home .verify .vlabel{font-family:var(--mono);font-size:10.5px;letter-spacing:.14em;text-transform:uppercase;color:var(--muted)}
   .storm-home .verify .vlinks{display:flex;flex-wrap:wrap;gap:8px;margin-top:14px}
@@ -578,6 +605,7 @@ function buildBody(version) {
     <a href="/quickstart" class="btn primary go">Try it in 5 minutes →</a>
     <a href="/comparison" class="btn">Compare with your ORM</a>
   </div>
+  <p class="hero-talk"><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="m3 7 9 6 9-6"/></svg><span>Evaluating Storm for your team or project? Talk to the engineers behind it: <a href="mailto:${CONTACT_EMAIL}">${CONTACT_EMAIL}</a></span></p>
 
   <div class="stage">
     <div class="editor">
@@ -671,6 +699,14 @@ function buildBody(version) {
       <a href="${DISCORD}" target="_blank" rel="noopener">Join the Discord →</a>
       <a href="${GH}/discussions" target="_blank" rel="noopener">Discussions →</a>
     </div>
+  </div>
+
+  <div class="contact" id="contact">
+    <div class="clabel">Get in touch</div>
+    <h3>Talk to the engineers behind Storm</h3>
+    <p>Evaluating Storm for your team or project, stuck on a mapping, or missing a feature? Write to us directly.</p>
+    <p>Already using Storm? Tell us what you built, and we will gladly list your company or project on this site.</p>
+    <a class="btn primary" href="mailto:${CONTACT_EMAIL}"><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="m3 7 9 6 9-6"/></svg>${CONTACT_EMAIL}</a>
   </div>
 
   <div class="verify">
