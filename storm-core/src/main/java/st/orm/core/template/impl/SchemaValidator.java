@@ -358,7 +358,7 @@ public final class SchemaValidator {
         String catalog;
         String schemaPattern;
         if (!entitySchema.isEmpty() && dialect.useCatalogAsSchema()) {
-            // Database uses catalogs as schemas (e.g., MySQL, MariaDB). The entity's schema represents a
+            // Database uses catalogs as schemas. The entity's schema represents a
             // database name, which maps to the JDBC catalog.
             catalog = entitySchema;
             schemaPattern = null;

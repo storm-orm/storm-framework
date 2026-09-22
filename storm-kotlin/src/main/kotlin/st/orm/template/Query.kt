@@ -16,12 +16,12 @@
 package st.orm.template
 
 import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.stream.consumeAsFlow
 import st.orm.Data
 import st.orm.NoResultException
 import st.orm.NonUniqueResultException
 import st.orm.PersistenceException
 import st.orm.Ref
+import st.orm.template.impl.streamFlow
 import java.util.stream.Stream
 import kotlin.reflect.KClass
 
@@ -224,7 +224,7 @@ public interface Query {
      * @since 1.5
      */
     public val resultFlow: Flow<Array<Any>>
-        get() = resultStream.consumeAsFlow()
+        get() = streamFlow { resultStream }
 
     /**
      * Execute a SELECT query and return the resulting rows as a stream of row instances.
@@ -269,7 +269,7 @@ public interface Query {
      * connectivity.
      * @since 1.5
      */
-    public fun <T : Any> getResultFlow(type: KClass<T>): Flow<T> = getResultStream(type).consumeAsFlow()
+    public fun <T : Any> getResultFlow(type: KClass<T>): Flow<T> = streamFlow { getResultStream(type) }
 
     /**
      * Execute a SELECT query and return the resulting rows as a stream of ref instances.
@@ -296,13 +296,19 @@ public interface Query {
      * Each element in the flow represents a row in the result, where the columns of the row are mapped to the
      * constructor arguments primary key type.
      *
+     * The flow is cold: the query executes when the flow is collected, rows are read from the database as they are
+     * emitted, and the statement closes when collection completes or is cancelled. While rows remain to be
+     * emitted the flow is one open statement on its connection, and that connection is consume-only: inside a
+     * transaction a query, a `Ref.fetch()` or a write issued from the collector is refused with a
+     * [PersistenceException], on every database.
+     *
      * @param type the type of the results that are being referenced.
      * @param pkType the primary key type.
      * @return a flow of ref instances.
      * @throws st.orm.PersistenceException if the query fails.
      * @since 1.5
      */
-    public fun <T : Data> getRefFlow(type: KClass<T>, pkType: KClass<*>): Flow<Ref<T>> = getRefStream(type, pkType).consumeAsFlow()
+    public fun <T : Data> getRefFlow(type: KClass<T>, pkType: KClass<*>): Flow<Ref<T>> = streamFlow { getRefStream(type, pkType) }
 
     /**
      * Returns true if the query is version aware, false otherwise.

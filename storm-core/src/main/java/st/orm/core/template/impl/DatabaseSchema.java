@@ -41,7 +41,7 @@ import st.orm.core.template.SqlDialect.SequenceDiscoveryStrategy;
  * Reads JDBC {@link DatabaseMetaData} into an in-memory representation for schema validation.
  *
  * <p>All name lookups are case-insensitive, since database systems vary in how they handle identifier casing
- * (PostgreSQL lowercases, Oracle uppercases, H2 uppercases by default).</p>
+ * (some fold unquoted identifiers to lower case, others to upper case).</p>
  *
  * @since 1.9
  */
@@ -729,10 +729,9 @@ public final class DatabaseSchema {
     /**
      * Attempts to read sequences from INFORMATION_SCHEMA.TABLES rows with TABLE_TYPE = 'SEQUENCE'.
      *
-     * <p>MariaDB exposes sequences as a table type rather than through a dedicated view. The
-     * {@code INFORMATION_SCHEMA.SEQUENCES} view only exists since MariaDB 11.5 and keys
-     * {@code SEQUENCE_CATALOG} to {@code 'def'}, so the {@code TABLES} view is the only source that works across
-     * all versions that support sequences.</p>
+     * <p>For a database that exposes sequences as a table type rather than through a dedicated view, or whose
+     * {@code INFORMATION_SCHEMA.SEQUENCES} view exists only in recent versions and keys {@code SEQUENCE_CATALOG} to a
+     * constant, the {@code TABLES} view is the source that works across every version that supports sequences.</p>
      */
     private static boolean readSequencesFromInformationSchemaTables(
             Connection connection,
@@ -761,7 +760,7 @@ public final class DatabaseSchema {
     }
 
     /**
-     * Attempts to read sequences from Oracle's ALL_SEQUENCES dictionary view.
+     * Attempts to read sequences from the ALL_SEQUENCES dictionary view.
      */
     private static boolean readSequencesFromAllSequences(
             Connection connection,

@@ -198,7 +198,7 @@ Prefer the simplest approach that works. Four query levels, from simplest to mos
 | Parents with their children (one-to-many) | `select().resultGroupedBy(parentPath)` | per-parent queries in a loop (N+1) or manual `groupBy` after `resultList` |
 | Filtered + **ordering/pagination** | `select(predicate).orderBy(...).resultList` | convenience methods (can't add ordering) |
 | Filtered + **joins** | `select { }` or `select().innerJoin(...)` | convenience methods (can't add joins) |
-| Filtered + **streaming** | `select(predicate).resultFlow` (consume-only) or `.windows(size)` (loop may query/write) | convenience methods (return List, not Flow) |
+| Filtered + **streaming** | `select(predicate).resultFlow` (consume-only) or `.windows(size)` (loop may query/write; `.rows()` flattens it) | convenience methods (return List, not Flow) |
 | Aggregates, CTEs, window functions | SQL Template (/storm-sql-kotlin) | QueryBuilder (can't express these) |
 
 The rule: **escalate only when the simpler level cannot express what you need.** If you need ordering, you need at least Level 2. If you need joins, you need Level 2 or 3. If you need CTEs or window functions, you need Level 4.
@@ -693,7 +693,7 @@ It does **not** work for selecting a column subset of the root entity — e.g., 
 
 ## Flows and the Connection
 
-A `resultFlow` is one open statement. While it still has rows to emit, the connection it reads from is consume-only, on every database. Inside `transaction { }` every statement shares the transaction's connection, so these all throw `PersistenceException` from the collector:
+A `resultFlow` is cold: building it runs nothing, the query runs when the flow is collected, and each collection runs it again. Several flows may therefore be built up front and collected one after the other, and a flow that is never collected holds no connection. Once collected, a `resultFlow` is one open statement. While it still has rows to emit, the connection it reads from is consume-only, on every database. Inside `transaction { }` every statement shares the transaction's connection, so these all throw `PersistenceException` from the collector:
 
 ```kotlin
 transaction {
@@ -732,6 +732,16 @@ users.windows(Scrollable.of(User_.id, 1000).from(storedCursor)).collect { window
 
 Rules for `windows`: the key is the primary key (or the `Scrollable`'s key), which must be a non-null single column; no `orderBy()` on the query; the result type must be the entity (`selectRef()` and custom select types are refused). Each window is its own statement and sees the committed state at that moment.
 
+`windows(size).rows()` reads the windows as one `Flow<R>`, for a loop that handles one row at a time. Each row comes from a window whose statement has already closed, so the connection is free at every row, memory stays bounded by the window size, and the rows arrive in key order. It is the one-token switch for a `resultFlow` loop the guard refuses; where the loop writes, the per-window form above batches better:
+
+```kotlin
+transaction {
+    users.select(User_.city eq city).windows(1000).rows().collect { user ->
+        audit.insert(AuditEntry(user = user.ref(), checkedAt = now))   // a statement per row, allowed
+    }
+}
+```
+
 What stays fine with `resultFlow`: consuming it (`collect`, `toList()`, `count()`, `map`, `filter`), stopping early (`first()`, `take(n)` cancel the flow and close the statement), and, once it has completed, any statement. A `Ref` the loop needs is loaded by naming it in the fetch plan (`select().fetch(...)`) instead of calling `fetch()` per row. Outside `transaction { }` a collected flow holds a pooled connection of its own for as long as it is collected.
 
 ## Result Retrieval
@@ -741,9 +751,10 @@ QueryBuilder terminals:
 - `.singleResult` → `R` (throws `NoResultException` if empty, `NonUniqueResultException` if multiple)
 - `.optionalResult` → `R?` (null if empty, throws if multiple)
 - `.resultCount` → `Long`
-- `.resultFlow` → `Flow<R>` (lazy, coroutines-based; one open statement, the connection is consume-only while collecting)
+- `.resultFlow` → `Flow<R>` (cold: the query runs when the flow is collected, and again on each collection; one open statement while collecting, its connection consume-only)
 - `.resultStream` → `Stream<R>` (lazy, must close after use; same connection rule)
 - `.windows(size)` / `.windows(scrollable)` → `Flow<Window<R>>` (keyset windows over the primary key, one closed statement per window; the loop may query, fetch refs and write between windows; nothing to close)
+- `.windows(size).rows()` → `Flow<R>` (the windows' rows as one flow; the connection is free at every row)
 - `.page(pageNumber, pageSize)` → `Page<R>` (offset-based pagination)
 - `.scroll(scrollable)` → `Window<R>` (keyset scrolling — do NOT combine with `orderBy()`, see Keyset Scrolling section). Use `next()` / `previous()` for programmatic navigation, or `nextCursor()` / `previousCursor()` for REST APIs.
 - `.executeUpdate()` → `Int` (for DELETE/UPDATE)

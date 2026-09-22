@@ -215,7 +215,7 @@ final class SqlParser {
      * @return the SQL string with comments removed.
      */
     static String removeComments(String sql, SqlDialect dialect) {
-        // Every supported comment syntax starts with '-' (--), '/' (/*) or '#' (MySQL); skip the regex passes when
+        // Every supported comment syntax starts with '-' (--), '/' (/*) or '#' (a hash comment); skip the regex passes when
         // none of these characters appear at all.
         if (!containsAny(sql, '-', '/', '#')) {
             return sql;
@@ -237,7 +237,7 @@ final class SqlParser {
      * @return the modified SQL string.
      */
     static String clearQuotedIdentifiers(String sql, SqlDialect dialect) {
-        // Every supported quoted-identifier syntax starts with '"', '`' (MySQL) or '[' (SQL Server); skip the regex
+        // Every supported quoted-identifier syntax starts with '"', '`' or '['; skip the regex
         // pass when none of these characters appear at all.
         if (!containsAny(sql, '"', '`', '[')) {
             return sql;

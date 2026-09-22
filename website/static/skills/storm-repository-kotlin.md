@@ -493,6 +493,9 @@ val exampleUsers: Flow<User> = users.select(User_.email like "%@example.com").re
 users.select(User_.city eq city).windows(1000).collect { window ->
     users.update(window.content().map { it.copy(email = it.email.lowercase()) })   // one batched statement per window
 }
+users.select(User_.city eq city).windows(1000).rows().collect { user ->            // or row by row, connection free at each
+    audit.insert(AuditEntry(user = user.ref(), checkedAt = now))
+}
 
 // Count via Flow
 val count: Long = users.countById(idFlow)
@@ -516,7 +519,7 @@ Flow operations are lazy — entities are retrieved/processed as consumed. Use `
 
 ## Flows and the Connection
 
-A `resultFlow` is one open statement. While it still has rows to emit, the connection it reads from is consume-only, on every database. Inside `transaction { }` every statement shares the transaction's connection, so these all throw `PersistenceException` from the collector:
+A `resultFlow` is cold: building it runs nothing, the query runs when the flow is collected, and each collection runs it again. Several flows may therefore be built up front and collected one after the other, and a flow that is never collected holds no connection. Once collected, a `resultFlow` is one open statement. While it still has rows to emit, the connection it reads from is consume-only, on every database. Inside `transaction { }` every statement shares the transaction's connection, so these all throw `PersistenceException` from the collector:
 
 ```kotlin
 transaction {
@@ -554,6 +557,16 @@ users.windows(Scrollable.of(User_.id, 1000).from(storedCursor)).collect { window
 ```
 
 Rules for `windows`: the key is the primary key (or the `Scrollable`'s key), which must be a non-null single column; no `orderBy()` on the query; the result type must be the entity (`selectRef()` and custom select types are refused). Each window is its own statement and sees the committed state at that moment.
+
+`windows(size).rows()` reads the windows as one `Flow<R>`, for a loop that handles one row at a time. Each row comes from a window whose statement has already closed, so the connection is free at every row, memory stays bounded by the window size, and the rows arrive in key order. It is the one-token switch for a `resultFlow` loop the guard refuses; where the loop writes, the per-window form above batches better:
+
+```kotlin
+transaction {
+    users.select(User_.city eq city).windows(1000).rows().collect { user ->
+        audit.insert(AuditEntry(user = user.ref(), checkedAt = now))   // a statement per row, allowed
+    }
+}
+```
 
 What stays fine with `resultFlow`: consuming it (`collect`, `toList()`, `count()`, `map`, `filter`), stopping early (`first()`, `take(n)` cancel the flow and close the statement), and, once it has completed, any statement. A `Ref` the loop needs is loaded by naming it in the fetch plan (`select().fetch(...)`) instead of calling `fetch()` per row. Outside `transaction { }` a collected flow holds a pooled connection of its own for as long as it is collected.
 

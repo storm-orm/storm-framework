@@ -38,11 +38,13 @@ public class OracleEntityRepositoryImpl<E extends Entity<ID>, ID> extends MergeE
         super(ormTemplate, model);
     }
 
+    /** Oracle requires a FROM clause on every SELECT, so the MERGE source query selects from {@code DUAL}. */
     @Override
     protected String mergeSourceSuffix() {
         return " FROM DUAL";
     }
 
+    /** Oracle touches a temporal version column with {@code SYSTIMESTAMP}. */
     @Override
     protected String versionTimestampExpression() {
         return "SYSTIMESTAMP";

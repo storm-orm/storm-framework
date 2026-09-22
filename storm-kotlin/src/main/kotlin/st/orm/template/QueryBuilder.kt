@@ -16,7 +16,6 @@
 package st.orm.template
 
 import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.stream.consumeAsFlow
 import st.orm.*
 import st.orm.Operator.*
 import st.orm.ResolveScope.CASCADE
@@ -33,6 +32,7 @@ import st.orm.template.impl.combineAnd
 import st.orm.template.impl.combineOr
 import st.orm.template.impl.create
 import st.orm.template.impl.createRef
+import st.orm.template.impl.streamFlow
 import java.util.stream.Stream
 import kotlin.reflect.KClass
 
@@ -1125,6 +1125,9 @@ public abstract class QueryBuilder<T : Data, R : Any, ID : Any> {
      * }
      * ```
      *
+     * [rows] reads the windows as one flow of their rows, with the connection free at every row, for a loop that
+     * works row by row.
+     *
      * @param size the maximum number of rows per window (must be positive).
      * @return a flow of windows; each window's [Window.next] resumes the iteration after that window.
      * @throws IllegalArgumentException if [size] is not positive.
@@ -1197,7 +1200,7 @@ public abstract class QueryBuilder<T : Data, R : Any, ID : Any> {
      * @since 1.5
      */
     public val resultFlow: Flow<R>
-        get() = resultStream.consumeAsFlow()
+        get() = streamFlow { resultStream }
 
     public open val resultCount: Long
         /**

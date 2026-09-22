@@ -30,9 +30,11 @@ internal class QueryDefaultsTest {
 
     /**
      * A [Query] over in-memory rows: the first column doubles as the typed result and as the ref key. Every stream
-     * records its close, so the test can hold the defaults to closing what they open.
+     * records its opening and its close, so the test can hold the defaults to opening a stream only when one is read
+     * and to closing what they open.
      */
     private class RowsQuery(private val rows: List<Array<Any?>>) : Query {
+        val openedStreams = mutableListOf<String>()
         val closedStreams = mutableListOf<String>()
 
         override fun prepare(): PreparedQuery = throw UnsupportedOperationException()
@@ -41,11 +43,20 @@ internal class QueryDefaultsTest {
 
         @Suppress("UNCHECKED_CAST")
         override val resultStream: Stream<Array<Any>>
-            get() = (rows.stream() as Stream<Array<Any>>).onClose { closedStreams += "rows" }
+            get() {
+                openedStreams += "rows"
+                return (rows.stream() as Stream<Array<Any>>).onClose { closedStreams += "rows" }
+            }
 
-        override fun <T : Any> getResultStream(type: KClass<T>): Stream<T> = rows.stream().map { row -> row[0]?.let { type.java.cast(it) } }.onClose { closedStreams += "typed" }
+        override fun <T : Any> getResultStream(type: KClass<T>): Stream<T> {
+            openedStreams += "typed"
+            return rows.stream().map { row -> row[0]?.let { type.java.cast(it) } }.onClose { closedStreams += "typed" }
+        }
 
-        override fun <T : Data> getRefStream(type: KClass<T>, pkType: KClass<*>): Stream<Ref<T>> = rows.stream().map { row -> Ref.of(type.java, row[0]!!) }.onClose { closedStreams += "refs" }
+        override fun <T : Data> getRefStream(type: KClass<T>, pkType: KClass<*>): Stream<Ref<T>> {
+            openedStreams += "refs"
+            return rows.stream().map { row -> Ref.of(type.java, row[0]!!) }.onClose { closedStreams += "refs" }
+        }
 
         override val versionAware: Boolean = false
 
@@ -133,5 +144,24 @@ internal class QueryDefaultsTest {
         // The ref flow maps the key column: a query over towns 1 and 2 yields their refs.
         RowsQuery(rows(1, 2)).getRefFlow(Town::class, Int::class).toList() shouldBe
             listOf(Ref.of(Town::class.java, 1), Ref.of(Town::class.java, 2))
+    }
+
+    @Test
+    fun `flows open a stream when collected, one per collection, and close it`(): Unit = runBlocking {
+        val towns = RowsQuery(rows(1, 2))
+        val names = RowsQuery(rows("Madison", "Monona"))
+        val rowFlow = towns.resultFlow
+        val refFlow = towns.getRefFlow(Town::class, Int::class)
+        val typedFlow = names.getResultFlow(String::class)
+        towns.openedStreams shouldBe emptyList()
+        names.openedStreams shouldBe emptyList()
+        rowFlow.toList().map { it[0] } shouldBe listOf(1, 2)
+        rowFlow.toList().map { it[0] } shouldBe listOf(1, 2)
+        refFlow.toList() shouldBe listOf(Ref.of(Town::class.java, 1), Ref.of(Town::class.java, 2))
+        typedFlow.toList() shouldBe listOf("Madison", "Monona")
+        towns.openedStreams shouldBe listOf("rows", "rows", "refs")
+        towns.closedStreams shouldBe listOf("rows", "rows", "refs")
+        names.openedStreams shouldBe listOf("typed")
+        names.closedStreams shouldBe listOf("typed")
     }
 }

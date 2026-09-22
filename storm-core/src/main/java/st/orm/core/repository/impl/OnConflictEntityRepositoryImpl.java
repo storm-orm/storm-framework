@@ -47,7 +47,7 @@ import st.orm.core.template.TemplateString;
 /**
  * Implementation of {@link EntityRepository} for dialects that upsert through the
  * {@code INSERT ... ON CONFLICT (<primary_keys>) DO UPDATE SET ...} clause with the {@code EXCLUDED}
- * pseudo-table, such as PostgreSQL and SQLite.
+ * pseudo-table.
  *
  * @since 1.14
  */

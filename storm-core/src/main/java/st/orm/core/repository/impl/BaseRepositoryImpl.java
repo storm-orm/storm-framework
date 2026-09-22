@@ -634,9 +634,9 @@ abstract class BaseRepositoryImpl<E extends Data, ID> implements Repository {
      * are consumed by the stream. This approach is efficient and minimizes the memory footprint, especially when
      * dealing with large volumes of entities.</p>
      *
-     * <p><strong>Note:</strong> Calling this method does trigger the execution of the underlying query, so it should
-     * only be invoked when the query is intended to run. Since the stream holds resources open while in use, it must be
-     * closed after usage to prevent resource leaks. As the stream is {@code AutoCloseable}, it is recommended to use it
+     * <p><strong>Note:</strong> No query runs until the stream is consumed: each batch's query runs as the stream
+     * reaches it, and a stream that is never consumed runs none. Since the stream holds resources open while in use, it
+     * must be closed after usage to prevent resource leaks. As the stream is {@code AutoCloseable}, it is recommended to use it
      * within a {@code try-with-resources} block.</p>
      *
      * @param ids a stream of entity IDs to retrieve from the repository.
@@ -663,9 +663,9 @@ abstract class BaseRepositoryImpl<E extends Data, ID> implements Repository {
      * are consumed by the stream. This approach is efficient and minimizes the memory footprint, especially when
      * dealing with large volumes of entities.</p>
      *
-     * <p><strong>Note:</strong> Calling this method does trigger the execution of the underlying query, so it should
-     * only be invoked when the query is intended to run. Since the stream holds resources open while in use, it must be
-     * closed after usage to prevent resource leaks. As the stream is {@code AutoCloseable}, it is recommended to use it
+     * <p><strong>Note:</strong> No query runs until the stream is consumed: each batch's query runs as the stream
+     * reaches it, and a stream that is never consumed runs none. Since the stream holds resources open while in use, it
+     * must be closed after usage to prevent resource leaks. As the stream is {@code AutoCloseable}, it is recommended to use it
      * within a {@code try-with-resources} block.</p>
      *
      * @param refs a stream of refs to retrieve from the repository.
@@ -692,9 +692,9 @@ abstract class BaseRepositoryImpl<E extends Data, ID> implements Repository {
      * are consumed by the stream. This approach is efficient and minimizes the memory footprint, especially when
      * dealing with large volumes of entities.</p>
      *
-     * <p><strong>Note:</strong> Calling this method does trigger the execution of the underlying query, so it should
-     * only be invoked when the query is intended to run. Since the stream holds resources open while in use, it must be
-     * closed after usage to prevent resource leaks. As the stream is {@code AutoCloseable}, it is recommended to use it
+     * <p><strong>Note:</strong> No query runs until the stream is consumed: each batch's query runs as the stream
+     * reaches it, and a stream that is never consumed runs none. Since the stream holds resources open while in use, it
+     * must be closed after usage to prevent resource leaks. As the stream is {@code AutoCloseable}, it is recommended to use it
      * within a {@code try-with-resources} block.</p>
      *
      * @param ids a stream of entity IDs to retrieve from the repository.
@@ -724,9 +724,9 @@ abstract class BaseRepositoryImpl<E extends Data, ID> implements Repository {
      * are consumed by the stream. This approach is efficient and minimizes the memory footprint, especially when
      * dealing with large volumes of entities.</p>
      *
-     * <p><strong>Note:</strong> Calling this method does trigger the execution of the underlying query, so it should
-     * only be invoked when the query is intended to run. Since the stream holds resources open while in use, it must be
-     * closed after usage to prevent resource leaks. As the stream is {@code AutoCloseable}, it is recommended to use it
+     * <p><strong>Note:</strong> No query runs until the stream is consumed: each batch's query runs as the stream
+     * reaches it, and a stream that is never consumed runs none. Since the stream holds resources open while in use, it
+     * must be closed after usage to prevent resource leaks. As the stream is {@code AutoCloseable}, it is recommended to use it
      * within a {@code try-with-resources} block.</p>
      *
      * @param refs a stream of refs to retrieve from the repository.
