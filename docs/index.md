@@ -163,6 +163,8 @@ If you are a tech lead or architect evaluating Storm for a production system, th
 
 Release history, the issue tracker, the security policy, and the benchmark harness are linked from the [project home page](/).
 
+To talk the evaluation through with the engineers behind Storm, write to [hello@orm.st](mailto:hello@orm.st).
+
 ## What Storm Does Not Do
 
 Storm is focused on being a great ORM and SQL template engine. It intentionally does not include:

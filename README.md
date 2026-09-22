@@ -295,6 +295,8 @@ Have a question, an idea, or something you built with Storm? Join the conversati
 - [Share an idea](https://github.com/storm-orm/storm-framework/discussions/categories/ideas) for a future release.
 - [Show what you built](https://github.com/storm-orm/storm-framework/discussions/categories/show-and-tell).
 
+To get in touch with the engineers behind Storm, for example while evaluating it for your team or project, write to [hello@orm.st](mailto:hello@orm.st). Already using Storm? Tell us what you built, and we will gladly list your company or project on [orm.st](https://orm.st).
+
 If Storm is useful to you, a [star](https://github.com/storm-orm/storm-framework) helps other developers find it.
 
 ## License

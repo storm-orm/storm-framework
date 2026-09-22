@@ -19,6 +19,10 @@ const GITHUB_REPO = 'https://github.com/storm-orm/storm-framework';
 // would go unnoticed for a long time.
 const DISCORD = 'https://discord.gg/SgQpcweUJD';
 
+// The address that reaches the engineers behind Storm directly. Security and
+// conduct reports have their own address, dev@orm.st.
+const CONTACT_EMAIL = 'hello@orm.st';
+
 const config: Config = {
   title: 'Storm Framework',
   tagline: 'A modern, high-performance ORM for Kotlin 2.0+ and Java 21+',
@@ -304,6 +308,7 @@ const config: Config = {
             {label: 'Discord', href: DISCORD},
             {label: 'Issues', href: `${GITHUB_REPO}/issues`},
             {label: 'Discussions', href: `${GITHUB_REPO}/discussions`},
+            {label: 'Email the engineers', href: `mailto:${CONTACT_EMAIL}`},
             {label: 'Contributing', href: `${GITHUB_REPO}/blob/main/CONTRIBUTING.md`},
             {label: 'Security policy', href: `${GITHUB_REPO}/blob/main/SECURITY.md`},
             {label: 'Apache 2.0 license', href: `${GITHUB_REPO}/blob/main/LICENSE.txt`},
