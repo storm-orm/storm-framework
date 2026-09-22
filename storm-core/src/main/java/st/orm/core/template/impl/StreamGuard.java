@@ -34,13 +34,13 @@ import st.orm.spi.StatementOrigin;
  * Refuses a statement on a connection whose result stream still has rows to read.
  *
  * <p>A result stream reads its rows from the database as they are consumed, and the rows not yet consumed live on
- * the server. Whether another statement may run on the same connection in the meantime is up to the driver: MySQL
- * Connector/J rejects it, MariaDB Connector/J and the SQL Server driver read the rest of the open result into
- * application memory first, and PostgreSQL and Oracle interleave the two. A result read to its end blocks nothing
- * on any of them, so the guard is released when the last row is read as well as when the stream closes. A stream
- * that is consume-only on every database behaves the same in a test on H2 as in production on any of them, so the
- * guard applies on every dialect rather than only where the driver would misbehave; a loop that needs the
- * connection while it iterates has the window terminals, which run one closed statement per window.</p>
+ * the server. Whether another statement may run on the same connection in the meantime is up to the driver: some
+ * reject it, some read the rest of the open result into application memory first, and some interleave the two. A
+ * result read to its end blocks nothing on any of them, so the guard is released when the last row is read as well
+ * as when the stream closes. A stream that is consume-only on every database behaves the same in a test as in
+ * production on any of them, so the guard applies on every dialect rather than only where the driver would
+ * misbehave; a loop that needs the connection while it iterates has the window terminals, which run one closed
+ * statement per window.</p>
  *
  * <p>Streams are tracked per connection: inside a transaction every statement shares the transaction's
  * connection, and a connection-backed template shares the caller's. Outside a transaction each statement obtains
@@ -164,9 +164,9 @@ final class StreamGuard {
                 .append("windows(size) runs one closed statement per window and leaves the connection free ")
                 .append("between windows, and windows(size).rows() in Kotlin or windows(size).flatMap(Slice::stream) ")
                 .append("in Java reads them as one stream of rows with the connection free at every row. ")
-                .append("This holds on every database: MySQL Connector/J rejects a statement ")
-                .append("while a stream is open, and MariaDB Connector/J and the SQL Server driver first read ")
-                .append("the rest of the open result into memory.");
+                .append("This holds on every database: what a driver does with a statement while a stream is open ")
+                .append("differs, from rejecting it to first reading the rest of the open result into memory, so the ")
+                .append("statement is refused on every dialect alike.");
         return message.toString();
     }
 
