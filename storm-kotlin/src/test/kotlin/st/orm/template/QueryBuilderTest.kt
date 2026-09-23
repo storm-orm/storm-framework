@@ -949,6 +949,35 @@ internal open class QueryBuilderTest(
         count shouldBe 36L
     }
 
+    data class CityPetType(val cityId: Int, val petTypeId: Int)
+
+    @Test
+    fun `crossJoin with custom select and where should pair the filtered rows`() {
+        // data.sql: Madison (id=2) paired with all 6 pet types (ids 0-5). The joined entity's column resolves
+        // in the select template and the WHERE clause binds its value after the cross join.
+        val repo = orm.entity(City::class)
+        val cityId = metamodel<City, Int>(repo.model, "id")
+        val cityName = metamodel<City, String>(repo.model, "name")
+        val petTypeId = metamodel<PetType, Int>(orm.entity(PetType::class).model, "id")
+        val pairs = repo.select(CityPetType::class) { "${t(cityId)}, ${t(petTypeId)}" }
+            .crossJoin<PetType>()
+            .where(cityName eq "Madison")
+            .resultList
+        pairs.sortedBy { it.petTypeId } shouldBe (0..5).map { CityPetType(2, it) }
+    }
+
+    @Test
+    fun `crossJoin with template and where should bind the where value`() {
+        // data.sql: Madison paired with the pet types whose id exceeds 3 (ids 4 and 5).
+        val repo = orm.entity(City::class)
+        val cityName = metamodel<City, String>(repo.model, "name")
+        val count = repo.select()
+            .crossJoin { "SELECT id FROM pet_type WHERE id > ${t(3)}" }
+            .where(cityName eq "Madison")
+            .resultCount
+        count shouldBe 2L
+    }
+
     // QueryBuilder: whereBuilder advanced
 
     @Test

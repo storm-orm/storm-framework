@@ -203,7 +203,7 @@ internal class QueryBuilderImpl<T : Data, R : Any, ID : Any>(
      * @param relation the relation to join.
      * @return the query builder.
      */
-    override fun crossJoin(relation: KClass<out Data>): QueryBuilder<Data, R, ID> = join(JoinType.cross(), relation, "").on { t("") }
+    override fun crossJoin(relation: KClass<out Data>): QueryBuilder<Data, R, ID> = join(JoinType.cross(), relation, "").on(TemplateString.raw(""))
 
     /**
      * Adds an inner join to the query.
@@ -256,7 +256,7 @@ internal class QueryBuilderImpl<T : Data, R : Any, ID : Any>(
      * @param template the condition to join.
      * @return the query builder.
      */
-    override fun crossJoin(template: TemplateString): QueryBuilder<Data, R, ID> = join(JoinType.cross(), template, "").on { t("") }
+    override fun crossJoin(template: TemplateString): QueryBuilder<Data, R, ID> = join(JoinType.cross(), template, "").on(TemplateString.raw(""))
 
     /**
      * Adds an inner join to the query.

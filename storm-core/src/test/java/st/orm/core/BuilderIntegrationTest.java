@@ -5,12 +5,15 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static st.orm.JoinType.cross;
 import static st.orm.Operator.EQUALS;
 import static st.orm.ResolveScope.INNER;
 import static st.orm.ResolveScope.OUTER;
 import static st.orm.core.template.TemplateString.raw;
 import static st.orm.core.template.Templates.alias;
 
+import java.util.Comparator;
+import java.util.List;
 import javax.sql.DataSource;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -32,7 +35,12 @@ import st.orm.core.model.Owner_;
 import st.orm.core.model.Pet;
 import st.orm.core.model.PetSummary;
 import st.orm.core.model.PetType;
+import st.orm.core.model.PetType_;
 import st.orm.core.model.Pet_;
+import st.orm.core.model.Specialty;
+import st.orm.core.model.Specialty_;
+import st.orm.core.model.Vet;
+import st.orm.core.model.Vet_;
 import st.orm.core.model.Visit;
 import st.orm.core.template.ORMTemplate;
 import st.orm.core.template.TemplateBuilder;
@@ -162,6 +170,52 @@ public class BuilderIntegrationTest {
                 .crossJoin(PetType.class)
                 .getResultCount();
         assertEquals(36, count);
+    }
+
+    @Test
+    public void testCrossJoinWithCustomSelectAndWhere() {
+        // Pairs every specialty with the vet named Carter: the joined entity's columns resolve in
+        // the select template and the WHERE clause binds its value after the cross join.
+        record VetSpecialtyPair(int vetId, int specialtyId) {}
+        var list = ORMTemplate.of(dataSource)
+                .selectFrom(Vet.class, VetSpecialtyPair.class, raw("\0, \0", Vet_.id, Specialty_.id))
+                .crossJoin(Specialty.class)
+                .where(Vet_.lastName, EQUALS, "Carter")
+                .getResultList();
+        assertEquals(List.of(
+                new VetSpecialtyPair(1, 1),
+                new VetSpecialtyPair(1, 2),
+                new VetSpecialtyPair(1, 3)), list.stream()
+                .sorted(Comparator.comparingInt(VetSpecialtyPair::specialtyId))
+                .toList());
+    }
+
+    @Test
+    public void testCrossJoinBetweenJoinsThatBindValues() {
+        // The template cross join and the template inner join bind their own values, and the WHERE
+        // clause binds after both: Carter paired with the specialties other than surgery.
+        var count = ORMTemplate.of(dataSource)
+                .selectFrom(Vet.class)
+                .crossJoin(raw("SELECT id FROM specialty WHERE name <> \0", "surgery"))
+                .innerJoin(raw("SELECT id FROM specialty WHERE id > \0", 0), "s2").on(raw("s2.id = \0", Vet_.id))
+                .where(Vet_.lastName, EQUALS, "Carter")
+                .getResultCount();
+        assertEquals(2, count);
+    }
+
+    @Test
+    public void testCrossJoinRefusesJoinCondition() {
+        // A cross join has no ON clause: a join condition passed to it fails instead of being dropped.
+        var templateCondition = assertThrows(PersistenceException.class, () -> ORMTemplate.of(dataSource)
+                .selectFrom(City.class)
+                .join(cross(), PetType.class, "").on(raw("\0 > 0", PetType_.id))
+                .getResultCount());
+        assertTrue(templateCondition.getMessage().contains("CROSS JOIN has no ON clause"), templateCondition.getMessage());
+        var tableCondition = assertThrows(PersistenceException.class, () -> ORMTemplate.of(dataSource)
+                .selectFrom(Visit.class)
+                .join(cross(), Pet.class, "").on(Visit.class)
+                .getResultCount());
+        assertTrue(tableCondition.getMessage().contains("CROSS JOIN has no ON clause"), tableCondition.getMessage());
     }
 
     // 3. having
