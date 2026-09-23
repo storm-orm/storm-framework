@@ -108,6 +108,9 @@ final class JoinProcessor implements ElementProcessor<Join> {
     private String compileJoin(Join join, TemplateCompiler compiler)
             throws SqlTemplateException {
         String joinType = join.type().sql();
+        if (!join.type().hasOnClause() && hasJoinCondition(join)) {
+            throw new SqlTemplateException("%s has no ON clause, so it cannot take a join condition. Use a join type with an ON clause, such as an inner or left join, to join on a condition.".formatted(joinType));
+        }
         String onClause = join.type().hasOnClause() ? switch (join.target()) {
             case TableTarget(var toTable, var toField) when join.source() instanceof TableSource(var fromTable) ->
                     compileJoinCondition(fromTable, join.sourceAlias(), toTable, join.targetAlias(), toField, compiler);
@@ -127,6 +130,15 @@ final class JoinProcessor implements ElementProcessor<Join> {
                 yield compiler.dialectTemplate().process("\n\0 (\0) \0\0", joinType, source, alias, clause);
             }
         };
+    }
+
+    /**
+     * Returns whether the join carries a condition: a table to join on, or an ON template with content.
+     */
+    private static boolean hasJoinCondition(Join join) {
+        return !(join.target() instanceof TemplateTarget(var template))
+                || !template.values().isEmpty()
+                || template.fragments().stream().anyMatch(fragment -> !fragment.isBlank());
     }
 
     private String compileJoinCondition(
