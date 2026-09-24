@@ -8,6 +8,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.SequencedMap;
 import org.junit.jupiter.api.Test;
@@ -52,9 +53,19 @@ class H2SqlDialectTest {
 
     @Test
     void getSafeIdentifierShouldEscapeH2SpecificKeywords() {
-        assertEquals("\"ILIKE\"", dialect.getSafeIdentifier("ILIKE"));
-        assertEquals("\"AUTOINCREMENT\"", dialect.getSafeIdentifier("AUTOINCREMENT"));
-        assertEquals("\"CACHED\"", dialect.getSafeIdentifier("CACHED"));
+        assertEquals("\"QUALIFY\"", dialect.getSafeIdentifier("QUALIFY"));
+        assertEquals("\"MINUS\"", dialect.getSafeIdentifier("MINUS"));
+        assertEquals("\"top\"", dialect.getSafeIdentifier("top"));
+    }
+
+    @Test
+    void getSafeIdentifierShouldNotEscapeWordsH2Accepts() {
+        // H2 folds an unquoted name to upper case, so quoting one of these would make it case-sensitive and stop it
+        // matching a column created without quotes.
+        for (String name : List.of("position", "date", "time", "timestamp", "result", "language", "start",
+                "ilike", "regexp", "autoincrement", "cached", "today")) {
+            assertEquals(name, dialect.getSafeIdentifier(name));
+        }
     }
 
     @Test
@@ -69,9 +80,21 @@ class H2SqlDialectTest {
 
     @Test
     void isKeywordShouldBeCaseInsensitive() {
-        assertTrue(dialect.isKeyword("ilike"));
-        assertTrue(dialect.isKeyword("ILIKE"));
+        assertTrue(dialect.isKeyword("qualify"));
+        assertTrue(dialect.isKeyword("QUALIFY"));
         assertFalse(dialect.isKeyword("myColumn"));
+    }
+
+    @Test
+    void isKeywordShouldNotDependOnTheDefaultLocale() {
+        // Upper-cased in the Turkish locale, "limit" becomes "LİMİT", with a dotted capital I.
+        Locale defaultLocale = Locale.getDefault();
+        Locale.setDefault(Locale.forLanguageTag("tr-TR"));
+        try {
+            assertTrue(dialect.isKeyword("limit"));
+        } finally {
+            Locale.setDefault(defaultLocale);
+        }
     }
 
     // Identifier pattern: extraction from SQL text
@@ -243,20 +266,16 @@ class H2SqlDialectTest {
 
     @Test
     void isKeywordShouldRecognizeH2SpecificKeywords() {
-        assertTrue(dialect.isKeyword("AUTOINCREMENT"));
-        assertTrue(dialect.isKeyword("CACHED"));
-        assertTrue(dialect.isKeyword("EXPLAIN"));
-        assertTrue(dialect.isKeyword("ILIKE"));
-        assertTrue(dialect.isKeyword("INDEX"));
+        assertTrue(dialect.isKeyword("IF"));
+        assertTrue(dialect.isKeyword("KEY"));
         assertTrue(dialect.isKeyword("LIMIT"));
-        assertTrue(dialect.isKeyword("MEMORY"));
         assertTrue(dialect.isKeyword("MINUS"));
         assertTrue(dialect.isKeyword("OFFSET"));
         assertTrue(dialect.isKeyword("QUALIFY"));
-        assertTrue(dialect.isKeyword("REGEXP"));
         assertTrue(dialect.isKeyword("ROWNUM"));
-        assertTrue(dialect.isKeyword("TODAY"));
         assertTrue(dialect.isKeyword("TOP"));
+        assertTrue(dialect.isKeyword("VALUE"));
+        assertTrue(dialect.isKeyword("YEAR"));
     }
 
     @Test

@@ -15,7 +15,9 @@
  */
 package st.orm.spi.mariadb;
 
+import java.util.Locale;
 import java.util.Optional;
+import java.util.Set;
 import st.orm.StormConfig;
 import st.orm.spi.mysql.MySQLSqlDialect;
 
@@ -72,6 +74,56 @@ public class MariaDBSqlDialect extends MySQLSqlDialect {
     @Override
     public String name() {
         return "MariaDB";
+    }
+
+    /**
+     * The words MariaDB refuses unquoted as a column name or a table alias, from 10.11 through 12.x; {@code WINDOW} is
+     * refused as an alias only. MariaDB lists its keywords in {@code information_schema.KEYWORDS} without marking the
+     * reserved ones, and reserves a different set from MySQL's. A word that only some of these versions reserve is on
+     * the list too, since quoting a name leaves its meaning unchanged in MariaDB.
+     */
+    private static final Set<String> RESERVED_WORDS = Set.of(
+            "ACCESSIBLE", "ADD", "ALL", "ALTER", "ANALYZE", "AND", "AS", "ASC", "ASENSITIVE", "BEFORE", "BETWEEN",
+            "BIGINT", "BINARY", "BLOB", "BOTH", "BY", "CALL", "CASCADE", "CASE", "CHANGE", "CHAR", "CHARACTER", "CHECK",
+            "COLLATE", "COLUMN", "CONDITION", "CONSTRAINT", "CONTINUE", "CONVERSION", "CONVERT", "CREATE", "CROSS",
+            "CURRENT_DATE", "CURRENT_PATH", "CURRENT_ROLE", "CURRENT_TIME", "CURRENT_TIMESTAMP", "CURRENT_USER",
+            "CURSOR", "DATABASES", "DAY_HOUR", "DAY_MICROSECOND", "DAY_MINUTE", "DAY_SECOND", "DEC", "DECIMAL",
+            "DECLARE", "DEFAULT", "DELAYED", "DELETE", "DELETE_DOMAIN_ID", "DESC", "DESCRIBE", "DETERMINISTIC",
+            "DISTINCT", "DISTINCTROW", "DIV", "DOUBLE", "DO_DOMAIN_IDS", "DROP", "DUAL", "EACH", "ELSE", "ELSEIF",
+            "ENCLOSED", "ESCAPED", "EXCEPT", "EXISTS", "EXIT", "EXPLAIN", "FALSE", "FETCH", "FLOAT", "FLOAT4", "FLOAT8",
+            "FOR", "FORCE", "FOREIGN", "FROM", "FULLTEXT", "GRANT", "GROUP", "HAVING", "HIGH_PRIORITY",
+            "HOUR_MICROSECOND", "HOUR_MINUTE", "HOUR_SECOND", "IF", "IGNORE", "IGNORE_DOMAIN_IDS", "IN", "INDEX",
+            "INFILE", "INNER", "INOUT", "INSENSITIVE", "INSERT", "INT", "INT1", "INT2", "INT3", "INT4", "INT8",
+            "INTEGER", "INTERSECT", "INTERVAL", "INTO", "IS", "ITERATE", "JOIN", "KEY", "KEYS", "KILL", "LEADING",
+            "LEAVE", "LEFT", "LIKE", "LIMIT", "LINEAR", "LINES", "LOAD", "LOCALTIME", "LOCALTIMESTAMP", "LOCK", "LONG",
+            "LONGBLOB", "LONGTEXT", "LOOP", "LOW_PRIORITY", "MASTER_DEMOTE_TO_REPLICA", "MASTER_DEMOTE_TO_SLAVE",
+            "MASTER_SSL_VERIFY_SERVER_CERT", "MATCH", "MAXVALUE", "MEDIUMBLOB", "MEDIUMINT", "MEDIUMTEXT", "MIDDLEINT",
+            "MINUTE_MICROSECOND", "MINUTE_SECOND", "MOD", "MODIFIES", "NATURAL", "NOT", "NO_WRITE_TO_BINLOG", "NULL",
+            "NUMERIC", "OFFSET", "ON", "OPTIMIZE", "OPTIONALLY", "OR", "ORDER", "OUT", "OUTER", "OUTFILE", "OVER",
+            "PAGE_CHECKSUM", "PARSE_VCOL_EXPR", "PARTITION", "PORTION", "PRECISION", "PRIMARY", "PROCEDURE", "PURGE",
+            "RANGE", "READ", "READS", "READ_WRITE", "REAL", "RECURSIVE", "REFERENCES", "REF_SYSTEM_ID", "REGEXP",
+            "RELEASE", "RENAME", "REPEAT", "REPLACE", "REQUIRE", "RESIGNAL", "RESTRICT", "RETURN", "RETURNING",
+            "REVOKE", "RIGHT", "RLIKE", "ROWS", "ROW_NUMBER", "SCHEMAS", "SECOND_MICROSECOND", "SELECT", "SENSITIVE",
+            "SEPARATOR", "SET", "SHOW", "SIGNAL", "SMALLINT", "SPATIAL", "SPECIFIC", "SQL", "SQLEXCEPTION", "SQLSTATE",
+            "SQLWARNING", "SQL_AFTER_GTIDS", "SQL_BEFORE_GTIDS", "SQL_BIG_RESULT", "SQL_CALC_FOUND_ROWS",
+            "SQL_SMALL_RESULT", "SSL", "STARTING", "STATS_AUTO_RECALC", "STATS_PERSISTENT", "STATS_SAMPLE_PAGES",
+            "STRAIGHT_JOIN", "TABLE", "TERMINATED", "THEN", "TINYBLOB", "TINYINT", "TINYTEXT", "TO", "TO_DATE",
+            "TRAILING", "TRIGGER", "TRUE", "UNDO", "UNION", "UNIQUE", "UNLOCK", "UNSIGNED", "UPDATE", "USAGE", "USE",
+            "USING", "UTC_DATE", "UTC_TIME", "UTC_TIMESTAMP", "VALUES", "VARBINARY", "VARCHAR", "VARCHARACTER",
+            "VARYING", "VECTOR", "WHEN", "WHERE", "WHILE", "WINDOW", "WITH", "WRITE", "XOR", "YEAR_MONTH",
+            "ZEROFILL"
+    );
+
+    /**
+     * Indicates whether the given name is a keyword in this SQL dialect.
+     *
+     * @param name the name to check.
+     * @return {@code true} if the name is a keyword, {@code false} otherwise.
+     * @since 1.14
+     */
+    @Override
+    public boolean isKeyword(String name) {
+        return RESERVED_WORDS.contains(name.toUpperCase(Locale.ROOT));
     }
 
     /**

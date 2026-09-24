@@ -15,12 +15,10 @@
  */
 package st.orm.spi.mssqlserver;
 
-import static java.util.stream.Collectors.toSet;
-
 import java.util.List;
+import java.util.Locale;
 import java.util.Set;
 import java.util.regex.Pattern;
-import java.util.stream.Stream;
 import st.orm.StormConfig;
 import st.orm.core.spi.DefaultSqlDialect;
 import st.orm.core.template.Column;
@@ -80,14 +78,32 @@ public class MSSQLServerSqlDialect extends DefaultSqlDialect {
         return MSSQL_IDENTIFIER;
     }
 
-    private static final Set<String> MSSQL_RESERVED = Stream.concat(ANSI_KEYWORDS.stream(), Stream.of(
-            "BACKUP", "BREAK", "BROWSE", "BULK", "CHECKPOINT", "CLUSTERED", "COMPUTE", "CONTAINS",
-            "CONTAINSTABLE", "DENY", "DUMP", "ERRLVL", "EXTERNAL", "FREETEXT", "FREETEXTTABLE", "HOLDLOCK",
-            "IDENTITY_INSERT", "IDENTITYCOL", "INDEX", "KILL", "LINENO", "MERGE", "NOCHECK", "NONCLUSTERED",
-            "OFFSETS", "PERCENT", "PLAN", "PIVOT", "PRINT", "PROC", "RAISERROR", "READTEXT", "REPLICATION", "ROWCOUNT",
-            "ROWGUIDCOL", "RULE", "SAVE", "SEQUENCE", "STATISTICS", "TEXTSIZE", "TOP", "TRAN", "TRANSACTION",
-            "TRUNCATE", "TRY_CONVERT", "TSEQUAL", "UNPIVOT", "UPDATETEXT", "WAITFOR", "WHILE", "WRITETEXT"
-    )).collect(toSet());
+    /**
+     * The reserved keywords Microsoft documents for Transact-SQL, and {@code REGEXP_LIKE}, which SQL Server 2025
+     * refuses as an unquoted identifier without documenting it as reserved.
+     */
+    private static final Set<String> RESERVED_WORDS = Set.of(
+            "ADD", "ALL", "ALTER", "AND", "ANY", "AS", "ASC", "AUTHORIZATION", "BACKUP", "BEGIN", "BETWEEN", "BREAK",
+            "BROWSE", "BULK", "BY", "CASCADE", "CASE", "CHECK", "CHECKPOINT", "CLOSE", "CLUSTERED", "COALESCE",
+            "COLLATE", "COLUMN", "COMMIT", "COMPUTE", "CONSTRAINT", "CONTAINS", "CONTAINSTABLE", "CONTINUE", "CONVERT",
+            "CREATE", "CROSS", "CURRENT", "CURRENT_DATE", "CURRENT_TIME", "CURRENT_TIMESTAMP", "CURRENT_USER", "CURSOR",
+            "DATABASE", "DBCC", "DEALLOCATE", "DECLARE", "DEFAULT", "DELETE", "DENY", "DESC", "DISK", "DISTINCT",
+            "DISTRIBUTED", "DOUBLE", "DROP", "DUMP", "ELSE", "END", "ERRLVL", "ESCAPE", "EXCEPT", "EXEC", "EXECUTE",
+            "EXISTS", "EXIT", "EXTERNAL", "FETCH", "FILE", "FILLFACTOR", "FOR", "FOREIGN", "FREETEXT", "FREETEXTTABLE",
+            "FROM", "FULL", "FUNCTION", "GOTO", "GRANT", "GROUP", "HAVING", "HOLDLOCK", "IDENTITY", "IDENTITYCOL",
+            "IDENTITY_INSERT", "IF", "IN", "INDEX", "INNER", "INSERT", "INTERSECT", "INTO", "IS", "JOIN", "KEY", "KILL",
+            "LEFT", "LIKE", "LINENO", "LOAD", "MERGE", "NATIONAL", "NOCHECK", "NONCLUSTERED", "NOT", "NULL", "NULLIF",
+            "OF", "OFF", "OFFSETS", "ON", "OPEN", "OPENDATASOURCE", "OPENQUERY", "OPENROWSET", "OPENXML", "OPTION",
+            "OR", "ORDER", "OUTER", "OVER", "PERCENT", "PIVOT", "PLAN", "PRECISION", "PRIMARY", "PRINT", "PROC",
+            "PROCEDURE", "PUBLIC", "RAISERROR", "READ", "READTEXT", "RECONFIGURE", "REFERENCES", "REGEXP_LIKE",
+            "REPLICATION", "RESTORE", "RESTRICT", "RETURN", "REVERT", "REVOKE", "RIGHT", "ROLLBACK", "ROWCOUNT",
+            "ROWGUIDCOL", "RULE", "SAVE", "SCHEMA", "SECURITYAUDIT", "SELECT", "SEMANTICKEYPHRASETABLE",
+            "SEMANTICSIMILARITYDETAILSTABLE", "SEMANTICSIMILARITYTABLE", "SESSION_USER", "SET", "SETUSER", "SHUTDOWN",
+            "SOME", "STATISTICS", "SYSTEM_USER", "TABLE", "TABLESAMPLE", "TEXTSIZE", "THEN", "TO", "TOP", "TRAN",
+            "TRANSACTION", "TRIGGER", "TRUNCATE", "TRY_CONVERT", "TSEQUAL", "UNION", "UNIQUE", "UNPIVOT", "UPDATE",
+            "UPDATETEXT", "USE", "USER", "VALUES", "VARYING", "VIEW", "WAITFOR", "WHEN", "WHERE", "WHILE", "WITH",
+            "WRITETEXT"
+    );
 
     /**
      * Indicates whether the given name is a keyword in this SQL dialect.
@@ -98,7 +114,7 @@ public class MSSQLServerSqlDialect extends DefaultSqlDialect {
      */
     @Override
     public boolean isKeyword(String name) {
-        return MSSQL_RESERVED.contains(name.toUpperCase());
+        return RESERVED_WORDS.contains(name.toUpperCase(Locale.ROOT));
     }
 
     /**

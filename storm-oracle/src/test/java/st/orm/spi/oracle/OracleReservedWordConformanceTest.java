@@ -15,18 +15,20 @@
  */
 package st.orm.spi.oracle;
 
+import java.sql.Connection;
+import java.sql.DriverManager;
+import java.sql.SQLException;
+import java.util.Optional;
+import java.util.Set;
 import javax.sql.DataSource;
 import org.junit.jupiter.api.AfterAll;
 import org.testcontainers.oracle.OracleContainer;
-import st.orm.tck.AbstractPaginationConformanceTest;
+import st.orm.tck.AbstractReservedWordConformanceTest;
 import st.orm.tck.ContainerDataSource;
 import st.orm.test.StormTest;
 
-/**
- * Runs the keyset scrolling conformance suite against Oracle.
- */
-@StormTest(scripts = "/data.sql")
-public class OraclePaginationConformanceTest extends AbstractPaginationConformanceTest {
+@StormTest(rollback = false)
+public class OracleReservedWordConformanceTest extends AbstractReservedWordConformanceTest {
     private static OracleContainer container;
 
     public static synchronized DataSource dataSource() {
@@ -47,5 +49,28 @@ public class OraclePaginationConformanceTest extends AbstractPaginationConforman
             container.stop();
             container = null;
         }
+    }
+
+    /**
+     * The keywords {@code V$RESERVED_WORDS} marks as reserved or semi-reserved, the ones Oracle refuses as an
+     * identifier. The view is readable by {@code SYSTEM}, whose password the container sets to the application
+     * user's.
+     */
+    @Override
+    protected Optional<Set<String>> reservedWords() throws SQLException {
+        try (Connection connection = DriverManager.getConnection(
+                container.getJdbcUrl(), "system", container.getPassword())) {
+            return Optional.of(queryWords(connection,
+                    "SELECT keyword FROM v$reserved_words WHERE reserved = 'Y' OR res_semi = 'Y'"));
+        }
+    }
+
+    /**
+     * Oracle folds an unquoted name to upper case, so a word quoted needlessly no longer matches a column created
+     * without quotes.
+     */
+    @Override
+    protected Optional<Set<String>> quotedWords() {
+        return Optional.of(OracleSqlDialect.RESERVED_WORDS);
     }
 }

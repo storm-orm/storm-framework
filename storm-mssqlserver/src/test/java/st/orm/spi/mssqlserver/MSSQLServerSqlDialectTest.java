@@ -347,7 +347,6 @@ class MSSQLServerSqlDialectTest {
         assertTrue(dialect.isKeyword("REPLICATION"));
         assertTrue(dialect.isKeyword("ROWCOUNT"));
         assertTrue(dialect.isKeyword("SAVE"));
-        assertTrue(dialect.isKeyword("SEQUENCE"));
         assertTrue(dialect.isKeyword("STATISTICS"));
         assertTrue(dialect.isKeyword("TEXTSIZE"));
         assertTrue(dialect.isKeyword("TRAN"));
@@ -360,6 +359,25 @@ class MSSQLServerSqlDialectTest {
         assertTrue(dialect.isKeyword("WAITFOR"));
         assertTrue(dialect.isKeyword("WHILE"));
         assertTrue(dialect.isKeyword("WRITETEXT"));
+    }
+
+    @Test
+    void isKeywordShouldRecognizeDocumentedReservedKeywordsThatAreCommonColumnNames() {
+        assertTrue(dialect.isKeyword("DATABASE"));
+        assertTrue(dialect.isKeyword("DESC"));
+        assertTrue(dialect.isKeyword("FILE"));
+        assertTrue(dialect.isKeyword("KEY"));
+        assertTrue(dialect.isKeyword("OPTION"));
+        assertTrue(dialect.isKeyword("PUBLIC"));
+        assertTrue(dialect.isKeyword("READ"));
+        assertTrue(dialect.isKeyword("SCHEMA"));
+        assertTrue(dialect.isKeyword("VIEW"));
+    }
+
+    @Test
+    void isKeywordShouldRecognizeRegexpLike() {
+        // SQL Server 2025 refuses it as an unquoted identifier without documenting it as reserved.
+        assertTrue(dialect.isKeyword("REGEXP_LIKE"));
     }
 
     @Test

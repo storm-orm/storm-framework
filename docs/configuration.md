@@ -501,16 +501,18 @@ Use `@DbTable` to override a table name, `@DbColumn` to override a column name, 
 
 ### Identifier Escaping
 
-When a table or column name conflicts with a SQL reserved word, the database will reject the query unless the identifier is escaped. Storm automatically detects and escapes common reserved words. For cases that are not caught automatically, you can force escaping with the `escape` parameter on `@DbTable` or `@DbColumn`. Storm uses the escaping syntax appropriate for the active database dialect (double quotes for most databases, square brackets for SQL Server).
+When a table or column name is a word the database reserves, such as `order`, the database rejects the query unless the name is escaped. Storm escapes these names automatically: each dialect knows the words its database reserves, and Storm also escapes a name that holds characters an unquoted name cannot. Every other name stays unescaped. This matters on H2 and Oracle, which store an unquoted name in upper case: there an escaped name is case-sensitive, so `"position"` would not match a `position` column created without quotes.
+
+To escape a name Storm leaves alone, typically one the table was created with in quotes to keep its case, set the `escape` parameter on `@DbTable` or `@DbColumn`. Storm uses the escaping syntax of the active dialect: double quotes for most databases, backticks for MySQL and MariaDB, and square brackets for SQL Server.
 
 <Tabs groupId="language">
 <TabItem value="kotlin" label="Kotlin" default>
 
 ```kotlin
-@DbTable("order", escape = true)  // "order" is a reserved word
-data class Order(
+@DbTable("PetType", escape = true)  // created as "PetType"
+data class PetType(
     @PK val id: Int = 0,
-    @DbColumn("select", escape = true) val select: String  // "select" is reserved
+    @DbColumn("typeName", escape = true) val name: String  // created as "typeName"
 ) : Entity<Int>
 ```
 
@@ -518,9 +520,9 @@ data class Order(
 <TabItem value="java" label="Java">
 
 ```java
-@DbTable(value = "order", escape = true)  // "order" is a reserved word
-record Order(@PK Integer id,
-             @DbColumn(value = "select", escape = true) String select  // "select" is reserved
+@DbTable(value = "PetType", escape = true)  // created as "PetType"
+record PetType(@PK Integer id,
+               @DbColumn(value = "typeName", escape = true) String name  // created as "typeName"
 ) implements Entity<Integer> {}
 ```
 

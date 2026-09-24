@@ -27,6 +27,7 @@ import static st.orm.core.spi.StormConfigHelper.getBoolean;
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.SequencedMap;
 import java.util.Set;
 import java.util.function.Function;
@@ -151,7 +152,7 @@ public class DefaultSqlDialect implements SqlDialect {
      */
     @Override
     public boolean isKeyword(String name) {
-        return ANSI_KEYWORDS.contains(name.toUpperCase());
+        return ANSI_KEYWORDS.contains(name.toUpperCase(Locale.ROOT));
     }
 
     /**

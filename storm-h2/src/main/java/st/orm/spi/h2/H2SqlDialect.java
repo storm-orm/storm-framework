@@ -15,7 +15,6 @@
  */
 package st.orm.spi.h2;
 
-import static java.util.stream.Collectors.toSet;
 import static st.orm.Operator.BETWEEN;
 import static st.orm.Operator.GREATER_THAN;
 import static st.orm.Operator.GREATER_THAN_OR_EQUAL;
@@ -24,9 +23,9 @@ import static st.orm.Operator.LESS_THAN_OR_EQUAL;
 
 import java.sql.PreparedStatement;
 import java.sql.SQLException;
+import java.util.Locale;
 import java.util.Set;
 import java.util.UUID;
-import java.util.stream.Stream;
 import st.orm.Operator;
 import st.orm.StormConfig;
 import st.orm.core.spi.DefaultSqlDialect;
@@ -59,11 +58,23 @@ public class H2SqlDialect extends DefaultSqlDialect {
         return true;
     }
 
-    private static final Set<String> H2_KEYWORDS = Stream.concat(ANSI_KEYWORDS.stream(), Stream.of(
-            "AUTOINCREMENT", "CACHED", "EXPLAIN", "IF", "ILIKE", "INDEX", "KEY", "LIMIT",
-            "MEMORY", "MINUS", "OFFSET", "QUALIFY", "REGEXP", "ROWNUM", "SYSDATE", "SYSTIME",
-            "SYSTIMESTAMP", "TODAY", "TOP"
-    )).collect(toSet());
+    /**
+     * The words H2 refuses unquoted where Storm renders a name. H2 folds an unquoted name to upper case, so quoting
+     * any other word would make the lower-case name Storm renders case-sensitive, and it would no longer match a
+     * column created without quotes. Package-private for the conformance test, which checks that H2 refuses every
+     * word on it.
+     */
+    static final Set<String> RESERVED_WORDS = Set.of(
+            "ALL", "AND", "ANY", "ARRAY", "AS", "ASYMMETRIC", "AUTHORIZATION", "BETWEEN", "CASE", "CAST", "CHECK",
+            "CONSTRAINT", "CROSS", "CURRENT_CATALOG", "CURRENT_DATE", "CURRENT_PATH", "CURRENT_ROLE", "CURRENT_SCHEMA",
+            "CURRENT_TIME", "CURRENT_TIMESTAMP", "CURRENT_USER", "DAY", "DEFAULT", "DISTINCT", "ELSE", "END", "EXCEPT",
+            "EXISTS", "FALSE", "FETCH", "FOR", "FOREIGN", "FROM", "FULL", "GROUP", "HAVING", "HOUR", "IF", "IN",
+            "INNER", "INTERSECT", "INTERVAL", "IS", "JOIN", "KEY", "LEFT", "LIKE", "LIMIT", "LOCALTIME",
+            "LOCALTIMESTAMP", "MINUS", "MINUTE", "MONTH", "NATURAL", "NOT", "NULL", "OFFSET", "ON", "OR", "ORDER",
+            "PRIMARY", "QUALIFY", "RIGHT", "ROW", "ROWNUM", "SECOND", "SELECT", "SESSION_USER", "SET", "SOME",
+            "SYMMETRIC", "SYSTEM_USER", "TABLE", "TO", "TOP", "TRUE", "UESCAPE", "UNION", "UNIQUE", "UNKNOWN", "USER",
+            "USING", "VALUE", "VALUES", "WHEN", "WHERE", "WINDOW", "WITH", "YEAR", "_ROWID_"
+    );
 
     /**
      * Indicates whether the given name is a keyword in this SQL dialect.
@@ -74,7 +85,7 @@ public class H2SqlDialect extends DefaultSqlDialect {
      */
     @Override
     public boolean isKeyword(String name) {
-        return H2_KEYWORDS.contains(name.toUpperCase());
+        return RESERVED_WORDS.contains(name.toUpperCase(Locale.ROOT));
     }
 
     /**

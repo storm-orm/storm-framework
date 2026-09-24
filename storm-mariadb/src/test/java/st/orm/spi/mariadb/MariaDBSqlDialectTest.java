@@ -40,7 +40,7 @@ class MariaDBSqlDialectTest {
 
     @Test
     void getSafeIdentifierShouldEscapeMySQLKeywords() {
-        // MariaDB inherits MySQL keywords like FULLTEXT, OPTIMIZE.
+        // MariaDB reserves FULLTEXT and OPTIMIZE as MySQL does.
         assertEquals("`FULLTEXT`", dialect.getSafeIdentifier("FULLTEXT"));
         assertEquals("`OPTIMIZE`", dialect.getSafeIdentifier("OPTIMIZE"));
     }
@@ -61,6 +61,23 @@ class MariaDBSqlDialectTest {
         assertTrue(dialect.isKeyword("fulltext"));
         assertTrue(dialect.isKeyword("FULLTEXT"));
         assertFalse(dialect.isKeyword("myColumn"));
+    }
+
+    @Test
+    void isKeywordShouldRecognizeWordsMariaDBReserves() {
+        assertTrue(dialect.isKeyword("CONVERSION"));
+        assertTrue(dialect.isKeyword("RETURNING"));
+        assertTrue(dialect.isKeyword("ROW_NUMBER"));
+        assertTrue(dialect.isKeyword("TO_DATE"));
+        assertTrue(dialect.isKeyword("VECTOR"));
+    }
+
+    @Test
+    void isKeywordShouldNotRecognizeWordsOnlyMySQLReserves() {
+        assertFalse(dialect.isKeyword("DENSE_RANK"));
+        assertFalse(dialect.isKeyword("GROUPS"));
+        assertFalse(dialect.isKeyword("LIBRARY"));
+        assertFalse(dialect.isKeyword("RANK"));
     }
 
     // Identifier pattern: matches both backtick and double-quote

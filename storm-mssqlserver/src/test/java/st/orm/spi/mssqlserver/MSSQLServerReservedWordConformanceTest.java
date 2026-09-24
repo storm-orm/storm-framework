@@ -13,39 +13,35 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package st.orm.spi.oracle;
+package st.orm.spi.mssqlserver;
 
+import java.util.Optional;
+import java.util.Set;
 import javax.sql.DataSource;
-import org.junit.jupiter.api.AfterAll;
-import org.testcontainers.oracle.OracleContainer;
-import st.orm.tck.AbstractPaginationConformanceTest;
+import org.testcontainers.containers.MSSQLServerContainer;
+import st.orm.tck.AbstractReservedWordConformanceTest;
 import st.orm.tck.ContainerDataSource;
 import st.orm.test.StormTest;
 
-/**
- * Runs the keyset scrolling conformance suite against Oracle.
- */
-@StormTest(scripts = "/data.sql")
-public class OraclePaginationConformanceTest extends AbstractPaginationConformanceTest {
-    private static OracleContainer container;
+@StormTest(rollback = false)
+public class MSSQLServerReservedWordConformanceTest extends AbstractReservedWordConformanceTest {
+    private static MSSQLServerContainer<?> container;
 
     public static synchronized DataSource dataSource() {
         if (container == null) {
-            container = new OracleContainer("gvenzl/oracle-free:23");
+            container = new MSSQLServerContainer<>("mcr.microsoft.com/mssql/server:2019-latest")
+                .acceptLicense();
             container.start();
         }
         return ContainerDataSource.of(container.getJdbcUrl(), container.getUsername(), container.getPassword());
     }
 
     /**
-     * Stops the database when the class is done: each Oracle test class starts its own, and one left running slows
-     * every start after it toward the startup timeout.
+     * SQL Server keeps no list of its reserved keywords that a query can read; Microsoft documents them instead, and
+     * the dialect quotes the documented ones.
      */
-    @AfterAll
-    static synchronized void stopContainer() {
-        if (container != null) {
-            container.stop();
-            container = null;
-        }
+    @Override
+    protected Optional<Set<String>> reservedWords() {
+        return Optional.empty();
     }
 }

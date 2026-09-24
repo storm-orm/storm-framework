@@ -15,17 +15,15 @@
  */
 package st.orm.spi.sqlite;
 
-import static java.util.stream.Collectors.toSet;
-
 import java.sql.PreparedStatement;
 import java.sql.SQLException;
 import java.sql.Timestamp;
 import java.text.SimpleDateFormat;
 import java.util.Calendar;
+import java.util.Locale;
 import java.util.Set;
 import java.util.TimeZone;
 import java.util.regex.Pattern;
-import java.util.stream.Stream;
 import st.orm.PersistenceException;
 import st.orm.StormConfig;
 import st.orm.core.spi.DefaultSqlDialect;
@@ -63,12 +61,26 @@ public class SQLiteSqlDialect extends DefaultSqlDialect {
         return SQLITE_IDENTIFIER;
     }
 
-    private static final Set<String> SQLITE_KEYWORDS = Stream.concat(ANSI_KEYWORDS.stream(), Stream.of(
-            "ABORT", "AUTOINCREMENT", "CONFLICT", "DATABASE", "DETACH", "EXPLAIN", "FAIL",
-            "GLOB", "IF", "IGNORE", "INDEX", "INDEXED", "INSTEAD", "ISNULL", "KEY", "LIMIT",
-            "NOTNULL", "OFFSET", "PLAN", "PRAGMA", "QUERY", "RAISE", "REGEXP", "REINDEX",
-            "RENAME", "REPLACE", "VACUUM", "VIRTUAL"
-    )).collect(toSet());
+    /**
+     * The keywords SQLite documents. SQLite accepts many of them as an unquoted name, as a fallback its documentation
+     * warns a later release may withdraw, and quoting a name leaves its meaning unchanged in SQLite.
+     */
+    private static final Set<String> RESERVED_WORDS = Set.of(
+            "ABORT", "ACTION", "ADD", "AFTER", "ALL", "ALTER", "ALWAYS", "ANALYZE", "AND", "AS", "ASC", "ATTACH",
+            "AUTOINCREMENT", "BEFORE", "BEGIN", "BETWEEN", "BY", "CASCADE", "CASE", "CAST", "CHECK", "COLLATE",
+            "COLUMN", "COMMIT", "CONFLICT", "CONSTRAINT", "CREATE", "CROSS", "CURRENT", "CURRENT_DATE", "CURRENT_TIME",
+            "CURRENT_TIMESTAMP", "DATABASE", "DEFAULT", "DEFERRABLE", "DEFERRED", "DELETE", "DESC", "DETACH",
+            "DISTINCT", "DO", "DROP", "EACH", "ELSE", "END", "ESCAPE", "EXCEPT", "EXCLUDE", "EXCLUSIVE", "EXISTS",
+            "EXPLAIN", "FAIL", "FILTER", "FIRST", "FOLLOWING", "FOR", "FOREIGN", "FROM", "FULL", "GENERATED", "GLOB",
+            "GROUP", "GROUPS", "HAVING", "IF", "IGNORE", "IMMEDIATE", "IN", "INDEX", "INDEXED", "INITIALLY", "INNER",
+            "INSERT", "INSTEAD", "INTERSECT", "INTO", "IS", "ISNULL", "JOIN", "KEY", "LAST", "LEFT", "LIKE", "LIMIT",
+            "MATCH", "MATERIALIZED", "NATURAL", "NO", "NOT", "NOTHING", "NOTNULL", "NULL", "NULLS", "OF", "OFFSET",
+            "ON", "OR", "ORDER", "OTHERS", "OUTER", "OVER", "PARTITION", "PLAN", "PRAGMA", "PRECEDING", "PRIMARY",
+            "QUERY", "RAISE", "RANGE", "RECURSIVE", "REFERENCES", "REGEXP", "REINDEX", "RELEASE", "RENAME", "REPLACE",
+            "RESTRICT", "RETURNING", "RIGHT", "ROLLBACK", "ROW", "ROWS", "SAVEPOINT", "SELECT", "SET", "TABLE", "TEMP",
+            "TEMPORARY", "THEN", "TIES", "TO", "TRANSACTION", "TRIGGER", "UNBOUNDED", "UNION", "UNIQUE", "UPDATE",
+            "USING", "VACUUM", "VALUES", "VIEW", "VIRTUAL", "WHEN", "WHERE", "WINDOW", "WITH", "WITHOUT"
+    );
 
     /**
      * Indicates whether the given name is a keyword in this SQL dialect.
@@ -79,7 +91,7 @@ public class SQLiteSqlDialect extends DefaultSqlDialect {
      */
     @Override
     public boolean isKeyword(String name) {
-        return SQLITE_KEYWORDS.contains(name.toUpperCase());
+        return RESERVED_WORDS.contains(name.toUpperCase(Locale.ROOT));
     }
 
     /**

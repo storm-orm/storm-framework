@@ -13,39 +13,38 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package st.orm.spi.oracle;
+package st.orm.spi.mysql;
 
+import java.sql.Connection;
+import java.sql.SQLException;
+import java.util.Optional;
+import java.util.Set;
 import javax.sql.DataSource;
-import org.junit.jupiter.api.AfterAll;
-import org.testcontainers.oracle.OracleContainer;
-import st.orm.tck.AbstractPaginationConformanceTest;
+import org.testcontainers.containers.MySQLContainer;
+import st.orm.tck.AbstractReservedWordConformanceTest;
 import st.orm.tck.ContainerDataSource;
 import st.orm.test.StormTest;
 
-/**
- * Runs the keyset scrolling conformance suite against Oracle.
- */
-@StormTest(scripts = "/data.sql")
-public class OraclePaginationConformanceTest extends AbstractPaginationConformanceTest {
-    private static OracleContainer container;
+@StormTest(rollback = false)
+public class MySQLReservedWordConformanceTest extends AbstractReservedWordConformanceTest {
+    private static MySQLContainer<?> container;
 
     public static synchronized DataSource dataSource() {
         if (container == null) {
-            container = new OracleContainer("gvenzl/oracle-free:23");
+            container = new MySQLContainer<>("mysql:9.2");
             container.start();
         }
         return ContainerDataSource.of(container.getJdbcUrl(), container.getUsername(), container.getPassword());
     }
 
     /**
-     * Stops the database when the class is done: each Oracle test class starts its own, and one left running slows
-     * every start after it toward the startup timeout.
+     * The keywords {@code information_schema.KEYWORDS} marks as reserved.
      */
-    @AfterAll
-    static synchronized void stopContainer() {
-        if (container != null) {
-            container.stop();
-            container = null;
+    @Override
+    protected Optional<Set<String>> reservedWords() throws SQLException {
+        try (Connection connection = dataSource.getConnection()) {
+            return Optional.of(queryWords(connection,
+                    "SELECT word FROM information_schema.keywords WHERE reserved = 1"));
         }
     }
 }

@@ -15,11 +15,9 @@
  */
 package st.orm.spi.mysql;
 
-import static java.util.stream.Collectors.toSet;
-
+import java.util.Locale;
 import java.util.Set;
 import java.util.regex.Pattern;
-import java.util.stream.Stream;
 import st.orm.Operator;
 import st.orm.PersistenceException;
 import st.orm.StormConfig;
@@ -83,16 +81,42 @@ public class MySQLSqlDialect extends DefaultSqlDialect {
         return MYSQL_IDENTIFIER;
     }
 
-    private static final Set<String> MYSQL_KEYWORDS = Stream.concat(ANSI_KEYWORDS.stream(), Stream.of(
-            "ACCESSIBLE", "ANALYZE", "CHANGE", "CHECKSUM", "DATABASE", "DAY_HOUR", "DAY_MINUTE", "DAY_SECOND",
-            "DELAYED", "DESCRIBE", "DISTINCTROW", "DIV", "DO", "ENCLOSED", "ESCAPED", "EXPLAIN", "FORCE",
-            "FULLTEXT", "GENERATED", "HIGH_PRIORITY", "HOUR_MICROSECOND", "HOUR_SECOND", "IGNORE", "INDEX",
-            "INFILE", "INT1", "INT2", "INT3", "INT4", "INT8", "KEY", "KEYS", "LINES", "LOAD", "LOW_PRIORITY",
-            "MEDIUMINT", "MIDDLEINT", "MODIFIES", "OPTIMIZE", "OPTION", "OPTIONALLY", "OUTFILE", "PRIVILEGES",
-            "PURGE", "REQUIRE", "RESIGNAL", "SCHEMAS", "SHOW", "SQL_BIG_RESULT", "SQL_CALC_FOUND_ROWS",
-            "SQL_SMALL_RESULT", "STRAIGHT_JOIN", "TERMINATED", "TINYINT", "UNSIGNED", "UTC_DATE", "UTC_TIME",
-            "UTC_TIMESTAMP", "VIRTUAL", "VISIBLE", "INVISIBLE", "XOR", "ZEROFILL"
-    )).collect(toSet());
+    /**
+     * The words MySQL reserves, as {@code information_schema.KEYWORDS} lists them from 8.0 through 9.x. A word that
+     * only some of these versions reserve is on the list too, since quoting a name leaves its meaning unchanged in
+     * MySQL.
+     */
+    private static final Set<String> RESERVED_WORDS = Set.of(
+            "ACCESSIBLE", "ADD", "ALL", "ALTER", "ANALYZE", "AND", "AS", "ASC", "ASENSITIVE", "BEFORE", "BETWEEN",
+            "BIGINT", "BINARY", "BLOB", "BOTH", "BY", "CALL", "CASCADE", "CASE", "CHANGE", "CHAR", "CHARACTER", "CHECK",
+            "COLLATE", "COLUMN", "CONDITION", "CONSTRAINT", "CONTINUE", "CONVERT", "CREATE", "CROSS", "CUBE",
+            "CUME_DIST", "CURRENT_DATE", "CURRENT_TIME", "CURRENT_TIMESTAMP", "CURRENT_USER", "CURSOR", "DATABASE",
+            "DATABASES", "DAY_HOUR", "DAY_MICROSECOND", "DAY_MINUTE", "DAY_SECOND", "DEC", "DECIMAL", "DECLARE",
+            "DEFAULT", "DELAYED", "DELETE", "DENSE_RANK", "DESC", "DESCRIBE", "DETERMINISTIC", "DISTINCT",
+            "DISTINCTROW", "DIV", "DOUBLE", "DROP", "DUAL", "EACH", "ELSE", "ELSEIF", "EMPTY", "ENCLOSED", "ESCAPED",
+            "EXCEPT", "EXISTS", "EXIT", "EXPLAIN", "EXTERNAL", "FALSE", "FETCH", "FIRST_VALUE", "FLOAT", "FLOAT4",
+            "FLOAT8", "FOR", "FORCE", "FOREIGN", "FROM", "FULLTEXT", "FUNCTION", "GENERATED", "GET", "GRANT", "GROUP",
+            "GROUPING", "GROUPS", "HAVING", "HIGH_PRIORITY", "HOUR_MICROSECOND", "HOUR_MINUTE", "HOUR_SECOND", "IF",
+            "IGNORE", "IN", "INDEX", "INFILE", "INNER", "INOUT", "INSENSITIVE", "INSERT", "INT", "INT1", "INT2", "INT3",
+            "INT4", "INT8", "INTEGER", "INTERSECT", "INTERVAL", "INTO", "IO_AFTER_GTIDS", "IO_BEFORE_GTIDS", "IS",
+            "ITERATE", "JOIN", "JSON_TABLE", "KEY", "KEYS", "KILL", "LAG", "LAST_VALUE", "LATERAL", "LEAD", "LEADING",
+            "LEAVE", "LEFT", "LIBRARY", "LIKE", "LIMIT", "LINEAR", "LINES", "LOAD", "LOCALTIME", "LOCALTIMESTAMP",
+            "LOCK", "LONG", "LONGBLOB", "LONGTEXT", "LOOP", "LOW_PRIORITY", "MASTER_BIND",
+            "MASTER_SSL_VERIFY_SERVER_CERT", "MATCH", "MAXVALUE", "MEDIUMBLOB", "MEDIUMINT", "MEDIUMTEXT", "MIDDLEINT",
+            "MINUTE_MICROSECOND", "MINUTE_SECOND", "MOD", "MODIFIES", "NATURAL", "NOT", "NO_WRITE_TO_BINLOG",
+            "NTH_VALUE", "NTILE", "NULL", "NUMERIC", "OF", "ON", "OPTIMIZE", "OPTIMIZER_COSTS", "OPTION", "OPTIONALLY",
+            "OR", "ORDER", "OUT", "OUTER", "OUTFILE", "OVER", "PARTITION", "PERCENT_RANK", "PRECISION", "PRIMARY",
+            "PROCEDURE", "PURGE", "QUALIFY", "RANGE", "RANK", "READ", "READS", "READ_WRITE", "REAL", "RECURSIVE",
+            "REFERENCES", "REGEXP", "RELEASE", "RENAME", "REPEAT", "REPLACE", "REQUIRE", "RESIGNAL", "RESTRICT",
+            "RETURN", "REVOKE", "RIGHT", "RLIKE", "ROW", "ROWS", "ROW_NUMBER", "SCHEMA", "SCHEMAS",
+            "SECOND_MICROSECOND", "SELECT", "SENSITIVE", "SEPARATOR", "SET", "SHOW", "SIGNAL", "SMALLINT", "SPATIAL",
+            "SPECIFIC", "SQL", "SQLEXCEPTION", "SQLSTATE", "SQLWARNING", "SQL_BIG_RESULT", "SQL_CALC_FOUND_ROWS",
+            "SQL_SMALL_RESULT", "SSL", "STARTING", "STORED", "STRAIGHT_JOIN", "SYSTEM", "TABLE", "TABLESAMPLE",
+            "TERMINATED", "THEN", "TINYBLOB", "TINYINT", "TINYTEXT", "TO", "TRAILING", "TRIGGER", "TRUE", "UNDO",
+            "UNION", "UNIQUE", "UNLOCK", "UNSIGNED", "UPDATE", "USAGE", "USE", "USING", "UTC_DATE", "UTC_TIME",
+            "UTC_TIMESTAMP", "VALUES", "VARBINARY", "VARCHAR", "VARCHARACTER", "VARYING", "VIRTUAL", "WHEN", "WHERE",
+            "WHILE", "WINDOW", "WITH", "WRITE", "XOR", "YEAR_MONTH", "ZEROFILL"
+    );
 
     /**
      * Indicates whether the given name is a keyword in this SQL dialect.
@@ -103,7 +127,7 @@ public class MySQLSqlDialect extends DefaultSqlDialect {
      */
     @Override
     public boolean isKeyword(String name) {
-        return MYSQL_KEYWORDS.contains(name.toUpperCase());
+        return RESERVED_WORDS.contains(name.toUpperCase(Locale.ROOT));
     }
 
     /**
