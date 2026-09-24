@@ -20,6 +20,7 @@ import static java.util.concurrent.TimeUnit.SECONDS;
 import java.sql.SQLException;
 import java.util.Optional;
 import javax.sql.DataSource;
+import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.testcontainers.oracle.OracleContainer;
 import st.orm.tck.AbstractTransactionConformanceTest;
@@ -50,6 +51,18 @@ public class OracleTransactionConformanceTest extends AbstractTransactionConform
             container.start();
         }
         return ContainerDataSource.of(container.getJdbcUrl(), container.getUsername(), container.getPassword());
+    }
+
+    /**
+     * Stops the database when the class is done: each Oracle test class starts its own, and one left running slows
+     * every start after it toward the startup timeout.
+     */
+    @AfterAll
+    static synchronized void stopContainer() {
+        if (container != null) {
+            container.stop();
+            container = null;
+        }
     }
 
     /**
