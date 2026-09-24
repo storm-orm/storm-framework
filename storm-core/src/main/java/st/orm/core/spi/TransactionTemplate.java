@@ -78,7 +78,12 @@ public interface TransactionTemplate {
      * <p>Note that a transaction manager that does not support timeouts will throw an
      * {@code IllegalArgumentException}.</p>
      *
-     * @param timeoutSeconds transaction timeout in seconds.
+     * <p>{@code 0} means no time is left: a scope whose deadline passed before its first statement opens its
+     * transaction with the zero seconds it has left, and that statement must be refused. A provider that bridges to
+     * another transaction system keeps this deadline itself, since such a system may read a timeout of zero as no
+     * timeout or as its own default.</p>
+     *
+     * @param timeoutSeconds transaction timeout in seconds; {@code 0} means no time is left.
      * @return this transaction template instance.
      */
     TransactionTemplate timeout(int timeoutSeconds);
