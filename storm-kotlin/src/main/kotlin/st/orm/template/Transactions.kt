@@ -58,7 +58,9 @@ import kotlin.coroutines.CoroutineContext
  *                       - `REQUIRES_NEW`: suspend outer, start fresh
  *                       - `NESTED`: create JDBC savepoint
  * @param isolation      The isolation level for the transaction. If `null`, uses the provider default.
- * @param timeoutSeconds The transaction timeout in seconds. If `null`, uses provider default.
+ * @param timeoutSeconds The transaction timeout in seconds, counted from the start of the block. `0` means no time
+ * is left, so the block's first statement is refused with [st.orm.TransactionTimedOutException]. If `null`, uses the
+ * provider's default.
  * @param readOnly       Whether the transaction is read-only. If `null`, no mode is requested and the connection
  *                       keeps the mode it arrives with.
  * @param block          The transactional logic to execute.
@@ -118,7 +120,9 @@ public fun <T> transactionBlocking(
  *                          - `REQUIRES_NEW`: suspend outer, start fresh
  *                          - `NESTED`: create JDBC savepoint
  * @param isolation         The isolation level for the transaction. If `null`, uses the provider default.
- * @param timeoutSeconds    The transaction timeout in seconds. If `null`, uses the provider's default.
+ * @param timeoutSeconds    The transaction timeout in seconds, counted from the start of the block. `0` means no
+ *                          time is left, so the block's first statement is refused with
+ *                          [st.orm.TransactionTimedOutException]. If `null`, uses the provider's default.
  * @param readOnly          Whether the transaction is read-only. If `null`, no mode is requested and the
  *                          connection keeps the mode it arrives with.
  * @param block             The transactional logic to execute, with `this` bound to a [Transaction].
@@ -321,7 +325,7 @@ private val localTransactionOptions: ThreadLocal<TransactionDefaults?> = ThreadL
  *
  * @param propagation The transaction propagation behavior.
  * @param isolation The transaction isolation level.
- * @param timeoutSeconds The transaction timeout in seconds.
+ * @param timeoutSeconds The transaction timeout in seconds; `0` means no time is left.
  * @param readOnly Whether the transaction is read-only.
  * @since 1.6
  */
@@ -353,7 +357,7 @@ public fun setGlobalTransactionOptions(
  *
  * @param propagation The transaction propagation behavior.
  * @param isolation The transaction isolation level.
- * @param timeoutSeconds The transaction timeout in seconds.
+ * @param timeoutSeconds The transaction timeout in seconds; `0` means no time is left.
  * @param readOnly Whether the transaction is read-only.
  * @param block The coroutine code to execute.
  * @return The result of executing [block].
@@ -391,7 +395,7 @@ public suspend fun <T> withTransactionOptions(
  *
  * @param propagation The transaction propagation behavior.
  * @param isolation The transaction isolation level.
- * @param timeoutSeconds The transaction timeout in seconds.
+ * @param timeoutSeconds The transaction timeout in seconds; `0` means no time is left.
  * @param readOnly Whether the transaction is read-only.
  * @param block The code to execute.
  * @return The result of executing [block].

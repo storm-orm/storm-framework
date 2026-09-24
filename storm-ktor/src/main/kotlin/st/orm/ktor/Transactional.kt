@@ -66,7 +66,8 @@ import st.orm.template.transaction
  *                   [TransactionDispatchers.Default], matching `transaction { }`.
  * @param propagation the transaction propagation; defaults to the provider's default (`REQUIRED`).
  * @param isolation the transaction isolation level; defaults to the provider's default.
- * @param timeoutSeconds the transaction timeout in seconds; defaults to the provider's default.
+ * @param timeoutSeconds the transaction timeout in seconds, where `0` means no time is left; defaults to the
+ * provider's default.
  * @param readOnly whether the transaction is read-only; if `null`, no mode is requested and the connection keeps
  *                 the mode it arrives with.
  * @param build the routes that run transactionally.
