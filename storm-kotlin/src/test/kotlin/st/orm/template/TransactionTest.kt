@@ -536,7 +536,9 @@ internal open class TransactionTest(
     @Test
     fun `concurrent DB access in same transaction throws exception`(): Unit = runBlocking {
         val e = assertThrows<PersistenceException> {
-            transaction(timeoutSeconds = 1) {
+            // The timeout only bounds the queries. It leaves the second job ample time to meet the first one's
+            // statement: a statement issued after the deadline is refused as a timeout instead.
+            transaction(timeoutSeconds = 3) {
                 coroutineScope {
                     // Two concurrent operations.
                     val job1 = launch(Dispatchers.IO) {
