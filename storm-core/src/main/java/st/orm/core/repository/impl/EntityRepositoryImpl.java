@@ -194,8 +194,8 @@ public class EntityRepositoryImpl<E extends Entity<ID>, ID>
     }
 
     /**
-     * Fires {@link EntityCallback#afterInsert(Entity)} on all registered callbacks with the entity as it was sent to
-     * the database.
+     * Fires {@link EntityCallback#afterInsert(List)} on all registered callbacks with a list of one: the entity as it
+     * was sent to the database.
      *
      * <p>Used by the methods that return nothing, which read no key back and so cannot report one.</p>
      *
@@ -207,8 +207,8 @@ public class EntityRepositoryImpl<E extends Entity<ID>, ID>
     }
 
     /**
-     * Fires {@link EntityCallback#afterInsert(Entity)} on all registered callbacks with the entity as it was sent to
-     * the database, carrying the primary key the database assigned.
+     * Fires {@link EntityCallback#afterInsert(List)} on all registered callbacks with a list of one: the entity as it
+     * was sent to the database, carrying the primary key the database assigned.
      *
      * @param entity the entity that was inserted.
      * @param generatedPrimaryKey the primary key the database assigned, or {@code null} when no key was retrieved.
@@ -219,9 +219,9 @@ public class EntityRepositoryImpl<E extends Entity<ID>, ID>
     }
 
     /**
-     * Fires {@link EntityCallback#afterInsert(Entity)} for a batch, pairing each entity with the primary key the
+     * Fires {@link EntityCallback#afterInsert(List)} for a batch, pairing each entity with the primary key the
      * database assigned. The keys are reported in insertion order, which is the contract the batch insert paths
-     * already rely on.
+     * already rely on; a batch that read no keys back passes an empty list and reports the entities as sent.
      *
      * @param entities the entities that were inserted, in insertion order.
      * @param generatedPrimaryKeys the assigned primary keys, in the same order.
@@ -232,7 +232,7 @@ public class EntityRepositoryImpl<E extends Entity<ID>, ID>
     }
 
     /**
-     * Fires {@link EntityCallback#afterUpdate(Entity)} on all registered callbacks.
+     * Fires {@link EntityCallback#afterUpdate(List)} on all registered callbacks with a list of one.
      *
      * <p>The entity passed to this method is the entity as it was sent to the database (after
      * {@link #fireBeforeUpdate(Entity) beforeUpdate} transformation). An update carries its own primary key, so only
@@ -244,6 +244,16 @@ public class EntityRepositoryImpl<E extends Entity<ID>, ID>
      */
     private void fireAfterUpdate(E entity) {
         entityCallbacks.afterUpdate(entity);
+    }
+
+    /**
+     * Fires {@link EntityCallback#afterUpdate(List)} for a batch, with the entities as they were sent to the database.
+     *
+     * @param entities the entities that were updated, in update order.
+     * @since 1.14
+     */
+    private void fireAfterUpdate(List<E> entities) {
+        entityCallbacks.afterUpdate(entities);
     }
 
     /**
@@ -276,7 +286,7 @@ public class EntityRepositoryImpl<E extends Entity<ID>, ID>
     }
 
     /**
-     * Fires {@link EntityCallback#afterUpsert(Entity)} on all registered callbacks.
+     * Fires {@link EntityCallback#afterUpsert(List)} on all registered callbacks with a list of one.
      *
      * <p>This method is only called on the SQL-level upsert path. When an upsert is routed to
      * {@link #insert(Entity)} or {@link #update(Entity)}, the corresponding {@code afterInsert} or
@@ -294,8 +304,8 @@ public class EntityRepositoryImpl<E extends Entity<ID>, ID>
     }
 
     /**
-     * Fires {@link EntityCallback#afterUpsert(Entity)} on all registered callbacks with the entity as it was sent to
-     * the database, carrying the primary key the database assigned.
+     * Fires {@link EntityCallback#afterUpsert(List)} on all registered callbacks with a list of one: the entity as it
+     * was sent to the database, carrying the primary key the database assigned.
      *
      * @param entity the entity that was upserted.
      * @param generatedPrimaryKey the primary key the database assigned, or {@code null} when no key was retrieved.
@@ -306,9 +316,9 @@ public class EntityRepositoryImpl<E extends Entity<ID>, ID>
     }
 
     /**
-     * Fires {@link EntityCallback#afterUpsert(Entity)} for a batch, pairing each entity with the primary key the
+     * Fires {@link EntityCallback#afterUpsert(List)} for a batch, pairing each entity with the primary key the
      * database assigned. The keys are reported in upsert order, which is the contract the batch upsert paths already
-     * rely on.
+     * rely on; a batch that read no keys back passes an empty list and reports the entities as sent.
      *
      * @param entities the entities that were upserted, in upsert order.
      * @param generatedPrimaryKeys the assigned primary keys, in the same order.
@@ -329,13 +339,23 @@ public class EntityRepositoryImpl<E extends Entity<ID>, ID>
     }
 
     /**
-     * Fires {@link EntityCallback#afterRemove(Entity)} on all registered callbacks.
+     * Fires {@link EntityCallback#afterRemove(List)} on all registered callbacks with a list of one.
      *
      * @param entity the entity that was deleted.
      * @since 1.9
      */
     private void fireAfterRemove(E entity) {
         entityCallbacks.afterRemove(entity);
+    }
+
+    /**
+     * Fires {@link EntityCallback#afterRemove(List)} for a batch.
+     *
+     * @param entities the entities that were deleted, in removal order.
+     * @since 1.14
+     */
+    private void fireAfterRemove(List<E> entities) {
+        entityCallbacks.afterRemove(entities);
     }
 
     /**
@@ -1299,7 +1319,7 @@ public class EntityRepositoryImpl<E extends Entity<ID>, ID>
             throw new PersistenceException("Multi-row insert of %s failed. The number of affected rows does not match the batch size."
                     .formatted(model.type().getSimpleName()));
         }
-        transformed.forEach(this::fireAfterInsert);
+        fireAfterInsert(transformed, List.of());
     }
 
     /**
@@ -1515,9 +1535,7 @@ public class EntityRepositoryImpl<E extends Entity<ID>, ID>
                         List<ID> ids = doUpsertAndFetchIdsBatch(batch, upsertQuery.get(), entityCache.orElse(null));
                         result.addAll(ids);
                         if (hasEntityCallbacks()) {
-                            for (int i = 0; i < batch.size(); i++) {
-                                fireAfterUpsert(batch.get(i), i < ids.size() ? ids.get(i) : null);
-                            }
+                            fireAfterUpsert(batch, ids);
                         }
                     }
                     case UpsertUpdateKey u -> {
@@ -1653,7 +1671,7 @@ public class EntityRepositoryImpl<E extends Entity<ID>, ID>
                 List<E> transformed = batch.stream().map(this::fireBeforeInsert).toList();
                 transformed.forEach(this::validateInsert);
                 insertJoinedBatch(transformed);
-                transformed.forEach(this::fireAfterInsert);
+                fireAfterInsert(transformed, List.of());
             });
             return;
         }
@@ -1685,7 +1703,7 @@ public class EntityRepositoryImpl<E extends Entity<ID>, ID>
                 List<E> transformed = batch.stream().map(this::fireBeforeInsert).toList();
                 transformed.forEach(e -> validateInsert(e, ignoreAutoGenerate));
                 insertJoinedBatch(transformed);
-                transformed.forEach(this::fireAfterInsert);
+                fireAfterInsert(transformed, List.of());
             });
             return;
         }
@@ -1720,7 +1738,7 @@ public class EntityRepositoryImpl<E extends Entity<ID>, ID>
             return;
         }
         List<E> transformed = executeInsertBatch(batch, query, ignoreAutoGenerate);
-        transformed.forEach(this::fireAfterInsert);
+        fireAfterInsert(transformed, List.of());
     }
 
     protected List<ID> insertAndFetchIds(List<E> batch, PreparedQuery query) {
@@ -1819,7 +1837,7 @@ public class EntityRepositoryImpl<E extends Entity<ID>, ID>
                         .filter(e -> !model.isDefaultPrimaryKey(e.id()))
                         .forEach(e -> cache.remove(e.id())));
                 JoinedEntityHelper.updateBatch(ormTemplate, model, batch);
-                batch.forEach(this::fireAfterUpdate);
+                fireAfterUpdate(batch);
             });
             return;
         }
@@ -2007,7 +2025,7 @@ public class EntityRepositoryImpl<E extends Entity<ID>, ID>
         } else if (IntStream.of(result).anyMatch(r -> r != 1)) {
             throw new PersistenceException("Batch update of %s failed. One or more rows were not affected.".formatted(model.type().getSimpleName()));
         }
-        batch.forEach(this::fireAfterUpdate);
+        fireAfterUpdate(batch);
         return batch.stream().map(Entity::id).toList();
     }
 
@@ -2096,7 +2114,7 @@ public class EntityRepositoryImpl<E extends Entity<ID>, ID>
                                 : partition.chunk();
                         doUpsertBatch(batch, upsertQuery.get(), entityCache.orElse(null));
                         if (hasEntityCallbacks()) {
-                            batch.forEach(this::fireAfterUpsert);
+                            fireAfterUpsert(batch, List.of());
                         }
                     }
                     case UpsertUpdateKey u -> {
@@ -2322,7 +2340,7 @@ public class EntityRepositoryImpl<E extends Entity<ID>, ID>
                         .filter(e -> !model.isDefaultPrimaryKey(e.id()))
                         .forEach(e -> cache.remove(e.id())));
                 JoinedEntityHelper.removeBatch(ormTemplate, model, batch);
-                batch.forEach(this::fireAfterRemove);
+                fireAfterRemove(batch);
             });
             return;
         }
@@ -2343,7 +2361,7 @@ public class EntityRepositoryImpl<E extends Entity<ID>, ID>
                 if (IntStream.of(result).anyMatch(r -> r != 1)) {
                     throw new PersistenceException("Batch remove of %s failed. One or more rows were not affected.".formatted(model.type().getSimpleName()));
                 }
-                chunk.forEach(this::fireAfterRemove);
+                fireAfterRemove(chunk);
             });
         }
     }

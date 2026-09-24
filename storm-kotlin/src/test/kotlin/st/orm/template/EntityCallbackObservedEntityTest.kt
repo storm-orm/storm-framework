@@ -30,6 +30,21 @@ internal open class EntityCallbackObservedEntityTest(
     })
 
     @Test
+    fun `batch insert should reach the list form as one list`() {
+        val batches = mutableListOf<List<City>>()
+        val recording = orm.withEntityCallback(object : EntityCallback<City> {
+            override fun afterInsert(entities: List<City>) {
+                batches.add(entities.toList())
+            }
+        })
+        val ids = recording.entity(City::class).insertAndFetchIds(
+            listOf(City(name = "Kotlin list one"), City(name = "Kotlin list two")),
+        )
+        batches shouldHaveSize 1
+        batches.first().map { it.id } shouldBe ids
+    }
+
+    @Test
     fun `insert should observe the entity as sent`() {
         val observed = mutableListOf<City>()
         observingCities(observed).entity(City::class).insert(City(name = "Kotlin sent"))
