@@ -18,6 +18,7 @@ package st.orm.core.repository.impl;
 import java.lang.reflect.ParameterizedType;
 import java.lang.reflect.Type;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.function.Function;
@@ -34,6 +35,10 @@ import st.orm.EntityCallback;
  * {@code *AndFetchId} methods, and the row as read back for the {@code *AndFetch} methods. The fetching methods build
  * on the id-returning ones, so their callbacks are collected at the point where the write completes and fired once
  * the rows are available, keeping the write itself on a single path.</p>
+ *
+ * <p>The "after" callbacks are always dispatched in their list form: a batch as one list, a single entity as a list
+ * of one, and the callbacks collected by a {@code *AndFetch} call or a write set as one list per run of entities of the
+ * same type and outcome, in the order they were written. Each callback receives a list before the next one does.</p>
  *
  * <p>Three thread-scoped concerns are handled here. Callbacks never fire recursively, so database work performed
  * inside a callback runs without triggering callbacks of its own. A {@code *AndFetch} call in flight collects rather
@@ -63,7 +68,7 @@ final class CallbackSupport<E extends Entity<ID>, ID> {
     private static final ThreadLocal<Boolean> WITHHOLD_KEYS = ThreadLocal.withInitial(() -> Boolean.FALSE);
 
     /** Identifies which "after" callback an invocation dispatches to. */
-    private enum After { INSERT, UPDATE, UPSERT }
+    private enum After { INSERT, UPDATE, UPSERT, REMOVE }
 
     /**
      * An "after" callback that has been collected rather than fired, holding the entity as sent to the database, the
@@ -76,8 +81,30 @@ final class CallbackSupport<E extends Entity<ID>, ID> {
 
     private final List<EntityCallback<E>> callbacks;
 
+    /**
+     * Per callback, in the order of {@link #callbacks}, whether it receives upserted batches through
+     * {@link EntityCallback#afterInsert(List)}: a callback that overrides neither upsert form does, so that its insert
+     * callbacks, batched or not, cover the upsert path as the single-entity default does.
+     */
+    private final boolean[] upsertsAsInserts;
+
     CallbackSupport(List<EntityCallback<?>> callbacks, Class<E> entityType) {
         this.callbacks = resolve(callbacks, entityType);
+        this.upsertsAsInserts = new boolean[this.callbacks.size()];
+        for (int i = 0; i < this.callbacks.size(); i++) {
+            var type = this.callbacks.get(i).getClass();
+            upsertsAsInserts[i] = !overrides(type, "afterUpsert", Entity.class)
+                    && !overrides(type, "afterUpsert", List.class);
+        }
+    }
+
+    /** Returns whether the callback type overrides the given {@link EntityCallback} default method. */
+    private static boolean overrides(Class<?> type, String name, Class<?> parameterType) {
+        try {
+            return type.getMethod(name, parameterType).getDeclaringClass() != EntityCallback.class;
+        } catch (NoSuchMethodException e) {
+            return false;
+        }
     }
 
     /**
@@ -125,7 +152,12 @@ final class CallbackSupport<E extends Entity<ID>, ID> {
     }
 
     void afterRemove(E entity) {
-        observe(entity, EntityCallback::afterRemove);
+        fire(entity, null, After.REMOVE);
+    }
+
+    /** Fires the after-remove callbacks for a batch. */
+    void afterRemove(List<E> entities) {
+        fireBatch(entities, List.of(), After.REMOVE);
     }
 
     /** Applies each callback in registration order, chaining the entity each one returns. */
@@ -195,6 +227,11 @@ final class CallbackSupport<E extends Entity<ID>, ID> {
         fire(entity, null, After.UPDATE);
     }
 
+    /** Fires the after-update callbacks for a batch, with the entities as sent to the database. */
+    void afterUpdate(List<E> entities) {
+        fireBatch(entities, List.of(), After.UPDATE);
+    }
+
     /** Fires the after-upsert callbacks with the entity as sent to the database. */
     void afterUpsert(E entity) {
         fire(entity, null, After.UPSERT);
@@ -210,16 +247,31 @@ final class CallbackSupport<E extends Entity<ID>, ID> {
         fireBatch(entities, generatedPrimaryKeys, After.UPSERT);
     }
 
+    /**
+     * Dispatches the "after" callbacks for a batch as one list, pairing each entity with the primary key at the same
+     * position, or collects them one by one when a {@code *AndFetch} call is in flight.
+     */
     private void fireBatch(List<E> entities, List<ID> generatedPrimaryKeys, After type) {
-        if (!isActive()) {
+        if (!isActive() || entities.isEmpty()) {
             return;
         }
+        boolean withholdKeys = WITHHOLD_KEYS.get();
+        var deferred = deferredFor(type);
+        var observed = new ArrayList<E>(entities.size());
         for (int i = 0; i < entities.size(); i++) {
-            fire(entities.get(i), i < generatedPrimaryKeys.size() ? generatedPrimaryKeys.get(i) : null, type);
+            ID generatedPrimaryKey = !withholdKeys && i < generatedPrimaryKeys.size() ? generatedPrimaryKeys.get(i) : null;
+            if (deferred != null) {
+                deferred.add(new Deferred(this, entities.get(i), generatedPrimaryKey, type));
+            } else {
+                observed.add(withPrimaryKey(entities.get(i), generatedPrimaryKey));
+            }
+        }
+        if (deferred == null) {
+            invoke(observed, type);
         }
     }
 
-    /** Dispatches an "after" callback, or collects it when a {@code *AndFetch} call is in flight. */
+    /** Dispatches an "after" callback as a list of one, or collects it when a {@code *AndFetch} call is in flight. */
     private void fire(E entity, @Nullable ID generatedPrimaryKey, After type) {
         if (!isActive()) {
             return;
@@ -227,23 +279,43 @@ final class CallbackSupport<E extends Entity<ID>, ID> {
         if (WITHHOLD_KEYS.get()) {
             generatedPrimaryKey = null;
         }
-        var deferred = DEFERRED.get();
+        var deferred = deferredFor(type);
         if (deferred != null) {
             deferred.add(new Deferred(this, entity, generatedPrimaryKey, type));
             return;
         }
-        invoke(withPrimaryKey(entity, generatedPrimaryKey), type);
+        invoke(List.of(withPrimaryKey(entity, generatedPrimaryKey)), type);
     }
 
-    /** Invokes the "after" callbacks of the given type in registration order, guarding against re-entrancy. */
-    private void invoke(E entity, After type) {
+    /**
+     * Returns the collection of the {@code *AndFetch} call in flight, or {@code null} when the callback fires at once.
+     * A removal reads no row back, so its callback fires at once whatever call is in flight.
+     */
+    private static @Nullable List<Deferred> deferredFor(After type) {
+        return type == After.REMOVE ? null : DEFERRED.get();
+    }
+
+    /**
+     * Invokes the list form of the "after" callbacks of the given type in registration order, guarding against
+     * re-entrancy. Each callback receives the whole list, unmodifiable, before the next one does.
+     */
+    private void invoke(List<E> entities, After type) {
+        entities = Collections.unmodifiableList(entities);
         ACTIVE.set(Boolean.TRUE);
         try {
-            for (var callback : callbacks) {
+            for (int i = 0; i < callbacks.size(); i++) {
+                var callback = callbacks.get(i);
                 switch (type) {
-                    case INSERT -> callback.afterInsert(entity);
-                    case UPDATE -> callback.afterUpdate(entity);
-                    case UPSERT -> callback.afterUpsert(entity);
+                    case INSERT -> callback.afterInsert(entities);
+                    case UPDATE -> callback.afterUpdate(entities);
+                    case UPSERT -> {
+                        if (upsertsAsInserts[i]) {
+                            callback.afterInsert(entities);
+                        } else {
+                            callback.afterUpsert(entities);
+                        }
+                    }
+                    case REMOVE -> callback.afterRemove(entities);
                 }
             }
         } finally {
@@ -333,6 +405,10 @@ final class CallbackSupport<E extends Entity<ID>, ID> {
     /** Identifies a reported row, so entities of different types that share a primary key stay distinct. */
     private record TypeIdKey(Class<?> type, @Nullable Object id) {}
 
+    /**
+     * Replays the collected callbacks against the reported rows, in the order they were collected, dispatching each
+     * run of entries that share their callbacks and outcome as one list.
+     */
     private static void replay(List<Deferred> deferred, List<? extends Entity<?>> fetched) {
         if (deferred.isEmpty()) {
             return;
@@ -341,16 +417,29 @@ final class CallbackSupport<E extends Entity<ID>, ID> {
         for (Entity<?> entity : fetched) {
             byTypeAndKey.put(new TypeIdKey(entity.getClass(), entity.id()), entity);
         }
-        for (var entry : deferred) {
-            entry.support().replayOne(entry, byTypeAndKey);
+        int start = 0;
+        while (start < deferred.size()) {
+            var first = deferred.get(start);
+            int end = start + 1;
+            while (end < deferred.size()
+                    && deferred.get(end).support() == first.support()
+                    && deferred.get(end).type() == first.type()) {
+                end++;
+            }
+            first.support().replayRun(deferred.subList(start, end), byTypeAndKey);
+            start = end;
         }
     }
 
     @SuppressWarnings("unchecked")
-    private void replayOne(Deferred entry, HashMap<TypeIdKey, Entity<?>> byTypeAndKey) {
-        E sent = withPrimaryKey((E) entry.entity(), (ID) entry.generatedPrimaryKey());
-        Entity<?> row = byTypeAndKey.get(new TypeIdKey(sent.getClass(), sent.id()));
-        invoke(row == null ? sent : (E) row, entry.type());
+    private void replayRun(List<Deferred> run, HashMap<TypeIdKey, Entity<?>> byTypeAndKey) {
+        var observed = new ArrayList<E>(run.size());
+        for (var entry : run) {
+            E sent = withPrimaryKey((E) entry.entity(), (ID) entry.generatedPrimaryKey());
+            Entity<?> row = byTypeAndKey.get(new TypeIdKey(sent.getClass(), sent.id()));
+            observed.add(row == null ? sent : (E) row);
+        }
+        invoke(observed, run.getFirst().type());
     }
 
     //

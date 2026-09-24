@@ -19,10 +19,14 @@ Rather than baking opinionated annotations like `@CreatedAt` or `@UpdatedBy` int
 | `beforeUpdate(entity)` | Called before updating. Returns the (potentially transformed) entity to persist. |
 | `beforeUpsert(entity)` | Called before a SQL-level upsert. Returns the (potentially transformed) entity to persist. Delegates to `beforeInsert` by default. |
 | `afterInsert(entity)` | Called after a successful insert. |
+| `afterInsert(entities)` | Called with a batch of inserted entities. Calls `afterInsert(entity)` for each by default. |
 | `afterUpdate(entity)` | Called after a successful update. |
+| `afterUpdate(entities)` | Called with a batch of updated entities. Calls `afterUpdate(entity)` for each by default. |
 | `afterUpsert(entity)` | Called after a successful SQL-level upsert. Delegates to `afterInsert` by default. |
+| `afterUpsert(entities)` | Called with a batch of upserted entities. Calls `afterUpsert(entity)` for each by default. |
 | `beforeRemove(entity)` | Called before removing. |
 | `afterRemove(entity)` | Called after a successful removal. |
+| `afterRemove(entities)` | Called with a batch of removed entities. Calls `afterRemove(entity)` for each by default. |
 
 :::info After-Callback Entity State
 **The callback observes what the caller observes.** A method that returns nothing passes the entity as it was sent; a `*AndFetchId` method passes it carrying the generated primary key; a `*AndFetch` method passes the row read back from the database. See [After Callback Entity State](#after-callback-entity-state).
@@ -275,7 +279,13 @@ This makes it safe to perform arbitrary database work inside a callback without 
 
 ### Batch Operations
 
-Callbacks work with both single and batch operations. For batch operations, the "before" callbacks (`beforeInsert`, `beforeUpdate`, `beforeUpsert`) are called per entity during the mapping phase, before the batch is sent to the database. The "after" callbacks (`afterInsert`, `afterUpdate`, `afterUpsert`, `afterRemove`) are called per entity after the batch executes successfully. This means the "before" callback can transform each entity individually, and all transformations are applied before the batch SQL is executed.
+Callbacks work with both single and batch operations. For batch operations, the "before" callbacks (`beforeInsert`, `beforeUpdate`, `beforeUpsert`) are called per entity during the mapping phase, before the batch is sent to the database. This means the "before" callback can transform each entity individually, and all transformations are applied before the batch SQL is executed.
+
+The "after" callbacks each have a list form, and Storm always calls it: a batch write passes the entities of one batch in the order they were written, and a single-entity write passes a list of one. A `*AndFetch` call and a write set pass each type's entities as one list once the rows have been read back, and a stream passes them a batch at a time. By default the list form calls the single-entity form for each entity, so a callback that overrides only `afterInsert(entity)` sees every entity as it always did. Where several callbacks apply, each receives the whole list before the next one does.
+
+A callback that writes to the database itself overrides the list form, so a batch costs it a fixed number of statements rather than one per entity. That matters most where each round trip to the database is expensive: a callback inserting an audit row per entity issues a hundred statements for a batch of a hundred, where the list form inserts them as one batch.
+
+An upserted batch reaches `afterUpsert(entities)`, or `afterInsert(entities)` when the callback overrides neither upsert form, so an insert callback covers the upsert path in its list form as it does in its single-entity form. A callback that overrides `afterUpsert(entity)` keeps receiving each upserted entity through it.
 
 ---
 

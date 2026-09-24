@@ -15,6 +15,7 @@
  */
 package st.orm;
 
+import java.util.List;
 
 /**
  * Typed callback interface for entity lifecycle events.
@@ -53,6 +54,16 @@ package st.orm;
  *
  * <p>A callback that needs the primary key must therefore be driven by a method that reports one. Selecting the
  * method is the caller's choice: the callback receives exactly what the caller receives, and no more.</p>
+ *
+ * <h2>Batches</h2>
+ *
+ * <p>Each "after" callback has a form that takes a list, and Storm always calls that form: a write of several entities
+ * passes the entities of one batch in the order they were written, and a write of one entity passes a list of one. By
+ * default the list form calls the single-entity form for each entity, so a callback that overrides only the
+ * single-entity form sees every entity. A callback that writes to the database itself overrides the list form instead,
+ * so a batch costs it a fixed number of statements rather than a statement per entity. A {@code *AndFetch} call and a
+ * write set pass each type's entities as one list once the rows have been read back, and a stream passes them a batch
+ * at a time. Where several callbacks apply, each receives the whole list before the next one does.</p>
  *
  * <p>All methods have default no-op implementations, so users only need to override the hooks they care about.</p>
  *
@@ -109,6 +120,28 @@ public interface EntityCallback<E extends Entity<?>> {
     default void afterInsert(E entity) {}
 
     /**
+     * Called after a batch of entities has been successfully inserted into the database.
+     *
+     * <p>Storm delivers every insert through this method: a batch write passes the entities of one batch in insertion
+     * order, and a single-entity write passes a list of one. Each entity reflects what the calling method reports, as
+     * described for {@link #afterInsert(Entity)}. Override this method to handle a batch as a whole, for instance with
+     * one statement for the batch where {@link #afterInsert(Entity)} would issue one per entity.</p>
+     *
+     * <p>This callback also fires when an upsert operation is routed to an insert, and receives upserted batches when
+     * the callback overrides neither {@link #afterUpsert(Entity)} nor {@link #afterUpsert(List)}.</p>
+     *
+     * <p>By default, this calls {@link #afterInsert(Entity)} for each entity, in order.</p>
+     *
+     * @param entities the entities that were inserted, in insertion order; never {@code null} or empty.
+     * @since 1.14
+     */
+    default void afterInsert(List<E> entities) {
+        for (E entity : entities) {
+            afterInsert(entity);
+        }
+    }
+
+    /**
      * Called after an entity has been successfully updated in the database.
      *
      * <p>The entity passed to this method reflects what the calling method reports: the entity as sent for
@@ -120,6 +153,24 @@ public interface EntityCallback<E extends Entity<?>> {
      * @param entity the entity that was updated; never {@code null}.
      */
     default void afterUpdate(E entity) {}
+
+    /**
+     * Called after a batch of entities has been successfully updated in the database.
+     *
+     * <p>Storm delivers every update through this method: a batch write passes the entities of one batch in update
+     * order, and a single-entity write passes a list of one. Each entity reflects what the calling method reports, as
+     * described for {@link #afterUpdate(Entity)}.</p>
+     *
+     * <p>By default, this calls {@link #afterUpdate(Entity)} for each entity, in order.</p>
+     *
+     * @param entities the entities that were updated, in update order; never {@code null} or empty.
+     * @since 1.14
+     */
+    default void afterUpdate(List<E> entities) {
+        for (E entity : entities) {
+            afterUpdate(entity);
+        }
+    }
 
     /**
      * Called before an entity is upserted via a SQL-level upsert statement (e.g., {@code INSERT ... ON CONFLICT},
@@ -159,6 +210,27 @@ public interface EntityCallback<E extends Entity<?>> {
     }
 
     /**
+     * Called after a batch of entities has been successfully upserted via a SQL-level upsert statement.
+     *
+     * <p>Storm delivers every SQL-level upsert through this method, or through {@link #afterInsert(List)} as described
+     * below: a batch write passes the entities of one batch in upsert order, and a single-entity write passes a list of
+     * one. Each entity reflects what the calling method reports, as described for {@link #afterUpsert(Entity)}.</p>
+     *
+     * <p>By default, this calls {@link #afterUpsert(Entity)} for each entity, in order. A callback that overrides
+     * neither this method nor {@link #afterUpsert(Entity)} receives upserted batches through
+     * {@link #afterInsert(List)} instead, so that insert callbacks, batched or not, cover the upsert path as the
+     * single-entity default does.</p>
+     *
+     * @param entities the entities that were upserted, in upsert order; never {@code null} or empty.
+     * @since 1.14
+     */
+    default void afterUpsert(List<E> entities) {
+        for (E entity : entities) {
+            afterUpsert(entity);
+        }
+    }
+
+    /**
      * Called before an entity is removed from the database.
      *
      * <p>Fires where the operation carries an entity, so {@code remove(entity)} and its collection and stream forms
@@ -179,4 +251,22 @@ public interface EntityCallback<E extends Entity<?>> {
      * @param entity the entity that was removed; never {@code null}.
      */
     default void afterRemove(E entity) {}
+
+    /**
+     * Called after a batch of entities has been successfully removed from the database.
+     *
+     * <p>Storm delivers every removal that carries entities through this method: a batch removal passes the entities
+     * of one batch in removal order, and a single-entity removal passes a list of one. As with
+     * {@link #afterRemove(Entity)}, removals by key or by predicate carry no entity and do not fire it.</p>
+     *
+     * <p>By default, this calls {@link #afterRemove(Entity)} for each entity, in order.</p>
+     *
+     * @param entities the entities that were removed, in removal order; never {@code null} or empty.
+     * @since 1.14
+     */
+    default void afterRemove(List<E> entities) {
+        for (E entity : entities) {
+            afterRemove(entity);
+        }
+    }
 }
