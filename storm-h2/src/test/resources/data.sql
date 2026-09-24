@@ -94,7 +94,7 @@ CREATE TABLE visit (
     visit_date date,
     description varchar(255),
     pet_id integer NOT NULL,
-    "timestamp" timestamp DEFAULT CURRENT_TIMESTAMP
+    timestamp timestamp DEFAULT CURRENT_TIMESTAMP
 );
 
 ALTER TABLE pet
@@ -116,7 +116,7 @@ CREATE VIEW owner_view AS
     SELECT * FROM owner;
 
 CREATE VIEW visit_view AS
-    SELECT visit_date, description, pet_id, "timestamp" FROM visit;
+    SELECT visit_date, description, pet_id, timestamp FROM visit;
 
 -- Data Inserts
 

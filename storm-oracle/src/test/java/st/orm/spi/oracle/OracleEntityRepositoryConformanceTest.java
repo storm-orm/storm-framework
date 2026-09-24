@@ -5,6 +5,7 @@ import static java.util.Map.entry;
 import java.util.List;
 import java.util.Map;
 import javax.sql.DataSource;
+import org.junit.jupiter.api.AfterAll;
 import org.testcontainers.oracle.OracleContainer;
 import st.orm.tck.AbstractEntityRepositoryConformanceTest;
 import st.orm.tck.ContainerDataSource;
@@ -27,6 +28,18 @@ public class OracleEntityRepositoryConformanceTest extends AbstractEntityReposit
             container.start();
         }
         return ContainerDataSource.of(container.getJdbcUrl(), container.getUsername(), container.getPassword());
+    }
+
+    /**
+     * Stops the database when the class is done: each Oracle test class starts its own, and one left running slows
+     * every start after it toward the startup timeout.
+     */
+    @AfterAll
+    static synchronized void stopContainer() {
+        if (container != null) {
+            container.stop();
+            container = null;
+        }
     }
 
     @Override

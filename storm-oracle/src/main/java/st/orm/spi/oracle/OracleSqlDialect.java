@@ -15,7 +15,6 @@
  */
 package st.orm.spi.oracle;
 
-import static java.util.stream.Collectors.toSet;
 import static st.orm.Operator.BETWEEN;
 import static st.orm.Operator.GREATER_THAN;
 import static st.orm.Operator.GREATER_THAN_OR_EQUAL;
@@ -23,9 +22,9 @@ import static st.orm.Operator.LESS_THAN;
 import static st.orm.Operator.LESS_THAN_OR_EQUAL;
 
 import java.util.List;
+import java.util.Locale;
 import java.util.Optional;
 import java.util.Set;
-import java.util.stream.Stream;
 import st.orm.Operator;
 import st.orm.StormConfig;
 import st.orm.core.spi.DefaultSqlDialect;
@@ -75,12 +74,24 @@ public class OracleSqlDialect extends DefaultSqlDialect {
         return selected;
     }
 
-    private static final Set<String> ORACLE_RESERVED = Stream.concat(ANSI_KEYWORDS.stream(), Stream.of(
-            "ACCESS", "AUDIT", "CLUSTER", "COMMENT", "COMPRESS", "EXCLUSIVE", "FILE", "IDENTIFIED",
-            "INCREMENT", "INDEX", "INITIAL", "LOCK", "LONG", "MAXEXTENTS", "MLSLABEL", "MODE", "MODIFY", "NOWAIT",
-            "OFFLINE", "ONLINE", "PCTFREE", "RAW", "ROWID", "ROWNUM", "SESSION", "SHARE", "SUCCESSFUL", "SYNONYM",
-            "UID", "VALIDATE", "VARCHAR2", "VIEW"
-    )).collect(toSet());
+    /**
+     * The words Oracle refuses as an unquoted identifier, which {@code V$RESERVED_WORDS} marks as reserved or
+     * semi-reserved. Oracle folds an unquoted name to upper case, so quoting any other word would make the lower-case
+     * name Storm renders case-sensitive, and it would no longer match a column created without quotes. Package-private
+     * for the conformance test, which checks that Oracle refuses every word on it.
+     */
+    static final Set<String> RESERVED_WORDS = Set.of(
+            "ACCESS", "ADD", "ALL", "ALTER", "AND", "ANY", "AS", "ASC", "AUDIT", "BETWEEN", "BY", "CHAR", "CHECK",
+            "CLUSTER", "COLUMN", "COMMENT", "COMPRESS", "CONNECT", "CREATE", "CURRENT", "DATE", "DECIMAL", "DEFAULT",
+            "DELETE", "DESC", "DISTINCT", "DROP", "ELSE", "EXCEPT", "EXCLUSIVE", "EXISTS", "FILE", "FLOAT", "FOR",
+            "FROM", "GRANT", "GROUP", "HAVING", "IDENTIFIED", "IMMEDIATE", "IN", "INCREMENT", "INDEX", "INITIAL",
+            "INSERT", "INTEGER", "INTERSECT", "INTO", "IS", "LEVEL", "LIKE", "LOCK", "LONG", "MAXEXTENTS", "MINUS",
+            "MLSLABEL", "MODE", "MODIFY", "NOAUDIT", "NOCOMPRESS", "NOT", "NOWAIT", "NULL", "NUMBER", "OF", "OFFLINE",
+            "ON", "ONLINE", "OPTION", "OR", "ORDER", "PCTFREE", "PRIOR", "PUBLIC", "RAW", "RENAME", "RESOURCE",
+            "REVOKE", "ROW", "ROWID", "ROWNUM", "ROWS", "SELECT", "SESSION", "SET", "SHARE", "SIZE", "SMALLINT",
+            "START", "SUCCESSFUL", "SYNONYM", "SYSDATE", "TABLE", "THEN", "TO", "TRIGGER", "UID", "UNION", "UNIQUE",
+            "UPDATE", "USER", "VALIDATE", "VALUES", "VARCHAR", "VARCHAR2", "VIEW", "WHENEVER", "WHERE", "WITH"
+    );
 
     /**
      * Indicates whether the given name is a keyword in this SQL dialect.
@@ -91,7 +102,7 @@ public class OracleSqlDialect extends DefaultSqlDialect {
      */
     @Override
     public boolean isKeyword(String name) {
-        return ORACLE_RESERVED.contains(name.toUpperCase());
+        return RESERVED_WORDS.contains(name.toUpperCase(Locale.ROOT));
     }
 
     @Override

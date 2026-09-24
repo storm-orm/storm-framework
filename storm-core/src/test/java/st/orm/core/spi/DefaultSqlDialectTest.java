@@ -9,6 +9,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.SequencedMap;
 import org.junit.jupiter.api.Test;
 import st.orm.PersistenceException;
@@ -52,6 +53,18 @@ public class DefaultSqlDialectTest {
         assertTrue(dialect.isKeyword("SELECT"));
         assertTrue(dialect.isKeyword("select"));
         assertFalse(dialect.isKeyword("mycolumn"));
+    }
+
+    @Test
+    public void testIsKeywordUnderTurkishDefaultLocale() {
+        // Upper-cased in the Turkish locale, "insert" becomes "İNSERT", with a dotted capital I.
+        Locale defaultLocale = Locale.getDefault();
+        Locale.setDefault(Locale.forLanguageTag("tr-TR"));
+        try {
+            assertTrue(new DefaultSqlDialect().isKeyword("insert"));
+        } finally {
+            Locale.setDefault(defaultLocale);
+        }
     }
 
     @Test

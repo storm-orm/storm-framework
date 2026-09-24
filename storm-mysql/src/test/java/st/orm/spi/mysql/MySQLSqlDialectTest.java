@@ -295,10 +295,28 @@ class MySQLSqlDialectTest {
         assertTrue(dialect.isKeyword("UTC_TIME"));
         assertTrue(dialect.isKeyword("UTC_TIMESTAMP"));
         assertTrue(dialect.isKeyword("VIRTUAL"));
-        assertTrue(dialect.isKeyword("VISIBLE"));
-        assertTrue(dialect.isKeyword("INVISIBLE"));
         assertTrue(dialect.isKeyword("XOR"));
         assertTrue(dialect.isKeyword("ZEROFILL"));
+    }
+
+    @Test
+    void isKeywordShouldRecognizeWordsMySQLReservesForWindowsAndLocking() {
+        assertTrue(dialect.isKeyword("DENSE_RANK"));
+        assertTrue(dialect.isKeyword("GROUPS"));
+        assertTrue(dialect.isKeyword("LIMIT"));
+        assertTrue(dialect.isKeyword("LOCK"));
+        assertTrue(dialect.isKeyword("LONG"));
+        assertTrue(dialect.isKeyword("RANK"));
+        assertTrue(dialect.isKeyword("READ"));
+        assertTrue(dialect.isKeyword("ROW_NUMBER"));
+        assertTrue(dialect.isKeyword("SCHEMA"));
+        assertTrue(dialect.isKeyword("USAGE"));
+    }
+
+    @Test
+    void isKeywordShouldRecognizeWordsMySQL9Reserves() {
+        assertTrue(dialect.isKeyword("LIBRARY"));
+        assertTrue(dialect.isKeyword("QUALIFY"));
     }
 
     @Test
