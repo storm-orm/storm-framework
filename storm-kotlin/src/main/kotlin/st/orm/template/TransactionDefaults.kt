@@ -23,7 +23,7 @@ import st.orm.TransactionPropagation
  *
  * @param propagation The transaction propagation behavior.
  * @param isolation The transaction isolation level.
- * @param timeoutSeconds The transaction timeout in seconds.
+ * @param timeoutSeconds The transaction timeout in seconds; `0` means no time is left, and `null` sets none.
  * @param readOnly Whether the transaction is read-only; `null` requests no mode and leaves the connection the mode
  * it arrives with.
  * @since 1.6

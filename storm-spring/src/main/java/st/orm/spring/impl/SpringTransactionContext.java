@@ -28,6 +28,7 @@ import static org.springframework.transaction.TransactionDefinition.PROPAGATION_
 import static org.springframework.transaction.TransactionDefinition.PROPAGATION_REQUIRED;
 import static org.springframework.transaction.TransactionDefinition.PROPAGATION_REQUIRES_NEW;
 import static org.springframework.transaction.TransactionDefinition.PROPAGATION_SUPPORTS;
+import static org.springframework.transaction.TransactionDefinition.TIMEOUT_DEFAULT;
 
 import java.sql.PreparedStatement;
 import java.util.ArrayList;
@@ -140,13 +141,23 @@ public final class SpringTransactionContext implements TransactionContext {
                     + ", timeout=" + (timeoutSeconds == null ? "<none>" : timeoutSeconds + "s");
         }
 
+        /**
+         * Returns the seconds left until the frame's deadline, rounded up, so {@code 0} means the deadline has
+         * passed rather than that less than a second is left; {@code null} when the frame has no deadline.
+         */
         @Nullable
         Integer remainingSeconds() {
             if (deadlineNanos == null) {
                 return null;
             }
             long remaining = deadlineNanos - nowNanos();
-            return remaining <= 0L ? 0 : (int) (remaining / NANOS_PER_SECOND);
+            if (remaining <= 0L) {
+                return 0;
+            }
+            if (remaining >= (long) Integer.MAX_VALUE * NANOS_PER_SECOND) {
+                return Integer.MAX_VALUE;
+            }
+            return (int) ((remaining + NANOS_PER_SECOND - 1) / NANOS_PER_SECOND);
         }
 
         boolean deadlineExpired() {
@@ -430,17 +441,18 @@ public final class SpringTransactionContext implements TransactionContext {
         }
         return resource -> {
             var preparedStatement = (PreparedStatement) resource;
-            // Dynamic remaining time; fall back to the static definition timeout.
             var state = currentState();
             Integer remaining = state.remainingSeconds();
-            Integer seconds;
-            if (remaining != null && remaining > 0) {
-                seconds = remaining;
-            } else if (remaining != null) {
-                seconds = 1;
-            } else {
-                seconds = state.timeoutSeconds;
+            // A frame past its deadline completes with a timeout whatever its statements do, so a statement it
+            // issues now is refused before it runs: in a transaction its work could only be rolled back, and
+            // outside one it would be committed by a block that reports failure.
+            if (remaining != null && remaining == 0) {
+                throw new TransactionTimedOutException(
+                        "Did not complete within timeout [" + state.timeoutDescription() + "].");
             }
+            // The statement may take the time left until the deadline, or the static definition timeout without
+            // one.
+            Integer seconds = remaining != null ? remaining : state.timeoutSeconds;
             if (seconds != null && seconds > 0) {
                 try {
                     preparedStatement.setQueryTimeout(seconds);
@@ -508,7 +520,10 @@ public final class SpringTransactionContext implements TransactionContext {
         }
         var state = new TransactionState(index, ownerIndex, transactional);
         state.transactionDefinition = definition;
-        state.timeoutSeconds = definition.getTimeout() > 0 ? definition.getTimeout() : null;
+        // Only TIMEOUT_DEFAULT means no timeout. A timeout of zero is a deadline that has already passed, as it is to
+        // Spring's own managers and to Storm's JDBC transactions; a block whose deadline passed before its first
+        // statement is opened with it.
+        state.timeoutSeconds = definition.getTimeout() != TIMEOUT_DEFAULT ? definition.getTimeout() : null;
         state.deadlineNanos = state.timeoutSeconds == null ? null : deadlineFromNow(state.timeoutSeconds);
         if (LOGGER.isDebugEnabled()) {
             LOGGER.debug("""

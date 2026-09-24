@@ -24,7 +24,10 @@ import org.jspecify.annotations.Nullable;
  *
  * @param propagation how the block relates to an already active transaction.
  * @param isolation the isolation level.
- * @param timeoutSeconds the transaction timeout in seconds.
+ * @param timeoutSeconds the transaction timeout in seconds, counted from the start of the block. {@code 0} means no
+ *                       time is left: the block's first statement is refused with
+ *                       {@link TransactionTimedOutException}. {@code null} inherits the surrounding default, and no
+ *                       timeout applies where none is set.
  * @param readOnly whether the transaction is read-only.
  * @since 1.13
  */
@@ -52,6 +55,14 @@ public record TransactionOptions(
         return new TransactionOptions(propagation, isolation, timeoutSeconds, readOnly);
     }
 
+    /**
+     * Returns these options with the given timeout, in seconds from the start of the block. {@code 0} means no time
+     * is left, so the block's first statement is refused with {@link TransactionTimedOutException}; a block without a
+     * timeout leaves the option unset rather than passing a value for it.
+     *
+     * @param timeoutSeconds the transaction timeout in seconds; {@code 0} or more.
+     * @return the options with the timeout set.
+     */
     public TransactionOptions withTimeoutSeconds(int timeoutSeconds) {
         return new TransactionOptions(propagation, isolation, timeoutSeconds, readOnly);
     }
