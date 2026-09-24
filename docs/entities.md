@@ -682,16 +682,16 @@ Annotation overrides (`@DbTable`, `@DbColumn`, and the string parameters on `@PK
 
 ### Identifier Escaping
 
-Storm automatically escapes identifiers that are SQL reserved words or contain special characters. Force escaping with the `escape` parameter:
+Storm automatically escapes a name that the database reserves or that holds special characters, and leaves every other name unescaped. On H2 and Oracle an escaped name is case-sensitive, so this keeps a column created without quotes matching. To escape a name Storm leaves alone, such as one created in quotes to keep its case, use the `escape` parameter:
 
 <Tabs groupId="language">
 <TabItem value="kotlin" label="Kotlin" default>
 
 ```kotlin
-@DbTable("order", escape = true)  // "order" is a reserved word
-data class Order(
+@DbTable("PetType", escape = true)  // created as "PetType"
+data class PetType(
     @PK val id: Int = 0,
-    @DbColumn("select", escape = true) val select: String  // "select" is reserved
+    @DbColumn("typeName", escape = true) val name: String  // created as "typeName"
 ) : Entity<Int>
 ```
 
@@ -699,9 +699,9 @@ data class Order(
 <TabItem value="java" label="Java">
 
 ```java
-@DbTable(value = "order", escape = true)  // "order" is a reserved word
-record Order(@PK Integer id,
-             @DbColumn(value = "select", escape = true) String select  // "select" is reserved
+@DbTable(value = "PetType", escape = true)  // created as "PetType"
+record PetType(@PK Integer id,
+               @DbColumn(value = "typeName", escape = true) String name  // created as "typeName"
 ) implements Entity<Integer> {}
 ```
 

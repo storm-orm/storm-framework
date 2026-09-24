@@ -15,7 +15,6 @@
  */
 package st.orm.spi.postgresql;
 
-import static java.util.stream.Collectors.toSet;
 import static st.orm.Operator.BETWEEN;
 import static st.orm.Operator.GREATER_THAN;
 import static st.orm.Operator.GREATER_THAN_OR_EQUAL;
@@ -25,9 +24,9 @@ import static st.orm.Operator.LESS_THAN_OR_EQUAL;
 import java.sql.PreparedStatement;
 import java.sql.SQLException;
 import java.sql.Types;
+import java.util.Locale;
 import java.util.Set;
 import java.util.UUID;
-import java.util.stream.Stream;
 import st.orm.Operator;
 import st.orm.StormConfig;
 import st.orm.core.spi.DefaultSqlDialect;
@@ -61,10 +60,23 @@ public class PostgreSQLSqlDialect extends DefaultSqlDialect {
         return true;
     }
 
-    private static final Set<String> POSTGRESQL_KEYWORDS = Stream.concat(ANSI_KEYWORDS.stream(), Stream.of(
-            "ANALYSE", "BIGSERIAL", "ILIKE", "INDEX", "INITIALLY", "LIMIT", "PLACING",
-            "RETURNING", "SERIAL", "SMALLSERIAL", "UNLOGGED", "VARIADIC", "VERBOSE", "WITHIN GROUP", "XML"
-    )).collect(toSet());
+    /**
+     * The words PostgreSQL refuses as an unquoted table, column or alias name: those {@code pg_get_keywords()} lists
+     * as reserved, including the ones it allows as a function or type name.
+     */
+    private static final Set<String> RESERVED_WORDS = Set.of(
+            "ALL", "ANALYSE", "ANALYZE", "AND", "ANY", "ARRAY", "AS", "ASC", "ASYMMETRIC", "AUTHORIZATION", "BINARY",
+            "BOTH", "CASE", "CAST", "CHECK", "COLLATE", "COLLATION", "COLUMN", "CONCURRENTLY", "CONSTRAINT", "CREATE",
+            "CROSS", "CURRENT_CATALOG", "CURRENT_DATE", "CURRENT_ROLE", "CURRENT_SCHEMA", "CURRENT_TIME",
+            "CURRENT_TIMESTAMP", "CURRENT_USER", "DEFAULT", "DEFERRABLE", "DESC", "DISTINCT", "DO", "ELSE", "END",
+            "EXCEPT", "FALSE", "FETCH", "FOR", "FOREIGN", "FREEZE", "FROM", "FULL", "GRANT", "GROUP", "HAVING", "ILIKE",
+            "IN", "INITIALLY", "INNER", "INTERSECT", "INTO", "IS", "ISNULL", "JOIN", "LATERAL", "LEADING", "LEFT",
+            "LIKE", "LIMIT", "LOCALTIME", "LOCALTIMESTAMP", "NATURAL", "NOT", "NOTNULL", "NULL", "OFFSET", "ON", "ONLY",
+            "OR", "ORDER", "OUTER", "OVERLAPS", "PLACING", "PRIMARY", "REFERENCES", "RETURNING", "RIGHT", "SELECT",
+            "SESSION_USER", "SIMILAR", "SOME", "SYMMETRIC", "SYSTEM_USER", "TABLE", "TABLESAMPLE", "THEN", "TO",
+            "TRAILING", "TRUE", "UNION", "UNIQUE", "USER", "USING", "VARIADIC", "VERBOSE", "WHEN", "WHERE", "WINDOW",
+            "WITH"
+    );
 
     /**
      * Indicates whether the given name is a keyword in this SQL dialect.
@@ -75,7 +87,7 @@ public class PostgreSQLSqlDialect extends DefaultSqlDialect {
      */
     @Override
     public boolean isKeyword(String name) {
-        return POSTGRESQL_KEYWORDS.contains(name.toUpperCase());
+        return RESERVED_WORDS.contains(name.toUpperCase(Locale.ROOT));
     }
 
     /**

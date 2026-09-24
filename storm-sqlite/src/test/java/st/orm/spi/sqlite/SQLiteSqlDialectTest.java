@@ -269,6 +269,14 @@ class SQLiteSqlDialectTest {
     }
 
     @Test
+    void isKeywordShouldRecognizeKeywordsSQLiteRefusesAsAColumnName() {
+        assertTrue(dialect.isKeyword("DEFERRABLE"));
+        assertTrue(dialect.isKeyword("NOTHING"));
+        assertTrue(dialect.isKeyword("RETURNING"));
+        assertTrue(dialect.isKeyword("TRANSACTION"));
+    }
+
+    @Test
     void escapeShouldHandleEmptyName() {
         assertEquals("\"\"", dialect.escape(""));
     }

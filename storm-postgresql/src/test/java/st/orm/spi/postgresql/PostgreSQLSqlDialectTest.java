@@ -57,7 +57,7 @@ class PostgreSQLSqlDialectTest {
     void getSafeIdentifierShouldEscapePostgreSQLSpecificKeywords() {
         assertEquals("\"ILIKE\"", dialect.getSafeIdentifier("ILIKE"));
         assertEquals("\"RETURNING\"", dialect.getSafeIdentifier("RETURNING"));
-        assertEquals("\"SERIAL\"", dialect.getSafeIdentifier("SERIAL"));
+        assertEquals("\"desc\"", dialect.getSafeIdentifier("desc"));
     }
 
     @Test
@@ -249,16 +249,22 @@ class PostgreSQLSqlDialectTest {
     @Test
     void isKeywordShouldRecognizePostgreSQLSpecificKeywords() {
         assertTrue(dialect.isKeyword("ANALYSE"));
-        assertTrue(dialect.isKeyword("BIGSERIAL"));
-        assertTrue(dialect.isKeyword("INDEX"));
+        assertTrue(dialect.isKeyword("ANALYZE"));
+        assertTrue(dialect.isKeyword("ASC"));
+        assertTrue(dialect.isKeyword("COLLATION"));
+        assertTrue(dialect.isKeyword("CONCURRENTLY"));
+        assertTrue(dialect.isKeyword("DEFERRABLE"));
+        assertTrue(dialect.isKeyword("DESC"));
+        assertTrue(dialect.isKeyword("FREEZE"));
+        assertTrue(dialect.isKeyword("ILIKE"));
         assertTrue(dialect.isKeyword("INITIALLY"));
+        assertTrue(dialect.isKeyword("ISNULL"));
         assertTrue(dialect.isKeyword("LIMIT"));
+        assertTrue(dialect.isKeyword("NOTNULL"));
         assertTrue(dialect.isKeyword("PLACING"));
-        assertTrue(dialect.isKeyword("SMALLSERIAL"));
-        assertTrue(dialect.isKeyword("UNLOGGED"));
+        assertTrue(dialect.isKeyword("RETURNING"));
         assertTrue(dialect.isKeyword("VARIADIC"));
         assertTrue(dialect.isKeyword("VERBOSE"));
-        assertTrue(dialect.isKeyword("XML"));
     }
 
     @Test

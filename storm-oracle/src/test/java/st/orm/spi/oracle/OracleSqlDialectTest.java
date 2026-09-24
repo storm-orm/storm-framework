@@ -55,6 +55,15 @@ class OracleSqlDialectTest {
     }
 
     @Test
+    void getSafeIdentifierShouldNotEscapeWordsOracleAccepts() {
+        // Oracle folds an unquoted name to upper case, so quoting one of these would make it case-sensitive and stop
+        // it matching a column created without quotes.
+        for (String name : List.of("position", "value", "year", "month", "time", "timestamp", "result", "language")) {
+            assertEquals(name, dialect.getSafeIdentifier(name));
+        }
+    }
+
+    @Test
     void getSafeIdentifierShouldEscapeIdentifiersWithInvalidCharacters() {
         assertEquals("\"my table\"", dialect.getSafeIdentifier("my table"));
         assertEquals("\"my-col\"", dialect.getSafeIdentifier("my-col"));
@@ -288,6 +297,17 @@ class OracleSqlDialectTest {
         assertTrue(dialect.isKeyword("UID"));
         assertTrue(dialect.isKeyword("VALIDATE"));
         assertTrue(dialect.isKeyword("VIEW"));
+    }
+
+    @Test
+    void isKeywordShouldRecognizeReservedWordsThatAreCommonColumnNames() {
+        assertTrue(dialect.isKeyword("LEVEL"));
+        assertTrue(dialect.isKeyword("NUMBER"));
+        assertTrue(dialect.isKeyword("OPTION"));
+        assertTrue(dialect.isKeyword("PUBLIC"));
+        assertTrue(dialect.isKeyword("RESOURCE"));
+        assertTrue(dialect.isKeyword("SIZE"));
+        assertTrue(dialect.isKeyword("SYSDATE"));
     }
 
     @Test
