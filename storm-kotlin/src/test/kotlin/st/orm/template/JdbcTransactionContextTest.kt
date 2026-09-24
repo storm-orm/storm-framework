@@ -258,6 +258,60 @@ internal open class JdbcTransactionContextTest(
         }
     }
 
+    @Test
+    fun `a statement issued after the deadline is refused`(): Unit = runBlocking {
+        assertThrows<TransactionTimedOutException> {
+            transactionBlocking(timeoutSeconds = 1) {
+                orm.removeAll<Visit>()
+                Thread.sleep(1500)
+                assertThrows<TransactionTimedOutException> { orm.countAll<City>() }
+            }
+        }
+        orm.exists<Visit>().shouldBeTrue()
+    }
+
+    @Test
+    fun `a statement issued after the deadline outside a transaction is refused, so it commits nothing`(): Unit = runBlocking {
+        assertThrows<TransactionTimedOutException> {
+            transactionBlocking(NOT_SUPPORTED, timeoutSeconds = 1) {
+                orm.countAll<City>() shouldBe 6
+                Thread.sleep(1500)
+                orm.entity(City::class).insert(City(name = "Late"))
+            }
+        }
+        orm.countAll<City>() shouldBe 6
+    }
+
+    @Test
+    fun `a block whose deadline passed before its first statement refuses that statement`(): Unit = runBlocking {
+        assertThrows<TransactionTimedOutException> {
+            transactionBlocking(NOT_SUPPORTED, timeoutSeconds = 1) {
+                Thread.sleep(1500)
+                orm.entity(City::class).insert(City(name = "Late"))
+            }
+        }
+        orm.countAll<City>() shouldBe 6
+    }
+
+    @Test
+    fun `a timeout of zero is a deadline that has already passed`(): Unit = runBlocking {
+        assertThrows<TransactionTimedOutException> {
+            transactionBlocking(NOT_SUPPORTED, timeoutSeconds = 0) {
+                orm.entity(City::class).insert(City(name = "Late"))
+            }
+        }
+        orm.countAll<City>() shouldBe 6
+    }
+
+    @Test
+    fun `a statement issued with less than a second left runs`(): Unit = runBlocking {
+        transactionBlocking(timeoutSeconds = 2) {
+            orm.countAll<City>() shouldBe 6
+            Thread.sleep(1200)
+            orm.countAll<City>() shouldBe 6
+        }
+    }
+
     // SUPPORTS edge cases
 
     @Test

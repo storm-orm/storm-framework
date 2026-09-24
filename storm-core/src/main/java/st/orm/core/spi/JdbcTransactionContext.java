@@ -155,6 +155,10 @@ public final class JdbcTransactionContext implements TransactionContext {
                     + (timeoutSeconds == null ? "<none>" : timeoutSeconds + "s");
         }
 
+        /**
+         * Returns the seconds left until the frame's deadline, rounded up, so {@code 0} means the deadline has
+         * passed rather than that less than a second is left; {@code null} when the frame has no deadline.
+         */
         @Nullable
         Integer remainingSeconds() {
             if (deadlineNanos == null) {
@@ -167,7 +171,7 @@ public final class JdbcTransactionContext implements TransactionContext {
             if (remaining >= (long) Integer.MAX_VALUE * NANOS_PER_SECOND) {
                 return Integer.MAX_VALUE;
             }
-            return (int) (remaining / NANOS_PER_SECOND);
+            return (int) ((remaining + NANOS_PER_SECOND - 1) / NANOS_PER_SECOND);
         }
     }
 
@@ -379,17 +383,17 @@ public final class JdbcTransactionContext implements TransactionContext {
         }
         return resource -> {
             var preparedStatement = (PreparedStatement) resource;
-            // Prefer dynamic remaining time; fall back to static seconds if present.
             var state = currentState();
             Integer remaining = state.remainingSeconds();
-            Integer seconds;
-            if (remaining != null && remaining > 0) {
-                seconds = remaining;
-            } else if (remaining != null) {
-                seconds = 1; // Already out of time: force a fast timeout.
-            } else {
-                seconds = state.timeoutSeconds;
+            // A frame past its deadline completes with a timeout whatever its statements do, so a statement it
+            // issues now is refused before it runs: in a transaction its work could only be rolled back, and
+            // outside one it would be committed by a block that reports failure.
+            if (remaining != null && remaining == 0) {
+                throw new TransactionTimedOutException(
+                        "Did not complete within timeout [" + state.timeoutDescription() + "].");
             }
+            // The statement may take the time left until the deadline, or the static seconds without one.
+            Integer seconds = remaining != null ? remaining : state.timeoutSeconds;
             if (seconds != null && seconds > 0) {
                 try {
                     preparedStatement.setQueryTimeout(seconds);
