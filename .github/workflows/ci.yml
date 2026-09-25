@@ -47,8 +47,22 @@ jobs:
         uses: gradle/actions/setup-gradle@v6
 
       - name: Build and test Gradle plugin
+        id: gradle-plugin
         working-directory: storm-gradle-plugin
         run: ./gradlew build -Dstorm.smoke=true
+
+      - name: Upload Gradle plugin test reports
+        # A TestKit build that fails in its daemon leaves the reason in the daemon's log, which TestKit keeps
+        # in the TestKit directory the functional test task sets.
+        if: failure() && steps.gradle-plugin.outcome == 'failure'
+        uses: actions/upload-artifact@v7
+        with:
+          name: gradle-plugin-test-reports
+          path: |
+            storm-gradle-plugin/build/reports/tests/
+            storm-gradle-plugin/build/testkit/test-kit-daemon/**/*.log
+          if-no-files-found: ignore
+          retention-days: 14
 
       - name: Upload coverage to Codecov
         # Dependabot-triggered runs receive no repository secrets, so the token is empty there and the
