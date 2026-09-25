@@ -1,3 +1,4 @@
+import org.gradle.api.tasks.testing.logging.TestExceptionFormat
 import org.gradle.plugin.compatibility.compatibility
 
 plugins {
@@ -72,6 +73,14 @@ dependencies {
 
 tasks.test {
     useJUnitPlatform()
+}
+
+tasks.withType<Test>().configureEach {
+    testLogging {
+        // A TestKit build that fails in its daemon reports the daemon's response, pid and the tail of its
+        // log in the exception message, which the short format leaves out of the build log.
+        exceptionFormat = TestExceptionFormat.FULL
+    }
 }
 
 val functionalTestTask = tasks.register<Test>("functionalTest") {
