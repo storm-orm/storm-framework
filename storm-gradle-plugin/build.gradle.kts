@@ -95,6 +95,15 @@ val functionalTestTask = tasks.register<Test>("functionalTest") {
     // classpath: the injected classpath is a separate classloader scope, where the bundled KSP cannot
     // link against the Kotlin Gradle plugin and the automatic application deliberately stands down.
     systemProperty("storm.plugin.version", project.version.toString())
+    // TestKit runs the builds in a daemon that treats this directory as its Gradle user home. Every Kotlin
+    // Gradle plugin and KSP version the tests build with accumulates in that daemon's metaspace, which
+    // outgrows the default 384 MiB over the suite, so the daemon gets a gigabyte.
+    val testKitDir = layout.buildDirectory.dir("testkit").get().asFile
+    systemProperty("org.gradle.testkit.dir", testKitDir.absolutePath)
+    doFirst {
+        testKitDir.mkdirs()
+        testKitDir.resolve("gradle.properties").writeText("org.gradle.jvmargs=-Xmx512m -XX:MaxMetaspaceSize=1g\n")
+    }
     dependsOn("publishToMavenLocal")
     shouldRunAfter(tasks.test)
 }
