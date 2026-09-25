@@ -26,6 +26,7 @@ import java.util.function.Supplier;
 import org.jspecify.annotations.Nullable;
 import st.orm.Entity;
 import st.orm.EntityCallback;
+import st.orm.core.template.ORMTemplate;
 
 /**
  * Dispatches {@link EntityCallback} invocations for a single entity type.
@@ -79,6 +80,8 @@ final class CallbackSupport<E extends Entity<ID>, ID> {
                             @Nullable Object generatedPrimaryKey,
                             After type) {}
 
+    private final ORMTemplate ormTemplate;
+
     private final List<EntityCallback<E>> callbacks;
 
     /**
@@ -88,8 +91,9 @@ final class CallbackSupport<E extends Entity<ID>, ID> {
      */
     private final boolean[] upsertsAsInserts;
 
-    CallbackSupport(List<EntityCallback<?>> callbacks, Class<E> entityType) {
-        this.callbacks = resolve(callbacks, entityType);
+    CallbackSupport(ORMTemplate ormTemplate, Class<E> entityType) {
+        this.ormTemplate = ormTemplate;
+        this.callbacks = resolve(ormTemplate.entityCallbacks(), entityType);
         this.upsertsAsInserts = new boolean[this.callbacks.size()];
         for (int i = 0; i < this.callbacks.size(); i++) {
             var type = this.callbacks.get(i).getClass();
@@ -166,12 +170,14 @@ final class CallbackSupport<E extends Entity<ID>, ID> {
             return entity;
         }
         ACTIVE.set(Boolean.TRUE);
+        CallbackTemplate.bind(ormTemplate);
         try {
             for (var callback : callbacks) {
                 entity = transformer.apply(callback, entity);
             }
             return entity;
         } finally {
+            CallbackTemplate.unbind();
             ACTIVE.set(Boolean.FALSE);
         }
     }
@@ -182,11 +188,13 @@ final class CallbackSupport<E extends Entity<ID>, ID> {
             return;
         }
         ACTIVE.set(Boolean.TRUE);
+        CallbackTemplate.bind(ormTemplate);
         try {
             for (var callback : callbacks) {
                 observer.accept(callback, entity);
             }
         } finally {
+            CallbackTemplate.unbind();
             ACTIVE.set(Boolean.FALSE);
         }
     }
@@ -302,6 +310,7 @@ final class CallbackSupport<E extends Entity<ID>, ID> {
     private void invoke(List<E> entities, After type) {
         entities = Collections.unmodifiableList(entities);
         ACTIVE.set(Boolean.TRUE);
+        CallbackTemplate.bind(ormTemplate);
         try {
             for (int i = 0; i < callbacks.size(); i++) {
                 var callback = callbacks.get(i);
@@ -319,6 +328,7 @@ final class CallbackSupport<E extends Entity<ID>, ID> {
                 }
             }
         } finally {
+            CallbackTemplate.unbind();
             ACTIVE.set(Boolean.FALSE);
         }
     }

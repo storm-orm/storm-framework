@@ -177,6 +177,36 @@ public interface ORMTemplate :
 
     public companion object {
         /**
+         * Returns the template of the operation that fired the entity callback running on this thread.
+         *
+         * An [EntityCallback] receives the entity and nothing else, so a callback that performs database work of
+         * its own reaches its template here rather than capturing one:
+         *
+         * ```
+         * class ArticleHistoryCallback : EntityCallback<Article> {
+         *     override fun afterUpdate(entities: List<Article>) {
+         *         ORMTemplate.current().writeSet().insert(entities.map(ArticleHistory::of))
+         *     }
+         * }
+         * ```
+         *
+         * The template returned is the one the write is running on, so the work goes to the same database, over the
+         * same connection, inside the same transaction, whichever template fired the callback. A callback that
+         * captures a template instead makes that choice once, at construction, and a callback registered on several
+         * templates has no correct choice to make.
+         *
+         * Callbacks never fire recursively, so the work performed through this template fires none of its own.
+         *
+         * @return the template the operation runs on; never `null`.
+         * @throws st.orm.PersistenceException if no entity callback is executing on this thread.
+         * @since 1.14
+         */
+        public fun current(): ORMTemplate {
+            Engine.require()
+            return ORMTemplateImpl(st.orm.core.template.ORMTemplate.current())
+        }
+
+        /**
          * Returns an [ORMTemplate] for use with JDBC.
          *
          * This method creates an ORM repository template using the provided [DataSource].

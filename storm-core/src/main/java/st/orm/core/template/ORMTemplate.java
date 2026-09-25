@@ -30,6 +30,7 @@ import st.orm.StormConfig;
 import st.orm.core.repository.EntityRepository;
 import st.orm.core.repository.ProjectionRepository;
 import st.orm.core.repository.RepositoryLookup;
+import st.orm.core.repository.impl.CallbackTemplate;
 import st.orm.core.spi.ConnectionProvider;
 import st.orm.core.spi.JdbcConnectionProviderImpl;
 import st.orm.core.spi.Providers;
@@ -49,6 +50,25 @@ import st.orm.spi.SqlCommenter;
  * @see ProjectionRepository
  */
 public interface ORMTemplate extends QueryTemplate, RepositoryLookup {
+
+    /**
+     * Returns the template of the operation that fired the entity callback running on this thread.
+     *
+     * <p>An {@link EntityCallback} receives the entity and nothing else, so a callback that performs database work
+     * of its own reaches its template here rather than capturing one. The template returned is the one the write is
+     * running on, so the work goes to the same database, over the same connection, inside the same transaction,
+     * whichever template fired the callback. A callback that captures a template instead makes that choice once, at
+     * construction, and a callback registered on several templates has no correct choice to make.</p>
+     *
+     * <p>Callbacks never fire recursively, so the work performed through this template fires none of its own.</p>
+     *
+     * @return the template the operation runs on; never {@code null}.
+     * @throws PersistenceException if no entity callback is executing on this thread.
+     * @since 1.14
+     */
+    static ORMTemplate current() {
+        return CallbackTemplate.current();
+    }
 
     /**
      * Returns the configuration associated with this template.

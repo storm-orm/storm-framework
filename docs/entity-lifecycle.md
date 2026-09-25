@@ -230,26 +230,25 @@ Callbacks execute on the thread that performed the write and on its connection, 
 
 Storm opens no transaction of its own, so the statement holds in the other direction too. A write issued outside a transaction commits on its own, and so does each statement of a call that issues several, such as an `*AndFetch` method or a batch. An "after" callback then runs against a row that is already durable: throwing cannot take it back, and the callback's own statements commit separately, so a failing callback leaves the write in place. A callback whose work has to succeed or fail with the write depends on the caller having opened a transaction.
 
-:::warning Use the template the application uses
-A callback shares the write's transaction because it shares its connection, and it shares the connection because it goes through the same template. Inject the `ORMTemplate` or the repository the application is wired with, or derive one from it with `withEntityCallback`. A template the callback builds for itself carries transaction machinery of its own: inside a Storm `transaction { }` block the mismatch is refused, naming both providers, and under a Spring-managed transaction the callback's work runs on a connection of its own, outside the transaction it was meant to join.
-:::
-
-In Spring Boot, callbacks are regular beans and can have repositories or other services injected through standard dependency injection. Outside Spring, a callback can capture a reference to the `ORMTemplate` or a repository at construction time.
+A callback reaches the template for that work through `ORMTemplate.current()`, which returns the template of the operation that fired it:
 
 ```java
 public class ArticleHistoryCallback implements EntityCallback<Article> {
-    private final ORMTemplate orm;
-
-    public ArticleHistoryCallback(ORMTemplate orm) {
-        this.orm = orm;
-    }
 
     @Override
-    public void afterUpdate(Article entity) {
-        orm.insert(new ArticleHistory(entity.id(), Instant.now(), "updated"));
+    public void afterUpdate(List<Article> articles) {
+        ORMTemplate.current().writeSet().insert(articles.stream()
+                .map(article -> new ArticleHistory(article.id(), Instant.now(), "updated"))
+                .toList());
     }
 }
 ```
+
+A callback that holds no template of its own cannot hold the wrong one. The template it is handed is the one the write is running on, so its work goes to the same database, over the same connection, inside the same transaction. A callback that captures a template makes that choice once, at construction, and the same instance registered on two templates over two data sources has no choice it could have made correctly. `current()` follows whichever template fired it, and is available while a callback executes and refused elsewhere, naming where it is valid.
+
+A template the callback builds for itself is the case this replaces. It carries transaction machinery of its own, so inside a Storm `transaction { }` block the mismatch is refused naming both providers, and under a Spring-managed transaction the work runs on a connection of its own, outside the transaction it was meant to join.
+
+In Spring Boot, callbacks are regular beans and can have repositories or other services injected through standard dependency injection. The template is not among the things to inject: `current()` covers it, and an injected one is a guess about which template will fire the callback.
 
 A natural concern with database-calling callbacks is infinite recursion: if an `afterUpdate` callback inserts an entity, and that insert triggers its own callbacks, which insert more entities, and so on. Storm prevents this with a re-entrancy guard. Callbacks never fire recursively. If a callback performs a database operation that would normally trigger callbacks, that nested operation executes normally but its callbacks are suppressed. The following diagram illustrates this:
 
@@ -488,3 +487,23 @@ public class ArticlePublishingCallback implements EntityCallback<Article> {
 </Tabs>
 
 Commit callbacks run synchronously before the transactional block returns, so their duration is added to the caller's. A publish that can block for long belongs on a background worker the callback hands off to. Work that has to survive a process dying between the commit and the publish belongs in the transaction as a row of its own, drained by a worker afterwards.
+
+A commit callback runs once the transaction has completed, which is after the entity callback that registered it has returned. [`ORMTemplate.current()`](#database-operations-inside-callbacks) is no longer available there, so a commit callback that performs database work of its own reads the template while the entity callback runs and captures it:
+
+```java
+public class ArticlePublishingCallback implements EntityCallback<Article> {
+
+    @Override
+    public void afterInsert(List<Article> articles) {
+        var orm = ORMTemplate.current();
+        Transactions.transaction(tx -> {
+            tx.onCommit(() -> orm.entity(PublishLog.class).insert(articles.stream()
+                    .map(article -> new PublishLog(article.id(), Instant.now()))
+                    .toList()));
+            return null;
+        });
+    }
+}
+```
+
+The captured template is the right one, the one the write ran on, and the work it performs after the commit runs in auto-commit on a connection of its own, since the transaction it belonged to is over. That is the point of registering it there.
