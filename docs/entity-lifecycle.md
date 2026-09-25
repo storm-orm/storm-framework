@@ -226,7 +226,13 @@ A callback that throws in order to block a removal only blocks the paths that ca
 
 ### Database Operations Inside Callbacks
 
-Callbacks execute in the same thread and transaction as the repository operation that triggered them. This means a callback can safely perform additional database work, such as inserting related entities, querying for validation data, or updating audit logs, and that work will participate in the same transaction. If the transaction rolls back, all changes made by callbacks roll back as well. Work that must happen only once the transaction commits, and side effects outside the database that a rollback cannot take back, belong on a commit callback registered through a joining [`transaction { }`](transactions.md#registering-from-nested-code) block instead; see [Logging](#logging).
+Callbacks execute on the thread that performed the write and on its connection, so they see exactly the transaction the write runs in. A callback can perform additional database work, such as inserting related entities, querying for validation data, or updating audit logs, and inside a transaction that work is part of it: a rollback takes back the callback's changes along with the write, and an "after" callback that throws rolls the write back with it.
+
+Storm opens no transaction of its own, so the statement holds in the other direction too. A write issued outside a transaction commits on its own, and so does each statement of a call that issues several, such as an `*AndFetch` method or a batch. An "after" callback then runs against a row that is already durable: throwing cannot take it back, and the callback's own statements commit separately, so a failing callback leaves the write in place. A callback whose work has to succeed or fail with the write depends on the caller having opened a transaction.
+
+:::warning Use the template the application uses
+A callback shares the write's transaction because it shares its connection, and it shares the connection because it goes through the same template. Inject the `ORMTemplate` or the repository the application is wired with, or derive one from it with `withEntityCallback`. A template the callback builds for itself carries transaction machinery of its own: inside a Storm `transaction { }` block the mismatch is refused, naming both providers, and under a Spring-managed transaction the callback's work runs on a connection of its own, outside the transaction it was meant to join.
+:::
 
 In Spring Boot, callbacks are regular beans and can have repositories or other services injected through standard dependency injection. Outside Spring, a callback can capture a reference to the `ORMTemplate` or a repository at construction time.
 
@@ -448,4 +454,39 @@ public class ArticlePublishingCallback implements EntityCallback<Article> {
 
 The pattern works the same under a Spring-managed transaction (`@Transactional`): the block detects the active Spring transaction, so the publish waits for Spring's commit. See [Mixed-Usage Caveats](transactions.md#mixed-usage-caveats) for the fine print.
 
-The callback fires once per entity, including for each row of a batch write, so registering there registers one callback per row. For anything beyond a handful, collect the entities and register a single callback for the batch instead.
+Register once per batch rather than once per row. `afterInsert(entity)` fires for each row of a batch write, so registering there holds one commit callback per row until the transaction ends. The [list form](#batch-operations) receives the batch as one list, which is where a single callback covers all of it:
+
+<Tabs groupId="language">
+<TabItem value="kotlin" label="Kotlin" default>
+
+```kotlin
+class ArticlePublishingCallback : EntityCallback<Article> {
+    override fun afterInsert(entities: List<Article>) {
+        val published = entities.map { ArticlePublished(it.id) }
+        transactionBlocking {
+            onCommit { published.forEach { events.publish(it) } }
+        }
+    }
+}
+```
+
+</TabItem>
+<TabItem value="java" label="Java">
+
+```java
+public class ArticlePublishingCallback implements EntityCallback<Article> {
+    @Override
+    public void afterInsert(List<Article> entities) {
+        var published = entities.stream().map(article -> new ArticlePublished(article.id())).toList();
+        Transactions.transaction(tx -> {
+            tx.onCommit(() -> published.forEach(events::publish));
+            return null;
+        });
+    }
+}
+```
+
+</TabItem>
+</Tabs>
+
+Commit callbacks run synchronously before the transactional block returns, so their duration is added to the caller's. A publish that can block for long belongs on a background worker the callback hands off to. Work that has to survive a process dying between the commit and the publish belongs in the transaction as a row of its own, drained by a worker afterwards.

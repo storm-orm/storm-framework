@@ -1012,8 +1012,9 @@ registration point. This holds inside Spring-managed transactions as well; see
 [Mixed-Usage Caveats](#mixed-usage-caveats) for the fine print.
 
 Register once per unit of work rather than once per record. An entity callback fires per entity, including for
-each row of a batch, so registering there means one callback per row held until commit. Collect into a list and
-register a single callback when the volume is more than a handful.
+each row of a batch, so registering from the single-entity form means one callback per row held until commit. Its
+[list form](entity-lifecycle.md#batch-operations) receives the batch as one list, so a single callback registered
+there covers the whole batch.
 
 ### Global Transaction Options
 
