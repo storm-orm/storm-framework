@@ -1,6 +1,6 @@
 ---
 name: storm-repository-java
-description: Write Storm repositories in Java, covering EntityRepository, custom repository interfaces, CRUD, batching, and transactions. Use when adding or changing a repository in Java.
+description: Write Storm repositories in Java, covering EntityRepository, custom repository interfaces, CRUD, batching, transactions, and entity lifecycle callbacks. Use when adding or changing a repository in Java.
 ---
 
 Help the user write a Storm repository using Java.
@@ -20,6 +20,8 @@ import st.orm.Page;                               // Offset-based pagination res
 import st.orm.Pageable;                           // Pagination request
 import st.orm.Scrollable;                         // Keyset scrolling cursor
 import st.orm.Window;                             // Keyset scrolling result
+import st.orm.EntityCallback;                     // Entity lifecycle callback on the write path
+import st.orm.EntityCallbacks;                    // Declares an entity's callbacks on the entity
 import st.orm.test.StormTest;                     // Test annotation
 import st.orm.test.SqlCapture;                    // SQL capture for verification
 import st.orm.test.CapturedSql.Operation;         // SELECT, INSERT, UPDATE, DELETE, UNDEFINED
@@ -334,6 +336,68 @@ Bulk mutations bypass dirty checking, and Storm invalidates observed state so la
 stay truthful: a mutation with a known entity type (`delete(...)` builders, template mutations
 naming the type) clears the observed state of that type; a raw SQL mutation clears all observed
 state in the transaction. Updates after such a mutation fall back to full-row writes.
+
+## Entity Lifecycle Callbacks
+
+`EntityCallback<E>` hooks the write path, so an audit field or a check lives in one place instead of in every
+service method. `beforeInsert` / `beforeUpdate` / `beforeUpsert` return the entity to persist; `afterInsert` /
+`afterUpdate` / `afterUpsert` / `afterRemove` observe what the calling method reports; `beforeRemove` and
+`afterRemove` fire only where the operation carries an entity (`remove(entity)` and its batch forms, never
+`removeById`, `removeAll` or a `delete()` builder). The type parameter selects the entity type, and
+`EntityCallback<Entity<?>>` fires for every type.
+
+```java
+public class PostAuditCallback implements EntityCallback<Post> {
+    @Override
+    public Post beforeInsert(Post entity) {
+        // Entities are records: return the copy to persist.
+        return new Post(entity.id(), entity.title(), entity.author(), Instant.now());
+    }
+}
+```
+
+**Prefer declaring the callback on the entity** with `@EntityCallbacks`. Storm creates it through its no-argument
+constructor and applies it wherever the entity is written, in Spring Boot and standalone alike, with nothing
+registered anywhere. This is the form to generate for audit fields, normalization and checks:
+
+```java
+@EntityCallbacks(PostAuditCallback.class)
+public record Post(@PK Integer id, String title, String author, Instant createdAt) implements Entity<Integer> {}
+```
+
+Declared callbacks fire before registered ones, in the order listed. A callback whose type parameter does not cover
+the annotated entity, or that Storm cannot create, fails when the repository is created.
+
+**Register an instance instead** when the callback takes collaborators, when it spans entity types
+(`EntityCallback<Entity<?>>`), or when it must apply to some templates and not others. Registering an instance of a
+declared type replaces the declared one, so it never fires twice:
+
+- **Spring Boot:** declare it as a bean (`@Component` or `@Bean`); the starter wires every `EntityCallback` bean
+  into the auto-configured `ORMTemplate`. This is where constructor injection is available.
+- **Standalone:** `ORMTemplate.of(dataSource).withEntityCallback(new PostAuditCallback())`. The template is
+  immutable, so create repositories from the returned one.
+
+Callbacks run inline on the writing thread and its connection, inside whatever transaction the caller opened, and
+never fire recursively. A callback that performs database work of its own reaches the template through
+`ORMTemplate.current()`, never a captured or injected one. An "after" callback runs before the commit, so an
+effect that cannot be taken back (publishing an event, invalidating a cache) is registered as a commit callback
+instead (`import static st.orm.template.Transactions.transaction;`):
+
+```java
+public class PostPublishingCallback implements EntityCallback<Post> {
+    @Override
+    public void afterInsert(List<Post> entities) {
+        transaction(tx -> {
+            tx.onCommit(() -> entities.forEach(post -> events.publish(new PostPublished(post))));
+            return null;
+        });
+    }
+}
+```
+
+Override the `List<E>` form of an "after" callback whenever the callback writes or registers work: Storm delivers
+every write through it (a single write as a list of one), so a batch costs a fixed number of statements and one
+commit callback rather than one per row.
 
 ## Write Sets (Mixed-Type Graphs)
 

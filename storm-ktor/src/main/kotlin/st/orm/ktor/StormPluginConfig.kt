@@ -265,7 +265,7 @@ public class StormPluginConfig {
     }
 
     /**
-     * Entity callbacks for lifecycle hooks on insert, update, and delete operations. Applied to every
+     * Entity callbacks for lifecycle hooks on insert, update, upsert, and remove operations. Applied to every
      * database; callbacks declared in a database block apply to that database in addition.
      */
     public val entityCallbacks: MutableList<EntityCallback<*>> = mutableListOf()

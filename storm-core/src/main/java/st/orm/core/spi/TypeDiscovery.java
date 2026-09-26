@@ -192,6 +192,7 @@ public final class TypeDiscovery {
                 LOGGER.debug("Skipping type index entry {} that cannot be loaded.", fqClassName, e);
             }
         }
+        LOGGER.debug("Discovered {} {} type(s) from the type index.", result.size(), typeFqName);
         return result;
     }
 
@@ -218,6 +219,7 @@ public final class TypeDiscovery {
                 LOGGER.debug("Skipping type index entry {} that cannot be loaded.", fqClassName, e);
             }
         }
+        LOGGER.debug("Discovered {} {} type(s) from the type index.", result.size(), typeFqName);
         return result;
     }
 

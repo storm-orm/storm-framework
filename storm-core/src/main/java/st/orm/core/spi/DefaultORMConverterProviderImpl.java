@@ -83,6 +83,8 @@ public class DefaultORMConverterProviderImpl implements ORMConverterProvider {
                     genericTypes.entityType
             );
             result.add(entry);
+            LOGGER.debug("Registered default converter {} for {}.", converterClass.getName(),
+                    genericTypes.entityType.getName());
         }
         return List.copyOf(result);
     }

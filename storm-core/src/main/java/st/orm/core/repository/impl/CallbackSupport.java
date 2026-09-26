@@ -20,12 +20,19 @@ import java.lang.reflect.Type;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Set;
 import java.util.function.Function;
 import java.util.function.Supplier;
+import java.util.stream.Collectors;
 import org.jspecify.annotations.Nullable;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import st.orm.Entity;
 import st.orm.EntityCallback;
+import st.orm.EntityCallbacks;
+import st.orm.PersistenceException;
 import st.orm.core.template.ORMTemplate;
 
 /**
@@ -54,6 +61,19 @@ import st.orm.core.template.ORMTemplate;
  * @since 1.13
  */
 final class CallbackSupport<E extends Entity<ID>, ID> {
+
+    private static final Logger LOGGER = LoggerFactory.getLogger("st.orm.callback");
+
+    /**
+     * The callbacks each entity type declares with {@link EntityCallbacks}, created once per entity type. Held in a
+     * {@link ClassValue} so the instances die with the entity class they belong to.
+     */
+    private static final ClassValue<List<EntityCallback<?>>> DECLARED = new ClassValue<>() {
+        @Override
+        protected List<EntityCallback<?>> computeValue(Class<?> type) {
+            return declare(type);
+        }
+    };
 
     /**
      * Re-entrancy guard that prevents entity callbacks from firing recursively. When a callback performs database
@@ -93,7 +113,7 @@ final class CallbackSupport<E extends Entity<ID>, ID> {
 
     CallbackSupport(ORMTemplate ormTemplate, Class<E> entityType) {
         this.ormTemplate = ormTemplate;
-        this.callbacks = resolve(ormTemplate.entityCallbacks(), entityType);
+        this.callbacks = resolve(DECLARED.get(entityType), ormTemplate.entityCallbacks(), entityType);
         this.upsertsAsInserts = new boolean[this.callbacks.size()];
         for (int i = 0; i < this.callbacks.size(); i++) {
             var type = this.callbacks.get(i).getClass();
@@ -457,20 +477,73 @@ final class CallbackSupport<E extends Entity<ID>, ID> {
     //
 
     /**
-     * Resolves the entity callbacks that match the given entity type, filtering by the generic type parameter
-     * declared on each {@link EntityCallback}.
+     * Resolves the entity callbacks that apply to the given entity type: the callbacks the entity declares with
+     * {@link EntityCallbacks}, which apply to it by declaration, followed by the callbacks registered on the
+     * template whose generic type parameter matches it. A declared callback whose type is also registered is left
+     * out, so that registering an instance of it replaces the declared one rather than adding a second.
      */
     @SuppressWarnings("unchecked")
     private static <E extends Entity<ID>, ID> List<EntityCallback<E>> resolve(
-            List<EntityCallback<?>> callbacks, Class<E> entityType) {
+            List<EntityCallback<?>> declared, List<EntityCallback<?>> registered, Class<E> entityType) {
+        Set<Class<?>> registeredTypes = registered.stream()
+                .map(Object::getClass)
+                .collect(Collectors.toCollection(LinkedHashSet::new));
         var result = new ArrayList<EntityCallback<E>>();
-        for (var callback : callbacks) {
+        for (var callback : declared) {
+            if (!registeredTypes.contains(callback.getClass())) {
+                result.add((EntityCallback<E>) callback);
+            }
+        }
+        for (var callback : registered) {
             Class<?> callbackType = resolveEntityType(callback.getClass());
             if (callbackType.isAssignableFrom(entityType)) {
                 result.add((EntityCallback<E>) callback);
             }
         }
+        if (LOGGER.isDebugEnabled() && !result.isEmpty()) {
+            LOGGER.debug("Entity callbacks for {}: {}.", entityType.getName(), result.stream()
+                    .map(callback -> callback.getClass().getName()
+                            + (registeredTypes.contains(callback.getClass()) ? " (registered)" : " (declared)"))
+                    .collect(Collectors.joining(", ")));
+        }
         return List.copyOf(result);
+    }
+
+    /**
+     * Creates the callbacks the given entity type declares with {@link EntityCallbacks}.
+     *
+     * <p>A declared callback is named by the entity, so a type that cannot serve is an error rather than something to
+     * skip: a type parameter that does not match the entity, or a class Storm cannot create, fails with a message
+     * naming the entity and the way to register that callback instead.</p>
+     */
+    private static List<EntityCallback<?>> declare(Class<?> entityType) {
+        EntityCallbacks annotation = entityType.getAnnotation(EntityCallbacks.class);
+        if (annotation == null) {
+            return List.of();
+        }
+        var result = new ArrayList<EntityCallback<?>>();
+        for (Class<? extends EntityCallback<?>> callbackType : annotation.value()) {
+            Class<?> declaredFor = resolveEntityType(callbackType);
+            if (!declaredFor.isAssignableFrom(entityType)) {
+                throw new PersistenceException(
+                        "Entity callback %s declared on %s applies to %s. Declare it on the entity it applies to, or give it the type parameter %s."
+                                .formatted(callbackType.getName(), entityType.getName(), declaredFor.getName(),
+                                        entityType.getSimpleName()));
+            }
+            result.add(create(callbackType, entityType));
+        }
+        return List.copyOf(result);
+    }
+
+    /** Creates a declared callback through its public no-argument constructor. */
+    private static EntityCallback<?> create(Class<? extends EntityCallback<?>> callbackType, Class<?> entityType) {
+        try {
+            return callbackType.getDeclaredConstructor().newInstance();
+        } catch (ReflectiveOperationException e) {
+            throw new PersistenceException(
+                    "Failed to create entity callback %s declared on %s. Ensure the callback has a public no-argument constructor, or leave it off the entity and register an instance instead: a bean in Spring Boot, entityCallback(...) in the Ktor plugin, or withEntityCallback on the template."
+                            .formatted(callbackType.getName(), entityType.getName()), e);
+        }
     }
 
     /**

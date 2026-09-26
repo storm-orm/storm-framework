@@ -1,6 +1,6 @@
 ---
 name: storm-repository-kotlin
-description: Write Storm repositories in Kotlin, covering EntityRepository, custom repository interfaces, CRUD, batching, and transactions. Use when adding or changing a repository in Kotlin.
+description: Write Storm repositories in Kotlin, covering EntityRepository, custom repository interfaces, CRUD, batching, transactions, and entity lifecycle callbacks. Use when adding or changing a repository in Kotlin.
 ---
 
 Help the user write a Storm repository using Kotlin.
@@ -22,6 +22,8 @@ import st.orm.Page                               // Offset-based pagination resu
 import st.orm.Pageable                           // Pagination request
 import st.orm.Scrollable                         // Keyset scrolling cursor (single type param: Scrollable<T>)
 import st.orm.Window                             // Keyset scrolling result (Window<R>)
+import st.orm.EntityCallback                     // Entity lifecycle callback on the write path
+import st.orm.EntityCallbacks                    // Declares an entity's callbacks on the entity
 import st.orm.test.StormTest                     // Test annotation
 import st.orm.test.SqlCapture                    // SQL capture for verification
 import st.orm.test.CapturedSql.Operation         // SELECT, INSERT, UPDATE, DELETE, UNDEFINED
@@ -438,6 +440,64 @@ Bulk mutations bypass dirty checking, and Storm invalidates observed state so la
 stay truthful: a mutation with a known entity type (`delete(...)` builders, template mutations
 naming the type) clears the observed state of that type; a raw SQL mutation clears all observed
 state in the transaction. Updates after such a mutation fall back to full-row writes.
+
+## Entity Lifecycle Callbacks
+
+`EntityCallback<E>` hooks the write path, so an audit field or a check lives in one place instead of in every
+service method. `beforeInsert` / `beforeUpdate` / `beforeUpsert` return the entity to persist (`copy()` it);
+`afterInsert` / `afterUpdate` / `afterUpsert` / `afterRemove` observe what the calling method reports;
+`beforeRemove` and `afterRemove` fire only where the operation carries an entity (`remove(entity)` and its batch
+forms, never `removeById`, `removeAll` or a `delete()` builder). The type parameter selects the entity type, and
+`EntityCallback<Entity<*>>` fires for every type.
+
+```kotlin
+class PostAuditCallback : EntityCallback<Post> {
+    override fun beforeInsert(entity: Post): Post = entity.copy(createdAt = Instant.now())
+}
+```
+
+**Prefer declaring the callback on the entity** with `@EntityCallbacks`. Storm creates it through its no-argument
+constructor and applies it wherever the entity is written, in Spring Boot, Ktor and standalone alike, with nothing
+registered anywhere. This is the form to generate for audit fields, normalization and checks:
+
+```kotlin
+@EntityCallbacks(PostAuditCallback::class)
+data class Post(@PK val id: Int = 0, val title: String, val createdAt: Instant) : Entity<Int>
+```
+
+Declared callbacks fire before registered ones, in the order listed. A callback whose type parameter does not cover
+the annotated entity, or that Storm cannot create, fails when the repository is created.
+
+**Register an instance instead** when the callback takes collaborators, when it spans entity types
+(`EntityCallback<Entity<*>>`), or when it must apply to some templates and not others. Registering an instance of a
+declared type replaces the declared one, so it never fires twice:
+
+- **Spring Boot:** declare it as a bean (`@Component` or `@Bean`); the starter wires every `EntityCallback` bean
+  into the auto-configured `ORMTemplate`. This is where constructor injection is available.
+- **Ktor:** `install(Storm) { entityCallback(PostAuditCallback()) }`. Declared inside a `database("name") { }`
+  block it applies to that database in addition to the plugin-level callbacks.
+- **Standalone:** `dataSource.orm.withEntityCallback(PostAuditCallback())`. The template is immutable, so create
+  repositories from the returned one.
+
+Callbacks run inline on the writing thread and its connection, inside whatever transaction the caller opened, and
+never fire recursively. A callback that performs database work of its own reaches the template through
+`ORMTemplate.current()`, never a captured or injected one. An "after" callback runs before the commit, so an
+effect that cannot be taken back (publishing an event, invalidating a cache) is registered as a commit callback
+instead; a callback is not a suspend context, so it joins with `transactionBlocking { }`:
+
+```kotlin
+class PostPublishingCallback(private val events: Events) : EntityCallback<Post> {
+    override fun afterInsert(entities: List<Post>) {
+        transactionBlocking {
+            onCommit { entities.forEach { events.publish(PostPublished(it)) } }
+        }
+    }
+}
+```
+
+Override the `List<E>` form of an "after" callback whenever the callback writes or registers work: Storm delivers
+every write through it (a single write as a list of one), so a batch costs a fixed number of statements and one
+commit callback rather than one per row.
 
 ## Write Sets (Mixed-Type Graphs)
 
