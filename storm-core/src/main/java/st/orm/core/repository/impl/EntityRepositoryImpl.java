@@ -125,7 +125,7 @@ public class EntityRepositoryImpl<E extends Entity<ID>, ID>
         }
         this.dirtySupport = new DirtySupport<>(model, ormTemplate.config());
         this.cacheRetention = StormConfigHelper.cacheRetention(ormTemplate.config());
-        this.entityCallbacks = new CallbackSupport<>(ormTemplate.entityCallbacks(), model.type());
+        this.entityCallbacks = new CallbackSupport<>(ormTemplate, model.type());
         EntityCacheMetrics.getInstance().registerEntity(model.type().getName(), cacheRetention.name());
         LOGGER.debug("{}: cacheRetention={}", model.type().getSimpleName(), cacheRetention);
     }

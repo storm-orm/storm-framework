@@ -79,10 +79,11 @@ import java.util.List;
  * callback whose work has to succeed or fail with the write therefore depends on the caller having opened a
  * transaction.</p>
  *
- * <p>A callback that performs database work does so through the template the operation runs on, or one derived from
- * it, so that it shares the connection and with it the transaction. A template the callback builds for itself carries
- * transaction machinery of its own and shares neither: inside a Storm transactional block the mismatch is refused,
- * and under a transaction another framework manages the work runs on a connection of its own, outside it.</p>
+ * <p>A callback that performs database work of its own reaches its template through {@code ORMTemplate.current()},
+ * which returns the template of the operation that fired the callback, so the work goes to the same database, over
+ * the same connection, inside the same transaction. A callback that captures a template instead makes that choice
+ * once, at construction, and a callback registered on several templates has no correct choice to make. Callbacks
+ * never fire recursively, so the work fires none of its own.</p>
  *
  * <p>Because an "after" callback runs before the commit, it is the wrong place for an effect outside the database,
  * such as publishing an event or invalidating a cache: the transaction may still roll back, leaving the effect
@@ -90,7 +91,9 @@ import java.util.List;
  * a joining transactional block and calling {@link Transaction#onCommit(Runnable)}; it runs once the physical
  * transaction has committed. Registering from the list form registers one commit callback for the batch rather than
  * one per entity. Commit callbacks run synchronously before the transactional block returns, so work that can block
- * for long belongs on a background worker the callback hands off to.</p>
+ * for long belongs on a background worker the callback hands off to. They also run once the dispatch has returned,
+ * where {@code ORMTemplate.current()} is no longer available, so a commit callback that performs database work reads
+ * the template while the callback runs and captures it.</p>
  *
  * <p>All methods have default no-op implementations, so users only need to override the hooks they care about.</p>
  *

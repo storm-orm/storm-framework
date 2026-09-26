@@ -22,6 +22,7 @@ import java.util.function.UnaryOperator;
 import javax.sql.DataSource;
 import st.orm.Data;
 import st.orm.EntityCallback;
+import st.orm.PersistenceException;
 import st.orm.StormConfig;
 import st.orm.mapping.TemplateDecorator;
 import st.orm.repository.EntityRepository;
@@ -205,6 +206,37 @@ public interface ORMTemplate extends QueryTemplate, RepositoryLookup {
     static ORMTemplate of(DataSource dataSource) {
         Engine.require();
         return new ORMTemplateImpl(st.orm.core.template.ORMTemplate.of(dataSource));
+    }
+
+    /**
+     * Returns the template of the operation that fired the entity callback running on this thread.
+     *
+     * <p>An {@link EntityCallback} receives the entity and nothing else, so a callback that performs database work
+     * of its own reaches its template here rather than capturing one:</p>
+     *
+     * <pre>{@code
+     * public class ArticleHistoryCallback implements EntityCallback<Article> {
+     *
+     *     public void afterUpdate(List<Article> articles) {
+     *         ORMTemplate.current().writeSet().insert(articles.stream().map(ArticleHistory::of).toList());
+     *     }
+     * }
+     * }</pre>
+     *
+     * <p>The template returned is the one the write is running on, so the work goes to the same database, over the
+     * same connection, inside the same transaction, whichever template fired the callback. A callback that captures
+     * a template instead makes that choice once, at construction, and a callback registered on several templates has
+     * no correct choice to make.</p>
+     *
+     * <p>Callbacks never fire recursively, so the work performed through this template fires none of its own.</p>
+     *
+     * @return the template the operation runs on; never {@code null}.
+     * @throws PersistenceException if no entity callback is executing on this thread.
+     * @since 1.14
+     */
+    static ORMTemplate current() {
+        Engine.require();
+        return new ORMTemplateImpl(st.orm.core.template.ORMTemplate.current());
     }
 
     /**
