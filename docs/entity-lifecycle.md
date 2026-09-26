@@ -428,7 +428,7 @@ That is fine for a log that records attempts. Where the record must reflect comm
 class ArticlePublishingCallback : EntityCallback<Article> {
     override fun afterInsert(entity: Article) {
         transactionBlocking {
-            onCommit { events.publish(ArticlePublished(entity.id)) }
+            onCommit { events.publish(ArticlePublished(entity)) }
         }
     }
 }
@@ -442,7 +442,7 @@ public class ArticlePublishingCallback implements EntityCallback<Article> {
     @Override
     public void afterInsert(Article entity) {
         Transactions.transaction(tx -> {
-            tx.onCommit(() -> events.publish(new ArticlePublished(entity.id())));
+            tx.onCommit(() -> events.publish(new ArticlePublished(entity)));
             return null;
         });
     }
@@ -462,9 +462,8 @@ Register once per batch rather than once per row. `afterInsert(entity)` fires fo
 ```kotlin
 class ArticlePublishingCallback : EntityCallback<Article> {
     override fun afterInsert(entities: List<Article>) {
-        val published = entities.map { ArticlePublished(it.id) }
         transactionBlocking {
-            onCommit { published.forEach { events.publish(it) } }
+            onCommit { entities.forEach { events.publish(ArticlePublished(it)) } }
         }
     }
 }
@@ -477,9 +476,8 @@ class ArticlePublishingCallback : EntityCallback<Article> {
 public class ArticlePublishingCallback implements EntityCallback<Article> {
     @Override
     public void afterInsert(List<Article> entities) {
-        var published = entities.stream().map(article -> new ArticlePublished(article.id())).toList();
         Transactions.transaction(tx -> {
-            tx.onCommit(() -> published.forEach(events::publish));
+            tx.onCommit(() -> entities.forEach(article -> events.publish(new ArticlePublished(article))));
             return null;
         });
     }
