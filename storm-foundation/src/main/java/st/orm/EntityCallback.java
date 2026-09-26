@@ -65,6 +65,33 @@ import java.util.List;
  * write set pass each type's entities as one list once the rows have been read back, and a stream passes them a batch
  * at a time. Where several callbacks apply, each receives the whole list before the next one does.</p>
  *
+ * <h2>Transactions</h2>
+ *
+ * <p>Callbacks run inline on the thread that performed the write and on its connection, so they see exactly the
+ * transaction the write runs in. The "before" callbacks run before the statement, the "after" callbacks once it has
+ * returned. Inside a transactional block, or under a transaction another framework manages, database work a callback
+ * performs belongs to that transaction and a rollback takes it back together with the write, and an "after" callback
+ * that throws rolls the write back with it.</p>
+ *
+ * <p>Storm opens no transaction of its own. A write issued outside one commits on its own, and so does each statement
+ * of a call that issues several, such as an {@code *AndFetch} method or a batch. An "after" callback then observes a
+ * row that is already durable: throwing cannot take it back, and the callback's own statements commit separately. A
+ * callback whose work has to succeed or fail with the write therefore depends on the caller having opened a
+ * transaction.</p>
+ *
+ * <p>A callback that performs database work does so through the template the operation runs on, or one derived from
+ * it, so that it shares the connection and with it the transaction. A template the callback builds for itself carries
+ * transaction machinery of its own and shares neither: inside a Storm transactional block the mismatch is refused,
+ * and under a transaction another framework manages the work runs on a connection of its own, outside it.</p>
+ *
+ * <p>Because an "after" callback runs before the commit, it is the wrong place for an effect outside the database,
+ * such as publishing an event or invalidating a cache: the transaction may still roll back, leaving the effect
+ * describing a write that never landed. Such work belongs on a commit callback, which a callback registers by opening
+ * a joining transactional block and calling {@link Transaction#onCommit(Runnable)}; it runs once the physical
+ * transaction has committed. Registering from the list form registers one commit callback for the batch rather than
+ * one per entity. Commit callbacks run synchronously before the transactional block returns, so work that can block
+ * for long belongs on a background worker the callback hands off to.</p>
+ *
  * <p>All methods have default no-op implementations, so users only need to override the hooks they care about.</p>
  *
  * <p>Typical use cases include auditing (setting created/updated timestamps), validation, and logging.</p>
