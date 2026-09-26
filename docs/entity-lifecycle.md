@@ -79,7 +79,64 @@ The framework resolves the type parameter at runtime, so a typed callback is nev
 
 ## Registering a Callback
 
-There are two ways to register callbacks: programmatically via `withEntityCallback`, or automatically through Spring Boot auto-configuration.
+A callback reaches an entity in one of two ways. The entity declares it with `@EntityCallbacks`, and Storm creates it; or the application creates it and registers it on a template, programmatically with `withEntityCallback`, as a bean in Spring Boot, or in the configuration block of the Ktor plugin.
+
+Declare it on the entity when the callback is part of the entity's own definition and needs nothing but the entity. Register it when it needs collaborators, or when it has to apply to some templates and not others.
+
+### On the Entity
+
+`@EntityCallbacks` names the callback types that apply to an entity. Storm creates each of them through its public
+no-argument constructor, once per entity type, and applies it wherever that entity is written: through the Spring
+starter's template, the Ktor plugin's template, or a standalone one. Nothing is registered anywhere.
+
+<Tabs groupId="language">
+<TabItem value="kotlin" label="Kotlin" default>
+
+```kotlin
+class ArticleAuditCallback : EntityCallback<Article> {
+    override fun beforeInsert(entity: Article): Article = entity.copy(createdAt = Instant.now())
+}
+
+@EntityCallbacks(ArticleAuditCallback::class)
+data class Article(@PK val id: Int = 0, val title: String, val createdAt: Instant) : Entity<Int>
+```
+
+</TabItem>
+<TabItem value="java" label="Java">
+
+```java
+public class ArticleAuditCallback implements EntityCallback<Article> {
+    @Override
+    public Article beforeInsert(Article entity) {
+        return entity.toBuilder().createdAt(Instant.now()).build();
+    }
+}
+
+@EntityCallbacks(ArticleAuditCallback.class)
+public record Article(@PK Integer id, String title, Instant createdAt) implements Entity<Integer> {}
+```
+
+</TabItem>
+</Tabs>
+
+A declared callback applies to the annotated entity, whatever its own type parameter would otherwise match, and a
+callback whose type parameter does not cover the entity is a wiring error that fails when the repository is created,
+naming both types. A callback Storm cannot create fails the same way, naming the ways to register an instance
+instead.
+
+Three properties follow from Storm creating the instance, and each is a reason to register a callback rather than
+declare it:
+
+- It takes no collaborators, since there is no constructor to pass them to. Database work is still available through
+  [`ORMTemplate.current()`](#database-operations-inside-callbacks); anything else has to be reachable without
+  injection.
+- It cannot be scoped. The entity carries the declaration, so the callback applies to every template that writes the
+  entity, including one an application builds for a migration, an import or a test.
+- Registering an instance of a declared type replaces the declared one, so a callback that is both declared and
+  registered fires once, as the registered instance. This is what lets a callback move from declared to registered
+  without firing twice on the way.
+
+Declared callbacks fire before the callbacks registered on the template, in the order the annotation lists them.
 
 ### Programmatic Registration
 
@@ -117,7 +174,7 @@ ORMTemplate orm = ORMTemplate.of(dataSource).withEntityCallback(callback);
 
 ### Spring Boot Auto-Configuration
 
-When using the Storm Spring Boot Starter, any `EntityCallback` beans in your application context are automatically detected and wired to the `ORMTemplate`. No additional configuration is needed. Each callback is registered individually and only fires for entities matching its type parameter.
+When using the Storm Spring Boot Starter, any `EntityCallback` beans in your application context are automatically detected and wired to the `ORMTemplate`. No additional configuration is needed. This is where a callback with dependencies belongs: it is a bean, so repositories and services are injected into it as usual. Each callback is registered individually and only fires for entities matching its type parameter.
 
 <Tabs groupId="language">
 <TabItem value="kotlin" label="Kotlin" default>
@@ -154,6 +211,26 @@ public class AuditConfig {
 
 </TabItem>
 </Tabs>
+
+### Ktor Plugin
+
+The [Storm Ktor plugin](ktor-integration.md#plugin-configuration-options) applies the callbacks declared in its configuration block, in declaration order. A callback declared at plugin level applies to every database; one declared inside a `database("name") { }` block applies to that database in addition to the plugin-level ones.
+
+```kotlin
+class AuditCallback : EntityCallback<Article> {
+    override fun beforeInsert(entity: Article): Article {
+        return entity.copy(createdAt = Instant.now())
+    }
+}
+
+fun Application.module() {
+    install(Storm) {
+        entityCallback(AuditCallback())
+    }
+}
+```
+
+A callback that performs database work of its own reaches the template through [`ORMTemplate.current()`](#database-operations-inside-callbacks), so there is nothing to inject into it at construction.
 
 ---
 

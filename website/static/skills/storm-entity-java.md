@@ -153,6 +153,8 @@ Generation rules:
 
 15. **Typed ID from `Ref`:** Use `Ref.entityId(ref)` to extract a type-safe ID from a `Ref`. For projections, use `Ref.projectionId(ref)`. Avoid `ref.id()` — it returns `Object` and requires an unsafe cast.
 
+16. **Write hooks belong on the entity, in a callback class**: a field the database does not fill, such as `createdAt`, is set by an `EntityCallback` the entity declares with `@EntityCallbacks(PostAuditCallback.class)`. Storm creates the callback and applies it wherever the entity is written, so nothing is registered in Spring Boot. The hooks live in the callback class, never as methods on the entity; a callback that needs collaborators is registered as a bean instead (see the repository skill).
+
 After generating, remind the user to rebuild for metamodel generation.
 
 ## Verification

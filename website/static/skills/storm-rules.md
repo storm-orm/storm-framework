@@ -13,6 +13,7 @@ Storm can run on top of JPA, but when generating code, always use Storm's own an
 - Use `@DbColumn`, not `@Column`
 - Use `@UK`, not `@UniqueConstraint`
 - Use `@Version` from `st.orm`, not from `jakarta.persistence`
+- Use `@EntityCallbacks(AuditCallback::class)` with an `EntityCallback` implementation, not `@EntityListeners`, `@PrePersist`, `@PreUpdate` or `@PreRemove`; the hooks live in the callback class, never as methods on the entity
 - Use `DataSource.orm` or `ORMTemplate.of(dataSource)`, not `EntityManager`
 - Do not add `jakarta.persistence-api`, Hibernate, or any JPA implementation unless the project already uses them
 

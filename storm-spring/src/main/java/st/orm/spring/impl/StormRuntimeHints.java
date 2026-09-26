@@ -37,6 +37,7 @@ import org.springframework.aot.hint.RuntimeHints;
 import org.springframework.aot.hint.RuntimeHintsRegistrar;
 import org.springframework.aot.hint.TypeReference;
 import org.springframework.core.DecoratingProxy;
+import st.orm.EntityCallbacks;
 import st.orm.core.spi.TypeDiscovery;
 
 /**
@@ -105,6 +106,15 @@ public class StormRuntimeHints implements RuntimeHintsRegistrar {
                 Class<?> type = Class.forName(typeName, false, loader);
                 for (Class<?> componentType : TypeDiscovery.getComponentTypes(type)) {
                     registerDataType(hints, componentType.getName());
+                }
+                // Storm creates the callbacks an entity declares through their no-argument constructor the first
+                // time the entity is written, so the constructor has to survive into the image.
+                EntityCallbacks declared = type.getAnnotation(EntityCallbacks.class);
+                if (declared != null) {
+                    for (Class<?> callbackType : declared.value()) {
+                        hints.reflection().registerType(TypeReference.of(callbackType.getName()),
+                                MemberCategory.INVOKE_DECLARED_CONSTRUCTORS);
+                    }
                 }
             } catch (Throwable ignore) {
                 // Entries that do not load still get their hints registered by name above.

@@ -18,6 +18,7 @@ package st.orm.core.graal;
 import org.graalvm.nativeimage.hosted.Feature;
 import org.graalvm.nativeimage.hosted.RuntimeProxyCreation;
 import org.graalvm.nativeimage.hosted.RuntimeReflection;
+import st.orm.EntityCallbacks;
 import st.orm.core.spi.TypeDiscovery;
 
 /**
@@ -42,7 +43,7 @@ public final class StormFeature implements Feature {
 
     @Override
     public String getDescription() {
-        return "Registers Storm entities, converters, and repositories from the compile-time type index.";
+        return "Registers Storm entities, entity callbacks, converters, and repositories from the compile-time type index.";
     }
 
     @Override
@@ -55,11 +56,13 @@ public final class StormFeature implements Feature {
                     + "Kotlin) to the build so the index is generated at compile time.");
         }
         int dataTypes = 0;
+        int callbackTypes = 0;
         for (Class<?> type : TypeDiscovery.getDataTypes()) {
             registerDataType(access, type);
             for (Class<?> componentType : TypeDiscovery.getComponentTypes(type)) {
                 registerDataType(access, componentType);
             }
+            callbackTypes += registerEntityCallbacks(type);
             dataTypes++;
         }
         int converterTypes = 0;
@@ -79,8 +82,25 @@ public final class StormFeature implements Feature {
             repositoryTypes++;
         }
         System.out.printf(
-                "Storm: registered %d data types, %d converters, and %d repositories from the type index.%n",
-                dataTypes, converterTypes, repositoryTypes);
+                "Storm: registered %d data types, %d entity callbacks, %d converters, and %d repositories from "
+                        + "the type index.%n",
+                dataTypes, callbackTypes, converterTypes, repositoryTypes);
+    }
+
+    /**
+     * Registers the callbacks an entity declares with {@link EntityCallbacks}. Storm creates each of them through
+     * its no-argument constructor the first time the entity is written, which needs the constructor at runtime.
+     */
+    private static int registerEntityCallbacks(Class<?> type) {
+        EntityCallbacks declared = type.getAnnotation(EntityCallbacks.class);
+        if (declared == null) {
+            return 0;
+        }
+        for (Class<?> callbackType : declared.value()) {
+            RuntimeReflection.register(callbackType);
+            RuntimeReflection.register(callbackType.getDeclaredConstructors());
+        }
+        return declared.value().length;
     }
 
     private static void registerDataType(BeforeAnalysisAccess access, Class<?> type) {
