@@ -1,6 +1,7 @@
 package st.orm.spi.mariadb;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static st.orm.GenerationStrategy.NONE;
@@ -9,8 +10,12 @@ import static st.orm.core.template.SqlInterceptor.observe;
 
 import java.time.Instant;
 import java.time.LocalDate;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 import javax.sql.DataSource;
 import lombok.Builder;
 import org.jspecify.annotations.Nullable;
@@ -243,6 +248,48 @@ public class MariaDBEntityRepositoryTest {
             assertNotNull(id);
             assertTrue(id > 0);
         });
+    }
+
+    @Test
+    public void testUpsertAndFetchIdsOnUniqueKeyReturnsTheRowsWritten() {
+        // A batch mixing rows that meet the unique key on name with rows that insert. Each id is the row the
+        // entity at its position was written to, whether the statement inserted or updated it, on servers that
+        // report a batch's results per row (11.5 and later) as well as on those that do not.
+        var repo = PreparedStatementTemplate.ORM(dataSource).entity(PetType.class);
+        var statements = new ArrayList<String>();
+        var ids = observe(sql -> statements.add(sql.statement()), () -> repo.upsertAndFetchIds(List.of(
+                PetType.builder().name("dog").description("barks").build(),
+                PetType.builder().name("ferret").description("sleeps").build(),
+                PetType.builder().name("cat").description("purrs").build(),
+                PetType.builder().name("rabbit").description("hops").build())));
+        assertEquals(1, statements.size());
+        assertTrue(statements.getFirst().contains("ON DUPLICATE KEY UPDATE"));
+        assertTrue(statements.getFirst().contains("RETURNING id"));
+        assertEquals(4, ids.size());
+        assertEquals(2, ids.get(0));
+        assertEquals(1, ids.get(2));
+        assertTrue(ids.get(1) > 6);
+        assertTrue(ids.get(3) > 6);
+        assertNotEquals(ids.get(1), ids.get(3));
+        assertEquals(List.of("dog", "ferret", "cat", "rabbit"),
+                ids.stream().map(id -> repo.getById(id).name()).toList());
+        assertEquals("purrs", repo.getById(1).description());
+    }
+
+    @Test
+    public void testUpsertAndFetchOnUniqueKeyReturnsTheRowsWritten() {
+        var repo = PreparedStatementTemplate.ORM(dataSource).entity(PetType.class);
+        var fetched = repo.upsertAndFetch(List.of(
+                PetType.builder().name("snake").description("hisses").build(),
+                PetType.builder().name("gecko").description("climbs").build(),
+                PetType.builder().name("bird").description("sings").build()));
+        assertEquals(3, fetched.size());
+        var byName = fetched.stream().collect(Collectors.toMap(PetType::name, Function.identity()));
+        assertEquals(4, byName.get("snake").id());
+        assertEquals("hisses", byName.get("snake").description());
+        assertEquals(5, byName.get("bird").id());
+        assertEquals("sings", byName.get("bird").description());
+        assertTrue(byName.get("gecko").id() > 6);
     }
 
     // UUID support
