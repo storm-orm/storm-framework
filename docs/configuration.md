@@ -499,6 +499,40 @@ Annotations on individual entities and fields always take precedence over config
 
 Use `@DbTable` to override a table name, `@DbColumn` to override a column name, and the string parameter on `@PK` or `@FK` to override their respective column names. See [Entities: Custom Table and Column Names](entities.md#custom-table-and-column-names) for details and examples.
 
+### Schemas Per Template
+
+The schema an entity declares with `@DbTable(schema = ...)` is fixed at compile time, while the schema its table lives in can depend on the database a template connects to: several tenants on one database server, for instance, each with the same tables under a schema named after the tenant. A `SchemaResolver` maps the declared schema to the schema a template's statements address. It receives the entity or projection type and the declared schema, an empty string when the type declares none, and returns the schema to address, or an empty string to address the table without a schema. `SchemaResolver.mapping(...)` covers the common case of renaming declared schemas and leaves every schema it does not name as declared.
+
+<Tabs groupId="language">
+<TabItem value="kotlin" label="Kotlin" default>
+
+```kotlin
+@DbTable(schema = "archive")
+data class Invoice(@PK val id: Int = 0, val amount: BigDecimal) : Entity<Int>
+
+// Each tenant's template addresses the archive under the tenant's own schema.
+val europe = europeDataSource.orm { decorator ->
+    decorator.withSchemaResolver(SchemaResolver.mapping(mapOf("archive" to "europe_archive")))
+}
+```
+
+</TabItem>
+<TabItem value="java" label="Java">
+
+```java
+@DbTable(schema = "archive")
+record Invoice(@PK Integer id, BigDecimal amount) implements Entity<Integer> {}
+
+// Each tenant's template addresses the archive under the tenant's own schema.
+var europe = ORMTemplate.of(europeDataSource, decorator -> decorator
+    .withSchemaResolver(SchemaResolver.mapping(Map.of("archive", "europe_archive"))));
+```
+
+</TabItem>
+</Tabs>
+
+The resolved schema applies wherever the template names the table: queries, joins, writes, SQL templates and schema validation. Templates with different resolvers keep models of their own, so each addresses its own schema even within one application.
+
 ### Identifier Escaping
 
 When a table or column name is a word the database reserves, such as `order`, the database rejects the query unless the name is escaped. Storm escapes these names automatically: each dialect knows the words its database reserves, and Storm also escapes a name that holds characters an unquoted name cannot. Every other name stays unescaped. This matters on H2 and Oracle, which store an unquoted name in upper case: there an escaped name is case-sensitive, so `"position"` would not match a `position` column created without quotes.

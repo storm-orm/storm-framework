@@ -59,6 +59,7 @@ import st.orm.core.template.TableAliasResolver;
 import st.orm.core.template.TemplateString;
 import st.orm.mapping.ColumnNameResolver;
 import st.orm.mapping.ForeignKeyResolver;
+import st.orm.mapping.SchemaResolver;
 import st.orm.mapping.TableNameResolver;
 import st.orm.spi.QueryContext.ExecutionKind;
 import st.orm.spi.QueryObserver.Observation;
@@ -190,6 +191,7 @@ public final class JpaTemplateImpl implements JpaTemplate, QueryFactory {
     private SqlTemplate createSqlTemplate() {
         SqlTemplate template = JPA.withConfig(config)
                 .withTableNameResolver(modelBuilder.tableNameResolver())
+                .withSchemaResolver(modelBuilder.schemaResolver())
                 .withColumnNameResolver(modelBuilder.columnNameResolver())
                 .withForeignKeyResolver(modelBuilder.foreignKeyResolver())
                 .withTableAliasResolver(tableAliasResolver);
@@ -300,6 +302,17 @@ public final class JpaTemplateImpl implements JpaTemplate, QueryFactory {
     @Override
     public JpaTemplate withTableNameResolver(@Nullable TableNameResolver tableNameResolver) {
         return new JpaTemplateImpl(templateProcessor, modelBuilder.tableNameResolver(tableNameResolver), tableAliasResolver, providerFilter, config, dialect);
+    }
+
+    /**
+     * Returns a new JPA template with the specified schema resolver.
+     *
+     * @param schemaResolver the schema resolver.
+     * @return a new JPA template.
+     */
+    @Override
+    public JpaTemplate withSchemaResolver(@Nullable SchemaResolver schemaResolver) {
+        return new JpaTemplateImpl(templateProcessor, modelBuilder.schemaResolver(schemaResolver), tableAliasResolver, providerFilter, config, dialect);
     }
 
     /**

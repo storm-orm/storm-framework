@@ -250,6 +250,7 @@ class TemplatePreparation {
                 tableUse,
                 template.tableAliasResolver(),
                 template.tableNameResolver(),
+                template.schemaResolver(),
                 correlate ? parentProcessor.aliasMapper() : null
         );
         var postProcessedElements = postProcessElements(bindingContext.operation(), bindingContext.elements(), aliasMapper, tableMapper);

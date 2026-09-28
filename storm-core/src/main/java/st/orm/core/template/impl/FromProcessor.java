@@ -70,7 +70,7 @@ final class FromProcessor implements ElementProcessor<From> {
         final String alias = from.alias().isEmpty() ? "" : " " + from.alias();
         return new CompiledElement(switch (from) {
             case From(TableSource ts, String s, boolean b) ->
-                    compiler.dialectTemplate().process("\0\0", getTableName(ts.table(), compiler.template().tableNameResolver()), alias);
+                    compiler.dialectTemplate().process("\0\0", getTableName(ts.table(), compiler.template().tableNameResolver(), compiler.template().schemaResolver()), alias);
             case From(TemplateSource ts, String s, boolean b) ->
                     "(%s)%s".formatted(compiler.compile(ts.template(), false), alias);    // From-clause is not correlated.
         });

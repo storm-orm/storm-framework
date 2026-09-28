@@ -39,6 +39,7 @@ import st.orm.ResolveScope;
 import st.orm.SqlTemplateException;
 import st.orm.core.template.SqlDialect;
 import st.orm.core.template.TableAliasResolver;
+import st.orm.mapping.SchemaResolver;
 import st.orm.mapping.TableNameResolver;
 
 final class AliasMapper {
@@ -48,6 +49,7 @@ final class AliasMapper {
     private final AliasMapper parent;
     private final TableAliasResolver tableAliasResolver;
     private final TableNameResolver tableNameResolver;
+    private final SchemaResolver schemaResolver;
 
     record TableAlias(Class<? extends Data> table, String path, String alias) {}
 
@@ -59,10 +61,12 @@ final class AliasMapper {
     AliasMapper(TableUse tableUse,
                 TableAliasResolver tableAliasResolver,
                 TableNameResolver tableNameResolver,
+                SchemaResolver schemaResolver,
                 @Nullable AliasMapper parent) {
         this.tableUse = requireNonNull(tableUse);
         this.tableAliasResolver = requireNonNull(tableAliasResolver);
         this.tableNameResolver = requireNonNull(tableNameResolver);
+        this.schemaResolver = requireNonNull(schemaResolver);
         this.parent = parent;
         this.aliasMap = new HashMap<>();
     }
@@ -221,7 +225,7 @@ final class AliasMapper {
         }
         if (exists(table, scope)) {
             // Table is registered, but alias could not be resolved (due to empty registration). Revert to full table name.
-            return getTableName(table, tableNameResolver).qualified(dialect);
+            return getTableName(table, tableNameResolver, schemaResolver).qualified(dialect);
         }
         throw exceptionSupplier.get();
     }

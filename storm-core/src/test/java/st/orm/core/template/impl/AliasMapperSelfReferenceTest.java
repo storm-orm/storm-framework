@@ -24,6 +24,7 @@ import org.junit.jupiter.api.Test;
 import st.orm.SqlTemplateException;
 import st.orm.core.model.City;
 import st.orm.core.template.TableAliasResolver;
+import st.orm.mapping.SchemaResolver;
 import st.orm.mapping.TableNameResolver;
 
 /**
@@ -34,7 +35,7 @@ import st.orm.mapping.TableNameResolver;
 public class AliasMapperSelfReferenceTest {
 
     private static AliasMapper aliasMapper() {
-        return new AliasMapper(new TableUse(), TableAliasResolver.DEFAULT, TableNameResolver.DEFAULT, null);
+        return new AliasMapper(new TableUse(), TableAliasResolver.DEFAULT, TableNameResolver.DEFAULT, SchemaResolver.DEFAULT, null);
     }
 
     @Test

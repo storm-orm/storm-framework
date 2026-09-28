@@ -53,7 +53,7 @@ final class TableProcessor implements ElementProcessor<Table> {
      */
     @Override
     public CompiledElement compile(Table table, TemplateCompiler compiler) throws SqlTemplateException {
-        TableName tableName = getTableName(table.table(), compiler.template().tableNameResolver());
+        TableName tableName = getTableName(table.table(), compiler.template().tableNameResolver(), compiler.template().schemaResolver());
         String alias = table.alias();
         var dialectTemplate = compiler.dialectTemplate();
         if (alias.isEmpty()) {

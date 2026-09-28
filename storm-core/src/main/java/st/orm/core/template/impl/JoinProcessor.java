@@ -120,7 +120,7 @@ final class JoinProcessor implements ElementProcessor<Join> {
         final String clause = onClause.isEmpty() ? "" : " ON " + onClause;
         return switch (join.source()) {
             case TableSource ts -> {
-                var table = getTableName(ts.table(), compiler.template().tableNameResolver());
+                var table = getTableName(ts.table(), compiler.template().tableNameResolver(), compiler.template().schemaResolver());
                 var alias = compiler.useAlias(ts.table(), join.sourceAlias());
                 yield compiler.dialectTemplate().process("\n\0 \0 \0\0", joinType, table, alias, clause);
             }

@@ -60,6 +60,7 @@ import st.orm.mapping.ColumnNameResolver;
 import st.orm.mapping.ForeignKeyResolver;
 import st.orm.mapping.RecordField;
 import st.orm.mapping.RecordType;
+import st.orm.mapping.SchemaResolver;
 import st.orm.mapping.TableNameResolver;
 
 /**
@@ -701,6 +702,30 @@ final class RecordReflection {
         } catch (RuntimeException e) {
             throw (SqlTemplateException) e.getCause();
         }
+    }
+
+    /**
+     * Returns the table name for the specified record type taking the table name resolver and the schema resolver
+     * into account. This is the name a statement addresses; the declared name of
+     * {@link #getTableName(Class, TableNameResolver)} serves to compare tables with each other.
+     *
+     * @param table the record type to obtain the table name for.
+     * @param tableNameResolver the table name resolver.
+     * @param schemaResolver the schema resolver.
+     * @return the table name for the specified record type, in the schema the resolver addresses.
+     * @since 1.14
+     */
+    static TableName getTableName(Class<? extends Data> table,
+                                  TableNameResolver tableNameResolver,
+                                  SchemaResolver schemaResolver) throws SqlTemplateException {
+        var tableName = getTableName(table, tableNameResolver);
+        var schema = schemaResolver.resolveSchema(table, tableName.schema());
+        if (schema == null) {
+            throw new SqlTemplateException("Schema resolver returned null for %s; return an empty string to address the table without a schema.".formatted(table.getSimpleName()));
+        }
+        return schema.equals(tableName.schema())
+                ? tableName
+                : new TableName(tableName.table(), schema, tableName.escape());
     }
 
     /**

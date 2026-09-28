@@ -25,6 +25,7 @@ import st.orm.core.spi.Provider;
 import st.orm.core.template.impl.JpaTemplateImpl;
 import st.orm.mapping.ColumnNameResolver;
 import st.orm.mapping.ForeignKeyResolver;
+import st.orm.mapping.SchemaResolver;
 import st.orm.mapping.TableNameResolver;
 import st.orm.mapping.TemplateDecorator;
 
@@ -124,6 +125,16 @@ public interface JpaTemplate extends TemplateDecorator {
      */
     @Override
     JpaTemplate withTableNameResolver(TableNameResolver tableNameResolver);
+
+    /**
+     * Returns a new JPA template with the specified schema resolver.
+     *
+     * @param schemaResolver the schema resolver.
+     * @return a new JPA template.
+     * @since 1.14
+     */
+    @Override
+    JpaTemplate withSchemaResolver(SchemaResolver schemaResolver);
 
     /**
      * Returns a new JPA template with the specified column name resolver.

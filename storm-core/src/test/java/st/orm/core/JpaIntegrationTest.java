@@ -530,6 +530,11 @@ public class JpaIntegrationTest {
         }
 
         @Override
+        public st.orm.mapping.TemplateDecorator withSchemaResolver(st.orm.mapping.SchemaResolver r) {
+            return this;
+        }
+
+        @Override
         public st.orm.mapping.TemplateDecorator withColumnNameResolver(st.orm.mapping.ColumnNameResolver r) {
             return this;
         }

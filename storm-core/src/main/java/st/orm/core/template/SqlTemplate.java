@@ -24,6 +24,7 @@ import st.orm.core.template.impl.BindVarsHandle;
 import st.orm.core.template.impl.SqlTemplateImpl;
 import st.orm.mapping.ColumnNameResolver;
 import st.orm.mapping.ForeignKeyResolver;
+import st.orm.mapping.SchemaResolver;
 import st.orm.mapping.TableNameResolver;
 import st.orm.mapping.TemplateDecorator;
 
@@ -227,6 +228,24 @@ public interface SqlTemplate extends TemplateDecorator {
      * @return the table name resolver used by this template.
      */
     TableNameResolver tableNameResolver();
+
+    /**
+     * Returns a new SQL template with the specified schema resolver.
+     *
+     * @param resolver the schema resolver.
+     * @return a new SQL template.
+     * @since 1.14
+     */
+    @Override
+    SqlTemplate withSchemaResolver(SchemaResolver resolver);
+
+    /**
+     * Returns the schema resolver used by this template.
+     *
+     * @return the schema resolver used by this template.
+     * @since 1.14
+     */
+    SchemaResolver schemaResolver();
 
     /**
      * Returns a new SQL template with the specified table alias resolver.

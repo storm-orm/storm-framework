@@ -21,6 +21,7 @@ import st.orm.SqlTemplateException;
 import st.orm.core.template.Model;
 import st.orm.mapping.ColumnNameResolver;
 import st.orm.mapping.ForeignKeyResolver;
+import st.orm.mapping.SchemaResolver;
 import st.orm.mapping.TableNameResolver;
 
 /**
@@ -30,14 +31,16 @@ import st.orm.mapping.TableNameResolver;
  */
 record ModelBuilderImpl(
         TableNameResolver tableNameResolver,
+        SchemaResolver schemaResolver,
         ColumnNameResolver columnNameResolver,
         ForeignKeyResolver foreignKeyResolver
 ) implements ModelBuilder {
     public ModelBuilderImpl() {
-        this(TableNameResolver.DEFAULT, ColumnNameResolver.DEFAULT, ForeignKeyResolver.DEFAULT);
+        this(TableNameResolver.DEFAULT, SchemaResolver.DEFAULT, ColumnNameResolver.DEFAULT, ForeignKeyResolver.DEFAULT);
     }
     public ModelBuilderImpl {
         tableNameResolver = tableNameResolver == null ? TableNameResolver.DEFAULT : tableNameResolver;
+        schemaResolver = schemaResolver == null ? SchemaResolver.DEFAULT : schemaResolver;
         columnNameResolver = columnNameResolver == null ? ColumnNameResolver.DEFAULT : columnNameResolver;
         foreignKeyResolver = foreignKeyResolver == null ? ForeignKeyResolver.DEFAULT : foreignKeyResolver;
     }
@@ -50,7 +53,18 @@ record ModelBuilderImpl(
      */
     @Override
     public ModelBuilder tableNameResolver(@Nullable TableNameResolver tableNameResolver) {
-        return new ModelBuilderImpl(tableNameResolver, columnNameResolver, foreignKeyResolver);
+        return new ModelBuilderImpl(tableNameResolver, schemaResolver, columnNameResolver, foreignKeyResolver);
+    }
+
+    /**
+     * Sets the schema resolver for the model.
+     *
+     * @param schemaResolver the schema resolver.
+     * @return this model builder.
+     */
+    @Override
+    public ModelBuilder schemaResolver(@Nullable SchemaResolver schemaResolver) {
+        return new ModelBuilderImpl(tableNameResolver, schemaResolver, columnNameResolver, foreignKeyResolver);
     }
 
     /**
@@ -61,7 +75,7 @@ record ModelBuilderImpl(
      */
     @Override
     public ModelBuilder columnNameResolver(@Nullable ColumnNameResolver columnNameResolver) {
-        return new ModelBuilderImpl(tableNameResolver, columnNameResolver, foreignKeyResolver);
+        return new ModelBuilderImpl(tableNameResolver, schemaResolver, columnNameResolver, foreignKeyResolver);
     }
 
     /**
@@ -72,7 +86,7 @@ record ModelBuilderImpl(
      */
     @Override
     public ModelBuilder foreignKeyResolver(@Nullable ForeignKeyResolver foreignKeyResolver) {
-        return new ModelBuilderImpl(tableNameResolver, columnNameResolver, foreignKeyResolver);
+        return new ModelBuilderImpl(tableNameResolver, schemaResolver, columnNameResolver, foreignKeyResolver);
     }
 
     /**
