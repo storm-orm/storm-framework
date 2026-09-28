@@ -67,16 +67,22 @@ import st.orm.mapping.RecordType;
 final class ModelFactory {
 
     /**
-     * The cached models per record type, keyed by the references the statement resolves. The plan changes the
-     * column list, so a model built for one plan cannot serve another. {@link ClassValue} ties the models to the
-     * lifetime of the record type, so they never pin the type or its class loader.
+     * The cached models per record type, keyed by the builder and the references the statement resolves. The
+     * builder's resolvers name the table, its schema and its columns, and the plan changes the column list, so a
+     * model built for one template or plan cannot serve another. {@link ClassValue} ties the models to the lifetime
+     * of the record type, so they never pin the type or its class loader.
      */
-    private static final ClassValue<ConcurrentMap<FetchPlan, Model<?, ?>>> MODEL_CACHE = new ClassValue<>() {
+    private static final ClassValue<ConcurrentMap<ModelKey, Model<?, ?>>> MODEL_CACHE = new ClassValue<>() {
         @Override
-        protected ConcurrentMap<FetchPlan, Model<?, ?>> computeValue(Class<?> type) {
+        protected ConcurrentMap<ModelKey, Model<?, ?>> computeValue(Class<?> type) {
             return new ConcurrentHashMap<>();
         }
     };
+
+    /**
+     * The key of a cached model: the builder whose resolvers named it and the references it resolves.
+     */
+    private record ModelKey(ModelBuilderImpl builder, FetchPlan fetchPlan) {}
 
     private ModelFactory() {
     }
@@ -89,7 +95,7 @@ final class ModelFactory {
         try {
             validateDataType(type, requirePrimaryKey);
             //noinspection unchecked
-            return (Model<T, ID>) MODEL_CACHE.get(type).computeIfAbsent(fetchPlan, ignore -> {
+            return (Model<T, ID>) MODEL_CACHE.get(type).computeIfAbsent(new ModelKey(builder, fetchPlan), ignore -> {
                 try {
                     return createModel(builder, type, requirePrimaryKey, fetchPlan);
                 } catch (SqlTemplateException e) {
@@ -119,7 +125,7 @@ final class ModelFactory {
             for (var field : recordType.fields()) {
                 createColumns(ctx, ctx.rootMetamodel(), field, false, null, KeyScope.none(), PkContext.none(), null, false);
             }
-            var tableName = getTableName(type, builder.tableNameResolver());
+            var tableName = getTableName(type, builder.tableNameResolver(), builder.schemaResolver());
             // For permitted subclasses of a JOINED sealed entity, adjust columns so that
             // base non-PK fields are not insertable/updatable (they belong to the base table),
             // and the PK generation is NONE (PK is provided from the base table INSERT).
@@ -333,7 +339,7 @@ final class ModelFactory {
             ));
             fields.add(field);
         }
-        var tableName = getTableName(sealedType, builder.tableNameResolver());
+        var tableName = getTableName(sealedType, builder.tableNameResolver(), builder.schemaResolver());
         // Override the type to the sealed interface so that Model.type() returns the sealed interface
         // (e.g., Vehicle.class) rather than the first permitted subclass (e.g., Car.class).
         return new ModelImpl<>(firstRecordType, sealedType, tableName, fields, columns);

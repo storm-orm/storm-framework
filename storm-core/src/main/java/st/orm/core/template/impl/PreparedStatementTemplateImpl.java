@@ -79,6 +79,7 @@ import st.orm.core.template.TableAliasResolver;
 import st.orm.core.template.TemplateString;
 import st.orm.mapping.ColumnNameResolver;
 import st.orm.mapping.ForeignKeyResolver;
+import st.orm.mapping.SchemaResolver;
 import st.orm.mapping.TableNameResolver;
 import st.orm.spi.ExceptionMapper;
 import st.orm.spi.QueryObserver;
@@ -471,6 +472,7 @@ public final class PreparedStatementTemplateImpl implements PreparedStatementTem
     private SqlTemplate createSqlTemplate() {
         SqlTemplate template = PS.withConfig(config)
                 .withTableNameResolver(modelBuilder.tableNameResolver())
+                .withSchemaResolver(modelBuilder.schemaResolver())
                 .withColumnNameResolver(modelBuilder.columnNameResolver())
                 .withForeignKeyResolver(modelBuilder.foreignKeyResolver())
                 .withTableAliasResolver(tableAliasResolver);
@@ -488,6 +490,17 @@ public final class PreparedStatementTemplateImpl implements PreparedStatementTem
     @Override
     public PreparedStatementTemplateImpl withTableNameResolver(@Nullable TableNameResolver tableNameResolver) {
         return new PreparedStatementTemplateImpl(templateProcessor, dataSource, modelBuilder.tableNameResolver(tableNameResolver), tableAliasResolver, providerFilter, strategies, config, dialect);
+    }
+
+    /**
+     * Returns a new prepared statement template with the specified schema resolver.
+     *
+     * @param schemaResolver the schema resolver.
+     * @return a new prepared statement template.
+     */
+    @Override
+    public PreparedStatementTemplateImpl withSchemaResolver(@Nullable SchemaResolver schemaResolver) {
+        return new PreparedStatementTemplateImpl(templateProcessor, dataSource, modelBuilder.schemaResolver(schemaResolver), tableAliasResolver, providerFilter, strategies, config, dialect);
     }
 
     /**

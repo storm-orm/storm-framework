@@ -32,6 +32,15 @@ public interface TemplateDecorator {
     TemplateDecorator withTableNameResolver(TableNameResolver tableNameResolver);
 
     /**
+     * Returns a new prepared statement template with the specified schema resolver.
+     *
+     * @param schemaResolver the schema resolver.
+     * @return a new prepared statement template.
+     * @since 1.14
+     */
+    TemplateDecorator withSchemaResolver(SchemaResolver schemaResolver);
+
+    /**
      * Returns a new prepared statement template with the specified column name resolver.
      *
      * @param columnNameResolver the column name resolver.

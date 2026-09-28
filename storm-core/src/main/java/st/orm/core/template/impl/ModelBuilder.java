@@ -23,6 +23,7 @@ import st.orm.SqlTemplateException;
 import st.orm.core.template.Model;
 import st.orm.mapping.ColumnNameResolver;
 import st.orm.mapping.ForeignKeyResolver;
+import st.orm.mapping.SchemaResolver;
 import st.orm.mapping.TableNameResolver;
 
 /**
@@ -53,6 +54,22 @@ public interface ModelBuilder {
      * @return this model builder.
      */
     ModelBuilder tableNameResolver(@Nullable TableNameResolver tableNameResolver);
+
+    /**
+     * Returns the schema resolver for the model.
+     *
+     * @since 1.14
+     */
+    SchemaResolver schemaResolver();
+
+    /**
+     * Sets the schema resolver for the model.
+     *
+     * @param schemaResolver the schema resolver.
+     * @return this model builder.
+     * @since 1.14
+     */
+    ModelBuilder schemaResolver(@Nullable SchemaResolver schemaResolver);
 
     /**
      * Returns the column name resolver for the model.

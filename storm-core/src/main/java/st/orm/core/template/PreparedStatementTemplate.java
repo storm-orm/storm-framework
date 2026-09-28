@@ -25,6 +25,7 @@ import st.orm.core.spi.Provider;
 import st.orm.core.template.impl.PreparedStatementTemplateImpl;
 import st.orm.mapping.ColumnNameResolver;
 import st.orm.mapping.ForeignKeyResolver;
+import st.orm.mapping.SchemaResolver;
 import st.orm.mapping.TableNameResolver;
 import st.orm.mapping.TemplateDecorator;
 
@@ -85,6 +86,16 @@ public interface PreparedStatementTemplate extends TemplateDecorator {
      */
     @Override
     PreparedStatementTemplate withTableNameResolver(TableNameResolver tableNameResolver);
+
+    /**
+     * Returns a new prepared statement template with the specified schema resolver.
+     *
+     * @param schemaResolver the schema resolver.
+     * @return a new prepared statement template.
+     * @since 1.14
+     */
+    @Override
+    PreparedStatementTemplate withSchemaResolver(SchemaResolver schemaResolver);
 
     /**
      * Returns a new prepared statement template with the specified column name resolver.

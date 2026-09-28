@@ -43,6 +43,7 @@ import st.orm.core.template.TemplateString;
 import st.orm.core.template.impl.TemplatePreparation.BindingContext;
 import st.orm.mapping.ColumnNameResolver;
 import st.orm.mapping.ForeignKeyResolver;
+import st.orm.mapping.SchemaResolver;
 import st.orm.mapping.TableNameResolver;
 
 /**
@@ -223,6 +224,30 @@ public final class SqlTemplateImpl implements SqlTemplate {
     @Override
     public TableNameResolver tableNameResolver() {
         return modelBuilder.tableNameResolver();
+    }
+
+    /**
+     * Returns a new SQL template with the specified schema resolver.
+     *
+     * @param schemaResolver the schema resolver.
+     * @return a new SQL template.
+     */
+    @Override
+    public SqlTemplateImpl withSchemaResolver(SchemaResolver schemaResolver) {
+        if (schemaResolver == modelBuilder.schemaResolver()) {
+            return this;
+        }
+        return new SqlTemplateImpl(positionalOnly, expandCollection, supportRecords, inlineParameters, modelBuilder.schemaResolver(schemaResolver), tableAliasResolver, explicitDialect, config);
+    }
+
+    /**
+     * Returns the schema resolver used by this template.
+     *
+     * @return the schema resolver used by this template.
+     */
+    @Override
+    public SchemaResolver schemaResolver() {
+        return modelBuilder.schemaResolver();
     }
 
     /**

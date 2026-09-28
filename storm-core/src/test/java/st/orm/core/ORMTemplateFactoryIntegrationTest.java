@@ -239,6 +239,11 @@ public class ORMTemplateFactoryIntegrationTest {
         }
 
         @Override
+        public TemplateDecorator withSchemaResolver(st.orm.mapping.SchemaResolver schemaResolver) {
+            return this;
+        }
+
+        @Override
         public TemplateDecorator withColumnNameResolver(ColumnNameResolver columnNameResolver) {
             return this;
         }
