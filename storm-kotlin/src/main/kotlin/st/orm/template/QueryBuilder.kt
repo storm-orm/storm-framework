@@ -941,6 +941,31 @@ public abstract class QueryBuilder<T : Data, R : Any, ID : Any> {
     public abstract fun forLock(template: TemplateString): QueryBuilder<T, R, ID>
 
     //
+    // Optimizer hints.
+    //
+
+    /**
+     * Adds an optimizer hint to the statement this builder builds. The hint is the database's own hint text, passed
+     * through as is, such as `NO_MERGE(recent)` on MariaDB or `RECOMPILE` on SQL Server; its content and its effect
+     * depend on the database.
+     *
+     * The dialect decides where the hint goes. MySQL, MariaDB and Oracle read hints from a `/*+ ... */` comment right
+     * after the statement's leading keyword; SQL Server reads them from an `OPTION (...)` clause at the end of the
+     * statement. Several calls add several hints to the same comment or clause. A database without hint syntax, such
+     * as PostgreSQL, H2 or SQLite, leaves the hint out, as a hint never changes what a statement returns.
+     *
+     * SQL Server takes its query hints once per statement, so on SQL Server a builder with a hint cannot serve as a
+     * subquery; put the hint on the outer query instead.
+     *
+     * @param hint the hint text, as the database reads it.
+     * @return the query builder.
+     * @throws PersistenceException if the hint is blank, or contains the comment terminator or a semicolon, which
+     * would end the comment that carries it or the statement.
+     * @since 1.15
+     */
+    public abstract fun hint(hint: String): QueryBuilder<T, R, ID>
+
+    //
     // Finalization.
     //
 
@@ -1891,6 +1916,11 @@ public class SqlScope<T : Data, R : Any, ID : Any> @PublishedApi internal constr
     /** Locks the selected rows using a dialect-specific template (e.g., `forLock { "FOR UPDATE SKIP LOCKED" }`). */
     public fun forLock(template: TemplateBuilder) {
         builder = builder.forLock(template)
+    }
+
+    /** Adds an optimizer hint in the database's own hint text (e.g., `hint("NO_MERGE(recent)")`). */
+    public fun hint(hint: String) {
+        builder = builder.hint(hint)
     }
 
     /**

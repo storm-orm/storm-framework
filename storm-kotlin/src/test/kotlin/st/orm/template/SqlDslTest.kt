@@ -650,6 +650,19 @@ internal open class SqlDslTest(
     }
 
     @Test
+    fun `select entity with a hint in the block reaches the builder`() {
+        // H2 has no hint syntax, so the hint is left out; a refused hint proves the block passes it to the builder.
+        val city = orm.entity(City::class).select {
+            where(1)
+            hint("NO_MERGE(recent)")
+        }.singleResult
+        city.id shouldBe 1
+        org.junit.jupiter.api.assertThrows<st.orm.PersistenceException> {
+            orm.entity(City::class).select { hint("NO_MERGE(recent) */") }
+        }
+    }
+
+    @Test
     fun `select entity with forShare in the block reaches the statement`() {
         // H2 rejects FOR SHARE, so the failure proves the modifier is part of the statement, as it does for the
         // chained builder.

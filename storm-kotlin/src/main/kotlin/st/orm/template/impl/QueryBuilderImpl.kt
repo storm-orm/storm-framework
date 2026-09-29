@@ -134,6 +134,15 @@ internal class QueryBuilderImpl<T : Data, R : Any, ID : Any>(
     override fun forLock(template: TemplateString): QueryBuilder<T, R, ID> = QueryBuilderImpl<T, R, ID>(core.forLock(template.unwrap))
 
     /**
+     * Adds an optimizer hint to the statement this builder builds.
+     *
+     * @param hint the hint text, as the database reads it.
+     * @return the query builder.
+     * @since 1.15
+     */
+    override fun hint(hint: String): QueryBuilder<T, R, ID> = QueryBuilderImpl<T, R, ID>(core.hint(hint))
+
+    /**
      * Builds the query based on the current state of the query builder.
      *
      * @return the constructed query.

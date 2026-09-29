@@ -81,6 +81,7 @@ abstract class QueryBuilderImpl<T extends Data, R, ID> extends QueryBuilder<T, R
     protected final List<TemplateString> groupBy;
     protected final List<TemplateString> having;
     protected final List<TemplateString> orderBy;
+    protected final List<String> hints;
     protected final Supplier<Model<T, ID>> modelSupplier;
 
     protected QueryBuilderImpl(QueryTemplate queryTemplate,
@@ -90,6 +91,7 @@ abstract class QueryBuilderImpl<T extends Data, R, ID> extends QueryBuilder<T, R
                                List<TemplateString> groupBy,
                                List<TemplateString> having,
                                List<TemplateString> orderBy,
+                               List<String> hints,
                                Supplier<Model<T, ID>> modelSupplier) {
         this.queryTemplate = queryTemplate;
         this.fromType = fromType;
@@ -98,6 +100,7 @@ abstract class QueryBuilderImpl<T extends Data, R, ID> extends QueryBuilder<T, R
         this.groupBy = List.copyOf(groupBy);
         this.having = List.copyOf(having);
         this.orderBy = List.copyOf(orderBy);
+        this.hints = List.copyOf(hints);
         this.modelSupplier = requireNonNull(modelSupplier, "modelSupplier");
     }
 
@@ -323,6 +326,7 @@ abstract class QueryBuilderImpl<T extends Data, R, ID> extends QueryBuilder<T, R
      * @param fromType the type of the table being queried.
      * @param join the list of joins.
      * @param where the list of where clauses.
+     * @param hints the optimizer hints.
      * @return a new query builder.
      */
     abstract QueryBuilder<T, R, ID> copyWith(QueryTemplate queryTemplate,
@@ -331,7 +335,58 @@ abstract class QueryBuilderImpl<T extends Data, R, ID> extends QueryBuilder<T, R
                                              List<Where> where,
                                              List<TemplateString> groupBy,
                                              List<TemplateString> having,
-                                             List<TemplateString> orderBy);
+                                             List<TemplateString> orderBy,
+                                             List<String> hints);
+
+    /**
+     * Adds an optimizer hint to the statement this builder builds.
+     *
+     * @param hint the hint text, as the database reads it.
+     * @return a new query builder.
+     * @since 1.15
+     */
+    @Override
+    public QueryBuilder<T, R, ID> hint(String hint) {
+        requireNonNull(hint, "hint");
+        if (hint.isBlank()) {
+            throw new PersistenceException("An optimizer hint cannot be blank.");
+        }
+        if (hint.contains("*/")) {
+            throw new PersistenceException("An optimizer hint must not contain the comment terminator '*/', which would end the comment that carries it: %s".formatted(hint));
+        }
+        if (hint.indexOf(';') >= 0) {
+            throw new PersistenceException("An optimizer hint must not contain a semicolon, which would end the statement: %s".formatted(hint));
+        }
+        List<String> copy = new ArrayList<>(hints);
+        copy.add(hint.strip());
+        return copyWith(queryTemplate, fromType, join, where, groupBy, having, orderBy, copy);
+    }
+
+    /**
+     * Returns the hints as the dialect renders them right after the statement's leading keyword, preceded by a space,
+     * or an empty string when the builder has none, the dialect renders them at the end of the statement, or the
+     * database has no hint syntax.
+     */
+    protected final String hintAfterKeyword() {
+        if (hints.isEmpty() || !queryTemplate.dialect().applyOptimizerHintAfterKeyword()) {
+            return "";
+        }
+        String rendered = queryTemplate.dialect().optimizerHint(hints);
+        return rendered.isEmpty() ? "" : " " + rendered;
+    }
+
+    /**
+     * Returns the hints as the dialect renders them at the end of the statement, preceded by a line break, or an empty
+     * string when the builder has none, the dialect renders them after the leading keyword, or the database has no
+     * hint syntax.
+     */
+    protected final String hintAtEnd() {
+        if (hints.isEmpty() || queryTemplate.dialect().applyOptimizerHintAfterKeyword()) {
+            return "";
+        }
+        String rendered = queryTemplate.dialect().optimizerHint(hints);
+        return rendered.isEmpty() ? "" : "\n" + rendered;
+    }
 
     /**
      * Returns true to indicate that the query supports joins, false otherwise.
@@ -384,7 +439,7 @@ abstract class QueryBuilderImpl<T extends Data, R, ID> extends QueryBuilder<T, R
     private QueryBuilder<Data, R, ID> addJoin(Join join) {
         List<Join> copy = new ArrayList<>(this.join);
         copy.add(join);
-        return (QueryBuilder<Data, R, ID>) copyWith(queryTemplate, fromType, copy, where, groupBy, having, orderBy);
+        return (QueryBuilder<Data, R, ID>) copyWith(queryTemplate, fromType, copy, where, groupBy, having, orderBy, hints);
     }
 
     /**
@@ -407,7 +462,7 @@ abstract class QueryBuilderImpl<T extends Data, R, ID> extends QueryBuilder<T, R
     private QueryBuilder<T, R, ID> addWhere(Where where) {
         List<Where> copy = new ArrayList<>(this.where);
         copy.add(where);
-        return copyWith(queryTemplate, fromType, join, copy, groupBy, having, orderBy);
+        return copyWith(queryTemplate, fromType, join, copy, groupBy, having, orderBy, hints);
     }
 
     /**
@@ -421,7 +476,7 @@ abstract class QueryBuilderImpl<T extends Data, R, ID> extends QueryBuilder<T, R
     public QueryBuilder<T, R, ID> orderBy(TemplateString template) {
         List<TemplateString> copy = new ArrayList<>(orderBy);
         copy.add(template);
-        return copyWith(queryTemplate, fromType, join, where, groupBy, having, copy);
+        return copyWith(queryTemplate, fromType, join, where, groupBy, having, copy, hints);
     }
 
     /**
@@ -435,7 +490,7 @@ abstract class QueryBuilderImpl<T extends Data, R, ID> extends QueryBuilder<T, R
     public QueryBuilder<T, R, ID> groupBy(TemplateString template) {
         List<TemplateString> copy = new ArrayList<>(groupBy);
         copy.add(template);
-        return copyWith(queryTemplate, fromType, join, where, copy, having, orderBy);
+        return copyWith(queryTemplate, fromType, join, where, copy, having, orderBy, hints);
     }
 
     /**
@@ -449,7 +504,7 @@ abstract class QueryBuilderImpl<T extends Data, R, ID> extends QueryBuilder<T, R
     public QueryBuilder<T, R, ID> having(TemplateString template) {
         List<TemplateString> copy = new ArrayList<>(having);
         copy.add(template);
-        return copyWith(queryTemplate, fromType, join, where, groupBy, copy, orderBy);
+        return copyWith(queryTemplate, fromType, join, where, groupBy, copy, orderBy, hints);
     }
 
     /**

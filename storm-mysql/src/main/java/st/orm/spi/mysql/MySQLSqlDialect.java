@@ -15,6 +15,7 @@
  */
 package st.orm.spi.mysql;
 
+import java.util.List;
 import java.util.Locale;
 import java.util.Set;
 import java.util.regex.Pattern;
@@ -353,5 +354,18 @@ public class MySQLSqlDialect extends DefaultSqlDialect {
     @Override
     public int maxBindParameters() {
         return 65_535;
+    }
+
+    /**
+     * Renders the optimizer hints as one {@code /*+ ... *}{@code /} comment, which MySQL reads right after the
+     * statement's leading keyword, as MariaDB does from 12.0 on; an earlier MariaDB reads it as a plain comment.
+     *
+     * @param hints the hint texts, in the order they were added.
+     * @return the hint comment.
+     * @since 1.15
+     */
+    @Override
+    public String optimizerHint(List<String> hints) {
+        return "/*+ %s */".formatted(String.join(" ", hints));
     }
 }

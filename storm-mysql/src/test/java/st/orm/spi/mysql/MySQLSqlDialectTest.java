@@ -393,4 +393,10 @@ class MySQLSqlDialectTest {
         assertThrows(SqlTemplateException.class,
                 () -> dialect.multiColumnExpression(Operator.LIKE, values, v -> "?"));
     }
+
+    @Test
+    void optimizerHintsShareOneCommentAfterTheKeyword() {
+        assertTrue(dialect.applyOptimizerHintAfterKeyword());
+        assertEquals("/*+ NO_MERGE(recent) QB_NAME(storm) */", dialect.optimizerHint(List.of("NO_MERGE(recent)", "QB_NAME(storm)")));
+    }
 }

@@ -45,7 +45,7 @@ public class DeleteBuilderImpl<T extends Data, ID> extends QueryBuilderImpl<T, O
     private final boolean unsafe;
 
     public DeleteBuilderImpl(QueryTemplate queryTemplate, Class<T> fromType, Supplier<Model<T, ID>> modelSupplier) {
-        this(queryTemplate, fromType, List.of(), List.of(), List.of(), List.of(), List.of(), modelSupplier, false);
+        this(queryTemplate, fromType, List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), modelSupplier, false);
     }
 
     private DeleteBuilderImpl(QueryTemplate queryTemplate,
@@ -55,9 +55,10 @@ public class DeleteBuilderImpl<T extends Data, ID> extends QueryBuilderImpl<T, O
                               List<TemplateString> groupBy,
                               List<TemplateString> having,
                               List<TemplateString> orderBy,
+                              List<String> hints,
                               Supplier<Model<T, ID>> modelSupplier,
                               boolean unsafe) {
-        super(queryTemplate, fromType, join, where, groupBy, having, orderBy, modelSupplier);
+        super(queryTemplate, fromType, join, where, groupBy, having, orderBy, hints, modelSupplier);
         this.unsafe = unsafe;
     }
 
@@ -72,7 +73,7 @@ public class DeleteBuilderImpl<T extends Data, ID> extends QueryBuilderImpl<T, O
      */
     @Override
     public QueryBuilder<T, Object, ID> unsafe() {
-        return new DeleteBuilderImpl<>(queryTemplate, fromType, join, where, groupBy, having, orderBy, modelSupplier, true);
+        return new DeleteBuilderImpl<>(queryTemplate, fromType, join, where, groupBy, having, orderBy, hints, modelSupplier, true);
     }
 
     /**
@@ -91,8 +92,9 @@ public class DeleteBuilderImpl<T extends Data, ID> extends QueryBuilderImpl<T, O
                                          List<Where> where,
                                          List<TemplateString> groupBy,
                                          List<TemplateString> having,
-                                         List<TemplateString> orderBy) {
-        return new DeleteBuilderImpl<>(queryTemplate, fromType, join, where, groupBy, having, orderBy, modelSupplier, unsafe);
+                                         List<TemplateString> orderBy,
+                                         List<String> hints) {
+        return new DeleteBuilderImpl<>(queryTemplate, fromType, join, where, groupBy, having, orderBy, hints, modelSupplier, unsafe);
     }
 
     /**
@@ -192,16 +194,19 @@ public class DeleteBuilderImpl<T extends Data, ID> extends QueryBuilderImpl<T, O
     private TemplateString toTemplateString() {
         TemplateString template;
         if (supportsJoin()) {
-            template = TemplateString.raw("DELETE \0\nFROM \0", fromType, from(fromType, supportsJoin()));
+            template = TemplateString.combine(TemplateString.of("DELETE" + hintAfterKeyword()),
+                    TemplateString.raw(" \0\nFROM \0", fromType, from(fromType, supportsJoin())));
         } else {
             template = TemplateString.combine(TemplateString.of("SELECT "), getPrimaryKeyTemplate(true), TemplateString.raw("\nFROM \0", from(fromType, true)));
         }
         template = appendJoinsAndWhere(template);
         if (!supportsJoin()) {
-            template = TemplateString.combine(TemplateString.raw("DELETE\nFROM \0\nWHERE (", from(fromType, false)),
+            template = TemplateString.combine(TemplateString.of("DELETE" + hintAfterKeyword()),
+                    TemplateString.raw("\nFROM \0\nWHERE (", from(fromType, false)),
                     getPrimaryKeyTemplate(false), TemplateString.of(") IN ("), wrap(subquery(template, false)), TemplateString.of(")"));
         }
-        return template;
+        String hint = hintAtEnd();
+        return hint.isEmpty() ? template : TemplateString.combine(template, TemplateString.of(hint));
     }
 
     @Override

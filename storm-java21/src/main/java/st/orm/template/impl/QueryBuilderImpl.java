@@ -243,6 +243,18 @@ public final class QueryBuilderImpl<T extends Data, R, ID> extends QueryBuilder<
     }
 
     /**
+     * Adds an optimizer hint to the statement this builder builds.
+     *
+     * @param hint the hint text, as the database reads it.
+     * @return the query builder.
+     * @since 1.15
+     */
+    @Override
+    public QueryBuilder<T, R, ID> hint(String hint) {
+        return new QueryBuilderImpl<>(core.hint(hint));
+    }
+
+    /**
      * Builds the query based on the current state of the query builder.
      *
      * @return the constructed query.

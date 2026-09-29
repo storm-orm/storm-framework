@@ -69,7 +69,7 @@ public class SelectBuilderImpl<T extends Data, R, ID> extends QueryBuilderImpl<T
                              TemplateString selectTemplate,
                              boolean subquery,
                              Supplier<Model<T, ID>> modelSupplier) {
-        this(queryTemplate, fromType, selectType, false, List.of(), List.of(), null, null, TemplateString.EMPTY, selectTemplate, List.of(), List.of(), List.of(), subquery, null, null, List.of(), modelSupplier);
+        this(queryTemplate, fromType, selectType, false, List.of(), List.of(), null, null, TemplateString.EMPTY, selectTemplate, List.of(), List.of(), List.of(), List.of(), subquery, null, null, List.of(), modelSupplier);
     }
 
     public SelectBuilderImpl(QueryTemplate queryTemplate,
@@ -78,7 +78,7 @@ public class SelectBuilderImpl<T extends Data, R, ID> extends QueryBuilderImpl<T
                              Class<?> pkType,
                              Supplier<Model<T, ID>> modelSupplier) {
         //noinspection unchecked
-        this(queryTemplate, fromType, (Class<R>) Ref.class, false, List.of(), List.of(), null, null, TemplateString.EMPTY, wrap(select(refType, PK)), List.of(), List.of(), List.of(), false, requireNonNull(refType), requireNonNull(pkType), List.of(), modelSupplier);
+        this(queryTemplate, fromType, (Class<R>) Ref.class, false, List.of(), List.of(), null, null, TemplateString.EMPTY, wrap(select(refType, PK)), List.of(), List.of(), List.of(), List.of(), false, requireNonNull(refType), requireNonNull(pkType), List.of(), modelSupplier);
     }
 
     private SelectBuilderImpl(QueryTemplate ormTemplate,
@@ -94,12 +94,13 @@ public class SelectBuilderImpl<T extends Data, R, ID> extends QueryBuilderImpl<T
                               List<TemplateString> groupBy,
                               List<TemplateString> having,
                               List<TemplateString> orderBy,
+                              List<String> hints,
                               boolean subquery,
                               @Nullable Class<? extends Data> refType,
                               @Nullable Class<?> pkType,
                               List<String> fetchPaths,
                               Supplier<Model<T, ID>> modelSupplier) {
-        super(ormTemplate, fromType, join, where, groupBy, having, orderBy, modelSupplier);
+        super(ormTemplate, fromType, join, where, groupBy, having, orderBy, hints, modelSupplier);
         this.forLock = forLock;
         this.selectType = selectType;
         this.distinct = distinct;
@@ -141,9 +142,10 @@ public class SelectBuilderImpl<T extends Data, R, ID> extends QueryBuilderImpl<T
                                     List<Where> where,
                                     List<TemplateString> groupBy,
                                     List<TemplateString> having,
-                                    List<TemplateString> orderBy) {
+                                    List<TemplateString> orderBy,
+                                    List<String> hints) {
         return new SelectBuilderImpl<>(queryTemplate, fromType, selectType, distinct, join, where, limit, offset, forLock,
-                selectTemplate, groupBy, having, orderBy, subquery, refType, pkType, fetchPaths, modelSupplier);
+                selectTemplate, groupBy, having, orderBy, hints, subquery, refType, pkType, fetchPaths, modelSupplier);
     }
 
     /**
@@ -164,7 +166,7 @@ public class SelectBuilderImpl<T extends Data, R, ID> extends QueryBuilderImpl<T
     @Override
     public QueryBuilder<T, R, ID> distinct() {
         return new SelectBuilderImpl<>(queryTemplate, fromType, selectType, true, join, where, limit, offset, forLock,
-                selectTemplate, groupBy, having, orderBy, subquery, refType, pkType, fetchPaths, modelSupplier);
+                selectTemplate, groupBy, having, orderBy, hints, subquery, refType, pkType, fetchPaths, modelSupplier);
     }
 
     /**
@@ -208,7 +210,7 @@ public class SelectBuilderImpl<T extends Data, R, ID> extends QueryBuilderImpl<T
             }
         }
         return new SelectBuilderImpl<>(queryTemplate, fromType, selectType, distinct, join, where, limit, offset, forLock,
-                selectTemplate, groupBy, having, orderBy, subquery, refType, pkType, combined, modelSupplier);
+                selectTemplate, groupBy, having, orderBy, hints, subquery, refType, pkType, combined, modelSupplier);
     }
 
     /**
@@ -240,7 +242,7 @@ public class SelectBuilderImpl<T extends Data, R, ID> extends QueryBuilderImpl<T
     @SuppressWarnings("unchecked")
     List<KeyedQuery.Row<R>> getKeyedResultList(List<Metamodel<T, ?>> columns) {
         var select = TemplateString.combine(selectClause(), wrap(new Cursor(List.copyOf(columns))));
-        var query = queryTemplate.query(toTemplateString(select, true));
+        var query = queryTemplate.query(statement(toTemplateString(select, true)));
         if (!(query instanceof KeyedQuery keyed)) {
             throw new PersistenceException("The query template does not support reading cursor columns.");
         }
@@ -282,8 +284,17 @@ public class SelectBuilderImpl<T extends Data, R, ID> extends QueryBuilderImpl<T
         return toTemplateString(selectClause(), true);
     }
 
+    /**
+     * Completes a template as a statement of its own, adding the hints a dialect renders at the end of the statement.
+     * A subquery is not completed: its hints can only go after its own leading keyword.
+     */
+    private TemplateString statement(TemplateString template) {
+        String hint = hintAtEnd();
+        return hint.isEmpty() ? template : TemplateString.combine(template, TemplateString.of(hint));
+    }
+
     private TemplateString toTemplateString(TemplateString selectClause, boolean withOrderBy) {
-        TemplateString template = TemplateString.combine(TemplateString.of("SELECT %s".formatted(distinct ? "DISTINCT " : "")));
+        TemplateString template = TemplateString.of("SELECT%s %s".formatted(hintAfterKeyword(), distinct ? "DISTINCT " : ""));
         if (queryTemplate.dialect().applyLimitAfterSelect()) {
             if (limit != null && offset == null) {
                 template = TemplateString.combine(
@@ -347,6 +358,10 @@ public class SelectBuilderImpl<T extends Data, R, ID> extends QueryBuilderImpl<T
 
     @Override
     public TemplateString getSubquery() {
+        if (!hintAtEnd().isEmpty()) {
+            throw new PersistenceException("%s takes optimizer hints once per statement, at its end, so a subquery cannot carry one. Put the hint on the outer query."
+                    .formatted(queryTemplate.dialect().name()));
+        }
         return toTemplateString();
     }
 
@@ -360,7 +375,7 @@ public class SelectBuilderImpl<T extends Data, R, ID> extends QueryBuilderImpl<T
     @Override
     public QueryBuilder<T, R, ID> offset(int offset) {
         return new SelectBuilderImpl<>(queryTemplate, fromType, selectType, distinct, join, where, limit, offset, forLock,
-                selectTemplate, groupBy, having, orderBy, subquery, refType, pkType, fetchPaths, modelSupplier);
+                selectTemplate, groupBy, having, orderBy, hints, subquery, refType, pkType, fetchPaths, modelSupplier);
     }
 
     /**
@@ -373,7 +388,7 @@ public class SelectBuilderImpl<T extends Data, R, ID> extends QueryBuilderImpl<T
     @Override
     public QueryBuilder<T, R, ID> limit(int limit) {
         return new SelectBuilderImpl<>(queryTemplate, fromType, selectType, distinct, join, where, limit, offset, forLock,
-                selectTemplate, groupBy, having, orderBy, subquery, refType, pkType, fetchPaths, modelSupplier);
+                selectTemplate, groupBy, having, orderBy, hints, subquery, refType, pkType, fetchPaths, modelSupplier);
     }
 
     /**
@@ -415,7 +430,7 @@ public class SelectBuilderImpl<T extends Data, R, ID> extends QueryBuilderImpl<T
     @Override
     public QueryBuilder<T, R, ID> forLock(TemplateString template) {
         return new SelectBuilderImpl<>(queryTemplate, fromType, selectType, distinct, join, where, limit, offset,
-                template, selectTemplate, groupBy, having, orderBy, subquery, refType, pkType, fetchPaths, modelSupplier);
+                template, selectTemplate, groupBy, having, orderBy, hints, subquery, refType, pkType, fetchPaths, modelSupplier);
     }
 
     /**
@@ -428,7 +443,7 @@ public class SelectBuilderImpl<T extends Data, R, ID> extends QueryBuilderImpl<T
         if (subquery) {
             throw new PersistenceException("Cannot build a query from a subquery.");
         }
-        return queryTemplate.query(toTemplateString());
+        return queryTemplate.query(statement(toTemplateString()));
     }
 
     /**
@@ -441,7 +456,7 @@ public class SelectBuilderImpl<T extends Data, R, ID> extends QueryBuilderImpl<T
         if (subquery) {
             throw new PersistenceException("Cannot compile a plan from a subquery.");
         }
-        return queryTemplate.plan(toTemplateString());
+        return queryTemplate.plan(statement(toTemplateString()));
     }
 
     /**
@@ -492,7 +507,7 @@ public class SelectBuilderImpl<T extends Data, R, ID> extends QueryBuilderImpl<T
         boolean rowShape = distinct || limit != null || offset != null
                 || !groupBy.isEmpty() || !having.isEmpty();
         if (recordType != null && !rowShape) {
-            return toTemplateString(TemplateString.of("COUNT(*)"), false);
+            return statement(toTemplateString(TemplateString.of("COUNT(*)"), false));
         }
         TemplateString innerSelect;
         if (recordType == null) {
@@ -505,13 +520,14 @@ public class SelectBuilderImpl<T extends Data, R, ID> extends QueryBuilderImpl<T
             }
             innerSelect = wrap(select(recordType, PK));
         } else {
-            innerSelect = TemplateString.of("1");
+            // Named, since SQL Server refuses a derived table column without a name.
+            innerSelect = TemplateString.of("1 AS one");
         }
         boolean withOrderBy = limit != null || offset != null;
-        return TemplateString.combine(
+        return statement(TemplateString.combine(
                 TemplateString.of("SELECT COUNT(*)\nFROM (\n"),
                 toTemplateString(innerSelect, withOrderBy),
-                TemplateString.of("\n) c"));
+                TemplateString.of("\n) c")));
     }
 
     /**

@@ -1704,6 +1704,14 @@ internal open class QueryBuilderTest(
         count shouldBe 6
     }
 
+    // hint() tests
+
+    @Test
+    fun `hint leaves the result unchanged on a database without hint syntax`() {
+        val hinted = orm.entity(City::class).select().hint("NO_MERGE(recent)").hint("QB_NAME(storm)").resultList
+        hinted shouldBe orm.entity(City::class).select().resultList
+    }
+
     // forUpdate() tests
 
     @Test
@@ -2496,6 +2504,7 @@ internal open class QueryBuilderTest(
         override fun forShare(): QueryBuilder<City, City, Int> = delegate.forShare()
         override fun forUpdate(): QueryBuilder<City, City, Int> = delegate.forUpdate()
         override fun forLock(template: TemplateString): QueryBuilder<City, City, Int> = delegate.forLock(template)
+        override fun hint(hint: String): QueryBuilder<City, City, Int> = delegate.hint(hint)
         override fun build(): Query = delegate.build()
         override fun scroll(scrollable: Scrollable<City>): Window<City> = delegate.scroll(scrollable)
         override fun windows(size: Int): Flow<Window<City>> = delegate.windows(size)

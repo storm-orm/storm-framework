@@ -32,7 +32,7 @@ org.jetbrains.kotlin.util.FileAnalysisException: ... Unexpected FirPlaceholderPr
 
 That crash is a Kotlin 2.0.x compiler bug, fixed in 2.1.0, where an unresolved call using `_` placeholders is reported as an internal error instead of a diagnostic. On 2.1.0+ the same code says `Unresolved reference 'select'`. Read it as "something here does not resolve", and check the import first.
 
-All infix predicate operators (`eq`, `neq`, `like`, `greater`, `less`, `inList`, `isNull`, `isNotNull`, `isTrue`, `isFalse`, `between`, etc.) are extension functions on `Metamodel<T, V>` defined in `st.orm.template` (in QueryBuilder.kt).
+All infix predicate operators (`eq`, `neq`, `like`, `contains`, `startsWith`, `endsWith`, `greater`, `less`, `inList`, `isNull`, `isNotNull`, `isTrue`, `isFalse`, `between`, etc.) are extension functions on `Metamodel<T, V>` defined in `st.orm.template` (in QueryBuilder.kt).
 
 Ask what data they need, filters, ordering, or pagination.
 
@@ -75,6 +75,10 @@ User_.age less 65                  // LESS_THAN
 User_.age lessEq 30               // LESS_THAN_OR_EQUAL
 User_.name like "%alice%"          // LIKE
 User_.name notLike "%test%"        // NOT_LIKE
+User_.name contains "50%"          // CONTAINS: literal text, never a pattern
+User_.name startsWith "Al"         // STARTS_WITH
+User_.email endsWith "@example.com" // ENDS_WITH
+                                   // notContains, notStartsWith, notEndsWith negate them
 User_.roles inList listOf("a","b") // IN
 User_.roles notInList listOf("x")  // NOT_IN
 User_.city inRefs cityRefs         // IN over Iterable<Ref<T>> — for FK fields with refs
@@ -84,6 +88,8 @@ User_.archived.isFalse()           // IS_FALSE
 User_.email.isNull()               // IS_NULL
 User_.email.isNotNull()            // IS_NOT_NULL
 ```
+
+**Search text goes through `contains`, `startsWith` or `endsWith`, never through `like`.** Text a user typed can hold `%`, `_`, `[` or a backslash, which `like` reads as wildcards or escapes, differently per database. The text operators escape it for the dialect and add the wildcards themselves, so `User_.name contains query` matches exactly what was typed. Never build a pattern such as `like "%$query%"`, and never write an escape helper. Keep `like` for patterns the code writes itself. The text operators apply to a single `String` column; case sensitivity follows the column's collation, as it does for `like`.
 
 Combine with `and`/`or`:
 ```kotlin
@@ -350,6 +356,20 @@ val user = orm.entity<User>()
 // Or shared lock for reading
     .forShare()          // SELECT ... FOR SHARE
 ```
+
+## Optimizer Hints
+
+Only when a query needs a hint to keep its plan, add it with `.hint("...")`: the database's own hint text, passed through as is, on `select` and `delete`. Never rewrite a query as a SQL template to place a hint.
+
+```kotlin
+val users = orm.entity<User>()
+    .select()
+    .where(User_.email contains query)
+    .hint("MAX_EXECUTION_TIME(1000)")   // MySQL: SELECT /*+ MAX_EXECUTION_TIME(1000) */ ...
+    .resultList
+```
+
+The dialect places it: a `/*+ ... */` comment after `SELECT`/`DELETE` on MySQL, MariaDB 12+ and Oracle, an `OPTION (...)` clause at the end on SQL Server, and nowhere on PostgreSQL, H2 and SQLite, which have no hint syntax (the query runs unchanged, so H2 tests pass). Several `.hint(...)` calls share one comment or clause. On SQL Server a hinted builder cannot be a subquery; hint the outer query. A hint containing `*/` or `;` is refused.
 
 ## Distinct and Count
 
@@ -660,7 +680,7 @@ select {
 }.page(page, size)
 ```
 
-Available in the block: `where`, `whereBuilder`, `whereExists`, `whereNotExists`, `orderBy`, `orderByDescending`, `groupBy`, `having`, `havingExists`, `havingNotExists`, `limit`, `offset`, `distinct`, `unsafe`, `forUpdate`, `forShare`, `fetch`, `innerJoin`, `leftJoin`, `rightJoin`, `crossJoin`, `append`. The block is widened from the start, so joined-entity fields go through the same calls as root fields; `whereBuilder` remains the escalation for `exists`/id/ref/record matching inside compound logic (see **Choosing the WHERE Form**).
+Available in the block: `where`, `whereBuilder`, `whereExists`, `whereNotExists`, `orderBy`, `orderByDescending`, `groupBy`, `having`, `havingExists`, `havingNotExists`, `limit`, `offset`, `distinct`, `unsafe`, `forUpdate`, `forShare`, `hint`, `fetch`, `innerJoin`, `leftJoin`, `rightJoin`, `crossJoin`, `append`. The block is widened from the start, so joined-entity fields go through the same calls as root fields; `whereBuilder` remains the escalation for `exists`/id/ref/record matching inside compound logic (see **Choosing the WHERE Form**).
 
 **Note:** The block DSL has `orderBy { template }` but NOT `orderByDescending { template }`. For template-based descending order, use the chained API: `.orderByDescending { template }` or escape to raw SQL.
 

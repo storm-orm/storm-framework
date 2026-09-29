@@ -728,6 +728,32 @@ public abstract class QueryBuilder<T extends Data, R, ID> {
     public abstract QueryBuilder<T, R, ID> forLock(TemplateString template);
 
     //
+    // Optimizer hints.
+    //
+
+    /**
+     * Adds an optimizer hint to the statement this builder builds. The hint is the database's own hint text, passed
+     * through as is, such as {@code NO_MERGE(recent)} on MariaDB or {@code RECOMPILE} on SQL Server; its content and
+     * its effect depend on the database.
+     *
+     * <p>The dialect decides where the hint goes. MySQL, MariaDB and Oracle read hints from a {@code /*+ ... *}{@code /}
+     * comment right after the statement's leading keyword; SQL Server reads them from an {@code OPTION (...)} clause at
+     * the end of the statement. Several calls add several hints to the same comment or clause. A database without
+     * hint syntax, such as PostgreSQL, H2 or SQLite, leaves the hint out, as a hint never changes what a statement
+     * returns.</p>
+     *
+     * <p>SQL Server takes its query hints once per statement, so on SQL Server a builder with a hint cannot serve as a
+     * subquery; put the hint on the outer query instead.</p>
+     *
+     * @param hint the hint text, as the database reads it.
+     * @return the query builder.
+     * @throws PersistenceException if the hint is blank, or contains {@code *}{@code /} or {@code ;}, which would end
+     * the comment that carries it or the statement.
+     * @since 1.15
+     */
+    public abstract QueryBuilder<T, R, ID> hint(String hint);
+
+    //
     // Finalization.
     //
 

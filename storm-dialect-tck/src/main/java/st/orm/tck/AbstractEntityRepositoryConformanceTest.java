@@ -538,6 +538,16 @@ public abstract class AbstractEntityRepositoryConformanceTest {
     }
 
     @Test
+    public void testResultCountOfALimitedAndAGroupedSelect() {
+        var vets = PreparedStatementTemplate.ORM(dataSource).entity(Vet.class);
+        long total = vets.count();
+        assertTrue(total > 2);
+        // Both counts run over a derived table, whose columns every database accepts only when they carry names.
+        assertEquals(2, vets.select().limit(2).getResultCount());
+        assertEquals(total, vets.select().groupBy(Metamodel.of(Vet.class, "id")).getResultCount());
+    }
+
+    @Test
     public void testUpsertAndFetchBatch() {
         var vets = PreparedStatementTemplate.ORM(dataSource).entity(Vet.class);
         var sql = assertStatement(Statement.UPSERT_AND_FETCH_BATCH, () -> {
