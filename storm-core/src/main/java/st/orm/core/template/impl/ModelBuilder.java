@@ -58,7 +58,7 @@ public interface ModelBuilder {
     /**
      * Returns the schema resolver for the model.
      *
-     * @since 1.14
+     * @since 1.15
      */
     SchemaResolver schemaResolver();
 
@@ -67,7 +67,7 @@ public interface ModelBuilder {
      *
      * @param schemaResolver the schema resolver.
      * @return this model builder.
-     * @since 1.14
+     * @since 1.15
      */
     ModelBuilder schemaResolver(@Nullable SchemaResolver schemaResolver);
 

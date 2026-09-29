@@ -234,7 +234,7 @@ public interface SqlTemplate extends TemplateDecorator {
      *
      * @param resolver the schema resolver.
      * @return a new SQL template.
-     * @since 1.14
+     * @since 1.15
      */
     @Override
     SqlTemplate withSchemaResolver(SchemaResolver resolver);
@@ -243,7 +243,7 @@ public interface SqlTemplate extends TemplateDecorator {
      * Returns the schema resolver used by this template.
      *
      * @return the schema resolver used by this template.
-     * @since 1.14
+     * @since 1.15
      */
     SchemaResolver schemaResolver();
 

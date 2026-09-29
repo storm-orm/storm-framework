@@ -22,7 +22,7 @@ import java.util.Map;
  * mappings of the same schemas are equal.
  *
  * @param schemas the declared schemas, mapped to the schemas to address instead.
- * @since 1.14
+ * @since 1.15
  */
 record SchemaMapping(Map<String, String> schemas) implements SchemaResolver {
 

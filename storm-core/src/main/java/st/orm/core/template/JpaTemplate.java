@@ -131,7 +131,7 @@ public interface JpaTemplate extends TemplateDecorator {
      *
      * @param schemaResolver the schema resolver.
      * @return a new JPA template.
-     * @since 1.14
+     * @since 1.15
      */
     @Override
     JpaTemplate withSchemaResolver(SchemaResolver schemaResolver);

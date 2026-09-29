@@ -713,7 +713,7 @@ final class RecordReflection {
      * @param tableNameResolver the table name resolver.
      * @param schemaResolver the schema resolver.
      * @return the table name for the specified record type, in the schema the resolver addresses.
-     * @since 1.14
+     * @since 1.15
      */
     static TableName getTableName(Class<? extends Data> table,
                                   TableNameResolver tableNameResolver,

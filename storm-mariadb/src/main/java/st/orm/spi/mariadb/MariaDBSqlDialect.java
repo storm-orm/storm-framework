@@ -119,7 +119,7 @@ public class MariaDBSqlDialect extends MySQLSqlDialect {
      *
      * @param name the name to check.
      * @return {@code true} if the name is a keyword, {@code false} otherwise.
-     * @since 1.14
+     * @since 1.15
      */
     @Override
     public boolean isKeyword(String name) {

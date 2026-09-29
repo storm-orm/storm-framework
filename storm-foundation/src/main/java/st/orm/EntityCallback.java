@@ -163,7 +163,7 @@ public interface EntityCallback<E extends Entity<?>> {
      * <p>By default, this calls {@link #afterInsert(Entity)} for each entity, in order.</p>
      *
      * @param entities the entities that were inserted, in insertion order; never {@code null} or empty.
-     * @since 1.14
+     * @since 1.15
      */
     default void afterInsert(List<E> entities) {
         for (E entity : entities) {
@@ -194,7 +194,7 @@ public interface EntityCallback<E extends Entity<?>> {
      * <p>By default, this calls {@link #afterUpdate(Entity)} for each entity, in order.</p>
      *
      * @param entities the entities that were updated, in update order; never {@code null} or empty.
-     * @since 1.14
+     * @since 1.15
      */
     default void afterUpdate(List<E> entities) {
         for (E entity : entities) {
@@ -252,7 +252,7 @@ public interface EntityCallback<E extends Entity<?>> {
      * single-entity default does.</p>
      *
      * @param entities the entities that were upserted, in upsert order; never {@code null} or empty.
-     * @since 1.14
+     * @since 1.15
      */
     default void afterUpsert(List<E> entities) {
         for (E entity : entities) {
@@ -292,7 +292,7 @@ public interface EntityCallback<E extends Entity<?>> {
      * <p>By default, this calls {@link #afterRemove(Entity)} for each entity, in order.</p>
      *
      * @param entities the entities that were removed, in removal order; never {@code null} or empty.
-     * @since 1.14
+     * @since 1.15
      */
     default void afterRemove(List<E> entities) {
         for (E entity : entities) {
