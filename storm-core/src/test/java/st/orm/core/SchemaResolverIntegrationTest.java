@@ -2,6 +2,7 @@ package st.orm.core;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -93,6 +94,14 @@ class SchemaResolverIntegrationTest {
         assertTrue(tenantA.validateSchema(java.util.List.of(Archive.class, Plain.class)).isEmpty());
         var missing = ORMTemplate.of(dataSource, decorator -> decorator.withSchemaResolver(SchemaResolver.mapping(Map.of("archive", "tenant_c"))));
         assertFalse(missing.validateSchema(java.util.List.of(Archive.class)).isEmpty());
+    }
+
+    @Test
+    void templatesWithEqualMappingsShareTheirModels() {
+        var first = ORMTemplate.of(dataSource, decorator -> decorator.withSchemaResolver(SchemaResolver.mapping(Map.of("archive", "tenant_a"))));
+        var second = ORMTemplate.of(dataSource, decorator -> decorator.withSchemaResolver(SchemaResolver.mapping(Map.of("archive", "tenant_a"))));
+        assertEquals(SchemaResolver.mapping(Map.of("archive", "tenant_a")), SchemaResolver.mapping(Map.of("archive", "tenant_a")));
+        assertSame(first.model(Archive.class), second.model(Archive.class));
     }
 
     @Test
