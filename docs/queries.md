@@ -178,13 +178,19 @@ val users = orm.entity<User>()
 | `greaterEq` | Greater than or equals |
 | `like` | LIKE pattern match |
 | `notLike` | NOT LIKE |
+| `contains` / `notContains` | Contains the text, matched literally |
+| `startsWith` / `notStartsWith` | Starts with the text, matched literally |
+| `endsWith` / `notEndsWith` | Ends with the text, matched literally |
 | `isNull` | IS NULL |
 | `isNotNull` | IS NOT NULL |
 | `inList` | IN (list) |
 | `notInList` | NOT IN (list) |
 
+`contains`, `startsWith` and `endsWith` take text rather than a pattern. Storm escapes the characters the database reads as wildcards and adds the wildcards itself, so text a user typed, such as `50%` or `a_b`, matches exactly that text on every database. Use `like` when you write the pattern yourself.
+
 ```kotlin
 val users = orm.findAll(User_.email like "%@example.com")
+val users = orm.findAll(User_.email contains searchText)
 val users = orm.findAll(User_.deletedAt.isNull())
 val users = orm.findAll(User_.role inList listOf(adminRole, userRole))
 ```
@@ -235,15 +241,25 @@ List<User> users = orm.query(RAW."""
 | `GREATER_THAN_OR_EQUAL` | Greater than or equals |
 | `LIKE` | LIKE pattern match |
 | `NOT_LIKE` | NOT LIKE |
+| `CONTAINS` / `NOT_CONTAINS` | Contains the text, matched literally |
+| `STARTS_WITH` / `NOT_STARTS_WITH` | Starts with the text, matched literally |
+| `ENDS_WITH` / `NOT_ENDS_WITH` | Ends with the text, matched literally |
 | `IS_NULL` | IS NULL |
 | `IS_NOT_NULL` | IS NOT NULL |
 | `IN` | IN (list) |
 | `NOT_IN` | NOT IN (list) |
 
+`CONTAINS`, `STARTS_WITH` and `ENDS_WITH` take text rather than a pattern. Storm escapes the characters the database reads as wildcards and adds the wildcards itself, so text a user typed, such as `50%` or `a_b`, matches exactly that text on every database. Use `LIKE` when you write the pattern yourself.
+
 ```java
 List<User> users = orm.entity(User.class)
     .select()
     .where(User_.email, LIKE, "%@example.com")
+    .getResultList();
+
+List<User> matches = orm.entity(User.class)
+    .select()
+    .where(User_.email, CONTAINS, searchText)
     .getResultList();
 ```
 

@@ -374,6 +374,45 @@ public interface SqlDialect {
     }
 
     /**
+     * Escapes text so that a {@code LIKE} pattern built from it matches the text literally. Every character the
+     * database reads as a wildcard, and the escape character itself, is preceded by {@code !}, the escape character
+     * that {@link Operator#CONTAINS}, {@link Operator#STARTS_WITH}, {@link Operator#ENDS_WITH} and their negations
+     * render. No other character is escaped, since a database may refuse an escape character that precedes anything
+     * but a wildcard or itself, as Oracle does.
+     *
+     * <p>The default escapes {@code %} and {@code _}, the wildcards of standard SQL. A dialect whose database reads
+     * further characters as wildcards escapes those as well.</p>
+     *
+     * @param text the text to match literally.
+     * @return the escaped text, without the wildcards the operator adds.
+     * @since 1.15
+     */
+    default String escapeLike(String text) {
+        return escapeLike(text, "%_");
+    }
+
+    /**
+     * Escapes the given wildcard characters and the escape character {@code !} in the text, for
+     * {@link #escapeLike(String)}.
+     *
+     * @param text the text to match literally.
+     * @param wildcards the characters the database reads as wildcards.
+     * @return the escaped text.
+     * @since 1.15
+     */
+    static String escapeLike(String text, String wildcards) {
+        var escaped = new StringBuilder(text.length() + 8);
+        for (int i = 0; i < text.length(); i++) {
+            char c = text.charAt(i);
+            if (c == '!' || wildcards.indexOf(c) >= 0) {
+                escaped.append('!');
+            }
+            escaped.append(c);
+        }
+        return escaped.toString();
+    }
+
+    /**
      * The statement that makes the database itself refuse writes in the transaction that has just begun. Storm
      * sends it as the first statement of every read-only transaction it opens, right after the connection's
      * read-only flag is set and autocommit is switched off, so the database enforces the mode whatever the driver

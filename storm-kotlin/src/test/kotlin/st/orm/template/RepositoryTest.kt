@@ -336,6 +336,21 @@ internal open class RepositoryTest(
     }
 
     @Test
+    fun `text match infix functions match their text literally`() {
+        val repo = orm.entity(City::class)
+        repo.insertAndFetch(City(name = "100% Literal"))
+        repo.insertAndFetch(City(name = "1000 Literal"))
+        val namePath = metamodel<City, String>(repo.model, "name")
+        fun names(predicate: PredicateBuilder<City, City, *>) = repo.select().where(predicate).resultList.map { it.name }.sorted()
+        names(namePath contains "0%") shouldBe listOf("100% Literal")
+        names(namePath startsWith "100%") shouldBe listOf("100% Literal")
+        names(namePath endsWith "% Literal") shouldBe listOf("100% Literal")
+        names(namePath notContains "%").contains("100% Literal") shouldBe false
+        names(namePath notStartsWith "100%").contains("1000 Literal") shouldBe true
+        names(namePath notEndsWith "Literal").none { it.endsWith("Literal") } shouldBe true
+    }
+
+    @Test
     fun `removeAll with predicate should return zero when no match`() {
         val repo = orm.entity(City::class)
         val namePath = metamodel<City, String>(repo.model, "name")

@@ -1424,6 +1424,49 @@ public infix fun <T : Data, V : Any> Navigable<T, V>.like(value: V): PredicateBu
 public infix fun <T : Data, V : Any> Navigable<T, V>.notLike(value: V): PredicateBuilder<T, T, *> = create(this.asMetamodel(), NOT_LIKE, listOf(value))
 
 /**
+ * Infix function to create a predicate to check if a field contains the given text anywhere in its value. The text is
+ * matched literally: Storm escapes the characters the database reads as wildcards, so `50%` matches exactly `50%`.
+ *
+ * @since 1.15
+ */
+public infix fun <T : Data> Navigable<T, String>.contains(text: String): PredicateBuilder<T, T, *> = create(this.asMetamodel(), CONTAINS, listOf(text))
+
+/**
+ * Infix function to create a predicate to check if a field does not contain the given text, matched literally.
+ *
+ * @since 1.15
+ */
+public infix fun <T : Data> Navigable<T, String>.notContains(text: String): PredicateBuilder<T, T, *> = create(this.asMetamodel(), NOT_CONTAINS, listOf(text))
+
+/**
+ * Infix function to create a predicate to check if a field starts with the given text, matched literally.
+ *
+ * @since 1.15
+ */
+public infix fun <T : Data> Navigable<T, String>.startsWith(text: String): PredicateBuilder<T, T, *> = create(this.asMetamodel(), STARTS_WITH, listOf(text))
+
+/**
+ * Infix function to create a predicate to check if a field does not start with the given text, matched literally.
+ *
+ * @since 1.15
+ */
+public infix fun <T : Data> Navigable<T, String>.notStartsWith(text: String): PredicateBuilder<T, T, *> = create(this.asMetamodel(), NOT_STARTS_WITH, listOf(text))
+
+/**
+ * Infix function to create a predicate to check if a field ends with the given text, matched literally.
+ *
+ * @since 1.15
+ */
+public infix fun <T : Data> Navigable<T, String>.endsWith(text: String): PredicateBuilder<T, T, *> = create(this.asMetamodel(), ENDS_WITH, listOf(text))
+
+/**
+ * Infix function to create a predicate to check if a field does not end with the given text, matched literally.
+ *
+ * @since 1.15
+ */
+public infix fun <T : Data> Navigable<T, String>.notEndsWith(text: String): PredicateBuilder<T, T, *> = create(this.asMetamodel(), NOT_ENDS_WITH, listOf(text))
+
+/**
  * Infix functions to create a predicate to check if a field is greater than a value.
  */
 public infix fun <T : Data, V : Any> Navigable<T, V>.greater(value: V): PredicateBuilder<T, T, *> = create(this.asMetamodel(), GREATER_THAN, listOf(value))
