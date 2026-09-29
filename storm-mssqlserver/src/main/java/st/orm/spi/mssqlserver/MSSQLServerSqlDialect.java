@@ -295,4 +295,27 @@ public class MSSQLServerSqlDialect extends DefaultSqlDialect {
     public boolean supportsBatchGeneratedKeys() {
         return false;
     }
+
+    /**
+     * Renders the optimizer hints as one {@code OPTION (...)} clause, SQL Server's query hints.
+     *
+     * @param hints the hint texts, in the order they were added.
+     * @return the {@code OPTION} clause.
+     * @since 1.15
+     */
+    @Override
+    public String optimizerHint(List<String> hints) {
+        return "OPTION (%s)".formatted(String.join(", ", hints));
+    }
+
+    /**
+     * SQL Server reads its query hints from the {@code OPTION} clause that ends the statement.
+     *
+     * @return {@code false}.
+     * @since 1.15
+     */
+    @Override
+    public boolean applyOptimizerHintAfterKeyword() {
+        return false;
+    }
 }

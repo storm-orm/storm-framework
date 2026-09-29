@@ -374,6 +374,35 @@ public interface SqlDialect {
     }
 
     /**
+     * Renders the optimizer hints a query builder carries, in the database's own hint syntax, or returns an empty
+     * string when the database has no hint syntax, in which case the hints are left out: a hint never changes what a
+     * statement returns. {@link #applyOptimizerHintAfterKeyword()} says where the rendered hints go.
+     *
+     * <p>Empty by default. A dialect whose database reads hints renders all of them in one comment or clause, since
+     * a database reads a statement's hints from one place.</p>
+     *
+     * @param hints the hint texts, in the order they were added, never empty.
+     * @return the rendered hints, or an empty string when the database has no hint syntax.
+     * @since 1.15
+     */
+    default String optimizerHint(List<String> hints) {
+        return "";
+    }
+
+    /**
+     * Returns {@code true} if optimizer hints go right after the statement's leading keyword, as a
+     * {@code /*+ ... *}{@code /} comment does on MySQL, MariaDB and Oracle, and {@code false} if they end the statement,
+     * as SQL Server's {@code OPTION (...)} clause does.
+     *
+     * @return {@code true} to render the hints after the leading keyword, {@code false} to render them at the end of
+     * the statement.
+     * @since 1.15
+     */
+    default boolean applyOptimizerHintAfterKeyword() {
+        return true;
+    }
+
+    /**
      * Escapes text so that a {@code LIKE} pattern built from it matches the text literally. Every character the
      * database reads as a wildcard, and the escape character itself, is preceded by {@code !}, the escape character
      * that {@link Operator#CONTAINS}, {@link Operator#STARTS_WITH}, {@link Operator#ENDS_WITH} and their negations

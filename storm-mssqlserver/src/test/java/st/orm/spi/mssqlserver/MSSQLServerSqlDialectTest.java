@@ -5,6 +5,7 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
 import st.orm.StormConfig;
@@ -393,5 +394,11 @@ class MSSQLServerSqlDialectTest {
     @Test
     void escapeLikeShouldEscapeTheCharacterRangeBracket() {
         assertEquals("50!% !_ a!!b ![x] \\", dialect.escapeLike("50% _ a!b [x] \\"));
+    }
+
+    @Test
+    void optimizerHintsShareOneOptionClauseAtTheEnd() {
+        assertFalse(dialect.applyOptimizerHintAfterKeyword());
+        assertEquals("OPTION (RECOMPILE, MAXDOP 1)", dialect.optimizerHint(List.of("RECOMPILE", "MAXDOP 1")));
     }
 }

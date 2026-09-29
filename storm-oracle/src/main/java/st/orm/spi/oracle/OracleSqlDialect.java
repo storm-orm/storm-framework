@@ -245,4 +245,17 @@ public class OracleSqlDialect extends DefaultSqlDialect {
     public String sequenceNextVal(String sequenceName) {
         return getSafeIdentifier(sequenceName) + ".NEXTVAL";
     }
+
+    /**
+     * Renders the optimizer hints as one {@code /*+ ... *}{@code /} comment, which Oracle reads right after the
+     * statement's leading keyword.
+     *
+     * @param hints the hint texts, in the order they were added.
+     * @return the hint comment.
+     * @since 1.15
+     */
+    @Override
+    public String optimizerHint(List<String> hints) {
+        return "/*+ %s */".formatted(String.join(" ", hints));
+    }
 }

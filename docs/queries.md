@@ -1020,6 +1020,45 @@ See [Scrolling: GROUP BY](#group-by) for details.
 
 ---
 
+## Optimizer Hints
+
+Add `.hint(...)` to pass an optimizer hint to the database, for the rare query that needs one to keep its plan, for example across an upgrade that changes how the optimizer treats a derived table. The hint is the database's own text and Storm passes it through as is; the dialect decides where it goes.
+
+<Tabs groupId="language">
+<TabItem value="kotlin" label="Kotlin" default>
+
+```kotlin
+val users = orm.entity<User>()
+    .select()
+    .where(User_.email contains searchText)
+    .hint("MAX_EXECUTION_TIME(1000)")
+    .resultList
+```
+
+</TabItem>
+<TabItem value="java" label="Java">
+
+```java
+List<User> users = orm.entity(User.class)
+    .select()
+    .where(User_.email, CONTAINS, searchText)
+    .hint("MAX_EXECUTION_TIME(1000)")
+    .getResultList();
+```
+
+</TabItem>
+</Tabs>
+
+| Database | Where the hint goes |
+|----------|---------------------|
+| MySQL, MariaDB 12+, Oracle | A `/*+ ... */` comment right after `SELECT` or `DELETE` |
+| SQL Server | An `OPTION (...)` clause at the end of the statement |
+| PostgreSQL, H2, SQLite | Left out: these databases have no hint syntax |
+
+Several calls add several hints to the same comment or clause. A hint never changes what a query returns, so a database without hint syntax runs the query without it, and code tested on H2 runs unchanged in production. SQL Server takes its query hints once per statement, so there a hint belongs on the outer query rather than a subquery. A hint containing `*/` or `;` is refused, since it would end the comment that carries it or the statement.
+
+---
+
 ## Common Patterns
 
 ### Checking Existence
