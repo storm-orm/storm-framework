@@ -66,6 +66,53 @@ public interface Operator {
     Operator NOT_LIKE = (column, placeholders) -> format("Not like", 1, placeholders.length, "%s NOT LIKE %s".formatted(requireColumn(column), get(placeholders)));
 
     /**
+     * Matches a column that contains the given text anywhere in its value.
+     *
+     * <p>The value is literal text rather than a pattern: Storm escapes the characters the database reads as
+     * wildcards, adds the wildcards itself and renders {@code column LIKE ? ESCAPE '!'}, so {@code 50%} matches exactly
+     * {@code 50%} on every database. Empty text matches every non-null value. Case sensitivity follows the column's
+     * collation, as it does for {@link #LIKE}. The operator applies to a single column holding text.</p>
+     *
+     * @since 1.15
+     */
+    Operator CONTAINS = (column, placeholders) -> format("Contains", 1, placeholders.length, "%s LIKE %s ESCAPE '!'".formatted(requireColumn(column), get(placeholders)));
+
+    /**
+     * Matches a column that does not contain the given text, the negation of {@link #CONTAINS}.
+     *
+     * @since 1.15
+     */
+    Operator NOT_CONTAINS = (column, placeholders) -> format("Not contains", 1, placeholders.length, "%s NOT LIKE %s ESCAPE '!'".formatted(requireColumn(column), get(placeholders)));
+
+    /**
+     * Matches a column whose value starts with the given text. The value is literal text, as for {@link #CONTAINS}.
+     *
+     * @since 1.15
+     */
+    Operator STARTS_WITH = (column, placeholders) -> format("Starts with", 1, placeholders.length, "%s LIKE %s ESCAPE '!'".formatted(requireColumn(column), get(placeholders)));
+
+    /**
+     * Matches a column whose value does not start with the given text, the negation of {@link #STARTS_WITH}.
+     *
+     * @since 1.15
+     */
+    Operator NOT_STARTS_WITH = (column, placeholders) -> format("Not starts with", 1, placeholders.length, "%s NOT LIKE %s ESCAPE '!'".formatted(requireColumn(column), get(placeholders)));
+
+    /**
+     * Matches a column whose value ends with the given text. The value is literal text, as for {@link #CONTAINS}.
+     *
+     * @since 1.15
+     */
+    Operator ENDS_WITH = (column, placeholders) -> format("Ends with", 1, placeholders.length, "%s LIKE %s ESCAPE '!'".formatted(requireColumn(column), get(placeholders)));
+
+    /**
+     * Matches a column whose value does not end with the given text, the negation of {@link #ENDS_WITH}.
+     *
+     * @since 1.15
+     */
+    Operator NOT_ENDS_WITH = (column, placeholders) -> format("Not ends with", 1, placeholders.length, "%s NOT LIKE %s ESCAPE '!'".formatted(requireColumn(column), get(placeholders)));
+
+    /**
      * The {@code >} operator.
      */
     Operator GREATER_THAN = (column, placeholders) -> format("Greater than", 1 , placeholders.length, "%s > %s".formatted(requireColumn(column), get(placeholders)));

@@ -413,9 +413,10 @@ final class QueryModelImpl implements QueryModel {
                 if (column != null && !column.equals(k)) {
                     throw new SqlTemplateException("Multiple columns specified by WHERE clause argument: %s and %s.".formatted(column, k));
                 }
-                placeholders.add(compiler.mapParameter(entry.getValue()));
+                placeholders.add(compiler.mapParameter(TextMatch.bindValue(operator, entry.getValue(), metamodel, compiler.dialect())));
                 column = k;
             } else {
+                TextMatch.requireSingleColumn(operator, metamodel);
                 if (column != null) {
                     throw new SqlTemplateException("Multiple columns specified by WHERE clause arguments. When passing multiple objects, each must resolve to the same single column.");
                 }
@@ -510,8 +511,9 @@ final class QueryModelImpl implements QueryModel {
                 }
             }
             if ((multiValues == null || multiValues.isEmpty()) && values.size == 1) {
-                binder.bindParameter(values.firstValue);
+                binder.bindParameter(TextMatch.bindValue(operator, values.firstValue, metamodel, template.dialect()));
             } else {
+                TextMatch.requireSingleColumn(operator, metamodel);
                 if (multiValues == null) {
                     multiValues = new ArrayList<>();
                 }

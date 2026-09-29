@@ -389,4 +389,9 @@ class MSSQLServerSqlDialectTest {
     void escapeShouldHandleNameWithOnlyClosingBracket() {
         assertEquals("[]]]", dialect.escape("]"));
     }
+
+    @Test
+    void escapeLikeShouldEscapeTheCharacterRangeBracket() {
+        assertEquals("50!% !_ a!!b ![x] \\", dialect.escapeLike("50% _ a!b [x] \\"));
+    }
 }

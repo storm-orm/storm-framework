@@ -22,6 +22,7 @@ import java.util.regex.Pattern;
 import st.orm.StormConfig;
 import st.orm.core.spi.DefaultSqlDialect;
 import st.orm.core.template.Column;
+import st.orm.core.template.SqlDialect;
 
 public class MSSQLServerSqlDialect extends DefaultSqlDialect {
 
@@ -127,6 +128,19 @@ public class MSSQLServerSqlDialect extends DefaultSqlDialect {
     public String escape(String name) {
         // Escape identifier for SQL Server by wrapping it in square brackets and doubling any closing brackets.
         return "[%s]".formatted(name.replace("]", "]]"));
+    }
+
+    /**
+     * Escapes text for a literal {@code LIKE} match. SQL Server reads {@code [} as the start of a character range,
+     * so it is escaped along with the standard wildcards.
+     *
+     * @param text the text to match literally.
+     * @return the escaped text.
+     * @since 1.15
+     */
+    @Override
+    public String escapeLike(String text) {
+        return SqlDialect.escapeLike(text, "%_[");
     }
 
     /**
