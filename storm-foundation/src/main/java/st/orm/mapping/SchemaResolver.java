@@ -39,14 +39,14 @@ public interface SchemaResolver {
 
     /**
      * Returns a schema resolver that maps declared schemas to other names, and leaves every schema it does not name
-     * as declared.
+     * as declared. Resolvers created from equal mappings are equal, so templates configured alike share the models
+     * Storm caches for them.
      *
      * @param schemas the declared schemas, mapped to the schemas to address instead.
      * @return the schema resolver.
      */
     static SchemaResolver mapping(Map<String, String> schemas) {
-        var copy = Map.copyOf(requireNonNull(schemas, "schemas"));
-        return (type, schema) -> copy.getOrDefault(schema, schema);
+        return new SchemaMapping(Map.copyOf(requireNonNull(schemas, "schemas")));
     }
 
     /**

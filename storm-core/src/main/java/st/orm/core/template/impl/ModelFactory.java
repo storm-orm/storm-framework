@@ -67,22 +67,25 @@ import st.orm.mapping.RecordType;
 final class ModelFactory {
 
     /**
-     * The cached models per record type, keyed by the builder and the references the statement resolves. The
-     * builder's resolvers name the table, its schema and its columns, and the plan changes the column list, so a
-     * model built for one template or plan cannot serve another. {@link ClassValue} ties the models to the lifetime
-     * of the record type, so they never pin the type or its class loader.
+     * The number of builders whose models a record type keeps. Builders are equal when their resolvers are, and a
+     * resolver created per template, such as a lambda, equals no other, so an application that creates templates on
+     * demand would otherwise add models for as long as the record type lives.
      */
-    private static final ClassValue<ConcurrentMap<ModelKey, Model<?, ?>>> MODEL_CACHE = new ClassValue<>() {
-        @Override
-        protected ConcurrentMap<ModelKey, Model<?, ?>> computeValue(Class<?> type) {
-            return new ConcurrentHashMap<>();
-        }
-    };
+    private static final int BUILDERS_PER_TYPE = 64;
 
     /**
-     * The key of a cached model: the builder whose resolvers named it and the references it resolves.
+     * The cached models per record type, keyed by the builder and the references the statement resolves. The
+     * builder's resolvers name the table, its schema and its columns, and the plan changes the column list, so a
+     * model built for one template or plan cannot serve another. The builders are held in a bounded LRU, so the
+     * models of templates that are no longer used are evicted. {@link ClassValue} ties the models to the lifetime of
+     * the record type, so they never pin the type or its class loader.
      */
-    private record ModelKey(ModelBuilderImpl builder, FetchPlan fetchPlan) {}
+    private static final ClassValue<SegmentedLruCache<ModelBuilderImpl, ConcurrentMap<FetchPlan, Model<?, ?>>>> MODEL_CACHE = new ClassValue<>() {
+        @Override
+        protected SegmentedLruCache<ModelBuilderImpl, ConcurrentMap<FetchPlan, Model<?, ?>>> computeValue(Class<?> type) {
+            return new SegmentedLruCache<>(BUILDERS_PER_TYPE);
+        }
+    };
 
     private ModelFactory() {
     }
@@ -95,13 +98,15 @@ final class ModelFactory {
         try {
             validateDataType(type, requirePrimaryKey);
             //noinspection unchecked
-            return (Model<T, ID>) MODEL_CACHE.get(type).computeIfAbsent(new ModelKey(builder, fetchPlan), ignore -> {
-                try {
-                    return createModel(builder, type, requirePrimaryKey, fetchPlan);
-                } catch (SqlTemplateException e) {
-                    throw new UncheckedSqlTemplateException(e);
-                }
-            });
+            return (Model<T, ID>) MODEL_CACHE.get(type)
+                    .getOrCompute(builder, ConcurrentHashMap::new)
+                    .computeIfAbsent(fetchPlan, ignore -> {
+                        try {
+                            return createModel(builder, type, requirePrimaryKey, fetchPlan);
+                        } catch (SqlTemplateException e) {
+                            throw new UncheckedSqlTemplateException(e);
+                        }
+                    });
         } catch (UncheckedSqlTemplateException e) {
             throw e.getCause();
         }
