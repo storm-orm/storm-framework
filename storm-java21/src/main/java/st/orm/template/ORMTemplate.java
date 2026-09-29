@@ -232,7 +232,7 @@ public interface ORMTemplate extends QueryTemplate, RepositoryLookup {
      *
      * @return the template the operation runs on; never {@code null}.
      * @throws PersistenceException if no entity callback is executing on this thread.
-     * @since 1.14
+     * @since 1.15
      */
     static ORMTemplate current() {
         Engine.require();

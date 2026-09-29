@@ -252,7 +252,7 @@ interface TemplateCompiler {
      * {@link #setFetchPaths(List)}.
      *
      * @param columns the rendered select-list columns, in select order.
-     * @since 1.14
+     * @since 1.15
      */
     void setSelectColumns(List<String> columns);
 
@@ -260,7 +260,7 @@ interface TemplateCompiler {
      * Returns the select list the query model generated, empty when the caller wrote the select list.
      *
      * @return the rendered select-list columns, in select order.
-     * @since 1.14
+     * @since 1.15
      */
     Optional<List<String>> getSelectColumns();
 
@@ -269,7 +269,7 @@ interface TemplateCompiler {
      * {@link st.orm.core.template.Sql#cursorColumns()} for the shape.
      *
      * @param positions the cursor column positions, one entry per field.
-     * @since 1.14
+     * @since 1.15
      */
     void setCursorColumns(List<List<Integer>> positions);
 }

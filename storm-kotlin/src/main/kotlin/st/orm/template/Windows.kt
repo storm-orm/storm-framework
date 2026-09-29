@@ -37,7 +37,7 @@ import st.orm.Window
  * A write per window rather than per row is `windows(size).collect { window -> users.update(window.content()) }`.
  *
  * @return a flow of the windows' rows.
- * @since 1.14
+ * @since 1.15
  */
 public fun <R> Flow<Window<R>>.rows(): Flow<R> = flow {
     collect { window -> window.content().forEach { emit(it) } }

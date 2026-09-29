@@ -199,7 +199,7 @@ public interface ORMTemplate :
          *
          * @return the template the operation runs on; never `null`.
          * @throws st.orm.PersistenceException if no entity callback is executing on this thread.
-         * @since 1.14
+         * @since 1.15
          */
         public fun current(): ORMTemplate {
             Engine.require()

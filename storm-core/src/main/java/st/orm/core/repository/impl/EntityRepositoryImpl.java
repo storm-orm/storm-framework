@@ -250,7 +250,7 @@ public class EntityRepositoryImpl<E extends Entity<ID>, ID>
      * Fires {@link EntityCallback#afterUpdate(List)} for a batch, with the entities as they were sent to the database.
      *
      * @param entities the entities that were updated, in update order.
-     * @since 1.14
+     * @since 1.15
      */
     private void fireAfterUpdate(List<E> entities) {
         entityCallbacks.afterUpdate(entities);
@@ -352,7 +352,7 @@ public class EntityRepositoryImpl<E extends Entity<ID>, ID>
      * Fires {@link EntityCallback#afterRemove(List)} for a batch.
      *
      * @param entities the entities that were deleted, in removal order.
-     * @since 1.14
+     * @since 1.15
      */
     private void fireAfterRemove(List<E> entities) {
         entityCallbacks.afterRemove(entities);

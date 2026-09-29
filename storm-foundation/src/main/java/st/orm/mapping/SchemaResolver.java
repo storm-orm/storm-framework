@@ -27,7 +27,7 @@ import java.util.Map;
  * under different schema names. A template's schema resolver maps the declared schema, or the absence of one, to the
  * schema its statements address.</p>
  *
- * @since 1.14
+ * @since 1.15
  */
 @FunctionalInterface
 public interface SchemaResolver {

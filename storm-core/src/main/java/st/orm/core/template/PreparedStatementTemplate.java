@@ -92,7 +92,7 @@ public interface PreparedStatementTemplate extends TemplateDecorator {
      *
      * @param schemaResolver the schema resolver.
      * @return a new prepared statement template.
-     * @since 1.14
+     * @since 1.15
      */
     @Override
     PreparedStatementTemplate withSchemaResolver(SchemaResolver schemaResolver);

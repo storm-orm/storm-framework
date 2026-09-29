@@ -31,7 +31,7 @@ import st.orm.core.template.ORMTemplate;
  * <p>The binding is removed when the dispatch returns, so a pooled thread retains nothing between operations.
  * Callbacks never fire recursively, so a binding never covers another.</p>
  *
- * @since 1.14
+ * @since 1.15
  */
 public final class CallbackTemplate {
 

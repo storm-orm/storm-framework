@@ -177,7 +177,7 @@ public interface Sql {
      * values this way.</p>
      *
      * @return the cursor column positions, empty for a statement that reads nothing alongside its result.
-     * @since 1.14
+     * @since 1.15
      */
     List<List<Integer>> cursorColumns();
 

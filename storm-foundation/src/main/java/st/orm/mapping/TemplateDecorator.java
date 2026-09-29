@@ -36,7 +36,7 @@ public interface TemplateDecorator {
      *
      * @param schemaResolver the schema resolver.
      * @return a new prepared statement template.
-     * @since 1.14
+     * @since 1.15
      */
     TemplateDecorator withSchemaResolver(SchemaResolver schemaResolver);
 

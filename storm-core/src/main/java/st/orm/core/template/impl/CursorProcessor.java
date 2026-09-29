@@ -31,7 +31,7 @@ import st.orm.core.template.impl.Elements.Cursor;
  * select the query model generated; a cursor over a select list the caller wrote appends every column. Resolution
  * matches {@link ColumnsProcessor}, so an inline record expands to each of its columns.</p>
  *
- * @since 1.14
+ * @since 1.15
  */
 final class CursorProcessor implements ElementProcessor<Cursor> {
 

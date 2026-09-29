@@ -27,7 +27,7 @@ package st.orm;
  * rolls back with it. Under Spring-managed transactions, a manager configured to validate participation reports
  * its refusal through this exception too.</p>
  *
- * @since 1.14
+ * @since 1.15
  */
 public class IllegalTransactionStateException extends PersistenceException {
 

@@ -97,7 +97,7 @@ public final class Elements {
      * each of its columns, in model column order. A scroll window reads its sort and key values this way.</p>
      *
      * @param fields the fields to read, in the order their values are wanted.
-     * @since 1.14
+     * @since 1.15
      */
     public record Cursor(List<Metamodel<?, ?>> fields) implements Element {
         public Cursor {

@@ -44,7 +44,7 @@ import java.lang.annotation.Target;
  * migrations, imports or tests. A callback that has to apply to some of an application's templates and not others
  * belongs on those templates rather than on the entity.</p>
  *
- * @since 1.14
+ * @since 1.15
  */
 @Target(TYPE)
 @Retention(RUNTIME)
