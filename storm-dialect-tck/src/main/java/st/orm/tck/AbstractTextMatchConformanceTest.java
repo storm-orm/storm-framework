@@ -18,11 +18,19 @@ package st.orm.tck;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static st.orm.GenerationStrategy.NONE;
 import static st.orm.Operator.CONTAINS;
+import static st.orm.Operator.CONTAINS_IGNORE_CASE;
 import static st.orm.Operator.ENDS_WITH;
+import static st.orm.Operator.ENDS_WITH_IGNORE_CASE;
+import static st.orm.Operator.EQUALS_IGNORE_CASE;
 import static st.orm.Operator.NOT_CONTAINS;
+import static st.orm.Operator.NOT_CONTAINS_IGNORE_CASE;
 import static st.orm.Operator.NOT_ENDS_WITH;
+import static st.orm.Operator.NOT_ENDS_WITH_IGNORE_CASE;
+import static st.orm.Operator.NOT_EQUALS_IGNORE_CASE;
 import static st.orm.Operator.NOT_STARTS_WITH;
+import static st.orm.Operator.NOT_STARTS_WITH_IGNORE_CASE;
 import static st.orm.Operator.STARTS_WITH;
+import static st.orm.Operator.STARTS_WITH_IGNORE_CASE;
 
 import java.sql.Connection;
 import java.sql.SQLException;
@@ -43,19 +51,22 @@ import st.orm.core.template.PreparedStatementTemplate;
 
 /**
  * Text match conformance: {@link Operator#CONTAINS}, {@link Operator#STARTS_WITH}, {@link Operator#ENDS_WITH} and their
- * negations match their text literally on every database.
+ * negations match their text literally on every database, and the operators that ignore case match it whatever its
+ * case on every database, whatever the collation of the column.
  *
  * <p>The rows hold the characters a {@code LIKE} pattern gives meaning to on some database: the standard wildcards
  * {@code %} and {@code _}, the escape character {@code !} Storm renders, SQL Server's character range {@code [...]},
  * and the backslash that PostgreSQL, MySQL, MariaDB and H2 read as their default escape character. Each search is
- * answered by the rows that hold its text, and by no row a wildcard reading would add.</p>
+ * answered by the rows that hold its text, and by no row a wildcard reading would add. Two rows hold one word in two
+ * cases, and the searches that ignore case are written in a case no row holds, in ASCII letters, which every database
+ * lowers.</p>
  *
  * <p>The suite creates and drops its own table, so a dialect module runs it with {@code rollback = false}.</p>
  */
 public abstract class AbstractTextMatchConformanceTest {
 
     private static final List<String> CONTENTS = List.of(
-            "50%", "50 dollars", "a_b", "axb", "a!b", "a[b]c", "abc", "a\\b", "a\\%b");
+            "50%", "50 dollars", "a_b", "axb", "a!b", "a[b]c", "abc", "a\\b", "a\\%b", "Madison", "MADISON");
 
     private static final Metamodel<Phrase, String> CONTENT = Metamodel.of(Phrase.class, "content");
 
@@ -151,5 +162,46 @@ public abstract class AbstractTextMatchConformanceTest {
         assertEquals(allBut("50%", "a\\%b"), match(NOT_CONTAINS, "%"));
         assertEquals(allBut("a_b"), match(NOT_STARTS_WITH, "a_"));
         assertEquals(allBut("a[b]c"), match(NOT_ENDS_WITH, "]c"));
+    }
+
+    @Test
+    public void equalsIgnoreCaseMatchesTheTextInAnyCase() {
+        assertEquals(Set.of("Madison", "MADISON"), match(EQUALS_IGNORE_CASE, "mADISON"));
+        assertEquals(Set.of("50 dollars"), match(EQUALS_IGNORE_CASE, "50 DOLLARS"));
+        assertEquals(Set.of(), match(EQUALS_IGNORE_CASE, "mADIS"));
+        assertEquals(allBut("Madison", "MADISON"), match(NOT_EQUALS_IGNORE_CASE, "mADISON"));
+    }
+
+    @Test
+    public void equalsIgnoreCaseReadsNoWildcardInItsText() {
+        assertEquals(Set.of("a_b"), match(EQUALS_IGNORE_CASE, "A_B"));
+        assertEquals(Set.of("50%"), match(EQUALS_IGNORE_CASE, "50%"));
+    }
+
+    @Test
+    public void theTextOperatorsIgnoringCaseMatchTheTextInAnyCase() {
+        assertEquals(Set.of("Madison", "MADISON"), match(CONTAINS_IGNORE_CASE, "aDiS"));
+        assertEquals(Set.of("Madison", "MADISON"), match(STARTS_WITH_IGNORE_CASE, "mAD"));
+        assertEquals(Set.of("Madison", "MADISON"), match(ENDS_WITH_IGNORE_CASE, "sON"));
+        assertEquals(Set.of(), match(STARTS_WITH_IGNORE_CASE, "aDiS"));
+        assertEquals(Set.of(), match(ENDS_WITH_IGNORE_CASE, "aDiS"));
+    }
+
+    @Test
+    public void theTextOperatorsIgnoringCaseMatchTheirTextLiterally() {
+        assertEquals(Set.of("a_b"), match(CONTAINS_IGNORE_CASE, "A_B"));
+        assertEquals(Set.of("a!b"), match(CONTAINS_IGNORE_CASE, "A!B"));
+        assertEquals(Set.of("a[b]c"), match(CONTAINS_IGNORE_CASE, "A[B]C"));
+        assertEquals(Set.of("a\\%b"), match(CONTAINS_IGNORE_CASE, "A\\%B"));
+        assertEquals(Set.of("50%"), match(ENDS_WITH_IGNORE_CASE, "0%"));
+        assertEquals(Set.of("a_b"), match(STARTS_WITH_IGNORE_CASE, "A_"));
+    }
+
+    @Test
+    public void theNegationsIgnoringCaseMatchTheRemainingRows() {
+        assertEquals(allBut("Madison", "MADISON"), match(NOT_CONTAINS_IGNORE_CASE, "aDiS"));
+        assertEquals(allBut("Madison", "MADISON"), match(NOT_STARTS_WITH_IGNORE_CASE, "mAD"));
+        assertEquals(allBut("Madison", "MADISON"), match(NOT_ENDS_WITH_IGNORE_CASE, "sON"));
+        assertEquals(allBut("a_b"), match(NOT_CONTAINS_IGNORE_CASE, "A_B"));
     }
 }

@@ -113,6 +113,79 @@ public interface Operator {
     Operator NOT_ENDS_WITH = (column, placeholders) -> format("Not ends with", 1, placeholders.length, "%s NOT LIKE %s ESCAPE '!'".formatted(requireColumn(column), get(placeholders)));
 
     /**
+     * Matches a column whose value equals the given text, ignoring case.
+     *
+     * <p>The column and the value are both lowered by the database, {@code LOWER(column) = LOWER(?)}, so the
+     * comparison ignores case on every database, whatever the column's collation. It ignores case and nothing else:
+     * accents are compared as they are, and a database lowers the letters it knows, which on SQLite without ICU are
+     * the ASCII letters. A plain index on the column does not serve the lowered comparison; index the lowered
+     * expression where it must be served by one, and use {@link #EQUALS} on a column whose collation ignores case
+     * already. The operator applies to a single column holding text.</p>
+     *
+     * @since 1.15
+     */
+    Operator EQUALS_IGNORE_CASE = (column, placeholders) -> format("Equals ignore case", 1, placeholders.length, "LOWER(%s) = LOWER(%s)".formatted(requireColumn(column), get(placeholders)));
+
+    /**
+     * Matches a column whose value does not equal the given text, ignoring case, the negation of
+     * {@link #EQUALS_IGNORE_CASE}.
+     *
+     * @since 1.15
+     */
+    Operator NOT_EQUALS_IGNORE_CASE = (column, placeholders) -> format("Not equals ignore case", 1, placeholders.length, "LOWER(%s) <> LOWER(%s)".formatted(requireColumn(column), get(placeholders)));
+
+    /**
+     * Matches a column that contains the given text anywhere in its value, ignoring case.
+     *
+     * <p>The value is literal text, as for {@link #CONTAINS}, and the column and the pattern are both lowered by the
+     * database: {@code LOWER(column) LIKE LOWER(?) ESCAPE '!'}. The comparison ignores case on every database,
+     * whatever the column's collation, and nothing else, as {@link #EQUALS_IGNORE_CASE} describes.</p>
+     *
+     * @since 1.15
+     */
+    Operator CONTAINS_IGNORE_CASE = (column, placeholders) -> format("Contains ignore case", 1, placeholders.length, "LOWER(%s) LIKE LOWER(%s) ESCAPE '!'".formatted(requireColumn(column), get(placeholders)));
+
+    /**
+     * Matches a column that does not contain the given text, ignoring case, the negation of
+     * {@link #CONTAINS_IGNORE_CASE}.
+     *
+     * @since 1.15
+     */
+    Operator NOT_CONTAINS_IGNORE_CASE = (column, placeholders) -> format("Not contains ignore case", 1, placeholders.length, "LOWER(%s) NOT LIKE LOWER(%s) ESCAPE '!'".formatted(requireColumn(column), get(placeholders)));
+
+    /**
+     * Matches a column whose value starts with the given text, ignoring case, as {@link #CONTAINS_IGNORE_CASE}
+     * matches it anywhere.
+     *
+     * @since 1.15
+     */
+    Operator STARTS_WITH_IGNORE_CASE = (column, placeholders) -> format("Starts with ignore case", 1, placeholders.length, "LOWER(%s) LIKE LOWER(%s) ESCAPE '!'".formatted(requireColumn(column), get(placeholders)));
+
+    /**
+     * Matches a column whose value does not start with the given text, ignoring case, the negation of
+     * {@link #STARTS_WITH_IGNORE_CASE}.
+     *
+     * @since 1.15
+     */
+    Operator NOT_STARTS_WITH_IGNORE_CASE = (column, placeholders) -> format("Not starts with ignore case", 1, placeholders.length, "LOWER(%s) NOT LIKE LOWER(%s) ESCAPE '!'".formatted(requireColumn(column), get(placeholders)));
+
+    /**
+     * Matches a column whose value ends with the given text, ignoring case, as {@link #CONTAINS_IGNORE_CASE} matches
+     * it anywhere.
+     *
+     * @since 1.15
+     */
+    Operator ENDS_WITH_IGNORE_CASE = (column, placeholders) -> format("Ends with ignore case", 1, placeholders.length, "LOWER(%s) LIKE LOWER(%s) ESCAPE '!'".formatted(requireColumn(column), get(placeholders)));
+
+    /**
+     * Matches a column whose value does not end with the given text, ignoring case, the negation of
+     * {@link #ENDS_WITH_IGNORE_CASE}.
+     *
+     * @since 1.15
+     */
+    Operator NOT_ENDS_WITH_IGNORE_CASE = (column, placeholders) -> format("Not ends with ignore case", 1, placeholders.length, "LOWER(%s) NOT LIKE LOWER(%s) ESCAPE '!'".formatted(requireColumn(column), get(placeholders)));
+
+    /**
      * The {@code >} operator.
      */
     Operator GREATER_THAN = (column, placeholders) -> format("Greater than", 1 , placeholders.length, "%s > %s".formatted(requireColumn(column), get(placeholders)));

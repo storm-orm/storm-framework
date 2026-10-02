@@ -16,11 +16,19 @@
 package st.orm.core.template.impl;
 
 import static st.orm.Operator.CONTAINS;
+import static st.orm.Operator.CONTAINS_IGNORE_CASE;
 import static st.orm.Operator.ENDS_WITH;
+import static st.orm.Operator.ENDS_WITH_IGNORE_CASE;
+import static st.orm.Operator.EQUALS_IGNORE_CASE;
 import static st.orm.Operator.NOT_CONTAINS;
+import static st.orm.Operator.NOT_CONTAINS_IGNORE_CASE;
 import static st.orm.Operator.NOT_ENDS_WITH;
+import static st.orm.Operator.NOT_ENDS_WITH_IGNORE_CASE;
+import static st.orm.Operator.NOT_EQUALS_IGNORE_CASE;
 import static st.orm.Operator.NOT_STARTS_WITH;
+import static st.orm.Operator.NOT_STARTS_WITH_IGNORE_CASE;
 import static st.orm.Operator.STARTS_WITH;
+import static st.orm.Operator.STARTS_WITH_IGNORE_CASE;
 
 import org.jspecify.annotations.Nullable;
 import st.orm.Metamodel;
@@ -29,14 +37,18 @@ import st.orm.SqlTemplateException;
 import st.orm.core.template.SqlDialect;
 
 /**
- * Turns the text a text-matching operator compares against into the {@code LIKE} pattern it binds. The operators
- * render {@code LIKE ? ESCAPE '!'}; the pattern is the text escaped by the dialect, with the wildcards the operator
- * implies around it. The compiled and the bound value both pass through here, so a statement compiled with inline
- * parameters and one bound per execution match alike.
+ * Turns the text a text operator compares against into the value it binds. The text-matching operators render
+ * {@code LIKE ? ESCAPE '!'}, alone or with both sides lowered; the pattern they bind is the text escaped by the
+ * dialect, with the wildcards the operator implies around it. The operators that compare text for equality ignoring
+ * case bind the text as it is. The compiled and the bound value both pass through here, so a statement compiled with
+ * inline parameters and one bound per execution match alike.
  *
  * @since 1.15
  */
 final class TextMatch {
+
+    /** Where in the value a text-matching operator finds its text. */
+    private enum Anchor { ANYWHERE, START, END }
 
     private TextMatch() {
     }
@@ -48,9 +60,18 @@ final class TextMatch {
      * @return {@code true} for the text-matching operators.
      */
     static boolean isTextMatch(Operator operator) {
-        return operator == CONTAINS || operator == NOT_CONTAINS
-                || operator == STARTS_WITH || operator == NOT_STARTS_WITH
-                || operator == ENDS_WITH || operator == NOT_ENDS_WITH;
+        return anchor(operator) != null;
+    }
+
+    /**
+     * Returns {@code true} if the operator compares a single column against text: the text-matching operators and the
+     * equality operators that ignore case.
+     *
+     * @param operator the operator of the comparison.
+     * @return {@code true} for the operators that take text.
+     */
+    static boolean comparesText(Operator operator) {
+        return isTextMatch(operator) || operator == EQUALS_IGNORE_CASE || operator == NOT_EQUALS_IGNORE_CASE;
     }
 
     /**
@@ -62,41 +83,60 @@ final class TextMatch {
      * @param path the path of the compared column, named when the value is not text.
      * @param dialect the dialect that escapes the text.
      * @return the value to bind.
-     * @throws SqlTemplateException if a text-matching operator is given a value that is not text.
+     * @throws SqlTemplateException if an operator that takes text is given a value that is not text.
      */
     static @Nullable Object bindValue(Operator operator,
                                       @Nullable Object value,
                                       Metamodel<?, ?> path,
                                       SqlDialect dialect) throws SqlTemplateException {
-        if (!isTextMatch(operator)) {
+        if (!comparesText(operator)) {
             return value;
         }
         if (!(value instanceof String text)) {
             throw new SqlTemplateException("%s compares %s against text, but was given %s. Pass a String, or use EQUALS or LIKE for other values."
                     .formatted(name(operator), path.fieldPath(), value == null ? "null" : value.getClass().getSimpleName()));
         }
+        Anchor anchor = anchor(operator);
+        if (anchor == null) {
+            return text;
+        }
         String escaped = dialect.escapeLike(text);
-        if (operator == CONTAINS || operator == NOT_CONTAINS) {
-            return "%" + escaped + "%";
-        }
-        if (operator == STARTS_WITH || operator == NOT_STARTS_WITH) {
-            return escaped + "%";
-        }
-        return "%" + escaped;
+        return switch (anchor) {
+            case ANYWHERE -> "%" + escaped + "%";
+            case START -> escaped + "%";
+            case END -> "%" + escaped;
+        };
     }
 
     /**
-     * Refuses a text-matching comparison over a path that spans several columns, which has no single text to match.
+     * Refuses a text comparison over a path that spans several columns, which has no single text to compare.
      *
      * @param operator the operator of the comparison.
      * @param path the path of the compared columns.
-     * @throws SqlTemplateException if the operator matches text.
+     * @throws SqlTemplateException if the operator takes text.
      */
     static void requireSingleColumn(Operator operator, Metamodel<?, ?> path) throws SqlTemplateException {
-        if (isTextMatch(operator)) {
+        if (comparesText(operator)) {
             throw new SqlTemplateException("%s compares a single column against text, but %s spans several columns. Name one of its fields instead."
                     .formatted(name(operator), path.fieldPath()));
         }
+    }
+
+    /** Where the operator finds its text, or {@code null} for an operator that matches no text. */
+    private static @Nullable Anchor anchor(Operator operator) {
+        if (operator == CONTAINS || operator == NOT_CONTAINS
+                || operator == CONTAINS_IGNORE_CASE || operator == NOT_CONTAINS_IGNORE_CASE) {
+            return Anchor.ANYWHERE;
+        }
+        if (operator == STARTS_WITH || operator == NOT_STARTS_WITH
+                || operator == STARTS_WITH_IGNORE_CASE || operator == NOT_STARTS_WITH_IGNORE_CASE) {
+            return Anchor.START;
+        }
+        if (operator == ENDS_WITH || operator == NOT_ENDS_WITH
+                || operator == ENDS_WITH_IGNORE_CASE || operator == NOT_ENDS_WITH_IGNORE_CASE) {
+            return Anchor.END;
+        }
+        return null;
     }
 
     private static String name(Operator operator) {
@@ -105,6 +145,14 @@ final class TextMatch {
         if (operator == STARTS_WITH) return "STARTS_WITH";
         if (operator == NOT_STARTS_WITH) return "NOT_STARTS_WITH";
         if (operator == ENDS_WITH) return "ENDS_WITH";
-        return "NOT_ENDS_WITH";
+        if (operator == NOT_ENDS_WITH) return "NOT_ENDS_WITH";
+        if (operator == EQUALS_IGNORE_CASE) return "EQUALS_IGNORE_CASE";
+        if (operator == NOT_EQUALS_IGNORE_CASE) return "NOT_EQUALS_IGNORE_CASE";
+        if (operator == CONTAINS_IGNORE_CASE) return "CONTAINS_IGNORE_CASE";
+        if (operator == NOT_CONTAINS_IGNORE_CASE) return "NOT_CONTAINS_IGNORE_CASE";
+        if (operator == STARTS_WITH_IGNORE_CASE) return "STARTS_WITH_IGNORE_CASE";
+        if (operator == NOT_STARTS_WITH_IGNORE_CASE) return "NOT_STARTS_WITH_IGNORE_CASE";
+        if (operator == ENDS_WITH_IGNORE_CASE) return "ENDS_WITH_IGNORE_CASE";
+        return "NOT_ENDS_WITH_IGNORE_CASE";
     }
 }
