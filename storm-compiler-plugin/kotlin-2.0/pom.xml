@@ -14,7 +14,7 @@
     <description>Kotlin compiler plugin for the Storm SQL Template and ORM framework (Kotlin 2.0).</description>
     <properties>
         <kotlin.compiler.version>2.0.0</kotlin.compiler.version>
-        <kctfork.version>0.6.0</kctfork.version>
+        <kctfork.version>0.14.0</kctfork.version>
         <transformer.dir>kotlin-transformer-2.0</transformer.dir>
         <registrar.dir>kotlin-registrar-2.0</registrar.dir>
     </properties>
