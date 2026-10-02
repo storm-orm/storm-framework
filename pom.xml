@@ -16,7 +16,7 @@
         <!-- storm-ktor and storm-ktor-test track the Ktor ecosystem's toolchain independently of the core
              framework: Ktor 3.4 requires Kotlin 2.3, which those two leaf modules override locally (see their
              poms). The rest of the framework stays on Kotlin 2.0. -->
-        <ktor.version>3.4.3</ktor.version>
+        <ktor.version>3.6.0</ktor.version>
         <graalvm.version>24.2.2</graalvm.version>
         <micrometer.version>1.15.4</micrometer.version>
         <micrometer-tracing.version>1.5.4</micrometer-tracing.version>
