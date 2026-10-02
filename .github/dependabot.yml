@@ -8,6 +8,12 @@ updates:
     schedule:
       interval: monthly
     open-pull-requests-limit: 5
+    ignore:
+      # The build compiles and tests against the oldest Spring Boot line Storm supports, so an API that only a
+      # newer major has cannot slip into the Spring modules. Moving to a new major is a decision of its own, taken
+      # when support for the current one ends; minor and patch updates within the line are still proposed.
+      - dependency-name: "org.springframework.boot:*"
+        update-types: ["version-update:semver-major"]
   - package-ecosystem: github-actions
     directory: /
     schedule:
