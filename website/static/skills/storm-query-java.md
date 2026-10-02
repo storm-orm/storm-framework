@@ -121,9 +121,11 @@ Explicit joins: `.innerJoin(Entity.class).on(OtherEntity.class)`, `.leftJoin(Ent
 **Auto-join types follow FK nullability.** A `@FK` record component is non-null by default, so its auto-join is an INNER JOIN. Mark the component `@Nullable` (JSpecify `org.jspecify.annotations.Nullable` or `jakarta.annotation.Nullable`) when the FK column allows NULL; that produces a LEFT JOIN. If generated SQL shows INNER JOIN where you expect LEFT JOIN, the FK component is missing `@Nullable` in the entity.
 Result type: `.select(ResultType.class)` to return a different type than the root entity. **Cross-entity pitfall:** Selecting a different entity type from the wrong root repository can fail with "Cannot find alias for column" when both entities have columns with the same name (e.g., `id`). Put the query on the target entity's repository instead.
 
-Operators: EQUALS, NOT_EQUALS, LESS_THAN, LESS_THAN_OR_EQUAL, GREATER_THAN, GREATER_THAN_OR_EQUAL, LIKE, NOT_LIKE, CONTAINS, NOT_CONTAINS, STARTS_WITH, NOT_STARTS_WITH, ENDS_WITH, NOT_ENDS_WITH, IS_NULL, IS_NOT_NULL, IN, NOT_IN
+Operators: EQUALS, NOT_EQUALS, LESS_THAN, LESS_THAN_OR_EQUAL, GREATER_THAN, GREATER_THAN_OR_EQUAL, LIKE, NOT_LIKE, CONTAINS, NOT_CONTAINS, STARTS_WITH, NOT_STARTS_WITH, ENDS_WITH, NOT_ENDS_WITH, EQUALS_IGNORE_CASE, NOT_EQUALS_IGNORE_CASE, CONTAINS_IGNORE_CASE, NOT_CONTAINS_IGNORE_CASE, STARTS_WITH_IGNORE_CASE, NOT_STARTS_WITH_IGNORE_CASE, ENDS_WITH_IGNORE_CASE, NOT_ENDS_WITH_IGNORE_CASE, IS_NULL, IS_NOT_NULL, IN, NOT_IN
 
 **Search text goes through `CONTAINS`, `STARTS_WITH` or `ENDS_WITH`, never through `LIKE`.** Text a user typed can hold `%`, `_`, `[` or a backslash, which `LIKE` reads as wildcards or escapes, differently per database. The text operators escape it for the dialect and add the wildcards themselves, so `.where(User_.name, CONTAINS, query)` matches exactly what was typed. Never build a pattern such as `"%" + query + "%"`, and never write an escape helper. Keep `LIKE` for patterns the code writes itself. The text operators apply to a single `String` column; case sensitivity follows the column's collation, as it does for `LIKE`.
+
+**Text compared whatever its case goes through the `IGNORE_CASE` operators, never through a `LOWER(...)` template.** `EQUALS`, `CONTAINS`, `STARTS_WITH` and `ENDS_WITH` follow the column's collation, which ignores case on MySQL, MariaDB and SQL Server by default and not on PostgreSQL, Oracle and H2, so the same query answers differently per database. `EQUALS_IGNORE_CASE`, `CONTAINS_IGNORE_CASE`, `STARTS_WITH_IGNORE_CASE` and `ENDS_WITH_IGNORE_CASE`, with their `NOT_` forms, have the database lower both sides, and the text ones still match their text literally: `.where(User_.name, CONTAINS_IGNORE_CASE, query)`. A search box and a lookup by email address or user name want these; a code, a token or an id compared exactly wants `EQUALS`. They ignore case only, not accents, and a plain index does not serve the lowered column: where the lookup must be served by one, index the lowered expression, or keep the plain operator on a column whose collation ignores case already.
 
 ### Naming a foreign key column
 
@@ -506,7 +508,7 @@ Three rules:
 
 When you do use template strings, use `RAW."""..."""` (Java string templates with `--enable-preview`) — never use `TemplateString.raw()`.
 
-Operators: `EQUALS`, `NOT_EQUALS`, `LESS_THAN`, `LESS_THAN_OR_EQUAL`, `GREATER_THAN`, `GREATER_THAN_OR_EQUAL`, `LIKE`, `NOT_LIKE`, `IS_NULL`, `IS_NOT_NULL`, `IS_TRUE`, `IS_FALSE`, `IN`, `NOT_IN`, `BETWEEN`
+Operators: `EQUALS`, `NOT_EQUALS`, `LESS_THAN`, `LESS_THAN_OR_EQUAL`, `GREATER_THAN`, `GREATER_THAN_OR_EQUAL`, `LIKE`, `NOT_LIKE`, `CONTAINS`, `STARTS_WITH`, `ENDS_WITH`, `EQUALS_IGNORE_CASE`, `CONTAINS_IGNORE_CASE`, `STARTS_WITH_IGNORE_CASE`, `ENDS_WITH_IGNORE_CASE` (each text operator with its `NOT_` form), `IS_NULL`, `IS_NOT_NULL`, `IS_TRUE`, `IS_FALSE`, `IN`, `NOT_IN`, `BETWEEN`
 
 The `EQUALS` operator accepts both entities and `Ref<T>`. When you have an entity, use it directly — no need to convert to a `Ref` first.
 
