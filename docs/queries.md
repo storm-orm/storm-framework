@@ -181,6 +181,10 @@ val users = orm.entity<User>()
 | `contains` / `notContains` | Contains the text, matched literally |
 | `startsWith` / `notStartsWith` | Starts with the text, matched literally |
 | `endsWith` / `notEndsWith` | Ends with the text, matched literally |
+| `eqIgnoreCase` / `neqIgnoreCase` | Equals the text, ignoring case |
+| `containsIgnoreCase` / `notContainsIgnoreCase` | Contains the text, matched literally and ignoring case |
+| `startsWithIgnoreCase` / `notStartsWithIgnoreCase` | Starts with the text, matched literally and ignoring case |
+| `endsWithIgnoreCase` / `notEndsWithIgnoreCase` | Ends with the text, matched literally and ignoring case |
 | `isNull` | IS NULL |
 | `isNotNull` | IS NOT NULL |
 | `inList` | IN (list) |
@@ -188,9 +192,13 @@ val users = orm.entity<User>()
 
 `contains`, `startsWith` and `endsWith` take text rather than a pattern. Storm escapes the characters the database reads as wildcards and adds the wildcards itself, so text a user typed, such as `50%` or `a_b`, matches exactly that text on every database. Use `like` when you write the pattern yourself.
 
+`eq`, `contains`, `startsWith` and `endsWith` compare text as the column's collation does, which ignores case on some databases and not on others. Their `IgnoreCase` forms ignore case on every database: the database lowers the column and the value alike, `LOWER(name) LIKE LOWER(?) ESCAPE '!'`, so one rule decides what a letter's lower case is. They ignore case and nothing else: accents are compared as they are, and SQLite lowers ASCII letters only unless it is built with ICU. A plain index does not serve a lowered column, so index the lowered expression where the comparison must be served by one, and keep the plain operators on a column whose collation ignores case already.
+
 ```kotlin
 val users = orm.findAll(User_.email like "%@example.com")
 val users = orm.findAll(User_.email contains searchText)
+val users = orm.findAll(User_.name containsIgnoreCase searchText)
+val user = orm.find(User_.email eqIgnoreCase email)
 val users = orm.findAll(User_.deletedAt.isNull())
 val users = orm.findAll(User_.role inList listOf(adminRole, userRole))
 ```
@@ -244,12 +252,18 @@ List<User> users = orm.query(RAW."""
 | `CONTAINS` / `NOT_CONTAINS` | Contains the text, matched literally |
 | `STARTS_WITH` / `NOT_STARTS_WITH` | Starts with the text, matched literally |
 | `ENDS_WITH` / `NOT_ENDS_WITH` | Ends with the text, matched literally |
+| `EQUALS_IGNORE_CASE` / `NOT_EQUALS_IGNORE_CASE` | Equals the text, ignoring case |
+| `CONTAINS_IGNORE_CASE` / `NOT_CONTAINS_IGNORE_CASE` | Contains the text, matched literally and ignoring case |
+| `STARTS_WITH_IGNORE_CASE` / `NOT_STARTS_WITH_IGNORE_CASE` | Starts with the text, matched literally and ignoring case |
+| `ENDS_WITH_IGNORE_CASE` / `NOT_ENDS_WITH_IGNORE_CASE` | Ends with the text, matched literally and ignoring case |
 | `IS_NULL` | IS NULL |
 | `IS_NOT_NULL` | IS NOT NULL |
 | `IN` | IN (list) |
 | `NOT_IN` | NOT IN (list) |
 
 `CONTAINS`, `STARTS_WITH` and `ENDS_WITH` take text rather than a pattern. Storm escapes the characters the database reads as wildcards and adds the wildcards itself, so text a user typed, such as `50%` or `a_b`, matches exactly that text on every database. Use `LIKE` when you write the pattern yourself.
+
+`EQUALS`, `CONTAINS`, `STARTS_WITH` and `ENDS_WITH` compare text as the column's collation does, which ignores case on some databases and not on others. Their `IGNORE_CASE` forms ignore case on every database: the database lowers the column and the value alike, `LOWER(name) LIKE LOWER(?) ESCAPE '!'`, so one rule decides what a letter's lower case is. They ignore case and nothing else: accents are compared as they are, and SQLite lowers ASCII letters only unless it is built with ICU. A plain index does not serve a lowered column, so index the lowered expression where the comparison must be served by one, and keep the plain operators on a column whose collation ignores case already.
 
 ```java
 List<User> users = orm.entity(User.class)
@@ -260,6 +274,11 @@ List<User> users = orm.entity(User.class)
 List<User> matches = orm.entity(User.class)
     .select()
     .where(User_.email, CONTAINS, searchText)
+    .getResultList();
+
+List<User> found = orm.entity(User.class)
+    .select()
+    .where(User_.name, CONTAINS_IGNORE_CASE, searchText)
     .getResultList();
 ```
 
@@ -957,7 +976,7 @@ Some databases (PostgreSQL, MySQL, MariaDB, Oracle) support native tuple compari
 WHERE (o.address, o.city_id) > (?, ?)
 ```
 
-**Unsupported operators.** `like`, `notLike`, `inList`, and `notInList` (Java `LIKE`, `NOT_LIKE`, `IN`, `NOT_IN`) do not have a meaningful multi-column interpretation and throw a `PersistenceException` when used with inline records. To filter on a sub-field, reference it directly:
+**Unsupported operators.** `like`, `notLike`, `inList`, and `notInList` (Java `LIKE`, `NOT_LIKE`, `IN`, `NOT_IN`) do not have a meaningful multi-column interpretation and throw a `PersistenceException` when used with inline records. The operators that take text, `contains`, `startsWith`, `endsWith` and the ones that ignore case, their negations included, compare a single column and are refused the same way, with a message naming the path. To filter on a sub-field, reference it directly:
 
 <Tabs groupId="language">
 <TabItem value="kotlin" label="Kotlin" default>

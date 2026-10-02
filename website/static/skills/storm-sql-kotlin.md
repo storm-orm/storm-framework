@@ -6,7 +6,7 @@ description: Write Storm SQL templates in Kotlin as template lambdas, for querie
 Help the user write Storm SQL Templates using Kotlin.
 Ask what query they need and why QueryBuilder does not suffice.
 
-**SQL Templates are an escape hatch — use them only when there is no code-based alternative.** Regular joins, filtering, ordering, and pagination are all expressible through the QueryBuilder API (/storm-query-kotlin). Using SQL templates for things the QueryBuilder can express defeats the purpose of the ORM.
+**SQL Templates are an escape hatch — use them only when there is no code-based alternative.** Regular joins, filtering, ordering, and pagination are all expressible through the QueryBuilder API (/storm-query-kotlin). Using SQL templates for things the QueryBuilder can express defeats the purpose of the ORM. Matching text a user typed, and comparing text whatever its case, are among them: `contains`, `startsWith`, `endsWith` and their `IgnoreCase` forms, never a hand-built `LIKE` pattern or a `LOWER(...)` comparison in a template.
 
 ## When to use SQL Templates
 

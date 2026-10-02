@@ -351,6 +351,23 @@ internal open class RepositoryTest(
     }
 
     @Test
+    fun `text infix functions ignoring case match their text in any case and literally`() {
+        val repo = orm.entity(City::class)
+        repo.insertAndFetch(City(name = "100% Ignoring"))
+        repo.insertAndFetch(City(name = "1000 Ignoring"))
+        val namePath = metamodel<City, String>(repo.model, "name")
+        fun names(predicate: PredicateBuilder<City, City, *>) = repo.select().where(predicate).resultList.map { it.name }.sorted()
+        names(namePath eqIgnoreCase "100% IGNORING") shouldBe listOf("100% Ignoring")
+        names(namePath containsIgnoreCase "0% IGNOR") shouldBe listOf("100% Ignoring")
+        names(namePath startsWithIgnoreCase "100% i") shouldBe listOf("100% Ignoring")
+        names(namePath endsWithIgnoreCase "% IGNORING") shouldBe listOf("100% Ignoring")
+        names(namePath neqIgnoreCase "100% IGNORING").contains("100% Ignoring") shouldBe false
+        names(namePath notContainsIgnoreCase "% IGNOR").contains("100% Ignoring") shouldBe false
+        names(namePath notStartsWithIgnoreCase "100% i").contains("1000 Ignoring") shouldBe true
+        names(namePath notEndsWithIgnoreCase "IGNORING").none { it.endsWith("Ignoring") } shouldBe true
+    }
+
+    @Test
     fun `removeAll with predicate should return zero when no match`() {
         val repo = orm.entity(City::class)
         val namePath = metamodel<City, String>(repo.model, "name")

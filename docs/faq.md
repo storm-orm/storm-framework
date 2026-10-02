@@ -401,7 +401,7 @@ Yes. Use SQL templates for database-specific SQL:
 <TabItem value="kotlin" label="Kotlin" default>
 
 ```kotlin
-orm.query { "SELECT * FROM user WHERE LOWER(email) = LOWER($email)" }
+orm.query { "SELECT * FROM user WHERE SOUNDEX(name) = SOUNDEX($name)" }
     .resultList
 ```
 
@@ -409,12 +409,41 @@ orm.query { "SELECT * FROM user WHERE LOWER(email) = LOWER($email)" }
 <TabItem value="java" label="Java">
 
 ```java
-orm.query(RAW."SELECT * FROM user WHERE LOWER(email) = LOWER(\{email})")
+orm.query(RAW."SELECT * FROM user WHERE SOUNDEX(name) = SOUNDEX(\{name})")
     .getResultList();
 ```
 
 </TabItem>
 </Tabs>
+
+A template is for what the query builder has no operator for. Comparing text whatever its case has one, on every database, so it needs no `LOWER(...)` template; see the next question.
+
+### How do I search text ignoring case?
+
+With the operators that ignore case. `eq`, `contains`, `startsWith` and `endsWith` compare text as the column's collation does, which ignores case on MySQL, MariaDB and SQL Server by default and not on PostgreSQL, Oracle and H2. Their `IgnoreCase` forms have the database lower the column and the value alike, so the same query gives the same answer on every database, and the text ones still match what was typed literally, a `%` or `_` included:
+
+<Tabs groupId="language">
+<TabItem value="kotlin" label="Kotlin" default>
+
+```kotlin
+val users = orm.findAll(User_.name containsIgnoreCase searchText)
+val user = orm.find(User_.email eqIgnoreCase email)
+```
+
+</TabItem>
+<TabItem value="java" label="Java">
+
+```java
+List<User> users = orm.entity(User.class)
+    .select()
+    .where(User_.name, CONTAINS_IGNORE_CASE, searchText)
+    .getResultList();
+```
+
+</TabItem>
+</Tabs>
+
+They ignore case and nothing else: accents are compared as they are. A plain index does not serve a lowered column, so index the lowered expression where the comparison must be served by one, and keep the plain operators on a column whose collation ignores case already. See [Queries](queries.md) for the full list.
 
 ---
 

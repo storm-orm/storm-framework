@@ -32,7 +32,7 @@ org.jetbrains.kotlin.util.FileAnalysisException: ... Unexpected FirPlaceholderPr
 
 That crash is a Kotlin 2.0.x compiler bug, fixed in 2.1.0, where an unresolved call using `_` placeholders is reported as an internal error instead of a diagnostic. On 2.1.0+ the same code says `Unresolved reference 'select'`. Read it as "something here does not resolve", and check the import first.
 
-All infix predicate operators (`eq`, `neq`, `like`, `contains`, `startsWith`, `endsWith`, `greater`, `less`, `inList`, `isNull`, `isNotNull`, `isTrue`, `isFalse`, `between`, etc.) are extension functions on `Metamodel<T, V>` defined in `st.orm.template` (in QueryBuilder.kt).
+All infix predicate operators (`eq`, `neq`, `like`, `contains`, `startsWith`, `endsWith`, `eqIgnoreCase`, `containsIgnoreCase`, `greater`, `less`, `inList`, `isNull`, `isNotNull`, `isTrue`, `isFalse`, `between`, etc.) are extension functions on `Metamodel<T, V>` defined in `st.orm.template` (in QueryBuilder.kt).
 
 Ask what data they need, filters, ordering, or pagination.
 
@@ -79,6 +79,9 @@ User_.name contains "50%"          // CONTAINS: literal text, never a pattern
 User_.name startsWith "Al"         // STARTS_WITH
 User_.email endsWith "@example.com" // ENDS_WITH
                                    // notContains, notStartsWith, notEndsWith negate them
+User_.name containsIgnoreCase "ali" // CONTAINS_IGNORE_CASE: literal text, any case, on every database
+User_.email eqIgnoreCase email     // EQUALS_IGNORE_CASE
+                                   // startsWithIgnoreCase, endsWithIgnoreCase, neqIgnoreCase and the not...IgnoreCase forms
 User_.roles inList listOf("a","b") // IN
 User_.roles notInList listOf("x")  // NOT_IN
 User_.city inRefs cityRefs         // IN over Iterable<Ref<T>> — for FK fields with refs
@@ -90,6 +93,8 @@ User_.email.isNotNull()            // IS_NOT_NULL
 ```
 
 **Search text goes through `contains`, `startsWith` or `endsWith`, never through `like`.** Text a user typed can hold `%`, `_`, `[` or a backslash, which `like` reads as wildcards or escapes, differently per database. The text operators escape it for the dialect and add the wildcards themselves, so `User_.name contains query` matches exactly what was typed. Never build a pattern such as `like "%$query%"`, and never write an escape helper. Keep `like` for patterns the code writes itself. The text operators apply to a single `String` column; case sensitivity follows the column's collation, as it does for `like`.
+
+**Text compared whatever its case goes through the `IgnoreCase` operators, never through a `LOWER(...)` template.** `eq`, `contains`, `startsWith` and `endsWith` follow the column's collation, which ignores case on MySQL, MariaDB and SQL Server by default and not on PostgreSQL, Oracle and H2, so the same query answers differently per database. `eqIgnoreCase`, `containsIgnoreCase`, `startsWithIgnoreCase` and `endsWithIgnoreCase`, with `neqIgnoreCase` and the `not...IgnoreCase` forms, have the database lower both sides, and the text ones still match their text literally. A search box and a lookup by email address or user name want these; a code, a token or an id compared exactly wants `eq`. They ignore case only, not accents, and a plain index does not serve the lowered column: where the lookup must be served by one, index the lowered expression, or keep the plain operator on a column whose collation ignores case already.
 
 Combine with `and`/`or`:
 ```kotlin

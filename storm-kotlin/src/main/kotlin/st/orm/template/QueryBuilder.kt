@@ -1492,6 +1492,70 @@ public infix fun <T : Data> Navigable<T, String>.endsWith(text: String): Predica
 public infix fun <T : Data> Navigable<T, String>.notEndsWith(text: String): PredicateBuilder<T, T, *> = create(this.asMetamodel(), NOT_ENDS_WITH, listOf(text))
 
 /**
+ * Infix function to create a predicate to check if a field equals the given text, ignoring case. The database lowers both
+ * sides, so the comparison ignores case whatever the column's collation.
+ *
+ * @since 1.15
+ */
+public infix fun <T : Data> Navigable<T, String>.eqIgnoreCase(text: String): PredicateBuilder<T, T, *> = create(this.asMetamodel(), EQUALS_IGNORE_CASE, listOf(text))
+
+/**
+ * Infix function to create a predicate to check if a field does not equal the given text, ignoring case.
+ *
+ * @since 1.15
+ */
+public infix fun <T : Data> Navigable<T, String>.neqIgnoreCase(text: String): PredicateBuilder<T, T, *> = create(this.asMetamodel(), NOT_EQUALS_IGNORE_CASE, listOf(text))
+
+/**
+ * Infix function to create a predicate to check if a field contains the given text anywhere in its value, ignoring
+ * case. The text is matched literally, as for [contains], and the database lowers both sides, so the comparison ignores
+ * case whatever the column's collation.
+ *
+ * @since 1.15
+ */
+public infix fun <T : Data> Navigable<T, String>.containsIgnoreCase(text: String): PredicateBuilder<T, T, *> = create(this.asMetamodel(), CONTAINS_IGNORE_CASE, listOf(text))
+
+/**
+ * Infix function to create a predicate to check if a field does not contain the given text, matched literally and
+ * ignoring case.
+ *
+ * @since 1.15
+ */
+public infix fun <T : Data> Navigable<T, String>.notContainsIgnoreCase(text: String): PredicateBuilder<T, T, *> = create(this.asMetamodel(), NOT_CONTAINS_IGNORE_CASE, listOf(text))
+
+/**
+ * Infix function to create a predicate to check if a field starts with the given text, matched literally and ignoring
+ * case.
+ *
+ * @since 1.15
+ */
+public infix fun <T : Data> Navigable<T, String>.startsWithIgnoreCase(text: String): PredicateBuilder<T, T, *> = create(this.asMetamodel(), STARTS_WITH_IGNORE_CASE, listOf(text))
+
+/**
+ * Infix function to create a predicate to check if a field does not start with the given text, matched literally and
+ * ignoring case.
+ *
+ * @since 1.15
+ */
+public infix fun <T : Data> Navigable<T, String>.notStartsWithIgnoreCase(text: String): PredicateBuilder<T, T, *> = create(this.asMetamodel(), NOT_STARTS_WITH_IGNORE_CASE, listOf(text))
+
+/**
+ * Infix function to create a predicate to check if a field ends with the given text, matched literally and ignoring
+ * case.
+ *
+ * @since 1.15
+ */
+public infix fun <T : Data> Navigable<T, String>.endsWithIgnoreCase(text: String): PredicateBuilder<T, T, *> = create(this.asMetamodel(), ENDS_WITH_IGNORE_CASE, listOf(text))
+
+/**
+ * Infix function to create a predicate to check if a field does not end with the given text, matched literally and
+ * ignoring case.
+ *
+ * @since 1.15
+ */
+public infix fun <T : Data> Navigable<T, String>.notEndsWithIgnoreCase(text: String): PredicateBuilder<T, T, *> = create(this.asMetamodel(), NOT_ENDS_WITH_IGNORE_CASE, listOf(text))
+
+/**
  * Infix functions to create a predicate to check if a field is greater than a value.
  */
 public infix fun <T : Data, V : Any> Navigable<T, V>.greater(value: V): PredicateBuilder<T, T, *> = create(this.asMetamodel(), GREATER_THAN, listOf(value))
