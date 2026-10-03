@@ -59,6 +59,7 @@ import st.orm.PersistenceException;
 import st.orm.TransactionTimedOutException;
 import st.orm.UnexpectedRollbackException;
 import st.orm.core.spi.CacheRetention;
+import st.orm.core.spi.ConnectionGuard;
 import st.orm.core.spi.EntityCache;
 import st.orm.core.spi.TransactionContext;
 
@@ -168,6 +169,8 @@ public final class SpringTransactionContext implements TransactionContext {
     private final Supplier<List<PlatformTransactionManager>> transactionManagers;
 
     private final List<TransactionState> stack = new ArrayList<>();
+    // Storm's own blocks travel with coroutines across threads, so their connection guards against a second caller.
+    private final ConnectionGuard connectionGuard = new ConnectionGuard();
 
     public SpringTransactionContext(Supplier<List<PlatformTransactionManager>> transactionManagers) {
         this.transactionManagers = transactionManagers;
@@ -431,6 +434,11 @@ public final class SpringTransactionContext implements TransactionContext {
     @Override
     public void clearAllEntityCaches() {
         EntityCaches.clearAll(currentState().entityCacheMap);
+    }
+
+    @Override
+    public ConnectionGuard connectionGuard() {
+        return connectionGuard;
     }
 
     @SuppressWarnings("unchecked")

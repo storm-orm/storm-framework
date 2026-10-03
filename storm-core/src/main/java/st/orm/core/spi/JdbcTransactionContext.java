@@ -176,6 +176,7 @@ public final class JdbcTransactionContext implements TransactionContext {
     }
 
     private final List<TransactionState> stack = new ArrayList<>();
+    private final ConnectionGuard connectionGuard = new ConnectionGuard();
 
     private static long nowNanos() {
         return System.nanoTime();
@@ -279,6 +280,11 @@ public final class JdbcTransactionContext implements TransactionContext {
     public Connection getConnection(DataSource dataSource, boolean manualCommitConnections) {
         useDataSource(dataSource, manualCommitConnections);
         return currentState().connection;
+    }
+
+    @Override
+    public ConnectionGuard connectionGuard() {
+        return connectionGuard;
     }
 
     /**

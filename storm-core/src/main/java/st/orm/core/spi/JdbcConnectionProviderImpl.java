@@ -15,13 +15,7 @@
  */
 package st.orm.core.spi;
 
-import static java.lang.System.identityHashCode;
-
-import java.lang.ref.ReferenceQueue;
-import java.lang.ref.WeakReference;
 import java.sql.Connection;
-import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
 import javax.sql.DataSource;
 import org.jspecify.annotations.Nullable;
 import st.orm.PersistenceException;
@@ -68,7 +62,7 @@ public final class JdbcConnectionProviderImpl implements ConnectionProvider {
                 throw new IllegalArgumentException("Transaction context must be of type JdbcTransactionContext.");
             }
             var connection = jdbcContext.getConnection(dataSource, manualCommitConnections);
-            ConcurrencyDetector.beforeAccess(connection, context);
+            jdbcContext.connectionGuard().acquire(connection);
             return connection;
         }
         // If no programmatic transaction is active, obtain a new connection from the data source.
@@ -82,10 +76,12 @@ public final class JdbcConnectionProviderImpl implements ConnectionProvider {
             if (!(context instanceof JdbcTransactionContext jdbcContext)) {
                 throw new IllegalArgumentException("Transaction context must be of type JdbcTransactionContext.");
             }
+            // Every connection handed out under the context registered an access, including one whose frame has
+            // ended since.
+            jdbcContext.connectionGuard().release();
             if (jdbcContext.currentConnection() == connection) {
                 // If this connection is the current transaction connection, do not close it. It will be closed
                 // when the outermost transaction ends.
-                ConcurrencyDetector.afterAccess(connection, context);
                 return;
             }
         }
@@ -129,120 +125,6 @@ public final class JdbcConnectionProviderImpl implements ConnectionProvider {
             }
         } catch (Throwable t) {
             throw new PersistenceException("Failed to release connection.", t);
-        }
-    }
-
-    /**
-     * Detects concurrent access to transaction-scoped connections.
-     *
-     * <p>A transaction's connection serves one caller at a time. An access holds the connection from acquisition
-     * until its statement is released, and is owned by the transaction context and by the caller that issued it.
-     * The caller is the current thread, unless an integration installs a caller identity through
-     * {@link #callerHolder()}: a coroutine keeps its identity when it resumes on another thread, and a coroutine
-     * started concurrently, such as with {@code launch} or {@code async}, gets its own.</p>
-     *
-     * <p>The owning caller can access the connection again while it holds it (re-entrancy), and any caller can
-     * release an access, so a statement handed to another thread can be closed there. Another caller that accesses
-     * the connection while it is held fails fast instead of waiting behind the current statement.</p>
-     */
-    public static final class ConcurrencyDetector {
-
-        private static final class ConnectionIdentity extends WeakReference<Connection> {
-            private final int id;
-
-            ConnectionIdentity(Connection connection, ReferenceQueue<Connection> queue) {
-                super(connection, queue);
-                this.id = identityHashCode(connection);
-            }
-
-            @Override
-            public int hashCode() {
-                return id;
-            }
-
-            @Override
-            public boolean equals(Object other) {
-                return other instanceof ConnectionIdentity otherIdentity
-                        && this.get() == otherIdentity.get()
-                        && this.get() != null;
-            }
-        }
-
-        /**
-         * The holder of a connection; only read and written inside the map's atomic compute functions.
-         */
-        private static final class Owner {
-            final TransactionContext context;
-            final Object caller;
-            int depth = 1;
-
-            Owner(TransactionContext context, Object caller) {
-                this.context = context;
-                this.caller = caller;
-            }
-        }
-
-        private static final ThreadLocal<Object> CALLER = new ThreadLocal<>();
-        private static final ReferenceQueue<Connection> QUEUE = new ReferenceQueue<>();
-        private static final Map<ConnectionIdentity, Owner> OWNERS = new ConcurrentHashMap<>();
-
-        private ConcurrencyDetector() {
-        }
-
-        /**
-         * Returns the thread local that holds the identity of the current caller.
-         *
-         * <p>Intended for integrations whose units of work move between threads, such as coroutine context
-         * elements, which install the identity of the running unit for the duration of each of its slices. When
-         * the holder is empty, the current thread is the caller.</p>
-         *
-         * @return the thread local holding the identity of the current caller.
-         * @since 1.15
-         */
-        public static ThreadLocal<Object> callerHolder() {
-            return CALLER;
-        }
-
-        private static Object currentCaller() {
-            var caller = CALLER.get();
-            return caller != null ? caller : Thread.currentThread();
-        }
-
-        private static void reap() {
-            while (true) {
-                var ref = QUEUE.poll();
-                if (!(ref instanceof ConnectionIdentity identity)) {
-                    break;
-                }
-                OWNERS.remove(identity);
-            }
-        }
-
-        public static void beforeAccess(Connection connection, TransactionContext context) {
-            reap();
-            var caller = currentCaller();
-            OWNERS.compute(new ConnectionIdentity(connection, QUEUE), (key, owner) -> {
-                if (owner == null) {
-                    return new Owner(context, caller);
-                }
-                if (owner.context == context && owner.caller == caller) {
-                    owner.depth++;
-                    return owner;
-                }
-                throw new PersistenceException(("Concurrent access on %s: another caller in the transaction is "
-                        + "still using its connection, which serves one caller at a time. Await concurrent work "
-                        + "before starting the next, or give it its own transaction.").formatted(connection));
-            });
-        }
-
-        public static void afterAccess(Connection connection, TransactionContext context) {
-            reap();
-            OWNERS.computeIfPresent(new ConnectionIdentity(connection, QUEUE), (key, owner) -> {
-                if (owner.context != context) {
-                    return owner;
-                }
-                return --owner.depth == 0 ? null : owner;
-            });
         }
     }
 }

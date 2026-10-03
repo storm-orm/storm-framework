@@ -22,7 +22,6 @@ import org.springframework.jdbc.CannotGetJdbcConnectionException;
 import org.springframework.jdbc.datasource.DataSourceUtils;
 import st.orm.PersistenceException;
 import st.orm.core.spi.ConnectionProvider;
-import st.orm.core.spi.JdbcConnectionProviderImpl.ConcurrencyDetector;
 import st.orm.core.spi.TransactionContext;
 import st.orm.spring.impl.SpringTransactionContext;
 
@@ -34,8 +33,9 @@ import st.orm.spring.impl.SpringTransactionContext;
  * connections when no transaction is active. A Storm transaction block starts its Spring transaction on the first
  * statement that touches a data source.</p>
  *
- * <p>Within a transaction the connection serves one caller at a time: a statement issued while another caller still
- * holds it fails fast, as on the plain JDBC path.</p>
+ * <p>Within a Storm transaction block the connection serves one caller at a time: a statement issued while another
+ * caller still holds it fails fast, as on the plain JDBC path. A Spring-managed transaction is bound to its thread, so
+ * no other caller reaches its connection.</p>
  *
  * <p>Templates created through {@link SpringOrmTemplate#of} and by the Spring Boot starters carry this provider.
  * Composing a template by hand goes through the engine's builder, which owns the transaction-bridging strategies:
@@ -61,9 +61,10 @@ public class SpringConnectionProvider implements ConnectionProvider {
         } catch (CannotGetJdbcConnectionException e) {
             throw new PersistenceException("Failed to get connection from DataSource.", e);
         }
-        if (context != null) {
+        var guard = context == null ? null : context.connectionGuard();
+        if (guard != null) {
             try {
-                ConcurrencyDetector.beforeAccess(connection, context);
+                guard.acquire(connection);
             } catch (PersistenceException e) {
                 DataSourceUtils.releaseConnection(connection, dataSource);
                 throw e;
@@ -74,8 +75,9 @@ public class SpringConnectionProvider implements ConnectionProvider {
 
     @Override
     public void releaseConnection(Connection connection, DataSource dataSource, @Nullable TransactionContext context) {
-        if (context != null) {
-            ConcurrencyDetector.afterAccess(connection, context);
+        var guard = context == null ? null : context.connectionGuard();
+        if (guard != null) {
+            guard.release();
         }
         DataSourceUtils.releaseConnection(connection, dataSource);
     }

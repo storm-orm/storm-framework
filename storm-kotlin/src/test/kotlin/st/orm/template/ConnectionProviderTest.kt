@@ -4,9 +4,9 @@ import io.kotest.matchers.booleans.shouldBeFalse
 import io.kotest.matchers.booleans.shouldBeTrue
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.shouldNotBe
+import io.kotest.matchers.string.shouldStartWith
 import kotlinx.coroutines.runBlocking
 import org.junit.jupiter.api.Test
-import org.junit.jupiter.api.assertThrows
 import org.junit.jupiter.api.extension.ExtendWith
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.test.context.ContextConfiguration
@@ -14,8 +14,8 @@ import org.springframework.test.context.jdbc.Sql
 import org.springframework.test.context.junit.jupiter.SpringExtension
 import st.orm.PersistenceException
 import st.orm.TransactionPropagation
+import st.orm.core.spi.ConnectionGuard
 import st.orm.core.spi.JdbcConnectionProviderImpl
-import st.orm.core.spi.TransactionContext
 import st.orm.repository.countAll
 import st.orm.template.model.City
 import st.orm.template.model.Visit
@@ -23,7 +23,7 @@ import javax.sql.DataSource
 
 /**
  * Tests for [JdbcConnectionProviderImpl] covering connection acquisition,
- * release, and the ConcurrencyDetector.
+ * release, and the ConnectionGuard.
  */
 @ExtendWith(SpringExtension::class)
 @ContextConfiguration(classes = [IntegrationConfig::class])
@@ -70,173 +70,131 @@ internal open class ConnectionProviderTest(
         }
     }
 
-    private fun stubContext(): TransactionContext = object : TransactionContext {
-        override fun entityCache(entityType: Class<out st.orm.Entity<*>>, retention: st.orm.core.spi.CacheRetention) = throw UnsupportedOperationException()
-        override fun getEntityCache(entityType: Class<out st.orm.Entity<*>>) = throw UnsupportedOperationException()
-        override fun findEntityCache(entityType: Class<out st.orm.Entity<*>>) = null
-        override fun clearAllEntityCaches() {}
-        override fun <T : Any?> getDecorator(resourceType: Class<T>): TransactionContext.Decorator<T> = TransactionContext.Decorator { it }
+    /** Runs [block] on a new thread and returns what it threw, if anything. */
+    private fun onOtherThread(block: () -> Unit): Throwable? {
+        var caught: Throwable? = null
+        val thread = Thread(block)
+        thread.setUncaughtExceptionHandler { _, throwable -> caught = throwable }
+        thread.start()
+        thread.join()
+        return caught
     }
 
     @Test
-    fun `ConcurrencyDetector beforeAccess and afterAccess with same context should succeed`() {
-        val connection = dataSource.connection
-        val context = stubContext()
-        try {
-            JdbcConnectionProviderImpl.ConcurrencyDetector.beforeAccess(connection, context)
-            JdbcConnectionProviderImpl.ConcurrencyDetector.afterAccess(connection, context)
-        } finally {
-            connection.close()
+    fun `ConnectionGuard allows an acquire and release`() {
+        dataSource.connection.use { connection ->
+            val guard = ConnectionGuard()
+            guard.acquire(connection)
+            guard.release()
         }
     }
 
     @Test
-    fun `ConcurrencyDetector should allow nested access with same context`() {
-        val connection = dataSource.connection
-        val context = stubContext()
-        try {
-            JdbcConnectionProviderImpl.ConcurrencyDetector.beforeAccess(connection, context)
-            JdbcConnectionProviderImpl.ConcurrencyDetector.beforeAccess(connection, context)
-            JdbcConnectionProviderImpl.ConcurrencyDetector.afterAccess(connection, context)
-            JdbcConnectionProviderImpl.ConcurrencyDetector.afterAccess(connection, context)
-        } finally {
-            connection.close()
+    fun `ConnectionGuard allows nested access by the same caller`() {
+        dataSource.connection.use { connection ->
+            val guard = ConnectionGuard()
+            guard.acquire(connection)
+            guard.acquire(connection)
+            guard.release()
+            guard.release()
+            // Fully released: another caller can take the connection.
+            onOtherThread {
+                guard.acquire(connection)
+                guard.release()
+            } shouldBe null
         }
     }
 
     @Test
-    fun `ConcurrencyDetector should allow same context from different thread`() {
-        val connection = dataSource.connection
-        val context = stubContext()
-        try {
-            JdbcConnectionProviderImpl.ConcurrencyDetector.beforeAccess(connection, context)
-            JdbcConnectionProviderImpl.ConcurrencyDetector.afterAccess(connection, context)
-            // Same context, different thread — simulates virtual thread migration.
-            val thread = Thread {
-                JdbcConnectionProviderImpl.ConcurrencyDetector.beforeAccess(connection, context)
-                JdbcConnectionProviderImpl.ConcurrencyDetector.afterAccess(connection, context)
-            }
-            thread.start()
-            thread.join()
-        } finally {
-            connection.close()
+    fun `ConnectionGuard allows another thread after release`() {
+        dataSource.connection.use { connection ->
+            val guard = ConnectionGuard()
+            guard.acquire(connection)
+            guard.release()
+            onOtherThread {
+                guard.acquire(connection)
+                guard.release()
+            } shouldBe null
         }
     }
 
     @Test
-    fun `ConcurrencyDetector should detect concurrent access from different contexts`() {
-        val connection = dataSource.connection
-        val context1 = stubContext()
-        val context2 = stubContext()
-        try {
-            JdbcConnectionProviderImpl.ConcurrencyDetector.beforeAccess(connection, context1)
-            var caughtException: Throwable? = null
-            val thread = Thread {
-                JdbcConnectionProviderImpl.ConcurrencyDetector.beforeAccess(connection, context2)
-            }
-            thread.setUncaughtExceptionHandler { _, throwable -> caughtException = throwable }
-            thread.start()
-            thread.join()
-            assertThrows<PersistenceException> {
-                caughtException?.let { throw it }
-            }
-            JdbcConnectionProviderImpl.ConcurrencyDetector.afterAccess(connection, context1)
-        } finally {
-            connection.close()
+    fun `ConnectionGuard refuses another thread while the connection is held`() {
+        dataSource.connection.use { connection ->
+            val guard = ConnectionGuard()
+            guard.acquire(connection)
+            val failure = onOtherThread { guard.acquire(connection) }
+            (failure is PersistenceException).shouldBeTrue()
+            failure!!.message!! shouldStartWith "Concurrent access"
+            guard.release()
         }
     }
 
     @Test
-    fun `ConcurrencyDetector should detect another thread while the connection is held in the same context`() {
-        val connection = dataSource.connection
-        val context = stubContext()
-        try {
-            JdbcConnectionProviderImpl.ConcurrencyDetector.beforeAccess(connection, context)
-            var caughtException: Throwable? = null
-            val thread = Thread {
-                JdbcConnectionProviderImpl.ConcurrencyDetector.beforeAccess(connection, context)
-            }
-            thread.setUncaughtExceptionHandler { _, throwable -> caughtException = throwable }
-            thread.start()
-            thread.join()
-            assertThrows<PersistenceException> {
-                caughtException?.let { throw it }
-            }
-            JdbcConnectionProviderImpl.ConcurrencyDetector.afterAccess(connection, context)
-        } finally {
-            connection.close()
+    fun `ConnectionGuard keeps nested access counted after a refused caller`() {
+        dataSource.connection.use { connection ->
+            val guard = ConnectionGuard()
+            guard.acquire(connection)
+            guard.acquire(connection)
+            onOtherThread { guard.acquire(connection) } shouldNotBe null
+            guard.release()
+            // Still held once by this thread.
+            onOtherThread { guard.acquire(connection) } shouldNotBe null
+            guard.release()
+            onOtherThread {
+                guard.acquire(connection)
+                guard.release()
+            } shouldBe null
         }
     }
 
     @Test
-    fun `ConcurrencyDetector should treat an installed caller identity as the same caller on any thread`() {
-        val connection = dataSource.connection
-        val context = stubContext()
-        val caller = Any()
-        val holder = JdbcConnectionProviderImpl.ConcurrencyDetector.callerHolder()
-        try {
+    fun `ConnectionGuard treats an installed caller identity as the same caller on any thread`() {
+        dataSource.connection.use { connection ->
+            val guard = ConnectionGuard()
+            val caller = Any()
+            val holder = ConnectionGuard.callerHolder()
             holder.set(caller)
-            JdbcConnectionProviderImpl.ConcurrencyDetector.beforeAccess(connection, context)
-            var caughtException: Throwable? = null
-            val thread = Thread {
-                holder.set(caller)
-                try {
-                    JdbcConnectionProviderImpl.ConcurrencyDetector.beforeAccess(connection, context)
-                    JdbcConnectionProviderImpl.ConcurrencyDetector.afterAccess(connection, context)
-                } finally {
-                    holder.remove()
-                }
+            try {
+                guard.acquire(connection)
+                onOtherThread {
+                    holder.set(caller)
+                    try {
+                        guard.acquire(connection)
+                        guard.release()
+                    } finally {
+                        holder.remove()
+                    }
+                } shouldBe null
+                guard.release()
+            } finally {
+                holder.remove()
             }
-            thread.setUncaughtExceptionHandler { _, throwable -> caughtException = throwable }
-            thread.start()
-            thread.join()
-            caughtException shouldBe null
-            JdbcConnectionProviderImpl.ConcurrencyDetector.afterAccess(connection, context)
-        } finally {
-            holder.remove()
-            connection.close()
         }
     }
 
     @Test
-    fun `ConcurrencyDetector should release an access from another thread`() {
-        val connection = dataSource.connection
-        val context = stubContext()
-        try {
-            JdbcConnectionProviderImpl.ConcurrencyDetector.beforeAccess(connection, context)
-            val thread = Thread {
-                JdbcConnectionProviderImpl.ConcurrencyDetector.afterAccess(connection, context)
-            }
-            thread.start()
-            thread.join()
-            // Released: this thread can take the connection again without being refused as a second caller.
-            val other = Thread {
-                JdbcConnectionProviderImpl.ConcurrencyDetector.beforeAccess(connection, context)
-                JdbcConnectionProviderImpl.ConcurrencyDetector.afterAccess(connection, context)
-            }
-            var caughtException: Throwable? = null
-            other.setUncaughtExceptionHandler { _, throwable -> caughtException = throwable }
-            other.start()
-            other.join()
-            caughtException shouldBe null
-        } finally {
-            connection.close()
+    fun `ConnectionGuard releases an access from another thread`() {
+        dataSource.connection.use { connection ->
+            val guard = ConnectionGuard()
+            guard.acquire(connection)
+            onOtherThread { guard.release() } shouldBe null
+            onOtherThread {
+                guard.acquire(connection)
+                guard.release()
+            } shouldBe null
         }
     }
 
     @Test
-    fun `ConcurrencyDetector afterAccess on unknown connection should be no-op`() {
-        val connection = dataSource.connection
-        val context = stubContext()
-        try {
-            // afterAccess on a connection never registered should not throw
-            JdbcConnectionProviderImpl.ConcurrencyDetector.afterAccess(connection, context)
-        } finally {
-            connection.close()
+    fun `ConnectionGuard release without an access is a no-op`() {
+        dataSource.connection.use { connection ->
+            val guard = ConnectionGuard()
+            guard.release()
+            guard.acquire(connection)
+            guard.release()
         }
     }
-
-    // Integration: connection provider behavior through ORM operations
 
     @Test
     fun `queries outside transaction should each get fresh connection`() {

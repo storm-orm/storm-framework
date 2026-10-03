@@ -31,7 +31,7 @@ import st.orm.TransactionPropagation.NOT_SUPPORTED
 import st.orm.TransactionPropagation.REQUIRED
 import st.orm.TransactionPropagation.REQUIRES_NEW
 import st.orm.TransactionPropagation.SUPPORTS
-import st.orm.core.spi.JdbcConnectionProviderImpl.ConcurrencyDetector
+import st.orm.core.spi.ConnectionGuard
 import st.orm.core.spi.TransactionRunner
 import st.orm.core.spi.TransactionScope
 import st.orm.template.impl.TransactionCallbacks
@@ -246,15 +246,16 @@ private class TransactionCaller : CopyableThreadContextElement<Any?> {
     override val key: CoroutineContext.Key<TransactionCaller> get() = Key
 
     override fun updateThreadContext(context: CoroutineContext): Any? {
-        val holder = ConcurrencyDetector.callerHolder()
+        val holder = ConnectionGuard.callerHolder()
         val previous = holder.get()
         holder.set(this)
         return previous
     }
 
+    // Restores by setting, as the kotlinx thread-local elements do: removing and recreating the entry on every
+    // resume costs about ten times as much.
     override fun restoreThreadContext(context: CoroutineContext, oldState: Any?) {
-        val holder = ConcurrencyDetector.callerHolder()
-        if (oldState == null) holder.remove() else holder.set(oldState)
+        ConnectionGuard.callerHolder().set(oldState)
     }
 
     override fun copyForChild(): CopyableThreadContextElement<Any?> = TransactionCaller()
