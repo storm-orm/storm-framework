@@ -46,6 +46,7 @@ public class ORMTemplateIntegrationTest {
     ) implements Entity<Integer> {}
 
     @Test
+    @ExtendWith(QuietValidationLog.class)
     public void testValidateSchemaOrThrowWithInvalidTypesThrows() {
         var orm = ORMTemplate.of(dataSource);
         assertThrows(PersistenceException.class,

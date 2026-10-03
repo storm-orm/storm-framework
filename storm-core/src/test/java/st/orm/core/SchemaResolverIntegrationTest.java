@@ -17,6 +17,7 @@ import java.util.logging.Logger;
 import javax.sql.DataSource;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
 import st.orm.DbTable;
 import st.orm.Entity;
 import st.orm.GenerationStrategy;
@@ -90,6 +91,7 @@ class SchemaResolverIntegrationTest {
     }
 
     @Test
+    @ExtendWith(QuietValidationLog.class)
     void schemaValidationReadsTheResolvedSchema() {
         assertTrue(tenantA.validateSchema(java.util.List.of(Archive.class, Plain.class)).isEmpty());
         var missing = ORMTemplate.of(dataSource, decorator -> decorator.withSchemaResolver(SchemaResolver.mapping(Map.of("archive", "tenant_c"))));

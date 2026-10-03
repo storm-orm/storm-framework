@@ -4,6 +4,7 @@ drop table if exists appointment CASCADE;
 drop table if exists tenant CASCADE;
 drop table if exists city CASCADE;
 drop table if exists owner CASCADE;
+drop table if exists owner_nullable_address CASCADE;
 drop table if exists owner_primary_pet CASCADE;
 drop table if exists pet CASCADE;
 drop table if exists pet_extension CASCADE;
@@ -21,16 +22,18 @@ drop table if exists app_user CASCADE;
 drop table if exists country CASCADE;
 drop table if exists country_city CASCADE;
 
-create table city (id integer auto_increment, name varchar(255), primary key (id));
-create table owner (id integer auto_increment, first_name varchar(255), last_name varchar(255), address varchar(255), city_id integer, telephone varchar(255), primary key (id), version integer default 0);
-create table pet (id integer auto_increment, name varchar(255), birth_date date, owner_id integer, type_id integer, primary key (id));
-create table pet_type (id integer, name varchar(255), primary key (id));
-create table specialty (id integer auto_increment, name varchar(255), primary key (id));
-create table vet (id integer auto_increment, first_name varchar(255), last_name varchar(255), primary key (id));
+create table city (id integer auto_increment, name varchar(255) not null, primary key (id));
+create table owner (id integer auto_increment, first_name varchar(255) not null, last_name varchar(255) not null, address varchar(255) not null, city_id integer, telephone varchar(255), primary key (id), version integer default 0 not null);
+create table pet (id integer auto_increment, name varchar(255) not null, birth_date date not null, owner_id integer, type_id integer not null, primary key (id));
+create table pet_type (id integer, name varchar(255) not null, primary key (id));
+create table specialty (id integer auto_increment, name varchar(255) not null, primary key (id));
+create table vet (id integer auto_increment, first_name varchar(255) not null, last_name varchar(255) not null, primary key (id));
 create table vet_badge (id integer auto_increment, label varchar(255), vet_id integer, primary key (id));
 create table vet_specialty (vet_id integer, specialty_id integer not null, primary key (vet_id, specialty_id));
-create table visit (id integer auto_increment, visit_date date, description varchar(255), vet_id integer null, specialty_id integer null, pet_id integer not null, "timestamp" timestamp default CURRENT_TIMESTAMP, primary key (id));
+create table visit (id integer auto_increment, visit_date date not null, description varchar(255), vet_id integer null, specialty_id integer null, pet_id integer not null, "timestamp" timestamp default CURRENT_TIMESTAMP not null, primary key (id));
 create table pet_extension (pet_id integer not null, notes varchar(255), primary key (pet_id));
+create table owner_nullable_address (id integer auto_increment, first_name varchar(255) not null, last_name varchar(255) not null, address varchar(255), city_id integer, telephone varchar(255), version integer default 0 not null, primary key (id));
+alter table owner_nullable_address add constraint owner_nullable_address_city_fk foreign key (city_id) references city (id);
 create table owner_primary_pet (owner_id integer not null, pet_id integer not null, primary key (owner_id));
 alter table owner add constraint owner_city_fk foreign key (city_id) references city (id);
 alter table pet_extension add constraint pet_extension_pet_fk foreign key (pet_id) references pet (id);
@@ -43,13 +46,13 @@ alter table vet_specialty add constraint vet_specialty_specialty_fk foreign key 
 alter table vet_specialty add constraint vet_specialty_vet_fk foreign key (vet_id) references vet (id);
 alter table visit add constraint visit_pet_fk foreign key (pet_id) references pet (id);
 alter table visit add constraint visit_vet_specialty_fk foreign key (vet_id, specialty_id) references vet_specialty (vet_id, specialty_id);
-create table tenant (id integer auto_increment, name varchar(255), owner_id integer not null, city_id integer not null, primary key (id));
+create table tenant (id integer auto_increment, name varchar(255) not null, owner_id integer not null, city_id integer not null, primary key (id));
 alter table tenant add constraint tenant_owner_fk foreign key (owner_id) references owner (id);
 alter table tenant add constraint tenant_city_fk foreign key (city_id) references city (id);
 -- scheduled_at has second precision: a database round-trip drops the sub-second part of the in-memory value.
-create table appointment (id integer auto_increment, description varchar(255), scheduled_at timestamp(0), primary key (id));
-create table appointment_report (appointment_id integer not null, report varchar(255), primary key (appointment_id));
-create table appointment_report_review (id integer auto_increment, appointment_report_id integer not null, review varchar(255), primary key (id));
+create table appointment (id integer auto_increment, description varchar(255) not null, scheduled_at timestamp(0) not null, primary key (id));
+create table appointment_report (appointment_id integer not null, report varchar(255) not null, primary key (appointment_id));
+create table appointment_report_review (id integer auto_increment, appointment_report_id integer not null, review varchar(255) not null, primary key (id));
 alter table appointment_report add constraint appointment_report_appointment_fk foreign key (appointment_id) references appointment (id);
 alter table appointment_report_review add constraint appointment_report_review_report_fk foreign key (appointment_report_id) references appointment_report (appointment_id);
 create table self_ref_node (id integer auto_increment, name varchar(255), parent_id integer, primary key (id));
@@ -59,14 +62,14 @@ create table cross_package_holder (id integer auto_increment, label varchar(255)
 alter table cross_package_holder add constraint cross_package_holder_owner_fk foreign key (owner_id) references cross_package_owner (id);
 -- The country table is reachable from itself: it refers to its capital and its largest city, and a city refers back to
 -- the country it lies in. The foreign keys point both ways, so the constraints are added once both tables exist.
-create table country_city (id integer auto_increment, name varchar(255), country_id integer not null, primary key (id));
-create table country (id integer auto_increment, name varchar(255), capital_id integer, largest_city_id integer, primary key (id));
+create table country_city (id integer auto_increment, name varchar(255) not null, country_id integer not null, primary key (id));
+create table country (id integer auto_increment, name varchar(255) not null, capital_id integer, largest_city_id integer, primary key (id));
 alter table country add constraint country_capital_fk foreign key (capital_id) references country_city (id);
 alter table country add constraint country_largest_city_fk foreign key (largest_city_id) references country_city (id);
 alter table country_city add constraint country_city_country_fk foreign key (country_id) references country (id);
-create table app_user (id integer auto_increment, name varchar(255), country_id integer not null, primary key (id));
+create table app_user (id integer auto_increment, name varchar(255) not null, country_id integer not null, primary key (id));
 alter table app_user add constraint app_user_country_fk foreign key (country_id) references country (id);
-create table user_score (id integer auto_increment, user_id integer not null, score_date date, score double, primary key (id));
+create table user_score (id integer auto_increment, user_id integer not null, score_date date not null, score double not null, primary key (id));
 alter table user_score add constraint user_score_user_fk foreign key (user_id) references app_user (id);
 
 create view owner_view as select * from owner;
@@ -158,7 +161,7 @@ INSERT INTO animal (dtype, name, indoor) VALUES ('Cat', 'Luna', false);
 INSERT INTO animal (dtype, name, weight) VALUES ('Dog', 'Rex', 30);
 INSERT INTO animal (dtype, name, weight) VALUES ('Dog', 'Max', 15);
 
-create table adoption (id integer auto_increment, animal_id integer, primary key (id));
+create table adoption (id integer auto_increment, animal_id integer not null, primary key (id));
 alter table adoption add constraint adoption_animal_fk foreign key (animal_id) references animal (id);
 
 INSERT INTO adoption (animal_id) VALUES (1);
@@ -168,9 +171,9 @@ INSERT INTO adoption (animal_id) VALUES (3);
 drop table if exists comment CASCADE;
 drop table if exists post CASCADE;
 drop table if exists photo CASCADE;
-create table post (id integer auto_increment, title varchar(255), primary key (id));
-create table photo (id integer auto_increment, url varchar(255), primary key (id));
-create table comment (id integer auto_increment, text varchar(255), target_type varchar(50), target_id integer, primary key (id));
+create table post (id integer auto_increment, title varchar(255) not null, primary key (id));
+create table photo (id integer auto_increment, url varchar(255) not null, primary key (id));
+create table comment (id integer auto_increment, text varchar(255) not null, target_type varchar(50) not null, target_id integer not null, primary key (id));
 
 INSERT INTO post (title) VALUES ('Hello World');
 INSERT INTO post (title) VALUES ('Second Post');
@@ -186,8 +189,8 @@ drop table if exists joined_cat CASCADE;
 drop table if exists joined_dog CASCADE;
 drop table if exists joined_animal CASCADE;
 create table joined_animal (id integer auto_increment, dtype varchar(50) not null, name varchar(255), primary key (id));
-create table joined_cat (id integer not null, indoor boolean, primary key (id));
-create table joined_dog (id integer not null, weight integer, primary key (id));
+create table joined_cat (id integer not null, indoor boolean not null, primary key (id));
+create table joined_dog (id integer not null, weight integer not null, primary key (id));
 alter table joined_cat add constraint joined_cat_animal_fk foreign key (id) references joined_animal (id);
 alter table joined_dog add constraint joined_dog_animal_fk foreign key (id) references joined_animal (id);
 
@@ -198,7 +201,7 @@ INSERT INTO joined_cat (id, indoor) VALUES (2, false);
 INSERT INTO joined_animal (dtype, name) VALUES ('JoinedDog', 'Rex');
 INSERT INTO joined_dog (id, weight) VALUES (3, 30);
 
-create table joined_adoption (id integer auto_increment, animal_id integer, primary key (id));
+create table joined_adoption (id integer auto_increment, animal_id integer not null, primary key (id));
 alter table joined_adoption add constraint joined_adoption_animal_fk foreign key (animal_id) references joined_animal (id);
 
 INSERT INTO joined_adoption (animal_id) VALUES (1);
@@ -210,8 +213,8 @@ drop table if exists nodsc_dog CASCADE;
 drop table if exists nodsc_bird CASCADE;
 drop table if exists nodsc_animal CASCADE;
 create table nodsc_animal (id integer auto_increment, name varchar(255), primary key (id));
-create table nodsc_cat (id integer not null, indoor boolean, primary key (id));
-create table nodsc_dog (id integer not null, weight integer, primary key (id));
+create table nodsc_cat (id integer not null, indoor boolean not null, primary key (id));
+create table nodsc_dog (id integer not null, weight integer not null, primary key (id));
 create table nodsc_bird (id integer not null, primary key (id));
 alter table nodsc_cat add constraint nodsc_cat_animal_fk foreign key (id) references nodsc_animal (id);
 alter table nodsc_dog add constraint nodsc_dog_animal_fk foreign key (id) references nodsc_animal (id);

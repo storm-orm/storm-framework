@@ -548,9 +548,9 @@ public class TemplateImplIntegrationTest {
         assertEquals("456 New St", fetched.address().address());
     }
 
-    // OwnerNullableAddress: same table mapping but with nullable Address for testing null inline.
+    // OwnerNullableAddress: the owner shape with a nullable Address, over a table whose address columns allow NULL.
     @Builder(toBuilder = true)
-    @DbTable("owner")
+    @DbTable("owner_nullable_address")
     public record OwnerNullableAddress(
             @PK Integer id,
             String firstName,

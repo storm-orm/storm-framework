@@ -67,6 +67,7 @@
                         -Xshare:off
                         --add-reads kotlin.stdlib=kotlinx.coroutines.core
                         --add-reads storm.core=storm.kotlin
+                        --add-reads storm.kotlin=org.slf4j,ch.qos.logback.classic,ch.qos.logback.core
                         --add-exports storm.core/st.orm.core.template.impl=ALL-UNNAMED
                         --add-opens java.base/java.lang=ALL-UNNAMED
                         --add-opens storm.kotlin/st.orm.template=ALL-UNNAMED

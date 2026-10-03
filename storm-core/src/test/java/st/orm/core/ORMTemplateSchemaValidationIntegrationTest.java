@@ -32,6 +32,7 @@ public class ORMTemplateSchemaValidationIntegrationTest {
     private DataSource dataSource;
 
     @Test
+    @ExtendWith(QuietValidationLog.class)
     public void testValidateSchemaReturnsResults() {
         var orm = ORMTemplate.of(dataSource);
         List<String> results = orm.validateSchema();

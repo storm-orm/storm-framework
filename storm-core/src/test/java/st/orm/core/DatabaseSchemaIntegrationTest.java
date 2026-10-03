@@ -130,12 +130,16 @@ public class DatabaseSchemaIntegrationTest {
     }
 
     @Test
-    public void testOwnerVersionColumnNullable() throws SQLException {
+    public void testDefaultIsReadApartFromNullability() throws SQLException {
         try (Connection connection = dataSource.getConnection()) {
             DatabaseSchema schema = DatabaseSchema.read(connection);
-            // version column has "default 0" but is nullable in schema definition
+            // version is declared "default 0 not null", telephone neither: a default does not imply NOT NULL.
             DbColumn versionColumn = schema.getColumn("owner", "version").orElseThrow();
-            assertTrue(versionColumn.nullable());
+            assertTrue(versionColumn.hasDefault());
+            assertFalse(versionColumn.nullable());
+            DbColumn telephoneColumn = schema.getColumn("owner", "telephone").orElseThrow();
+            assertFalse(telephoneColumn.hasDefault());
+            assertTrue(telephoneColumn.nullable());
         }
     }
 

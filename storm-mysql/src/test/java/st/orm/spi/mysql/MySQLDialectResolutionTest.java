@@ -19,11 +19,13 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import ch.qos.logback.classic.Logger;
 import java.sql.SQLException;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicInteger;
 import javax.sql.DataSource;
 import org.junit.jupiter.api.Test;
+import org.slf4j.LoggerFactory;
 import org.springframework.jdbc.datasource.SimpleDriverDataSource;
 import st.orm.DbTable;
 import st.orm.Entity;
@@ -171,8 +173,16 @@ class MySQLDialectResolutionTest {
     @Test
     void templateValidationStillReportsAMisdirectedForeignKeyOnAnUnclaimedDatabase() throws SQLException {
         var orm = ORMTemplate.of(h2(CHILD_WITH_WRONG_FOREIGN_KEY));
-
-        List<String> errors = orm.validateSchema(List.of(Parent.class, Child.class));
+        // The mismatch is provoked on purpose and read from the result; validation's log of it stays out of the
+        // build log.
+        var validationLogger = (Logger) LoggerFactory.getLogger("st.orm.validation");
+        validationLogger.setAdditive(false);
+        List<String> errors;
+        try {
+            errors = orm.validateSchema(List.of(Parent.class, Child.class));
+        } finally {
+            validationLogger.setAdditive(true);
+        }
 
         assertFalse(errors.isEmpty(), "Expected the foreign key to 'other' to be reported as a mismatch");
     }
