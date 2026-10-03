@@ -81,6 +81,9 @@ public class DatabaseSchemaIntegrationTest {
             DatabaseSchema schema = DatabaseSchema.read(connection);
             assertTrue(schema.tableExists("owner_view"));
             assertTrue(schema.tableExists("visit_view"));
+            assertTrue(schema.isView("owner_view"));
+            assertTrue(schema.isView("VISIT_VIEW"));
+            assertFalse(schema.isView("owner"));
         }
     }
 
