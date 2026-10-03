@@ -15,13 +15,7 @@
  */
 package st.orm.core.spi;
 
-import static java.lang.System.identityHashCode;
-
-import java.lang.ref.ReferenceQueue;
-import java.lang.ref.WeakReference;
 import java.sql.Connection;
-import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
 import javax.sql.DataSource;
 import org.jspecify.annotations.Nullable;
 import st.orm.PersistenceException;
@@ -68,7 +62,7 @@ public final class JdbcConnectionProviderImpl implements ConnectionProvider {
                 throw new IllegalArgumentException("Transaction context must be of type JdbcTransactionContext.");
             }
             var connection = jdbcContext.getConnection(dataSource, manualCommitConnections);
-            ConcurrencyDetector.beforeAccess(connection, context);
+            jdbcContext.connectionGuard().acquire(connection);
             return connection;
         }
         // If no programmatic transaction is active, obtain a new connection from the data source.
@@ -82,10 +76,12 @@ public final class JdbcConnectionProviderImpl implements ConnectionProvider {
             if (!(context instanceof JdbcTransactionContext jdbcContext)) {
                 throw new IllegalArgumentException("Transaction context must be of type JdbcTransactionContext.");
             }
+            // Every connection handed out under the context registered an access, including one whose frame has
+            // ended since.
+            jdbcContext.connectionGuard().release();
             if (jdbcContext.currentConnection() == connection) {
                 // If this connection is the current transaction connection, do not close it. It will be closed
                 // when the outermost transaction ends.
-                ConcurrencyDetector.afterAccess(connection, context);
                 return;
             }
         }
@@ -129,98 +125,6 @@ public final class JdbcConnectionProviderImpl implements ConnectionProvider {
             }
         } catch (Throwable t) {
             throw new PersistenceException("Failed to release connection.", t);
-        }
-    }
-
-    /**
-     * Detects concurrent access to transaction-scoped connections.
-     *
-     * <p>Ownership is tracked by transaction context identity rather than thread identity, because coroutines
-     * may resume on a different virtual thread after suspension (especially with OpenTelemetry or other
-     * javaagent instrumentation that wraps dispatched tasks).</p>
-     *
-     * <p>The same context can access the same connection multiple times (re-entrancy).</p>
-     */
-    public static final class ConcurrencyDetector {
-
-        private static final class ConnectionIdentity extends WeakReference<Connection> {
-            private final int id;
-
-            ConnectionIdentity(Connection connection, ReferenceQueue<Connection> queue) {
-                super(connection, queue);
-                this.id = identityHashCode(connection);
-            }
-
-            @Override
-            public int hashCode() {
-                return id;
-            }
-
-            @Override
-            public boolean equals(Object other) {
-                return other instanceof ConnectionIdentity otherIdentity
-                        && this.get() == otherIdentity.get()
-                        && this.get() != null;
-            }
-        }
-
-        private static final class Owner {
-            @Nullable TransactionContext context;
-            int depth;
-        }
-
-        private static final ReferenceQueue<Connection> QUEUE = new ReferenceQueue<>();
-        private static final Map<ConnectionIdentity, Owner> OWNERS = new ConcurrentHashMap<>();
-
-        private ConcurrencyDetector() {
-        }
-
-        private static void reap() {
-            while (true) {
-                var ref = QUEUE.poll();
-                if (!(ref instanceof ConnectionIdentity identity)) {
-                    break;
-                }
-                OWNERS.remove(identity);
-            }
-        }
-
-        public static void beforeAccess(Connection connection, TransactionContext context) {
-            reap();
-            var key = new ConnectionIdentity(connection, QUEUE);
-            var owner = OWNERS.computeIfAbsent(key, ignore -> new Owner());
-            synchronized (owner) {
-                if (owner.context == null) {
-                    owner.context = context;
-                    owner.depth = 1;
-                } else if (owner.context == context) {
-                    owner.depth++;
-                } else {
-                    throw new PersistenceException("Concurrent access on " + connection + ".");
-                }
-            }
-        }
-
-        public static void afterAccess(Connection connection, TransactionContext context) {
-            reap();
-            var key = new ConnectionIdentity(connection, QUEUE);
-            var owner = OWNERS.get(key);
-            if (owner == null) {
-                return;
-            }
-            boolean clear = false;
-            synchronized (owner) {
-                if (owner.context != context) {
-                    return;
-                }
-                if (--owner.depth == 0) {
-                    owner.context = null;
-                    clear = true;
-                }
-            }
-            if (clear) {
-                OWNERS.remove(key, owner);
-            }
         }
     }
 }

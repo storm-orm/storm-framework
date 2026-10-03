@@ -168,4 +168,18 @@ public interface TransactionContext {
      * @param <T> the resource type.
      */
     <T> Decorator<T> getDecorator(Class<T> resourceType);
+
+    /**
+     * Returns the guard that lets this transaction's connection serve one caller at a time, or {@code null} when the
+     * context does not check concurrent access.
+     *
+     * <p>Connection providers acquire the guard when they hand out the transaction's connection and release it when
+     * the statement gives the connection back.</p>
+     *
+     * @return the connection guard, or {@code null} when the context has none.
+     * @since 1.15
+     */
+    default @Nullable ConnectionGuard connectionGuard() {
+        return null;
+    }
 }
