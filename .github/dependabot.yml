@@ -21,9 +21,10 @@ updates:
         update-types: ["version-update:semver-major"]
       # The same holds for Kotlin: the build compiles with the oldest Kotlin line Storm supports, and the kotlinx
       # libraries and KSP are the ones built for that line, since a newer one brings a newer standard library to
-      # every application. They move together, when the Kotlin floor does; patch updates are still proposed.
+      # every application. They move together, when the Kotlin floor does; kotlinx and KSP patches are still proposed.
+      # The root is on the final 2.0 patch, and storm-ktor and storm-ktor-test override kotlin.version for the Ktor
+      # toolchain, which Dependabot reads as the root's property; a patch for either would move both.
       - dependency-name: "org.jetbrains.kotlin:*"
-        update-types: ["version-update:semver-major", "version-update:semver-minor"]
       - dependency-name: "org.jetbrains.kotlinx:*"
         update-types: ["version-update:semver-major", "version-update:semver-minor"]
       - dependency-name: "com.google.devtools.ksp:*"
@@ -42,6 +43,8 @@ updates:
       # oldest GraalVM line Storm supports.
       - dependency-name: "org.graalvm.sdk:*"
         update-types: ["version-update:semver-major"]
+      # Storm's own artifacts: the reactor's version comes from ${revision} at build time.
+      - dependency-name: "st.orm:*"
   - package-ecosystem: github-actions
     directory: /
     schedule:
