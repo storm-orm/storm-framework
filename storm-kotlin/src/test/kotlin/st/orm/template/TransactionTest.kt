@@ -3,6 +3,7 @@ package st.orm.template
 import io.kotest.matchers.booleans.shouldBeFalse
 import io.kotest.matchers.booleans.shouldBeTrue
 import io.kotest.matchers.shouldNotBe
+import io.kotest.matchers.string.shouldStartWith
 import kotlinx.coroutines.*
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.Test
@@ -21,7 +22,6 @@ import st.orm.repository.countAll
 import st.orm.repository.exists
 import st.orm.repository.removeAll
 import st.orm.template.model.Visit
-import kotlin.test.assertFalse
 
 @ExtendWith(SpringExtension::class)
 @ContextConfiguration(classes = [IntegrationConfig::class])
@@ -536,34 +536,45 @@ internal open class TransactionTest(
     @Test
     fun `concurrent DB access in same transaction throws exception`(): Unit = runBlocking {
         val e = assertThrows<PersistenceException> {
-            // The timeout only bounds the queries. It leaves the second job ample time to meet the first one's
-            // statement: a statement issued after the deadline is refused as a timeout instead.
-            transaction(timeoutSeconds = 3) {
+            transaction {
                 coroutineScope {
-                    // Two concurrent operations.
-                    val job1 = launch(Dispatchers.IO) {
-                        orm.query(
-                            """
-                                SELECT COUNT(*)
-                                FROM SYSTEM_RANGE(1, 1_000_000) AS A
-                                CROSS JOIN SYSTEM_RANGE(1, 1_000_000) AS B
-                            """.trimIndent(),
-                        ).singleResult
+                    val holding = CompletableDeferred<Unit>()
+                    // The first coroutine holds the connection while it collects an open result.
+                    launch(Dispatchers.IO) {
+                        orm.query("SELECT 1").resultFlow.collect {
+                            holding.complete(Unit)
+                            awaitCancellation()
+                        }
                     }
-                    val job2 = launch(Dispatchers.IO) {
-                        orm.query(
-                            """
-                            SELECT COUNT(*)
-                            FROM SYSTEM_RANGE(1, 1_000_000) AS A
-                            CROSS JOIN SYSTEM_RANGE(1, 1_000_000) AS B
-                            """.trimIndent(),
-                        ).singleResult
+                    launch(Dispatchers.IO) {
+                        holding.await()
+                        orm.query("SELECT 1").singleResult
                     }
-                    joinAll(job1, job2)
                 }
             }
         }
-        assertFalse(e.cause is TransactionTimedOutException)
+        e.message!! shouldStartWith "Concurrent access"
+    }
+
+    @Test
+    fun `withContext on another dispatcher continues as the same caller`(): Unit = runBlocking {
+        transaction {
+            orm.query("SELECT 1").singleResult
+            withContext(Dispatchers.IO) {
+                orm.query("SELECT 1").singleResult
+            }
+            orm.query("SELECT 1").singleResult
+        }
+    }
+
+    @Test
+    fun `coroutines that take turns share the transaction`(): Unit = runBlocking {
+        transaction {
+            coroutineScope {
+                launch(Dispatchers.IO) { orm.query("SELECT 1").singleResult }.join()
+                launch(Dispatchers.IO) { orm.query("SELECT 1").singleResult }.join()
+            }
+        }
     }
 
     /**

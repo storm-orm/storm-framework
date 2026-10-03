@@ -1647,7 +1647,7 @@ A transaction owns a single database connection, and a connection can serve only
 
 **Moving between threads is fine.** A Storm-managed suspend `transaction { }` travels with the coroutine context, so `withContext(Dispatchers.IO)` or `Dispatchers.Default` inside the block offloads work and comes back in the same transaction. `withContext` suspends the caller until it returns, so the transaction is still doing one thing at a time. The same holds for the blocking API on virtual threads: a block parks on I/O rather than pinning its carrier thread, and the transaction goes with it.
 
-**Doing two things at once is not.** Work started with `async`, `launch`, an `ExecutorService`, or a parallel stream *inherits* the transaction and then uses its connection concurrently, which the connection cannot serve. Await each unit before starting the next, or give the parallel work its own transactions.
+**Doing two things at once is not.** Work started with `async`, `launch`, an `ExecutorService`, or a parallel stream *inherits* the transaction and then uses its connection concurrently, which the connection cannot serve. A statement that reaches the connection while another caller still holds it is refused with a `PersistenceException` (`Concurrent access on ...`) instead of waiting behind the running statement. Await each unit before starting the next, or give the parallel work its own transactions.
 
 ```kotlin
 transaction {

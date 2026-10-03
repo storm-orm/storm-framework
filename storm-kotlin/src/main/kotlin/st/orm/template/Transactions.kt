@@ -15,6 +15,7 @@
  */
 package st.orm.template
 
+import kotlinx.coroutines.CopyableThreadContextElement
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.asContextElement
 import kotlinx.coroutines.currentCoroutineContext
@@ -30,6 +31,7 @@ import st.orm.TransactionPropagation.NOT_SUPPORTED
 import st.orm.TransactionPropagation.REQUIRED
 import st.orm.TransactionPropagation.REQUIRES_NEW
 import st.orm.TransactionPropagation.SUPPORTS
+import st.orm.core.spi.JdbcConnectionProviderImpl.ConcurrencyDetector
 import st.orm.core.spi.TransactionRunner
 import st.orm.core.spi.TransactionScope
 import st.orm.template.impl.TransactionCallbacks
@@ -158,7 +160,8 @@ public suspend fun <T> transaction(
             TransactionScope.holder().asContextElement(scope) +
             TransactionRunner.callbacksHolder().asContextElement(parentCallbacks) +
             localTransactionOptions.asContextElement(options) +
-            sqlLogContext()
+            sqlLogContext() +
+            (currentContext[TransactionCaller] ?: TransactionCaller())
         val result = try {
             withContext(currentContext + elements) {
                 block(scopeTransaction(scope, parentCallbacks))
@@ -177,7 +180,9 @@ public suspend fun <T> transaction(
         TransactionRunner.callbacksHolder().asContextElement(callbacks) +
         // Make the options available via the ThreadLocal in case the blocking variant is invoked from suspend context.
         localTransactionOptions.asContextElement(options) +
-        sqlLogContext()
+        sqlLogContext() +
+        // Identifies the coroutine to the transaction's connection, which serves one caller at a time.
+        (currentContext[TransactionCaller] ?: TransactionCaller())
     // The dispatcher only applies to outermost transactions; nested blocks stay on the caller's dispatcher.
     val context = if (parentScope == null) currentContext + dispatcher + elements else currentContext + elements
     // Fire callbacks AFTER withContext returns, so CallbacksKey and ThreadLocals are restored.
@@ -225,6 +230,36 @@ public suspend fun <T> transaction(
  */
 private class CallbacksKey(val callbacks: TransactionCallbacks) : AbstractCoroutineContextElement(Key) {
     companion object Key : CoroutineContext.Key<CallbacksKey>
+}
+
+/**
+ * Coroutine context element that identifies the running coroutine as the caller of the statements it issues.
+ *
+ * The identity stays with the coroutine when it resumes on another thread and through `withContext`, which suspends
+ * the caller until it returns, so sequential work is one caller. A coroutine started with `launch` or `async` runs
+ * alongside its parent and gets an identity of its own, so the transaction's connection refuses it while another
+ * caller holds the connection.
+ */
+private class TransactionCaller : CopyableThreadContextElement<Any?> {
+    companion object Key : CoroutineContext.Key<TransactionCaller>
+
+    override val key: CoroutineContext.Key<TransactionCaller> get() = Key
+
+    override fun updateThreadContext(context: CoroutineContext): Any? {
+        val holder = ConcurrencyDetector.callerHolder()
+        val previous = holder.get()
+        holder.set(this)
+        return previous
+    }
+
+    override fun restoreThreadContext(context: CoroutineContext, oldState: Any?) {
+        val holder = ConcurrencyDetector.callerHolder()
+        if (oldState == null) holder.remove() else holder.set(oldState)
+    }
+
+    override fun copyForChild(): CopyableThreadContextElement<Any?> = TransactionCaller()
+
+    override fun mergeForChild(overwritingElement: CoroutineContext.Element): CoroutineContext = overwritingElement
 }
 
 /**
