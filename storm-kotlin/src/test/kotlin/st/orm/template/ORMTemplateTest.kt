@@ -109,6 +109,7 @@ internal open class ORMTemplateTest(
     }
 
     @Test
+    @ExtendWith(QuietValidationLog::class)
     fun `validateSchema should return errors for invalid types`() {
         @DbTable("nonexistent_table")
         data class NonExistentEntity(@PK val id: Int = 0) : Entity<Int>
@@ -122,6 +123,7 @@ internal open class ORMTemplateTest(
     }
 
     @Test
+    @ExtendWith(QuietValidationLog::class)
     fun `validateSchemaOrThrow should throw for invalid types`() {
         @DbTable("nonexistent_table")
         data class NonExistentEntity(@PK val id: Int = 0) : Entity<Int>

@@ -20,6 +20,7 @@ import st.orm.Entity;
 import st.orm.GenerationStrategy;
 import st.orm.PK;
 import st.orm.PersistenceException;
+import st.orm.Projection;
 import st.orm.core.model.City;
 import st.orm.core.model.Owner;
 import st.orm.core.model.Pet;
@@ -40,6 +41,7 @@ import st.orm.core.template.impl.SchemaValidator;
 @ExtendWith(SpringExtension.class)
 @ContextConfiguration(classes = IntegrationConfig.class)
 @JdbcTest
+@ExtendWith(QuietValidationLog.class)
 public class SchemaValidatorIntegrationTest {
 
     @Autowired
@@ -145,13 +147,20 @@ public class SchemaValidatorIntegrationTest {
         assertTrue(errors.isEmpty(), "Expected no errors in non-strict mode for City, got: " + errors);
     }
 
+    /** Requires the owner's telephone, which the schema leaves nullable. */
+    @DbTable("owner")
+    public record OwnerRequiredTelephone(
+            @PK Integer id,
+            String telephone
+    ) implements Projection<Integer> {}
+
     @Test
     public void testValidateAndReportStrictIncludesNullabilityWarnings() {
         var validator = SchemaValidator.of(dataSource);
-        List<String> errors = validator.validateAndReport(List.of(City.class), true);
+        List<String> errors = validator.validateAndReport(List.of(OwnerRequiredTelephone.class), true);
         // Strict mode should treat NULLABILITY_MISMATCH as an error.
         assertFalse(errors.isEmpty(),
-                "Expected strict mode to report nullability warnings as errors for City");
+                "Expected strict mode to report nullability warnings as errors for OwnerRequiredTelephone");
         assertTrue(errors.stream().anyMatch(e -> e.contains("NULLABILITY_MISMATCH")),
                 "Expected NULLABILITY_MISMATCH in strict error messages, got: " + errors);
     }

@@ -19,6 +19,7 @@ import javax.sql.DataSource
 @ExtendWith(SpringExtension::class)
 @ContextConfiguration(classes = [IntegrationConfig::class])
 @Sql("/data.sql")
+@ExtendWith(QuietValidationLog::class)
 internal open class SchemaValidationTest(
     @Autowired val orm: ORMTemplate,
     @Autowired val dataSource: DataSource,

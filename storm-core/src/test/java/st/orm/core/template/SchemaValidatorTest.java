@@ -34,6 +34,7 @@ import javax.sql.DataSource;
 import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
 import st.orm.Data;
 import st.orm.DbIgnore;
 import st.orm.DbTable;
@@ -45,6 +46,7 @@ import st.orm.Persist;
 import st.orm.ProjectionQuery;
 import st.orm.Ref;
 import st.orm.UK;
+import st.orm.core.QuietValidationLog;
 import st.orm.core.template.impl.SchemaValidationError;
 import st.orm.core.template.impl.SchemaValidationError.ErrorKind;
 import st.orm.core.template.impl.SchemaValidationException;
@@ -53,6 +55,7 @@ import st.orm.core.template.impl.SchemaValidator;
 /**
  * Tests for {@link SchemaValidator} using H2 in-memory databases with intentional schema mismatches.
  */
+@ExtendWith(QuietValidationLog.class)
 class SchemaValidatorTest {
 
     private static final AtomicInteger DB_COUNTER = new AtomicInteger();
