@@ -954,7 +954,10 @@ class MetamodelProcessor(
                 if (!isChildData && isEffectivelyUniqueField(prop)) {
                     val nullsDistinct = getNullsDistinct(prop)
                     val referencedDecl = typeRef.resolve().declaration as? KSClassDeclaration
-                    if (!forceNullableChain && nullsDistinct && referencedDecl != null && hasNullableLeaf(referencedDecl) &&
+                    if (!forceNullableChain &&
+                        nullsDistinct &&
+                        referencedDecl != null &&
+                        hasNullableLeaf(referencedDecl) &&
                         !isSuppressed(prop, NULLABLE_UNIQUE_KEY)
                     ) {
                         logger.warn(
