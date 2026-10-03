@@ -40,6 +40,8 @@ class MetamodelProcessorTest {
         symbolProcessorProviders = mutableListOf(MetamodelProcessorProvider())
         inheritClassPath = true
         verbose = false
+        // The messages are the fixtures' own diagnostics, which the tests read from the result.
+        messageOutputStream = java.io.OutputStream.nullOutputStream()
     }
 
     private fun compile(source: String): KotlinCompilation {

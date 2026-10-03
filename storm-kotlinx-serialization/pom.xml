@@ -46,6 +46,7 @@
                     <argLine>
                         @{argLine}
                         -XX:+EnableDynamicAgentLoading
+                        -Xshare:off
                         -Dstorm.validation.record_mode=fail
                         -Dstorm.ansi_escaping=true
                     </argLine>
@@ -250,6 +251,11 @@
             <groupId>st.orm</groupId>
             <artifactId>storm-kotlin</artifactId>
             <version>${project.version}</version>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.slf4j</groupId>
+            <artifactId>slf4j-simple</artifactId>
             <scope>test</scope>
         </dependency>
     </dependencies>

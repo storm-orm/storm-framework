@@ -117,6 +117,7 @@
                     <argLine>
                         @{argLine}
                         -XX:+EnableDynamicAgentLoading
+                        -Xshare:off
                         --enable-preview
                         --add-opens java.base/java.lang=ALL-UNNAMED
                         -Dstorm.ansi_escaping=true
