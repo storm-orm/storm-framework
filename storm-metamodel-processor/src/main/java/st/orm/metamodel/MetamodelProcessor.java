@@ -22,7 +22,6 @@ import static javax.lang.model.element.ElementKind.CONSTRUCTOR;
 import static javax.lang.model.element.ElementKind.FIELD;
 import static javax.lang.model.element.ElementKind.RECORD;
 import static javax.tools.Diagnostic.Kind.ERROR;
-import static javax.tools.Diagnostic.Kind.NOTE;
 import static javax.tools.Diagnostic.Kind.WARNING;
 
 import java.io.IOException;
@@ -320,7 +319,6 @@ public final class MetamodelProcessor extends AbstractProcessor {
     @Override
     public boolean process(Set<? extends TypeElement> annotations,
                            RoundEnvironment roundEnv) {
-        processingEnv.getMessager().printMessage(NOTE, "Storm Metamodel Processor is running.");
         for (Element element : roundEnv.getRootElements()) {
             try {
                 if (isRecord(element)) {

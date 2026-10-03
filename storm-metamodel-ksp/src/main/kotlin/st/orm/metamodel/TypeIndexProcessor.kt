@@ -34,7 +34,6 @@ class TypeIndexProcessor(
         INDEXED_TYPES.associateWith { linkedSetOf<String>() }.toMutableMap()
 
     override fun process(resolver: Resolver): List<KSAnnotated> {
-        logger.info("Storm Type Index KSP is running.")
         resolver.getAllFiles().forEach { file ->
             file.declarations
                 .filterIsInstance<KSClassDeclaration>()
