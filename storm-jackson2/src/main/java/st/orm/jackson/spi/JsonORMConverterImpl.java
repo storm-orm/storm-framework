@@ -206,7 +206,7 @@ public final class JsonORMConverterImpl implements ORMConverter {
     }
 
     @Override
-    public List<Object> toDatabase(@Nullable Object record) throws SqlTemplateException {
+    public List<@Nullable Object> toDatabase(@Nullable Object record) throws SqlTemplateException {
         try {
             Object o = record == null ? null : REFLECTION.invoke(field, record);
             return singletonList(o == null ? null : new JsonString(writer.writeValueAsString(o)));
@@ -216,7 +216,7 @@ public final class JsonORMConverterImpl implements ORMConverter {
     }
 
     @Override
-    public Object fromDatabase(Object[] values, RefFactory refFactory) throws SqlTemplateException {
+    public @Nullable Object fromDatabase(@Nullable Object[] values, RefFactory refFactory) throws SqlTemplateException {
         Object value = values[0];
         if (value == null) {
             return null;

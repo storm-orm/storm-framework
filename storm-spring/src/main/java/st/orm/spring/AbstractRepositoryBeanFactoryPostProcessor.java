@@ -22,6 +22,7 @@ import java.util.Objects;
 import java.util.Set;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
+import org.jspecify.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.aot.AotDetector;
@@ -68,7 +69,7 @@ public abstract class AbstractRepositoryBeanFactoryPostProcessor
     private ResourceLoader resourceLoader;
 
     /** Override to point to a specific ORMTemplate bean. Null = primary/default. */
-    public String getOrmTemplateBeanName() {
+    public @Nullable String getOrmTemplateBeanName() {
         return null;
     }
 

@@ -73,17 +73,18 @@ public interface ORMConverter {
      * <p><strong>Note:</strong> The values must match the parameters as returned by {@link #getParameterTypes()}.</p>
      *
      * @param record the record to convert.
-     * @return the values to be used in the SQL template.
+     * @return the values to be used in the SQL template; a value is {@code null} for a column written as NULL.
      */
-    List<Object> toDatabase(@Nullable Object record) throws SqlTemplateException;
+    List<@Nullable Object> toDatabase(@Nullable Object record) throws SqlTemplateException;
 
     /**
      * Converts the given values to an object that is used in the object model.
      *
-     * @param values the arguments to convert. The arguments match the parameter types as returned by getParameterTypes().
-     * @return the converted object.
+     * @param values the arguments to convert. The arguments match the parameter types as returned by getParameterTypes(),
+     *               and a column read as NULL arrives as {@code null}.
+     * @return the converted object, or {@code null} when the columns hold no value.
      * @param refFactory the factory for creating references to entities.
      * @throws SqlTemplateException if an error occurs during conversion.
      */
-    Object fromDatabase(Object[] values, RefFactory refFactory) throws SqlTemplateException;
+    @Nullable Object fromDatabase(@Nullable Object[] values, RefFactory refFactory) throws SqlTemplateException;
 }

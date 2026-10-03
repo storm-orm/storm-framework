@@ -385,7 +385,7 @@ public final class SqlLog {
      * @return the action's result.
      * @throws Exception whatever the action throws.
      */
-    public static <T> T recordThrowing(String name,
+    public static <T extends @Nullable Object> T recordThrowing(String name,
                                        Callable<T> action,
                                        Consumer<Summary> onSummary) throws Exception {
         return recordThrowing(name, DEFAULT_LIMIT, action, onSummary);
@@ -402,7 +402,7 @@ public final class SqlLog {
      * @return the action's result.
      * @throws Exception whatever the action throws.
      */
-    public static <T> T recordThrowing(String name,
+    public static <T extends @Nullable Object> T recordThrowing(String name,
                                        int limit,
                                        Callable<T> action,
                                        Consumer<Summary> onSummary) throws Exception {
@@ -422,7 +422,7 @@ public final class SqlLog {
      * @return the action's result.
      * @throws Exception whatever the action throws.
      */
-    public static <T> T recordThrowing(String name,
+    public static <T extends @Nullable Object> T recordThrowing(String name,
                                        int limit,
                                        boolean callSites,
                                        Callable<T> action,
@@ -451,7 +451,7 @@ public final class SqlLog {
      * @param <T> the result type.
      * @return the action's result.
      */
-    public static <T> T record(String name,
+    public static <T extends @Nullable Object> T record(String name,
                                Supplier<T> action,
                                Consumer<Summary> onSummary) {
         return record(name, DEFAULT_LIMIT, action, onSummary);
@@ -470,7 +470,7 @@ public final class SqlLog {
      * @param <T> the result type.
      * @return the action's result.
      */
-    public static <T> T record(String name,
+    public static <T extends @Nullable Object> T record(String name,
                                int limit,
                                Supplier<T> action,
                                Consumer<Summary> onSummary) {

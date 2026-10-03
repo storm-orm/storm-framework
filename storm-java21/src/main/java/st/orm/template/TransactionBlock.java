@@ -15,6 +15,7 @@
  */
 package st.orm.template;
 
+import org.jspecify.annotations.Nullable;
 import st.orm.Transaction;
 
 /**
@@ -27,7 +28,7 @@ import st.orm.Transaction;
  * @since 1.13
  */
 @FunctionalInterface
-public interface TransactionBlock<R, E extends Exception> {
+public interface TransactionBlock<R extends @Nullable Object, E extends Exception> {
 
     /**
      * Executes the transactional logic.

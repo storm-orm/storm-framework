@@ -18,6 +18,7 @@ package st.orm.template;
 import static java.util.Objects.requireNonNull;
 
 import java.util.concurrent.atomic.AtomicReference;
+import org.jspecify.annotations.Nullable;
 import st.orm.TransactionOptions;
 import st.orm.TransactionPropagation;
 import st.orm.core.spi.TransactionRunner;
@@ -95,7 +96,7 @@ public final class Transactions {
      * @param <E> the checked exception type thrown by the block, if any.
      * @throws st.orm.PersistenceException if transaction execution fails.
      */
-    public static <R, E extends Exception> R transaction(TransactionBlock<R, E> block) throws E {
+    public static <R extends @Nullable Object, E extends Exception> R transaction(TransactionBlock<R, E> block) throws E {
         return transaction(TransactionOptions.defaults(), block);
     }
 
@@ -109,7 +110,7 @@ public final class Transactions {
      * @param <E> the checked exception type thrown by the block, if any.
      * @throws st.orm.PersistenceException if transaction execution fails.
      */
-    public static <R, E extends Exception> R transaction(TransactionPropagation propagation,
+    public static <R extends @Nullable Object, E extends Exception> R transaction(TransactionPropagation propagation,
                                                          TransactionBlock<R, E> block) throws E {
         return transaction(TransactionOptions.defaults().withPropagation(propagation), block);
     }
@@ -126,7 +127,7 @@ public final class Transactions {
      * @param <E> the checked exception type thrown by the block, if any.
      * @throws st.orm.PersistenceException if transaction execution fails.
      */
-    public static <R, E extends Exception> R transaction(TransactionOptions options,
+    public static <R extends @Nullable Object, E extends Exception> R transaction(TransactionOptions options,
                                                          TransactionBlock<R, E> block) throws E {
         requireNonNull(options, "options");
         requireNonNull(block, "block");
@@ -158,7 +159,7 @@ public final class Transactions {
      * @param <R> the result type.
      * @param <E> the checked exception type thrown by the block, if any.
      */
-    public static <R, E extends Exception> R withTransactionOptions(TransactionOptions options,
+    public static <R extends @Nullable Object, E extends Exception> R withTransactionOptions(TransactionOptions options,
                                                                     TransactionSupplier<R, E> block) throws E {
         requireNonNull(options, "options");
         requireNonNull(block, "block");

@@ -97,7 +97,7 @@ public final class DefaultORMConverterImpl<D, E> implements ORMConverter {
      * @return the values to be used in the SQL template.
      */
     @Override
-    public List<Object> toDatabase(@Nullable Object record) throws SqlTemplateException {
+    public List<@Nullable Object> toDatabase(@Nullable Object record) throws SqlTemplateException {
         try {
             @SuppressWarnings("unchecked")
             E value = record == null
@@ -119,7 +119,7 @@ public final class DefaultORMConverterImpl<D, E> implements ORMConverter {
      * @throws SqlTemplateException if an error occurs during conversion.
      */
     @Override
-    public Object fromDatabase(Object[] values,
+    public @Nullable Object fromDatabase(@Nullable Object[] values,
                                RefFactory refFactory) throws SqlTemplateException {
         requireNonNull(values, "values");
         requireNonNull(refFactory, "refFactory");

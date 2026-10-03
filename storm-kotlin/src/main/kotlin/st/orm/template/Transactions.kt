@@ -17,6 +17,8 @@ package st.orm.template
 
 import kotlinx.coroutines.CopyableThreadContextElement
 import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.DelicateCoroutinesApi
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.asContextElement
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.runBlocking
@@ -239,7 +241,11 @@ private class CallbacksKey(val callbacks: TransactionCallbacks) : AbstractCorout
  * the caller until it returns, so sequential work is one caller. A coroutine started with `launch` or `async` runs
  * alongside its parent and gets an identity of its own, so the transaction's connection refuses it while another
  * caller holds the connection.
+ *
+ * kotlinx marks the copyable element delicate and its per-child copy experimental: the copy is what gives each
+ * concurrently started coroutine its own identity.
  */
+@OptIn(DelicateCoroutinesApi::class, ExperimentalCoroutinesApi::class)
 private class TransactionCaller : CopyableThreadContextElement<Any?> {
     companion object Key : CoroutineContext.Key<TransactionCaller>
 
