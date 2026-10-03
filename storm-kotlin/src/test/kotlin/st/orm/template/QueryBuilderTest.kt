@@ -42,7 +42,7 @@ internal open class QueryBuilderTest(
 
     // Helper to get a typed metamodel from column for use in typed where/orderBy calls.
     @Suppress("UNCHECKED_CAST")
-    private fun <T : st.orm.Data, V> metamodel(model: Model<*, *>, columnName: String): Metamodel<T, V> = model.columns.first { it.name == columnName }.metamodel as Metamodel<T, V>
+    private fun <T : st.orm.Data, V : Any> metamodel(model: Model<*, *>, columnName: String): Metamodel<T, V> = model.columns.first { it.name == columnName }.metamodel as Metamodel<T, V>
 
     // WHERE clause tests
 

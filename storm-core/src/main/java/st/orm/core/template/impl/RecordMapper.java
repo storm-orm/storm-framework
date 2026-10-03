@@ -885,7 +885,7 @@ final class RecordMapper {
          */
         @FunctionalInterface
         interface ConverterInvoker {
-            Object fromDatabase(Object[] args, RefFactory refFactory) throws SqlTemplateException;
+            @Nullable Object fromDatabase(@Nullable Object[] args, RefFactory refFactory) throws SqlTemplateException;
         }
     }
 

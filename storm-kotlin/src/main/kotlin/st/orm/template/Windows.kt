@@ -39,6 +39,6 @@ import st.orm.Window
  * @return a flow of the windows' rows.
  * @since 1.15
  */
-public fun <R> Flow<Window<R>>.rows(): Flow<R> = flow {
+public fun <R : Any> Flow<Window<R>>.rows(): Flow<R> = flow {
     collect { window -> window.content().forEach { emit(it) } }
 }

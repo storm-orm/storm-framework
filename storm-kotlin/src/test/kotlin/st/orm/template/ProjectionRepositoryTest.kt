@@ -31,7 +31,7 @@ internal open class ProjectionRepositoryTest(
     @Autowired val orm: ORMTemplate,
 ) {
     @Suppress("UNCHECKED_CAST")
-    private fun <T : Data, V> metamodel(model: Model<*, *>, columnName: String): Metamodel<T, V> = model.columns.first { it.name == columnName }.metamodel as Metamodel<T, V>
+    private fun <T : Data, V : Any> metamodel(model: Model<*, *>, columnName: String): Metamodel<T, V> = model.columns.first { it.name == columnName }.metamodel as Metamodel<T, V>
 
     // ProjectionRepository: findAll
 
