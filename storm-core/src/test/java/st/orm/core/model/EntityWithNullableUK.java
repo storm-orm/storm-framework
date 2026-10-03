@@ -10,6 +10,7 @@ import st.orm.UK;
  * Used to verify that the metamodel correctly computes isNullable() for compound keys.
  */
 @Builder(toBuilder = true)
+@SuppressWarnings("storm.nullable-unique-key")
 public record EntityWithNullableUK(
         @PK Integer id,
         @UK NullableCompoundUK uniqueKey

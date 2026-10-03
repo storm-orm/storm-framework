@@ -69,6 +69,12 @@ import org.jspecify.annotations.Nullable;
 @SupportedAnnotationTypes("*")
 public final class MetamodelProcessor extends AbstractProcessor {
 
+    /**
+     * The {@code @SuppressWarnings} key that silences the warning for a nullable unique key, on the field or an
+     * enclosing declaration.
+     */
+    static final String NULLABLE_UNIQUE_KEY = "storm.nullable-unique-key";
+
     private static final String METAMODEL_TYPE = "st.orm.MetamodelType";
     private static final String GENERATE_METAMODEL = "st.orm.GenerateMetamodel";
     private static final String DATA = "st.orm.Data";
@@ -1282,13 +1288,16 @@ public final class MetamodelProcessor extends AbstractProcessor {
                                 "        }";
                 if (inline && isEffectivelyUniqueField(recordElement, fieldName)) {
                     boolean nullsDistinct = getNullsDistinct(recordElement, fieldName);
-                    if (!nullableChain && nullsDistinct && hasNullableLeaf(asTypeElement(fieldType))) {
+                    if (!nullableChain && nullsDistinct && hasNullableLeaf(asTypeElement(fieldType))
+                            && !isSuppressed(enclosed, NULLABLE_UNIQUE_KEY)) {
                         processingEnv.getMessager().printMessage(
                                 WARNING,
                                 "Unique key field '" + fieldName + "' on " + recordName + " has nullable constituent fields. "
                                 + "Scrolling (scroll/scrollAfter/scrollBefore) will be rejected at runtime. "
-                                + "Consider adding to constituent fields, using primitive types, or setting "
-                                + "@UK(nullsDistinct = false) if the database constraint prevents duplicate NULLs.",
+                                + "Consider making the constituent fields non-nullable, using primitive types, or setting "
+                                + "@UK(nullsDistinct = false) if the database constraint prevents duplicate NULLs. "
+                                + "Suppress with @SuppressWarnings(\"" + NULLABLE_UNIQUE_KEY + "\") where the design is "
+                                + "intended.",
                                 enclosed);
                     }
                     builder.append("        this.").append(fieldName).append(" = new ").append(childMetamodel)
@@ -1337,13 +1346,15 @@ public final class MetamodelProcessor extends AbstractProcessor {
                     boolean nullable = isNullableUniqueField(recordElement, fieldName);
                     boolean nullsDistinct = getNullsDistinct(recordElement, fieldName);
                     effectivelyNullable = nullable && nullsDistinct;
-                    if (!nullableChain && effectivelyNullable) {
+                    if (!nullableChain && effectivelyNullable && !isSuppressed(enclosed, NULLABLE_UNIQUE_KEY)) {
                         processingEnv.getMessager().printMessage(
                                 WARNING,
                                 "Unique key field '" + fieldName + "' on " + recordName + " is nullable. "
                                 + "Scrolling (scroll/scrollAfter/scrollBefore) will be rejected at runtime. "
                                 + "Consider removing the @Nullable annotation, using a primitive type, or setting @UK(nullsDistinct = false) "
-                                + "if the database constraint prevents duplicate NULLs.",
+                                + "if the database constraint prevents duplicate NULLs. "
+                                + "Suppress with @SuppressWarnings(\"" + NULLABLE_UNIQUE_KEY + "\") where the design is "
+                                + "intended.",
                                 enclosed);
                     }
                 }
@@ -2198,5 +2209,27 @@ public final class MetamodelProcessor extends AbstractProcessor {
         writeSourceFile(packageName, metaClassName, sealedInterface,
                 renderMetamodelClassSource(packageName, typeName, metaClassName, isData, nullableChain,
                         rootIsSameBody, classFields.toString(), initFields.toString(), flattenMethod.toString(), ""));
+    }
+
+    /**
+     * Returns whether {@code @SuppressWarnings} carries the given key on the element or an enclosing declaration. A
+     * record component's annotation is read from its accessor, where javac places it.
+     */
+    private static boolean isSuppressed(Element element, String key) {
+        for (Element current = element; current != null; current = current.getEnclosingElement()) {
+            if (suppresses(current, key)) {
+                return true;
+            }
+            if (current instanceof RecordComponentElement component && component.getAccessor() != null
+                    && suppresses(component.getAccessor(), key)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static boolean suppresses(Element element, String key) {
+        SuppressWarnings suppressWarnings = element.getAnnotation(SuppressWarnings.class);
+        return suppressWarnings != null && List.of(suppressWarnings.value()).contains(key);
     }
 }

@@ -653,8 +653,11 @@ The `@UK` annotation provides a `nullsDistinct` attribute to control this behavi
 | `@UK int count` | (irrelevant) | Safe. Primitive is never null. |
 | `@UK @Nullable String email` | `true` (default) | Compile-time warning. `scroll` throws `PersistenceException`. |
 | `@UK(nullsDistinct = false) @Nullable String email` | `false` | No warning. `scroll` works (user asserts DB prevents duplicate NULLs). |
+| `@UK @Nullable @SuppressWarnings("storm.nullable-unique-key") String email` | `true` (default) | No warning. `scroll` still throws `PersistenceException`. |
 
 When `nullsDistinct` is set to `false`, you are telling Storm that your database constraint prevents duplicate `NULL` values in the column. Storm trusts this assertion and skips both the compile-time warning and the runtime check. Use this only when your database actually enforces this guarantee (for example, with a `NULLS NOT DISTINCT` unique index in PostgreSQL 15+, or on SQL Server where unique indexes allow at most one `NULL` by default).
+
+A unique key can also be nullable by design and never scrolled on, such as an optional email that only `findBy` reads. Suppress the compile-time warning with `@SuppressWarnings("storm.nullable-unique-key")` in Java or `@Suppress("storm.nullable-unique-key")` in Kotlin, on the field or on the type. The suppression only silences the warning: the runtime check stays, so `scroll` on that key still throws.
 
 The following examples show how to define unique keys that are safe for scrolling.
 

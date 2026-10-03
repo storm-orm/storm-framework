@@ -96,6 +96,49 @@ class MetamodelProcessor(
     private val generatedInstantiators = mutableListOf<Pair<String, KSFile?>>()
 
     companion object {
+        /**
+         * The `@Suppress` key that silences the warning for a nullable unique key, on the property or an enclosing
+         * declaration.
+         */
+        const val NULLABLE_UNIQUE_KEY = "storm.nullable-unique-key"
+
+        /**
+         * Returns whether `@Suppress` (or `@SuppressWarnings`) carries the given key on the declaration or an
+         * enclosing one.
+         */
+        internal fun isSuppressed(declaration: KSDeclaration, key: String): Boolean {
+            // An annotation on a constructor property lands on the constructor parameter by default.
+            if (declaration is KSPropertyDeclaration) {
+                val parameter = (declaration.parentDeclaration as? KSClassDeclaration)?.primaryConstructor
+                    ?.parameters?.firstOrNull { it.name?.asString() == declaration.simpleName.asString() }
+                if (parameter != null && suppresses(parameter.annotations, key)) {
+                    return true
+                }
+            }
+            var current: KSDeclaration? = declaration
+            while (current != null) {
+                if (suppresses(current.annotations, key)) {
+                    return true
+                }
+                current = current.parentDeclaration
+            }
+            return false
+        }
+
+        private fun suppresses(annotations: Sequence<KSAnnotation>, key: String): Boolean = annotations.any { annotation ->
+            annotation.shortName.asString() in SUPPRESS_ANNOTATIONS &&
+                annotation.arguments.any { argument -> key in suppressionNames(argument.value) }
+        }
+
+        private val SUPPRESS_ANNOTATIONS = setOf("Suppress", "SuppressWarnings")
+
+        private fun suppressionNames(value: Any?): List<String> = when (value) {
+            is String -> listOf(value)
+            is List<*> -> value.filterIsInstance<String>()
+            is Array<*> -> value.filterIsInstance<String>()
+            else -> emptyList()
+        }
+
         private const val METAMODEL_TYPE = "st.orm.MetamodelType"
         private const val GENERATE_METAMODEL = "st.orm.GenerateMetamodel"
         private const val DATA = "st.orm.Data"
@@ -912,12 +955,15 @@ class MetamodelProcessor(
                 if (!isChildData && isEffectivelyUniqueField(prop)) {
                     val nullsDistinct = getNullsDistinct(prop)
                     val referencedDecl = typeRef.resolve().declaration as? KSClassDeclaration
-                    if (!forceNullableChain && nullsDistinct && referencedDecl != null && hasNullableLeaf(referencedDecl)) {
+                    if (!forceNullableChain && nullsDistinct && referencedDecl != null && hasNullableLeaf(referencedDecl) &&
+                        !isSuppressed(prop, NULLABLE_UNIQUE_KEY)
+                    ) {
                         logger.warn(
                             "Unique key field '$fieldName' has nullable constituent fields. " +
                                 "Scrolling (scroll/scrollAfter/scrollBefore) will be rejected at runtime. " +
                                 "Consider making constituent fields non-nullable, or setting @UK(nullsDistinct = false) " +
-                                "if the database constraint prevents duplicate NULLs.",
+                                "if the database constraint prevents duplicate NULLs. " +
+                                "Suppress with @Suppress(\"$NULLABLE_UNIQUE_KEY\") where the design is intended.",
                             prop,
                         )
                     }
@@ -994,12 +1040,13 @@ class MetamodelProcessor(
                     val nullable = isEffectivelyNullable(prop)
                     val nullsDistinct = getNullsDistinct(prop)
                     val result = nullable && nullsDistinct
-                    if (!forceNullableChain && result) {
+                    if (!forceNullableChain && result && !isSuppressed(prop, NULLABLE_UNIQUE_KEY)) {
                         logger.warn(
                             "Unique key field '$fieldName' is nullable. " +
                                 "Scrolling (scroll/scrollAfter/scrollBefore) will be rejected at runtime. " +
                                 "Consider making the field non-nullable, or setting @UK(nullsDistinct = false) " +
-                                "if the database constraint prevents duplicate NULLs.",
+                                "if the database constraint prevents duplicate NULLs. " +
+                                "Suppress with @Suppress(\"$NULLABLE_UNIQUE_KEY\") where the design is intended.",
                             prop,
                         )
                     }
