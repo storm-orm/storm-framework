@@ -1,3 +1,5 @@
+// The module name carries the Jackson major line it binds, which javac's module lint flags as a terminal digit.
+@SuppressWarnings("module")
 module storm.jackson3 {
     exports st.orm.jackson;
     requires storm.foundation;

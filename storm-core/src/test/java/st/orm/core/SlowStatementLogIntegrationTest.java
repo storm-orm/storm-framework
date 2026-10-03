@@ -65,10 +65,13 @@ public class SlowStatementLogIntegrationTest {
         Level previous = logger.getLevel();
         logger.setLevel(level);
         logger.addAppender(appender);
+        // Captured events stay out of the build log.
+        logger.setAdditive(false);
         try {
             action.run();
         } finally {
             logger.detachAppender(appender);
+            logger.setAdditive(true);
             logger.setLevel(previous);
             appender.stop();
         }

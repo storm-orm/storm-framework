@@ -384,6 +384,8 @@ public class SqlLogIntegrationTest {
         var appender = new ch.qos.logback.core.read.ListAppender<ch.qos.logback.classic.spi.ILoggingEvent>();
         appender.start();
         logger.addAppender(appender);
+        // Captured events stay out of the build log.
+        logger.setAdditive(false);
         var level = logger.getLevel();
         logger.setLevel(ch.qos.logback.classic.Level.INFO);
         try {
@@ -397,6 +399,7 @@ public class SqlLogIntegrationTest {
         } finally {
             logger.setLevel(level);
             logger.detachAppender(appender);
+            logger.setAdditive(true);
         }
     }
 
@@ -407,6 +410,8 @@ public class SqlLogIntegrationTest {
         var appender = new ch.qos.logback.core.read.ListAppender<ch.qos.logback.classic.spi.ILoggingEvent>();
         appender.start();
         logger.addAppender(appender);
+        // Captured events stay out of the build log.
+        logger.setAdditive(false);
         var level = logger.getLevel();
         try {
             List<SqlLog.Summary> summaries = new ArrayList<>();
@@ -424,6 +429,7 @@ public class SqlLogIntegrationTest {
         } finally {
             logger.setLevel(level);
             logger.detachAppender(appender);
+            logger.setAdditive(true);
         }
     }
 
@@ -433,6 +439,8 @@ public class SqlLogIntegrationTest {
         var appender = new ch.qos.logback.core.read.ListAppender<ch.qos.logback.classic.spi.ILoggingEvent>();
         appender.start();
         logger.addAppender(appender);
+        // Captured events stay out of the build log.
+        logger.setAdditive(false);
         var level = logger.getLevel();
         logger.setLevel(ch.qos.logback.classic.Level.INFO);
         try {
@@ -443,6 +451,7 @@ public class SqlLogIntegrationTest {
         } finally {
             logger.setLevel(level);
             logger.detachAppender(appender);
+            logger.setAdditive(true);
         }
     }
 }

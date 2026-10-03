@@ -1,0 +1,17 @@
+<!-- Logging for the build's test runs, put on every test classpath by the surefire configuration in the root pom:
+     warnings and errors only. A test that reads a logger's output raises that logger's level itself. -->
+<configuration>
+    <appender name="STDOUT" class="ch.qos.logback.core.ConsoleAppender">
+        <encoder>
+            <pattern>%d{HH:mm:ss.SSS} [%thread] %-5level %logger{36} - %msg%n</pattern>
+        </encoder>
+    </appender>
+
+    <!-- The MariaDB driver logs each statement the server rejects, which the driver also throws to the caller; the
+         dialect tests send such statements on purpose. -->
+    <logger name="org.mariadb.jdbc.message.server.ErrorPacket" level="ERROR"/>
+
+    <root level="WARN">
+        <appender-ref ref="STDOUT"/>
+    </root>
+</configuration>

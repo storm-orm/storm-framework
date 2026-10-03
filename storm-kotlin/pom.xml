@@ -63,6 +63,8 @@
                          path, where the qualified export to storm.test cannot name it. -->
                     <argLine>
                         @{argLine}
+                        -XX:+EnableDynamicAgentLoading
+                        -Xshare:off
                         --add-reads kotlin.stdlib=kotlinx.coroutines.core
                         --add-reads storm.core=storm.kotlin
                         --add-exports storm.core/st.orm.core.template.impl=ALL-UNNAMED

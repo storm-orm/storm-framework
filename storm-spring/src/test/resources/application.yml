@@ -12,8 +12,3 @@ spring:
   sql:
     init:
       mode: always  # Force data.sql execution on tests
-
-logging:
-  level:
-    root: INFO
-    org.springframework: WARN

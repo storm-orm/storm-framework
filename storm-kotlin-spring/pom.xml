@@ -31,6 +31,8 @@
         <url>https://github.com/storm-orm/storm-framework/</url>
     </scm>
     <build>
+        <!-- The tests are Kotlin only: the test source root names their directory rather than the absent java one. -->
+        <testSourceDirectory>src/test/kotlin</testSourceDirectory>
         <plugins>
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
@@ -63,6 +65,8 @@
                     <useModulePath>false</useModulePath>
                     <argLine>
                         @{argLine}
+                        -XX:+EnableDynamicAgentLoading
+                        -Xshare:off
                         --add-opens java.base/java.lang=ALL-UNNAMED
                         -Dstorm.ansi_escaping=true
                     </argLine>
@@ -88,6 +92,16 @@
                     </args>
                 </configuration>
                 <executions>
+                    <!-- The lifecycle mapping that extensions enables adds kapt executions; no annotation processor runs
+                         through kapt here, so they stay unbound. -->
+                    <execution>
+                        <id>default-kapt</id>
+                        <phase>none</phase>
+                    </execution>
+                    <execution>
+                        <id>default-test-kapt</id>
+                        <phase>none</phase>
+                    </execution>
                     <execution>
                         <id>compile</id>
                         <phase>process-sources</phase>

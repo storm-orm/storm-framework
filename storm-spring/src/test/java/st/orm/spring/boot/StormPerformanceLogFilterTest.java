@@ -64,6 +64,8 @@ class StormPerformanceLogFilterTest {
         var appender = new ListAppender<ILoggingEvent>();
         appender.start();
         logger.addAppender(appender);
+        // Captured events stay out of the build log.
+        logger.setAdditive(false);
         var previous = logger.getLevel();
         logger.setLevel(level);
         try {
@@ -71,6 +73,7 @@ class StormPerformanceLogFilterTest {
         } finally {
             logger.setLevel(previous);
             logger.detachAppender(appender);
+            logger.setAdditive(true);
         }
     }
 

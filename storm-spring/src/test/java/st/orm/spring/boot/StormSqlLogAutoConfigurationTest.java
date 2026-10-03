@@ -115,6 +115,8 @@ public class StormSqlLogAutoConfigurationTest {
         var appender = new ListAppender<ILoggingEvent>();
         appender.start();
         logger.addAppender(appender);
+        // Captured events stay out of the build log.
+        logger.setAdditive(false);
         var level = logger.getLevel();
         logger.setLevel(Level.INFO);
         try {
@@ -122,6 +124,7 @@ public class StormSqlLogAutoConfigurationTest {
         } finally {
             logger.setLevel(level);
             logger.detachAppender(appender);
+            logger.setAdditive(true);
         }
     }
 
@@ -260,6 +263,8 @@ public class StormSqlLogAutoConfigurationTest {
                         var appender = new ListAppender<ILoggingEvent>();
                         appender.start();
                         slowLogger.addAppender(appender);
+                        // Captured events stay out of the build log.
+                        slowLogger.setAdditive(false);
                         try {
                             withScopeLogger(events -> {
                                 var filter = context.getBean(StormPerformanceLogFilter.class);
@@ -280,6 +285,7 @@ public class StormSqlLogAutoConfigurationTest {
                                     appender.list.getFirst().getFormattedMessage());
                         } finally {
                             slowLogger.detachAppender(appender);
+                            slowLogger.setAdditive(true);
                         }
                     });
         } finally {

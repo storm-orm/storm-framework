@@ -55,7 +55,7 @@ public final class StormQueryObservers {
      * @param queryConvention custom query observation convention, or {@code null} for the property-driven default.
      * @param transactionConvention custom transaction observation convention, or {@code null} for the default.
      * @return the composed query observer.
-     * @throws PersistenceException if {@code storm.observations.semantic-conventions} carries an unknown value.
+     * @throws st.orm.PersistenceException if {@code storm.observations.semantic-conventions} carries an unknown value.
      */
     public static QueryObserver create(
             ObservationRegistry observationRegistry,

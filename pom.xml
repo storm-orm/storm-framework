@@ -126,6 +126,9 @@
                     <artifactId>maven-compiler-plugin</artifactId>
                     <version>3.14.0</version>
                     <configuration>
+                        <!-- The build runs the annotation processors it finds on the classpath, such as Lombok and
+                             Storm's own; stating it keeps javac from announcing that it might stop. -->
+                        <proc>full</proc>
                         <source>${java.version}</source>
                         <target>${java.version}</target>
                         <release>${java.version}</release>
@@ -177,6 +180,26 @@
                     <groupId>org.apache.maven.plugins</groupId>
                     <artifactId>maven-surefire-plugin</artifactId>
                     <version>3.5.2</version>
+                    <configuration>
+                        <!-- Mockito and Spring's test support attach agents at runtime, the first flag declares
+                             that as intended; an agent extends the boot class path, which class data sharing does
+                             not support, so the second turns sharing off up front. Modules that set their own
+                             argLine repeat both. -->
+                        <argLine>@{argLine} -XX:+EnableDynamicAgentLoading -Xshare:off</argLine>
+                        <!-- Test runs log warnings and errors only. The shared directory puts logback-test.xml on
+                             every test classpath, where Logback and Spring Boot both find it. The properties hold
+                             in every module, since modules merge them with their own: java.util.logging reads its
+                             file from the same directory, the Ktor modules' SLF4J simple binding defaults to warn,
+                             and Spring Boot prints no banner. -->
+                        <additionalClasspathElements>
+                            <additionalClasspathElement>${maven.multiModuleProjectDirectory}/.mvn/test-logging</additionalClasspathElement>
+                        </additionalClasspathElements>
+                        <systemPropertyVariables>
+                            <java.util.logging.config.file>${maven.multiModuleProjectDirectory}/.mvn/test-logging/logging.properties</java.util.logging.config.file>
+                            <org.slf4j.simpleLogger.defaultLogLevel>warn</org.slf4j.simpleLogger.defaultLogLevel>
+                            <spring.main.banner-mode>off</spring.main.banner-mode>
+                        </systemPropertyVariables>
+                    </configuration>
                 </plugin>
                 <plugin>
                     <!-- Guards the deliberately colliding artifact pairs: modules that ship the same fully
@@ -299,6 +322,13 @@
                         <goals>
                             <goal>prepare-agent</goal>
                         </goals>
+                        <configuration>
+                            <!-- Coverage covers Storm's own classes. The compiler plugin tests load the Kotlin
+                                 compiler, whose largest classes exceed what the agent can instrument. -->
+                            <includes>
+                                <include>st/orm/**</include>
+                            </includes>
+                        </configuration>
                     </execution>
                     <execution>
                         <id>report</id>

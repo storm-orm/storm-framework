@@ -21,8 +21,3 @@ spring:
     init:
       mode: always
       continue-on-error: false
-
-logging:
-  level:
-    root: INFO
-    org.springframework: WARN

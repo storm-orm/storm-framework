@@ -15,6 +15,10 @@ import io.ktor.server.plugins.di.dependencies
 import io.ktor.server.testing.testApplication
 import kotlinx.coroutines.runBlocking
 import org.junit.jupiter.api.Test
+import org.slf4j.event.EventRecordingLogger
+import org.slf4j.event.Level
+import org.slf4j.event.SubstituteLoggingEvent
+import org.slf4j.helpers.SubstituteLogger
 import st.orm.EntityCallback
 import st.orm.ktor.model.PetRepository
 import st.orm.ktor.vet.Vet
@@ -23,6 +27,7 @@ import st.orm.spi.ExceptionMapper
 import st.orm.spi.QueryContext
 import st.orm.spi.QueryObserver
 import st.orm.template.ORMTemplate
+import java.util.concurrent.ConcurrentLinkedQueue
 import java.util.concurrent.CopyOnWriteArrayList
 import java.util.concurrent.atomic.AtomicInteger
 
@@ -224,10 +229,14 @@ internal class StormMultipleDatabasesTest {
     fun `named databases inherit the plugin-level schema validation mode`() {
         val clinicDataSource = createTestDataSource("storm-multi-clinic", "/schema.sql")
         // No schema at all: with the inherited "warn" mode the mismatches log instead of aborting
-        // installation, which the previously hardwired "fail" default would have done.
+        // installation. The application's log records them, so the test reads what was reported.
         val emptyVetsDataSource = createTestDataSource("storm-multi-vets-empty")
+        val logged = ConcurrentLinkedQueue<SubstituteLoggingEvent>()
         try {
             testApplication {
+                environment {
+                    log = EventRecordingLogger(SubstituteLogger("application", logged, false), logged)
+                }
                 application {
                     install(Storm) {
                         dataSource = clinicDataSource
@@ -239,7 +248,9 @@ internal class StormMultipleDatabasesTest {
                     }
                     orm("vets") shouldNotBe null
                 }
+                startApplication()
             }
+            logged.any { it.level == Level.WARN && "TABLE_NOT_FOUND" in it.message } shouldBe true
         } finally {
             clinicDataSource.close()
             emptyVetsDataSource.close()
