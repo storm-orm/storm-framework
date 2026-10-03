@@ -20,6 +20,7 @@ import st.orm.Entity;
 import st.orm.GenerationStrategy;
 import st.orm.PK;
 import st.orm.PersistenceException;
+import st.orm.Projection;
 import st.orm.core.model.City;
 import st.orm.core.model.Owner;
 import st.orm.core.model.Pet;
@@ -69,6 +70,24 @@ public class SchemaValidatorIntegrationTest {
                 .toList();
         assertTrue(hardErrors.isEmpty(),
                 "Expected no hard errors for valid types, got: " + hardErrors);
+    }
+
+    // Views
+
+    @DbTable("owner_view")
+    public record OwnerViewNames(
+            @PK Integer id,
+            String firstName,
+            String lastName
+    ) implements Projection<Integer> {}
+
+    @Test
+    public void testViewColumnsAreNotReportedAsNullable() {
+        // A view cannot declare its columns NOT NULL, so the metadata reports them as nullable whatever the
+        // query beneath returns; the projection's non-null fields have nothing to be checked against.
+        var validator = SchemaValidator.of(dataSource);
+        List<SchemaValidationError> errors = validator.validate(List.of(OwnerViewNames.class));
+        assertTrue(errors.isEmpty(), "Expected no findings for a projection over a view, got: " + errors);
     }
 
     // Missing table

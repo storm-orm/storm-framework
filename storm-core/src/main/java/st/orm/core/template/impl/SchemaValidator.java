@@ -456,8 +456,9 @@ public final class SchemaValidator {
             }
             // Nullability check: entity field is non-nullable but database column allows NULL.
             // We only flag the case where the entity says non-null but the DB says nullable,
-            // since the reverse (entity nullable, DB not null) is safe.
-            if (!column.nullable() && dbCol.nullable()) {
+            // since the reverse (entity nullable, DB not null) is safe. A view's columns read as nullable
+            // whatever its query returns, so they carry no answer to check against.
+            if (!column.nullable() && dbCol.nullable() && !schema.isView(tableName)) {
                 errors.add(new SchemaValidationError(type, ErrorKind.NULLABILITY_MISMATCH,
                         "Column '%s' in table '%s': entity field is non-nullable but database column allows NULL."
                                 .formatted(columnName, qualifiedTableName)));

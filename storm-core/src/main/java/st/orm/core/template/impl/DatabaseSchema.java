@@ -139,6 +139,7 @@ public final class DatabaseSchema {
     private final SortedMap<String, Boolean> sequences;
     private final boolean sequencesDiscovered;
     private final Map<ConstraintKind, SortedSet<String>> discoveredByKind;
+    private final SortedSet<String> views;
 
     private DatabaseSchema(
             SortedMap<String, List<DbColumn>> columnsByTable,
@@ -147,7 +148,8 @@ public final class DatabaseSchema {
             SortedMap<String, List<DbForeignKey>> foreignKeysByTable,
             SortedMap<String, Boolean> sequences,
             boolean sequencesDiscovered,
-            Map<ConstraintKind, SortedSet<String>> discoveredByKind
+            Map<ConstraintKind, SortedSet<String>> discoveredByKind,
+            SortedSet<String> views
     ) {
         this.columnsByTable = columnsByTable;
         this.primaryKeysByTable = primaryKeysByTable;
@@ -156,6 +158,7 @@ public final class DatabaseSchema {
         this.sequences = sequences;
         this.sequencesDiscovered = sequencesDiscovered;
         this.discoveredByKind = discoveredByKind;
+        this.views = views;
     }
 
     /**
@@ -233,12 +236,16 @@ public final class DatabaseSchema {
         SortedMap<String, List<DbUniqueKey>> uniqueKeysByTable = new TreeMap<>(String.CASE_INSENSITIVE_ORDER);
         SortedMap<String, List<DbForeignKey>> foreignKeysByTable = new TreeMap<>(String.CASE_INSENSITIVE_ORDER);
         SortedMap<String, Boolean> sequences = new TreeMap<>(String.CASE_INSENSITIVE_ORDER);
+        SortedSet<String> views = new TreeSet<>(String.CASE_INSENSITIVE_ORDER);
         // Discover tables and views.
         try (ResultSet tables = metadata.getTables(catalog, schemaPattern, "%", new String[]{"TABLE", "VIEW"})) {
             while (tables.next()) {
                 String tableName = tables.getString("TABLE_NAME");
                 // Initialize entries so tableExists() works even for tables with no columns.
                 columnsByTable.putIfAbsent(tableName, new ArrayList<>());
+                if ("VIEW".equalsIgnoreCase(tables.getString("TABLE_TYPE"))) {
+                    views.add(tableName);
+                }
             }
         }
         // Discover columns for all tables.
@@ -272,7 +279,7 @@ public final class DatabaseSchema {
         // Discover sequences using the dialect-provided strategy.
         boolean sequencesDiscovered = readSequences(connection, catalog, schemaPattern, sequences, sequenceDiscoveryStrategy);
         return new DatabaseSchema(columnsByTable, primaryKeysByTable, uniqueKeysByTable, foreignKeysByTable, sequences,
-                sequencesDiscovered, discoveredByKind);
+                sequencesDiscovered, discoveredByKind, views);
     }
 
     // ------------------------------------------------------------------------------------------------------------------
@@ -792,6 +799,20 @@ public final class DatabaseSchema {
      */
     public boolean tableExists(String tableName) {
         return columnsByTable.containsKey(tableName);
+    }
+
+    /**
+     * Returns whether the given name is a view rather than a table.
+     *
+     * <p>A view cannot declare its columns {@code NOT NULL}, so the metadata reports them as nullable whatever the
+     * query beneath returns.</p>
+     *
+     * @param tableName the table or view name (case-insensitive).
+     * @return {@code true} if the name is a view.
+     * @since 1.15
+     */
+    public boolean isView(String tableName) {
+        return views.contains(tableName);
     }
 
     /**
