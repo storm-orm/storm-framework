@@ -15,6 +15,8 @@
  */
 package st.orm.spring.boot.autoconfigure
 
+import ch.qos.logback.classic.Level
+import ch.qos.logback.classic.Logger
 import io.kotest.matchers.collections.shouldBeEmpty
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.shouldNotBe
@@ -22,6 +24,7 @@ import io.kotest.matchers.string.shouldContain
 import io.kotest.matchers.types.shouldBeInstanceOf
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.extension.ExtendWith
+import org.slf4j.LoggerFactory
 import org.springframework.boot.autoconfigure.AutoConfigurations
 import org.springframework.boot.autoconfigure.jdbc.DataSourceAutoConfiguration
 import org.springframework.boot.autoconfigure.jdbc.DataSourceTransactionManagerAutoConfiguration
@@ -48,6 +51,21 @@ import javax.sql.DataSource
 
 @ExtendWith(OutputCaptureExtension::class)
 internal class StormAutoConfigurationTest {
+
+    /**
+     * Logs the schema validation outcome at info while [block] runs. The build logs warnings and errors only, and the
+     * schema validation tests read the success line from the output.
+     */
+    private fun logValidationOutcome(block: () -> Unit) {
+        val logger = LoggerFactory.getLogger(StormValidationAutoConfiguration::class.java) as Logger
+        val level = logger.level
+        logger.level = Level.INFO
+        try {
+            block()
+        } finally {
+            logger.level = level
+        }
+    }
 
     private val contextRunner = ApplicationContextRunner()
         .withConfiguration(
@@ -301,15 +319,17 @@ internal class StormAutoConfigurationTest {
         // No schema-mode property: validation must run in fail mode by default.
         // With no entities on the test classpath there is nothing to reject, so
         // the success log proves the default dispatched into the fail branch.
-        contextRunner
-            .withPropertyValues(
-                "spring.datasource.url=jdbc:h2:mem:schemaDefaultTest;DB_CLOSE_DELAY=-1",
-                "spring.datasource.driver-class-name=org.h2.Driver",
-            )
-            .run { context ->
-                context.getBean(ORMTemplate::class.java) shouldNotBe null
-                output.out.contains("Storm schema validation passed (mode=fail).") shouldBe true
-            }
+        logValidationOutcome {
+            contextRunner
+                .withPropertyValues(
+                    "spring.datasource.url=jdbc:h2:mem:schemaDefaultTest;DB_CLOSE_DELAY=-1",
+                    "spring.datasource.driver-class-name=org.h2.Driver",
+                )
+                .run { context ->
+                    context.getBean(ORMTemplate::class.java) shouldNotBe null
+                    output.out.contains("Storm schema validation passed (mode=fail).") shouldBe true
+                }
+        }
     }
 
     @Test
@@ -331,16 +351,18 @@ internal class StormAutoConfigurationTest {
     fun `schema validation blank mode falls back to fail default`(output: CapturedOutput) {
         // A blank (whitespace-only) schema-mode is treated as unset and falls back
         // to the fail default.
-        contextRunner
-            .withPropertyValues(
-                "spring.datasource.url=jdbc:h2:mem:schemaBlankTest;DB_CLOSE_DELAY=-1",
-                "spring.datasource.driver-class-name=org.h2.Driver",
-                "storm.validation.schema-mode=  ",
-            )
-            .run { context ->
-                context.getBean(ORMTemplate::class.java) shouldNotBe null
-                output.out.contains("Storm schema validation passed (mode=fail).") shouldBe true
-            }
+        logValidationOutcome {
+            contextRunner
+                .withPropertyValues(
+                    "spring.datasource.url=jdbc:h2:mem:schemaBlankTest;DB_CLOSE_DELAY=-1",
+                    "spring.datasource.driver-class-name=org.h2.Driver",
+                    "storm.validation.schema-mode=  ",
+                )
+                .run { context ->
+                    context.getBean(ORMTemplate::class.java) shouldNotBe null
+                    output.out.contains("Storm schema validation passed (mode=fail).") shouldBe true
+                }
+        }
     }
 
     @Test

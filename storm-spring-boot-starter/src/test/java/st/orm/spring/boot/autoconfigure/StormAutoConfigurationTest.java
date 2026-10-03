@@ -17,9 +17,12 @@ package st.orm.spring.boot.autoconfigure;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import ch.qos.logback.classic.Level;
+import ch.qos.logback.classic.Logger;
 import javax.sql.DataSource;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.slf4j.LoggerFactory;
 import org.springframework.boot.autoconfigure.AutoConfigurations;
 import org.springframework.boot.autoconfigure.jdbc.DataSourceAutoConfiguration;
 import org.springframework.boot.context.properties.source.InvalidConfigurationPropertyValueException;
@@ -39,6 +42,17 @@ import st.orm.template.ORMTemplate;
 
 @ExtendWith(OutputCaptureExtension.class)
 class StormAutoConfigurationTest {
+
+    /**
+     * Logs the schema validation outcome at info for the duration of the returned scope. The build logs warnings and
+     * errors only, and the schema validation tests read the success line from the output.
+     */
+    private static AutoCloseable logValidationOutcome() {
+        var logger = (Logger) LoggerFactory.getLogger(StormValidationAutoConfiguration.class);
+        var level = logger.getLevel();
+        logger.setLevel(Level.INFO);
+        return () -> logger.setLevel(level);
+    }
 
     private final ApplicationContextRunner contextRunner = new ApplicationContextRunner()
             .withConfiguration(AutoConfigurations.of(
@@ -187,19 +201,21 @@ class StormAutoConfigurationTest {
     }
 
     @Test
-    void schemaValidationDefaultsToFailMode(CapturedOutput output) {
+    void schemaValidationDefaultsToFailMode(CapturedOutput output) throws Exception {
         // No schema-mode property: validation must run in fail mode by default.
         // With no entities on the test classpath there is nothing to reject, so
         // the success log proves the default dispatched into the fail branch.
-        contextRunner
-                .withPropertyValues(
-                        "spring.datasource.url=jdbc:h2:mem:schemaDefaultTest;DB_CLOSE_DELAY=-1",
-                        "spring.datasource.driver-class-name=org.h2.Driver"
-                )
-                .run(context -> {
-                    assertThat(context).hasSingleBean(ORMTemplate.class);
-                    assertThat(output).contains("Storm schema validation passed (mode=fail).");
-                });
+        try (var ignored = logValidationOutcome()) {
+            contextRunner
+                    .withPropertyValues(
+                            "spring.datasource.url=jdbc:h2:mem:schemaDefaultTest;DB_CLOSE_DELAY=-1",
+                            "spring.datasource.driver-class-name=org.h2.Driver"
+                    )
+                    .run(context -> {
+                        assertThat(context).hasSingleBean(ORMTemplate.class);
+                        assertThat(output).contains("Storm schema validation passed (mode=fail).");
+                    });
+        }
     }
 
     @Test
@@ -305,18 +321,20 @@ class StormAutoConfigurationTest {
     }
 
     @Test
-    void schemaValidationEmptyModeFallsBackToFailDefault(CapturedOutput output) {
+    void schemaValidationEmptyModeFallsBackToFailDefault(CapturedOutput output) throws Exception {
         // An empty schema-mode is treated as unset and falls back to the fail default.
-        contextRunner
-                .withPropertyValues(
-                        "spring.datasource.url=jdbc:h2:mem:schemaEmptyTest;DB_CLOSE_DELAY=-1",
-                        "spring.datasource.driver-class-name=org.h2.Driver",
-                        "storm.validation.schema-mode="
-                )
-                .run(context -> {
-                    assertThat(context).hasSingleBean(ORMTemplate.class);
-                    assertThat(output).contains("Storm schema validation passed (mode=fail).");
-                });
+        try (var ignored = logValidationOutcome()) {
+            contextRunner
+                    .withPropertyValues(
+                            "spring.datasource.url=jdbc:h2:mem:schemaEmptyTest;DB_CLOSE_DELAY=-1",
+                            "spring.datasource.driver-class-name=org.h2.Driver",
+                            "storm.validation.schema-mode="
+                    )
+                    .run(context -> {
+                        assertThat(context).hasSingleBean(ORMTemplate.class);
+                        assertThat(output).contains("Storm schema validation passed (mode=fail).");
+                    });
+        }
     }
 
     @Test

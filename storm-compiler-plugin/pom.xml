@@ -20,6 +20,10 @@
         <module>kotlin-2.3</module>
     </modules>
     <build>
+        <!-- The variants compile the shared sources one directory up; the source roots name them rather than the
+             absent java directories of each variant. -->
+        <sourceDirectory>${project.basedir}/../src/main/kotlin</sourceDirectory>
+        <testSourceDirectory>${project.basedir}/../src/test/kotlin</testSourceDirectory>
         <resources>
             <resource>
                 <directory>${project.basedir}/../src/main/resources</directory>

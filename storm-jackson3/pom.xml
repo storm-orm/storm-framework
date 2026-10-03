@@ -64,6 +64,7 @@
                     <useModulePath>false</useModulePath>
                     <argLine>
                         @{argLine}
+                        -XX:+EnableDynamicAgentLoading
                         -Dstorm.validation.record_mode=none
                         --add-opens java.base/java.lang=ALL-UNNAMED
                     </argLine>

@@ -6,16 +6,21 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import ch.qos.logback.classic.Logger;
+import ch.qos.logback.classic.spi.ILoggingEvent;
+import ch.qos.logback.core.read.ListAppender;
 import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.net.URL;
 import java.net.URLClassLoader;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.Enumeration;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import org.slf4j.LoggerFactory;
 import org.springframework.aot.hint.MemberCategory;
 import org.springframework.aot.hint.RuntimeHints;
 import org.springframework.aot.hint.TypeHint;
@@ -40,10 +45,27 @@ public class StormRuntimeHintsTest {
         return new URLClassLoader(new URL[] { indexDirectory.toUri().toURL() }, null);
     }
 
-    private static RuntimeHints registerHints(ClassLoader loader) {
-        RuntimeHints hints = new RuntimeHints();
-        new StormRuntimeHints().registerHints(hints, loader);
-        return hints;
+    private final List<ILoggingEvent> warnings = new ArrayList<>();
+
+    /**
+     * Registers the hints for the given loader. A loader without a Data index makes the registrar warn; the warnings
+     * are collected for the test to read rather than logged.
+     */
+    private RuntimeHints registerHints(ClassLoader loader) {
+        var logger = (Logger) LoggerFactory.getLogger("st.orm.spring.aot");
+        var appender = new ListAppender<ILoggingEvent>();
+        appender.start();
+        logger.addAppender(appender);
+        logger.setAdditive(false);
+        try {
+            RuntimeHints hints = new RuntimeHints();
+            new StormRuntimeHints().registerHints(hints, loader);
+            return hints;
+        } finally {
+            logger.detachAppender(appender);
+            logger.setAdditive(true);
+            warnings.addAll(appender.list);
+        }
     }
 
     @Test
@@ -125,6 +147,8 @@ public class StormRuntimeHintsTest {
         RuntimeHints hints = registerHints(loader);
         assertEquals(0, hints.reflection().typeHints().count());
         assertEquals(0, hints.proxies().jdkProxyHints().count());
+        assertEquals(1, warnings.size());
+        assertTrue(warnings.getFirst().getFormattedMessage().startsWith("No Storm type index found"));
     }
 
     @Test

@@ -100,6 +100,7 @@
                 <configuration>
                     <argLine>
                         @{argLine}
+                        -XX:+EnableDynamicAgentLoading
                         --enable-preview
                         --add-opens java.base/java.lang=ALL-UNNAMED
                     </argLine>

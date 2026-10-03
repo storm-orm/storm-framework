@@ -61,6 +61,8 @@ class StormTemplatePluginTest {
         inheritClassPath = true
         this.languageVersion = languageVersion
         verbose = false
+        // The messages are the fixtures' own diagnostics, which the tests read from the result.
+        messageOutputStream = java.io.OutputStream.nullOutputStream()
     }.compile()
 
     /** Assumes compilation succeeded; skips the test if the compiler does not support the required language features. */

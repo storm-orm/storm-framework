@@ -43,6 +43,7 @@
                     <useModulePath>false</useModulePath>
                     <argLine>
                         @{argLine}
+                        -XX:+EnableDynamicAgentLoading
                         --add-opens java.base/java.lang=ALL-UNNAMED
                         -Dstorm.ansi_escaping=true
                     </argLine>

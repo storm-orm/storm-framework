@@ -45,6 +45,7 @@
                     <useModulePath>false</useModulePath>
                     <argLine>
                         @{argLine}
+                        -XX:+EnableDynamicAgentLoading
                         -Dstorm.validation.record_mode=fail
                         -Dstorm.ansi_escaping=true
                     </argLine>

@@ -98,6 +98,12 @@ internal class TransactionalRouteTest {
                     install(Storm) {
                         this.dataSource = dataSource
                     }
+                    // The failure leaves the transactional route, which rolls back, and becomes the response.
+                    install(StatusPages) {
+                        exception<IllegalStateException> { call, _ ->
+                            call.respond(HttpStatusCode.InternalServerError)
+                        }
+                    }
                     routing {
                         transactional {
                             post("/pets") {
@@ -123,6 +129,12 @@ internal class TransactionalRouteTest {
                 application {
                     install(Storm) {
                         this.dataSource = dataSource
+                    }
+                    // The failure leaves the transactional route, which rolls back, and becomes the response.
+                    install(StatusPages) {
+                        exception<IllegalStateException> { call, _ ->
+                            call.respond(HttpStatusCode.InternalServerError)
+                        }
                     }
                     routing {
                         transactional {
