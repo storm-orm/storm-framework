@@ -8,6 +8,11 @@ updates:
     schedule:
       interval: monthly
     open-pull-requests-limit: 5
+    # Each compiler plugin variant compiles against the first release of its Kotlin generation, with the
+    # kotlin-compile-testing release built for that compiler, so its plugin runs on every later patch release.
+    # Those pins move only when a variant is added.
+    exclude-paths:
+      - "storm-compiler-plugin/kotlin-*/pom.xml"
     ignore:
       # The build compiles and tests against the oldest Spring Boot line Storm supports, so an API that only a
       # newer major has cannot slip into the Spring modules. Moving to a new major is a decision of its own, taken
@@ -23,6 +28,13 @@ updates:
         update-types: ["version-update:semver-major", "version-update:semver-minor"]
       - dependency-name: "com.google.devtools.ksp:*"
         update-types: ["version-update:semver-major", "version-update:semver-minor"]
+      # storm-ktor compiles against the oldest Ktor line it supports. A newer line brings its own kotlinx-coroutines
+      # requirement to every application, so the Ktor floor moves as a decision of its own.
+      - dependency-name: "io.ktor:*"
+        update-types: ["version-update:semver-major", "version-update:semver-minor"]
+      # storm-jackson2 supports Jackson 2.17 and later and compiles against 2.17, so a newer API cannot slip in.
+      - dependency-name: "com.fasterxml.jackson.core:*"
+        update-types: ["version-update:semver-major", "version-update:semver-minor"]
   - package-ecosystem: github-actions
     directory: /
     schedule:
@@ -32,6 +44,15 @@ updates:
     schedule:
       interval: monthly
     open-pull-requests-limit: 3
+    groups:
+      # Docusaurus refuses to build when its core and plugins differ in version, so they move together.
+      docusaurus:
+        patterns:
+          - "@docusaurus/*"
+    ignore:
+      # Nothing in the site build runs the TypeScript compiler, so a new major line is taken deliberately.
+      - dependency-name: "typescript"
+        update-types: ["version-update:semver-major"]
   - package-ecosystem: npm
     directory: /storm-cli
     schedule:
