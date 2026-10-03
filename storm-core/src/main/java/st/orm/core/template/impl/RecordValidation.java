@@ -102,7 +102,7 @@ final class RecordValidation {
                 return;
             }
             if ("none".equals(recordMode)) {
-                LOGGER.debug("Skipping Data type validation. Set storm.validation.record_mode=fail to enable validation.");
+                LOGGER.info("Skipping Data type validation. Set storm.validation.record_mode=fail to enable validation.");
                 validationCompleted = true;
                 return;
             }
