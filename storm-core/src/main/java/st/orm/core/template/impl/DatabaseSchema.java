@@ -256,16 +256,19 @@ public final class DatabaseSchema {
                 if (!columnsByTable.containsKey(tableName)) {
                     continue;
                 }
+                // The columns are read in their result set order. Oracle returns COLUMN_DEF as a LONG, which its
+                // driver streams: reading a later column first closes the stream, and COLUMN_DEF can no longer be
+                // read.
                 String columnName = columns.getString("COLUMN_NAME");
                 int dataType = columns.getInt("DATA_TYPE");
                 String typeName = columns.getString("TYPE_NAME");
                 int columnSize = columns.getInt("COLUMN_SIZE");
+                String columnDef = columns.getString("COLUMN_DEF");
+                boolean hasDefault = columnDef != null;
                 String nullableStr = columns.getString("IS_NULLABLE");
                 boolean nullable = !"NO".equalsIgnoreCase(nullableStr);
                 String autoIncrementStr = columns.getString("IS_AUTOINCREMENT");
                 boolean autoIncrement = "YES".equalsIgnoreCase(autoIncrementStr);
-                String columnDef = columns.getString("COLUMN_DEF");
-                boolean hasDefault = columnDef != null;
 
                 columnsByTable.computeIfAbsent(tableName, k -> new ArrayList<>())
                         .add(new DbColumn(tableName, columnName, dataType, typeName, columnSize, nullable, autoIncrement, hasDefault));
@@ -351,12 +354,13 @@ public final class DatabaseSchema {
         for (String tableName : new ArrayList<>(columnsByTable.keySet())) {
             try (ResultSet indexInfo = metadata.getIndexInfo(catalog, schemaPattern, tableName, true, true)) {
                 while (indexInfo.next()) {
+                    // In result set order, as for the columns.
+                    String indexName = indexInfo.getString("INDEX_NAME");
                     if (indexInfo.getShort("TYPE") == 0) {
                         continue;
                     }
-                    String indexName = indexInfo.getString("INDEX_NAME");
-                    String columnName = indexInfo.getString("COLUMN_NAME");
                     int ordinalPosition = indexInfo.getShort("ORDINAL_POSITION");
+                    String columnName = indexInfo.getString("COLUMN_NAME");
                     if (indexName == null || columnName == null) {
                         continue;
                     }
@@ -372,10 +376,11 @@ public final class DatabaseSchema {
         for (String tableName : new ArrayList<>(columnsByTable.keySet())) {
             try (ResultSet importedKeys = metadata.getImportedKeys(catalog, schemaPattern, tableName)) {
                 while (importedKeys.next()) {
-                    String fkTableName = importedKeys.getString("FKTABLE_NAME");
-                    String fkColumnName = importedKeys.getString("FKCOLUMN_NAME");
+                    // In result set order, as for the columns.
                     String pkTableName = importedKeys.getString("PKTABLE_NAME");
                     String pkColumnName = importedKeys.getString("PKCOLUMN_NAME");
+                    String fkTableName = importedKeys.getString("FKTABLE_NAME");
+                    String fkColumnName = importedKeys.getString("FKCOLUMN_NAME");
                     foreignKeysByTable.computeIfAbsent(fkTableName, k -> new ArrayList<>())
                             .add(new DbForeignKey(fkTableName, fkColumnName, pkTableName, pkColumnName));
                 }
