@@ -191,7 +191,6 @@ class MetamodelProcessor(
     }
 
     override fun process(resolver: Resolver): List<KSAnnotated> {
-        logger.info("Storm Metamodel KSP is running.")
         val deferred = mutableListOf<KSAnnotated>()
         val symbols = resolver.getSymbolsWithAnnotation(GENERATE_METAMODEL)
             .plus(

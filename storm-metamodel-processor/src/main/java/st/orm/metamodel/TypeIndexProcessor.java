@@ -16,7 +16,6 @@
 package st.orm.metamodel;
 
 import static javax.tools.Diagnostic.Kind.ERROR;
-import static javax.tools.Diagnostic.Kind.NOTE;
 
 import java.io.IOException;
 import java.io.Writer;
@@ -76,7 +75,6 @@ public class TypeIndexProcessor extends AbstractProcessor {
 
     @Override
     public boolean process(Set<? extends TypeElement> annotations, RoundEnvironment roundEnv) {
-        processingEnv.getMessager().printMessage(NOTE, "Storm Type Index Processor is running.");
         if (indexedTypeMirrors.isEmpty()) {
             return false;
         }

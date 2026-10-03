@@ -107,7 +107,7 @@ final class RecordValidation {
                 return;
             }
             boolean warningsOnly = "warn".equals(recordMode);
-            LOGGER.info("Validating Data types for correctness.");
+            LOGGER.debug("Validating Data types for correctness.");
             var dataTypes = TypeDiscovery.getDataTypes();
             var validationErrors = new AtomicReference<>(0);
             var firstError = new AtomicReference<String>();
@@ -131,6 +131,8 @@ final class RecordValidation {
             if (validationErrors.getPlain() > 0) {
                 LOGGER.warn("Entity validation found %d issues. Set storm.validation.record_mode=fail to fail on startup."
                         .formatted(validationErrors.getPlain()));
+            } else if (dataTypes.isEmpty()) {
+                LOGGER.debug("No Data types to validate for correctness.");
             } else {
                 LOGGER.info("Successfully validated %s Data types for correctness.".formatted(dataTypes.size()));
             }

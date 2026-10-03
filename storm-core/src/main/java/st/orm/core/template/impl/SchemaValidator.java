@@ -181,7 +181,7 @@ public final class SchemaValidator {
         if (!errors.isEmpty()) {
             throw new SchemaValidationException(errors);
         }
-        LOGGER.info("Successfully validated %s Data types against the database schema.".formatted(types.size()));
+        logSuccess("Successfully validated {} Data types against the database schema.", types.size());
     }
 
     /**
@@ -207,7 +207,7 @@ public final class SchemaValidator {
      * @return the list of error messages (empty on success).
      */
     public List<String> validateAndReport(boolean strict) {
-        LOGGER.info("Validating Data types for schema compatibility.");
+        LOGGER.debug("Validating Data types for schema compatibility.");
         List<Class<? extends Data>> types = TypeDiscovery.getDataTypes();
         return reportErrors(validate(types), strict, types.size());
     }
@@ -227,7 +227,7 @@ public final class SchemaValidator {
      * @since 1.11
      */
     public List<String> validateAndReport(Predicate<Class<? extends Data>> filter, boolean strict) {
-        LOGGER.info("Validating Data types for schema compatibility.");
+        LOGGER.debug("Validating Data types for schema compatibility.");
         List<Class<? extends Data>> types = TypeDiscovery.getDataTypes().stream()
                 .filter(filter)
                 .toList();
@@ -245,7 +245,7 @@ public final class SchemaValidator {
      * @return the list of error messages (empty on success).
      */
     public List<String> validateAndReport(Iterable<Class<? extends Data>> types, boolean strict) {
-        LOGGER.info("Validating Data types for schema compatibility.");
+        LOGGER.debug("Validating Data types for schema compatibility.");
         return reportErrors(validate(types), strict, countTypes(types));
     }
 
@@ -292,7 +292,7 @@ public final class SchemaValidator {
             int typeCount
     ) {
         if (validationErrors.isEmpty()) {
-            LOGGER.info("Successfully validated {} Data types for schema compatibility.", typeCount);
+            logSuccess("Successfully validated {} Data types for schema compatibility.", typeCount);
             return List.of();
         }
         // In strict mode, all findings are treated as errors.
@@ -313,6 +313,17 @@ public final class SchemaValidator {
             LOGGER.warn("Schema validation found {} issue(s).", errors.size());
         }
         return errors;
+    }
+
+    /**
+     * Logs a successful validation: at info when it covered types, at debug when there were none to validate.
+     */
+    private static void logSuccess(String message, int typeCount) {
+        if (typeCount == 0) {
+            LOGGER.debug(message, typeCount);
+        } else {
+            LOGGER.info(message, typeCount);
+        }
     }
 
     private static int countTypes(Iterable<?> types) {
