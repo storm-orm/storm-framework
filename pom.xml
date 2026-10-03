@@ -21,7 +21,7 @@
         <micrometer.version>1.15.4</micrometer.version>
         <micrometer-tracing.version>1.5.4</micrometer-tracing.version>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-        <spring-boot.version>3.5.6</spring-boot.version>
+        <spring-boot.version>3.5.16</spring-boot.version>
         <jacoco.version>0.8.12</jacoco.version>
         <jspecify.version>1.0.1</jspecify.version>
         <spotless.version>2.43.0</spotless.version>
