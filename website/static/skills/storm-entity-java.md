@@ -129,6 +129,7 @@ Generation rules:
 10. Unique keys:
    - **Single-column** (apply by default): `@UK String email`. Generates a `Metamodel.Key` for type-safe lookups and scrolling. Always add `@UK` when the database has a single-column unique constraint — it's one annotation for free value.
    - **Composite** (only when needed in code): use an inline record + `@UK @Persist(insertable = false, updatable = false)`. Only add this when the user explicitly needs a composite `Metamodel.Key` for keyset pagination or type-safe lookups. Composite unique constraints that don't need a Key don't need to be modeled.
+   - **Nullable** unique keys draw a compile-time warning, because `scroll` on them is rejected at runtime. Prefer a non-null key. When the database prevents duplicate NULLs, set `@UK(nullsDistinct = false)`. When the key is nullable by design and never scrolled on, add `@SuppressWarnings("storm.nullable-unique-key")` to the field or type: the warning goes, the runtime check stays.
    - `@UK(constraint = false)` suppresses schema validation when no database constraint exists.
    - **A field you scroll by must be non-nullable**, the key and the sort fields alike. Keyset comparisons never hold for NULL, so such a row falls out of every window and Storm refuses the query with a `PersistenceException`. Settle this while modelling the field: a nullable timestamp is the usual thing to trip over, since a date is the usual thing to sort by.
 

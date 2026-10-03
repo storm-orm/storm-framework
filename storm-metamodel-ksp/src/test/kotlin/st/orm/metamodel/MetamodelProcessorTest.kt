@@ -51,6 +51,12 @@ class MetamodelProcessorTest {
         return compilation
     }
 
+    private fun compileForMessages(source: String): String {
+        val result = compilation(source).compile()
+        assertEquals(KotlinCompilation.ExitCode.OK, result.exitCode, result.messages)
+        return result.messages
+    }
+
     private fun compileExpectingError(source: String): String {
         val compilation = compilation(source)
         val result = compilation.compile()
@@ -310,5 +316,57 @@ class MetamodelProcessorTest {
         assertTrue(generated.isEmpty()) {
             "a plain data class without @GenerateMetamodel should not get generated files, generated: $generated"
         }
+    }
+
+    @Test
+    fun `a nullable unique key warns`() {
+        val messages = compileForMessages(
+            """
+            package com.example
+
+            import st.orm.Entity
+            import st.orm.PK
+            import st.orm.UK
+
+            data class Account(@PK val id: Int = 0, @UK val email: String?) : Entity<Int>
+            """,
+        )
+        assertTrue("Unique key field 'email' is nullable" in messages) { messages }
+    }
+
+    @Test
+    fun `a nullable unique key does not warn where the property suppresses it`() {
+        val messages = compileForMessages(
+            """
+            package com.example
+
+            import st.orm.Entity
+            import st.orm.PK
+            import st.orm.UK
+
+            data class Account(
+                @PK val id: Int = 0,
+                @Suppress("storm.nullable-unique-key") @UK val email: String?,
+            ) : Entity<Int>
+            """,
+        )
+        assertTrue("Unique key field" !in messages) { messages }
+    }
+
+    @Test
+    fun `a nullable unique key does not warn where the class suppresses it`() {
+        val messages = compileForMessages(
+            """
+            package com.example
+
+            import st.orm.Entity
+            import st.orm.PK
+            import st.orm.UK
+
+            @Suppress("storm.nullable-unique-key")
+            data class Account(@PK val id: Int = 0, @UK val email: String?) : Entity<Int>
+            """,
+        )
+        assertTrue("Unique key field" !in messages) { messages }
     }
 }

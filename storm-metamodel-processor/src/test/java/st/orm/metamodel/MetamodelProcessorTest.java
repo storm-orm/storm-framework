@@ -257,6 +257,40 @@ class MetamodelProcessorTest {
     }
 
     @Test
+    void suppressesUniqueKeyNullabilityWarningOnTheField() throws Exception {
+        Compilation compilation = compile("Account.java", """
+                import jakarta.annotation.Nullable;
+                import st.orm.Entity;
+                import st.orm.PK;
+                import st.orm.UK;
+
+                public record Account(
+                        @PK Integer id,
+                        @UK @Nullable @SuppressWarnings("storm.nullable-unique-key") String email
+                ) implements Entity<Integer> {}
+                """);
+        assertTrue(compilation.success(), compilation.errors());
+        assertTrue(compilation.warnings().stream().noneMatch(warning -> warning.contains("Unique key field")),
+                "the suppressed field must not warn:\n" + compilation.warnings());
+    }
+
+    @Test
+    void suppressesUniqueKeyNullabilityWarningOnTheRecord() throws Exception {
+        Compilation compilation = compile("Account.java", """
+                import jakarta.annotation.Nullable;
+                import st.orm.Entity;
+                import st.orm.PK;
+                import st.orm.UK;
+
+                @SuppressWarnings("storm.nullable-unique-key")
+                public record Account(@PK Integer id, @UK @Nullable String email) implements Entity<Integer> {}
+                """);
+        assertTrue(compilation.success(), compilation.errors());
+        assertTrue(compilation.warnings().stream().noneMatch(warning -> warning.contains("Unique key field")),
+                "the suppressed record must not warn:\n" + compilation.warnings());
+    }
+
+    @Test
     void registersProcessorsForGradleIncrementalProcessing() throws IOException {
         var descriptor = MetamodelProcessor.class.getResource("/META-INF/gradle/incremental.annotation.processors");
         assertNotNull(descriptor, "expected the Gradle incremental annotation processing descriptor");
