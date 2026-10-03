@@ -625,6 +625,8 @@ transaction(REQUIRES_NEW, tx -> {
 });
 ```
 
+A transaction is bound to the thread that runs it. Work handed to an `ExecutorService` or a parallel stream runs outside it: its statements commit on their own and do not see the transaction's uncommitted changes. Keep a transaction's work on its thread, or open a transaction inside the task.
+
 ### Spring Boot
 Both styles work and cooperate. `@Transactional` on service methods remains first-class, and Storm's `transaction(...)` blocks run through Spring's transaction managers when the template is Spring-composed (the starter does this automatically): a Storm block inside a `@Transactional` method joins it.
 ```java
