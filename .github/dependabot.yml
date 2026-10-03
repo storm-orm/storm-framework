@@ -35,6 +35,13 @@ updates:
       # storm-jackson2 supports Jackson 2.17 and later and compiles against 2.17, so a newer API cannot slip in.
       - dependency-name: "com.fasterxml.jackson.core:*"
         update-types: ["version-update:semver-major", "version-update:semver-minor"]
+      # storm-jackson3 likewise supports Jackson 3.0 and later and compiles against 3.0.
+      - dependency-name: "tools.jackson.core:*"
+        update-types: ["version-update:semver-major", "version-update:semver-minor"]
+      # Storm's GraalVM Feature runs inside the application's native-image builder, so it compiles against the
+      # oldest GraalVM line Storm supports.
+      - dependency-name: "org.graalvm.sdk:*"
+        update-types: ["version-update:semver-major"]
   - package-ecosystem: github-actions
     directory: /
     schedule:
