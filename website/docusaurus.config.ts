@@ -25,7 +25,7 @@ const CONTACT_EMAIL = 'hello@orm.st';
 
 const config: Config = {
   title: 'Storm Framework',
-  tagline: 'A modern, high-performance ORM for Kotlin 2.0+ and Java 21+',
+  tagline: 'A modern ORM for Kotlin 2.0+ and Java 21+, built for agentic coding and performance',
   favicon: 'img/storm-dark.png',
 
   // Load the marketing type pair (Inter + JetBrains Mono) on the docs pages too,
@@ -245,6 +245,11 @@ const config: Config = {
           label: 'Documentation',
         },
         {
+          to: '/docs/ai',
+          label: 'AI',
+          position: 'left',
+        },
+        {
           to: '/tutorials/',
           label: 'Tutorials',
           position: 'left',
@@ -283,6 +288,7 @@ const config: Config = {
           title: 'Learn',
           items: [
             {label: 'Quickstart', to: '/quickstart'},
+            {label: 'Agentic coding', to: '/docs/ai'},
             {label: 'Installation', to: '/docs/installation'},
             {label: 'Entities', to: '/docs/entities'},
             {label: 'Queries', to: '/docs/queries'},

@@ -24,7 +24,7 @@ ${navHtml('templates')}
   ${heroArt('examples', {priority: true})}
 </div>
 
-<div class="shead" id="templates"><span class="mark">//</span>Starter templates<span class="sdesc">GitHub template repositories. Press <b>Use this template</b>, rename the package, replace the schema, and the project is yours.</span></div>
+<div class="shead" id="templates"><span class="mark">//</span>Starter templates<span class="sdesc">GitHub template repositories. Press <b>Use this template</b>, rename the package, replace the schema, and the project is yours. Working with a coding agent? Run <code>npx @storm-orm/cli init</code> in the new project and the agent knows Storm too.</span></div>
 <div class="cards">
   <a class="tcard" href="/templates/kotlin-ktor/">
     <div class="tt">Starter template · Kotlin + Ktor<span class="arrow">→</span></div>

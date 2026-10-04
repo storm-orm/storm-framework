@@ -1,6 +1,6 @@
 # AI Tools Reference
 
-This page lists the configuration locations, skills, and database skills that Storm installs for each AI coding tool. For the main guide, see [AI-Assisted Development](ai.md).
+This page lists the configuration locations, skills, and database skills that Storm installs for each AI coding tool. For the main guide, see [Agentic Coding](ai.md).
 
 ---
 

@@ -1,7 +1,8 @@
 /**
  * Docusaurus plugin that replaces @@STORM_VERSION@@ in static files after they
  * are copied to the build output: the per-tool skill files (static/skills/*.md)
- * and the AI-facing docs indexes (static/llms.txt and static/llms-full.txt).
+ * the AI-facing docs indexes (static/llms.txt and static/llms-full.txt) and the
+ * per-page Markdown copies of the docs (static/docs/**.md).
  * These files are copied verbatim and never pass through the remark version
  * plugin, so this postBuild pass is what keeps their install snippets on the
  * current version.
@@ -34,6 +35,14 @@ module.exports = function staticVersionReplace(context, options) {
       // AI-facing docs indexes copied from static/.
       replaceInFile(path.join(outDir, 'llms.txt'));
       replaceInFile(path.join(outDir, 'llms-full.txt'));
+
+      // Per-page Markdown copies of the docs, generated into static/docs/.
+      for (const dir of [path.join(outDir, 'docs'), path.join(outDir, 'docs', 'next')]) {
+        if (!fs.existsSync(dir)) continue;
+        for (const name of fs.readdirSync(dir)) {
+          if (name.endsWith('.md')) replaceInFile(path.join(dir, name));
+        }
+      }
     },
   };
 };

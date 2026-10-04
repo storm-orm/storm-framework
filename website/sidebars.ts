@@ -27,6 +27,15 @@ const sidebars: SidebarsConfig = {
     },
     {
       type: 'category',
+      label: 'Agentic Coding',
+      items: [
+        'ai',
+        'ai-reference',
+        'database-and-mcp',
+      ],
+    },
+    {
+      type: 'category',
       label: 'Core Concepts',
       items: [
         'entities',
@@ -107,9 +116,6 @@ const sidebars: SidebarsConfig = {
         'faq',
         'migration-from-jpa',
         'jpa-cascades-vs-write-sets',
-        'ai',
-        'ai-reference',
-        'database-and-mcp',
       ],
     },
     {

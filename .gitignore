@@ -52,6 +52,7 @@ website/static/api/
 # Generated from docs/ by website/scripts/generate-llms-full.sh, which runs as the
 # prebuild step of every site build. Committing it only lets it drift.
 website/static/llms-full.txt
+website/static/docs/
 
 ### Maven ###
 # Machine-local heap tuning for the reactor. Maven reads it automatically, so a

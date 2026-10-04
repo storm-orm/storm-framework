@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 #
-# Generates llms-full.txt from all documentation files in sidebar order.
+# Generates llms-full.txt from all documentation files in sidebar order, and a
+# plain Markdown copy of every docs page beside its HTML route, so an agent can
+# fetch /docs/<page>.md instead of scraping the rendered page.
 # Strips Docusaurus-specific syntax (imports, JSX components, frontmatter, admonitions).
 #
 # Usage: bash website/scripts/generate-llms-full.sh
@@ -23,6 +25,10 @@ DOCS=(
   first-entity.md
   first-query.md
   glossary.md
+  # Agentic Coding
+  ai.md
+  ai-reference.md
+  database-and-mcp.md
   # Core Concepts
   entities.md
   projections.md
@@ -71,9 +77,6 @@ DOCS=(
   faq.md
   migration-from-jpa.md
   jpa-cascades-vs-write-sets.md
-  ai.md
-  ai-reference.md
-  database-and-mcp.md
   # API Reference
   api-kotlin.md
   api-java.md
@@ -135,20 +138,23 @@ strip_docusaurus() {
 cat > "$OUTPUT" <<'HEADER'
 # Storm Framework - Complete Documentation
 
-> Storm is an AI-first ORM framework for Kotlin 2.0+ and Java 21+, the gold
-> standard for AI-assisted database development.
+> Storm is an ORM for Kotlin 2.0+ and Java 21+, built for agentic coding and
+> performance.
 >
-> It uses immutable data classes and records instead of proxied entities,
-> providing type-safe queries, predictable performance, and zero hidden magic.
-> Storm works perfectly standalone, but its design and tooling make it uniquely
-> suited for AI-assisted development: immutable entities produce stable code,
-> the CLI installs per-tool skills, and a locally running MCP server exposes
-> only schema metadata (table definitions, column types, constraints) while
-> shielding your database credentials and data from the LLM. Built-in
-> verification (validateSchema(), SqlCapture) lets the AI validate its own work
-> before anything is committed.
+> Every detail lives in the model. Entities are plain Kotlin data classes or Java
+> records: one class is the table, its keys and its relations, and the queries
+> follow from it. Underneath is a thin layer over JDBC. There is no persistence
+> context, no transparent lazy loading, no proxy generation, and no entity state
+> management, so the code is exactly what runs. The domain model gives one-line,
+> type-safe queries across relations, returning the whole entity graph in one
+> statement. The CLI installs rules and skills for coding
+> agents, plus a local MCP server that exposes only schema metadata while
+> keeping database credentials away from the LLM. Built-in verification
+> (validateSchema(), SqlCapture) lets the agent check its own work before
+> anything is committed.
 >
-> Get started: `npx @storm-orm/cli`
+> Get started: `npx @storm-orm/cli init` (existing project) or
+> `npx @storm-orm/cli demo` (empty directory)
 > Website: https://orm.st
 > GitHub: https://github.com/storm-orm/storm-framework
 > License: Apache 2.0
@@ -173,3 +179,22 @@ for doc in "${DOCS[@]}"; do
 done
 
 echo "Generated $OUTPUT"
+
+# Per-page Markdown. /docs/<page> serves the latest released snapshot and
+# /docs/next/<page> the docs in this repository, so each gets its Markdown copy
+# from the same source: /docs/<page>.md and /docs/next/<page>.md. The output is
+# generated on every build and not committed.
+write_markdown_pages() {
+  local src="$1" out="$2"
+  mkdir -p "$out"
+  for filepath in "$src"/*.md; do
+    strip_docusaurus < "$filepath" > "$out/$(basename "$filepath")"
+  done
+}
+MARKDOWN_OUT="$WEBSITE_DIR/static/docs"
+LATEST_VERSION="$(node -p "require('$WEBSITE_DIR/versions.json')[0]")"
+rm -rf "$MARKDOWN_OUT"
+write_markdown_pages "$WEBSITE_DIR/versioned_docs/version-$LATEST_VERSION" "$MARKDOWN_OUT"
+write_markdown_pages "$DOCS_DIR" "$MARKDOWN_OUT/next"
+
+echo "Generated Markdown pages in $MARKDOWN_OUT"
