@@ -407,11 +407,14 @@ const CSS = `
 `;
 
 const esc = (s) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+// For attribute values: esc() covers text content, an attribute also needs its
+// quotes escaped so a value can never close the attribute it sits in.
+const escAttr = (s) => esc(s).replace(/"/g, '&quot;').replace(/'/g, '&#39;');
 
 // A "$ <command>" chip that copies the command on click. The whole chip is the
 // button, so the target is large on phones and a keyboard reaches it directly.
 const cliChip = (command) =>
-  `<button type="button" class="clichip" data-copy="${esc(command)}" aria-label="Copy command: ${esc(command)}">` +
+  `<button type="button" class="clichip" data-copy="${escAttr(command)}" aria-label="Copy command: ${escAttr(command)}">` +
   `<span class="dollar" aria-hidden="true">$</span><code>${esc(command)}</code>` +
   `<svg class="ico ico-copy" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>` +
   `<svg class="ico ico-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>` +
@@ -690,7 +693,7 @@ function buildBody(version) {
         <span class="dot r"></span><span class="dot y"></span><span class="dot g"></span>
         <span class="fname" id="fname">Entities.kt</span>
         <button type="button" class="sqlbtn" id="sqlbtn" aria-expanded="false" aria-controls="sqlpanel" style="display:none"><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><ellipse cx="12" cy="5" rx="8" ry="3"/><path d="M4 5v14c0 1.7 3.6 3 8 3s8-1.3 8-3V5"/><path d="M4 12c0 1.7 3.6 3 8 3s8-1.3 8-3"/></svg><span id="sqlbtntext">Show SQL</span></button>
-        <button type="button" class="sqlbtn clicopy" id="copybtn" data-copy="${esc(CLI_INIT)}" aria-label="Copy command: ${esc(CLI_INIT)}"><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg><span class="cptext">Copy command</span></button>
+        <button type="button" class="sqlbtn clicopy" id="copybtn" data-copy="${escAttr(CLI_INIT)}" aria-label="Copy command: ${escAttr(CLI_INIT)}"><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg><span class="cptext">Copy command</span></button>
       </div>
       <div class="codearea" id="scene-panel" role="tabpanel" aria-labelledby="stab-0" tabindex="0">
         <div class="gutter" id="gutter"></div>
