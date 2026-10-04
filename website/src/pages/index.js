@@ -748,7 +748,7 @@ function buildBody(version) {
       <div class="akcmd">${cliChip(CLI_INSTALL)}<span class="aknote">Install the Storm CLI once.</span></div>
       <div class="akcmd">${cliChip('storm init')}<span class="aknote">In your project: rules, skills and schema access for your agent. Run <code>storm update</code> later to refresh them.</span></div>
       <div class="akcmd">${cliChip('storm demo')}<span class="aknote">In an empty directory: your agent builds a demo app on Storm.</span></div>
-      <p class="akreq">Needs Node.js 18 or later. Rather not install? <code>npx @storm-orm/cli init</code> runs it once.</p>
+      <p class="akreq">Needs Node.js 18 or later. Also runs without installing: <code>npx @storm-orm/cli init</code>.</p>
     </div>
   </div>
 </div></section>
