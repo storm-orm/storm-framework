@@ -27,10 +27,12 @@ const DISCORD = 'https://discord.gg/SgQpcweUJD';
 // conduct reports have their own address, dev@orm.st.
 const CONTACT_EMAIL = 'hello@orm.st';
 
-// The two CLI entry points. `init` configures an existing project for the
-// visitor's coding agent; `demo` starts from an empty directory.
+// The CLI entry points. `init` configures an existing project for the
+// visitor's coding agent; `demo` starts from an empty directory; the global
+// install is for coming back to `storm update`, `storm db` and `storm mcp`.
 const CLI_INIT = 'npx @storm-orm/cli init';
 const CLI_DEMO = 'npx @storm-orm/cli demo';
+const CLI_INSTALL = 'npm install -g @storm-orm/cli';
 
 const CSS = `
   :root{
@@ -302,6 +304,8 @@ const CSS = `
   .storm-home .akcmds{display:flex;flex-direction:column;gap:16px}
   .storm-home .akcmd .clichip{width:100%}
   .storm-home .aknote{display:block;margin-top:7px;color:var(--muted);font-size:13px;line-height:1.5}
+  .storm-home .aknote code,.storm-home .akreq code{font-family:var(--mono);font-size:12px;color:var(--text);background:none;border:0;padding:0}
+  .storm-home .agentkit .akreq{margin:0;color:var(--faint);font-size:12.5px}
   @media(max-width:920px){
     .storm-home .agentkit{grid-template-columns:1fr}
   }
@@ -744,6 +748,8 @@ function buildBody(version) {
     <div class="akcmds">
       <div class="akcmd">${cliChip(CLI_INIT)}<span class="aknote">In your project: rules, skills and schema access for your agent.</span></div>
       <div class="akcmd">${cliChip(CLI_DEMO)}<span class="aknote">In an empty directory: your agent builds a demo app on Storm.</span></div>
+      <div class="akcmd">${cliChip(CLI_INSTALL)}<span class="aknote">Using it again? Install once, then run <code>storm init</code>, <code>storm update</code> to refresh rules and skills, or <code>storm db</code> to manage connections.</span></div>
+      <p class="akreq">Needs Node.js 18 or later, for <code>npx</code> and <code>npm</code>.</p>
     </div>
   </div>
 </div></section>
