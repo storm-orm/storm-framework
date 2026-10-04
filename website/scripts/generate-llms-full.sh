@@ -147,14 +147,23 @@ cat > "$OUTPUT" <<'HEADER'
 > context, no transparent lazy loading, no proxy generation, and no entity state
 > management, so the code is exactly what runs. The domain model gives one-line,
 > type-safe queries across relations, returning the whole entity graph in one
-> statement. The CLI installs rules and skills for coding
-> agents, plus a local MCP server that exposes only schema metadata while
-> keeping database credentials away from the LLM. Built-in verification
-> (validateSchema(), SqlCapture) lets the agent check its own work before
-> anything is committed.
+> statement.
 >
-> Get started: `npx @storm-orm/cli init` (existing project) or
-> `npx @storm-orm/cli demo` (empty directory)
+> For coding agents: the Storm CLI installs rules and skills for Claude Code,
+> Cursor, GitHub Copilot, Windsurf and Codex. An existing rules file (such as
+> CLAUDE.md) keeps its content; Storm adds its own marked block. Optionally it
+> sets up an MCP server that runs locally and is read-only: it exposes schema
+> metadata (table definitions, column types, constraints), never the database
+> credentials, and row data only when the user enables it. Built-in
+> verification (validateSchema(), SqlCapture) lets the agent check its own work
+> before anything is committed.
+>
+> Get started (interactive, run by the user in a terminal; needs Node.js 18+):
+> `npx @storm-orm/cli init` in an existing project, or `npx @storm-orm/cli demo`
+> in an empty directory. Installed globally (`npm install -g @storm-orm/cli`),
+> the same commands are `storm init` and `storm demo`; `storm update` refreshes
+> rules and skills without prompts.
+>
 > Website: https://orm.st
 > GitHub: https://github.com/storm-orm/storm-framework
 > License: Apache 2.0
