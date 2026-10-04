@@ -1,7 +1,7 @@
 ---
 title: Set Up Your Project
 sidebar_label: Set Up Your Project
-description: "Wire Storm into a project you intend to keep: prerequisites, the four setup routes, and how to verify the result."
+description: "Wire Storm into a project you intend to keep: prerequisites, the four setup routes (fastest with a coding agent), and how to verify the result."
 ---
 
 import Tabs from '@theme/Tabs';
@@ -9,7 +9,7 @@ import TabItem from '@theme/TabItem';
 
 # Set Up Your Project
 
-This page is about getting Storm into a real project: what it needs from your toolchain, which of the four setup routes fits your situation, and how to prove the wiring works before you write application code.
+This page is about getting Storm into a real project: what it needs from your toolchain, which of the four setup routes fits your situation, and how to prove the wiring works before you write application code. If you work with a coding agent, the fastest route is to let it do the wiring: one command gives it everything it needs.
 
 :::tip Just want to see it work?
 The **[Quickstart](/quickstart)** takes about five minutes, needs no database server, and ends with a working query and the SQL it generated. It is the fastest way to judge Storm, and it is the recommended first stop. Come back here when you are setting up a project you intend to keep.
@@ -31,10 +31,35 @@ The JDK 21 pin is a property of the platform, not of Storm: the Java API is buil
 
 ## Choose a Setup Route
 
-All four routes end at the same place: a project with the Storm dependencies, the metamodel processor, and the Kotlin compiler plugin wired up.
+All four routes end at the same place: a project with the Storm dependencies, the metamodel processor, and the Kotlin compiler plugin wired up. With a coding agent, the agent does this for you; the other three routes are the same setup by hand.
 
 <Tabs>
-<TabItem value="gradle" label="Gradle plugin" default>
+<TabItem value="ai" label="With a coding agent" default>
+
+### Setup with a coding agent (fastest)
+
+If you work with a coding agent (Claude Code, Cursor, GitHub Copilot, Windsurf, or Codex), let it do the wiring. Run one command from the root of your project:
+
+```bash
+npx @storm-orm/cli init
+```
+
+It installs Storm's rules and skills for your agent, so the agent knows the conventions, the build setup for Gradle and Maven, and the common pitfalls. An existing `CLAUDE.md` or rules file keeps its content: Storm adds its own marked block. Optionally, it connects a schema-aware MCP server to your development database. That server runs on your machine and is read-only: the agent sees your schema, never your credentials, and sees data only if you allow it.
+
+Then ask the agent for what you need, for example:
+
+- *"Add Storm to this project with the Gradle plugin and the PostgreSQL dialect."*
+- *"Generate Storm entities for the `customer` and `order` tables, and validate them against the schema."*
+- *"Write a repository method that finds a customer's open orders, and show me the SQL it runs."*
+
+Storm entities carry every detail in the model, so the agent has what it needs to act, and it can check its own work: `validateSchema()` confirms the entities match the database, and `SqlCapture` shows the SQL a query really runs.
+
+Starting from an empty directory instead? `npx @storm-orm/cli demo` creates a Kotlin project and has your agent build a small web application on Storm.
+
+See [Agentic Coding](ai.md) for the full workflow and [Database Connections & MCP](database-and-mcp.md) for the schema-aware server.
+
+</TabItem>
+<TabItem value="gradle" label="Gradle plugin">
 
 ### Gradle plugin (recommended for Kotlin)
 
@@ -84,21 +109,6 @@ Each starter template is a GitHub template repository holding one vertical slice
 - [Java + Spring Boot](https://github.com/storm-orm/storm-template-java-spring-boot/generate)
 
 What each one contains is on the [starter templates page](/templates/). The [example projects](/examples/) are a different thing: complete applications on the public IMDB dataset, written to be read and run rather than started from.
-
-</TabItem>
-<TabItem value="ai" label="AI-assisted">
-
-### AI-assisted setup
-
-If you work with an AI coding tool (Claude Code, Cursor, GitHub Copilot, Windsurf, or Codex), one command installs Storm's rules and skills for it and can connect it to your development database:
-
-```bash
-npx @storm-orm/cli init
-```
-
-The tool can then add the dependencies, generate entities from your existing tables, and write repository methods. It has Storm's documentation and, with the MCP server configured, your real schema.
-
-See [AI-Assisted Development](ai.md) for the full setup and [Database and MCP](database-and-mcp.md) for the schema-aware server.
 
 </TabItem>
 </Tabs>

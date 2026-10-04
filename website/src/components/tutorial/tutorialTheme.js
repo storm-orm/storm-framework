@@ -305,6 +305,7 @@ export const navHtml = (active) => `
   <input type="checkbox" id="storm-nav-toggle" class="nav-toggle-cb" aria-label="Toggle navigation menu" />
   <label for="storm-nav-toggle" class="nav-toggle" aria-hidden="true"><span></span><span></span><span></span></label>
   <div class="nav-links">
+    <a href="/docs/ai">AI</a>
     <a href="/tutorials/"${active === 'tutorials' ? ' class="on"' : ''}>Tutorials</a>
     <a href="/examples/"${active === 'examples' ? ' class="on"' : ''}>Examples</a>
     <a href="/comparison"${active === 'comparison' ? ' class="on"' : ''}>Comparison</a>
@@ -342,7 +343,7 @@ export const heroArt = (page, {priority = false} = {}) => `
 export const FOOT_HTML = `
 <footer><div class="wrap foot">
   <div class="brand"><img class="logo" src="/img/storm-light.png" alt="Storm" /></div>
-  <div class="links"><a href="/">orm.st</a><a href="/quickstart">Quickstart</a><a href="/docs/">Documentation</a><a href="/tutorials/">Tutorials</a><a href="/templates/">Templates</a><a href="/examples/">Examples</a><a href="/comparison">Comparison</a><a href="/benchmarks">Benchmarks</a><a href="/blog/">Blog</a><a href="${GH}" target="_blank" rel="noopener">GitHub</a><a href="${DISCORD}" target="_blank" rel="noopener">Discord</a><a href="https://central.sonatype.com/namespace/st.orm">Maven Central</a></div>
+  <div class="links"><a href="/">orm.st</a><a href="/quickstart">Quickstart</a><a href="/docs/ai">Agentic coding</a><a href="/docs/">Documentation</a><a href="/tutorials/">Tutorials</a><a href="/templates/">Templates</a><a href="/examples/">Examples</a><a href="/comparison">Comparison</a><a href="/benchmarks">Benchmarks</a><a href="/blog/">Blog</a><a href="${GH}" target="_blank" rel="noopener">GitHub</a><a href="${DISCORD}" target="_blank" rel="noopener">Discord</a><a href="https://central.sonatype.com/namespace/st.orm">Maven Central</a></div>
 </div></footer>`;
 
 export const TUT_CSS = `
@@ -370,6 +371,7 @@ export const TUT_CSS = `
   .storm-tut .brand b{font-family:var(--mono);font-weight:700}
   .storm-tut .tech-tag{font-family:var(--mono);font-size:11px;color:var(--faint);letter-spacing:.02em;border-left:1px solid var(--border);padding-left:12px}
   .storm-tut .nav-links{display:flex;align-items:center;gap:24px;font-size:14px;color:var(--muted)}
+  .storm-tut .nav-links a{white-space:nowrap}
   .storm-tut .nav-links a:hover{color:var(--text)}
   .storm-tut .nav-links a.on{color:var(--text)}
   .storm-tut .nav-toggle{display:none}
@@ -423,6 +425,9 @@ export const TUT_CSS = `
   .storm-tut .sqlbtn:hover,.storm-tut .copybtn:hover{background:rgba(129,140,248,.12);border-color:rgba(129,140,248,.5)}
   .storm-tut .sqlbtn.on,.storm-tut .copybtn.on{background:rgba(129,140,248,.16);color:#aab2ff}
   .storm-tut .sqlbtn .ico,.storm-tut .copybtn .ico{width:13px;height:13px;opacity:.9}
+  .storm-tut .clonebar{display:flex;align-items:center;gap:10px;font-family:var(--mono);font-size:13px;color:var(--plain);
+    background:var(--panel);border:1px solid var(--border);border-radius:10px;padding:0 18px;min-height:44px;overflow-x:auto;white-space:nowrap}
+  .storm-tut .clonebar .dollar{color:var(--green);user-select:none}
   .storm-tut .clonebar .clonecmd{overflow-x:auto}
   .storm-tut .clonebar .copybtn{margin-left:auto;flex:none;gap:0;padding:5px 8px}
   .storm-tut .clonebar .copybtn .ico-check{display:none}
@@ -630,10 +635,12 @@ export const TUT_CSS = `
   .storm-tut footer{border-top:1px solid var(--border-soft);margin-top:70px;padding:36px 0;color:var(--faint);font-size:13.5px}
   .storm-tut .foot{display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:14px}
   .storm-tut .foot .links{display:flex;gap:22px;font-family:var(--mono);flex-wrap:wrap}.storm-tut .foot a{color:var(--muted)}.storm-tut .foot a:hover{color:var(--text)}
-  @media(max-width:920px){.storm-tut .tech-tag{display:none}}
-  /* Mobile: replace the row of links with a hamburger that drops down a full
-     menu (CSS-only via a hidden checkbox, so no JS is needed on any page). */
-  @media(max-width:760px){
+  @media(max-width:1100px){.storm-tut .tech-tag{display:none}}
+  /* Narrow screens: replace the row of links with a hamburger that drops down a
+     full menu (CSS-only via a hidden checkbox, so no JS is needed on any page).
+     The breakpoint is where the full row of links stops fitting beside the
+     brand, not the phone breakpoint. */
+  @media(max-width:1000px){
     /* The menu is CSS-only (a checkbox drives the drop-down), so the checkbox is
        the control a keyboard reaches: clipped to 1px rather than display:none,
        which would take it out of the tab order and leave the mobile menu

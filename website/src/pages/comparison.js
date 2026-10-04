@@ -98,7 +98,7 @@ ${navHtml('comparison')}
 
 <div class="pagehero">
   <h1>Your options.<br><span class="grad">Side by side.</span></h1>
-  <p class="dek">There is no universally best data framework. Storm is built for teams who want explicit, predictable database access with concise, immutable models. Here is where it sits next to the alternatives, and where each of them is the better call.</p>
+  <p class="dek">There is no universally best data framework. Storm is built for teams, and the coding agents working alongside them, who want explicit, predictable database access with concise, immutable models. Here is where it sits next to the alternatives, and where each of them is the better call.</p>
   ${heroArt('comparison', {priority: true})}
 </div>
 
@@ -106,6 +106,10 @@ ${navHtml('comparison')}
   <h2>At a glance</h2>
   <p>Decision-relevant differences across the most common choices. This page compares the designs; the measured numbers, on identical workloads, live on the <a class="tlink" href="/benchmarks">benchmarks page</a>.</p>
   ${matrix}
+
+  <h2>When an agent writes the code</h2>
+  <p>Three rows above decide how well a coding agent does with a framework. <b>Entity model</b>: in Storm one data class is the table, its keys and its relations, so the agent reads one file and has the full picture. <b>Session state</b>: with none, the code the agent reads is exactly what runs, and no flush or proxy acts on it later. <b>Query across relations</b>: the domain model already gives one-line, type-safe queries with the whole entity graph loaded, so there is less for the agent to write and fewer joins and mappings to get wrong.</p>
+  <p>On top of that, one command, <code>npx @storm-orm/cli init</code>, installs Storm's rules and skills for Claude Code, Cursor, GitHub Copilot, Windsurf and Codex, plus a local, read-only MCP server that gives the agent your schema without your credentials. See the <a class="tlink" href="/docs/ai">agentic coding guide</a>.</p>
 
   <h2>Framework by framework</h2>
   <p>A short, fair take on each. Every card links to the full pairing in the docs, with feature tables and code.</p>

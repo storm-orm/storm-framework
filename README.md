@@ -8,7 +8,7 @@
 [![Kotlin 2.0+](https://img.shields.io/badge/Kotlin-2.0%2B-purple)](https://kotlinlang.org/)
 [![Java 21](https://img.shields.io/badge/Java-21-blue)](https://openjdk.org/projects/jdk/21/)
 
-**Storm is the type-safe, SQL-first ORM for Kotlin 2.0+ and Java 21.** Immutable data-class entities, one-line queries checked at compile time, and none of the machinery you fight in traditional ORMs: no proxies, no N+1, no persistence context.
+**Storm is the type-safe, SQL-first ORM for Kotlin 2.0+ and Java 21, built for agentic coding and performance.** Immutable data-class entities, one-line queries checked at compile time, and none of the machinery you fight in traditional ORMs: no proxies, no N+1, no persistence context.
 
 ```kotlin
 // An entity is a data class. This is the whole mapping.
@@ -27,7 +27,7 @@ interface UserRepository : EntityRepository<User, Int> {
 }
 ```
 
-The `city` graph loads in a single query, and `User_` is generated at compile time so a typo is a compile error. What you write is what runs.
+The `city` graph loads in a single query, and `User_` is generated at compile time so a typo is a compile error. What you write is what runs, which is also what makes Storm work so well with coding agents: the data class is the whole model, so the agent has the exact details it needs. Set your agent up with `npx @storm-orm/cli init` ([Agentic Coding](#agentic-coding)).
 
 ## Why Storm
 
@@ -179,16 +179,20 @@ Both paths add the metamodel processor, which generates the `User_` and `City_` 
 
 With the BOM imported, add Storm modules without specifying versions.
 
-## AI-Assisted Development
+## Agentic Coding
 
-Storm's stateless, immutable model is a natural fit for AI coding tools: what you see in the source is exactly what runs, with no proxies, lazy loading, or hidden persistence-context rules to trip up generated code. An optional workflow gives AI tools full schema awareness through a local MCP server, guides them with Storm-specific skills, and closes the loop by verifying generated entities and queries with real tests rather than trusting model reasoning.
+A coding agent is only as right as what it can read. In Storm the data class is the table, its keys and its relations, every database call is a visible line of code, and the domain model already gives one-line, type-safe queries across relations. There are no proxies, no lazy loading and no persistence context, so the code the agent reads is exactly what runs.
+
+One command sets your agent up:
 
 ```bash
-npm install -g @storm-orm/cli
-storm init
+npx @storm-orm/cli init    # in your project: rules, skills and schema access
+npx @storm-orm/cli demo    # in an empty directory: your agent builds a demo app on Storm
 ```
 
-See [AI-Assisted Development](docs/ai.md) for the full workflow.
+It installs Storm's rules and skills for Claude Code, Cursor, GitHub Copilot, Windsurf and Codex. An existing `CLAUDE.md` or rules file keeps its content; Storm adds its own marked block. Optionally it sets up an MCP server that runs on your machine and is read-only: the agent sees your schema, never your credentials, and sees data only if you allow it. The agent then checks its own work with `validateSchema()` and `SqlCapture`.
+
+See [Agentic Coding](docs/ai.md) for the full workflow.
 
 ## Examples
 

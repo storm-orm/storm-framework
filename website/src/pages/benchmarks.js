@@ -1559,9 +1559,6 @@ const BM_CSS = `
   .storm-tut .art h3 + p{margin-top:0}
   .bm-stat b{background:linear-gradient(100deg,#feeeb0,#fbbf24 55%,#f59e0b);-webkit-background-clip:text;background-clip:text;color:transparent}
   .storm-tut .getit{display:flex;gap:12px;margin-top:26px;flex-wrap:wrap;align-items:stretch}
-  .storm-tut .clonebar{display:flex;align-items:center;gap:10px;font-family:var(--mono);font-size:13px;color:var(--plain);
-    background:var(--panel);border:1px solid var(--border);border-radius:10px;padding:0 18px;min-height:44px;overflow-x:auto;white-space:nowrap}
-  .storm-tut .clonebar .dollar{color:var(--green);user-select:none}
   .bm-lc{border:1px solid var(--border);border-radius:14px;background:#050507;margin:22px 0 10px;padding:20px 20px 14px}
   .bm-lc-head{display:flex;justify-content:space-between;align-items:baseline;gap:16px;flex-wrap:wrap;margin-bottom:8px}
   .storm-tut .art .bm-lc h3{margin:0;font-size:14.5px;color:var(--body)}

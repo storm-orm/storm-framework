@@ -27,6 +27,12 @@ const DISCORD = 'https://discord.gg/SgQpcweUJD';
 // conduct reports have their own address, dev@orm.st.
 const CONTACT_EMAIL = 'hello@orm.st';
 
+// The CLI commands. The hero's terminal scene runs `init` through npx, so a
+// visitor can copy one line without installing anything; the agentic coding
+// section installs the CLI once and then uses the `storm` commands.
+const CLI_INIT = 'npx @storm-orm/cli init';
+const CLI_INSTALL = 'npm install -g @storm-orm/cli';
+
 const CSS = `
   :root{
     --bg:#070709; --panel:#0f0f14; --panel-2:#0b0b0f; --statusbg:#08080b;
@@ -56,6 +62,7 @@ const CSS = `
   .storm-home .brand b{font-family:var(--mono);font-weight:700}
   .storm-home .tech-tag{font-family:var(--mono);font-size:11px;color:var(--faint);letter-spacing:.02em;border-left:1px solid var(--border);padding-left:12px}
   .storm-home .nav-links{display:flex;align-items:center;gap:24px;font-size:14px;color:var(--muted)}
+  .storm-home .nav-links a{white-space:nowrap}
   .storm-home .nav-links a:hover{color:var(--text)}
   .storm-home .nav-toggle{display:none}
   /* Off entirely above the breakpoint, where the links are always visible and a
@@ -153,8 +160,6 @@ const CSS = `
     .storm-home .sub-lead{font-size:16.5px;margin-top:16px}
     .storm-home .hero-cta{margin-top:20px}
     .storm-home .hero-cta .btn{flex:1 1 100%;justify-content:center;height:44px}
-    .storm-home .hero-talk{align-items:flex-start;margin-top:14px;font-size:13.5px}
-    .storm-home .hero-talk .ico{margin-top:2px}
     .storm-home .stage{margin-top:34px}
   }
   .storm-home .sub{max-width:600px;margin:24px 0 0;color:var(--muted);font-size:18px;line-height:1.62}
@@ -170,14 +175,18 @@ const CSS = `
   /* Hero CTA: the primary conversion action, kept high so it sits above the
      fold on phones. */
   .storm-home .hero-cta{margin-top:26px}
-  /* The invitation to talk sits under the buttons, quieter than them, so it
-     reads as the next option rather than a third call to action. The address
-     is the link text so a reader whose browser has no mail client behind
-     mailto can still copy it. */
-  .storm-home .hero-talk{display:flex;align-items:center;gap:9px;margin:18px 0 0;color:var(--muted);font-size:14.5px;line-height:1.5}
-  .storm-home .hero-talk .ico{width:16px;height:16px;flex:none;color:var(--accent)}
-  .storm-home .hero-talk a{color:var(--accent);font-weight:600;white-space:nowrap}
-  .storm-home .hero-talk a:hover{text-decoration:underline}
+  /* The copyable command chip, used in the agentic coding section.
+     The check mark replaces the copy icon for a moment after a copy. */
+  .storm-home .clichip{display:inline-flex;align-items:center;gap:10px;height:36px;padding:0 12px;border-radius:9px;cursor:pointer;
+    font-family:var(--mono);font-size:13px;color:var(--text);border:1px solid rgba(129,140,248,.3);background:var(--panel-2);transition:border-color .16s,background .16s}
+  .storm-home .clichip:hover{border-color:rgba(129,140,248,.6);background:rgba(129,140,248,.08)}
+  .storm-home .clichip code{font-family:inherit;font-size:inherit;background:none;border:0;padding:0;color:inherit;white-space:nowrap}
+  .storm-home .clichip .dollar{color:var(--accent)}
+  .storm-home .clichip .ico{width:14px;height:14px;flex:none;color:var(--muted);margin-left:auto}
+  .storm-home .clichip .ico-check{display:none;color:var(--green)}
+  .storm-home .clichip.on{border-color:rgba(94,234,212,.5)}
+  .storm-home .clichip.on .ico-copy{display:none}
+  .storm-home .clichip.on .ico-check{display:inline-block}
 
   /* editor */
   .storm-home .stage{margin:54px 0 0;max-width:880px}
@@ -192,6 +201,9 @@ const CSS = `
   .storm-home .sqlbtn:hover{background:rgba(129,140,248,.12);border-color:rgba(129,140,248,.5)}
   .storm-home .sqlbtn[aria-expanded="true"]{background:rgba(129,140,248,.16);color:#aab2ff}
   .storm-home .sqlbtn .ico{width:13px;height:13px;opacity:.9}
+  /* Copy control for the terminal scene; it takes the Show SQL slot, which
+     that scene has no use for. */
+  .storm-home .clicopy.on{color:var(--green);border-color:rgba(94,234,212,.5)}
   .storm-home .sqlconsole{display:none;border-top:1px solid var(--border-soft);background:var(--statusbg)}
   .storm-home .editor.show-sql .sqlconsole{display:block}
   /* Solid background required on the horizontal scroller: on iOS Safari an
@@ -270,6 +282,36 @@ const CSS = `
   .storm-home .card .ic{width:34px;height:34px;border-radius:9px;display:grid;place-items:center;color:var(--accent);
     background:rgba(129,140,248,.1);border:1px solid rgba(129,140,248,.2);margin-bottom:16px}
 
+  /* Agentic coding: why the model suits a coding agent (three cards), then the
+     one command that sets the agent up. */
+  .storm-home section.agents{padding:64px 0 40px}
+  .storm-home .agents .alabel{font-family:var(--mono);font-size:11px;letter-spacing:.16em;text-transform:uppercase;color:var(--accent)}
+  .storm-home .agents h2{font-size:clamp(28px,4vw,40px);letter-spacing:-.03em;font-weight:800;margin:10px 0 0}
+  .storm-home .agents .lede{color:var(--muted);font-size:17px;line-height:1.62;margin:16px 0 34px;max-width:820px}
+  .storm-home .agentkit{display:grid;grid-template-columns:1.15fr 1fr;gap:28px;align-items:center;margin-top:20px;
+    border:1px solid rgba(129,140,248,.22);border-radius:14px;padding:26px 28px;background:linear-gradient(135deg,rgba(129,140,248,.07),var(--panel-2) 60%)}
+  .storm-home .agentkit h3{margin:0 0 10px;font-size:19px;font-weight:650;letter-spacing:-.01em}
+  .storm-home .agentkit p{margin:0;color:var(--muted);font-size:14.5px;line-height:1.65}
+  .storm-home .agentkit p code{font-family:var(--mono);font-size:13px;color:var(--text)}
+  .storm-home .agentkit .akcopy a{display:inline-block;margin-top:14px;margin-right:18px;color:var(--accent);font-size:14px;font-weight:600}
+  /* The MCP server's guarantees as checkable facts, each one a chip. */
+  .storm-home .aksafe{display:flex;flex-wrap:wrap;gap:8px;margin-top:16px}
+  .storm-home .aksafe span{display:inline-flex;align-items:center;gap:6px;font-family:var(--mono);font-size:11.5px;color:var(--text);
+    border:1px solid rgba(94,234,212,.3);background:rgba(94,234,212,.06);border-radius:999px;padding:5px 11px}
+  .storm-home .aksafe span::before{content:"✓";color:var(--green)}
+  .storm-home .agentkit .akcopy a:hover{text-decoration:underline}
+  .storm-home .akcmds{display:flex;flex-direction:column;gap:16px}
+  .storm-home .akcmd .clichip{width:100%}
+  .storm-home .aknote{display:block;margin-top:7px;color:var(--muted);font-size:13px;line-height:1.5}
+  .storm-home .aknote code,.storm-home .akreq code{font-family:var(--mono);font-size:12px;color:var(--text);background:none;border:0;padding:0;white-space:nowrap}
+  .storm-home .agentkit .akreq{margin:0;color:var(--faint);font-size:12.5px}
+  @media(max-width:920px){
+    .storm-home .agentkit{grid-template-columns:1fr}
+  }
+  @media(max-width:600px){
+    .storm-home .agentkit{padding:22px}
+  }
+
   /* Production evaluation: the closing section answers "can I adopt this?"
      rather than restating the pitch. Facts first (release, license, runtime),
      then scope, then the places to verify each claim. */
@@ -317,16 +359,13 @@ const CSS = `
   .storm-home footer{border-top:1px solid var(--border-soft);padding:36px 0;color:var(--faint);font-size:13.5px}
   .storm-home .foot{display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:14px}
   .storm-home .foot .links{display:flex;gap:22px;font-family:var(--mono);flex-wrap:wrap}.storm-home .foot a{color:var(--muted)}.storm-home .foot a:hover{color:var(--text)}
+  @media(max-width:1100px){.storm-home .tech-tag{display:none}}
   @media(max-width:920px){
-    .storm-home .tech-tag{display:none}
     .storm-home .facts,.storm-home .scope{grid-template-columns:1fr}
   }
-  @media(max-width:760px){
-    .storm-home .three{grid-template-columns:1fr}
-    .storm-home .bgrid{grid-template-columns:repeat(2,1fr)}
-    /* Wrapped code is taller than the desktop floor and every scene wraps to a
-       different height, so the reserved height is released here. */
-    .storm-home .codearea{min-height:0}
+  /* Narrow screens: the row of links gives way to the hamburger menu where it
+     stops fitting beside the brand, which is well above the phone breakpoint. */
+  @media(max-width:1000px){
     /* The menu is CSS-only (a checkbox drives the drop-down), so the checkbox is
        the control a keyboard reaches: clipped to 1px rather than display:none,
        which would take it out of the tab order and leave the mobile menu
@@ -341,6 +380,13 @@ const CSS = `
     .storm-home .nav-toggle-cb:checked ~ .nav-links{display:flex}
     .storm-home .nav-links a{padding:13px 24px;font-size:15px}
     .storm-home .nav-links a.btn{margin:10px 24px 6px;justify-content:center}
+  }
+  @media(max-width:760px){
+    .storm-home .three{grid-template-columns:1fr}
+    .storm-home .bgrid{grid-template-columns:repeat(2,1fr)}
+    /* Wrapped code is taller than the desktop floor and every scene wraps to a
+       different height, so the reserved height is released here. */
+    .storm-home .codearea{min-height:0}
     /* On phones the editor wraps long lines instead of scrolling them. iOS
        Safari desyncs the painted content of a composited overflow-x scroller
        whose DOM is mutated per frame by the typewriter (stale tiles render at
@@ -361,6 +407,18 @@ const CSS = `
 `;
 
 const esc = (s) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+// For attribute values: esc() covers text content, an attribute also needs its
+// quotes escaped so a value can never close the attribute it sits in.
+const escAttr = (s) => esc(s).replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+
+// A "$ <command>" chip that copies the command on click. The whole chip is the
+// button, so the target is large on phones and a keyboard reaches it directly.
+const cliChip = (command) =>
+  `<button type="button" class="clichip" data-copy="${escAttr(command)}" aria-label="Copy command: ${escAttr(command)}">` +
+  `<span class="dollar" aria-hidden="true">$</span><code>${esc(command)}</code>` +
+  `<svg class="ico ico-copy" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>` +
+  `<svg class="ico ico-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>` +
+  `</button>`;
 
 const K = (x) => ({x, c: 'code-k'}),
   T = (x) => ({x, c: 'code-t'}),
@@ -372,7 +430,28 @@ const K = (x) => ({x, c: 'code-k'}),
   P = (x) => ({x, c: 'code-pl'});
 
 const SCENES = [
-  { name:'1 · entities', file:'Entities.kt',
+  // The first scene is the Storm CLI, so the one animation above the fold
+  // shows how to start. The prompts, files and closing line follow what
+  // `storm init` prints for Claude Code, Kotlin and a PostgreSQL connection
+  // with data access left at its default (off), in a project that already has
+  // a CLAUDE.md: the CLI adds its marked block and leaves the rest as it was.
+  // `typed` marks the end of the command: it types, the output then appears
+  // line by line, as a terminal prints it.
+  { name:'1 · agent setup', file:'Terminal', copy:CLI_INIT, typed:CLI_INIT.length + 2,
+    caption:"up and running with your agent in one minute",
+    code:[
+      A("$ "),P(CLI_INIT+"\n"),
+      S("✔ "),P("Which AI tools do you use? "),A("Claude Code\n"),
+      S("✔ "),P("Which language(s) does this project use? "),A("Kotlin\n"),
+      S("✔ "),P("Connect to a local database? "),A("Yes"),C(" · PostgreSQL\n"),
+      S("✔ "),P("Allow AI tools to query data? (read-only SELECT) "),A("No\n\n"),
+      A("  Created:\n"),
+      P("    + .claude/skills/storm-entity-kotlin/SKILL.md"),C("  + 11 more skills\n"),
+      P("    + .mcp.json"),C("  local, read-only, schema only\n"),
+      A("  Updated:\n"),
+      P("    ~ CLAUDE.md"),C("  Storm block added, your own content kept\n\n"),
+      S("  You're all set!") ] },
+  { name:'2 · entities', file:'Entities.kt',
     caption:"the most concise way to define your entities",
     code:[ K("data class "),T("City"),P("(\n"),
       P("    "),A("@PK"),P(" "),K("val "),P("id: "),T("Int"),P(" = "),N("0"),P(",\n"),
@@ -387,7 +466,7 @@ const SCENES = [
       P("    "),A("@FK"),P(" "),K("val "),P("city: "),T("City"),P("   "),C("// foreign entities are available in queries and results\n"),
       P(") : "),T("Entity"),P("<"),T("Int"),P(">") ] },
 
-  { name:'2 · query', file:'UserService.kt',
+  { name:'3 · query', file:'UserService.kt',
     caption:"one-line queries to get all the data you need · no N+1",
     code:[ C("// A user's city is loaded in the same query.\n"),
       K("val "),P("user = userRepository."),F("getById"),P("("),N("1"),P(")\n"),
@@ -395,7 +474,7 @@ const SCENES = [
       C("// Filter across the graph, fully type-safe using the static metamodel.\n"),
       K("val "),P("users = userRepository."),F("findAll"),P("(User_.city.name "),K("eq "),S('"Sunnyvale"'),P(")") ] },
 
-  { name:'3 · repository', file:'UserRepository.kt',
+  { name:'4 · repository', file:'UserRepository.kt',
     caption:"your own type-safe queries · CRUD inherited",
     code:[ C("// Custom return types are just records. Define them in-place.\n"),
       K("data class "),T("CityCount"),P("("),K("val "),P("city: "),T("City"),P(", "),K("val "),P("count: "),T("Long"),P(")\n\n"),
@@ -409,7 +488,7 @@ const SCENES = [
       P("            .resultList\n"),
       P("}") ] },
 
-  { name:'4 · transactions', file:'Transactions.kt',
+  { name:'5 · transactions', file:'Transactions.kt',
     caption:"full control with programmatic tx · Spring's declarative tx also supported",
     code:[ C("// Writes are explicit. One transaction.\n"),
       F("transaction"),P(" {\n"),
@@ -425,7 +504,7 @@ const SCENES = [
       P("    "),F("onCommit"),P(" { events."),F("publish"),P("("),T("UserCreated"),P("(user)) }"),P("   "),C("// runs only after successful commit\n"),
       P("}") ] },
 
-  { name:'5 · sql', file:'UserService.kt',
+  { name:'6 · sql', file:'UserService.kt',
     caption:"full SQL when you want it, never locked in",
     code:[ C("// Full control of SQL, with typed columns and tables; rows map to any data class.\n"),
       K("data class "),T("RankedCity"),P("("),K("val "),P("name: "),T("String"),P(", "),K("val "),P("rank: "),T("Long"),P(")\n\n"),
@@ -435,7 +514,7 @@ const SCENES = [
       P("    "),K("WHERE "),T("${City_.country}"),P(" = "),T("$country"),P("   "),C("-- typed columns · bound value\n"),
       S('"""'),P(" }."),F("resultList"),P("<"),T("RankedCity"),P(">()") ] },
 
-  { name:'6 · principles', file:'Core Principles',
+  { name:'7 · principles', file:'Core Principles',
     caption:"the core principles",
     grid:[
       { t:"Enjoyable", d:"Write code that's a pleasure to read and maintain." },
@@ -455,6 +534,7 @@ const SCENES = [
 
 // Generated SQL per scene (index-aligned with SCENES). Shown via the "Show SQL" toggle.
 const SQL = [
+  null, // cli: no query, so the Show SQL button is hidden for this scene
   null, // entities: no query, so the Show SQL button is hidden for this scene
 
   '<span class="sqlc">-- getById(1): joins the city graph, no N+1</span>\n'+
@@ -576,6 +656,7 @@ function buildBody(version) {
   <input type="checkbox" id="storm-nav-toggle" class="nav-toggle-cb" aria-label="Toggle navigation menu" />
   <label for="storm-nav-toggle" class="nav-toggle" aria-hidden="true"><span></span><span></span><span></span></label>
   <div class="nav-links">
+    <a href="/docs/ai">AI</a>
     <a href="/tutorials/">Tutorials</a>
     <a href="/examples/">Examples</a>
     <a href="/comparison">Comparison</a>
@@ -599,13 +680,12 @@ function buildBody(version) {
     <span class="hline">Radically Simple. Fast.</span>
     <span class="hline grad">ST<span class="slash">/</span>ORM for Kotlin.</span>
   </h1>
-  <p class="sub sub-lead">A modern alternative to Hibernate.</p>
-  <p class="sub" style="max-width:940px">Immutable data-class entities. Concise queries checked at compile time. No proxies, persistence context, or accidental N+1 queries.</p>
+  <p class="sub sub-lead">A modern alternative to Hibernate, built for agentic coding and performance.</p>
+  <p class="sub" style="max-width:940px">Your data class is the type-safe model. Your agent gets the exact details it needs to act on, and your queries generally run faster than with any other ORM.</p>
   <div class="cta hero-cta">
     <a href="/quickstart" class="btn primary go">Try it in 5 minutes →</a>
     <a href="/comparison" class="btn">Compare with your ORM</a>
   </div>
-  <p class="hero-talk"><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="m3 7 9 6 9-6"/></svg><span>Evaluating Storm for your team or project? Talk to the engineers behind it: <a href="mailto:${CONTACT_EMAIL}">${CONTACT_EMAIL}</a></span></p>
 
   <div class="stage">
     <div class="editor">
@@ -613,6 +693,7 @@ function buildBody(version) {
         <span class="dot r"></span><span class="dot y"></span><span class="dot g"></span>
         <span class="fname" id="fname">Entities.kt</span>
         <button type="button" class="sqlbtn" id="sqlbtn" aria-expanded="false" aria-controls="sqlpanel" style="display:none"><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><ellipse cx="12" cy="5" rx="8" ry="3"/><path d="M4 5v14c0 1.7 3.6 3 8 3s8-1.3 8-3V5"/><path d="M4 12c0 1.7 3.6 3 8 3s8-1.3 8-3"/></svg><span id="sqlbtntext">Show SQL</span></button>
+        <button type="button" class="sqlbtn clicopy" id="copybtn" data-copy="${escAttr(CLI_INIT)}" aria-label="Copy command: ${escAttr(CLI_INIT)}"><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg><span class="cptext">Copy command</span></button>
       </div>
       <div class="codearea" id="scene-panel" role="tabpanel" aria-labelledby="stab-0" tabindex="0">
         <div class="gutter" id="gutter"></div>
@@ -637,6 +718,41 @@ function buildBody(version) {
     ${card('speed')}
     ${card('entities')}
     ${card('queries')}
+  </div>
+</div></section>
+
+<section class="agents" id="agents"><div class="wrap">
+  <div class="alabel">Agentic coding</div>
+  <h2>Good for your agent. Good for you.</h2>
+  <p class="lede">A coding agent is only as right as what it can read. In Storm every detail lives in the model: your data classes define the tables, keys and relations, and the queries follow from them. Underneath is a thin layer over JDBC, so nothing sits between the model and the database. The agent reads the model and has everything it needs, and the code it reads is exactly what runs.</p>
+  <div class="three">
+    <div class="card">
+      <h3>What you see is what runs</h3>
+      <p>No proxies, no lazy loading, no persistence context, no flush. An entity is a value, and every database call is a visible line of code. Nothing happens that the agent cannot see.</p>
+    </div>
+    <div class="card">
+      <h3>All in one place</h3>
+      <p>One data class is the table, its keys and its relations. No second table definition beside it, and no session state deciding at runtime what a field holds. The agent reads one file and has the full picture.</p>
+    </div>
+    <div class="card">
+      <h3>Queries come from the domain</h3>
+      <p>Your entities already give you one-line, type-safe queries across relations, with the whole graph loaded in one statement. Less for the agent to write, and fewer joins and mappings to get wrong.</p>
+    </div>
+  </div>
+  <div class="agentkit">
+    <div class="akcopy">
+      <h3>Set up your agent in one minute</h3>
+      <p>The Storm CLI installs rules and skills for Claude Code, Cursor, GitHub Copilot, Windsurf and Codex, plus an optional MCP server that runs on your machine and is read-only. The agent sees your schema, never your credentials, and sees data only if you allow it. The agent then checks its own work: <code>validateSchema()</code> proves the entities match the database, and <code>SqlCapture</code> shows the SQL a query really runs.</p>
+      <div class="aksafe"><span>Runs locally</span><span>Read-only</span><span>Schema only by default</span><span>Credentials never reach the AI</span></div>
+      <a href="/docs/ai">Agentic coding guide →</a>
+      <a href="/docs/database-and-mcp#security">How access is secured →</a>
+    </div>
+    <div class="akcmds">
+      <div class="akcmd">${cliChip(CLI_INSTALL)}<span class="aknote">Install the Storm CLI once.</span></div>
+      <div class="akcmd">${cliChip('storm init')}<span class="aknote">In your project: rules, skills and schema access for your agent. Run <code>storm update</code> later to refresh them.</span></div>
+      <div class="akcmd">${cliChip('storm demo')}<span class="aknote">In an empty directory: your agent builds a demo app on Storm.</span></div>
+      <p class="akreq">Needs Node.js 18 or later.</p>
+    </div>
   </div>
 </div></section>
 
@@ -726,15 +842,16 @@ function buildBody(version) {
 
 <footer><div class="wrap foot">
   <div class="brand"><img class="logo" src="/img/storm-light.png" alt="Storm" /></div>
-  <div class="links"><a href="/">orm.st</a><a href="/quickstart">Quickstart</a><a href="/docs/">Documentation</a><a href="/tutorials/">Tutorials</a><a href="/templates/">Templates</a><a href="/examples/">Examples</a><a href="/comparison">Comparison</a><a href="/benchmarks">Benchmarks</a><a href="/blog/">Blog</a><a href="${GH}" target="_blank" rel="noopener">GitHub</a><a href="${DISCORD}" target="_blank" rel="noopener">Discord</a></div>
+  <div class="links"><a href="/">orm.st</a><a href="/quickstart">Quickstart</a><a href="/docs/ai">Agentic coding</a><a href="/docs/">Documentation</a><a href="/tutorials/">Tutorials</a><a href="/templates/">Templates</a><a href="/examples/">Examples</a><a href="/comparison">Comparison</a><a href="/benchmarks">Benchmarks</a><a href="/blog/">Blog</a><a href="${GH}" target="_blank" rel="noopener">GitHub</a><a href="${DISCORD}" target="_blank" rel="noopener">Discord</a></div>
 </div></footer>
 `;
 }
 
 const TITLE = 'ST/ORM · The type-safe Kotlin ORM';
 const DESC =
-  'Storm is a type-safe, SQL-first Kotlin ORM. Immutable data-class entities, ' +
-  'one-line queries checked at compile time, no proxies, no N+1. Try it in 5 minutes.';
+  'Storm is a type-safe, SQL-first Kotlin ORM built for agentic coding and performance. Immutable ' +
+  'data-class entities, one-line queries checked at compile time, no proxies, no N+1. ' +
+  'Try it in 5 minutes.';
 
 export default function Home() {
   const {siteConfig} = useDocusaurusContext();
@@ -763,6 +880,41 @@ export default function Home() {
       return [chip, onChipClick];
     });
 
+    // ---- CLI command chips: copy on click, check mark for a moment ----
+    const cliTimers = new Map();
+    const cliHandlers = [...document.querySelectorAll('.storm-home .clichip, .storm-home .clicopy')].map((chip) => {
+      const label = chip.querySelector('.cptext');
+      const onCopy = () => {
+        const text = chip.dataset.copy;
+        // The Clipboard API needs a secure context; fall back to a throwaway
+        // textarea so copy also works on plain-http previews (e.g. LAN).
+        if (navigator.clipboard && window.isSecureContext) {
+          navigator.clipboard.writeText(text);
+        } else {
+          const ta = document.createElement('textarea');
+          ta.value = text;
+          document.body.appendChild(ta);
+          ta.select();
+          document.execCommand('copy');
+          ta.remove();
+        }
+        // Counted as a Plausible custom event, so the dashboard shows how many
+        // visitors take the CLI route and which command they pick.
+        if (typeof window.plausible === 'function') {
+          window.plausible('Copy CLI command', {props: {command: text}});
+        }
+        chip.classList.add('on');
+        if (label) label.textContent = 'Copied';
+        clearTimeout(cliTimers.get(chip));
+        cliTimers.set(chip, setTimeout(() => {
+          chip.classList.remove('on');
+          if (label) label.textContent = 'Copy command';
+        }, 1600));
+      };
+      chip.addEventListener('click', onCopy);
+      return [chip, onCopy];
+    });
+
     const codeEl=document.getElementById('code'), gutEl=document.getElementById('gutter'),
           fnameEl=document.getElementById('fname'), scenesEl=document.getElementById('scenes'),
           statusEl=document.getElementById('status'), statusTextEl=document.getElementById('statustext'),
@@ -770,6 +922,7 @@ export default function Home() {
     if(!codeEl) return;
 
     // ---- "Show SQL": reveals the generated SQL for the current scene ----
+    const copyBtn=document.getElementById('copybtn');
     const editorEl=document.querySelector('.storm-home .editor'), sqlBtn=document.getElementById('sqlbtn'),
           sqlBtnText=document.getElementById('sqlbtntext'), sqlPanel=document.getElementById('sqlpanel');
     let showSql=false, curIdx=0;
@@ -829,6 +982,10 @@ export default function Home() {
       curIdx=idx;
       const hasSql=!!SQL[idx];
       sqlBtn.style.display=hasSql?'':'none';
+      if(copyBtn){
+        copyBtn.style.display=sc.copy?'':'none';
+        if(sc.copy){ copyBtn.dataset.copy=sc.copy; copyBtn.setAttribute('aria-label','Copy command: '+sc.copy); }
+      }
       sqlBtn.setAttribute('aria-expanded',hasSql&&showSql?'true':'false');
       sqlBtnText.textContent=showSql?'Hide SQL':'Show SQL';
       editorEl.classList.toggle('show-sql',hasSql&&showSql);
@@ -887,10 +1044,22 @@ export default function Home() {
         // roughly four seconds. It plays once per visit, so the visitor should
         // not be waiting on it to find out what the page is showing them.
         for(let n=0;n<=text.length;n++){
+          // A terminal scene types its command, then prints the output a
+          // whole line at a time.
+          if(sc.typed!=null&&n>sc.typed){
+            const nl=text.indexOf('\n',n);
+            n=nl<0?text.length:nl+1;
+          }
           codeEl.innerHTML=render(sc.code,n,true);
+          if(myGen!==gen) return;
           const ch=text[n-1];
           let d=6+Math.random()*10;
-          if(ch==='\n')d=55; else if(ch===' ')d=4; else if('(){}.,'.includes(ch))d=22;
+          // Output pacing: a beat after the command while it "runs", then a
+          // line every third of a second, so the run reads as a live terminal
+          // rather than a flash of text.
+          if(sc.typed!=null&&n===sc.typed)d=800;
+          else if(sc.typed!=null&&n>sc.typed)d=320;
+          else if(ch==='\n')d=55; else if(ch===' ')d=4; else if('(){}.,'.includes(ch))d=22;
           await wait(d);
         }
       }
@@ -935,6 +1104,8 @@ export default function Home() {
       gen++;
       clearTimeout(timer);
       vsChipHandlers.forEach(([chip, handler]) => chip.removeEventListener('click', handler));
+      cliHandlers.forEach(([chip, handler]) => chip.removeEventListener('click', handler));
+      cliTimers.forEach((t) => clearTimeout(t));
       tabHandlers.forEach(([tab, onClick, onKey]) => {
         tab.removeEventListener('click', onClick);
         tab.removeEventListener('keydown', onKey);
@@ -952,7 +1123,7 @@ export default function Home() {
         <link rel="canonical" href="https://orm.st/" />
         <meta
           name="keywords"
-          content="Kotlin ORM, type-safe ORM, SQL-first ORM, Kotlin database library, Hibernate alternative, JPA alternative, Exposed alternative, Storm ORM"
+          content="Kotlin ORM, type-safe ORM, SQL-first ORM, Kotlin database library, Hibernate alternative, JPA alternative, Exposed alternative, ORM for AI coding agents, agentic coding, MCP database server, Storm ORM"
         />
         {/* Open Graph / Twitter: default og:title is just the site name
             ("Storm Framework") and og:description is absent, so set the
@@ -985,6 +1156,7 @@ export default function Home() {
               'One-line queries with an optional full SQL template engine',
               'Works with PostgreSQL, MySQL, MariaDB, Oracle, SQL Server, SQLite and H2',
               'Integrates with Spring Boot 3.x/4.x and Ktor',
+              'Built for agentic coding: one CLI command installs rules, skills and a schema-aware MCP server for Claude Code, Cursor, GitHub Copilot, Windsurf and Codex',
             ],
             url: 'https://orm.st',
             sameAs: [

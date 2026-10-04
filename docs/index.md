@@ -8,7 +8,7 @@ import TabItem from '@theme/TabItem';
 
 # Storm
 
-**Storm** is an ORM for Kotlin 2.0+ and Java 21, built on a SQL template engine. Entities are plain immutable data classes and records, queries are checked at compile time, and every database call is explicit: no proxies, no persistence context, no accidental N+1 queries.
+**Storm** is an ORM for Kotlin 2.0+ and Java 21, built for agentic coding and performance on a SQL template engine. Entities are plain immutable data classes and records, queries are checked at compile time, and every database call is explicit: no proxies, no persistence context, no accidental N+1 queries.
 
 ## Start Here
 
@@ -16,6 +16,7 @@ import TabItem from '@theme/TabItem';
 |----------------|-------|
 | See Storm work end to end, in five minutes | **[Quickstart](/quickstart)** |
 | Add Storm to a project you already have | [Set Up Your Project](getting-started.md) |
+| Work with a coding agent (Claude Code, Cursor, Copilot, Windsurf, Codex) | [Agentic Coding](ai.md): `npx @storm-orm/cli init` |
 | Understand the model before writing code | [Entities](entities.md), then [Queries](queries.md) |
 | Decide whether to adopt it | [Evaluating for Production](#evaluating-for-production) |
 
@@ -169,7 +170,7 @@ To talk the evaluation through with the engineers behind Storm, write to [hello@
 
 Storm is focused on being a great ORM and SQL template engine. It intentionally does not include:
 
-- **Schema migration or DDL generation.** Storm does not automatically create, alter, or drop tables at runtime. With Storm's [AI integration](ai.md), your coding assistant can read your database schema and generate Flyway or Liquibase migration scripts on demand. For schema versioning, use [Flyway](https://flywaydb.org/) or [Liquibase](https://www.liquibase.com/).
+- **Schema migration or DDL generation.** Storm does not automatically create, alter, or drop tables at runtime. With Storm's [agentic coding support](ai.md), your coding agent can read your database schema and generate Flyway or Liquibase migration scripts on demand. For schema versioning, use [Flyway](https://flywaydb.org/) or [Liquibase](https://www.liquibase.com/).
 - **Second-level cache.** Storm's entity cache is transaction-scoped and cleared on commit. For cross-transaction caching, use Spring's `@Cacheable` or a dedicated cache layer like Caffeine or Redis.
 - **Lazy loading proxies.** Entities are plain records with no proxies. Related entities are loaded eagerly in a single query via JOINs. For deferred loading, use [Refs](refs.md) to explicitly control when related data is fetched.
 
@@ -186,17 +187,17 @@ See [Database Dialects](dialects.md) for installation and configuration details.
 - Kotlin 2.0+ (JDK 21 or later), or Java on JDK 21 exactly (the Java API uses preview class files, which are version-locked)
 - Maven 3.9+ or Gradle 8+
 
-## AI-Assisted Development
+## Agentic Coding
 
-Storm's stateless, immutable entities mean what you see in the source code is exactly what exists at runtime: no hidden proxies, no lazy loading surprises, no persistence context rules that trip up generated code. When you ask an AI tool to write a query, define an entity, or build a repository, the output is straightforward data classes and explicit SQL.
+Storm is built for agentic coding. What you see in the source code is exactly what runs: no hidden proxies, no lazy loading surprises, no persistence context rules that trip up generated code. One data class is the table, its keys and its relations, and the domain model already gives one-line, type-safe queries, so your agent has the exact details it needs and less to write.
 
-One command configures your tool (Claude Code, Cursor, Copilot, Windsurf, or Codex) with Storm's rules, skills, and slash commands, and can connect it to your development database for schema-aware generation:
+One command configures your tool (Claude Code, Cursor, Copilot, Windsurf, or Codex) with Storm's rules, skills, and slash commands, and can connect it to your development database through a local, read-only MCP server for schema-aware generation:
 
 ```bash
 npx @storm-orm/cli init
 ```
 
-See [AI-Assisted Development](ai.md) for the full setup, and [Database and MCP](database-and-mcp.md) for the schema-aware server.
+See [Agentic Coding](ai.md) for the full setup, and [Database and MCP](database-and-mcp.md) for the schema-aware server.
 
 ## Glossary
 

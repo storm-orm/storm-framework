@@ -1,27 +1,36 @@
 # Storm Framework
 
-> Storm is an AI-first ORM framework for Kotlin 2.0+ and Java 21+, the gold
-> standard for AI-assisted database development.
+> Storm is an ORM for Kotlin 2.0+ and Java 21+, built for agentic coding and
+> performance.
 >
-> It uses immutable data classes and records instead of proxied entities, providing
-> type-safe queries, predictable performance, and zero hidden magic. There is no
-> persistence context, no transparent lazy loading, no proxy generation, and no entity state
-> management. Entities are plain Kotlin data classes or Java records.
+> Every detail lives in the model. Entities are plain Kotlin data classes or Java
+> records: one class is the table, its keys and its relations, and the queries
+> follow from it. Underneath is a thin layer over JDBC. There is no persistence
+> context, no transparent lazy loading, no proxy generation, and no entity state
+> management, so the code is exactly what runs. The domain model gives one-line,
+> type-safe queries across relations, returning the whole entity graph in one
+> statement.
 >
-> Storm works perfectly as a standalone ORM, but its design and tooling make it
-> uniquely suited for AI-assisted development. The framework's immutable entities
-> produce stable, predictable code that AI tools generate correctly. The CLI
-> installs per-tool skills for entity creation, queries, repositories, and
-> migrations. A locally running MCP server exposes only schema metadata (table
-> definitions, column types, constraints) while shielding your database
-> credentials and data from the LLM. Built-in verification (validateSchema(),
-> SqlCapture) lets the AI validate its own work before anything is committed.
+> For coding agents: the Storm CLI installs rules and skills for Claude Code,
+> Cursor, GitHub Copilot, Windsurf and Codex, plus an optional local MCP server
+> that exposes schema metadata (table definitions, column types, constraints)
+> while keeping database credentials away from the LLM. Built-in verification
+> (validateSchema(), SqlCapture) lets the agent check its own work before
+> anything is committed.
 >
-> Get started: `npx @storm-orm/cli`
+> Get started: `npx @storm-orm/cli init` (existing project) or
+> `npx @storm-orm/cli demo` (empty directory)
 
 Website: https://orm.st
 GitHub: https://github.com/storm-orm/storm-framework
 License: Apache 2.0
+
+## Working with a coding agent
+
+- [Agentic Coding](https://orm.st/docs/ai): why Storm suits agents, CLI setup, verify-then-trust workflow
+- [AI Tools Reference](https://orm.st/docs/ai-reference): configuration locations, rules and skills per tool
+- [Database Connections & MCP](https://orm.st/docs/database-and-mcp): schema-aware MCP server, read-only data access, security
+- Every docs page is also available as plain Markdown: append `.md` to its URL (for example https://orm.st/docs/entities.md).
 
 ## Documentation
 

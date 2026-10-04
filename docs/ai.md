@@ -1,29 +1,41 @@
-# AI-Assisted Development
+# Agentic Coding
 
 import Tabs from '@theme/Tabs';
 import TabItem from '@theme/TabItem';
 
-Storm is an AI-first ORM. Entities are plain Kotlin data classes or Java records. Queries are explicit SQL. Built-in verification lets AI validate its own work before anything touches production.
+Storm is built for agentic coding. A coding agent is only as right as what it can read, and in Storm every detail lives in the model: your data classes define the tables, keys and relations, and the queries follow from them. Underneath is a thin layer over JDBC, so nothing sits between the model and the database.
 
-:::info AI-first, not AI-only
-Storm keeps you in control. `ORMTemplate.validateSchema()` validates that entities match the database. `SqlCapture` validates that queries match the intent. `@StormTest` runs both checks in an isolated in-memory database before anything reaches production. The AI generates code, then Storm verifies it. That is what AI-first means here.
+- **What you see is what runs.** No proxies, no lazy loading, no persistence context, no flush. An entity is a value, and every database call is a visible line of code.
+- **All in one place.** One data class is the table, its keys and its relations. There is no second table definition beside it and no session state deciding at runtime what a field holds. The agent reads one file and has the full picture.
+- **Queries come from the domain.** The entities already give one-line, type-safe queries across relations, with the whole entity graph loaded in one statement. There is less for the agent to write, and fewer joins and mappings to get wrong.
+
+Good for your agent, good for you: the same properties that make Storm code easy to generate correctly make it easy to review. On top of that, Storm gives the agent its conventions (rules and skills), your schema (a local, read-only MCP server), and a way to check its own work (`validateSchema()` and `SqlCapture`).
+
+:::info You stay in control
+`ORMTemplate.validateSchema()` validates that entities match the database. `SqlCapture` validates that queries match the intent. `@StormTest` runs both checks in an isolated in-memory database before anything reaches production. The agent generates code, then Storm verifies it.
 :::
 
 ---
 
 ## Quick Setup
 
-Install the Storm CLI and run it in your project:
+Run the Storm CLI from the root of your project. Nothing to install first:
+
+```bash
+npx @storm-orm/cli init
+```
+
+Starting from an empty directory instead? `demo` creates a Kotlin project and installs a skill that guides your agent to build a small web application on Storm, using the public IMDB dataset:
+
+```bash
+npx @storm-orm/cli demo
+```
+
+If you will use the CLI again, for `storm update` (refresh rules and skills), `storm db` (manage database connections) or `storm mcp` (manage a project's MCP servers), install it globally:
 
 ```bash
 npm install -g @storm-orm/cli
 storm init
-```
-
-Or without installing globally:
-
-```bash
-npx @storm-orm/cli init
 ```
 
 The interactive setup walks you through three steps:
@@ -36,13 +48,13 @@ Choose which AI coding tools you use. Storm configures each one with rules, skil
 
 For each selected tool, Storm installs two types of AI context:
 
-**Rules** are a project-level configuration file that is always loaded by the AI tool. They contain Storm's key patterns, naming conventions, and critical constraints (immutable QueryBuilder, no collection fields on entities, `Ref<T>` for circular references, etc.). The rules ensure the AI follows Storm's conventions in every interaction, without you having to repeat them.
+**Rules** are a project-level configuration file that is always loaded by the AI tool. When the file already exists (an existing `CLAUDE.md`, for example), its content is kept: Storm adds its rules as a marked block, and later runs replace only that block. They contain Storm's key patterns, naming conventions, and critical constraints (immutable QueryBuilder, no collection fields on entities, `Ref<T>` for circular references, etc.). The rules ensure the AI follows Storm's conventions in every interaction, without you having to repeat them.
 
 **Skills** are per-topic guides that the AI loads on demand when working on a specific task. Each skill contains focused instructions, code examples, and common pitfalls for one area of Storm (entities, queries, repositories, migrations, JSON, serialization, and more). Skills are fetched from orm.st during setup and can be updated automatically on each run without requiring a CLI update. See [AI Tools Reference](ai-reference.md#skills) for the full list.
 
 ### 3. Database connection (optional)
 
-If you have a local development database running, Storm can set up a schema-aware MCP server. This gives your AI tool access to your actual database structure (table definitions, column types, foreign keys) without exposing credentials or data.
+If you have a local development database running, Storm can set up a schema-aware MCP server. This gives your AI tool access to your actual database structure (table definitions, column types, foreign keys) without exposing credentials or data. The server runs on your machine and is read-only: it cannot write, modify or delete anything.
 
 The MCP server runs locally on your machine, exposes only schema metadata by default, and stores credentials in `~/.storm/` (outside your project, outside the LLM's reach). It supports PostgreSQL, MySQL, MariaDB, Oracle, SQL Server, SQLite, and H2. You can connect multiple databases to a single project, even across different database types.
 
@@ -95,11 +107,11 @@ Most AI coding tools support adding context through URLs or pasted text. Point y
 
 ---
 
-## Why Storm Works Well With AI
+## Why Storm Works Well With Agents
 
-AI works better when framework behavior is explicit and visible in source code.
+Agents work better when framework behavior is explicit and visible in source code.
 
-Traditional ORMs rely on mechanisms that are powerful but implicit: proxy objects that intercept field access, lazy loading that triggers queries at unpredictable moments, persistence contexts that track entity state across transaction boundaries, and cascading rules that propagate changes through the object graph. These features serve real purposes, but they make AI-assisted development harder. The AI has to account for behavior that does not appear in the code. Code that compiles and looks correct can still break at runtime because of invisible framework state.
+Traditional ORMs rely on mechanisms that are powerful but implicit: proxy objects that intercept field access, lazy loading that triggers queries at unpredictable moments, persistence contexts that track entity state across transaction boundaries, and cascading rules that propagate changes through the object graph. These features serve real purposes, but they make agentic coding harder. The AI has to account for behavior that does not appear in the code. Code that compiles and looks correct can still break at runtime because of invisible framework state.
 
 Storm eliminates all of that. Entities are plain Kotlin data classes or Java records. There are no proxies, no managed state, no persistence context, and no transparent lazy loading: deferred loading is explicit, through `Ref<T>`. Queries are explicit, and what you see in the source code is exactly what happens at runtime. This makes Storm's behavior predictable for AI tools: the code is the complete picture.
 
@@ -112,7 +124,7 @@ The design choices that matter most:
 - **Compile-time metamodel.** Type errors caught at build time, not at runtime. The AI gets immediate feedback.
 - **Secure schema access.** The MCP server gives AI tools structural database knowledge without exposing credentials. Data access is opt-in, read-only by construction, and enforced at the database driver level.
 
-Beyond the data model, Storm provides dedicated tooling for AI-assisted workflows:
+Beyond the data model, Storm provides dedicated tooling for agentic workflows:
 
 - **Skills** guide AI tools through specific tasks (entity creation, queries, repositories, migrations) with framework-aware conventions and rules.
 - **A locally running MCP server** gives AI tools access to your live database schema: table definitions, column types, constraints, and foreign keys. Optionally, the AI can also query individual records (read-only) when sample data would improve type decisions. The AI can inspect your actual database structure to generate entities that match, or validate entities it just created.
@@ -305,9 +317,9 @@ You can also ask the AI to keep the test as a permanent regression test. The cho
 
 ---
 
-## The Gold Standard: Verify, Then Trust
+## Verify, Then Trust
 
-This is what makes Storm the gold standard for AI-assisted database development. The AI does not just generate code and hope for the best. It generates code, then validates it through Storm's own verification, before anything is committed.
+The AI does not just generate code and hope for the best. It generates code, then validates it through Storm's own verification, before anything is committed.
 
 | Task | AI generates | Storm verifies |
 |------|-------------|-------------------|
