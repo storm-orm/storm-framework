@@ -9,7 +9,7 @@ Storm is built for agentic coding. A coding agent is only as right as what it ca
 - **All in one place.** One data class is the table, its keys and its relations. There is no second table definition beside it and no session state deciding at runtime what a field holds. The agent reads one file and has the full picture.
 - **Queries come from the domain.** The entities already give one-line, type-safe queries across relations, with the whole entity graph loaded in one statement. There is less for the agent to write, and fewer joins and mappings to get wrong.
 
-Good for you, good for your agent: the same properties that make Storm code easy to review make it easy to generate correctly. On top of that, Storm gives the agent its conventions (rules and skills), your schema (a local, read-only MCP server), and a way to check its own work (`validateSchema()` and `SqlCapture`).
+Good for your agent, good for you: the same properties that make Storm code easy to generate correctly make it easy to review. On top of that, Storm gives the agent its conventions (rules and skills), your schema (a local, read-only MCP server), and a way to check its own work (`validateSchema()` and `SqlCapture`).
 
 :::info You stay in control
 `ORMTemplate.validateSchema()` validates that entities match the database. `SqlCapture` validates that queries match the intent. `@StormTest` runs both checks in an isolated in-memory database before anything reaches production. The agent generates code, then Storm verifies it.

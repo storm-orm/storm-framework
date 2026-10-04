@@ -717,7 +717,7 @@ function buildBody(version) {
 
 <section class="agents" id="agents"><div class="wrap">
   <div class="alabel">Agentic coding</div>
-  <h2>Good for you. Good for your agent.</h2>
+  <h2>Good for your agent. Good for you.</h2>
   <p class="lede">A coding agent is only as right as what it can read. In Storm every detail lives in the model: your data classes define the tables, keys and relations, and the queries follow from them. Underneath is a thin layer over JDBC, so nothing sits between the model and the database. The agent reads the model and has everything it needs, and the code it reads is exactly what runs.</p>
   <div class="three">
     <div class="card">
