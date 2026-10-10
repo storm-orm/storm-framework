@@ -12,7 +12,7 @@ import TabItem from '@theme/TabItem';
 This page is about getting Storm into a real project: what it needs from your toolchain, which of the four setup routes fits your situation, and how to prove the wiring works before you write application code. If you work with a coding agent, the fastest route is to let it do the wiring: one command gives it everything it needs.
 
 :::tip Just want to see it work?
-The **[Quickstart](/quickstart)** takes about five minutes, needs no database server, and ends with a working query and the SQL it generated. It is the fastest way to judge Storm, and it is the recommended first stop. Come back here when you are setting up a project you intend to keep.
+The **[Quickstart](/quickstart)** takes about five minutes, with your coding agent or by hand, needs no database server, and ends with a working query and the SQL it generated. It is the fastest way to judge Storm, and it is the recommended first stop. Come back here when you are setting up a project you intend to keep.
 :::
 
 ## Prerequisites
@@ -24,6 +24,7 @@ The **[Quickstart](/quickstart)** takes about five minutes, needs no database se
 | Kotlin (if using Kotlin) | 2.0 or later |
 | Build tool | Maven 3.9+ or Gradle 8+ (Gradle 8.5+ for the Storm plugin) |
 | Database | Any JDBC-compatible database |
+| Node.js (Storm CLI, coding-agent route only) | 18 or later |
 
 Kotlin users need no preview flags. Java users must enable `--enable-preview` on compilation, tests, and execution, and must build and run on a JDK 21 toolchain. [Installation](installation.md) covers both in full, including the exact Maven and Gradle configuration.
 
@@ -142,7 +143,7 @@ Run it at startup in development, or as a test. [Schema Validation](validation.m
 
 ## Next
 
-With the project wired, work through the model:
+With a coding agent, keep asking it for what you need: [Agentic Coding](ai.md) covers the workflow and how the agent checks its own work. To learn the model yourself, or to review what the agent wrote, work through:
 
 1. [First Entity](first-entity.md) -- define entities, insert and fetch records
 2. [First Query](first-query.md) -- filtering, repositories, and streaming

@@ -17,11 +17,11 @@ import {
 // The 5-minute quickstart. Built in the landing/tutorial style (see
 // tutorialTheme.js) rather than as a docs page so it deploys live immediately
 // and is the target of every "Get started" button on the site. Kotlin-first.
-// A short box up top hands visitors who work with a coding agent the Storm CLI
-// (`init` for a project, `demo` for an empty directory); the walkthrough below
-// it is the manual build, which is also exactly what the agent will write. The install snippet renders the
-// resolved release version, read from siteConfig.customFields.stormVersion
-// (docusaurus.config.ts).
+// The page offers the two routes the homepage leads with: a coding agent set up
+// through the Storm CLI (`init` for a project, `demo` for an empty directory),
+// then the numbered walkthrough by hand, which is also exactly the code the
+// agent writes. The install snippet renders the resolved release version, read
+// from siteConfig.customFields.stormVersion (docusaurus.config.ts).
 
 const TITLE = 'Quickstart · Zero to Storm in five minutes';
 const DESC =
@@ -29,12 +29,9 @@ const DESC =
   'query across the relation in one type-safe line. The whole path from empty ' +
   'project to first query, with the SQL it generates.';
 
-// Spacing inside the agent box: the note style is built for a single line of
-// copy, and this one stacks a paragraph, two command bars and a closing line.
-const AGENT_NOTE_CSS = `
-  .storm-tut .agentnote p{margin:0}
-  .storm-tut .agentnote .clonebar{margin:12px 0 0}
-  .storm-tut .agentnote .clonebar + p{margin-top:14px}
+// The command bars carry no margin of their own.
+const AGENT_PATH_CSS = `
+  .storm-tut .agentpath .clonebar{margin:14px 0 0}
 `;
 
 function buildBody(version) {
@@ -129,14 +126,22 @@ ${navHtml('')}
 <div class="art">
   <div class="crumbs"><a href="/">Home</a><span class="sep">/</span>Quickstart</div>
   <h1>Zero to Storm<br><span class="grad">in 5 minutes.</span></h1>
-  <p class="dek">Install Storm, define two linked entities as plain data classes, and query across the relation in one type-safe line. No persistence context, no proxies, no XML. Here is the whole path.</p>
+  <p class="dek">Install Storm, define two linked entities as plain data classes, and query across the relation in one type-safe line. No persistence context, no proxies, no XML. Hand the path to your coding agent, or take it by hand: both end at the same code.</p>
   <div class="meta"><span>Kotlin</span><span>~5 min</span><span>JDK 21+</span></div>
 
-  <div class="note agentnote">
-    <p><b>Working with a coding agent?</b> Run one command from the root of your project and your agent knows Storm: rules and skills for Claude Code, Cursor, GitHub Copilot, Windsurf and Codex, plus an optional MCP server that runs on your machine, read-only: your agent sees the schema, never your credentials, and sees data only if you allow it. Starting from an empty directory instead? The demo command has your agent build a small app on Storm.</p>
-    ${clonebar('npx @storm-orm/cli init')}
-    ${clonebar('npx @storm-orm/cli demo')}
-    <p>The steps below are the same path by hand, and worth a read either way: Storm code is what runs, so this is exactly what your agent will write. More in the <a href="/docs/ai">agentic coding guide</a>.</p>
+  <div class="agentpath">
+  <h2>With a coding agent</h2>
+  <p>The Storm CLI gives your agent Storm's rules and skills, for Claude Code, Cursor, GitHub Copilot, Windsurf and Codex, and optionally a schema-aware MCP server. That server runs on your machine and is read-only: the agent sees your schema, never your credentials, and sees data only if you allow it. The CLI needs Node.js 18 or later.</p>
+  <p><b>Adding Storm to a project?</b> Run <code>init</code> from its root, then ask your agent for the steps below:</p>
+  ${clonebar('npx @storm-orm/cli init')}
+  <ul>
+    <li><i>"Add Storm to this project with the Gradle plugin and an in-memory H2 database."</i></li>
+    <li><i>"Create Director and Movie entities, where each movie has one director, and their tables."</i></li>
+    <li><i>"Find the movies by a director's name, and show me the SQL it runs."</i></li>
+  </ul>
+  <p><b>Starting from an empty directory?</b> <code>demo</code> creates a Kotlin project and has your agent build a small web application on Storm.</p>
+  ${clonebar('npx @storm-orm/cli demo')}
+  <p>The agent checks its own work: <code>validateSchema()</code> confirms the entities match the database, and <code>SqlCapture</code> shows the SQL a query really runs. The steps below are the same path by hand, and exactly the code your agent writes, so they are worth a read either way: it is the code you will review. More in the <a class="tlink" href="/docs/ai">agentic coding guide</a>.</p>
   </div>
 
   <h2><span class="hno">1</span>Set up</h2>
@@ -169,6 +174,7 @@ ${navHtml('')}
   <h2><span class="hno">4</span>Where to next</h2>
   <p>You have the whole shape of Storm in three steps. From here:</p>
   <div class="refs">
+    <a href="/docs/ai">Agentic coding</a>
     <a href="/tutorials/build-a-rest-api">Build a REST API from scratch</a>
     <a href="/docs/first-query">First Query</a>
     <a href="/docs/entities">Entities</a>
@@ -225,7 +231,7 @@ export default function Quickstart() {
           rel="stylesheet"
         />
       </Head>
-      <style dangerouslySetInnerHTML={{__html: TUT_CSS + AGENT_NOTE_CSS}} />
+      <style dangerouslySetInnerHTML={{__html: TUT_CSS + AGENT_PATH_CSS}} />
       <div className="storm-tut" dangerouslySetInnerHTML={{__html: buildBody(version)}} />
     </>
   );
