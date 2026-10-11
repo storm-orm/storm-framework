@@ -192,7 +192,7 @@ val users = orm.entity<User>()
 
 `contains`, `startsWith` and `endsWith` take text rather than a pattern. Storm escapes the characters the database reads as wildcards and adds the wildcards itself, so text a user typed, such as `50%` or `a_b`, matches exactly that text on every database. Use `like` when you write the pattern yourself.
 
-`eq`, `contains`, `startsWith` and `endsWith` compare text as the column's collation does, which ignores case on some databases and not on others. Their `IgnoreCase` forms ignore case on every database: the database lowers the column and the value alike, `LOWER(name) LIKE LOWER(?) ESCAPE '!'`, so one rule decides what a letter's lower case is. They ignore case and nothing else: accents are compared as they are, and SQLite lowers ASCII letters only unless it is built with ICU. A plain index does not serve a lowered column, so index the lowered expression where the comparison must be served by one, and keep the plain operators on a column whose collation ignores case already.
+`eq`, `contains`, `startsWith` and `endsWith` compare text as the column's collation does, which ignores case on some databases and not on others. Their `IgnoreCase` forms ignore case on every database: the database lowers the column and the value alike, `LOWER(name) LIKE LOWER(?) ESCAPE '!'`, so one rule decides what a letter's lower case is. They ignore case, and accents follow the column's collation: MySQL and MariaDB ignore them under their default collations, the other databases compare them as they are, and SQLite lowers ASCII letters only unless it is built with ICU. A plain index does not serve a lowered column, so index the lowered expression where the comparison must be served by one, and keep the plain operators on a column whose collation ignores case already.
 
 ```kotlin
 val users = orm.findAll(User_.email like "%@example.com")
@@ -263,7 +263,7 @@ List<User> users = orm.query(RAW."""
 
 `CONTAINS`, `STARTS_WITH` and `ENDS_WITH` take text rather than a pattern. Storm escapes the characters the database reads as wildcards and adds the wildcards itself, so text a user typed, such as `50%` or `a_b`, matches exactly that text on every database. Use `LIKE` when you write the pattern yourself.
 
-`EQUALS`, `CONTAINS`, `STARTS_WITH` and `ENDS_WITH` compare text as the column's collation does, which ignores case on some databases and not on others. Their `IGNORE_CASE` forms ignore case on every database: the database lowers the column and the value alike, `LOWER(name) LIKE LOWER(?) ESCAPE '!'`, so one rule decides what a letter's lower case is. They ignore case and nothing else: accents are compared as they are, and SQLite lowers ASCII letters only unless it is built with ICU. A plain index does not serve a lowered column, so index the lowered expression where the comparison must be served by one, and keep the plain operators on a column whose collation ignores case already.
+`EQUALS`, `CONTAINS`, `STARTS_WITH` and `ENDS_WITH` compare text as the column's collation does, which ignores case on some databases and not on others. Their `IGNORE_CASE` forms ignore case on every database: the database lowers the column and the value alike, `LOWER(name) LIKE LOWER(?) ESCAPE '!'`, so one rule decides what a letter's lower case is. They ignore case, and accents follow the column's collation: MySQL and MariaDB ignore them under their default collations, the other databases compare them as they are, and SQLite lowers ASCII letters only unless it is built with ICU. A plain index does not serve a lowered column, so index the lowered expression where the comparison must be served by one, and keep the plain operators on a column whose collation ignores case already.
 
 ```java
 List<User> users = orm.entity(User.class)
@@ -336,6 +336,56 @@ List<User> results = orm.entity(User.class)
 
 </TabItem>
 </Tabs>
+
+### Searching Text
+
+A search box takes several words, and every word should match somewhere: `ugly bad` finds "The Good, the Bad and the Ugly", and `ugly leone` finds it through the title and the director's name. `search` takes the input as the box receives it and one or more text columns:
+
+<Tabs groupId="language">
+<TabItem value="kotlin" label="Kotlin" default>
+
+```kotlin
+val movies = orm.entity<Movie>()
+    .select()
+    .where(search(input, Movie_.title, Movie_.director.name))
+    .resultList
+```
+
+`search` returns a predicate like the infix functions do, so it combines with them: `search(input, Movie_.title) and (Movie_.year gt 1960)`.
+
+</TabItem>
+<TabItem value="java" label="Java">
+
+```java
+List<Movie> movies = orm.entity(Movie.class)
+    .select()
+    .where(it -> it.search(input, Movie_.title, Movie_.director.name))
+    .getResultList();
+```
+
+`search` returns a predicate like `where` does, so it combines with `.and()` and `.or()`: `it.search(input, Movie_.title).and(it.where(Movie_.year, GREATER_THAN, 1960))`.
+
+</TabItem>
+</Tabs>
+
+Every word must occur in at least one of the columns, ignoring case and matched as literal text, as `CONTAINS_IGNORE_CASE` matches it. The predicate is an AND over the words of an OR over the columns, the same statement on every database:
+
+```sql
+WHERE (LOWER(m.title) LIKE LOWER(?) ESCAPE '!' OR LOWER(d.name) LIKE LOWER(?) ESCAPE '!')
+  AND (LOWER(m.title) LIKE LOWER(?) ESCAPE '!' OR LOWER(d.name) LIKE LOWER(?) ESCAPE '!')
+```
+
+| Input | Words |
+|-------|-------|
+| `ugly bad` | `ugly`, `bad` |
+| `"the good" ugly` | `the good`, `ugly`: a quoted phrase is one word |
+| `50% a_b` | `50%`, `a_b`, matched literally |
+| `"ugly` | `"ugly`: an unpaired quote is an ordinary character |
+| empty or blank | none: the predicate matches every row |
+
+A column reached through a relation, such as `Movie_.director.name`, joins its table as any other path does. Accents follow the column's collation, as for the `IGNORE_CASE` operators: MySQL and MariaDB ignore them under their default collations, and the other databases compare them as they are. `search` matches words; it does not rank the rows it finds, and it does not stem words the way a full-text index does.
+
+A match inside a word cannot use a B-tree index, so `search` reads every row it filters. Where that is too slow, PostgreSQL serves the statement from a trigram index on the lowered column: `CREATE INDEX ON movie USING gin (lower(title) gin_trgm_ops)`, after `CREATE EXTENSION pg_trgm`.
 
 ---
 

@@ -19,6 +19,8 @@ import static java.lang.StringTemplate.RAW;
 import static st.orm.Operator.EQUALS;
 import static st.orm.Operator.IN;
 
+import java.util.ArrayList;
+import java.util.List;
 import st.orm.Data;
 import st.orm.Navigable;
 import st.orm.Operator;
@@ -227,6 +229,32 @@ public abstract class WhereBuilder<T extends Data, R, ID> implements SubqueryTem
     }
 
     /**
+     * Matches the words of a search input against one or more text columns. Every word must occur in at least one of
+     * the paths, ignoring case and matched as literal text, as {@link Operator#CONTAINS_IGNORE_CASE} matches it, so
+     * {@code search("ugly bad", Movie_.title)} finds "The Good, the Bad and the Ugly". Whitespace separates the words,
+     * and a quoted phrase such as {@code "the good"} is one word; an unpaired quote is an ordinary character. An input
+     * without words, such as an empty search box, matches every row.
+     *
+     * <p>A path through a relation joins its table as any other path does. Accents compare as the column's collation
+     * compares them.</p>
+     *
+     * @param input the search input, as a search box receives it.
+     * @param path  the first text column to search.
+     * @param more  further text columns to search.
+     * @return the predicate builder.
+     * @since 1.15
+     */
+    @SafeVarargs
+    public final PredicateBuilder<T, R, ID> search(String input,
+                                                   Navigable<? extends T, String> path,
+                                                   Navigable<? extends T, String>... more) {
+        var paths = new ArrayList<Navigable<? extends T, String>>(more.length + 1);
+        paths.add(path);
+        paths.addAll(List.of(more));
+        return searchImpl(input, paths);
+    }
+
+    /**
      * Appends a custom expression to the WHERE clause.
      *
      * @param template the expression to add.
@@ -249,4 +277,14 @@ public abstract class WhereBuilder<T extends Data, R, ID> implements SubqueryTem
     protected abstract <V> PredicateBuilder<T, R, ID> whereImpl(Navigable<? extends T, V> path,
                                                                 Operator operator,
                                                                 V[] o);
+
+    /**
+     * Matches the words of a search input against the given text columns.
+     *
+     * @param input the search input.
+     * @param paths the text columns to search, at least one.
+     * @return the predicate builder.
+     * @since 1.15
+     */
+    protected abstract PredicateBuilder<T, R, ID> searchImpl(String input, List<Navigable<? extends T, String>> paths);
 }

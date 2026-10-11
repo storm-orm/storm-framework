@@ -443,7 +443,7 @@ List<User> users = orm.entity(User.class)
 </TabItem>
 </Tabs>
 
-They ignore case and nothing else: accents are compared as they are. A plain index does not serve a lowered column, so index the lowered expression where the comparison must be served by one, and keep the plain operators on a column whose collation ignores case already. See [Queries](queries.md) for the full list.
+They ignore case, and accents follow the column's collation: MySQL and MariaDB ignore them under their default collations, and the other databases compare them as they are. A plain index does not serve a lowered column, so index the lowered expression where the comparison must be served by one, and keep the plain operators on a column whose collation ignores case already. See [Queries](queries.md) for the full list.
 
 ---
 

@@ -32,6 +32,7 @@ import st.orm.template.impl.combineAnd
 import st.orm.template.impl.combineOr
 import st.orm.template.impl.create
 import st.orm.template.impl.createRef
+import st.orm.template.impl.createSearch
 import st.orm.template.impl.streamFlow
 import java.util.stream.Stream
 import kotlin.reflect.KClass
@@ -1554,6 +1555,27 @@ public infix fun <T : Data> Navigable<T, String>.endsWithIgnoreCase(text: String
  * @since 1.15
  */
 public infix fun <T : Data> Navigable<T, String>.notEndsWithIgnoreCase(text: String): PredicateBuilder<T, T, *> = create(this.asMetamodel(), NOT_ENDS_WITH_IGNORE_CASE, listOf(text))
+
+/**
+ * Creates a predicate that matches the words of a search input against one or more text columns. Every word must occur
+ * in at least one of the paths, ignoring case and matched as literal text, as [containsIgnoreCase] matches it, so
+ * `search("ugly bad", Movie_.title)` finds "The Good, the Bad and the Ugly". Whitespace separates the words, and a
+ * quoted phrase such as `"the good"` is one word; an unpaired quote is an ordinary character. An input without words,
+ * such as an empty search box, matches every row.
+ *
+ * A path through a relation joins its table as any other path does. Accents compare as the column's collation compares
+ * them.
+ *
+ * @param input the search input, as a search box receives it.
+ * @param path the first text column to search.
+ * @param more further text columns to search.
+ * @since 1.15
+ */
+public fun <T : Data> search(
+    input: String,
+    path: Navigable<T, String>,
+    vararg more: Navigable<T, String>,
+): PredicateBuilder<T, T, *> = createSearch(input, listOf(path.asMetamodel()) + more.map { it.asMetamodel() })
 
 /**
  * Infix functions to create a predicate to check if a field is greater than a value.

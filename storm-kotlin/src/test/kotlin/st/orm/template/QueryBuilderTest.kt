@@ -2196,6 +2196,28 @@ internal open class QueryBuilderTest(
         repo.select().where(group).resultList shouldHaveSize 2
     }
 
+    @Test
+    fun `search should match every word in one of its paths`() {
+        val repo = orm.entity(Owner::class)
+        val lastName = metamodel<Owner, String>(repo.model, "last_name")
+        val cityName = metamodel<Owner, String>(repo.model, "name")
+        fun firstNames(input: String) = repo.select().where(search(input, lastName, cityName)).resultList.map { it.firstName }.sorted()
+        firstNames("davis WINDSOR") shouldBe listOf("Harold")
+        firstNames("davis madison") shouldBe emptyList()
+        firstNames("\"sun par\"") shouldBe listOf("Betty")
+        firstNames("") shouldHaveSize 10
+    }
+
+    @Test
+    fun `search should combine with other predicates`() {
+        val repo = orm.entity(Owner::class)
+        val lastName = metamodel<Owner, String>(repo.model, "last_name")
+        val firstName = metamodel<Owner, String>(repo.model, "first_name")
+        repo.select()
+            .where(search("davis", lastName) and (firstName eq "Betty"))
+            .resultList.map { it.firstName } shouldBe listOf("Betty")
+    }
+
     // where with Metamodel and Data (FK reference)
 
     @Test

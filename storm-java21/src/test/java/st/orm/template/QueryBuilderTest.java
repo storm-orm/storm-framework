@@ -708,6 +708,28 @@ public class QueryBuilderTest {
         assertEquals(2, cities.size());
     }
 
+    @Test
+    public void testSearchMatchesEveryWordInOneOfItsPaths() {
+        assertEquals(List.of("Harold"), searchFirstNames("davis WINDSOR"));
+        assertEquals(List.of(), searchFirstNames("davis madison"));
+        assertEquals(List.of("Betty"), searchFirstNames("\"sun par\""));
+        assertEquals(10, searchFirstNames("").size());
+    }
+
+    @Test
+    public void testSearchCombinesWithOtherPredicates() {
+        List<Owner> owners = orm.entity(Owner.class).select()
+                .where(it -> it.search("davis", Owner_.lastName).and(it.where(Owner_.firstName, EQUALS, "Betty")))
+                .getResultList();
+        assertEquals(List.of("Betty"), owners.stream().map(Owner::firstName).toList());
+    }
+
+    private List<String> searchFirstNames(String input) {
+        return orm.entity(Owner.class).select()
+                .where(it -> it.search(input, Owner_.lastName, Owner_.address.city.name))
+                .getResultList().stream().map(Owner::firstName).sorted().toList();
+    }
+
     // PredicateBuilder - and / or across entities on a widened builder
 
     @Test
