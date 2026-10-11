@@ -206,7 +206,7 @@ val users = orm.findAll(User_.role inList listOf(adminRole, userRole))
 </TabItem>
 <TabItem value="java" label="Java">
 
-Combine conditions using the lambda-based `where` builder. The `it` parameter provides access to the condition factory, which you chain with `.and()` or `.or()` calls to compose compound predicates.
+Combine conditions using the lambda-based `where` builder. The `it` parameter provides access to the condition factory, which you chain with `.and()` or `.or()` calls to compose compound predicates. A chain reads left to right: `a.or(b).and(c)` is `(a OR b) AND c`. To group differently, nest the call: `a.or(b.and(c))`.
 
 ```java
 // AND condition

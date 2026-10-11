@@ -675,65 +675,86 @@ abstract class QueryBuilderImpl<T extends Data, R, ID> extends QueryBuilder<T, R
     private static final TemplateString RAW_OPEN = TemplateString.of("(");
     private static final TemplateString RAW_CLOSE = TemplateString.of(")");
 
+    /**
+     * An immutable predicate: combining it with another returns a new predicate and leaves both operands unchanged, so
+     * a predicate kept in a variable can be combined more than once.
+     */
     static class PredicateBuilderImpl<TX extends Data, RX, IDX> implements PredicateBuilder<TX, RX, IDX> {
-        private final List<TemplateString> templates = new ArrayList<>();
+        private final List<TemplateString> templates;
         private final boolean safe;
+        /** The operator joining the terms at the top level, or {@code null} for a single term. */
+        private final @Nullable TemplateString operator;
 
         PredicateBuilderImpl(TemplateString template) {
             this(template, true);
         }
 
         PredicateBuilderImpl(TemplateString template, boolean safe) {
-            templates.add(requireNonNull(template, "template"));
+            this(List.of(requireNonNull(template, "template")), safe, null);
+        }
+
+        private PredicateBuilderImpl(List<TemplateString> templates, boolean safe, @Nullable TemplateString operator) {
+            this.templates = templates;
             this.safe = safe;
+            this.operator = operator;
         }
 
         @Override
         public PredicateBuilder<TX, RX, IDX> and(PredicateBuilder<? extends TX, ?, ?> predicate) {
-            add(RAW_AND, predicate);
-            return this;
+            return combineWith(RAW_AND, operand(RAW_AND, predicate));
         }
 
         @Override
         public PredicateBuilder<TX, RX, IDX> and(TemplateString template) {
-            add(RAW_AND, combine(RAW_OPEN, template, RAW_CLOSE));   // Always wrap a template in parentheses as we don't know if it's a single expression or a complex one.
-            return this;
+            return combineWith(RAW_AND, combine(RAW_OPEN, template, RAW_CLOSE));   // Always wrap a template in parentheses as we don't know if it's a single expression or a complex one.
         }
 
         @Override
         public PredicateBuilder<TX, RX, IDX> or(PredicateBuilder<? extends TX, ?, ?> predicate) {
-            add(RAW_OR, predicate);
-            return this;
+            return combineWith(RAW_OR, operand(RAW_OR, predicate));
         }
 
         @Override
         public PredicateBuilder<TX, RX, IDX> or(TemplateString template) {
-            add(RAW_OR, combine(RAW_OPEN, template, RAW_CLOSE));
-            return this;
+            return combineWith(RAW_OR, combine(RAW_OPEN, template, RAW_CLOSE));
         }
 
-        private void add(TemplateString operator, PredicateBuilder<?, ?, ?> predicate) {
-            var list = ((PredicateBuilderImpl<?, ?, ?>) predicate).templates;
-            assert !list.isEmpty();
-            if (list.size() > 1 || !((PredicateBuilderImpl<?, ?, ?>) predicate).safe) {
-                var wrap = new ArrayList<TemplateString>();
-                wrap.add(RAW_OPEN);
-                wrap.addAll(list);
-                wrap.add(RAW_CLOSE);
-                add(operator, combine(wrap));
-            } else {
-                add(operator, list.getFirst());
+        /**
+         * Returns the predicate as the right-hand operand of a combination under the given operator, in parentheses
+         * when it joins its terms with another operator or is a single template that may hold several terms.
+         */
+        private static TemplateString operand(TemplateString operator, PredicateBuilder<?, ?, ?> predicate) {
+            var other = (PredicateBuilderImpl<?, ?, ?>) predicate;
+            assert !other.templates.isEmpty();
+            boolean group = other.templates.size() == 1 ? !other.safe : operator != other.operator;
+            if (!group) {
+                return other.templates.size() == 1 ? other.templates.getFirst() : combine(other.templates);
             }
+            var wrap = new ArrayList<TemplateString>(other.templates.size() + 2);
+            wrap.add(RAW_OPEN);
+            wrap.addAll(other.templates);
+            wrap.add(RAW_CLOSE);
+            return combine(wrap);
         }
 
-        private void add(TemplateString operator, TemplateString template) {
-            if (templates.size() == 1 && !safe) {
-                // Wrap the first template in parentheses if it's the only one.
-                templates.addFirst(RAW_OPEN);
-                templates.addLast(RAW_CLOSE);
+        /**
+         * Returns a new predicate joining this one and the operand. This predicate is grouped in parentheses when the
+         * operator differs from the one joining its own terms, so {@code (a or b) and c} renders as written, and when
+         * it is a single template that may hold several terms.
+         */
+        private PredicateBuilderImpl<TX, RX, IDX> combineWith(TemplateString operator, TemplateString operand) {
+            boolean group = templates.size() == 1 ? !safe : operator != this.operator;
+            var combined = new ArrayList<TemplateString>(templates.size() + 4);
+            if (group) {
+                combined.add(RAW_OPEN);
             }
-            templates.add(operator);
-            templates.add(template);
+            combined.addAll(templates);
+            if (group) {
+                combined.add(RAW_CLOSE);
+            }
+            combined.add(operator);
+            combined.add(operand);
+            return new PredicateBuilderImpl<>(combined, true, operator);
         }
 
         /**

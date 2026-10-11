@@ -685,6 +685,29 @@ public class QueryBuilderTest {
         assertEquals(1, cities.size());
     }
 
+    @Test
+    public void testPredicateOrGroupThenAnd() {
+        // The chain groups left to right: (Madison OR Windsor) AND Monona, which no city matches.
+        List<City> cities = orm.entity(City.class).select()
+                .where(wb -> wb.where(City_.name, EQUALS, "Madison")
+                        .or(wb.where(City_.name, EQUALS, "Windsor"))
+                        .and(wb.where(City_.name, EQUALS, "Monona")))
+                .getResultList();
+        assertEquals(0, cities.size());
+    }
+
+    @Test
+    public void testPredicateCombinationLeavesOperandsUnchanged() {
+        List<City> cities = orm.entity(City.class).select()
+                .where(wb -> {
+                    var group = wb.where(City_.name, EQUALS, "Madison").or(wb.where(City_.name, EQUALS, "Windsor"));
+                    group.and(wb.where(City_.name, EQUALS, "Monona"));
+                    return group;
+                })
+                .getResultList();
+        assertEquals(2, cities.size());
+    }
+
     // PredicateBuilder - and / or across entities on a widened builder
 
     @Test

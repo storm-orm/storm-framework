@@ -2176,6 +2176,26 @@ internal open class QueryBuilderTest(
         result shouldHaveSize 2
     }
 
+    @Test
+    fun `or group combined with and should keep its grouping`() {
+        val repo = orm.entity(City::class)
+        val namePath = metamodel<City, String>(repo.model, "name")
+        // The parenthesized group stays one operand of the AND: (Madison OR Windsor) AND Monona, which no city matches.
+        repo.select()
+            .where(((namePath eq "Madison") or (namePath eq "Windsor")) and (namePath eq "Monona"))
+            .resultList shouldHaveSize 0
+    }
+
+    @Test
+    fun `combining a predicate should leave it unchanged for reuse`() {
+        val repo = orm.entity(City::class)
+        val namePath = metamodel<City, String>(repo.model, "name")
+        val group = (namePath eq "Madison") or (namePath eq "Windsor")
+        repo.select().where(group and (namePath eq "Monona")).resultList shouldHaveSize 0
+        repo.select().where(group and (namePath eq "Madison")).resultList.map { it.name } shouldBe listOf("Madison")
+        repo.select().where(group).resultList shouldHaveSize 2
+    }
+
     // where with Metamodel and Data (FK reference)
 
     @Test
