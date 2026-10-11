@@ -515,6 +515,8 @@ val users = orm.entity<User>()
     .resultList
 ```
 
+A chain reads left to right, each call grouping what came before it: the example above is `(email LIKE ... AND email IS NOT NULL) OR role = 'admin'`. With the infix functions, parentheses group as written: `((a or b) and c)`.
+
 Consecutive `where()` calls AND together (each clause parenthesized), and the infix `and`/`or` combinators root a combination at the operands' least common root, so a cross-entity AND works as two `where()` calls or as one compound clause on a widened builder; a narrow, join-less builder rejects the cross-root compound at the call site:
 
 ```kotlin

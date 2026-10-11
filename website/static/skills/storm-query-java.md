@@ -392,6 +392,8 @@ List<User> users = orm.entity(User.class)
     .getResultList();
 ```
 
+A chain reads left to right, each call grouping what came before it: the example above is `(email LIKE ... AND email IS NOT NULL) OR role = 'admin'`. Nest a call to group differently: `a.or(b.and(c))`.
+
 Consecutive `where()` calls AND together (each clause parenthesized), so an AND of a root predicate and a joined-entity predicate is just two typed calls — no lambda needed:
 
 ```java
