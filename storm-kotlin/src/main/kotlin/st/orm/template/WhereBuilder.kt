@@ -53,13 +53,19 @@ public interface WhereBuilder<T : Data, R : Any, ID : Any> : SubqueryTemplate {
 
     /**
      * A predicate that always evaluates to true.
+     *
+     * It renders as `1 = 1`, a comparison every database reads as a condition, where a boolean literal is not one
+     * on SQL Server or on Oracle before 23.
      */
-    public fun TRUE(): PredicateBuilder<T, R, ID> = where(raw("TRUE"))
+    public fun TRUE(): PredicateBuilder<T, R, ID> = where(raw("1 = 1"))
 
     /**
      * A predicate that always evaluates to false.
+     *
+     * It renders as `1 <> 1`, a comparison every database reads as a condition, where a boolean literal is not one
+     * on SQL Server or on Oracle before 23.
      */
-    public fun FALSE(): PredicateBuilder<T, R, ID> = where(raw("FALSE"))
+    public fun FALSE(): PredicateBuilder<T, R, ID> = where(raw("1 <> 1"))
 
     /**
      * Combines this predicate with another using an AND condition.
