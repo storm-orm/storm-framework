@@ -48,6 +48,7 @@ import st.orm.Operator;
 import st.orm.PK;
 import st.orm.core.template.ORMTemplate;
 import st.orm.core.template.PreparedStatementTemplate;
+import st.orm.core.template.impl.PredicateBuilderFactory;
 
 /**
  * Text match conformance: {@link Operator#CONTAINS}, {@link Operator#STARTS_WITH}, {@link Operator#ENDS_WITH} and their
@@ -116,6 +117,49 @@ public abstract class AbstractTextMatchConformanceTest {
         var contents = new TreeSet<>(CONTENTS);
         List.of(excluded).forEach(contents::remove);
         return contents;
+    }
+
+    private Set<String> search(String input) {
+        var contents = new TreeSet<String>();
+        orm.entity(Phrase.class).select()
+                .where(it -> PredicateBuilderFactory.<Phrase, Phrase, Integer>search(input, List.of(CONTENT)))
+                .getResultList()
+                .forEach(phrase -> contents.add(phrase.content()));
+        return contents;
+    }
+
+    /**
+     * Returns {@code true} if the dialect's test database compares text ignoring accents under its default collation,
+     * as MySQL and MariaDB do.
+     */
+    protected boolean ignoresAccents() {
+        return false;
+    }
+
+    @Test
+    public void accentsFollowTheCollation() {
+        orm.entity(Phrase.class).insert(new Phrase(100, "Am\u00e9lie"));
+        assertEquals(ignoresAccents() ? Set.of("Am\u00e9lie") : Set.of(), match(CONTAINS_IGNORE_CASE, "amelie"));
+        assertEquals(Set.of("Am\u00e9lie"), match(CONTAINS_IGNORE_CASE, "AM\u00e9LIE"));
+    }
+
+    @Test
+    public void searchMatchesEveryWordIgnoringCase() {
+        assertEquals(Set.of("50 dollars"), search("DOLLARS 50"));
+        assertEquals(Set.of("Madison", "MADISON"), search("madison"));
+        assertEquals(Set.of(), search("madison dollars"));
+    }
+
+    @Test
+    public void searchMatchesWildcardsAndPhrasesLiterally() {
+        assertEquals(Set.of("50%"), search("% 50"));
+        assertEquals(Set.of("a_b"), search("_"));
+        assertEquals(Set.of("50 dollars"), search("\"50 d\""));
+    }
+
+    @Test
+    public void searchWithoutWordsMatchesEveryRow() {
+        assertEquals(new TreeSet<>(CONTENTS), search("  "));
     }
 
     @Test

@@ -37,6 +37,7 @@ import st.orm.Window;
 import st.orm.core.spi.ORMReflection;
 import st.orm.core.spi.Providers;
 import st.orm.core.template.TemplateString;
+import st.orm.core.template.impl.PredicateBuilderFactory;
 import st.orm.core.template.impl.Subqueryable;
 import st.orm.template.JoinBuilder;
 import st.orm.template.PredicateBuilder;
@@ -567,6 +568,11 @@ public final class QueryBuilderImpl<T extends Data, R, ID> extends QueryBuilder<
         @Override
         protected <V> PredicateBuilder<TX, RX, IDX> whereImpl(Navigable<? extends TX, V> path, Operator operator, V[] o) {
             return new PredicateBuilderImpl<>(core.where(path, operator, o));
+        }
+
+        @Override
+        protected PredicateBuilder<TX, RX, IDX> searchImpl(String input, List<Navigable<? extends TX, String>> paths) {
+            return new PredicateBuilderImpl<>(PredicateBuilderFactory.search(input, paths.stream().map(Navigable::asMetamodel).toList()));
         }
     }
 

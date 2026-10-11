@@ -32,4 +32,9 @@ public class MySQLTextMatchConformanceTest extends AbstractTextMatchConformanceT
         }
         return ContainerDataSource.of(container.getJdbcUrl(), container.getUsername(), container.getPassword());
     }
+
+    @Override
+    protected boolean ignoresAccents() {
+        return true;
+    }
 }

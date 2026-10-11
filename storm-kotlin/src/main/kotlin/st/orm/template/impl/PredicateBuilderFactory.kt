@@ -58,6 +58,18 @@ internal fun <T : Data, R : Any, V : Data> createRef(
 ): PredicateBuilder<T, R, *> = PredicateBuilderImpl(PredicateBuilderFactory.createRef(path, operator, o))
 
 /**
+ * Creates a predicate that matches every term of a search input in at least one of the paths, ignoring case.
+ *
+ * @param input the search input.
+ * @param paths the text columns to search, at least one.
+ * @return a new instance of [PredicateBuilder]
+ */
+internal fun <T : Data, R : Any> createSearch(
+    input: String,
+    paths: List<Metamodel<*, String>>,
+): PredicateBuilder<T, R, *> = PredicateBuilderImpl(PredicateBuilderFactory.search<T, R, Any>(input, paths))
+
+/**
  * Combines two predicates using an AND condition, rooting the result at the operands' least common root.
  *
  * @param left the predicate to combine into
