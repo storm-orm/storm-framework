@@ -318,6 +318,18 @@ public abstract class AbstractEntityRepositoryConformanceTest {
     }
 
     @Test
+    public void testConstantPredicates() {
+        var owners = PreparedStatementTemplate.ORM(dataSource).entity(Owner.class);
+        long all = owners.select().getResultCount();
+        assertEquals(all, owners.select().where(it -> it.TRUE()).getResultCount());
+        assertEquals(0, owners.select().where(it -> it.FALSE()).getResultCount());
+        assertEquals(all, owners.select().where(it -> it.FALSE().or(it.TRUE())).getResultCount());
+        assertEquals(1, owners.select()
+                .where(it -> it.TRUE().and(it.where(Metamodel.of(Owner.class, "firstName"), EQUALS, "Betty")))
+                .getResultCount());
+    }
+
+    @Test
     public void testSelectLimit() {
         var owners = PreparedStatementTemplate.ORM(dataSource).entity(Owner.class);
         assertStatement(Statement.SELECT_LIMIT, () -> {

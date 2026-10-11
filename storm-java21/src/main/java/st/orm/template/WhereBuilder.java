@@ -58,16 +58,22 @@ public abstract class WhereBuilder<T extends Data, R, ID> implements SubqueryTem
 
     /**
      * A predicate that always evaluates to true.
+     *
+     * <p>It renders as {@code 1 = 1}, a comparison every database reads as a condition, where a boolean literal is
+     * not one on SQL Server or on Oracle before 23.</p>
      */
     public final PredicateBuilder<T, R, ID> TRUE() {
-        return where(RAW."TRUE");
+        return where(RAW."1 = 1");
     }
 
     /**
      * A predicate that always evaluates to false.
+     *
+     * <p>It renders as {@code 1 <> 1}, a comparison every database reads as a condition, where a boolean literal is
+     * not one on SQL Server or on Oracle before 23.</p>
      */
     public final PredicateBuilder<T, R, ID> FALSE() {
-        return where(RAW."FALSE");
+        return where(RAW."1 <> 1");
     }
 
     /**
