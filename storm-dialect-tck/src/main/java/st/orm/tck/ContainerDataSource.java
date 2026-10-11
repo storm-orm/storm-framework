@@ -15,6 +15,15 @@ import javax.sql.DataSource;
  */
 public final class ContainerDataSource implements DataSource {
 
+    /**
+     * Oracle's error for a listener that finds no free handler for the service. The listener counts the server
+     * processes from the load the database reports every few seconds, so a suite that opens and closes connections in
+     * quick succession meets it while the processes it closed are still counted; it clears within about a second.
+     */
+    private static final int ORACLE_NO_HANDLER = 12516;
+    private static final long ORACLE_RETRY_MILLIS = 5_000;
+    private static final long ORACLE_RETRY_INTERVAL_MILLIS = 100;
+
     private final String url;
     private final Properties properties = new Properties();
 
@@ -30,12 +39,38 @@ public final class ContainerDataSource implements DataSource {
 
     @Override
     public Connection getConnection() throws SQLException {
-        return DriverManager.getConnection(url, properties);
+        return connect(properties);
     }
 
     @Override
     public Connection getConnection(String username, String password) throws SQLException {
-        return DriverManager.getConnection(url, username, password);
+        var credentials = new Properties();
+        credentials.setProperty("user", username);
+        credentials.setProperty("password", password);
+        return connect(credentials);
+    }
+
+    /**
+     * Opens a connection, waiting out an Oracle listener that has no handler free yet.
+     */
+    private Connection connect(Properties credentials) throws SQLException {
+        long deadline = System.nanoTime() + ORACLE_RETRY_MILLIS * 1_000_000;
+        while (true) {
+            try {
+                return DriverManager.getConnection(url, credentials);
+            } catch (SQLException e) {
+                if (!url.startsWith("jdbc:oracle:") || e.getErrorCode() != ORACLE_NO_HANDLER
+                        || System.nanoTime() > deadline) {
+                    throw e;
+                }
+                try {
+                    Thread.sleep(ORACLE_RETRY_INTERVAL_MILLIS);
+                } catch (InterruptedException interrupted) {
+                    Thread.currentThread().interrupt();
+                    throw e;
+                }
+            }
+        }
     }
 
     @Override
