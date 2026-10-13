@@ -217,13 +217,14 @@ public abstract class QueryBuilder<T : Data, R : Any, ID : Any> {
      * matching a nullable entity foreign key. A path that crosses no reference is rejected: the target is already part
      * of the entity graph and there is nothing to resolve.
      *
-     * @param path the paths of the references to resolve.
+     * @param path the path of the first reference to resolve.
+     * @param more the paths of further references to resolve.
      * @return the query builder.
-     * @throws PersistenceException if no path is provided, if a path crosses no reference, or if this query does not
-     * select a record that can hold one.
+     * @throws PersistenceException if a path crosses no reference, or if this query does not select a record that can
+     * hold one.
      * @since 1.13
      */
-    public fun fetch(vararg path: Navigable<T, out Data>): QueryBuilder<T, R, ID> = fetch(path.toList())
+    public fun fetch(path: Navigable<T, out Data>, vararg more: Navigable<T, out Data>): QueryBuilder<T, R, ID> = fetch(listOf(path) + more)
 
     /**
      * Resolves the references at the specified paths as part of this query.
@@ -656,23 +657,20 @@ public abstract class QueryBuilder<T : Data, R : Any, ID : Any> {
      * key column(s) on the referencing table, without joining the referenced table, and an inline record expands to
      * its component columns. A single-column path contributes exactly one column.
      *
-     * @param path the path to group by.
+     * @param path the first path to group by.
+     * @param more further paths to group by.
      * @return the query builder.
      * @since 1.2
      */
-    public fun groupBy(vararg path: Navigable<out T, *>): QueryBuilder<T, R, ID> = groupBy(columnList(path, GROUP_BY, "GROUP BY"))
+    public fun groupBy(path: Navigable<out T, *>, vararg more: Navigable<out T, *>): QueryBuilder<T, R, ID> = groupBy(columnList(listOf(path) + more, GROUP_BY))
 
     /**
      * Renders the paths as a comma-separated column list for the given clause.
      */
     private fun columnList(
-        path: Array<out Navigable<out T, *>>,
+        path: List<Navigable<out T, *>>,
         clause: Elements.Clause,
-        clauseName: String,
     ): TemplateString {
-        if (path.isEmpty()) {
-            throw PersistenceException("At least one path must be provided for $clauseName clause.")
-        }
         val templates = buildList {
             path.forEachIndexed { index, navigable ->
                 add(wrap(Columns(listOf(navigable.asMetamodel()), CASCADE, clause)))
@@ -802,31 +800,23 @@ public abstract class QueryBuilder<T : Data, R : Any, ID : Any> {
     /**
      * Adds an ORDER BY clause to the query for the field at the specified path in the table graph.
      *
-     * @param path the path to order by.
+     * @param path the first path to order by.
+     * @param more further paths to order by.
      * @return the query builder.
      * @since 1.2
      */
-    public fun orderBy(vararg path: Navigable<out T, *>): QueryBuilder<T, R, ID> = orderBy(columnList(path, ORDER_BY_ASCENDING, "ORDER BY"))
-
-    /**
-     * Adds an ORDER BY clause to the query for the field at the specified path in the table graph. The results are
-     * sorted in descending order.
-     *
-     * @param path the path to order by.
-     * @return the query builder.
-     * @since 1.2
-     */
-    public fun orderByDescending(path: Navigable<out T, *>): QueryBuilder<T, R, ID> = orderBy(wrap(Columns(listOf(path.asMetamodel()), CASCADE, ORDER_BY_DESCENDING)))
+    public fun orderBy(path: Navigable<out T, *>, vararg more: Navigable<out T, *>): QueryBuilder<T, R, ID> = orderBy(columnList(listOf(path) + more, ORDER_BY_ASCENDING))
 
     /**
      * Adds an ORDER BY clause to the query for the fields at the specified paths in the table graph. The results
      * are sorted in descending order for each column.
      *
-     * @param path the paths to order by.
+     * @param path the first path to order by.
+     * @param more further paths to order by.
      * @return the query builder.
-     * @since 1.9
+     * @since 1.2
      */
-    public fun orderByDescending(vararg path: Navigable<out T, *>): QueryBuilder<T, R, ID> = orderBy(columnList(path, ORDER_BY_DESCENDING, "ORDER BY"))
+    public fun orderByDescending(path: Navigable<out T, *>, vararg more: Navigable<out T, *>): QueryBuilder<T, R, ID> = orderBy(columnList(listOf(path) + more, ORDER_BY_DESCENDING))
 
     /**
      * Adds an ORDER BY clause to the query using a string template. The results are sorted in descending order.
@@ -1893,8 +1883,8 @@ public class SqlScope<T : Data, R : Any, ID : Any> @PublishedApi internal constr
     }
 
     /** Adds a GROUP BY clause for the specified metamodel path(s). */
-    public fun groupBy(vararg path: Navigable<*, *>) {
-        builder = builder.groupBy(*path)
+    public fun groupBy(path: Navigable<*, *>, vararg more: Navigable<*, *>) {
+        builder = builder.groupBy(path, *more)
     }
 
     /** Adds a GROUP BY clause using a SQL template expression. */
@@ -1938,13 +1928,13 @@ public class SqlScope<T : Data, R : Any, ID : Any> @PublishedApi internal constr
     }
 
     /** Adds an ORDER BY clause (ascending) for the specified metamodel path(s). */
-    public fun orderBy(vararg path: Navigable<*, *>) {
-        builder = builder.orderBy(*path)
+    public fun orderBy(path: Navigable<*, *>, vararg more: Navigable<*, *>) {
+        builder = builder.orderBy(path, *more)
     }
 
     /** Adds an ORDER BY clause (descending) for the specified metamodel path(s). */
-    public fun orderByDescending(vararg path: Navigable<*, *>) {
-        builder = builder.orderByDescending(*path)
+    public fun orderByDescending(path: Navigable<*, *>, vararg more: Navigable<*, *>) {
+        builder = builder.orderByDescending(path, *more)
     }
 
     /** Adds an ORDER BY clause using a SQL template expression. */
@@ -1976,12 +1966,12 @@ public class SqlScope<T : Data, R : Any, ID : Any> @PublishedApi internal constr
      * Resolves the references at the specified metamodel path(s) as part of this query, so [Ref.fetch] returns the
      * referenced record without querying.
      */
-    public fun fetch(vararg path: Navigable<out T, out Data>) {
+    public fun fetch(path: Navigable<out T, out Data>, vararg more: Navigable<out T, out Data>) {
         // The scope's T is the FROM entity by construction, so this signature already checks what the widened
         // builder's Data-rooted fetch cannot: the paths start at the table the query selects from. The cast
         // re-labels the checked paths to fit the widened signature.
         @Suppress("UNCHECKED_CAST")
-        builder = builder.fetch(path.toList() as List<Navigable<Data, out Data>>)
+        builder = builder.fetch((listOf(path) + more) as List<Navigable<Data, out Data>>)
     }
 
     /** Allows DELETE/UPDATE without a WHERE clause (Storm rejects this by default). */

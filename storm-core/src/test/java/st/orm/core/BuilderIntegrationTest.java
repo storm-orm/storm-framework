@@ -1031,7 +1031,7 @@ public class BuilderIntegrationTest {
     @Test
     public void testFetchWithoutPathsThrows() {
         var orm = ORMTemplate.of(dataSource);
-        assertThrows(PersistenceException.class, () -> orm.selectFrom(Pet.class).fetch());
+        assertThrows(PersistenceException.class, () -> orm.selectFrom(Pet.class).fetch(List.of()));
     }
 
     // Additional: DELETE builder plans and subquery restrictions.

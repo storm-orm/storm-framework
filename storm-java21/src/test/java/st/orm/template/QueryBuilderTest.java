@@ -1114,26 +1114,6 @@ public class QueryBuilderTest {
         assertEquals(3, cities.size());
     }
 
-    // QueryBuilder - groupByAny / orderByAny / orderByDescendingAny
-
-    @Test
-    public void testGroupByAnyEmptyThrows() {
-        assertThrows(PersistenceException.class, () ->
-                orm.entity(City.class).select().groupBy());
-    }
-
-    @Test
-    public void testOrderByAnyEmptyThrows() {
-        assertThrows(PersistenceException.class, () ->
-                orm.entity(City.class).select().orderBy());
-    }
-
-    @Test
-    public void testOrderByDescendingAnyVarargsEmptyThrows() {
-        assertThrows(PersistenceException.class, () ->
-                orm.entity(City.class).select().orderByDescending(new st.orm.Metamodel[0]));
-    }
-
     // QueryBuilder - orderByDescending with multiple metamodels
 
     @Test
