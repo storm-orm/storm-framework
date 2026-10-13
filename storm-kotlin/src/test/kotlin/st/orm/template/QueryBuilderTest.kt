@@ -1249,30 +1249,6 @@ internal open class QueryBuilderTest(
     }
 
     @Test
-    fun `groupByAny with empty vararg should throw PersistenceException`() {
-        val repo = orm.entity(Owner::class)
-        assertThrows<PersistenceException> {
-            repo.selectCount().groupBy().resultList
-        }
-    }
-
-    @Test
-    fun `orderByAny with empty vararg should throw PersistenceException`() {
-        val repo = orm.entity(City::class)
-        assertThrows<PersistenceException> {
-            repo.select().orderBy().resultList
-        }
-    }
-
-    @Test
-    fun `orderByDescendingAny with empty vararg should throw PersistenceException`() {
-        val repo = orm.entity(City::class)
-        assertThrows<PersistenceException> {
-            repo.select().orderByDescending().resultList
-        }
-    }
-
-    @Test
     fun `having with TemplateString should filter grouped results`() {
         val repo = orm.entity(Owner::class)
         val cityPath = metamodel<Owner, Any>(repo.model, "city_id")

@@ -354,24 +354,6 @@ public class QueryBuilderPredicateIntegrationTest {
         }
     }
 
-    // QueryBuilder.groupByAny with empty path throws PersistenceException
-
-    @Test
-    public void testGroupByAnyEmptyPathThrows() {
-        var orm = ORMTemplate.of(dataSource);
-        assertThrows(PersistenceException.class, () ->
-                orm.selectFrom(City.class).groupBy());
-    }
-
-    // QueryBuilder.orderByAny with empty path throws PersistenceException
-
-    @Test
-    public void testOrderByAnyEmptyPathThrows() {
-        var orm = ORMTemplate.of(dataSource);
-        assertThrows(PersistenceException.class, () ->
-                orm.selectFrom(City.class).orderBy());
-    }
-
     // QueryBuilder.orderByDescending via metamodel
 
     @Test

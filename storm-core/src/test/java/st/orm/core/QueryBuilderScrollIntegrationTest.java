@@ -64,16 +64,6 @@ public class QueryBuilderScrollIntegrationTest {
                         .scroll(Scrollable.of(Vet_.id, 3).sortBy(Vet_.lastName)));
     }
 
-    // orderByDescendingAny with empty array should throw
-
-    @Test
-    public void orderByDescendingAnyWithEmptyArrayThrows() {
-        assertThrows(PersistenceException.class, () ->
-                ORMTemplate.of(dataSource)
-                        .selectFrom(Vet.class)
-                        .orderByDescending());
-    }
-
     // Verify basic keyset pagination behavior with edge case sizes
 
     @Test

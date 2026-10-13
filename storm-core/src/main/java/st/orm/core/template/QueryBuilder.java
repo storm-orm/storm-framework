@@ -95,7 +95,7 @@ public abstract class QueryBuilder<T extends Data, R, ID> {
      * Returns a query builder rooted at the specified type, narrowing a builder whose root was relaxed by a join.
      *
      * <p>A join relaxes the root so that clauses may name any entity in the query. This narrows it again, which
-     * re-enables the operations that are defined relative to the root: {@link #fetch(Navigable[])},
+     * re-enables the operations that are defined relative to the root: {@link #fetch(Navigable, Navigable[])},
      * {@link #where(Data)} and {@link #getResultGroupedBy(TypedMetamodel)}.</p>
      *
      * @param rootType the type this query is rooted at.
@@ -166,15 +166,16 @@ public abstract class QueryBuilder<T extends Data, R, ID> {
      * reference, matching a nullable entity foreign key. A path that crosses no reference is rejected: the target is
      * already part of the entity graph and there is nothing to resolve.</p>
      *
-     * @param path the paths of the references to resolve.
+     * @param path the path of the first reference to resolve.
+     * @param more the paths of further references to resolve.
      * @return the query builder.
-     * @throws PersistenceException if no path is provided, if a path crosses no reference, or if this query does not
-     * select a record that can hold one.
+     * @throws PersistenceException if a path crosses no reference, or if this query does not select a record that can
+     * hold one.
      * @since 1.13
      */
     @SafeVarargs
-    public final QueryBuilder<T, R, ID> fetch(Navigable<T, ? extends Data>... path) {
-        return fetch(List.of(path));
+    public final QueryBuilder<T, R, ID> fetch(Navigable<T, ? extends Data> path, Navigable<T, ? extends Data>... more) {
+        return fetch(paths(path, more));
     }
 
     /**
@@ -187,7 +188,7 @@ public abstract class QueryBuilder<T extends Data, R, ID> {
      * @return the query builder.
      * @throws PersistenceException if no path is provided, if a path crosses no reference, or if this query does not
      * select a record that can hold one.
-     * @see #fetch(Navigable[])
+     * @see #fetch(Navigable, Navigable[])
      * @since 1.13
      */
     public abstract QueryBuilder<T, R, ID> fetch(List<? extends Navigable<T, ? extends Data>> paths);
@@ -504,18 +505,16 @@ public abstract class QueryBuilder<T extends Data, R, ID> {
      * key column(s) on the referencing table, without joining the referenced table, and an inline record expands to
      * its component columns. A single-column path contributes exactly one column.</p>
      *
-     * @param path the path to group by.
+     * @param path the first path to group by.
+     * @param more further paths to group by.
      * @return the query builder.
      * @since 1.2
      */
     @SafeVarargs
-    public final QueryBuilder<T, R, ID> groupBy(Navigable<? extends T, ?>... path) {
+    public final QueryBuilder<T, R, ID> groupBy(Navigable<? extends T, ?> path, Navigable<? extends T, ?>... more) {
         // Navigation-only nodes reached beyond a reference are accepted here: they name a column, and Storm
         // materializes the join for the referenced table on demand.
-        if (path.length == 0) {
-            throw new PersistenceException("At least one path must be provided for GROUP BY clause.");
-        }
-        List<TemplateString> templates = Stream.of(path)
+        List<TemplateString> templates = paths(path, more).stream()
                 .flatMap(path_ -> Stream.of(wrap(new Columns(List.of(path_.asMetamodel()), CASCADE, GROUP_BY)), TemplateString.of(", ")))
                 .toList();
         return groupBy(TemplateString.combine(templates.subList(0, templates.size() - 1).toArray(new TemplateString[0])));
@@ -597,47 +596,31 @@ public abstract class QueryBuilder<T extends Data, R, ID> {
     /**
      * Adds an ORDER BY clause to the query for the field at the specified path in the table graph.
      *
-     * @param path the path to order by.
+     * @param path the first path to order by.
+     * @param more further paths to order by.
      * @return the query builder.
      * @since 1.2
      */
     @SafeVarargs
-    public final QueryBuilder<T, R, ID> orderBy(Navigable<? extends T, ?>... path) {
-        if (path.length == 0) {
-            throw new PersistenceException("At least one path must be provided for ORDER BY clause.");
-        }
-        List<TemplateString> templates = Stream.of(path)
+    public final QueryBuilder<T, R, ID> orderBy(Navigable<? extends T, ?> path, Navigable<? extends T, ?>... more) {
+        List<TemplateString> templates = paths(path, more).stream()
                 .flatMap(path_ -> Stream.of(wrap(new Columns(List.of(path_.asMetamodel()), CASCADE, ORDER_BY_ASCENDING)), TemplateString.of(", ")))
                 .toList();
         return orderBy(TemplateString.combine(templates.subList(0, templates.size() - 1).toArray(new TemplateString[0])));
     }
 
     /**
-     * Adds an ORDER BY clause to the query for the field at the specified path in the table graph. The results are
-     * sorted in descending order.
-     *
-     * @param path the path to order by.
-     * @return the query builder.
-     * @since 1.2
-     */
-    public final QueryBuilder<T, R, ID> orderByDescending(Navigable<? extends T, ?> path) {
-        return orderBy(TemplateString.wrap(new Columns(List.of(path.asMetamodel()), CASCADE, ORDER_BY_DESCENDING)));
-    }
-
-    /**
      * Adds an ORDER BY clause to the query for the fields at the specified paths in the table graph. The results
      * are sorted in descending order for each column.
      *
-     * @param path the paths to order by.
+     * @param path the first path to order by.
+     * @param more further paths to order by.
      * @return the query builder.
-     * @since 1.9
+     * @since 1.2
      */
     @SafeVarargs
-    public final QueryBuilder<T, R, ID> orderByDescending(Navigable<? extends T, ?>... path) {
-        if (path.length == 0) {
-            throw new PersistenceException("At least one path must be provided for ORDER BY clause.");
-        }
-        List<TemplateString> templates = Stream.of(path)
+    public final QueryBuilder<T, R, ID> orderByDescending(Navigable<? extends T, ?> path, Navigable<? extends T, ?>... more) {
+        List<TemplateString> templates = paths(path, more).stream()
                 .<TemplateString>flatMap(path_ -> Stream.of(wrap(new Columns(List.of(path_.asMetamodel()), CASCADE, ORDER_BY_DESCENDING)), TemplateString.of(", ")))
                 .toList();
         return orderBy(TemplateString.combine(templates.subList(0, templates.size() - 1).toArray(new TemplateString[0])));
@@ -1379,5 +1362,15 @@ public abstract class QueryBuilder<T extends Data, R, ID> {
      */
     public final int executeUpdate() {
         return build().executeUpdate();
+    }
+
+    /**
+     * Lists a required first element followed by further ones, in order.
+     */
+    private static <P> List<P> paths(P path, P[] more) {
+        var paths = new ArrayList<P>(more.length + 1);
+        paths.add(path);
+        paths.addAll(List.of(more));
+        return paths;
     }
 }
