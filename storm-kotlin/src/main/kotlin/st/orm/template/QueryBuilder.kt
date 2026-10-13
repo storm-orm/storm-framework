@@ -1563,8 +1563,8 @@ public infix fun <T : Data> Navigable<T, String>.notEndsWithIgnoreCase(text: Str
  * quoted phrase such as `"the good"` is one word; an unpaired quote is an ordinary character. An input without words,
  * such as an empty search box, matches every row.
  *
- * A path through a relation joins its table as any other path does. Accents compare as the column's collation compares
- * them.
+ * A path through a relation joins its table as any other path does, and a path may start at a table the query joins.
+ * Accents compare as the column's collation compares them.
  *
  * @param input the search input, as a search box receives it.
  * @param path the first text column to search.
@@ -1573,8 +1573,8 @@ public infix fun <T : Data> Navigable<T, String>.notEndsWithIgnoreCase(text: Str
  */
 public fun <T : Data> search(
     input: String,
-    path: Navigable<T, String>,
-    vararg more: Navigable<T, String>,
+    path: Navigable<out T, String>,
+    vararg more: Navigable<out T, String>,
 ): PredicateBuilder<T, T, *> = createSearch(input, listOf(path.asMetamodel()) + more.map { it.asMetamodel() })
 
 /**

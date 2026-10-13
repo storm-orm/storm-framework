@@ -2218,6 +2218,22 @@ internal open class QueryBuilderTest(
             .resultList.map { it.firstName } shouldBe listOf("Betty")
     }
 
+    @Test
+    fun `search should match paths rooted at different joined tables`() {
+        // data.sql: owner 4 (Harold Davis) has pet Iggy; owner 1 (Betty Davis) has pet Leo.
+        val ownerRepo = orm.entity(Owner::class)
+        val petRepo = orm.entity(Pet::class)
+        val lastName = metamodel<Owner, String>(ownerRepo.model, "last_name")
+        val petName = metamodel<Pet, String>(petRepo.model, "name")
+        fun firstNames(input: String) = ownerRepo.select()
+            .innerJoin<Pet>().on<Owner>()
+            .where(search(input, lastName, petName))
+            .resultList.map { it.firstName }.sorted()
+        firstNames("davis iggy") shouldBe listOf("Harold")
+        firstNames("davis") shouldBe listOf("Betty", "Harold")
+        firstNames("davis basil") shouldBe emptyList()
+    }
+
     // where with Metamodel and Data (FK reference)
 
     @Test

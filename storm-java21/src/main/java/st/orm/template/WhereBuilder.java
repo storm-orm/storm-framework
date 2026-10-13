@@ -241,8 +241,8 @@ public abstract class WhereBuilder<T extends Data, R, ID> implements SubqueryTem
      * and a quoted phrase such as {@code "the good"} is one word; an unpaired quote is an ordinary character. An input
      * without words, such as an empty search box, matches every row.
      *
-     * <p>A path through a relation joins its table as any other path does. Accents compare as the column's collation
-     * compares them.</p>
+     * <p>A path through a relation joins its table as any other path does, and a path may start at a table the query
+     * joins. Accents compare as the column's collation compares them.</p>
      *
      * @param input the search input, as a search box receives it.
      * @param path  the first text column to search.
