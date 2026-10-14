@@ -383,7 +383,7 @@ WHERE (LOWER(m.title) LIKE LOWER(?) ESCAPE '!' OR LOWER(d.name) LIKE LOWER(?) ES
 | `"ugly` | `"ugly`: an unpaired quote is an ordinary character |
 | empty or blank | none: the predicate matches every row |
 
-A column reached through a relation, such as `Movie_.director.name`, joins its table as any other path does. A column may also belong to a table the query joins, such as the name of a cast member; a movie has several cast members, so the join returns a row per credit, and `distinct()` folds them back into one row per movie. Accents follow the column's collation, as for the `IGNORE_CASE` operators: MySQL and MariaDB ignore them under their default collations, and the other databases compare them as they are. `search` matches words; it does not rank the rows it finds, and it does not stem words the way a full-text index does.
+Accents follow the column's collation, as for the `IGNORE_CASE` operators: MySQL and MariaDB ignore them under their default collations, and the other databases compare them as they are. `search` matches words; it does not rank the rows it finds, and it does not stem words the way a full-text index does.
 
 A match inside a word cannot use a B-tree index, so `search` reads every row it filters. Where that is too slow, PostgreSQL serves the statement from a trigram index on the lowered column: `CREATE INDEX ON movie USING gin (lower(title) gin_trgm_ops)`, after `CREATE EXTENSION pg_trgm`.
 
