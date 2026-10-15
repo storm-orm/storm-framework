@@ -43,6 +43,11 @@ updates:
       # oldest GraalVM line Storm supports.
       - dependency-name: "org.graalvm.sdk:*"
         update-types: ["version-update:semver-major"]
+      # The wrapper's Maven publishes the release. central-publishing-maven-plugin leaves Maven 3.10's staging
+      # metadata in the bundle, which Central rejects (mavenplugins/central-publishing-maven-plugin#79), so the
+      # wrapper stays on 3.9 until the plugin handles it.
+      - dependency-name: "org.apache.maven:apache-maven"
+        update-types: ["version-update:semver-major", "version-update:semver-minor"]
       # Storm's own artifacts: the reactor's version comes from ${revision} at build time.
       - dependency-name: "st.orm:*"
   - package-ecosystem: github-actions
