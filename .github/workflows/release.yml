@@ -98,7 +98,10 @@ jobs:
       - name: Publish all modules to Maven Central
         # The version comes from the tag: -Drevision overrides the ${revision} property and the
         # flatten-maven-plugin (resolveCiFriendliesOnly) writes it into the published poms. No manual pom bump needed.
-        run: mvn clean deploy -Prelease -Drevision="${{ steps.version.outputs.VERSION }}" -Dgpg.passphrase="${GPG_PASSPHRASE}" -DskipTests -B
+        # The wrapper pins Maven 3.9: under Maven 3.10 the staging directory holds a maven-metadata-local.xml that
+        # central-publishing-maven-plugin does not remove, and Central rejects the bundle for content without a pom
+        # (mavenplugins/central-publishing-maven-plugin#79).
+        run: ./mvnw clean deploy -Prelease -Drevision="${{ steps.version.outputs.VERSION }}" -Dgpg.passphrase="${GPG_PASSPHRASE}" -DskipTests -B
         env:
           GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
 
