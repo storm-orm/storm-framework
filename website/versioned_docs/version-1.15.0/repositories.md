@@ -1,0 +1,690 @@
+# Repositories
+
+import Tabs from '@theme/Tabs';
+import TabItem from '@theme/TabItem';
+
+An entity repository is the entry point for working with one entity type: create, read, update, and delete, plus querying and filtering.
+
+---
+
+## Getting a Repository
+
+<Tabs groupId="language">
+<TabItem value="kotlin" label="Kotlin" default>
+
+Storm provides two ways to obtain a repository. The generic `entity()` method returns a built-in repository with standard CRUD operations. For custom query methods, define your own interface extending `EntityRepository` and retrieve it with `repository()` (covered below in Custom Repositories).
+
+```kotlin
+val orm = ORMTemplate.of(dataSource)
+
+// Generic entity repository (reified extension function, preferred)
+val userRepository = orm.entity<User>()
+
+// Or passing the class explicitly
+val userRepository = orm.entity(User::class)
+```
+
+</TabItem>
+<TabItem value="java" label="Java">
+
+The Java API follows the same pattern as Kotlin. The generic `entity()` method provides standard CRUD operations; custom interfaces use `repository()`.
+
+```java
+var orm = ORMTemplate.of(dataSource);
+
+// Generic entity repository
+EntityRepository<User, Integer> userRepository = orm.entity(User.class);
+```
+
+</TabItem>
+</Tabs>
+
+---
+
+## Reading Method Names
+
+Repository method names follow a grammar, so you can mostly construct the name you need rather than searching for it:
+
+| Part | Meaning |
+|---|---|
+| `find` | yields nothing when there is no match: `null` in Kotlin, an empty `Optional` in Java |
+| `get` | throws when there is no match |
+| `findAll` | yields a list |
+| `Ref` before `By` | returns a `Ref` in place of the entity |
+| `Id` | selects on the primary key |
+
+A ref argument is an overload rather than a separate method. The same name takes a value or a ref, and the compiler picks by argument type:
+
+```kotlin
+users.findAllBy(User_.city, city)      // List<User>      selected by a City
+users.findAllBy(User_.city, cityRef)   // List<User>      selected by a Ref<City>
+users.findAllRefBy(User_.city, city)   // List<Ref<User>> selected by a City
+```
+
+The `ByRef` suffix marks the two cases where a distinct name is unavoidable. Selecting on a *collection* of refs erases to the same signature on the JVM as a collection of values, so the ref form needs its own name:
+
+```kotlin
+users.findAllBy(User_.city, cities)       // List<User> selected by City values
+users.findAllByRef(User_.city, cityRefs)  // List<User> selected by Ref<City> values
+```
+
+Selecting on the entity's own refs takes the suffix for the same reason, as in `findByRef(ref)`, `findAllByRef(refs)` and `removeByRef(ref)`.
+
+---
+
+## Basic CRUD Operations
+
+<Tabs groupId="language">
+<TabItem value="kotlin" label="Kotlin" default>
+
+All CRUD operations use the entity's primary key (marked with `@PK`) for identity. Insert returns the entity with any database-generated fields populated (such as auto-increment IDs). Update and remove match by primary key. Query methods accept metamodel-based filter expressions that compile to parameterized WHERE clauses.
+
+```kotlin
+// Create
+val user = orm insert User(
+    email = "alice@example.com",
+    name = "Alice",
+    birthDate = LocalDate.of(1990, 5, 15)
+)
+
+// Read
+val found: User? = orm.entity<User>().findById(user.id)
+val alice: User? = orm.find(User_.name eq "Alice")
+val all: List<User> = orm.findAll(User_.city eq city)
+
+// Update
+orm update user.copy(name = "Alice Johnson")
+
+// Remove
+orm remove user
+
+// Remove by condition
+orm.removeBy(User_.city, city)
+
+// Remove by predicate
+orm.removeAll(User_.postalCode.isNull())
+
+// Remove all
+orm.removeAll<User>()
+
+// Delete all (builder approach, requires unsafe() to confirm intent)
+orm.entity<User>().delete().unsafe().executeUpdate()
+```
+
+</TabItem>
+<TabItem value="java" label="Java">
+
+Java CRUD operations use the fluent builder pattern. Since Java records are immutable, updates require constructing a new record instance with the changed field values.
+
+```java
+// Insert
+User user = userRepository.insertAndFetch(new User(
+    null, "alice@example.com", "Alice", LocalDate.of(1990, 5, 15), city
+));
+
+// Read
+Optional<User> found = userRepository.select()
+    .where(User_.id, EQUALS, user.id())
+    .getOptionalResult();
+
+List<User> all = userRepository.select()
+    .where(User_.city, EQUALS, city)
+    .getResultList();
+
+// Update
+userRepository.update(new User(
+    user.id(), "alice@example.com", "Alice Johnson", user.birthDate(), user.city()
+));
+
+// Remove
+userRepository.remove(user);
+
+// Remove all
+userRepository.removeAll();
+
+// Delete all (builder approach, requires unsafe() to confirm intent)
+userRepository.delete().unsafe().executeUpdate();
+```
+
+</TabItem>
+</Tabs>
+
+:::warning Safety Check
+Storm rejects DELETE and UPDATE queries that have no WHERE clause, throwing a `PersistenceException`. This prevents accidental bulk deletions, which is especially important because `QueryBuilder` is immutable and a lost `where()` return value would silently drop the filter. Call `unsafe()` to opt out of this check when you intentionally want to affect all rows. The `removeAll()` convenience method calls `unsafe()` internally.
+:::
+
+Storm uses dirty checking to determine which columns to include in the UPDATE statement. See [Dirty Checking](dirty-checking.md) for configuration details.
+
+---
+
+## Streaming
+
+<Tabs groupId="language">
+<TabItem value="kotlin" label="Kotlin" default>
+
+For result sets that may be large, streaming avoids loading all rows into memory at once. Kotlin's `Flow` provides automatic resource management through structured concurrency: the underlying database cursor and connection are released when the flow completes or is cancelled, without requiring explicit cleanup.
+
+```kotlin
+val users: Flow<User> = userRepository.select().resultFlow
+val count = users.count()
+
+// Collect to list
+val userList: List<User> = users.toList()
+```
+
+A flow is one open statement, and the connection it reads from is consume-only until its last row is emitted or collection is cancelled: a query, a `Ref.fetch()` or a write from inside the collector is refused inside a transaction, on every database. A loop that needs the connection iterates in windows instead, one closed statement per window:
+
+```kotlin
+userRepository.windows(1000).collect { window ->
+    userRepository.update(window.content().map { it.copy(email = it.email.lowercase()) })
+}
+```
+
+</TabItem>
+<TabItem value="java" label="Java">
+
+Java streams over database results hold open a database cursor and connection. You must close the stream explicitly, either with try-with-resources or by calling `close()`. Failing to close the stream leaks database connections.
+
+```java
+try (Stream<User> users = userRepository.select().getResultStream()) {
+    List<Integer> userIds = users.map(User::id).toList();
+}
+```
+
+A stream is one open statement, and the connection it reads from is consume-only until it is read to its end or closed: a query, a `Ref.fetch()` or a write from inside the loop is refused inside a transaction, on every database. A loop that needs the connection iterates in windows instead, one closed statement per window, with nothing to close:
+
+```java
+userRepository.windows(1000).forEach(window ->
+    userRepository.update(window.content().stream()
+        .map(user -> new User(user.id(), user.email().toLowerCase(), user.birthDate(), user.street(), user.postalCode(), user.city()))
+        .toList()));
+```
+
+</TabItem>
+</Tabs>
+
+See [Batch Processing & Streaming](batch-streaming.md#streaming) for the two shapes side by side.
+
+---
+
+## Unique Key Lookups
+
+When a field is annotated with `@UK`, the metamodel generates a `Metamodel.Key` instance that enables type-safe single-result lookups:
+
+<Tabs groupId="language">
+<TabItem value="kotlin" label="Kotlin" default>
+
+```kotlin
+val user: User? = userRepository.findBy(User_.email, "alice@example.com")
+val user: User = userRepository.getBy(User_.email, "alice@example.com")  // throws if not found
+```
+
+</TabItem>
+<TabItem value="java" label="Java">
+
+```java
+Optional<User> user = userRepository.findBy(User_.email, "alice@example.com");
+User user = userRepository.getBy(User_.email, "alice@example.com");  // throws if not found
+```
+
+</TabItem>
+</Tabs>
+
+Since `@PK` implies `@UK`, primary key fields also work with `findBy` and `getBy`.
+
+Entities loaded within a transaction are cached. See [Entity Cache](entity-cache.md) for details.
+
+---
+
+## Offset-Based Pagination
+
+Storm provides built-in `Page` and `Pageable` types for offset-based pagination. These eliminate the need to write manual `LIMIT`/`OFFSET` queries or define your own page wrapper. The repository handles the count query and result slicing automatically. For query-builder-level pagination (manual offset/limit, Page with query builder), see [Pagination and Scrolling: Pagination](pagination-and-scrolling.md#pagination).
+
+### Page and Pageable
+
+A `Pageable` describes a pagination request: which page to fetch, how many results per page, and an optional sort order. A `Page` holds the results along with metadata such as the total number of matching results, the total number of pages, and navigation helpers.
+
+| `Page` field / method | Description |
+|---|---|
+| `content` | The list of results for this page |
+| `totalCount` | Total number of matching rows across all pages |
+| `pageNumber()` | Zero-based index of the current page |
+| `pageSize()` | Maximum number of elements per page |
+| `totalPages()` | Total number of pages |
+| `hasNext()` | Whether a next page exists |
+| `hasPrevious()` | Whether a previous page exists |
+| `next()` | Returns a `Pageable` for the next page (preserves sort orders) |
+| `previous()` | Returns a `Pageable` for the previous page (preserves sort orders), or `null` on the first page |
+
+Create a `Pageable` using one of the factory methods:
+
+- `Pageable.ofSize(pageSize)` creates a request for the first page (page 0) with the given size.
+- `Pageable.of(pageNumber, pageSize)` creates a request for a specific page.
+- Chain `.sortBy(field)` or `.sortByDescending(field)` to add sort orders.
+
+### Basic Usage
+
+The simplest way to paginate is to call `page(pageNumber, pageSize)` on a repository. For more control over sorting, construct a `Pageable` and pass it to `page(pageable)`.
+
+<Tabs groupId="language">
+<TabItem value="kotlin" label="Kotlin" default>
+
+```kotlin
+// First page of 20 users
+val page1: Page<User> = userRepository.page(0, 20)
+
+// Using Pageable with sort order
+val pageable = Pageable.ofSize(20).sortBy(User_.name)
+val page: Page<User> = userRepository.page(pageable)
+
+// Navigate to next page
+if (page.hasNext()) {
+    val nextPage = userRepository.page(page.next())
+}
+```
+
+</TabItem>
+<TabItem value="java" label="Java">
+
+```java
+// First page of 20 users
+Page<User> page1 = userRepository.page(0, 20);
+
+// Using Pageable with sort order
+Pageable pageable = Pageable.ofSize(20).sortBy(User_.name);
+Page<User> page = userRepository.page(pageable);
+
+// Navigate to next page
+if (page.hasNext()) {
+    Page<User> nextPage = userRepository.page(page.next());
+}
+```
+
+</TabItem>
+</Tabs>
+
+### Slices
+
+`slice` is `page` without the count query: the same `Pageable`, one row beyond the page size to decide `hasNext`, and the request's `next()` and `previous()` to navigate. Use it for a "load more" that needs no total.
+
+<Tabs groupId="language">
+<TabItem value="kotlin" label="Kotlin" default>
+
+```kotlin
+val pageable = Pageable.ofSize(20).sortBy(User_.email)
+val slice: Slice<User> = userRepository.slice(pageable)
+if (slice.hasNext()) {
+    val more = userRepository.slice(pageable.next())
+}
+```
+
+</TabItem>
+<TabItem value="java" label="Java">
+
+```java
+Pageable pageable = Pageable.ofSize(20).sortBy(User_.email);
+Slice<User> slice = userRepository.slice(pageable);
+if (slice.hasNext()) {
+    Slice<User> more = userRepository.slice(pageable.next());
+}
+```
+
+</TabItem>
+</Tabs>
+
+### Ref Variants
+
+Use `pageRef` and `sliceRef` to load only primary keys instead of full entities, returning a `Page<Ref<E>>` or a `Slice<Ref<E>>`. This is useful when you need identifiers for a subsequent batch operation without the overhead of fetching full entity data.
+
+<Tabs groupId="language">
+<TabItem value="kotlin" label="Kotlin" default>
+
+```kotlin
+val refPage: Page<Ref<User>> = userRepository.pageRef(0, 20)
+```
+
+</TabItem>
+<TabItem value="java" label="Java">
+
+```java
+Page<Ref<User>> refPage = userRepository.pageRef(0, 20);
+```
+
+</TabItem>
+</Tabs>
+
+---
+
+## Scrolling
+
+Repositories provide convenience methods for scrolling through result sets by keyset, where a unique column value (typically the primary key) makes every row addressable. This approach avoids the performance issues of `OFFSET` on large tables, because the database can seek directly to a row using an index rather than scanning and discarding skipped rows.
+
+The key parameter must be a `Metamodel.Key`, which is generated for fields annotated with `@UK` or `@PK`. See [Metamodel](metamodel.md#unique-keys-uk-and-metamodelkey) for details.
+
+The `scroll` method accepts a `Scrollable<E>`, which states the ordering, the window size and optionally the position to continue from, and returns a `Window<E>`: the content in the request's sort order, informational `hasNext`/`hasPrevious` flags, and `Scrollable<E>` navigation tokens for the adjacent windows. Navigation tokens (`next()`, `previous()`) are always present when the window has content; they are only `null` when the window is empty. The flags say whether rows existed after and before the window at query time, but they do not gate access to the tokens. Since new data may appear after the query, the developer decides whether to follow a token.
+
+<Tabs groupId="language">
+<TabItem value="kotlin" label="Kotlin" default>
+
+```kotlin
+// First window of 20 users ordered by id
+val window: Window<User> = userRepository.scroll(Scrollable.of(User_.id, 20))
+
+// The window after it, and the window before that, both in id order
+val next: Window<User> = userRepository.scroll(window.next())
+val previous: Window<User> = userRepository.scroll(next.previous())
+
+// Newest first: the key descending
+val latest: Window<User> = userRepository.scroll(Scrollable.of(User_.id, 20).descending())
+
+// Optionally check hasNext/hasPrevious to decide whether to follow a token.
+// These flags reflect a snapshot at query time; new data may appear afterward.
+if (window.hasNext()) {
+    // more rows existed after this window when the query ran
+}
+```
+
+To scroll through a filtered subset, use the query builder with `scroll` as a terminal operation. The filter and the keyset condition are combined with AND.
+
+```kotlin
+val cityWindow = userRepository.select()
+    .where(User_.city eq city)
+    .scroll(Scrollable.of(User_.id, 20))
+val nextInCity = userRepository.select()
+    .where(User_.city eq city)
+    .scroll(cityWindow.next())
+```
+
+The request owns the ordering, so the scroll methods reject explicit `orderBy()` calls. Every window comes back in the request's sort order, the one reached through `previous()` included. See [Pagination and Scrolling: Scrolling](pagination-and-scrolling.md#scrolling) for full details.
+
+</TabItem>
+<TabItem value="java" label="Java">
+
+The same scrolling methods described in the Kotlin section are available on Java repositories. The `scroll` method accepts a `Scrollable<E>` and returns a `Window<E>` containing the `content()`, informational `hasNext()`/`hasPrevious()` flags, and `Scrollable<E>` navigation tokens (`next()`, `previous()`) that are always present when the window has content.
+
+```java
+// First window of 20 users ordered by id
+Window<User> window = userRepository.scroll(Scrollable.of(User_.id, 20));
+
+// The window after it, and the window before that, both in id order
+Window<User> next = userRepository.scroll(window.next());
+Window<User> previous = userRepository.scroll(next.previous());
+
+// Newest first: the key descending
+Window<User> latest = userRepository.scroll(Scrollable.of(User_.id, 20).descending());
+
+// Optionally check hasNext/hasPrevious to decide whether to follow a token.
+// These flags reflect a snapshot at query time; new data may appear afterward.
+if (window.hasNext()) {
+    // more rows existed after this window when the query ran
+}
+```
+
+For filtered results, use the query builder and call `scroll` as a terminal operation. The filter and the keyset condition are combined with AND.
+
+```java
+Window<User> cityWindow = userRepository.select()
+    .where(User_.city, EQUALS, city)
+    .scroll(Scrollable.of(User_.id, 20));
+```
+
+As with Kotlin, the request owns the ordering, so the scroll methods reject explicit `orderBy()` calls, and every window comes back in the request's sort order. See [Pagination and Scrolling: Scrolling](pagination-and-scrolling.md#scrolling) for full details.
+
+</TabItem>
+</Tabs>
+
+### Scrolling with Sort
+
+When you need to sort by a non-unique column (for example, a date or status), add sort fields to the request with `sortBy` and `sortByDescending`. They order before the key, each in its own direction, and the key stays the tiebreaker, so paging is deterministic even when sort values repeat. Sort fields must not allow NULL values.
+
+<Tabs groupId="language">
+<TabItem value="kotlin" label="Kotlin" default>
+
+```kotlin
+// Oldest first: creation date ascending, id as tiebreaker
+val window: Window<Post> = postRepository.scroll(Scrollable.of(Post_.id, 20).sortBy(Post_.createdAt))
+
+// Newest first: creation date descending, key descending to match
+val latest: Window<Post> = postRepository.scroll(Scrollable.of(Post_.id, 20).sortByDescending(Post_.createdAt).descending())
+
+// City, then birth date, then id
+val byName: Window<User> = userRepository.scroll(Scrollable.of(User_.id, 20).sortBy(User_.city).sortBy(User_.birthDate))
+
+// Next window
+val next: Window<Post> = postRepository.scroll(window.next())
+
+// With filter (use query builder)
+val matching = postRepository.select()
+    .where(Post_.title like "%storm%")
+    .scroll(Scrollable.of(Post_.id, 20).sortBy(Post_.createdAt))
+```
+
+</TabItem>
+<TabItem value="java" label="Java">
+
+```java
+// Oldest first: creation date ascending, id as tiebreaker
+Window<Post> window = postRepository.scroll(Scrollable.of(Post_.id, 20).sortBy(Post_.createdAt));
+
+// Newest first: creation date descending, key descending to match
+Window<Post> latest = postRepository.scroll(Scrollable.of(Post_.id, 20).sortByDescending(Post_.createdAt).descending());
+
+// City, then birth date, then id
+Window<User> byName = userRepository.scroll(Scrollable.of(User_.id, 20).sortBy(User_.city).sortBy(User_.birthDate));
+
+// Next window
+Window<Post> next = postRepository.scroll(window.next());
+```
+
+</TabItem>
+</Tabs>
+
+The `Window` carries navigation tokens (`next()`, `previous()`) that hold the row's sort and key values, so the client does not need to extract them. The values are read from the row alongside the result, which is why `scrollRef` and `selectRef().scroll(...)` navigate exactly like a window of entities. For REST APIs, `nextCursor()` and `previousCursor()` provide a serialized form: `nextCursor()` returns `null` when `hasNext` is false, and `previousCursor()` returns `null` when `hasPrevious` is false.
+
+For queries that need joins, projections, or more complex filtering, use the query builder and call `scroll` as a terminal operation. See [Pagination and Scrolling: Scrolling](pagination-and-scrolling.md#scrolling) for full details on how scrolling composes with WHERE clauses, including indexing recommendations.
+
+## Pagination vs. Scrolling
+
+Storm supports two strategies for traversing large result sets. The table below summarizes the trade-offs to help you choose.
+
+| Factor | Pagination (`page`) | Scrolling (`scroll`) |
+|---|---|---|
+| Request type | `Pageable` | `Scrollable<T>` |
+| Result type | `Page` | `Window` |
+| Navigation | page number | cursor |
+| Count query | yes | no |
+| Random access | yes | no |
+| Performance at page 1 | Good | Good |
+| Performance at page 1,000 | Degrades (database must skip rows) | Consistent (index seek) |
+| Handles concurrent inserts | Rows may shift between pages | Stable cursor |
+| Navigate forward | `page.next()` | `window.next()` |
+| Navigate backward | `page.previous()` | `window.previous()`, same order as forward |
+
+Use pagination when you need random page access or a total count (for example, displaying "Page 3 of 12" in a UI). Use scrolling when you need consistent performance over deep result sets or when the data changes frequently between requests.
+
+---
+
+## Refs
+
+Refs are lightweight identifiers that carry only the record type and primary key. Selecting refs instead of full entities reduces memory usage and network bandwidth when you only need IDs for subsequent operations, such as batch lookups or filtering. See [Refs](refs.md) for a detailed discussion.
+
+<Tabs groupId="language">
+<TabItem value="kotlin" label="Kotlin" default>
+
+```kotlin
+// Select refs (lightweight identifiers)
+val refs: Flow<Ref<User>> = userRepository.selectRef().resultFlow
+
+// Select by refs
+val users: Flow<User> = userRepository.selectByRef(refs)
+```
+
+</TabItem>
+<TabItem value="java" label="Java">
+
+Ref operations in Java return `Stream` objects that must be closed. Refs carry only the primary key and record type, making them suitable for batch operations where loading full records would be wasteful.
+
+```java
+// Select refs (lightweight identifiers)
+try (Stream<Ref<User>> refs = userRepository.selectRef().getResultStream()) {
+    // Process refs
+}
+
+// Select by refs
+List<Ref<User>> refList = ...;
+try (Stream<User> users = userRepository.selectByRef(refList.stream())) {
+    // Process users
+}
+```
+
+</TabItem>
+</Tabs>
+
+---
+
+## Custom Repositories
+
+<Tabs groupId="language">
+<TabItem value="kotlin" label="Kotlin" default>
+
+Custom repositories let you encapsulate domain-specific queries behind a typed interface. Define an interface that extends `EntityRepository`, add methods with default implementations that use the inherited query API, and retrieve it from `orm.repository()`. This keeps query logic in a single place and makes it testable through interface substitution.
+
+The advantage over using the generic `entity()` repository is that custom methods express domain intent (e.g., `findByEmail`) rather than exposing raw query construction to callers.
+
+```kotlin
+interface UserRepository : EntityRepository<User, Int> {
+
+    // Custom query method
+    fun findByEmail(email: String): User? =
+        find(User_.email eq email)
+
+    // Custom query with multiple conditions
+    fun findByNameInCity(name: String, city: City): List<User> =
+        findAll((User_.city eq city) and (User_.name eq name))
+}
+```
+
+Get the repository:
+
+```kotlin
+val userRepository: UserRepository = orm.repository<UserRepository>()
+```
+
+</TabItem>
+<TabItem value="java" label="Java">
+
+Java custom repositories follow the same pattern as Kotlin, using `default` methods to provide implementations. The fluent builder API chains `where`, `and`, and `or` calls to construct type-safe filter expressions.
+
+```java
+interface UserRepository extends EntityRepository<User, Integer> {
+
+    // Custom query method
+    default Optional<User> findByEmail(String email) {
+        return select()
+            .where(User_.email, EQUALS, email)
+            .getOptionalResult();
+    }
+
+    // Custom query with multiple conditions
+    default List<User> findByNameInCity(String name, City city) {
+        return select()
+            .where(it -> it.where(User_.city, EQUALS, city)
+                    .and(it.where(User_.name, EQUALS, name)))
+            .getResultList();
+    }
+}
+```
+
+Get the repository:
+
+```java
+UserRepository userRepository = orm.repository(UserRepository.class);
+```
+
+</TabItem>
+</Tabs>
+
+---
+
+## Repository with Spring
+
+<Tabs groupId="language">
+<TabItem value="kotlin" label="Kotlin" default>
+
+Repositories can be injected using Spring's dependency injection:
+
+```kotlin
+@Service
+class UserService(
+    private val userRepository: UserRepository
+) {
+    fun findUser(email: String): User? =
+        userRepository.findByEmail(email)
+}
+```
+
+</TabItem>
+<TabItem value="java" label="Java">
+
+Repositories can be injected using Spring's dependency injection:
+
+```java
+@Service
+public class UserService {
+
+    private final UserRepository userRepository;
+
+    public UserService(UserRepository userRepository) {
+        this.userRepository = userRepository;
+    }
+
+    public Optional<User> findUser(String email) {
+        return userRepository.findByEmail(email);
+    }
+}
+```
+
+</TabItem>
+</Tabs>
+
+---
+
+## Spring Configuration
+
+Storm repositories are plain interfaces, so Spring cannot discover them through component scanning. The `RepositoryBeanFactoryPostProcessor` bridges this gap by scanning specified packages for interfaces that extend `EntityRepository` or `ProjectionRepository` and registering proxy implementations as Spring beans. Once registered, you can inject repositories through standard constructor injection. See [Spring Integration](spring-integration.md) for full configuration details.
+
+<Tabs groupId="language">
+<TabItem value="kotlin" label="Kotlin" default>
+
+```kotlin
+@Configuration
+class AcmeRepositoryBeanFactoryPostProcessor : RepositoryBeanFactoryPostProcessor() {
+
+    override fun getRepositoryBasePackages(): Array<String> =
+        arrayOf("com.acme.repository")
+}
+```
+
+</TabItem>
+<TabItem value="java" label="Java">
+
+```java
+@Configuration
+public class AcmeRepositoryBeanFactoryPostProcessor extends RepositoryBeanFactoryPostProcessor {
+
+    @Override
+    public String[] getRepositoryBasePackages() {
+        return new String[] { "com.acme.repository" };
+    }
+}
+```
+
+</TabItem>
+</Tabs>
+
+## Tips
+
+1. **Use custom repositories.** Encapsulate domain-specific queries in repository interfaces.
+2. **Close streams.** Always close `Stream` results to release database resources.
+3. **Prefer Kotlin Flow.** Kotlin's Flow automatically handles resource cleanup.
+4. **Use Spring injection.** Let Spring manage repository lifecycle for cleaner code.
