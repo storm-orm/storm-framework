@@ -19,7 +19,7 @@
         <ktor.version>3.4.3</ktor.version>
         <graalvm.version>24.2.2</graalvm.version>
         <micrometer.version>1.15.4</micrometer.version>
-        <micrometer-tracing.version>1.5.4</micrometer-tracing.version>
+        <micrometer-tracing.version>1.7.1</micrometer-tracing.version>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <spring-boot.version>3.5.16</spring-boot.version>
         <jacoco.version>0.8.12</jacoco.version>
