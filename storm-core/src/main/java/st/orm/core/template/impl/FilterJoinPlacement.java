@@ -374,7 +374,8 @@ final class FilterJoinPlacement {
      */
     private static boolean onlyNames(PredicateNode node, Class<? extends Data> table) {
         return switch (node) {
-            case Term(var template, var ignore) -> {
+            case Term term -> {
+                var template = term.template();
                 if (template.fragments().stream().anyMatch(fragment -> !fragment.isBlank())) {
                     yield false;    // Text of its own may name any alias of the enclosing query.
                 }
@@ -383,7 +384,7 @@ final class FilterJoinPlacement {
                 yield tables.equals(Set.of(table));
             }
             case Scope(var inner) -> onlyNames(inner, table);
-            case Group(var ignore, var operands) -> operands.stream().allMatch(operand -> onlyNames(operand, table));
+            case Group group -> group.operands().stream().allMatch(operand -> onlyNames(operand, table));
         };
     }
 
@@ -398,9 +399,9 @@ final class FilterJoinPlacement {
 
     private static void collect(PredicateNode node, Set<Class<? extends Data>> tables) {
         switch (node) {
-            case Term(var template, var ignore) -> collect(template, tables);
+            case Term term -> collect(term.template(), tables);
             case Scope(var inner) -> collect(inner, tables);
-            case Group(var ignore, var operands) -> operands.forEach(operand -> collect(operand, tables));
+            case Group group -> group.operands().forEach(operand -> collect(operand, tables));
         }
     }
 
@@ -438,8 +439,8 @@ final class FilterJoinPlacement {
      * term.
      */
     private static PredicateNode node(Where where) {
-        if (where.expression() instanceof TemplateExpression(var ignore, var predicate) && predicate != null) {
-            return predicate;
+        if (where.expression() instanceof TemplateExpression expression && expression.predicate() != null) {
+            return expression.predicate();
         }
         Expression expression = where.expression();
         return new Term(expression == null ? wrap(where) : wrap(expression), true);

@@ -63,7 +63,7 @@ final class JoinProcessor implements ElementProcessor<Join> {
         if (join.source() instanceof TemplateSource || join.target() instanceof TemplateTarget) {
             return null;
         }
-        if (join.target() instanceof TableTarget(var ignore1, var ignore2, var condition) && condition != null) {
+        if (join.target() instanceof TableTarget target && target.condition() != null) {
             return null;    // The condition's values are no part of the shape; the key generator variant keys it.
         }
         return join;
@@ -130,8 +130,8 @@ final class JoinProcessor implements ElementProcessor<Join> {
         if (join.target() instanceof TemplateTarget(var template)) {
             binder.bind(template, true);
         }
-        if (join.target() instanceof TableTarget(var ignore1, var ignore2, var condition) && condition != null) {
-            binder.getQueryModel().bindExpression(new TemplateExpression(condition.toTemplate()), binder);
+        if (join.target() instanceof TableTarget target && target.condition() != null) {
+            binder.getQueryModel().bindExpression(new TemplateExpression(target.condition().toTemplate()), binder);
         }
         if (join.source() instanceof TemplateSource(var template)) {
             binder.bind(template, false);

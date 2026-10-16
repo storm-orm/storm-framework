@@ -104,7 +104,7 @@ public sealed interface PredicateNode {
      */
     default TemplateString toTemplate() {
         return switch (this) {
-            case Term(var template, var ignore) -> template;
+            case Term term -> term.template();
             case Scope(var node) -> node.toTemplate();
             case Group(var and, var operands) -> {
                 var parts = new ArrayList<TemplateString>(operands.size() * 2);
@@ -125,7 +125,7 @@ public sealed interface PredicateNode {
      */
     private boolean grouped() {
         return switch (this) {
-            case Term(var ignore, var safe) -> !safe;
+            case Term term -> !term.safe();
             case Scope(var node) -> node.grouped();
             case Group ignore -> true;
         };
