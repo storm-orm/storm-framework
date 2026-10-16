@@ -142,6 +142,15 @@ public final class QueryBuilderImpl<T extends Data, R, ID> extends QueryBuilder<
         return new QueryBuilderImpl<>(core.orderBy(convert(template)));
     }
 
+    @Override
+    @SuppressWarnings("unchecked")
+    public QueryBuilder<T, R, ID> orderFirst(Function<WhereBuilder<T, R, ID>, PredicateBuilder<T, ?, ?>> predicate) {
+        return new QueryBuilderImpl<>(core.orderFirst(whereBuilder -> {
+            var builder = predicate.apply(new WhereBuilderImpl<>(whereBuilder));
+            return ((PredicateBuilderImpl<T, ?, ?>) builder).core;
+        }));
+    }
+
     /**
      * Adds a GROUP BY clause to the query using a string template. Multiple calls to this method append additional
      * columns to the GROUP BY clause.

@@ -294,6 +294,9 @@ public class SelectBuilderImpl<T extends Data, R, ID> extends QueryBuilderImpl<T
     }
 
     private TemplateString toTemplateString(TemplateString selectClause, boolean withOrderBy) {
+        if (distinct && withOrderBy && hasOrderFirst()) {
+            throw new PersistenceException("orderFirst cannot order a distinct query: the database orders a distinct result only by the columns it selects. A semiJoin filters by a related table without repeating rows, so the query needs no distinct.");
+        }
         TemplateString template = TemplateString.of("SELECT%s %s".formatted(hintAfterKeyword(), distinct ? "DISTINCT " : ""));
         if (queryTemplate.dialect().applyLimitAfterSelect()) {
             if (limit != null && offset == null) {

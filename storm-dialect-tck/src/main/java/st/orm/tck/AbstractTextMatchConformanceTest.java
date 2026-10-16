@@ -35,6 +35,7 @@ import static st.orm.Operator.STARTS_WITH_IGNORE_CASE;
 import java.sql.Connection;
 import java.sql.SQLException;
 import java.sql.Statement;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
 import java.util.TreeSet;
@@ -70,6 +71,7 @@ public abstract class AbstractTextMatchConformanceTest {
             "50%", "50 dollars", "a_b", "axb", "a!b", "a[b]c", "abc", "a\\b", "a\\%b", "Madison", "MADISON");
 
     private static final Metamodel<Phrase, String> CONTENT = Metamodel.of(Phrase.class, "content");
+    private static final Metamodel<Phrase, Integer> ID = Metamodel.of(Phrase.class, "id");
 
     public record Phrase(@PK(generation = NONE) Integer id, String content) implements Entity<Integer> {}
 
@@ -247,5 +249,31 @@ public abstract class AbstractTextMatchConformanceTest {
         assertEquals(allBut("Madison", "MADISON"), match(NOT_STARTS_WITH_IGNORE_CASE, "mAD"));
         assertEquals(allBut("Madison", "MADISON"), match(NOT_ENDS_WITH_IGNORE_CASE, "sON"));
         assertEquals(allBut("a_b"), match(NOT_CONTAINS_IGNORE_CASE, "A_B"));
+    }
+
+    @Test
+    public void orderFirstPutsTheMatchingRowsFirstInTheOrderOfTheCalls() {
+        // An exact match first, the rows starting with the text next, and the rest after, each part in key order.
+        var contents = new ArrayList<String>();
+        orm.entity(Phrase.class).select()
+                .orderFirst(it -> it.where(CONTENT, EQUALS_IGNORE_CASE, "ABC"))
+                .orderFirst(it -> it.where(CONTENT, STARTS_WITH_IGNORE_CASE, "A"))
+                .orderBy(ID)
+                .getResultList()
+                .forEach(phrase -> contents.add(phrase.content()));
+        assertEquals(List.of("abc", "a_b", "axb", "a!b", "a[b]c", "a\\b", "a\\%b", "50%", "50 dollars", "Madison",
+                "MADISON"), contents);
+    }
+
+    @Test
+    public void orderFirstMatchesItsTextLiterally() {
+        var contents = new ArrayList<String>();
+        orm.entity(Phrase.class).select()
+                .orderFirst(it -> it.where(CONTENT, STARTS_WITH, "a_"))
+                .orderBy(ID)
+                .limit(2)
+                .getResultList()
+                .forEach(phrase -> contents.add(phrase.content()));
+        assertEquals(List.of("a_b", "50%"), contents);
     }
 }

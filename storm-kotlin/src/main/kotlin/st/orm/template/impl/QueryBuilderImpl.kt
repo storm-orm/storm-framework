@@ -73,6 +73,8 @@ internal class QueryBuilderImpl<T : Data, R : Any, ID : Any>(
      */
     override fun orderBy(template: TemplateString): QueryBuilder<T, R, ID> = QueryBuilderImpl<T, R, ID>(core.orderBy(template.unwrap))
 
+    override fun orderFirst(predicate: PredicateBuilder<out T, *, *>): QueryBuilder<T, R, ID> = QueryBuilderImpl(core.orderFirst((predicate as PredicateBuilderImpl<T, *, *>).core))
+
     /**
      * Adds a GROUP BY clause to the query using a string template. Multiple calls to this method append additional
      * columns to the GROUP BY clause.

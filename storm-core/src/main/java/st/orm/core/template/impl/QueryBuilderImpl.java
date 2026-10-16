@@ -58,6 +58,7 @@ import st.orm.core.template.WhereBuilder;
 import st.orm.core.template.impl.Elements.Advisory;
 import st.orm.core.template.impl.Elements.Expression;
 import st.orm.core.template.impl.Elements.ObjectExpression;
+import st.orm.core.template.impl.Elements.OrderFirst;
 import st.orm.core.template.impl.Elements.TableSource;
 import st.orm.core.template.impl.Elements.TableTarget;
 import st.orm.core.template.impl.Elements.TemplateExpression;
@@ -118,6 +119,9 @@ abstract class QueryBuilderImpl<T extends Data, R, ID> extends QueryBuilder<T, R
     @SuppressWarnings("unchecked")
     public final Window<R> scroll(Scrollable<T> scrollable) {
         requireNonNull(scrollable, "scrollable");
+        if (hasOrderFirst()) {
+            throw new PersistenceException("scroll cannot follow orderFirst: a window continues from the values of its sort columns, and a rank over a condition is not one. Page through the rows instead.");
+        }
         if (hasOrderBy()) {
             throw new PersistenceException("scroll manages ORDER BY internally; remove explicit orderBy calls.");
         }
@@ -567,6 +571,27 @@ abstract class QueryBuilderImpl<T extends Data, R, ID> extends QueryBuilder<T, R
         List<TemplateString> copy = new ArrayList<>(orderBy);
         copy.add(template);
         return copyWith(queryTemplate, fromType, join, where, groupBy, having, copy, hints);
+    }
+
+    @Override
+    public QueryBuilder<T, R, ID> orderFirst(PredicateBuilder<? extends T, ?, ?> predicate) {
+        requireNonNull(predicate, "predicate");
+        return orderBy(TemplateString.combine(wrap(new OrderFirst()), TemplateString.of("CASE WHEN "),
+                ((PredicateBuilderImpl<?, ?, ?>) predicate).asTemplate(), TemplateString.of(" THEN 0 ELSE 1 END")));
+    }
+
+    @Override
+    public QueryBuilder<T, R, ID> orderFirst(Function<WhereBuilder<T, R, ID>, PredicateBuilder<T, ?, ?>> predicate) {
+        requireNonNull(predicate, "predicate");
+        return orderFirst(predicate.apply(new WhereBuilderImpl<>(this)));
+    }
+
+    /**
+     * Returns {@code true} if an ORDER BY key of this query builder ranks the rows by a condition, as
+     * {@code orderFirst} adds one.
+     */
+    protected final boolean hasOrderFirst() {
+        return orderBy.stream().anyMatch(template -> template.values().stream().anyMatch(OrderFirst.class::isInstance));
     }
 
     /**

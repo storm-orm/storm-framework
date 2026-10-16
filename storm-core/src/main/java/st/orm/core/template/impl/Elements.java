@@ -460,6 +460,14 @@ public final class Elements {
         }
     }
 
+    /**
+     * Marks an ORDER BY key that ranks the rows by a condition, as {@code orderFirst} adds one. It renders nothing; the
+     * query builder reads it to refuse what such a key cannot follow, a keyset scroll and a distinct query.
+     *
+     * @since 1.15
+     */
+    public record OrderFirst() implements Element {}
+
     /** Raw SQL rendered verbatim, bypassing the template's safety checks. */
     public record Unsafe(String sql) implements Element {
         public Unsafe {

@@ -710,6 +710,37 @@ public abstract class QueryBuilder<T extends Data, R, ID> {
     public abstract QueryBuilder<T, R, ID> orderBy(StringTemplate template);
 
     /**
+     * Adds an ORDER BY key that puts the rows matching the predicate before the rows that do not, keeping the order
+     * of the keys before it and leaving the order within each part to the keys after it. Like {@code orderBy}, each
+     * call appends a key, so the keys apply in the order they are called:
+     *
+     * <pre>{@code
+     * movies.select()
+     *         .where(it -> it.search(input, Movie_.title))
+     *         .orderFirst(it -> it.where(Movie_.title, EQUALS_IGNORE_CASE, input))
+     *         .orderFirst(it -> it.where(Movie_.title, STARTS_WITH_IGNORE_CASE, input))
+     *         .orderByDescending(Movie_.votes)
+     *         .limit(10)
+     *         .getResultList();
+     * }</pre>
+     *
+     * <p>The predicate is any predicate a WHERE clause takes, and is rendered as one there:
+     * {@code CASE WHEN <predicate> THEN 0 ELSE 1 END}. No index serves the key, so the database evaluates it for every
+     * row the query finds and sorts them all, even with a limit; after a selective condition, such as a search, that
+     * is what any ordering of the matches costs.</p>
+     *
+     * <p>A keyset {@code scroll} cannot follow it, since a window continues from the values of its sort columns and a
+     * rank over a condition is not one; page through the rows instead. A {@code distinct} query cannot either, since
+     * the database orders a distinct result only by the columns it selects, and a semi-joined table adds no columns to
+     * order by.</p>
+     *
+     * @param predicate the predicate the rows put first match, built with a {@link WhereBuilder}.
+     * @return the query builder.
+     * @since 1.15
+     */
+    public abstract QueryBuilder<T, R, ID> orderFirst(Function<WhereBuilder<T, R, ID>, PredicateBuilder<T, ?, ?>> predicate);
+
+    /**
      * Returns {@code true} if any ORDER BY columns have been added to this query builder.
      *
      * @return {@code true} if ORDER BY columns are present, {@code false} otherwise.

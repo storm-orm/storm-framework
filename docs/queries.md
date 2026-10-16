@@ -383,7 +383,7 @@ WHERE (LOWER(m.title) LIKE LOWER(?) ESCAPE '!' OR LOWER(d.name) LIKE LOWER(?) ES
 | `"ugly` | `"ugly`: an unpaired quote is an ordinary character |
 | empty or blank | none: the predicate matches every row |
 
-Accents follow the column's collation, as for the `IGNORE_CASE` operators: MySQL and MariaDB ignore them under their default collations, and the other databases compare them as they are. Whether a search ignores accents is decided by the schema, not by the query; see [Indexing a Search](#indexing-a-search). `search` matches words; it does not rank the rows it finds, and it does not stem words the way a full-text index does.
+Accents follow the column's collation, as for the `IGNORE_CASE` operators: MySQL and MariaDB ignore them under their default collations, and the other databases compare them as they are. Whether a search ignores accents is decided by the schema, not by the query; see [Indexing a Search](#indexing-a-search). `search` matches words; it does not rank the rows it finds, and it does not stem words the way a full-text index does. To put the closest matches first, order by them with `orderFirst`; see [Ranking the Matches](#ranking-the-matches).
 
 To search the rows related to each row, such as the names of an owner's pets, semi-join the related table and name its column: `search(input, Owner_.lastName, Pet_.name)` after `semiJoin<Pet>().on<Owner>()` (Java: `semiJoin(Pet.class).on(Owner.class)`). Each word may then match a different pet, every owner comes back once, and each table is read through its own indexes; see [Filtering by Related Rows](#filtering-by-related-rows).
 
@@ -423,6 +423,54 @@ List<Movie> suggestions = orm.entity(Movie.class)
 | empty or blank | every row | no rows |
 
 Every statement `suggest` renders is therefore served by the substring index, however the user types; the trade-off is that a short word does not narrow the suggestions. The search page the box leads to keeps `search`, which matches every word. Which words are short is the dialect's to say: three characters on PostgreSQL, whose trigram index needs three, and none on the other databases, where `suggest` matches as `search` does, except that an empty input matches no rows. The `storm.search.min_term_length` property sets another length, for an index of a different kind.
+
+#### Ranking the Matches
+
+`search` and `suggest` decide which rows match, not which come first. What counts as the best match is the application's to say, so the ordering is stated with the same predicates the WHERE clause takes: `orderFirst(predicate)` puts the rows matching the predicate before the rows that do not. Each call appends a sort key, as `orderBy` does, so the keys apply in the order they are called. A title equal to the input first, a title starting with it next, then the most popular:
+
+<Tabs groupId="language">
+<TabItem value="kotlin" label="Kotlin" default>
+
+```kotlin
+val suggestions = orm.entity<Movie>()
+    .select()
+    .where(suggest(input, Movie_.title, Movie_.director.name))
+    .orderFirst(Movie_.title eqIgnoreCase input)
+    .orderFirst(Movie_.title startsWithIgnoreCase input)
+    .orderByDescending(Movie_.votes)
+    .limit(6)
+    .resultList
+```
+
+</TabItem>
+<TabItem value="java" label="Java">
+
+```java
+List<Movie> suggestions = orm.entity(Movie.class)
+    .select()
+    .where(it -> it.suggest(input, Movie_.title, Movie_.director.name))
+    .orderFirst(it -> it.where(Movie_.title, EQUALS_IGNORE_CASE, input))
+    .orderFirst(it -> it.where(Movie_.title, STARTS_WITH_IGNORE_CASE, input))
+    .orderByDescending(Movie_.votes)
+    .limit(6)
+    .getResultList();
+```
+
+</TabItem>
+</Tabs>
+
+```sql
+ORDER BY CASE WHEN LOWER(m.title) = LOWER(?) THEN 0 ELSE 1 END,
+         CASE WHEN LOWER(m.title) LIKE LOWER(?) ESCAPE '!' THEN 0 ELSE 1 END,
+         m.votes DESC
+```
+
+The operators match the input as they do in a WHERE clause: ignoring case, and literally, so `%` and `_` in the input are not wildcards. Combine predicates with `or` to rank by several columns, such as a title and an original title. The input is compared whole, as typed; trim it, or collapse its spaces, where the box may hold more than one between words.
+
+- No index serves the sort: the database evaluates each key for every row the query finds and sorts them all, even with a limit. After a search, which finds few rows, that costs what any ordering of the matches costs.
+- Rank by the columns of the queried table and of joined tables. A semi-joined table adds no columns to the query, so its columns, such as the name of a credited person a movie was found by, cannot rank it; Storm refuses them.
+- A keyset `scroll` cannot follow `orderFirst`: a window continues from the values of its sort columns, and a rank over a condition is not one. Page through ranked results with `page`.
+- A `distinct` query cannot be ranked, since the database orders a distinct result only by the columns it selects. A search over related rows uses a semi-join, which needs no `distinct`.
 
 #### Indexing a Search
 
@@ -493,6 +541,19 @@ val users = orm.entity<User>()
     .resultList
 ```
 
+`orderFirst` sorts by a condition: the rows matching the predicate come before the rows that do not, and the keys after it order each part. It appends a key like `orderBy`, and takes any predicate a WHERE clause takes.
+
+```kotlin
+// Admins first, then by name
+val users = orm.entity<User>()
+    .select()
+    .orderFirst(User_.role eq adminRole)
+    .orderBy(User_.name)
+    .resultList
+```
+
+It renders `CASE WHEN <predicate> THEN 0 ELSE 1 END`, the same on every database. A keyset `scroll` and a `distinct` query cannot follow it; see [Ranking the Matches](#ranking-the-matches) for ranking search results.
+
 </TabItem>
 <TabItem value="java" label="Java">
 
@@ -540,6 +601,19 @@ List<User> users = orm.entity(User.class)
     .orderBy(RAW."\{User_.lastName}, \{User_.firstName} DESC")
     .getResultList();
 ```
+
+`orderFirst` sorts by a condition: the rows matching the predicate come before the rows that do not, and the keys after it order each part. It appends a key like `orderBy`, and takes the predicate as `where` does.
+
+```java
+// Admins first, then by name
+List<User> users = orm.entity(User.class)
+    .select()
+    .orderFirst(it -> it.where(User_.role, EQUALS, adminRole))
+    .orderBy(User_.name)
+    .getResultList();
+```
+
+It renders `CASE WHEN <predicate> THEN 0 ELSE 1 END`, the same on every database. A keyset `scroll` and a `distinct` query cannot follow it; see [Ranking the Matches](#ranking-the-matches) for ranking search results.
 
 </TabItem>
 </Tabs>

@@ -922,6 +922,36 @@ public abstract class QueryBuilder<T : Data, R : Any, ID : Any> {
     public abstract fun orderBy(template: TemplateString): QueryBuilder<T, R, ID>
 
     /**
+     * Adds an ORDER BY key that puts the rows matching the predicate before the rows that do not, keeping the order
+     * of the keys before it and leaving the order within each part to the keys after it. Like `orderBy`, each call
+     * appends a key, so the keys apply in the order they are called:
+     *
+     * ```
+     * movies.select()
+     *     .where(search(input, Movie_.title))
+     *     .orderFirst(Movie_.title eqIgnoreCase input)
+     *     .orderFirst(Movie_.title startsWithIgnoreCase input)
+     *     .orderByDescending(Movie_.votes)
+     *     .limit(10)
+     *     .resultList
+     * ```
+     *
+     * The predicate is any predicate a WHERE clause takes, and is rendered as one there:
+     * `CASE WHEN <predicate> THEN 0 ELSE 1 END`. No index serves the key, so the database evaluates it for every row
+     * the query finds and sorts them all, even with a limit; after a selective condition, such as a search, that is
+     * what any ordering of the matches costs.
+     *
+     * A keyset `scroll` cannot follow it, since a window continues from the values of its sort columns and a rank over
+     * a condition is not one; page through the rows instead. A `distinct` query cannot either, since the database
+     * orders a distinct result only by the columns it selects, and a semi-joined table adds no columns to order by.
+     *
+     * @param predicate the predicate the rows put first match.
+     * @return the query builder.
+     * @since 1.15
+     */
+    public abstract fun orderFirst(predicate: PredicateBuilder<out T, *, *>): QueryBuilder<T, R, ID>
+
+    /**
      * Returns `true` if any ORDER BY columns have been added to this query builder.
      *
      * @return `true` if ORDER BY columns are present, `false` otherwise.
@@ -2107,6 +2137,11 @@ public class SqlScope<T : Data, R : Any, ID : Any> @PublishedApi internal constr
     /** Adds an ORDER BY clause (descending) using a SQL template expression. */
     public fun orderByDescending(template: TemplateBuilder) {
         builder = builder.orderByDescending(template)
+    }
+
+    /** Adds an ORDER BY key that puts the rows matching the predicate first; see [QueryBuilder.orderFirst]. */
+    public fun orderFirst(predicate: PredicateBuilder<*, *, *>) {
+        builder = builder.orderFirst(predicate)
     }
 
     /** Adds a LIMIT clause restricting the maximum number of results. */

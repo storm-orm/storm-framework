@@ -2253,6 +2253,36 @@ internal open class QueryBuilderTest(
     }
 
     @Test
+    fun `orderFirst should put the matching rows first in the order of the calls`() {
+        val ownerRepo = orm.entity(Owner::class)
+        val lastName = metamodel<Owner, String>(ownerRepo.model, "last_name")
+        val id = metamodel<Owner, Int>(ownerRepo.model, "id")
+        ownerRepo.select()
+            .orderFirst(lastName eqIgnoreCase "DAVIS")
+            .orderFirst(lastName startsWithIgnoreCase "e")
+            .orderBy(id)
+            .resultList.map { it.firstName } shouldBe
+            listOf("Betty", "Harold", "Maria", "Carlos", "George", "Eduardo", "Peter", "Jean", "Jeff", "David")
+    }
+
+    @Test
+    fun `orderFirst should be refused by scroll, distinct and a semi-joined table`() {
+        val ownerRepo = orm.entity(Owner::class)
+        val lastName = metamodel<Owner, String>(ownerRepo.model, "last_name")
+        val id = metamodel<Owner, Int>(ownerRepo.model, "id")
+        val petName = metamodel<Pet, String>(orm.entity(Pet::class).model, "name")
+        assertThrows<PersistenceException> {
+            ownerRepo.select().orderFirst(lastName eq "Davis").scroll(Scrollable.of(id.key(), 2))
+        }.message!! shouldContain "orderFirst"
+        assertThrows<PersistenceException> {
+            ownerRepo.select().distinct().orderFirst(lastName eq "Davis").resultList
+        }.message!! shouldContain "distinct"
+        assertThrows<PersistenceException> {
+            ownerRepo.select().semiJoin<Pet>().on<Owner>().orderFirst(petName eq "Leo").resultList
+        }.message!! shouldContain "semi-joined"
+    }
+
+    @Test
     fun `semiJoin should hold conditions joined by and to one related row`() {
         val ownerRepo = orm.entity(Owner::class)
         val petName = metamodel<Pet, String>(orm.entity(Pet::class).model, "name")
@@ -2628,6 +2658,7 @@ internal open class QueryBuilderTest(
         override fun havingNotExists(subquery: QueryBuilder<*, *, *>): QueryBuilder<City, City, Int> = delegate.havingNotExists(subquery)
         override fun subqueryTemplate(): SubqueryTemplate = delegate.subqueryTemplate()
         override fun orderBy(template: TemplateString): QueryBuilder<City, City, Int> = delegate.orderBy(template)
+        override fun orderFirst(predicate: PredicateBuilder<out City, *, *>): QueryBuilder<City, City, Int> = delegate.orderFirst(predicate)
 
         // hasOrderBy is protected on another instance, and the tests using this forwarder never order.
         override fun hasOrderBy(): Boolean = false
