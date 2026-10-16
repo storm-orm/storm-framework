@@ -1005,7 +1005,7 @@ WHERE EXISTS (SELECT 1 FROM pet p WHERE p.owner_id = o.id AND p.name = ?)
 - A part of the condition that names only the query's own tables holds without a related row, so `(Owner_.lastName eq "Davis") or (Pet_.name eq "Leo")` also finds a Davis without pets.
 - `search` matches each word on its own, so its words may match different related rows: `search("leo max", Owner_.lastName, Pet_.name)` finds the owner of both. Where the condition is an OR of columns of the query's table and columns of the semi-joined table, as a search's is, each word renders as an `IN` over a `UNION` of a branch per table, so each table is read through its own indexes.
 
-The semi-joined table filters the query but adds no columns to it: ordering, grouping or selecting by its columns is refused when the query is built. A semi-join needs a condition that names its table, and one without is refused as well, since it would filter nothing; to keep the rows that have any related row, use `whereExists`.
+The semi-joined table filters the query but adds no columns to it: ordering, grouping or selecting by its columns is refused when the query is built. Without a condition that names its table, a semi-join keeps the rows that have any related row: `semiJoin<Pet>().on<Owner>()` finds the owners with a pet, the complement of `antiJoin<Pet>().on<Owner>()`. A condition stated on the join keeps that symmetry, so a semi-join and an anti-join with the same condition on the join split the rows between them.
 
 ### Excluding by Related Rows
 

@@ -299,7 +299,7 @@ pets.select()
     .resultList
 ```
 
-Conditions joined by `and` on a semi-joined table hold for the same related row; a part of the condition naming only the query's own tables holds without a related row, so `(Owner_.lastName eq "Davis") or (Pet_.name eq "Leo")` also finds a Davis without pets. A semi-joined table adds no columns: ordering, grouping or selecting by it is refused, and so is a semi-join no condition names. A `where` condition naming an anti-joined table is refused; it belongs on the join.
+Conditions joined by `and` on a semi-joined table hold for the same related row; a part of the condition naming only the query's own tables holds without a related row, so `(Owner_.lastName eq "Davis") or (Pet_.name eq "Leo")` also finds a Davis without pets. A semi-joined table adds no columns: ordering, grouping or selecting by it is refused. A `where` condition naming an anti-joined table is refused; it belongs on the join.
 
 Three rules:
 
@@ -512,8 +512,8 @@ Pick the form by the direction of the relation and by whether the related rows b
 | The rows **with** a related row matching a condition (to-many: owners of a pet named Leo) | `semiJoin<Pet>().on<Owner>()` with the condition in `where` |
 | A search over the row and its related rows (owner name and pet names) | `semiJoin<Pet>().on<Owner>()` with `search(input, Owner_.lastName, Pet_.name)` |
 | The rows **without** a related row matching a condition (pets that never had a rabies shot) | `antiJoin<Visit>().on<Pet> { Visit_.description eq "rabies shot" }` |
+| The rows with any related row (owners with a pet) | `semiJoin<Pet>().on<Owner>()` |
 | The rows without any related row (owners without pets) | `antiJoin<Pet>().on<Owner>()` |
-| The rows with any related row, whatever it holds | `whereExists { subquery(Pet::class) }` |
 | The related rows' columns in the result, or ordering and grouping by them, a row per related row | `innerJoin<Pet>().on<Owner>()` or `leftJoin` |
 | Related columns joined while keeping the rows without a match | `leftJoin<Pet>().on<Owner> { Pet_.name eq "Leo" }` |
 
@@ -523,7 +523,8 @@ Read the request for the cue: "with", "that have", "who own", "any of their", "s
 - `antiJoin` conditions go on the join, never in `where`: a `where` naming the anti-joined table is refused.
 - A semi-joined or anti-joined table adds no columns: when the result, `orderBy` or `groupBy` needs them, the query wants a regular join instead.
 - Both work on `delete()`: `delete().antiJoin<Pet>().on<Owner>()` removes the owners without pets.
-- Keep `whereExists` for a subquery a foreign key does not express, or for "any related row" without a condition.
+- `semiJoin` and `antiJoin` are complements: on the same table with the same condition on the join, the one keeps the rows the other drops. Without a condition, `semiJoin` keeps the rows with any related row and `antiJoin` the rows without one.
+- Keep `whereExists` for a subquery a foreign key does not express.
 
 ## Subqueries (EXISTS / NOT EXISTS)
 

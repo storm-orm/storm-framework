@@ -45,7 +45,8 @@ import st.orm.core.template.impl.PredicateBuilderFactory;
  * on every database and return each row once.
  *
  * <p>The suite covers the {@code IN} over a {@code UNION} a search over a row and its related rows renders, with its
- * words matching different related rows; the {@code EXISTS} that holds conditions joined by AND to one related row;
+ * words matching different related rows; the {@code EXISTS} that holds conditions joined by AND to one related row, and
+ * that keeps the rows with any related row when no condition names the table;
  * a row without related rows matching through its own columns; a composite key; the {@code NOT EXISTS} of an
  * anti-join next to a related row whose foreign key is null, which a {@code NOT IN} would turn into no rows at all; a
  * count; and a DELETE filtered by an anti-join.</p>
@@ -175,6 +176,11 @@ public abstract class AbstractSemiJoinConformanceTest {
         assertEquals(2, authorsByBooks()
                 .where(it -> PredicateBuilderFactory.<Data, Author, Integer>search("o", List.of(BOOK_TITLE)))
                 .getResultCount());
+    }
+
+    @Test
+    public void semiJoinWithoutConditionKeepsTheRowsWithARelatedRow() {
+        assertEquals(List.of("Austen", "Herbert", "Tolkien"), names(authorsByBooks().getResultList()));
     }
 
     @Test

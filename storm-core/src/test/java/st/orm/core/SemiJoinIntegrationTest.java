@@ -230,9 +230,28 @@ public class SemiJoinIntegrationTest {
     }
 
     @Test
-    public void semiJoinWithoutConditionIsRefused() {
-        var e = assertThrows(PersistenceException.class, () -> ownersWithPets().getResultList());
-        assertTrue(e.getMessage().contains("semiJoin(Pet) filters nothing"), e.getMessage());
+    public void semiJoinWithoutConditionKeepsTheRowsWithARelatedRow() {
+        var owners = orm().entity(Owner.class);
+        owners.insert(new Owner(0, "Petra", "Lonely", new Address("1 Main St.", null), null, 0));
+        var withPets = capture(() -> ownersWithPets().getResultList());
+        assertEquals(10, withPets.size());
+        assertFalse(firstNames(withPets).contains("Petra"));
+        assertTrue(statement().contains("WHERE EXISTS (SELECT 1 FROM pet p WHERE p.owner_id = o.id)"), statement());
+        var withoutPets = orm().entity(Owner.class).select().antiJoin(Pet.class).on(Owner.class).getResultList();
+        assertEquals(List.of("Petra"), firstNames(withoutPets));
+    }
+
+    @Test
+    public void semiJoinAndAntiJoinWithTheSameConditionAreComplements() {
+        var named = firstNames(orm().entity(Owner.class).select()
+                .semiJoin(Pet.class).on(Owner.class, it -> it.where(Pet_.name, EQUALS, "Lucky"))
+                .getResultList());
+        var others = firstNames(orm().entity(Owner.class).select()
+                .antiJoin(Pet.class).on(Owner.class, it -> it.where(Pet_.name, EQUALS, "Lucky"))
+                .getResultList());
+        assertEquals(List.of("Carlos", "Jeff"), named);
+        assertEquals(8, others.size());
+        assertTrue(others.stream().noneMatch(named::contains));
     }
 
     @Test

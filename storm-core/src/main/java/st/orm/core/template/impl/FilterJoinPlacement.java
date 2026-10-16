@@ -58,6 +58,10 @@ import st.orm.mapping.RecordField;
 /**
  * Places the conditions of a query's semi-joins and anti-joins in subqueries of its WHERE clause.
  *
+ * <p>A semi-join and an anti-join on the same table with the same condition on the join are complements: the one keeps
+ * the rows that have a related row matching the condition, or any related row without one, and the other the rows
+ * that have none.</p>
+ *
  * <p>A condition on a semi-joined table holds when it holds for a related row, and the conditions joined by AND hold
  * for the same related row. A part of the condition that names only the query's own tables holds without one, so a
  * row without related rows still matches through its own columns. Each {@link Scope} is answered on its own, which is
@@ -189,15 +193,16 @@ final class FilterJoinPlacement {
                 conjuncts.add(semiJoin.condition());
             }
         }
-        for (var semiJoin : semiJoins.values()) {
-            if (conjuncts.stream().noneMatch(conjunct -> references(conjunct).contains(semiJoin.table()))) {
-                throw new PersistenceException("semiJoin(%1$s) filters nothing: no condition names %1$s. Name it in a condition, or state one on the join: semiJoin(%1$s).on(%2$s, condition)."
-                        .formatted(semiJoin.table().getSimpleName(), semiJoin.anchor().getSimpleName()));
-            }
-        }
         var parts = new ArrayList<PredicateNode>();
         if (!conjuncts.isEmpty()) {
             parts.add(place(PredicateNode.and(conjuncts)));
+        }
+        for (var semiJoin : semiJoins.values()) {
+            // Without a condition naming the table, the semi-join keeps the rows that have a related row at all: the
+            // complement of the anti-join on the same table.
+            if (conjuncts.stream().noneMatch(conjunct -> references(conjunct).contains(semiJoin.table()))) {
+                parts.add(new Term(exists(semiJoin, null), true));
+            }
         }
         for (var antiJoin : antiJoins.values()) {
             parts.add(new Term(exists(antiJoin, antiJoin.condition()), true));

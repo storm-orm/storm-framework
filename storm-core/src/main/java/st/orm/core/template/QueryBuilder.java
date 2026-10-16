@@ -234,7 +234,8 @@ public abstract class QueryBuilder<T extends Data, R, ID> {
      * typed joins. The conditions that name the table are answered by its related rows: conditions joined by AND hold
      * for the same related row, and a part of the condition that names only the query's own tables holds without one,
      * so a row without related rows still matches through its own columns. {@code search} matches each word on its
-     * own, so its words may match different related rows.</p>
+     * own, so its words may match different related rows. Without a condition that names the table, the query keeps the
+     * rows that have any related row, as the complement of an anti-join on the same table.</p>
      *
      * @param relation the table to filter by.
      * @return the join builder.

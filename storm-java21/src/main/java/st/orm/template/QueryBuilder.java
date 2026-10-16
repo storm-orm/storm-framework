@@ -282,7 +282,9 @@ public abstract class QueryBuilder<T extends Data, R, ID> {
      * <p>{@code on} resolves the foreign key that relates the table to the table it is joined on, as for the other
      * typed joins. Conditions joined by {@code and} hold for the same related row, and a part of the condition that
      * names only the query's own tables holds without one, so a row without related rows still matches through its
-     * own columns. {@code search} matches each word on its own, so its words may match different related rows.</p>
+     * own columns. {@code search} matches each word on its own, so its words may match different related rows. Without a
+     * condition that names the table, the query keeps the rows that have any related row, as the complement of an
+     * anti-join on the same table.</p>
      *
      * <pre>{@code
      * List<Owner> found = owners
