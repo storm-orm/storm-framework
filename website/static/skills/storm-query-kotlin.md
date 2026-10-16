@@ -406,6 +406,8 @@ The dialect places it: a `/*+ ... */` comment after `SELECT`/`DELETE` on MySQL, 
 
 ## Distinct and Count
 
+`distinct()` removes duplicates from a select of another type, such as the cities of a set of users. It is never the way to return each root row once after a join to a to-many table: that is a `semiJoin` (see **Filtering by Related Rows**).
+
 ```kotlin
 val uniqueCities = orm.entity<User>()
     .select(City::class)
@@ -500,6 +502,29 @@ The plan is prefix-closed: naming `User_.city.country` resolves `User_.city` too
 
 A `Ref` therefore describes a relationship that belongs to particular queries rather than to the entity itself, and this is where such a query asks for it. See the entity skill for which relationships to declare each way.
 
+## Filtering by Related Rows: Path, semiJoin, antiJoin or Join
+
+Pick the form by the direction of the relation and by whether the related rows belong in the result:
+
+| The query needs | Use |
+|-----------------|-----|
+| A column of a row the root references (to-one: a pet's owner) | A path: `Pet_.owner.lastName eq "Davis"`, no join |
+| The rows **with** a related row matching a condition (to-many: owners of a pet named Leo) | `semiJoin<Pet>().on<Owner>()` with the condition in `where` |
+| A search over the row and its related rows (owner name and pet names) | `semiJoin<Pet>().on<Owner>()` with `search(input, Owner_.lastName, Pet_.name)` |
+| The rows **without** a related row matching a condition (pets that never had a rabies shot) | `antiJoin<Visit>().on<Pet> { Visit_.description eq "rabies shot" }` |
+| The rows without any related row (owners without pets) | `antiJoin<Pet>().on<Owner>()` |
+| The rows with any related row, whatever it holds | `whereExists { subquery(Pet::class) }` |
+| The related rows' columns in the result, or ordering and grouping by them, a row per related row | `innerJoin<Pet>().on<Owner>()` or `leftJoin` |
+| Related columns joined while keeping the rows without a match | `leftJoin<Pet>().on<Owner> { Pet_.name eq "Leo" }` |
+
+Read the request for the cue: "with", "that have", "who own", "any of their", "search by ... or their ..." over a to-many relation asks for `semiJoin`; "without", "never", "no", "missing", "not yet" asks for `antiJoin`. A semi-join or anti-join returns each root row once, so it needs no `distinct`, and scrolling, paging and `resultCount` count root rows.
+
+- `semiJoin` conditions go in `where`: conditions joined by `and` hold for the same related row, a part naming only the root's columns holds without a related row, and `search` matches each word on its own related row.
+- `antiJoin` conditions go on the join, never in `where`: a `where` naming the anti-joined table is refused.
+- A semi-joined or anti-joined table adds no columns: when the result, `orderBy` or `groupBy` needs them, the query wants a regular join instead.
+- Both work on `delete()`: `delete().antiJoin<Pet>().on<Owner>()` removes the owners without pets.
+- Keep `whereExists` for a subquery a foreign key does not express, or for "any related row" without a condition.
+
 ## Subqueries (EXISTS / NOT EXISTS)
 
 ```kotlin
@@ -516,7 +541,7 @@ val citiesWithoutUsers = orm.entity<City>()
     .resultList
 ```
 
-The `whereExists { }` / `whereNotExists { }` lambdas receive a `SubqueryTemplate` that provides the `subquery()` method. The subquery is automatically correlated with the outer query.
+The `whereExists { }` / `whereNotExists { }` lambdas receive a `SubqueryTemplate` that provides the `subquery()` method. The subquery is automatically correlated with the outer query. For a condition on the related rows, `semiJoin` and `antiJoin` are the typed form: see **Filtering by Related Rows**.
 
 ## Choosing the WHERE Form: where() → whereBuilder { }
 

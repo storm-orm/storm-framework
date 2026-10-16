@@ -266,6 +266,8 @@ The dialect places it: a `/*+ ... */` comment after `SELECT`/`DELETE` on MySQL, 
 
 ## Distinct and Count
 
+`distinct()` removes duplicates from a select of another type, such as the cities of a set of users. It is never the way to return each root row once after a join to a to-many table: that is a `semiJoin` (see **Filtering by Related Rows**).
+
 ```java
 List<City> uniqueCities = orm.entity(User.class)
     .select(City.class)
@@ -356,21 +358,44 @@ The plan is prefix-closed: naming `User_.city.country` resolves `User_.city` too
 
 A `Ref` therefore describes a relationship that belongs to particular queries rather than to the entity itself, and this is where such a query asks for it. See the entity skill for which relationships to declare each way.
 
+## Filtering by Related Rows: Path, semiJoin, antiJoin or Join
+
+Pick the form by the direction of the relation and by whether the related rows belong in the result:
+
+| The query needs | Use |
+|-----------------|-----|
+| A column of a row the root references (to-one: a pet's owner) | A path: `where(Pet_.owner.lastName, EQUALS, "Davis")`, no join |
+| The rows **with** a related row matching a condition (to-many: owners of a pet named Leo) | `semiJoin(Pet.class).on(Owner.class)` with the condition in `where` |
+| A search over the row and its related rows (owner name and pet names) | `semiJoin(Pet.class).on(Owner.class)` with `it.search(input, Owner_.lastName, Pet_.name)` |
+| The rows **without** a related row matching a condition (pets that never had a rabies shot) | `antiJoin(Visit.class).on(Pet.class, it -> it.where(Visit_.description, EQUALS, "rabies shot"))` |
+| The rows without any related row (owners without pets) | `antiJoin(Pet.class).on(Owner.class)` |
+| The rows with any related row, whatever it holds | `whereExists(orm.selectFrom(Pet.class))` |
+| The related rows' columns in the result, or ordering and grouping by them, a row per related row | `innerJoin(Pet.class).on(Owner.class)` or `leftJoin` |
+| Related columns joined while keeping the rows without a match | `leftJoin(Pet.class).on(Owner.class, it -> it.where(Pet_.name, EQUALS, "Leo"))` |
+
+Read the request for the cue: "with", "that have", "who own", "any of their", "search by ... or their ..." over a to-many relation asks for `semiJoin`; "without", "never", "no", "missing", "not yet" asks for `antiJoin`. A semi-join or anti-join returns each root row once, so it needs no `distinct`, and scrolling, paging and `getResultCount()` count root rows.
+
+- `semiJoin` conditions go in `where`: conditions joined by `.and()` hold for the same related row, a part naming only the root's columns holds without a related row, and `search` matches each word on its own related row.
+- `antiJoin` conditions go on the join, never in `where`: a `where` naming the anti-joined table is refused.
+- A semi-joined or anti-joined table adds no columns: when the result, `orderBy` or `groupBy` needs them, the query wants a regular join instead.
+- Both work on `delete()`: `delete().antiJoin(Pet.class).on(Owner.class)` removes the owners without pets.
+- Keep `whereExists` for a subquery a foreign key does not express, or for "any related row" without a condition.
+
 ## Subqueries (EXISTS / NOT EXISTS)
 
-In Java, EXISTS conditions are expressed inside the where-lambda via `WhereBuilder.exists(subquery)` / `notExists(subquery)` — there is no `whereExists` method on the Java QueryBuilder (that form is Kotlin-only). Build the subquery with `orm.selectFrom(...)`; it is automatically correlated with the outer query:
+`whereExists(subquery)` / `whereNotExists(subquery)` add an EXISTS condition of their own; inside the where-lambda, `WhereBuilder.exists(subquery)` / `notExists(subquery)` combine it with other conditions. Build the subquery with `orm.selectFrom(...)`; it is automatically correlated with the outer query. For a condition on the related rows, `semiJoin` and `antiJoin` are the typed form: see **Filtering by Related Rows**.
 
 ```java
 // WHERE EXISTS — filter entities that have related data
 List<City> citiesWithUsers = orm.entity(City.class)
     .select()
-    .where(it -> it.exists(orm.selectFrom(User.class)))
+    .whereExists(orm.selectFrom(User.class))
     .getResultList();
 
-// WHERE NOT EXISTS
+// WHERE NOT EXISTS, combined with another condition
 List<City> citiesWithoutUsers = orm.entity(City.class)
     .select()
-    .where(it -> it.notExists(orm.selectFrom(User.class)))
+    .where(it -> it.notExists(orm.selectFrom(User.class)).and(it.where(City_.name, LIKE, "M%")))
     .getResultList();
 ```
 
