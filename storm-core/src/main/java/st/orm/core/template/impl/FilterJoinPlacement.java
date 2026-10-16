@@ -52,6 +52,7 @@ import st.orm.core.template.impl.Elements.TemplateExpression;
 import st.orm.core.template.impl.Elements.Where;
 import st.orm.core.template.impl.PredicateNode.Group;
 import st.orm.core.template.impl.PredicateNode.Scope;
+import st.orm.core.template.impl.PredicateNode.Search;
 import st.orm.core.template.impl.PredicateNode.Term;
 import st.orm.mapping.RecordField;
 
@@ -188,20 +189,15 @@ final class FilterJoinPlacement {
                 }
             }
         }
-        for (var semiJoin : semiJoins.values()) {
-            if (semiJoin.condition() != null) {
-                conjuncts.add(semiJoin.condition());
-            }
-        }
         var parts = new ArrayList<PredicateNode>();
         if (!conjuncts.isEmpty()) {
-            parts.add(place(PredicateNode.and(conjuncts)));
+            parts.add(place(PredicateNode.and(conjuncts), false));
         }
         for (var semiJoin : semiJoins.values()) {
             // Without a condition naming the table, the semi-join keeps the rows that have a related row at all: the
             // complement of the anti-join on the same table.
             if (conjuncts.stream().noneMatch(conjunct -> references(conjunct).contains(semiJoin.table()))) {
-                parts.add(new Term(exists(semiJoin, null), true));
+                parts.add(new Term(exists(semiJoin, semiJoin.condition()), true));
             }
         }
         for (var antiJoin : antiJoins.values()) {
@@ -230,13 +226,16 @@ final class FilterJoinPlacement {
     /**
      * Places the conditions on semi-joined tables of a predicate, answering the predicate as one scope: its terms
      * joined by AND on one semi-joined table hold for the same related row.
+     *
+     * @param residual whether the predicate is tested only on the rows the rest of the condition found, rather than
+     *                 read through an index of its own.
      */
-    private PredicateNode place(PredicateNode node) {
+    private PredicateNode place(PredicateNode node, boolean residual) {
         var parts = new ArrayList<PredicateNode>();
         var groups = new LinkedHashMap<FilterJoin, List<PredicateNode>>();
         for (var conjunct : conjuncts(node)) {
-            if (conjunct instanceof Scope(var inner) && !semiJoinsOf(inner).isEmpty()) {
-                parts.add(place(inner));
+            if (conjunct instanceof Scope(var inner, var innerResidual) && !semiJoinsOf(inner).isEmpty()) {
+                parts.add(place(inner, residual || innerResidual));
                 continue;
             }
             var named = semiJoinsOf(conjunct);
@@ -250,26 +249,67 @@ final class FilterJoinPlacement {
             }
         }
         for (var group : groups.entrySet()) {
-            parts.add(placeGroup(group.getKey(), group.getValue()));
+            parts.add(placeGroup(group.getKey(), group.getValue(), residual));
         }
         return PredicateNode.and(parts);
     }
 
     /**
      * Places the conditions of one scope that name one semi-joined table.
+     *
+     * <p>A residual scope renders as {@code EXISTS} over the related rows of each row, which the database tests on the
+     * rows the rest of the condition found. An {@code IN} over a {@code UNION} reads the rows matching the condition
+     * from every table instead, which only pays for a condition an index serves.</p>
+     *
+     * @param residual whether the conditions are tested only on the rows the rest of the condition found.
      */
-    private PredicateNode placeGroup(FilterJoin semiJoin, List<PredicateNode> conditions) {
-        if (conditions.size() == 1 && conditions.getFirst() instanceof Group(var and, var operands) && !and) {
+    private PredicateNode placeGroup(FilterJoin semiJoin, List<PredicateNode> conditions, boolean residual) {
+        if (residual && conditions.size() == 1 && conditions.getFirst() instanceof Group(var and, var operands) && !and) {
+            var residualCondition = residual(semiJoin, operands);
+            if (residualCondition != null) {
+                return residualCondition;
+            }
+        }
+        if (!residual && conditions.size() == 1 && conditions.getFirst() instanceof Group(var and, var operands) && !and) {
             var union = union(semiJoin, operands);
             if (union != null) {
                 return new Term(union, true);
             }
         }
         var condition = PredicateNode.and(conditions);
-        var exists = new Term(exists(semiJoin, condition), true);
+        var exists = new Term(exists(semiJoin, restricted(semiJoin, condition)), true);
         // The rows without a related row match through the part of the condition that names none.
         var withoutRelated = withoutTable(condition, semiJoin.table());
         return withoutRelated == null ? exists : PredicateNode.or(List.of(withoutRelated, exists));
+    }
+
+    /**
+     * Returns the OR of terms on the anchor and terms on the semi-joined table as the anchor's terms OR an
+     * {@code EXISTS} over the related rows holding the table's terms, or {@code null} when the operands do not take that
+     * shape. The database tests it on each row the rest of the condition found, reading the related rows of that row
+     * alone; the anchor's terms stay outside the subquery, which reads the semi-joined table only.
+     */
+    private @Nullable PredicateNode residual(FilterJoin semiJoin, List<PredicateNode> operands) {
+        var anchorTerms = new ArrayList<PredicateNode>(operands.size());
+        var tableTerms = new ArrayList<PredicateNode>(operands.size());
+        for (var operand : operands) {
+            if (onlyNames(operand, semiJoin.table())) {
+                tableTerms.add(operand);
+            } else if (!references(operand).contains(semiJoin.table())) {
+                anchorTerms.add(operand);
+            } else {
+                return null;
+            }
+        }
+        if (tableTerms.isEmpty()) {
+            return null;
+        }
+        var exists = new Term(exists(semiJoin, restricted(semiJoin, PredicateNode.or(tableTerms))), true);
+        if (anchorTerms.isEmpty()) {
+            return exists;
+        }
+        anchorTerms.add(exists);
+        return PredicateNode.or(anchorTerms);
     }
 
     /**
@@ -297,11 +337,21 @@ final class FilterJoinPlacement {
         }
         var foreignKey = relation.foreignKey();
         var anchorBranch = branch(semiJoin.anchor(), new RelationKey(semiJoin.anchor(), foreignKey, false, INNER), PredicateNode.or(anchorTerms));
-        var tableBranch = branch(semiJoin.table(), new RelationKey(semiJoin.table(), foreignKey, true, INNER), PredicateNode.or(tableTerms));
+        var tableBranch = branch(semiJoin.table(), new RelationKey(semiJoin.table(), foreignKey, true, INNER),
+                restricted(semiJoin, PredicateNode.or(tableTerms)));
         return TemplateString.raw("\0 IN (\0\nUNION\n\0)",
                 new RelationKey(semiJoin.anchor(), foreignKey, false, INNER),
                 new Subquery(anchorBranch, false),
                 new Subquery(tableBranch, false));
+    }
+
+    /**
+     * Returns the condition on a semi-joined table limited to the related rows the join's own condition admits. The
+     * join's condition states which related rows count at all, so every condition answered by a related row holds it
+     * too: each word of a search matches a related row the join admits.
+     */
+    private static PredicateNode restricted(FilterJoin semiJoin, PredicateNode condition) {
+        return semiJoin.condition() == null ? condition : PredicateNode.and(List.of(condition, semiJoin.condition()));
     }
 
     /**
@@ -334,7 +384,8 @@ final class FilterJoinPlacement {
     private static @Nullable PredicateNode withoutTable(PredicateNode node, Class<? extends Data> table) {
         return switch (node) {
             case Term term -> references(term).contains(table) ? null : term;
-            case Scope(var inner) -> withoutTable(inner, table);
+            case Scope(var inner, var ignore) -> withoutTable(inner, table);
+            case Search search -> withoutTable(search.resolve(0), table);
             case Group(var and, var operands) -> {
                 var kept = new ArrayList<PredicateNode>(operands.size());
                 for (var operand : operands) {
@@ -388,7 +439,8 @@ final class FilterJoinPlacement {
                 collect(template, tables);
                 yield tables.equals(Set.of(table));
             }
-            case Scope(var inner) -> onlyNames(inner, table);
+            case Scope(var inner, var ignore) -> onlyNames(inner, table);
+            case Search search -> onlyNames(search.resolve(0), table);
             case Group group -> group.operands().stream().allMatch(operand -> onlyNames(operand, table));
         };
     }
@@ -405,7 +457,8 @@ final class FilterJoinPlacement {
     private static void collect(PredicateNode node, Set<Class<? extends Data>> tables) {
         switch (node) {
             case Term term -> collect(term.template(), tables);
-            case Scope(var inner) -> collect(inner, tables);
+            case Scope(var inner, var ignore) -> collect(inner, tables);
+            case Search search -> search.words().forEach(word -> collect(word, tables));
             case Group group -> group.operands().forEach(operand -> collect(operand, tables));
         }
     }
@@ -455,7 +508,11 @@ final class FilterJoinPlacement {
         var type = (FilterJoinType) join.type();
         var table = ((TableSource) join.source()).table();
         var target = (TableTarget) join.target();
-        return new FilterJoin(table, target.table(), relation(queryTemplate, type, table, target.table()), target.condition(), type);
+        var condition = target.condition();
+        if (condition != null) {
+            condition = PredicateNode.resolve(condition, queryTemplate.dialect().minimumSearchTermLength());
+        }
+        return new FilterJoin(table, target.table(), relation(queryTemplate, type, table, target.table()), condition, type);
     }
 
     /**

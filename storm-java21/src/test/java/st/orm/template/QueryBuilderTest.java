@@ -758,6 +758,24 @@ public class QueryBuilderTest {
         assertEquals(List.of("Max"), pets.stream().map(Pet::name).toList());
     }
 
+    @Test
+    public void testSuggestMatchesTheWordsTheSubstringIndexServes() {
+        // data.sql: owner 1 (Betty Davis) has pet Leo; owner 4 (Harold Davis) has pet Iggy; owner 6 is Jean Coleman.
+        var trigramOrm = ORMTemplate.of(dataSource,
+                st.orm.StormConfig.of(java.util.Map.of(st.orm.StormConfig.SEARCH_MIN_TERM_LENGTH, "3")));
+        assertEquals(List.of("Betty", "Harold"), semiJoinSuggestFirstNames(trigramOrm, "davis le"));
+        assertEquals(List.of(), semiJoinSuggestFirstNames(trigramOrm, "le"));
+        assertEquals(List.of(), semiJoinSuggestFirstNames(trigramOrm, ""));
+        assertEquals(List.of("Betty", "Jean"), semiJoinSuggestFirstNames(orm, "le"));
+    }
+
+    private static List<String> semiJoinSuggestFirstNames(ORMTemplate template, String input) {
+        return template.entity(Owner.class).select()
+                .semiJoin(Pet.class).on(Owner.class)
+                .where(it -> it.suggest(input, Owner_.lastName, Pet_.name))
+                .getResultList().stream().map(Owner::firstName).sorted().toList();
+    }
+
     private List<String> semiJoinSearchFirstNames(String input) {
         return orm.entity(Owner.class).select()
                 .semiJoin(Pet.class).on(Owner.class)

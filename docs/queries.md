@@ -383,11 +383,112 @@ WHERE (LOWER(m.title) LIKE LOWER(?) ESCAPE '!' OR LOWER(d.name) LIKE LOWER(?) ES
 | `"ugly` | `"ugly`: an unpaired quote is an ordinary character |
 | empty or blank | none: the predicate matches every row |
 
-Accents follow the column's collation, as for the `IGNORE_CASE` operators: MySQL and MariaDB ignore them under their default collations, and the other databases compare them as they are. `search` matches words; it does not rank the rows it finds, and it does not stem words the way a full-text index does.
-
-A match inside a word cannot use a B-tree index, so `search` reads every row it filters. Where that is too slow, PostgreSQL serves the statement from a trigram index on the lowered column: `CREATE INDEX ON movie USING gin (lower(title) gin_trgm_ops)`, after `CREATE EXTENSION pg_trgm`.
+Accents follow the column's collation, as for the `IGNORE_CASE` operators: MySQL and MariaDB ignore them under their default collations, and the other databases compare them as they are. Whether a search ignores accents is decided by the schema, not by the query; see [Indexing a Search](#indexing-a-search). `search` matches words; it does not rank the rows it finds, and it does not stem words the way a full-text index does. To put the closest matches first, order by them with `orderFirst`; see [Ranking the Matches](#ranking-the-matches).
 
 To search the rows related to each row, such as the names of an owner's pets, semi-join the related table and name its column: `search(input, Owner_.lastName, Pet_.name)` after `semiJoin<Pet>().on<Owner>()` (Java: `semiJoin(Pet.class).on(Owner.class)`). Each word may then match a different pet, every owner comes back once, and each table is read through its own indexes; see [Filtering by Related Rows](#filtering-by-related-rows).
+
+#### Suggestions as the User Types
+
+A search box that queries on every keystroke, such as an auto-complete, uses `suggest` instead of `search`. It takes the same input and paths and matches the same way, on the words the database's substring index serves alone: a word shorter than the index serves is ignored, and an input without such a word, an empty one included, matches no rows.
+
+<Tabs groupId="language">
+<TabItem value="kotlin" label="Kotlin" default>
+
+```kotlin
+val suggestions = orm.entity<Movie>()
+    .select()
+    .where(suggest(input, Movie_.title, Movie_.director.name))
+    .limit(6)
+    .resultList
+```
+
+</TabItem>
+<TabItem value="java" label="Java">
+
+```java
+List<Movie> suggestions = orm.entity(Movie.class)
+    .select()
+    .where(it -> it.suggest(input, Movie_.title, Movie_.director.name))
+    .limit(6)
+    .getResultList();
+```
+
+</TabItem>
+</Tabs>
+
+| Input, on PostgreSQL | `search` | `suggest` |
+|-------|----------|-----------|
+| `de niro` | every word: `de` and `niro` | `niro` |
+| `de` | `de`, reading every row | no rows |
+| empty or blank | every row | no rows |
+
+Every statement `suggest` renders is therefore served by the substring index, however the user types; the trade-off is that a short word does not narrow the suggestions. The search page the box leads to keeps `search`, which matches every word. Which words are short is the dialect's to say: three characters on PostgreSQL, whose trigram index needs three, and none on the other databases, where `suggest` matches as `search` does, except that an empty input matches no rows. The `storm.search.min_term_length` property sets another length, for an index of a different kind.
+
+#### Ranking the Matches
+
+`search` and `suggest` decide which rows match, not which come first. What counts as the best match is the application's to say, so the ordering is stated with the same predicates the WHERE clause takes: `orderFirst(predicate)` puts the rows matching the predicate before the rows that do not. Each call appends a sort key, as `orderBy` does, so the keys apply in the order they are called. A title equal to the input first, a title starting with it next, then the most popular:
+
+<Tabs groupId="language">
+<TabItem value="kotlin" label="Kotlin" default>
+
+```kotlin
+val suggestions = orm.entity<Movie>()
+    .select()
+    .where(suggest(input, Movie_.title, Movie_.director.name))
+    .orderFirst(Movie_.title eqIgnoreCase input)
+    .orderFirst(Movie_.title startsWithIgnoreCase input)
+    .orderByDescending(Movie_.votes)
+    .limit(6)
+    .resultList
+```
+
+</TabItem>
+<TabItem value="java" label="Java">
+
+```java
+List<Movie> suggestions = orm.entity(Movie.class)
+    .select()
+    .where(it -> it.suggest(input, Movie_.title, Movie_.director.name))
+    .orderFirst(it -> it.where(Movie_.title, EQUALS_IGNORE_CASE, input))
+    .orderFirst(it -> it.where(Movie_.title, STARTS_WITH_IGNORE_CASE, input))
+    .orderByDescending(Movie_.votes)
+    .limit(6)
+    .getResultList();
+```
+
+</TabItem>
+</Tabs>
+
+```sql
+ORDER BY CASE WHEN LOWER(m.title) = LOWER(?) THEN 0 ELSE 1 END,
+         CASE WHEN LOWER(m.title) LIKE LOWER(?) ESCAPE '!' THEN 0 ELSE 1 END,
+         m.votes DESC
+```
+
+The operators match the input as they do in a WHERE clause: ignoring case, and literally, so `%` and `_` in the input are not wildcards. Combine predicates with `or` to rank by several columns, such as a title and an original title. The input is compared whole, as typed; trim it, or collapse its spaces, where the box may hold more than one between words.
+
+- No index serves the sort: the database evaluates each key for every row the query finds and sorts them all, even with a limit. After a search, which finds few rows, that costs what any ordering of the matches costs.
+- Rank by the columns of the queried table and of joined tables. A semi-joined table adds no columns to the query, so its columns, such as the name of a credited person a movie was found by, cannot rank it; Storm refuses them.
+- A keyset `scroll` follows `orderFirst`: its keys lead, before the sort fields and the key of the `Scrollable`, and the cursor carries the rank of the row it continues from. The sort fields may belong to a joined table, such as `Rating_.votes` on a movie search, as the fields `orderBy` takes may; see [Scrolling](pagination-and-scrolling.md).
+- A `distinct` query cannot be ranked, since the database orders a distinct result only by the columns it selects. A search over related rows uses a semi-join, which needs no `distinct`.
+
+#### Indexing a Search
+
+`search` and the `IGNORE_CASE` text operators compare a lowered expression against a pattern that may start anywhere: `LOWER(column) LIKE LOWER('%word%')`. A B-tree index orders values from their first character, so it serves neither the lowered expression nor a match inside a word. An index already on the column goes unused, and every search reads every row of each table it names, lowering each value as it goes. Lowering text under a linguistic collation is often the larger part of that cost, so a search that answers at once on test data can take seconds on a production-sized table.
+
+What serves the statement is the database's index for substring matching, a trigram or n-gram index, created over the same expression the statement compares: `LOWER(column)`, not the column itself. Storm renders the predicate the same way on every database, so the index matches it without a change to the query.
+
+- Index every column the search names, including the columns of a semi-joined table and of a table reached through a path. The statement matches each word against each column, and a column without the index keeps its table's scan.
+- Index the expression exactly as the statement renders it. An index on the plain column, or on another case function, does not match `LOWER(column)`, and the plan falls back to reading every row.
+- A word shorter than the index's gram, usually three characters, cannot use it. `search` tests such a word only on the rows its longer words found, as an `EXISTS` over the related rows of each, so it reads no table in full and the rows found are the same; a search of short words alone still reads every row. `suggest` ignores them. The dialect states the length, three on PostgreSQL, and `storm.search.min_term_length` overrides it.
+- Read the query plan on production-sized data to confirm that each table is read through its index. On a small table the planner may read every row regardless, because that is cheaper there.
+- Read the plan of the statement as the application sends it, with the word as a bind parameter, not with the word written into the SQL. A driver that prepares a statement once for many executions lets the database plan it once for every value, and that plan cannot see the word, so it cannot tell a rare word from a common one. A search that also orders by an indexed column and takes the first few rows, as a list of suggestions does, is then read in that column's order, testing every row until enough match, while the same statement planned for its word takes a few rows from the substring index. Where the plans differ, have the search planned for its values: most drivers and databases have a setting that stops a statement from being prepared, or that plans each execution for its parameters.
+- Refresh the table's statistics after creating the index on a table that already holds data; a planner without statistics for the indexed expression may keep reading every row. Where a rare word is still estimated to match many rows, a larger statistics sample for the indexed expression brings the estimate down.
+- Whether accents count is decided by the schema, as case is not. Where the column's collation ignores accents, as the default collations of MySQL and MariaDB do, the search ignores them too. Elsewhere, store the text with its accents removed in a generated column, using the database's own function for it (a generated column takes only a function the database marks as immutable, so wrap the database's function in one where it is not), index that column as above, and search it in place of the original. Remove the accents from the input the same way in the application before passing it, so a typed accent matches as well. The query still selects the original column for display.
+- Keep the predicate. A case-sensitive operator reads every row as well and changes what matches; an `ILIKE` or a case function in a template reads every row just the same.
+- Where the database has no substring index, reading every row is what a substring search costs. Narrow the rows with a selective predicate first, keep the searched table small, or match whole words through the database's full-text search in a [SQL template](sql-templates.md).
+
+A search that reads every row shows up under `st.orm.sql.slow` once its database time passes the threshold; see [The Slow Statement Log](sql-logging.md#the-slow-statement-log). When every word of the search was too short for the index, the line carries advice saying so, and pointing a search box that queries as the user types to `suggest`.
 
 ---
 
@@ -440,6 +541,19 @@ val users = orm.entity<User>()
     .resultList
 ```
 
+`orderFirst` sorts by a condition: the rows matching the predicate come before the rows that do not, and the keys after it order each part. It appends a key like `orderBy`, and takes any predicate a WHERE clause takes.
+
+```kotlin
+// Admins first, then by name
+val users = orm.entity<User>()
+    .select()
+    .orderFirst(User_.role eq adminRole)
+    .orderBy(User_.name)
+    .resultList
+```
+
+It renders `CASE WHEN <predicate> THEN 0 ELSE 1 END`, the same on every database. A keyset `scroll` follows it, its keys leading the `Scrollable`'s; a `distinct` query cannot be ranked. See [Ranking the Matches](#ranking-the-matches) for ranking search results.
+
 </TabItem>
 <TabItem value="java" label="Java">
 
@@ -487,6 +601,19 @@ List<User> users = orm.entity(User.class)
     .orderBy(RAW."\{User_.lastName}, \{User_.firstName} DESC")
     .getResultList();
 ```
+
+`orderFirst` sorts by a condition: the rows matching the predicate come before the rows that do not, and the keys after it order each part. It appends a key like `orderBy`, and takes the predicate as `where` does.
+
+```java
+// Admins first, then by name
+List<User> users = orm.entity(User.class)
+    .select()
+    .orderFirst(it -> it.where(User_.role, EQUALS, adminRole))
+    .orderBy(User_.name)
+    .getResultList();
+```
+
+It renders `CASE WHEN <predicate> THEN 0 ELSE 1 END`, the same on every database. A keyset `scroll` follows it, its keys leading the `Scrollable`'s; a `distinct` query cannot be ranked. See [Ranking the Matches](#ranking-the-matches) for ranking search results.
 
 </TabItem>
 </Tabs>
@@ -1005,7 +1132,7 @@ WHERE EXISTS (SELECT 1 FROM pet p WHERE p.owner_id = o.id AND p.name = ?)
 - A part of the condition that names only the query's own tables holds without a related row, so `(Owner_.lastName eq "Davis") or (Pet_.name eq "Leo")` also finds a Davis without pets.
 - `search` matches each word on its own, so its words may match different related rows: `search("leo max", Owner_.lastName, Pet_.name)` finds the owner of both. Where the condition is an OR of columns of the query's table and columns of the semi-joined table, as a search's is, each word renders as an `IN` over a `UNION` of a branch per table, so each table is read through its own indexes.
 
-The semi-joined table filters the query but adds no columns to it: ordering, grouping or selecting by its columns is refused when the query is built. Without a condition that names its table, a semi-join keeps the rows that have any related row: `semiJoin<Pet>().on<Owner>()` finds the owners with a pet, the complement of `antiJoin<Pet>().on<Owner>()`. A condition stated on the join keeps that symmetry, so a semi-join and an anti-join with the same condition on the join split the rows between them.
+The semi-joined table filters the query but adds no columns to it: ordering, grouping or selecting by its columns is refused when the query is built. Without a condition that names its table, a semi-join keeps the rows that have any related row: `semiJoin<Pet>().on<Owner>()` finds the owners with a pet, the complement of `antiJoin<Pet>().on<Owner>()`. A condition stated on the join keeps that symmetry, so a semi-join and an anti-join with the same condition on the join split the rows between them. It also states which related rows count at all: every condition that names the table, each word of a search included, is answered by a related row that matches it. `semiJoin<Principal>().on<Movie> { Principal_.ordering lessEq 3 }` with `search(input, Movie_.title, Principal_.person.name)` matches a word against the titles and the three leads of each movie, and an index limited to those rows serves it.
 
 ### Excluding by Related Rows
 

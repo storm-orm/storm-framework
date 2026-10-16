@@ -390,6 +390,53 @@ Each further sort field adds one more term to the chain. A descending sort field
 CREATE INDEX idx_post_created_id ON post (created_at, id);
 ```
 
+### Sorting by a Joined Table
+
+A sort field may belong to any table in the query, as a field passed to `orderBy` may. The key addresses a row of the result, so it belongs to the queried table, and `scroll` needs the query narrowed back to it after a join.
+
+<Tabs groupId="language">
+<TabItem value="kotlin" label="Kotlin" default>
+
+```kotlin
+// Most voted first, scrolled by the movie's id
+val window = movieRepository.select()
+    .innerJoin<Rating>().on<Movie>()
+    .narrow<Movie>()
+    .scroll(Scrollable.of(Movie_.id, 20).sortByDescending(Rating_.votes))
+```
+
+</TabItem>
+<TabItem value="java" label="Java">
+
+```java
+// Most voted first, scrolled by the movie's id
+var window = movieRepository.select()
+    .innerJoin(Rating.class).on(Movie.class)
+    .narrow(Movie.class)
+    .scroll(Scrollable.of(Movie_.id, 20).sortByDescending(Rating_.votes));
+```
+
+</TabItem>
+</Tabs>
+
+A field of a table that is not part of the query fails when the query is built, naming the table. The join must not repeat rows: each row of the result is addressed by its key, so a join that yields one row per related row, such as a movie's credits, belongs in a semi-join instead.
+
+### Ranking Before the Sort Fields
+
+`orderFirst` puts the rows matching a condition first, and `scroll` follows it: the keys `orderFirst` added lead the ordering, before the sort fields and the key, so a search can list an exact title first, then titles starting with the input, then the rest by votes, a window at a time. See [Ranking the Matches](queries.md#ranking-the-matches).
+
+```kotlin
+movieRepository.select()
+    .innerJoin<Rating>().on<Movie>()
+    .where(search(input, Movie_.title))
+    .orderFirst(Movie_.title eqIgnoreCase input)
+    .orderFirst(Movie_.title startsWithIgnoreCase input)
+    .narrow<Movie>()
+    .scroll(Scrollable.of(Movie_.id, 20).sortByDescending(Rating_.votes))
+```
+
+Each rank is the expression `CASE WHEN <predicate> THEN 0 ELSE 1 END`. A window reads it from its rows like a sort field, its position and cursor carry it after the sort fields and the key, and the next window compares the expression with it. No index serves the expression, so each window evaluates it for every row the query finds and sorts them; after a search, which finds few rows, that is what any ordering of the matches costs. A plain `orderBy` before `scroll` is still refused, since the `Scrollable` states the sort fields.
+
 ### Programmatic Positions
 
 `next()` and `previous()` are the usual way to move, and cursor strings the usual way to cross a network boundary. A position can also be stated directly, for example from a row the application already holds. The values come in ordering order: one per sort field, then the key.

@@ -16,6 +16,7 @@
 package st.orm.core.template.impl;
 
 import st.orm.Element;
+import st.orm.core.template.impl.Elements.Advisory;
 import st.orm.core.template.impl.Elements.Alias;
 import st.orm.core.template.impl.Elements.BindVar;
 import st.orm.core.template.impl.Elements.Column;
@@ -26,6 +27,7 @@ import st.orm.core.template.impl.Elements.Delete;
 import st.orm.core.template.impl.Elements.Fetch;
 import st.orm.core.template.impl.Elements.From;
 import st.orm.core.template.impl.Elements.Insert;
+import st.orm.core.template.impl.Elements.OrderFirst;
 import st.orm.core.template.impl.Elements.Param;
 import st.orm.core.template.impl.Elements.RelationKey;
 import st.orm.core.template.impl.Elements.Select;
@@ -60,6 +62,8 @@ class ElementRouter {
     private static final VarProcessor VAR_PROCESSOR = new VarProcessor();
     private static final SubqueryProcessor SUBQUERY_PROCESSOR = new SubqueryProcessor();
     private static final UnsafeProcessor UNSAFE_PROCESSOR = new UnsafeProcessor();
+    private static final AdvisoryProcessor ADVISORY_PROCESSOR = new AdvisoryProcessor();
+    private static final OrderFirstProcessor ORDER_FIRST_PROCESSOR = new OrderFirstProcessor();
     private static final CacheableProcessor CACHEABLE_PROCESSOR = new CacheableProcessor();
     private static final RelationKeyProcessor RELATION_KEY_PROCESSOR = new RelationKeyProcessor();
     private static final RelationKeyProcessor.CorrelationProcessor CORRELATION_PROCESSOR = new RelationKeyProcessor.CorrelationProcessor();
@@ -87,6 +91,8 @@ class ElementRouter {
             case BindVar ignored -> VAR_PROCESSOR;
             case Subquery ignored -> SUBQUERY_PROCESSOR;
             case Unsafe ignored -> UNSAFE_PROCESSOR;
+            case Advisory ignored -> ADVISORY_PROCESSOR;
+            case OrderFirst ignored -> ORDER_FIRST_PROCESSOR;
             case Cacheable ignored -> CACHEABLE_PROCESSOR;
             case RelationKey ignored -> RELATION_KEY_PROCESSOR;
             case Correlation ignored -> CORRELATION_PROCESSOR;

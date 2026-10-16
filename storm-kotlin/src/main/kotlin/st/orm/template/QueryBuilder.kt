@@ -33,6 +33,7 @@ import st.orm.template.impl.combineOr
 import st.orm.template.impl.create
 import st.orm.template.impl.createRef
 import st.orm.template.impl.createSearch
+import st.orm.template.impl.createSuggest
 import st.orm.template.impl.streamFlow
 import java.util.stream.Stream
 import kotlin.reflect.KClass
@@ -318,7 +319,8 @@ public abstract class QueryBuilder<T : Data, R : Any, ID : Any> {
      * query's own tables holds without one, so a row without related rows still matches through its own columns.
      * [search] matches each word on its own, so its words may match different related rows. Without a condition that
      * names the table, the query keeps the rows that have any related row, as the complement of an anti-join on the
-     * same table.
+     * same table. A condition stated on the join, `on<Owner> { Pet_.type eq dog }`, states which related rows count:
+     * every condition that names the table, each word of a search included, is answered by a related row matching it.
      *
      * ```kotlin
      * val found = owners
@@ -918,6 +920,37 @@ public abstract class QueryBuilder<T : Data, R : Any, ID : Any> {
      * @since 1.2
      */
     public abstract fun orderBy(template: TemplateString): QueryBuilder<T, R, ID>
+
+    /**
+     * Adds an ORDER BY key that puts the rows matching the predicate before the rows that do not, keeping the order
+     * of the keys before it and leaving the order within each part to the keys after it. Like `orderBy`, each call
+     * appends a key, so the keys apply in the order they are called:
+     *
+     * ```
+     * movies.select()
+     *     .where(search(input, Movie_.title))
+     *     .orderFirst(Movie_.title eqIgnoreCase input)
+     *     .orderFirst(Movie_.title startsWithIgnoreCase input)
+     *     .orderByDescending(Movie_.votes)
+     *     .limit(10)
+     *     .resultList
+     * ```
+     *
+     * The predicate is any predicate a WHERE clause takes, and is rendered as one there:
+     * `CASE WHEN <predicate> THEN 0 ELSE 1 END`. No index serves the key, so the database evaluates it for every row
+     * the query finds and sorts them all, even with a limit; after a selective condition, such as a search, that is
+     * what any ordering of the matches costs.
+     *
+     * A keyset `scroll` follows it: the keys `orderFirst` added lead the ordering, before the sort fields and the key
+     * of the `Scrollable`, and each window carries the rank of its first and last rows in its position, so the next
+     * window continues from it. A `distinct` query cannot be ranked, since the database orders a distinct result only
+     * by the columns it selects, and a semi-joined table adds no columns to order by.
+     *
+     * @param predicate the predicate the rows put first match.
+     * @return the query builder.
+     * @since 1.15
+     */
+    public abstract fun orderFirst(predicate: PredicateBuilder<out T, *, *>): QueryBuilder<T, R, ID>
 
     /**
      * Returns `true` if any ORDER BY columns have been added to this query builder.
@@ -1620,6 +1653,10 @@ public infix fun <T : Data> Navigable<T, String>.notEndsWithIgnoreCase(text: Str
  * its own, so the words may match different related rows.
  * Accents compare as the column's collation compares them.
  *
+ * A word shorter than the database's substring index serves, such as the three characters of a trigram index on
+ * PostgreSQL, is tested only on the rows the longer words found, so it reads no table in full; the rows found are the
+ * same. A search box that queries as the user types, such as an auto-complete, uses [suggest] instead.
+ *
  * @param input the search input, as a search box receives it.
  * @param path the first text column to search.
  * @param more further text columns to search.
@@ -1630,6 +1667,25 @@ public fun <T : Data> search(
     path: Navigable<out T, String>,
     vararg more: Navigable<out T, String>,
 ): PredicateBuilder<T, T, *> = createSearch(input, listOf(path.asMetamodel()) + more.map { it.asMetamodel() })
+
+/**
+ * Creates a predicate that matches the words of a search box that queries as the user types, such as an auto-complete,
+ * against one or more text columns. It matches as [search] does, on the words the database's substring index serves
+ * alone: a word shorter than the index serves, such as the three characters of a trigram index on PostgreSQL, is
+ * ignored, and an input without a word the index serves, an empty one included, matches no rows. Every statement it
+ * renders is therefore served by the index, however the user types. On a database whose dialect treats every word
+ * alike, it matches as [search] does, except that an input without words matches no rows.
+ *
+ * @param input the search input, as a search box receives it.
+ * @param path the first text column to search.
+ * @param more further text columns to search.
+ * @since 1.15
+ */
+public fun <T : Data> suggest(
+    input: String,
+    path: Navigable<out T, String>,
+    vararg more: Navigable<out T, String>,
+): PredicateBuilder<T, T, *> = createSuggest(input, listOf(path.asMetamodel()) + more.map { it.asMetamodel() })
 
 /**
  * Infix functions to create a predicate to check if a field is greater than a value.
@@ -2082,6 +2138,11 @@ public class SqlScope<T : Data, R : Any, ID : Any> @PublishedApi internal constr
     /** Adds an ORDER BY clause (descending) using a SQL template expression. */
     public fun orderByDescending(template: TemplateBuilder) {
         builder = builder.orderByDescending(template)
+    }
+
+    /** Adds an ORDER BY key that puts the rows matching the predicate first; see [QueryBuilder.orderFirst]. */
+    public fun orderFirst(predicate: PredicateBuilder<*, *, *>) {
+        builder = builder.orderFirst(predicate)
     }
 
     /** Adds a LIMIT clause restricting the maximum number of results. */

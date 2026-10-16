@@ -246,6 +246,11 @@ public abstract class WhereBuilder<T extends Data, R, ID> implements SubqueryTem
      * matched on its own, so the words may match different related rows. Accents compare as the column's collation
      * compares them.</p>
      *
+     * <p>A word shorter than the database's substring index serves, such as the three characters of a trigram index
+     * on PostgreSQL, is tested only on the rows the longer words found, so it reads no table in full; the rows found are
+     * the same. A search box that queries as the user types, such as an auto-complete, uses
+     * {@link #suggest(String, Navigable, Navigable[])} instead.</p>
+     *
      * @param input the search input, as a search box receives it.
      * @param path  the first text column to search.
      * @param more  further text columns to search.
@@ -260,6 +265,31 @@ public abstract class WhereBuilder<T extends Data, R, ID> implements SubqueryTem
         paths.add(path);
         paths.addAll(List.of(more));
         return searchImpl(input, paths);
+    }
+
+    /**
+     * Matches the words of a search box that queries as the user types, such as an auto-complete, against one or more
+     * text columns. It matches as {@link #search(String, Navigable, Navigable[])} does, on the words the database's
+     * substring index serves alone: a word shorter than the index serves, such as the three characters of a trigram
+     * index on PostgreSQL, is ignored, and an input without a word the index serves, an empty one included, matches no
+     * rows. Every statement it renders is therefore served by the index, however the user types. On a database whose
+     * dialect treats every word alike, it matches as {@code search} does, except that an input without words matches
+     * no rows.
+     *
+     * @param input the search input, as a search box receives it.
+     * @param path  the first text column to search.
+     * @param more  further text columns to search.
+     * @return the predicate builder.
+     * @since 1.15
+     */
+    @SafeVarargs
+    public final PredicateBuilder<T, R, ID> suggest(String input,
+                                                    Navigable<? extends T, String> path,
+                                                    Navigable<? extends T, String>... more) {
+        var paths = new ArrayList<Navigable<? extends T, String>>(more.length + 1);
+        paths.add(path);
+        paths.addAll(List.of(more));
+        return suggestImpl(input, paths);
     }
 
     /**
@@ -295,4 +325,14 @@ public abstract class WhereBuilder<T extends Data, R, ID> implements SubqueryTem
      * @since 1.15
      */
     protected abstract PredicateBuilder<T, R, ID> searchImpl(String input, List<Navigable<? extends T, String>> paths);
+
+    /**
+     * Matches the words of a search input that the database's substring index serves against the given text columns.
+     *
+     * @param input the search input.
+     * @param paths the text columns to search, at least one.
+     * @return the predicate builder.
+     * @since 1.15
+     */
+    protected abstract PredicateBuilder<T, R, ID> suggestImpl(String input, List<Navigable<? extends T, String>> paths);
 }

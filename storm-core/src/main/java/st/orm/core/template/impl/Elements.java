@@ -96,15 +96,24 @@ public final class Elements {
      * through {@link st.orm.core.template.Sql#cursorColumns()}. A multi-column path (an inline record) expands to
      * each of its columns, in model column order. A scroll window reads its sort and key values this way.</p>
      *
+     * <p>A cursor also reads expressions, each one value appended after the fields: the rank an
+     * {@code orderFirst} key gives a row, which a scroll window carries in its position like a sort field.</p>
+     *
      * @param fields the fields to read, in the order their values are wanted.
+     * @param expressions the expressions to read after the fields, in the order their values are wanted.
      * @since 1.15
      */
-    public record Cursor(List<Metamodel<?, ?>> fields) implements Element {
+    public record Cursor(List<Metamodel<?, ?>> fields, List<TemplateString> expressions) implements Element {
         public Cursor {
             fields = List.copyOf(requireNonNull(fields, "fields"));
-            if (fields.isEmpty()) {
+            expressions = List.copyOf(requireNonNull(expressions, "expressions"));
+            if (fields.isEmpty() && expressions.isEmpty()) {
                 throw new IllegalArgumentException("A cursor names at least one field.");
             }
+        }
+
+        public Cursor(List<Metamodel<?, ?>> fields) {
+            this(fields, List.of());
         }
     }
 
@@ -446,6 +455,27 @@ public final class Elements {
             requireNonNull(foreignKey, "foreignKey");
         }
     }
+
+    /**
+     * Advice about the statement, which renders nothing. The statement carries it to the slow statement log, which
+     * reports it when an execution of the statement is slow.
+     *
+     * @param text the advice.
+     * @since 1.15
+     */
+    public record Advisory(String text) implements Element {
+        public Advisory {
+            requireNonNull(text, "text");
+        }
+    }
+
+    /**
+     * Marks an ORDER BY key that ranks the rows by a condition, as {@code orderFirst} adds one. It renders nothing; the
+     * query builder reads it to refuse what such a key cannot follow, a keyset scroll and a distinct query.
+     *
+     * @since 1.15
+     */
+    public record OrderFirst() implements Element {}
 
     /** Raw SQL rendered verbatim, bypassing the template's safety checks. */
     public record Unsafe(String sql) implements Element {

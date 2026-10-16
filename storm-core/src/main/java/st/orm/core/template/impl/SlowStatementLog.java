@@ -333,10 +333,14 @@ public final class SlowStatementLog {
      *                   to render.
      * @param sqlCommenter the commenter whose content the statement carried, or {@code null}; asked again on the
      *                     executing thread, in the span the statement was prepared in, only for a slow execution.
+     * @param advisories advice about the statement, reported on a slow execution.
      * @return the handle to mark and close with the execution.
      */
-    static Handle onExecute(QueryContext context, List<Parameter> parameters, @Nullable SqlCommenter sqlCommenter) {
-        return new SlowHandle(context, parameters, sqlCommenter);
+    static Handle onExecute(QueryContext context,
+                            List<Parameter> parameters,
+                            @Nullable SqlCommenter sqlCommenter,
+                            List<String> advisories) {
+        return new SlowHandle(context, parameters, sqlCommenter, advisories);
     }
 
     /** One observed execution; carries state from the return of the statement to the close of the execution. */
@@ -344,6 +348,7 @@ public final class SlowStatementLog {
         private final QueryContext context;
         private final List<Parameter> parameters;
         private final @Nullable SqlCommenter sqlCommenter;
+        private final List<String> advisories;
         private final long start = System.nanoTime();
         private long executed;
         private long databaseNanos;
@@ -354,10 +359,14 @@ public final class SlowStatementLog {
         private @Nullable String comment;
         private @Nullable Throwable failure;
 
-        SlowHandle(QueryContext context, List<Parameter> parameters, @Nullable SqlCommenter sqlCommenter) {
+        SlowHandle(QueryContext context,
+                   List<Parameter> parameters,
+                   @Nullable SqlCommenter sqlCommenter,
+                   List<String> advisories) {
             this.context = context;
             this.parameters = parameters;
             this.sqlCommenter = sqlCommenter;
+            this.advisories = advisories;
         }
 
         @Override
@@ -409,7 +418,7 @@ public final class SlowStatementLog {
                 statement = SqlLiterals.inline(statement, parameters);
             }
             LOGGER.warn(render(context, databaseNanos, consumeNanos, rows, exact, failure, callSite, statement,
-                    baseline, parameters.size(), comment, suppressed));
+                    baseline, parameters.size(), comment, suppressed, advisories));
         }
     }
 
@@ -434,6 +443,28 @@ public final class SlowStatementLog {
                          int parameterCount,
                          @Nullable String comment,
                          int suppressed) {
+        return render(context, databaseNanos, consumeNanos, rows, exact, failure, callSite, statement, baseline,
+                parameterCount, comment, suppressed, List.of());
+    }
+
+    /**
+     * Renders a slow line as {@link #render(QueryContext, long, long, long, boolean, Throwable, String, String,
+     * ShapeStats.Baseline, int, String, int)} does, followed by a line per piece of advice the statement carries, such
+     * as a search that reads every row.
+     */
+    static String render(QueryContext context,
+                         long databaseNanos,
+                         long consumeNanos,
+                         long rows,
+                         boolean exact,
+                         @Nullable Throwable failure,
+                         @Nullable String callSite,
+                         String statement,
+                         ShapeStats.@Nullable Baseline baseline,
+                         int parameterCount,
+                         @Nullable String comment,
+                         int suppressed,
+                         List<String> advisories) {
         var rendered = new StringBuilder("SQL slow (").append(describe(context)).append("): ")
                 .append(millis(databaseNanos)).append(" in database");
         if (failure != null) {
@@ -479,6 +510,9 @@ public final class SlowStatementLog {
         }
         if (!facts.isEmpty()) {
             rendered.append(System.lineSeparator()).append('\t').append(facts);
+        }
+        for (var advisory : advisories) {
+            rendered.append(System.lineSeparator()).append("\tadvice ").append(advisory);
         }
         return rendered.toString();
     }

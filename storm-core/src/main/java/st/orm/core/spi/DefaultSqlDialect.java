@@ -22,7 +22,9 @@ import static st.orm.Operator.IN;
 import static st.orm.Operator.NOT_EQUALS;
 import static st.orm.Operator.NOT_IN;
 import static st.orm.StormConfig.ANSI_ESCAPING;
+import static st.orm.StormConfig.SEARCH_MIN_TERM_LENGTH;
 import static st.orm.core.spi.StormConfigHelper.getBoolean;
+import static st.orm.core.spi.StormConfigHelper.getInt;
 
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
@@ -41,6 +43,8 @@ import st.orm.core.template.SqlDialect;
 public class DefaultSqlDialect implements SqlDialect {
 
     private final boolean ansiEscaping;
+    /** The configured shortest search term, or {@code -1} for the dialect's own. */
+    private final int minimumSearchTermLength;
 
     public DefaultSqlDialect() {
         this(StormConfig.defaults());
@@ -48,6 +52,30 @@ public class DefaultSqlDialect implements SqlDialect {
 
     public DefaultSqlDialect(StormConfig config) {
         this.ansiEscaping = getBoolean(config, ANSI_ESCAPING, false);
+        this.minimumSearchTermLength = Math.max(-1, getInt(config, SEARCH_MIN_TERM_LENGTH, -1));
+    }
+
+    /**
+     * Returns the shortest search term the database's substring index serves: the configured
+     * {@link StormConfig#SEARCH_MIN_TERM_LENGTH}, or else {@link #defaultMinimumSearchTermLength()}.
+     *
+     * @return the shortest term the substring index serves, or {@code 0} to treat every term alike.
+     * @since 1.15
+     */
+    @Override
+    public final int minimumSearchTermLength() {
+        return minimumSearchTermLength >= 0 ? minimumSearchTermLength : defaultMinimumSearchTermLength();
+    }
+
+    /**
+     * Returns the dialect's own shortest search term the database's substring index serves, which the configuration
+     * overrides.
+     *
+     * @return the shortest term the substring index serves, or {@code 0} to treat every term alike.
+     * @since 1.15
+     */
+    protected int defaultMinimumSearchTermLength() {
+        return 0;
     }
 
     /**

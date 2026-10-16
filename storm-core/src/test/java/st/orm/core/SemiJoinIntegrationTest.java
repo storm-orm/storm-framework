@@ -24,6 +24,7 @@ import static st.orm.core.template.SqlInterceptor.observe;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.function.Supplier;
 import javax.sql.DataSource;
 import org.junit.jupiter.api.Test;
@@ -34,6 +35,7 @@ import org.springframework.test.context.ContextConfiguration;
 import org.springframework.test.context.junit.jupiter.SpringExtension;
 import st.orm.Data;
 import st.orm.PersistenceException;
+import st.orm.StormConfig;
 import st.orm.core.model.Address;
 import st.orm.core.model.Owner;
 import st.orm.core.model.Owner_;
@@ -88,7 +90,27 @@ public class SemiJoinIntegrationTest {
     }
 
     private QueryBuilder<Data, Owner, Integer> ownersWithPets() {
-        return orm().entity(Owner.class).select().semiJoin(Pet.class).on(Owner.class);
+        return ownersWithPets(orm());
+    }
+
+    private static QueryBuilder<Data, Owner, Integer> ownersWithPets(ORMTemplate orm) {
+        return orm.entity(Owner.class).select().semiJoin(Pet.class).on(Owner.class);
+    }
+
+    /** A template whose dialect's substring index serves words of three characters, as a trigram index does. */
+    private ORMTemplate trigramOrm() {
+        return ORMTemplate.of(dataSource, StormConfig.of(Map.of(StormConfig.SEARCH_MIN_TERM_LENGTH, "3")));
+    }
+
+    @SafeVarargs
+    private static PredicateBuilder<Data, Owner, Integer> suggest(String input, st.orm.Metamodel<? extends Data, String>... paths) {
+        return PredicateBuilderFactory.suggest(input, List.of(paths));
+    }
+
+    private List<String> advisories(Supplier<?> query) {
+        var advisories = new ArrayList<String>();
+        observe(sql -> advisories.addAll(sql.advisories()), query::get);
+        return advisories;
     }
 
     @SafeVarargs
@@ -128,6 +150,113 @@ public class SemiJoinIntegrationTest {
                 .getResultList());
         assertEquals(List.of("Betty"), firstNames(owners));
         assertTrue(statement().contains(" IN (SELECT "), statement());
+    }
+
+    @Test
+    public void shortWordIsTestedOnTheRowsTheLongerWordsFound() {
+        var owners = capture(() -> ownersWithPets(trigramOrm())
+                .where(it -> search("davis le", Owner_.lastName, Pet_.name))
+                .getResultList());
+        assertEquals(List.of("Betty"), firstNames(owners));
+        // The long word reads each table through its own indexes; the short one is an EXISTS on the rows it found.
+        assertEquals(1, statement().split(" UNION ").length - 1, statement());
+        assertTrue(statement().contains("EXISTS (SELECT 1 FROM pet"), statement());
+        // The owner's own column stays outside the subquery, which reads the pets of each owner alone.
+        assertTrue(statement().contains("OR EXISTS (SELECT 1 FROM pet p WHERE p.owner_id = o.id AND"), statement());
+    }
+
+    @Test
+    public void everyWordIsReadThroughItsIndexesWhereTheDialectTreatsWordsAlike() {
+        var owners = capture(() -> ownersWithPets()
+                .where(it -> search("davis le", Owner_.lastName, Pet_.name))
+                .getResultList());
+        assertEquals(List.of("Betty"), firstNames(owners));
+        assertEquals(2, statement().split(" UNION ").length - 1, statement());
+        assertFalse(statement().contains("EXISTS"), statement());
+    }
+
+    @Test
+    public void searchOfShortWordsAloneStillMatchesEveryWord() {
+        var owners = capture(() -> ownersWithPets(trigramOrm())
+                .where(it -> search("le", Owner_.lastName, Pet_.name))
+                .getResultList());
+        assertEquals(List.of("Betty", "Jean"), firstNames(owners));
+        // Nothing narrows the rows for it, so it is read as a long word is.
+        assertTrue(statement().contains(" UNION "), statement());
+    }
+
+    @Test
+    public void joinConditionLimitsTheRelatedRowsEachWordMatches() {
+        // data.sql: owner 6 (Jean Coleman) has pets Samantha and Max.
+        var maxOnly = orm().entity(Owner.class).select()
+                .semiJoin(Pet.class).on(Owner.class, it -> it.where(Pet_.name, EQUALS, "Max"));
+        assertEquals(List.of(), firstNames(capture(() -> maxOnly
+                .where(it -> search("samantha", Owner_.lastName, Pet_.name)).getResultList())));
+        assertTrue(statement().contains(" UNION "), statement());
+        assertEquals(List.of("Jean"), firstNames(maxOnly
+                .where(it -> search("max", Owner_.lastName, Pet_.name)).getResultList()));
+        // A word on the owner's own columns needs no related row.
+        assertEquals(List.of("Jean"), firstNames(maxOnly
+                .where(it -> search("coleman", Owner_.lastName, Pet_.name)).getResultList()));
+        // The short word is tested on the rows the long one found, with the same limit.
+        var trigramMaxOnly = trigramOrm().entity(Owner.class).select()
+                .semiJoin(Pet.class).on(Owner.class, it -> it.where(Pet_.name, EQUALS, "Max"));
+        assertEquals(List.of(), firstNames(capture(() -> trigramMaxOnly
+                .where(it -> search("coleman sa", Owner_.lastName, Pet_.name)).getResultList())));
+        assertTrue(statement().contains("OR EXISTS (SELECT 1 FROM pet"), statement());
+        assertEquals(List.of("Jean"), firstNames(trigramMaxOnly
+                .where(it -> search("coleman ma", Owner_.lastName, Pet_.name)).getResultList()));
+    }
+
+    @Test
+    public void suggestIgnoresShortWords() {
+        var owners = capture(() -> ownersWithPets(trigramOrm())
+                .where(it -> suggest("davis le", Owner_.lastName, Pet_.name))
+                .getResultList());
+        assertEquals(List.of("Betty", "Harold"), firstNames(owners));
+        assertFalse(statement().contains("EXISTS"), statement());
+    }
+
+    @Test
+    public void suggestOfShortWordsAloneMatchesNoRows() {
+        var owners = capture(() -> ownersWithPets(trigramOrm())
+                .where(it -> suggest("le", Owner_.lastName, Pet_.name))
+                .getResultList());
+        assertEquals(List.of(), firstNames(owners));
+        assertTrue(statement().contains("1 <> 1"), statement());
+        assertFalse(statement().contains("LIKE"), statement());
+    }
+
+    @Test
+    public void suggestOfAnEmptyInputMatchesNoRows() {
+        assertEquals(List.of(), firstNames(ownersWithPets(trigramOrm())
+                .where(it -> suggest("  ", Owner_.lastName, Pet_.name))
+                .getResultList()));
+        assertEquals(List.of(), firstNames(ownersWithPets()
+                .where(it -> suggest("", Owner_.lastName, Pet_.name))
+                .getResultList()));
+    }
+
+    @Test
+    public void suggestMatchesAsSearchWhereTheDialectTreatsWordsAlike() {
+        assertEquals(List.of("Betty", "Jean"), firstNames(ownersWithPets()
+                .where(it -> suggest("le", Owner_.lastName, Pet_.name))
+                .getResultList()));
+    }
+
+    @Test
+    public void searchOfShortWordsAloneCarriesAdvice() {
+        var orm = trigramOrm();
+        var advice = advisories(() -> ownersWithPets(orm)
+                .where(it -> search("le", Owner_.lastName, Pet_.name)).getResultList());
+        assertEquals(1, advice.size(), advice.toString());
+        assertTrue(advice.getFirst().contains("suggest"), advice.getFirst());
+        assertEquals(List.of(), advisories(() -> ownersWithPets(orm)
+                .where(it -> search("davis le", Owner_.lastName, Pet_.name)).getResultList()));
+        assertEquals(List.of(), advisories(() -> ownersWithPets(orm)
+                .where(it -> suggest("le", Owner_.lastName, Pet_.name)).getResultList()));
+        assertEquals(List.of(), advisories(() -> ownersWithPets()
+                .where(it -> search("le", Owner_.lastName, Pet_.name)).getResultList()));
     }
 
     @Test

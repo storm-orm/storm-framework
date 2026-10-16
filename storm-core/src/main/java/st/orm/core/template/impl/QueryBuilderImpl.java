@@ -46,6 +46,7 @@ import st.orm.Ref;
 import st.orm.Scrollable;
 import st.orm.SqlTemplateException;
 import st.orm.Window;
+import st.orm.core.spi.PositionFactory;
 import st.orm.core.template.JoinBuilder;
 import st.orm.core.template.Model;
 import st.orm.core.template.PredicateBuilder;
@@ -55,8 +56,10 @@ import st.orm.core.template.SubqueryTemplate;
 import st.orm.core.template.TemplateString;
 import st.orm.core.template.TypedJoinBuilder;
 import st.orm.core.template.WhereBuilder;
+import st.orm.core.template.impl.Elements.Advisory;
 import st.orm.core.template.impl.Elements.Expression;
 import st.orm.core.template.impl.Elements.ObjectExpression;
+import st.orm.core.template.impl.Elements.OrderFirst;
 import st.orm.core.template.impl.Elements.TableSource;
 import st.orm.core.template.impl.Elements.TableTarget;
 import st.orm.core.template.impl.Elements.TemplateExpression;
@@ -111,14 +114,17 @@ abstract class QueryBuilderImpl<T extends Data, R, ID> extends QueryBuilder<T, R
      * @param columns the cursor columns, in the order their values are wanted.
      * @return the rows with their cursor values.
      */
-    abstract List<KeyedQuery.Row<R>> getKeyedResultList(List<Metamodel<T, ?>> columns);
+    abstract List<KeyedQuery.Row<R>> getKeyedResultList(List<Metamodel<T, ?>> columns, List<TemplateString> expressions);
 
     @Override
     @SuppressWarnings("unchecked")
     public final Window<R> scroll(Scrollable<T> scrollable) {
         requireNonNull(scrollable, "scrollable");
-        if (hasOrderBy()) {
-            throw new PersistenceException("scroll manages ORDER BY internally; remove explicit orderBy calls.");
+        // The keys orderFirst added lead the ordering. Each ranks a row 0 or 1, a value the window reads from the row
+        // and carries in its position after the values of the sort fields and the key, like a sort field of its own.
+        var ranks = orderBy;
+        if (ranks.stream().anyMatch(template -> !isOrderFirst(template))) {
+            throw new PersistenceException("scroll manages ORDER BY internally; remove explicit orderBy calls. Rows a condition puts first go through orderFirst, which scroll follows.");
         }
         validateKey(scrollable.key());
         for (var order : scrollable.sort()) {
@@ -129,15 +135,20 @@ abstract class QueryBuilderImpl<T extends Data, R, ID> extends QueryBuilder<T, R
         // A window before a row is read in the reversed ordering and turned around, so it comes back in the
         // request's sort order like every other window.
         boolean reverse = position != null && !position.after();
-        QueryBuilder<T, R, ID> query = this;
+        QueryBuilder<T, R, ID> query = copyWith(queryTemplate, fromType, join, where, groupBy, having, List.of(), hints);
         if (position != null) {
             var values = PositionImpl.of(position).values();
-            if (values.size() != orders.size()) {
-                throw new IllegalArgumentException(
-                        "A position carries one value per sort field and one for the key: expected %d values, got %d."
-                                .formatted(orders.size(), values.size()));
+            if (values.size() != orders.size() + ranks.size()) {
+                throw new IllegalArgumentException(ranks.isEmpty()
+                        ? "A position carries one value per sort field and one for the key: expected %d values, got %d."
+                                .formatted(orders.size(), values.size())
+                        : "A position carries one value per sort field, one for the key and one per orderFirst: expected %d values, got %d."
+                                .formatted(orders.size() + ranks.size(), values.size()));
             }
-            query = query.where(wb -> keysetPredicate(wb, orders, values, reverse));
+            query = query.where(wb -> keysetPredicate(wb, ranks, orders, values, reverse));
+        }
+        for (var rank : ranks) {
+            query = reverse ? query.orderByDescending(rank) : query.orderBy(rank);
         }
         for (var order : orders) {
             var field = (Metamodel<T, Object>) order.field();
@@ -149,7 +160,7 @@ abstract class QueryBuilderImpl<T extends Data, R, ID> extends QueryBuilder<T, R
         for (var order : orders) {
             columns.add((Metamodel<T, ?>) order.field());
         }
-        List<KeyedQuery.Row<R>> rows = limited.getKeyedResultList(columns);
+        List<KeyedQuery.Row<R>> rows = limited.getKeyedResultList(columns, ranks);
         boolean more = rows.size() > size;
         if (more) {
             rows = rows.subList(0, size);
@@ -161,8 +172,8 @@ abstract class QueryBuilderImpl<T extends Data, R, ID> extends QueryBuilder<T, R
         Scrollable<T> next = null;
         Scrollable<T> previous = null;
         if (!rows.isEmpty()) {
-            next = scrollable.after(rows.getLast().cursor());
-            previous = scrollable.before(rows.getFirst().cursor());
+            next = at(scrollable, List.of(rows.getLast().cursor()), true);
+            previous = at(scrollable, List.of(rows.getFirst().cursor()), false);
         }
         // The anchor row of a position lies on the side the request continued from, so that side has rows; the
         // other side is decided by the extra row fetched.
@@ -172,30 +183,70 @@ abstract class QueryBuilderImpl<T extends Data, R, ID> extends QueryBuilder<T, R
     }
 
     /**
-     * Builds the keyset predicate for continuing from a row: for each field in precedence, the fields before it
-     * equal the row's values and the field itself lies beyond the row's value in its direction, all joined by OR.
+     * Returns the request positioned after or before a row, from the values the window read from it: one per sort
+     * field and one for the key, then the rank of each orderFirst key, which {@link Scrollable#after} does not take.
+     */
+    private static <T extends Data> Scrollable<T> at(Scrollable<T> scrollable, List<Object> values, boolean after) {
+        return new Scrollable<>(scrollable.key(), scrollable.keyDescending(), scrollable.sort(), scrollable.size(),
+                PositionFactory.position(values, after));
+    }
+
+    /**
+     * Returns {@code true} if the ORDER BY key ranks the rows by a condition, as {@code orderFirst} adds one.
+     */
+    private static boolean isOrderFirst(TemplateString template) {
+        return template.values().stream().anyMatch(OrderFirst.class::isInstance);
+    }
+
+    /**
+     * Builds the keyset predicate for continuing from a row: for each key in precedence, the keys before it equal
+     * the row's values and the key itself lies beyond the row's value in its direction, all joined by OR. The ranks
+     * of orderFirst keys lead, ascending, compared as the expressions they are; the sort fields and the key follow.
      * Reversing flips every comparison, which reads the rows on the other side of the row.
+     *
+     * @param values the row's values: one per sort field and one for the key, then one per rank.
      */
     @SuppressWarnings("unchecked")
     private static <T extends Data, R, ID> PredicateBuilder<T, ?, ?> keysetPredicate(WhereBuilder<T, R, ID> wb,
+                                                                                    List<TemplateString> ranks,
                                                                                     List<Order> orders,
                                                                                     List<Object> values,
                                                                                     boolean reverse) {
+        int keys = ranks.size() + orders.size();
         PredicateBuilder<T, R, ID> chain = null;
-        for (int i = 0; i < orders.size(); i++) {
+        for (int i = 0; i < keys; i++) {
             PredicateBuilder<T, R, ID> term = null;
             for (int j = 0; j < i; j++) {
-                var field = (Metamodel<T, Object>) orders.get(j).field();
-                var equal = wb.where(field, EQUALS, new Object[] {values.get(j)});
+                var equal = compare(wb, ranks, orders, values, j, "=", EQUALS);
                 term = term == null ? equal : term.and(equal);
             }
-            var field = (Metamodel<T, Object>) orders.get(i).field();
-            boolean descending = orders.get(i).descending() ^ reverse;
-            var beyond = wb.where(field, descending ? LESS_THAN : GREATER_THAN, new Object[] {values.get(i)});
+            boolean descending = (i >= ranks.size() && orders.get(i - ranks.size()).descending()) ^ reverse;
+            var beyond = compare(wb, ranks, orders, values, i, descending ? "<" : ">",
+                    descending ? LESS_THAN : GREATER_THAN);
             term = term == null ? beyond : term.and(beyond);
             chain = chain == null ? term : chain.or(term);
         }
         return requireNonNull(chain);
+    }
+
+    /**
+     * Compares the key at the given precedence with the row's value for it: a rank as its expression, a sort field
+     * or the key through its operator.
+     */
+    @SuppressWarnings("unchecked")
+    private static <T extends Data, R, ID> PredicateBuilder<T, R, ID> compare(WhereBuilder<T, R, ID> wb,
+                                                                             List<TemplateString> ranks,
+                                                                             List<Order> orders,
+                                                                             List<Object> values,
+                                                                             int index,
+                                                                             String symbol,
+                                                                             Operator operator) {
+        if (index < ranks.size()) {
+            var value = values.get(orders.size() + index);
+            return wb.where(TemplateString.combine(ranks.get(index), TemplateString.of(" " + symbol + " "), wrap(value)));
+        }
+        int field = index - ranks.size();
+        return wb.where((Metamodel<T, Object>) orders.get(field).field(), operator, new Object[] {values.get(field)});
     }
 
     /**
@@ -421,6 +472,13 @@ abstract class QueryBuilderImpl<T extends Data, R, ID> extends QueryBuilder<T, R
      * given template.
      */
     protected final TemplateString appendJoinsAndWhere(TemplateString template) {
+        // Which search terms a substring index serves depends on the dialect, so a search resolves its words here.
+        int minimumSearchTermLength = queryTemplate.dialect().minimumSearchTermLength();
+        var where = resolveSearches(this.where, minimumSearchTermLength);
+        if (where != this.where && this.where.stream().anyMatch(it -> unindexedSearch(it, minimumSearchTermLength))) {
+            template = TemplateString.combine(template, wrap(new Advisory(UNINDEXED_SEARCH_ADVICE
+                    .formatted(minimumSearchTermLength))));
+        }
         var filterJoins = join.stream().filter(FilterJoinPlacement::isFilterJoin).toList();
         var joins = filterJoins.isEmpty() ? join : join.stream().filter(it -> !FilterJoinPlacement.isFilterJoin(it)).toList();
         if (!joins.isEmpty()) {
@@ -449,6 +507,36 @@ abstract class QueryBuilderImpl<T extends Data, R, ID> extends QueryBuilder<T, R
             }
         }
         return template;
+    }
+
+    /** The advice a statement carries for a search whose terms are all shorter than the substring index serves. */
+    private static final String UNINDEXED_SEARCH_ADVICE = "every search term is shorter than the %d characters a "
+            + "substring index serves, so the search reads every row; a search box that queries as the user types "
+            + "wants suggest, which matches no rows for such input. See https://orm.st/queries#indexing-a-search";
+
+    /**
+     * Returns the WHERE conditions with each search in them resolved for the dialect, or the conditions themselves
+     * when none holds a search.
+     */
+    private static List<Where> resolveSearches(List<Where> where, int minimumSearchTermLength) {
+        List<Where> resolved = null;
+        for (int i = 0; i < where.size(); i++) {
+            var condition = where.get(i);
+            if (condition.expression() instanceof TemplateExpression(var ignore, var predicate)
+                    && predicate != null && PredicateNode.holdsSearch(predicate)) {
+                if (resolved == null) {
+                    resolved = new ArrayList<>(where);
+                }
+                var node = PredicateNode.resolve(predicate, minimumSearchTermLength);
+                resolved.set(i, new Where(new TemplateExpression(node.toTemplate(), node), condition.bindVars()));
+            }
+        }
+        return resolved == null ? where : resolved;
+    }
+
+    private static boolean unindexedSearch(Where where, int minimumSearchTermLength) {
+        return where.expression() instanceof TemplateExpression(var ignore, var predicate)
+                && predicate != null && PredicateNode.holdsUnindexedSearch(predicate, minimumSearchTermLength);
     }
 
     /**
@@ -529,6 +617,27 @@ abstract class QueryBuilderImpl<T extends Data, R, ID> extends QueryBuilder<T, R
         List<TemplateString> copy = new ArrayList<>(orderBy);
         copy.add(template);
         return copyWith(queryTemplate, fromType, join, where, groupBy, having, copy, hints);
+    }
+
+    @Override
+    public QueryBuilder<T, R, ID> orderFirst(PredicateBuilder<? extends T, ?, ?> predicate) {
+        requireNonNull(predicate, "predicate");
+        return orderBy(TemplateString.combine(wrap(new OrderFirst()), TemplateString.of("CASE WHEN "),
+                ((PredicateBuilderImpl<?, ?, ?>) predicate).asTemplate(), TemplateString.of(" THEN 0 ELSE 1 END")));
+    }
+
+    @Override
+    public QueryBuilder<T, R, ID> orderFirst(Function<WhereBuilder<T, R, ID>, PredicateBuilder<T, ?, ?>> predicate) {
+        requireNonNull(predicate, "predicate");
+        return orderFirst(predicate.apply(new WhereBuilderImpl<>(this)));
+    }
+
+    /**
+     * Returns {@code true} if an ORDER BY key of this query builder ranks the rows by a condition, as
+     * {@code orderFirst} adds one.
+     */
+    protected final boolean hasOrderFirst() {
+        return orderBy.stream().anyMatch(QueryBuilderImpl::isOrderFirst);
     }
 
     /**
@@ -789,6 +898,14 @@ abstract class QueryBuilderImpl<T extends Data, R, ID> extends QueryBuilder<T, R
             this(List.of(requireNonNull(template, "template")), safe, null, new PredicateNode.Term(template, safe));
         }
 
+        /**
+         * Creates a predicate from its structure, rendered as one template that is grouped in parentheses wherever it
+         * is combined.
+         */
+        PredicateBuilderImpl(PredicateNode node) {
+            this(List.of(node.toTemplate()), false, null, node);
+        }
+
         private PredicateBuilderImpl(List<TemplateString> templates,
                                      boolean safe,
                                      @Nullable TemplateString operator,
@@ -996,7 +1113,8 @@ abstract class QueryBuilderImpl<T extends Data, R, ID> extends QueryBuilder<T, R
         private QueryBuilder<TX, RX, IDX> build(PredicateBuilderImpl<?, ?, ?> predicate) {
             var template = predicate.asTemplate();
             Where where;
-            if (unwrap(template) instanceof Expression expression) {
+            // A search keeps its structure, since its words are resolved for the dialect when the query is built.
+            if (!PredicateNode.holdsSearch(predicate.node()) && unwrap(template) instanceof Expression expression) {
                 where = new Where(expression, null);
             } else {
                 where = new Where(new TemplateExpression(template, predicate.node()), null);

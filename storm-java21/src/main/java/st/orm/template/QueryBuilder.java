@@ -284,7 +284,9 @@ public abstract class QueryBuilder<T extends Data, R, ID> {
      * names only the query's own tables holds without one, so a row without related rows still matches through its
      * own columns. {@code search} matches each word on its own, so its words may match different related rows. Without a
      * condition that names the table, the query keeps the rows that have any related row, as the complement of an
-     * anti-join on the same table.</p>
+     * anti-join on the same table. A condition stated on the join, {@code on(Owner.class, it -> it.where(Pet_.type,
+     * EQUALS, dog))}, states which related rows count: every condition that names the table, each word of a search
+     * included, is answered by a related row matching it.</p>
      *
      * <pre>{@code
      * List<Owner> found = owners
@@ -706,6 +708,38 @@ public abstract class QueryBuilder<T extends Data, R, ID> {
      * @since 1.2
      */
     public abstract QueryBuilder<T, R, ID> orderBy(StringTemplate template);
+
+    /**
+     * Adds an ORDER BY key that puts the rows matching the predicate before the rows that do not, keeping the order
+     * of the keys before it and leaving the order within each part to the keys after it. Like {@code orderBy}, each
+     * call appends a key, so the keys apply in the order they are called:
+     *
+     * <pre>{@code
+     * movies.select()
+     *         .where(it -> it.search(input, Movie_.title))
+     *         .orderFirst(it -> it.where(Movie_.title, EQUALS_IGNORE_CASE, input))
+     *         .orderFirst(it -> it.where(Movie_.title, STARTS_WITH_IGNORE_CASE, input))
+     *         .orderByDescending(Movie_.votes)
+     *         .limit(10)
+     *         .getResultList();
+     * }</pre>
+     *
+     * <p>The predicate is any predicate a WHERE clause takes, and is rendered as one there:
+     * {@code CASE WHEN <predicate> THEN 0 ELSE 1 END}. No index serves the key, so the database evaluates it for every
+     * row the query finds and sorts them all, even with a limit; after a selective condition, such as a search, that
+     * is what any ordering of the matches costs.</p>
+     *
+     * <p>A keyset {@code scroll} follows it: the keys {@code orderFirst} added lead the ordering, before the sort
+     * fields and the key of the {@code Scrollable}, and each window carries the rank of its first and last rows in its
+     * position, so the next window continues from it. A {@code distinct} query cannot be ranked, since the database
+     * orders a distinct result only by the columns it selects, and a semi-joined table adds no columns to order
+     * by.</p>
+     *
+     * @param predicate the predicate the rows put first match, built with a {@link WhereBuilder}.
+     * @return the query builder.
+     * @since 1.15
+     */
+    public abstract QueryBuilder<T, R, ID> orderFirst(Function<WhereBuilder<T, R, ID>, PredicateBuilder<T, ?, ?>> predicate);
 
     /**
      * Returns {@code true} if any ORDER BY columns have been added to this query builder.

@@ -22,6 +22,20 @@ class PostgreSQLSqlDialectTest {
 
     private final PostgreSQLSqlDialect dialect = new PostgreSQLSqlDialect();
 
+    // Search: a trigram index serves words of three characters or more
+
+    @Test
+    void substringIndexShouldServeWordsOfThreeCharacters() {
+        assertEquals(3, dialect.minimumSearchTermLength());
+    }
+
+    @Test
+    void configurationShouldOverrideTheShortestIndexedWord() {
+        var configured = new PostgreSQLSqlDialect(st.orm.StormConfig.of(
+                java.util.Map.of(st.orm.StormConfig.SEARCH_MIN_TERM_LENGTH, "0")));
+        assertEquals(0, configured.minimumSearchTermLength());
+    }
+
     // Identifier validation
 
     @Test

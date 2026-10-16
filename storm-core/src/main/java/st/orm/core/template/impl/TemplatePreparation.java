@@ -1361,6 +1361,9 @@ class TemplatePreparation {
                 for (var field : cursor.fields()) {
                     addReferencedTablePath(rootTable, MetamodelFactory.canonical(field), paths);
                 }
+                for (var expression : cursor.expressions()) {
+                    collectReferencedTablePaths(rootTable, expression, paths, tables, hydratedTables, hydratedPaths);
+                }
             }
             // A nested select materializes the table's record, so its own foreign keys are part of what is selected;
             // the other modes select columns of that table alone.

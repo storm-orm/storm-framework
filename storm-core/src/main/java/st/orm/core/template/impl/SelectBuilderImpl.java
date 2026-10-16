@@ -240,15 +240,19 @@ public class SelectBuilderImpl<T extends Data, R, ID> extends QueryBuilderImpl<T
      */
     @Override
     @SuppressWarnings("unchecked")
-    List<KeyedQuery.Row<R>> getKeyedResultList(List<Metamodel<T, ?>> columns) {
-        var select = TemplateString.combine(selectClause(), wrap(new Cursor(List.copyOf(columns))));
+    List<KeyedQuery.Row<R>> getKeyedResultList(List<Metamodel<T, ?>> columns, List<TemplateString> expressions) {
+        var select = TemplateString.combine(selectClause(), wrap(new Cursor(List.copyOf(columns), expressions)));
         var query = queryTemplate.query(statement(toTemplateString(select, true)));
         if (!(query instanceof KeyedQuery keyed)) {
             throw new PersistenceException("The query template does not support reading cursor columns.");
         }
-        Class<?>[] types = new Class<?>[columns.size()];
-        for (int i = 0; i < types.length; i++) {
+        Class<?>[] types = new Class<?>[columns.size() + expressions.size()];
+        for (int i = 0; i < columns.size(); i++) {
             types[i] = cursorValueType(columns.get(i));
+        }
+        // An expression is the rank of an orderFirst key: 0 for a row matching its condition, 1 otherwise.
+        for (int i = columns.size(); i < types.length; i++) {
+            types[i] = Integer.class;
         }
         if (refType != null) {
             assert pkType != null : "Primary key type must be specified for ref queries.";
@@ -294,6 +298,9 @@ public class SelectBuilderImpl<T extends Data, R, ID> extends QueryBuilderImpl<T
     }
 
     private TemplateString toTemplateString(TemplateString selectClause, boolean withOrderBy) {
+        if (distinct && withOrderBy && hasOrderFirst()) {
+            throw new PersistenceException("orderFirst cannot order a distinct query: the database orders a distinct result only by the columns it selects. A semiJoin filters by a related table without repeating rows, so the query needs no distinct.");
+        }
         TemplateString template = TemplateString.of("SELECT%s %s".formatted(hintAfterKeyword(), distinct ? "DISTINCT " : ""));
         if (queryTemplate.dialect().applyLimitAfterSelect()) {
             if (limit != null && offset == null) {

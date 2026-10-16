@@ -212,7 +212,8 @@ public final class CursorFactory {
      *
      * @param orderingFingerprint the fingerprint of the ordering the request states; the cursor must match it.
      * @param cursor the cursor string.
-     * @param valueTypes the declared field types, one per sort field and one for the key; a value is checked
+     * @param valueTypes the declared field types, one per sort field and one for the key; a cursor may carry further
+     *                   values after them, the rank of each {@code orderFirst} key of the query, each an integer. A value is checked
      *                   against its type where the type is a plain value type, and left alone where the field is
      *                   a reference, whose column carries the referenced key.
      * @return the position the cursor carries.
@@ -237,7 +238,9 @@ public final class CursorFactory {
             }
             boolean after = dataStream.readBoolean();
             int count = dataStream.readUnsignedByte();
-            if (count != valueTypes.length) {
+            // Values after the ordering's are the ranks of orderFirst keys, which the query reading the position
+            // checks against its own keys.
+            if (count < valueTypes.length) {
                 throw new InvalidCursorException(
                         "Invalid cursor: carries " + count + " values, the ordering has " + valueTypes.length + ".");
             }
@@ -247,7 +250,9 @@ public final class CursorFactory {
                 if (value == null) {
                     throw new InvalidCursorException("Invalid cursor: value " + i + " is null.");
                 }
-                if (isValueType(valueTypes[i])) {
+                if (i >= valueTypes.length) {
+                    validateType("value " + i, value, Integer.class);
+                } else if (isValueType(valueTypes[i])) {
                     validateType("value " + i, value, valueTypes[i]);
                 }
                 values.add(value);

@@ -239,6 +239,15 @@ interface TemplateCompiler {
     void setFetchPaths(List<String> fetchPaths);
 
     /**
+     * Records advice about the statement, which the slow statement log reports when an execution of the statement is
+     * slow. Advice recorded twice is kept once.
+     *
+     * @param advisory the advice.
+     * @since 1.15
+     */
+    void addAdvisory(String advisory);
+
+    /**
      * Returns the fetch plan of the compilation in progress: the references the statement resolves as part of its
      * select list, collected from the template's fetch elements before its elements compile.
      *

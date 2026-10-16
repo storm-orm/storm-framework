@@ -33,7 +33,7 @@ public class SqlImplTest {
                 List.of(),
                 false,
                 Optional.empty(), StatementOrigin.DIRECT, 0L
-        );
+        , List.of());
     }
 
     @Test
@@ -125,7 +125,7 @@ public class SqlImplTest {
                 List.of(),
                 false,
                 Optional.of("existing warning"), StatementOrigin.DIRECT, 0L
-        );
+        , List.of());
         Sql updated = sql.unsafeWarning(null);
         assertTrue(updated.unsafeWarning().isEmpty());
     }
@@ -145,7 +145,7 @@ public class SqlImplTest {
                 false,
                 Optional.empty(),
                 StatementOrigin.DIRECT, 0L
-        ));
+        , List.of()));
     }
 
     @Test
@@ -163,7 +163,7 @@ public class SqlImplTest {
                 false,
                 Optional.empty(),
                 StatementOrigin.DIRECT, 0L
-        ));
+        , List.of()));
     }
 
     @Test
@@ -181,7 +181,7 @@ public class SqlImplTest {
                     List.of(),
                     false,
                     Optional.empty(), StatementOrigin.DIRECT, 0L
-            );
+            , List.of());
             assertEquals(operation, sql.operation());
         }
     }
@@ -204,7 +204,7 @@ public class SqlImplTest {
                 List.of(),
                 false,
                 Optional.empty(), StatementOrigin.DIRECT, 0L
-        );
+        , List.of());
         mutableParameters.add(new SqlTemplate.PositionalParameter(2, "added later"));
         assertEquals(List.of(new SqlTemplate.PositionalParameter(1, "original")), sql.parameters());
     }
@@ -223,7 +223,7 @@ public class SqlImplTest {
                 List.of(),
                 false,
                 Optional.empty(), StatementOrigin.DIRECT, 0L
-        );
+        , List.of());
         assertEquals(1, sql.generatedKeys().size());
         assertEquals("id", sql.generatedKeys().getFirst());
     }
