@@ -387,6 +387,8 @@ Accents follow the column's collation, as for the `IGNORE_CASE` operators: MySQL
 
 A match inside a word cannot use a B-tree index, so `search` reads every row it filters. Where that is too slow, PostgreSQL serves the statement from a trigram index on the lowered column: `CREATE INDEX ON movie USING gin (lower(title) gin_trgm_ops)`, after `CREATE EXTENSION pg_trgm`.
 
+To search the rows related to each row, such as the names of an owner's pets, semi-join the related table and name its column: `search(input, Owner_.lastName, Pet_.name)` after `semiJoin<Pet>().on<Owner>()` (Java: `semiJoin(Pet.class).on(Owner.class)`). Each word may then match a different pet, every owner comes back once, and each table is read through its own indexes; see [Filtering by Related Rows](#filtering-by-related-rows).
+
 ---
 
 ## Ordering
@@ -928,6 +930,121 @@ List<Role> roles = orm.query(RAW."""
 
 </TabItem>
 </Tabs>
+
+### Join Conditions
+
+`on` derives the join condition from the foreign key. A condition of your own goes in a block after the table it joins on, and the join adds it to the derived one. On a left join, it decides which related rows join, so an owner without a matching pet is still returned, where the same condition in `where` would drop the owner:
+
+<Tabs groupId="language">
+<TabItem value="kotlin" label="Kotlin" default>
+
+```kotlin
+val owners = orm.entity<Owner>()
+    .select()
+    .leftJoin<Pet>().on<Owner> { Pet_.name eq "Leo" }
+    .resultList
+```
+
+</TabItem>
+<TabItem value="java" label="Java">
+
+```java
+List<Owner> owners = orm.entity(Owner.class)
+    .select()
+    .leftJoin(Pet.class).on(Owner.class, it -> it.where(Pet_.name, EQUALS, "Leo"))
+    .getResultList();
+```
+
+</TabItem>
+</Tabs>
+
+```sql
+SELECT ...
+FROM owner o
+LEFT JOIN pet p ON p.owner_id = o.id AND (p.name = ?)
+```
+
+### Filtering by Related Rows
+
+A join to the many side of a relation returns a row per related row: an owner of two pets that match the condition comes back twice, and returning each owner once takes `distinct`. `semiJoin` filters by the related table without joining its rows. The query keeps the rows that have a related row matching the conditions that name the table, and returns each of them once:
+
+<Tabs groupId="language">
+<TabItem value="kotlin" label="Kotlin" default>
+
+```kotlin
+val owners = orm.entity<Owner>()
+    .select()
+    .semiJoin<Pet>().on<Owner>()
+    .where(Pet_.name eq "Leo")
+    .resultList
+```
+
+</TabItem>
+<TabItem value="java" label="Java">
+
+```java
+List<Owner> owners = orm.entity(Owner.class)
+    .select()
+    .semiJoin(Pet.class).on(Owner.class)
+    .where(Pet_.name, EQUALS, "Leo")
+    .getResultList();
+```
+
+</TabItem>
+</Tabs>
+
+```sql
+SELECT ...
+FROM owner o
+WHERE EXISTS (SELECT 1 FROM pet p WHERE p.owner_id = o.id AND p.name = ?)
+```
+
+`on` resolves the foreign key between the two tables as it does for the other joins. The conditions on the semi-joined table are answered by its related rows:
+
+- Conditions joined by `and` hold for the same related row. `(Pet_.name eq "Leo") and (Pet_.birthDate gt date)` finds the owners of a Leo born after the date, not the owners of a Leo and of some other pet born after it.
+- A part of the condition that names only the query's own tables holds without a related row, so `(Owner_.lastName eq "Davis") or (Pet_.name eq "Leo")` also finds a Davis without pets.
+- `search` matches each word on its own, so its words may match different related rows: `search("leo max", Owner_.lastName, Pet_.name)` finds the owner of both. Where the condition is an OR of columns of the query's table and columns of the semi-joined table, as a search's is, each word renders as an `IN` over a `UNION` of a branch per table, so each table is read through its own indexes.
+
+The semi-joined table filters the query but adds no columns to it: ordering, grouping or selecting by its columns is refused when the query is built. A semi-join needs a condition that names its table, and one without is refused as well, since it would filter nothing; to keep the rows that have any related row, use `whereExists`.
+
+### Excluding by Related Rows
+
+`antiJoin` keeps the rows without a matching related row. Its condition goes on the join, where the negation is visible; without one, the query keeps the rows without any related row:
+
+<Tabs groupId="language">
+<TabItem value="kotlin" label="Kotlin" default>
+
+```kotlin
+// Pets that never had a rabies shot.
+val pets = orm.entity<Pet>()
+    .select()
+    .antiJoin<Visit>().on<Pet> { Visit_.description eq "rabies shot" }
+    .resultList
+```
+
+</TabItem>
+<TabItem value="java" label="Java">
+
+```java
+// Pets that never had a rabies shot.
+List<Pet> pets = orm.entity(Pet.class)
+    .select()
+    .antiJoin(Visit.class).on(Pet.class, it -> it.where(Visit_.description, EQUALS, "rabies shot"))
+    .getResultList();
+```
+
+</TabItem>
+</Tabs>
+
+```sql
+SELECT ...
+FROM pet p
+WHERE NOT EXISTS (SELECT 1 FROM visit v WHERE v.pet_id = p.id AND v.description = ?)
+```
+
+`NOT EXISTS`, unlike `NOT IN`, keeps its meaning when a related row's foreign key is null. A condition in `where` that names the anti-joined table is refused when the query is built, pointing at the join's condition.
+
+Semi-joins and anti-joins filter a `delete()` as well: `orm.entity<Owner>().delete().antiJoin<Pet>().on<Owner>().executeUpdate()` (Java: `delete().antiJoin(Pet.class).on(Owner.class)`) removes the owners without pets.
 
 ---
 

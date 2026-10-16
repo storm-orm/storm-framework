@@ -242,7 +242,9 @@ public abstract class WhereBuilder<T extends Data, R, ID> implements SubqueryTem
      * without words, such as an empty search box, matches every row.
      *
      * <p>A path through a relation joins its table as any other path does, and a path may start at a table the query
-     * joins. Accents compare as the column's collation compares them.</p>
+     * joins. A path may also start at a semi-joined table, which searches the rows related to each row; each word is
+     * matched on its own, so the words may match different related rows. Accents compare as the column's collation
+     * compares them.</p>
      *
      * @param input the search input, as a search box receives it.
      * @param path  the first text column to search.

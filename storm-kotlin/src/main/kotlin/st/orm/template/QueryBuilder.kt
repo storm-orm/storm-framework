@@ -309,6 +309,66 @@ public abstract class QueryBuilder<T : Data, R : Any, ID : Any> {
     public inline fun <reified J : Data> rightJoin(): TypedJoinBuilder<T, R, ID> = rightJoin(J::class)
 
     /**
+     * Adds a semi-join to the query: the query keeps the rows that have a related row in the given table matching the
+     * conditions that name it, and returns each of them once. The table filters the query but adds no columns to it,
+     * so its columns can be named in conditions only.
+     *
+     * `on` resolves the foreign key that relates the table to the table it is joined on, as for the other typed joins.
+     * Conditions joined by `and` hold for the same related row, and a part of the condition that names only the
+     * query's own tables holds without one, so a row without related rows still matches through its own columns.
+     * [search] matches each word on its own, so its words may match different related rows.
+     *
+     * ```kotlin
+     * val found = owners
+     *     .select()
+     *     .semiJoin<Pet>().on<Owner>()
+     *     .where(search(input, Owner_.lastName, Pet_.name))
+     *     .resultList
+     * ```
+     *
+     * @param relation the table to filter by.
+     * @return the join builder.
+     * @since 1.15
+     */
+    public abstract fun semiJoin(relation: KClass<out Data>): TypedJoinBuilder<T, R, ID>
+
+    /**
+     * Adds a semi-join to the query.
+     *
+     * @param J the table to filter by.
+     * @return the join builder.
+     * @since 1.15
+     */
+    public inline fun <reified J : Data> semiJoin(): TypedJoinBuilder<T, R, ID> = semiJoin(J::class)
+
+    /**
+     * Adds an anti-join to the query: the query keeps the rows that have no related row in the given table matching
+     * the condition stated on the join, or no related row at all when the join states none. The table's columns can be
+     * named in the join's condition only.
+     *
+     * ```kotlin
+     * val petsWithoutRabiesShot = pets
+     *     .select()
+     *     .antiJoin<Visit>().on<Pet> { Visit_.description eq "rabies shot" }
+     *     .resultList
+     * ```
+     *
+     * @param relation the table to filter by.
+     * @return the join builder.
+     * @since 1.15
+     */
+    public abstract fun antiJoin(relation: KClass<out Data>): TypedJoinBuilder<T, R, ID>
+
+    /**
+     * Adds an anti-join to the query.
+     *
+     * @param J the table to filter by.
+     * @return the join builder.
+     * @since 1.15
+     */
+    public inline fun <reified J : Data> antiJoin(): TypedJoinBuilder<T, R, ID> = antiJoin(J::class)
+
+    /**
      * Adds a join of the specified type to the query.
      *
      * @param type the type of the join (e.g., INNER, LEFT, RIGHT).
@@ -1554,6 +1614,8 @@ public infix fun <T : Data> Navigable<T, String>.notEndsWithIgnoreCase(text: Str
  * such as an empty search box, matches every row.
  *
  * A path through a relation joins its table as any other path does, and a path may start at a table the query joins.
+ * A path may also start at a semi-joined table, which searches the rows related to each row; each word is matched on
+ * its own, so the words may match different related rows.
  * Accents compare as the column's collation compares them.
  *
  * @param input the search input, as a search box receives it.
@@ -1840,6 +1902,79 @@ public class SqlScope<T : Data, R : Any, ID : Any> @PublishedApi internal constr
     /** Adds a RIGHT JOIN for [J] with a template ON condition (e.g., `rightJoin<Order> { "..." }`). */
     public inline fun <reified J : Data> rightJoin(noinline on: TemplateBuilder) {
         builder = builder.rightJoin(J::class).on(on)
+    }
+
+    /** Adds an INNER JOIN between [relation] and [on], with a [condition] added to the resolved foreign key. */
+    public fun innerJoin(relation: KClass<out Data>, on: KClass<out Data>, condition: WhereBuilder<Data, R, ID>.() -> PredicateBuilder<out Data, *, *>) {
+        builder = builder.innerJoin(relation).on(on, condition)
+    }
+
+    /** Adds an INNER JOIN between [J] and [O], with a [condition] added to the resolved foreign key. */
+    @JvmName("innerJoinCondition")
+    public inline fun <reified J : Data, reified O : Data> innerJoin(noinline condition: WhereBuilder<Data, R, ID>.() -> PredicateBuilder<out Data, *, *>) {
+        builder = builder.innerJoin(J::class).on(O::class, condition)
+    }
+
+    /** Adds a LEFT JOIN between [relation] and [on], with a [condition] added to the resolved foreign key. */
+    public fun leftJoin(relation: KClass<out Data>, on: KClass<out Data>, condition: WhereBuilder<Data, R, ID>.() -> PredicateBuilder<out Data, *, *>) {
+        builder = builder.leftJoin(relation).on(on, condition)
+    }
+
+    /** Adds a LEFT JOIN between [J] and [O], with a [condition] added to the resolved foreign key. */
+    @JvmName("leftJoinCondition")
+    public inline fun <reified J : Data, reified O : Data> leftJoin(noinline condition: WhereBuilder<Data, R, ID>.() -> PredicateBuilder<out Data, *, *>) {
+        builder = builder.leftJoin(J::class).on(O::class, condition)
+    }
+
+    /** Adds a RIGHT JOIN between [relation] and [on], with a [condition] added to the resolved foreign key. */
+    public fun rightJoin(relation: KClass<out Data>, on: KClass<out Data>, condition: WhereBuilder<Data, R, ID>.() -> PredicateBuilder<out Data, *, *>) {
+        builder = builder.rightJoin(relation).on(on, condition)
+    }
+
+    /** Adds a RIGHT JOIN between [J] and [O], with a [condition] added to the resolved foreign key. */
+    @JvmName("rightJoinCondition")
+    public inline fun <reified J : Data, reified O : Data> rightJoin(noinline condition: WhereBuilder<Data, R, ID>.() -> PredicateBuilder<out Data, *, *>) {
+        builder = builder.rightJoin(J::class).on(O::class, condition)
+    }
+
+    /** Adds a semi-join of [relation] on [on]: the query keeps the rows with a related row matching the conditions that name it. */
+    public fun semiJoin(relation: KClass<out Data>, on: KClass<out Data>) {
+        builder = builder.semiJoin(relation).on(on)
+    }
+
+    /** Adds a semi-join of [J] on [O] (e.g., `semiJoin<Pet, Owner>()`). */
+    public inline fun <reified J : Data, reified O : Data> semiJoin() {
+        builder = builder.semiJoin(J::class).on(O::class)
+    }
+
+    /** Adds a semi-join of [relation] on [on], with a [condition] on the related rows. */
+    public fun semiJoin(relation: KClass<out Data>, on: KClass<out Data>, condition: WhereBuilder<Data, R, ID>.() -> PredicateBuilder<out Data, *, *>) {
+        builder = builder.semiJoin(relation).on(on, condition)
+    }
+
+    /** Adds a semi-join of [J] on [O], with a [condition] on the related rows. */
+    public inline fun <reified J : Data, reified O : Data> semiJoin(noinline condition: WhereBuilder<Data, R, ID>.() -> PredicateBuilder<out Data, *, *>) {
+        builder = builder.semiJoin(J::class).on(O::class, condition)
+    }
+
+    /** Adds an anti-join of [relation] on [on]: the query keeps the rows without a related row. */
+    public fun antiJoin(relation: KClass<out Data>, on: KClass<out Data>) {
+        builder = builder.antiJoin(relation).on(on)
+    }
+
+    /** Adds an anti-join of [J] on [O] (e.g., `antiJoin<Pet, Owner>()`). */
+    public inline fun <reified J : Data, reified O : Data> antiJoin() {
+        builder = builder.antiJoin(J::class).on(O::class)
+    }
+
+    /** Adds an anti-join of [relation] on [on]: the query keeps the rows without a related row matching [condition]. */
+    public fun antiJoin(relation: KClass<out Data>, on: KClass<out Data>, condition: WhereBuilder<Data, R, ID>.() -> PredicateBuilder<out Data, *, *>) {
+        builder = builder.antiJoin(relation).on(on, condition)
+    }
+
+    /** Adds an anti-join of [J] on [O]: the query keeps the rows without a related row matching [condition]. */
+    public inline fun <reified J : Data, reified O : Data> antiJoin(noinline condition: WhereBuilder<Data, R, ID>.() -> PredicateBuilder<out Data, *, *>) {
+        builder = builder.antiJoin(J::class).on(O::class, condition)
     }
 
     /** Adds a join of the specified [type] for [relation] under [alias], with automatic ON resolution against [on]. */

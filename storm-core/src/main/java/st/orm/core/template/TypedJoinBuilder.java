@@ -15,6 +15,7 @@
  */
 package st.orm.core.template;
 
+import java.util.function.Function;
 import st.orm.Data;
 
 /**
@@ -33,4 +34,17 @@ public interface TypedJoinBuilder<T extends Data, R, ID> extends JoinBuilder<T, 
      * @return the query builder.
      */
     QueryBuilder<Data, R, ID> on(Class<? extends Data> relation);
+
+    /**
+     * Specifies the relation to join on, with a condition the join adds to the foreign key it resolves. On a left
+     * join, the condition decides which related rows join, so a row without a match is kept; on an anti-join, it
+     * decides which related rows exclude a row.
+     *
+     * @param relation the relation to join on.
+     * @param condition the condition on the joined rows.
+     * @return the query builder.
+     * @since 1.15
+     */
+    QueryBuilder<Data, R, ID> on(Class<? extends Data> relation,
+                                 Function<WhereBuilder<Data, R, ID>, PredicateBuilder<Data, ?, ?>> condition);
 }

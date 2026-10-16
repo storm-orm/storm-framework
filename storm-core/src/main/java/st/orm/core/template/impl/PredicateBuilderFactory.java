@@ -98,7 +98,8 @@ public interface PredicateBuilderFactory {
      * Creates a predicate that matches the terms of a search input against text columns. Every term must occur in
      * at least one of the paths, ignoring case and matched as literal text, as {@link st.orm.Operator#CONTAINS_IGNORE_CASE}
      * matches it, so the predicate is an AND over the terms of an OR over the paths. Whitespace separates the terms and
-     * a quoted phrase is one term; an input without terms matches every row.
+     * a quoted phrase is one term; an input without terms matches every row. Each term is matched on its own, so on a
+     * semi-joined table the terms may match different related rows.
      *
      * @param input the search input, as a search box receives it.
      * @param paths the text columns to search, at least one.
@@ -126,7 +127,9 @@ public interface PredicateBuilderFactory {
                         new PredicateBuilderImpl<>(wrap(new ObjectExpression(path, CONTAINS_IGNORE_CASE, List.of(term))));
                 any = any == null ? match : any.or(match);
             }
-            all = all == null ? any : all.and(any);
+            // Each word is matched on its own, so on a semi-joined table the words may match different related rows.
+            var word = ((PredicateBuilderImpl<T, R, ID>) any).scope();
+            all = all == null ? word : all.and(word);
         }
         return all;
     }

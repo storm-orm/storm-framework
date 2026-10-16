@@ -730,6 +730,41 @@ public class QueryBuilderTest {
                 .getResultList().stream().map(Owner::firstName).sorted().toList();
     }
 
+    // Semi-joins and anti-joins
+
+    @Test
+    public void testSemiJoinSearchMatchesEachWordOnARelatedRowOfItsOwn() {
+        // data.sql: owner 6 (Jean Coleman) has pets Samantha and Max.
+        assertEquals(List.of("Jean"), semiJoinSearchFirstNames("samantha max"));
+        assertEquals(List.of("Harold"), semiJoinSearchFirstNames("davis iggy"));
+        assertEquals(List.of("Betty", "Harold"), semiJoinSearchFirstNames("davis"));
+    }
+
+    @Test
+    public void testSemiJoinHoldsConditionsJoinedByAndToOneRelatedRow() {
+        List<Owner> owners = orm.entity(Owner.class).select()
+                .semiJoin(Pet.class).on(Owner.class)
+                .where(it -> it.where(Pet_.name, EQUALS, "Samantha").and(it.where(Pet_.name, EQUALS, "Max")))
+                .getResultList();
+        assertEquals(List.of(), owners);
+    }
+
+    @Test
+    public void testAntiJoinKeepsTheRowsWithoutARelatedRowMatchingTheJoinCondition() {
+        List<Pet> pets = orm.entity(Pet.class).select()
+                .antiJoin(Visit.class).on(Pet.class, it -> it.where(Visit_.description, EQUALS, "spayed"))
+                .where(it -> it.where(Pet_.name, EQUALS, "Max").or(it.where(Pet_.name, EQUALS, "Samantha")))
+                .getResultList();
+        assertEquals(List.of("Max"), pets.stream().map(Pet::name).toList());
+    }
+
+    private List<String> semiJoinSearchFirstNames(String input) {
+        return orm.entity(Owner.class).select()
+                .semiJoin(Pet.class).on(Owner.class)
+                .where(it -> it.search(input, Owner_.lastName, Pet_.name))
+                .getResultList().stream().map(Owner::firstName).sorted().toList();
+    }
+
     // PredicateBuilder - and / or across entities on a widened builder
 
     @Test

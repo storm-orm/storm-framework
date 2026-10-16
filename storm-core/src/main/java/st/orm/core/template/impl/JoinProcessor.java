@@ -28,13 +28,17 @@ import static st.orm.core.template.impl.RecordReflection.getTableName;
 import static st.orm.core.template.impl.RecordReflection.isTableJoinCandidate;
 import static st.orm.core.template.impl.RecordValidation.validateDataType;
 
+import java.util.List;
 import java.util.Optional;
+import java.util.function.Function;
 import org.jspecify.annotations.Nullable;
 import st.orm.Data;
 import st.orm.Metamodel;
 import st.orm.SqlTemplateException;
+import st.orm.core.template.TemplateString;
 import st.orm.core.template.impl.Elements.TableSource;
 import st.orm.core.template.impl.Elements.TableTarget;
+import st.orm.core.template.impl.Elements.TemplateExpression;
 import st.orm.core.template.impl.Elements.TemplateSource;
 import st.orm.core.template.impl.Elements.TemplateTarget;
 import st.orm.mapping.RecordField;
@@ -59,7 +63,33 @@ final class JoinProcessor implements ElementProcessor<Join> {
         if (join.source() instanceof TemplateSource || join.target() instanceof TemplateTarget) {
             return null;
         }
+        if (join.target() instanceof TableTarget(var ignore1, var ignore2, var condition) && condition != null) {
+            return null;    // The condition's values are no part of the shape; the key generator variant keys it.
+        }
         return join;
+    }
+
+    /**
+     * Returns a key for the given element, keying the condition a table join adds to its ON clause by the condition's
+     * shape rather than its values.
+     *
+     * @param join the element to compute a key for.
+     * @param keyGenerator a function that generates compilation keys for sub-templates.
+     * @return an immutable key for caching, or {@code null} if the element (or its compilation) cannot be cached.
+     */
+    @Override
+    public Object getCompilationKey(Join join, Function<TemplateString, Object> keyGenerator) {
+        if (join.source() instanceof TableSource
+                && join.target() instanceof TableTarget(var table, var field, var condition) && condition != null) {
+            var conditionKey = keyGenerator.apply(condition.toTemplate());
+            if (conditionKey == null) {
+                return null;
+            }
+            var withoutCondition = new Join(join.source(), join.sourceAlias(), new TableTarget(table, field),
+                    join.targetAlias(), join.type(), join.autoJoin());
+            return List.of(withoutCondition, conditionKey);
+        }
+        return getCompilationKey(join);
     }
 
     /**
@@ -100,6 +130,9 @@ final class JoinProcessor implements ElementProcessor<Join> {
         if (join.target() instanceof TemplateTarget(var template)) {
             binder.bind(template, true);
         }
+        if (join.target() instanceof TableTarget(var ignore1, var ignore2, var condition) && condition != null) {
+            binder.getQueryModel().bindExpression(new TemplateExpression(condition.toTemplate()), binder);
+        }
         if (join.source() instanceof TemplateSource(var template)) {
             binder.bind(template, false);
         }
@@ -112,8 +145,12 @@ final class JoinProcessor implements ElementProcessor<Join> {
             throw new SqlTemplateException("%s has no ON clause, so it cannot take a join condition. Use a join type with an ON clause, such as an inner or left join, to join on a condition.".formatted(joinType));
         }
         String onClause = join.type().hasOnClause() ? switch (join.target()) {
-            case TableTarget(var toTable, var toField) when join.source() instanceof TableSource(var fromTable) ->
-                    compileJoinCondition(fromTable, join.sourceAlias(), toTable, join.targetAlias(), toField, compiler);
+            case TableTarget(var toTable, var toField, var condition) when join.source() instanceof TableSource(var fromTable) -> {
+                var derived = compileJoinCondition(fromTable, join.sourceAlias(), toTable, join.targetAlias(), toField, compiler);
+                yield condition == null
+                        ? derived
+                        : "%s AND (%s)".formatted(derived, compiler.getQueryModel().compileExpression(new TemplateExpression(condition.toTemplate()), compiler));
+            }
             case TemplateTarget ts -> compiler.compile(ts.template(), true);
             default -> throw new SqlTemplateException("Unsupported join target type: %s. Join targets must be either a table type (Class<? extends Data>) or a template expression.".formatted(join.target().getClass().getSimpleName()));
         } : "";

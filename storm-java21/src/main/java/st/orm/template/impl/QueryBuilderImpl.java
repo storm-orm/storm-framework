@@ -376,11 +376,43 @@ public final class QueryBuilderImpl<T extends Data, R, ID> extends QueryBuilder<
      */
     @Override
     public TypedJoinBuilder<T, R, ID> join(JoinType type, Class<? extends Data> relation, String alias) {
-        st.orm.core.template.TypedJoinBuilder<T, R, ID> joinBuilder = core.join(type, relation, alias);
+        return typedJoin(core.join(type, relation, alias));
+    }
+
+    /**
+     * Adds a semi-join to the query.
+     *
+     * @param relation the table to filter by.
+     * @return the join builder.
+     */
+    @Override
+    public TypedJoinBuilder<T, R, ID> semiJoin(Class<? extends Data> relation) {
+        return typedJoin(core.semiJoin(relation));
+    }
+
+    /**
+     * Adds an anti-join to the query.
+     *
+     * @param relation the table to filter by.
+     * @return the join builder.
+     */
+    @Override
+    public TypedJoinBuilder<T, R, ID> antiJoin(Class<? extends Data> relation) {
+        return typedJoin(core.antiJoin(relation));
+    }
+
+    private TypedJoinBuilder<T, R, ID> typedJoin(st.orm.core.template.TypedJoinBuilder<T, R, ID> joinBuilder) {
         return new TypedJoinBuilder<>() {
             @Override
             public QueryBuilder<Data, R, ID> on(Class<? extends Data> relation) {
                 return new QueryBuilderImpl<>(joinBuilder.on(relation));
+            }
+
+            @Override
+            public QueryBuilder<Data, R, ID> on(Class<? extends Data> relation,
+                                                Function<WhereBuilder<Data, R, ID>, PredicateBuilder<Data, ?, ?>> condition) {
+                return new QueryBuilderImpl<>(joinBuilder.on(relation, whereBuilder ->
+                        ((PredicateBuilderImpl<Data, ?, ?>) condition.apply(new WhereBuilderImpl<>(whereBuilder))).core));
             }
 
             @Override

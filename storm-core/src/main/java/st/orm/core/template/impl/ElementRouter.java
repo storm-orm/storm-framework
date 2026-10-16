@@ -20,12 +20,14 @@ import st.orm.core.template.impl.Elements.Alias;
 import st.orm.core.template.impl.Elements.BindVar;
 import st.orm.core.template.impl.Elements.Column;
 import st.orm.core.template.impl.Elements.Columns;
+import st.orm.core.template.impl.Elements.Correlation;
 import st.orm.core.template.impl.Elements.Cursor;
 import st.orm.core.template.impl.Elements.Delete;
 import st.orm.core.template.impl.Elements.Fetch;
 import st.orm.core.template.impl.Elements.From;
 import st.orm.core.template.impl.Elements.Insert;
 import st.orm.core.template.impl.Elements.Param;
+import st.orm.core.template.impl.Elements.RelationKey;
 import st.orm.core.template.impl.Elements.Select;
 import st.orm.core.template.impl.Elements.Set;
 import st.orm.core.template.impl.Elements.Subquery;
@@ -59,6 +61,8 @@ class ElementRouter {
     private static final SubqueryProcessor SUBQUERY_PROCESSOR = new SubqueryProcessor();
     private static final UnsafeProcessor UNSAFE_PROCESSOR = new UnsafeProcessor();
     private static final CacheableProcessor CACHEABLE_PROCESSOR = new CacheableProcessor();
+    private static final RelationKeyProcessor RELATION_KEY_PROCESSOR = new RelationKeyProcessor();
+    private static final RelationKeyProcessor.CorrelationProcessor CORRELATION_PROCESSOR = new RelationKeyProcessor.CorrelationProcessor();
 
     static ElementProcessor<Element> getElementProcessor(Element element) {
         //noinspection unchecked
@@ -84,6 +88,8 @@ class ElementRouter {
             case Subquery ignored -> SUBQUERY_PROCESSOR;
             case Unsafe ignored -> UNSAFE_PROCESSOR;
             case Cacheable ignored -> CACHEABLE_PROCESSOR;
+            case RelationKey ignored -> RELATION_KEY_PROCESSOR;
+            case Correlation ignored -> CORRELATION_PROCESSOR;
             default -> throw new IllegalStateException("Unsupported element type: %s."
                     .formatted(element.getClass().getName()));
         };

@@ -118,6 +118,8 @@ Scrolling (keyset): `.scroll(Scrollable.of(User_.id, 20))` — do NOT combine wi
 
 Streaming: `.getResultStream()` is one open statement; while rows remain unread its connection is consume-only, so inside a transaction a query, `Ref.fetch()` or write from the loop throws `PersistenceException`, on every database. A loop that reads or writes per row uses `.windows(size)` (`Stream<Window<R>>`): keyset windows over the primary key, one closed statement per window, the connection is free between windows, nothing to close; write per window with `update(window.content().stream().map(...).toList())`.
 Explicit joins: `.innerJoin(Entity.class).on(OtherEntity.class)`, `.leftJoin(Entity.class).on(OtherEntity.class)`, `.rightJoin(Entity.class).on(OtherEntity.class)`
+A condition on the join: `.leftJoin(Pet.class).on(Owner.class, it -> it.where(Pet_.name, EQUALS, "Leo"))` adds the condition to the resolved foreign key; on a left join it keeps the rows without a match, which the same condition in `where` would drop
+Filtering by related rows: `.semiJoin(Pet.class).on(Owner.class)` keeps the rows with a related row matching the conditions that name it, each once; `.antiJoin(Visit.class).on(Pet.class, it -> it.where(Visit_.description, EQUALS, "rabies shot"))` keeps the rows without one
 **Auto-join types follow FK nullability.** A `@FK` record component is non-null by default, so its auto-join is an INNER JOIN. Mark the component `@Nullable` (JSpecify `org.jspecify.annotations.Nullable` or `jakarta.annotation.Nullable`) when the FK column allows NULL; that produces a LEFT JOIN. If generated SQL shows INNER JOIN where you expect LEFT JOIN, the FK component is missing `@Nullable` in the entity.
 Result type: `.select(ResultType.class)` to return a different type than the root entity. **Cross-entity pitfall:** Selecting a different entity type from the wrong root repository can fail with "Cannot find alias for column" when both entities have columns with the same name (e.g., `id`). Put the query on the target entity's repository instead.
 
@@ -127,7 +129,7 @@ Operators: EQUALS, NOT_EQUALS, LESS_THAN, LESS_THAN_OR_EQUAL, GREATER_THAN, GREA
 
 **Text compared whatever its case goes through the `IGNORE_CASE` operators, never through a `LOWER(...)` template.** `EQUALS`, `CONTAINS`, `STARTS_WITH` and `ENDS_WITH` follow the column's collation, which ignores case on MySQL, MariaDB and SQL Server by default and not on PostgreSQL, Oracle and H2, so the same query answers differently per database. `EQUALS_IGNORE_CASE`, `CONTAINS_IGNORE_CASE`, `STARTS_WITH_IGNORE_CASE` and `ENDS_WITH_IGNORE_CASE`, with their `NOT_` forms, have the database lower both sides, and the text ones still match their text literally: `.where(User_.name, CONTAINS_IGNORE_CASE, query)`. A search box and a lookup by email address or user name want these; a code, a token or an id compared exactly wants `EQUALS`. They ignore case; accents follow the column's collation, ignored on MySQL and MariaDB by default and compared as they are elsewhere. A plain index does not serve the lowered column: where the lookup must be served by one, index the lowered expression, or keep the plain operator on a column whose collation ignores case already.
 
-**A search box goes through `search`, never through hand-built `CONTAINS_IGNORE_CASE` chains.** `.where(it -> it.search(input, Movie_.title, Movie_.director.name))` takes the input as the box receives it: whitespace separates the words, a quoted phrase is one word, every word must occur in at least one of the columns (ignoring case, literally), and an empty input matches every row. It returns a predicate, so it combines with `.and()` and `.or()`. Do not split the input, reduce over the words or special-case the empty box in application code.
+**A search box goes through `search`, never through hand-built `CONTAINS_IGNORE_CASE` chains.** `.where(it -> it.search(input, Movie_.title, Movie_.director.name))` takes the input as the box receives it: whitespace separates the words, a quoted phrase is one word, every word must occur in at least one of the columns (ignoring case, literally), and an empty input matches every row. It returns a predicate, so it combines with `.and()` and `.or()`. Do not split the input, reduce over the words or special-case the empty box in application code. To search the rows related to each row, such as an owner's pets, semi-join the related table and name its column: `.semiJoin(Pet.class).on(Owner.class).where(it -> it.search(input, Owner_.lastName, Pet_.name))`. Each word may then match a different related row, and every owner comes back once.
 
 ### Naming a foreign key column
 
@@ -503,6 +505,30 @@ orders.select()
 ```
 
 Reach for an explicit join when a path cannot express the query: a relationship the entity model does not carry as a foreign key, the to-many side of one (a path navigates to-one only), a self-join that needs its own alias, or a join whose entity you want the query widened to rather than filtered by.
+
+**Filter by the to-many side with `semiJoin` or `antiJoin`, never with a join and `distinct`.** A join to the many side returns a row per related row, which takes `distinct` to undo, and a `DISTINCT` query can only order by the columns it selects. `semiJoin` filters without joining the related rows: every root row comes back once, so scrolling, paging and `getResultCount()` count root rows.
+
+```java
+// ✅ Owners of a Leo, each once
+owners.select()
+    .semiJoin(Pet.class).on(Owner.class)
+    .where(Pet_.name, EQUALS, "Leo")
+    .getResultList();
+
+// ❌ A row per matching pet, folded back with distinct
+owners.select()
+    .distinct()
+    .innerJoin(Pet.class).on(Owner.class)
+    .where(Pet_.name, EQUALS, "Leo")
+    .getResultList();
+
+// ✅ Pets without a rabies shot: the anti-join's condition goes on the join, never in where
+pets.select()
+    .antiJoin(Visit.class).on(Pet.class, it -> it.where(Visit_.description, EQUALS, "rabies shot"))
+    .getResultList();
+```
+
+Conditions joined by `.and()` on a semi-joined table hold for the same related row; a part of the condition naming only the query's own tables holds without a related row, so an `.or()` of `Owner_.lastName` and `Pet_.name` also finds a Davis without pets. A semi-joined table adds no columns: ordering, grouping or selecting by it is refused, and so is a semi-join no condition names. A `where` condition naming an anti-joined table is refused; it belongs on the join.
 
 Three rules:
 

@@ -185,8 +185,18 @@ public final class Elements {
             requireNonNull(operator, "operator");
         }
     }
-    /** A condition written as a template fragment, rendered with its interpolations in place. */
-    public record TemplateExpression(TemplateString template) implements Expression {}
+    /**
+     * A condition written as a template fragment, rendered with its interpolations in place.
+     *
+     * @param template the condition.
+     * @param predicate the condition's boolean structure when a predicate builder built it, which a query with a
+     *                  semi-join or anti-join needs to place its terms; {@code null} for a template written directly.
+     */
+    public record TemplateExpression(TemplateString template, @Nullable PredicateNode predicate) implements Expression {
+        public TemplateExpression(TemplateString template) {
+            this(template, null);
+        }
+    }
 
     /**
      * Renders a WHERE condition from the expression, or from {@code bindVars} placeholders for batch execution.
@@ -226,10 +236,14 @@ public final class Elements {
      * @param table the table to join against.
      * @param field the resolved foreign key field for graph-derived joins, or {@code null} when
      *              the field must be resolved from the table types.
+     * @param condition a condition the ON clause adds to the derived one, or {@code null} for none.
      */
-    public record TableTarget(Class<? extends Data> table, @Nullable RecordField field) implements Target {
+    public record TableTarget(Class<? extends Data> table, @Nullable RecordField field, @Nullable PredicateNode condition) implements Target {
         public TableTarget(Class<? extends Data> table) {
-            this(table, null);
+            this(table, null, null);
+        }
+        public TableTarget(Class<? extends Data> table, @Nullable RecordField field) {
+            this(table, field, null);
         }
     }
     /** An ON condition supplied as a template fragment. */
@@ -395,6 +409,43 @@ public final class Elements {
      * enclosing template; without it, the subquery is self-contained.
      */
     public record Subquery(TemplateString template, boolean correlate) implements Element {}
+
+    /**
+     * Renders the columns by which a table takes part in a relation: the foreign key columns on the table holding the
+     * foreign key, or the primary key columns on the table it references. The columns are qualified with the table's
+     * alias, resolved in the given scope.
+     *
+     * @param table the table whose columns render.
+     * @param foreignKey the foreign key field of the relation.
+     * @param holdsKey {@code true} if {@code table} holds the foreign key, {@code false} if it is referenced by it.
+     * @param scope where the table's alias resolves.
+     * @since 1.15
+     */
+    public record RelationKey(Class<? extends Data> table, RecordField foreignKey, boolean holdsKey, ResolveScope scope) implements Element {
+        public RelationKey {
+            requireNonNull(table, "table");
+            requireNonNull(foreignKey, "foreignKey");
+            requireNonNull(scope, "scope");
+        }
+    }
+
+    /**
+     * Renders the condition that relates a row of a subquery's table to a row of the enclosing query: each key column
+     * of the inner table equal to its counterpart on the outer table.
+     *
+     * @param inner the subquery's table, whose alias resolves in the subquery.
+     * @param outer the enclosing query's table, whose alias resolves in the enclosing query.
+     * @param foreignKey the foreign key field of the relation.
+     * @param innerHoldsKey {@code true} if {@code inner} holds the foreign key, {@code false} if {@code outer} does.
+     * @since 1.15
+     */
+    public record Correlation(Class<? extends Data> inner, Class<? extends Data> outer, RecordField foreignKey, boolean innerHoldsKey) implements Element {
+        public Correlation {
+            requireNonNull(inner, "inner");
+            requireNonNull(outer, "outer");
+            requireNonNull(foreignKey, "foreignKey");
+        }
+    }
 
     /** Raw SQL rendered verbatim, bypassing the template's safety checks. */
     public record Unsafe(String sql) implements Element {
