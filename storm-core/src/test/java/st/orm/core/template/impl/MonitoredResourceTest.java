@@ -2,7 +2,12 @@ package st.orm.core.template.impl;
 
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import com.jayway.jsonpath.JsonPath;
+import java.io.IOException;
+import java.io.InputStream;
+import java.util.Arrays;
 import java.util.List;
 import java.util.stream.BaseStream;
 import java.util.stream.IntStream;
@@ -36,6 +41,20 @@ public class MonitoredResourceTest {
                         "Derived IntStream proxy must implement [BaseStream, IntStream] in that order");
             }
         }
+    }
+
+    @Test
+    public void testPreparedQueryProxyShapeIsRegistered() throws IOException {
+        List<String> shape = Arrays.stream(MonitoredResource.proxyInterfaces(PreparedQueryImpl.class))
+                .map(Class::getName)
+                .toList();
+        List<List<String>> registered;
+        try (InputStream config = MonitoredResource.class.getResourceAsStream(
+                "/META-INF/native-image/st.orm/storm-core/proxy-config.json")) {
+            registered = JsonPath.read(config, "$[*].interfaces");
+        }
+        assertTrue(registered.contains(shape),
+                "Prepared query proxy shape " + shape + " must be registered in proxy-config.json");
     }
 
     @Test

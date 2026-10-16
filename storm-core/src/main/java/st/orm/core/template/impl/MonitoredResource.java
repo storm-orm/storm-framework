@@ -95,6 +95,16 @@ final class MonitoredResource {
     }
 
     /**
+     * Returns the interfaces the proxy wrapping an instance of the given type implements, in proxy order.
+     *
+     * @param type the type of the wrapped resource.
+     * @return the proxy's interfaces.
+     */
+    static Class<?>[] proxyInterfaces(Class<?> type) {
+        return INTERFACES.get(type).clone();
+    }
+
+    /**
      * Interface arrays per class; the walk is only performed once per resource type. The interfaces are
      * sorted by name because JDK proxy classes are keyed by the ordered interface list: a stable order
      * ensures every run requests the same proxy shape, which allows the shape to be registered as
