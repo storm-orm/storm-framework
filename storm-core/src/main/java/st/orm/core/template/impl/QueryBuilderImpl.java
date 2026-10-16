@@ -55,6 +55,7 @@ import st.orm.core.template.SubqueryTemplate;
 import st.orm.core.template.TemplateString;
 import st.orm.core.template.TypedJoinBuilder;
 import st.orm.core.template.WhereBuilder;
+import st.orm.core.template.impl.Elements.Advisory;
 import st.orm.core.template.impl.Elements.Expression;
 import st.orm.core.template.impl.Elements.ObjectExpression;
 import st.orm.core.template.impl.Elements.TableSource;
@@ -421,6 +422,13 @@ abstract class QueryBuilderImpl<T extends Data, R, ID> extends QueryBuilder<T, R
      * given template.
      */
     protected final TemplateString appendJoinsAndWhere(TemplateString template) {
+        // Which search terms a substring index serves depends on the dialect, so a search resolves its words here.
+        int minimumSearchTermLength = queryTemplate.dialect().minimumSearchTermLength();
+        var where = resolveSearches(this.where, minimumSearchTermLength);
+        if (where != this.where && this.where.stream().anyMatch(it -> unindexedSearch(it, minimumSearchTermLength))) {
+            template = TemplateString.combine(template, wrap(new Advisory(UNINDEXED_SEARCH_ADVICE
+                    .formatted(minimumSearchTermLength))));
+        }
         var filterJoins = join.stream().filter(FilterJoinPlacement::isFilterJoin).toList();
         var joins = filterJoins.isEmpty() ? join : join.stream().filter(it -> !FilterJoinPlacement.isFilterJoin(it)).toList();
         if (!joins.isEmpty()) {
@@ -449,6 +457,36 @@ abstract class QueryBuilderImpl<T extends Data, R, ID> extends QueryBuilder<T, R
             }
         }
         return template;
+    }
+
+    /** The advice a statement carries for a search whose terms are all shorter than the substring index serves. */
+    private static final String UNINDEXED_SEARCH_ADVICE = "every search term is shorter than the %d characters a "
+            + "substring index serves, so the search reads every row; a search box that queries as the user types "
+            + "wants suggest, which matches no rows for such input. See https://orm.st/queries#indexing-a-search";
+
+    /**
+     * Returns the WHERE conditions with each search in them resolved for the dialect, or the conditions themselves
+     * when none holds a search.
+     */
+    private static List<Where> resolveSearches(List<Where> where, int minimumSearchTermLength) {
+        List<Where> resolved = null;
+        for (int i = 0; i < where.size(); i++) {
+            var condition = where.get(i);
+            if (condition.expression() instanceof TemplateExpression(var ignore, var predicate)
+                    && predicate != null && PredicateNode.holdsSearch(predicate)) {
+                if (resolved == null) {
+                    resolved = new ArrayList<>(where);
+                }
+                var node = PredicateNode.resolve(predicate, minimumSearchTermLength);
+                resolved.set(i, new Where(new TemplateExpression(node.toTemplate(), node), condition.bindVars()));
+            }
+        }
+        return resolved == null ? where : resolved;
+    }
+
+    private static boolean unindexedSearch(Where where, int minimumSearchTermLength) {
+        return where.expression() instanceof TemplateExpression(var ignore, var predicate)
+                && predicate != null && PredicateNode.holdsUnindexedSearch(predicate, minimumSearchTermLength);
     }
 
     /**
@@ -789,6 +827,14 @@ abstract class QueryBuilderImpl<T extends Data, R, ID> extends QueryBuilder<T, R
             this(List.of(requireNonNull(template, "template")), safe, null, new PredicateNode.Term(template, safe));
         }
 
+        /**
+         * Creates a predicate from its structure, rendered as one template that is grouped in parentheses wherever it
+         * is combined.
+         */
+        PredicateBuilderImpl(PredicateNode node) {
+            this(List.of(node.toTemplate()), false, null, node);
+        }
+
         private PredicateBuilderImpl(List<TemplateString> templates,
                                      boolean safe,
                                      @Nullable TemplateString operator,
@@ -996,7 +1042,8 @@ abstract class QueryBuilderImpl<T extends Data, R, ID> extends QueryBuilder<T, R
         private QueryBuilder<TX, RX, IDX> build(PredicateBuilderImpl<?, ?, ?> predicate) {
             var template = predicate.asTemplate();
             Where where;
-            if (unwrap(template) instanceof Expression expression) {
+            // A search keeps its structure, since its words are resolved for the dialect when the query is built.
+            if (!PredicateNode.holdsSearch(predicate.node()) && unwrap(template) instanceof Expression expression) {
                 where = new Where(expression, null);
             } else {
                 where = new Where(new TemplateExpression(template, predicate.node()), null);

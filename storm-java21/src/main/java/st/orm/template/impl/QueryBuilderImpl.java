@@ -606,6 +606,11 @@ public final class QueryBuilderImpl<T extends Data, R, ID> extends QueryBuilder<
         protected PredicateBuilder<TX, RX, IDX> searchImpl(String input, List<Navigable<? extends TX, String>> paths) {
             return new PredicateBuilderImpl<>(PredicateBuilderFactory.search(input, paths.stream().map(Navigable::asMetamodel).toList()));
         }
+
+        @Override
+        protected PredicateBuilder<TX, RX, IDX> suggestImpl(String input, List<Navigable<? extends TX, String>> paths) {
+            return new PredicateBuilderImpl<>(PredicateBuilderFactory.suggest(input, paths.stream().map(Navigable::asMetamodel).toList()));
+        }
     }
 
     /**

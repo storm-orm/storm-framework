@@ -182,6 +182,11 @@ class TemplateProcessor {
     private List<String> fetchPaths;
 
     /**
+     * Compile-time only: advice about the statement, which the slow statement log reports.
+     */
+    private List<String> advisories = List.of();
+
+    /**
      * Compile-time only: the select list the query model generated, which a cursor element finds its columns in.
      */
     @Nullable
@@ -660,7 +665,8 @@ class TemplateProcessor {
                 versionAware != null && versionAware,
                 warning,
                 StatementOrigin.DIRECT,
-                shapeId
+                shapeId,
+                advisories
         );
     }
 
@@ -987,6 +993,15 @@ class TemplateProcessor {
         public void setFetchPaths(List<String> paths) {
             if (fetchPaths == null) {
                 fetchPaths = List.copyOf(paths);
+            }
+        }
+
+        @Override
+        public void addAdvisory(String advisory) {
+            if (!advisories.contains(advisory)) {
+                var copy = new ArrayList<>(advisories);
+                copy.add(advisory);
+                advisories = List.copyOf(copy);
             }
         }
 

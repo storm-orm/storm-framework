@@ -90,7 +90,8 @@ class QueryImpl implements Query, KeyedQuery {
                        StatementOrigin origin,
                        long shapeId,
                        List<Parameter> parameters,
-                       @Nullable SqlCommenter sqlCommenter) {
+                       @Nullable SqlCommenter sqlCommenter,
+                       List<String> advisories) {
 
         /**
          * Returns the references to resolve while mapping rows into the given type.
@@ -255,7 +256,7 @@ class QueryImpl implements Query, KeyedQuery {
             var handles = listen(operators, context, environment.parameters());
             if (slowLog) {
                 // The slow log listens the way a scope does, at the same point, for every execution.
-                var slow = SlowStatementLog.onExecute(context, environment.parameters(), environment.sqlCommenter());
+                var slow = SlowStatementLog.onExecute(context, environment.parameters(), environment.sqlCommenter(), environment.advisories());
                 if (handles == null) {
                     handles = new StatementListener.Handle[] {slow};
                 } else {

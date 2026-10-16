@@ -447,6 +447,19 @@ public final class Elements {
         }
     }
 
+    /**
+     * Advice about the statement, which renders nothing. The statement carries it to the slow statement log, which
+     * reports it when an execution of the statement is slow.
+     *
+     * @param text the advice.
+     * @since 1.15
+     */
+    public record Advisory(String text) implements Element {
+        public Advisory {
+            requireNonNull(text, "text");
+        }
+    }
+
     /** Raw SQL rendered verbatim, bypassing the template's safety checks. */
     public record Unsafe(String sql) implements Element {
         public Unsafe {

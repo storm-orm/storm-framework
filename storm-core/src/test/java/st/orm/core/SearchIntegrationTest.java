@@ -21,6 +21,7 @@ import static st.orm.core.template.SqlInterceptor.observe;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import javax.sql.DataSource;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -29,6 +30,7 @@ import org.springframework.boot.test.autoconfigure.jdbc.JdbcTest;
 import org.springframework.test.context.ContextConfiguration;
 import org.springframework.test.context.junit.jupiter.SpringExtension;
 import st.orm.Metamodel;
+import st.orm.StormConfig;
 import st.orm.core.model.Owner;
 import st.orm.core.model.Owner_;
 import st.orm.core.template.ORMTemplate;
@@ -54,6 +56,19 @@ public class SearchIntegrationTest {
         List<String> names = new ArrayList<>();
         observe(sql -> statements.add(sql.statement()), () -> orm.entity(Owner.class).select()
                 .where(it -> PredicateBuilderFactory.<Owner, Owner, Integer>search(input, List.of(paths)))
+                .getResultList()
+                .forEach(owner -> names.add(owner.firstName())));
+        return names.stream().sorted().toList();
+    }
+
+    @SafeVarargs
+    private List<String> suggest(String input, int minimumLength, Metamodel<Owner, String>... paths) {
+        var orm = ORMTemplate.of(dataSource,
+                StormConfig.of(Map.of(StormConfig.SEARCH_MIN_TERM_LENGTH, String.valueOf(minimumLength))));
+        statements = new ArrayList<>();
+        List<String> names = new ArrayList<>();
+        observe(sql -> statements.add(sql.statement()), () -> orm.entity(Owner.class).select()
+                .where(it -> PredicateBuilderFactory.<Owner, Owner, Integer>suggest(input, List.of(paths)))
                 .getResultList()
                 .forEach(owner -> names.add(owner.firstName())));
         return names.stream().sorted().toList();
@@ -94,6 +109,19 @@ public class SearchIntegrationTest {
     public void wildcardsMatchLiterally() {
         assertEquals(List.of(), search("%", Owner_.lastName));
         assertEquals(List.of(), search("_", Owner_.lastName));
+    }
+
+    @Test
+    public void suggestMatchesTheWordsTheIndexServes() {
+        assertEquals(List.of("Betty", "Harold"), suggest("dav is", 3, Owner_.lastName));
+        assertFalse(whereClause().contains("?) AND"), whereClause());
+        assertEquals(List.of(), suggest("da", 3, Owner_.lastName));
+        assertEquals("1 <> 1", whereClause());
+        assertEquals(List.of(), suggest("", 3, Owner_.lastName));
+        // A dialect that treats every word alike keeps the short ones.
+        assertEquals(List.of("Betty", "Harold"), suggest("da", 0, Owner_.lastName));
+        assertEquals(List.of(), suggest("dav xy", 0, Owner_.lastName));
+        assertEquals(List.of(), suggest("", 0, Owner_.lastName));
     }
 
     @Test

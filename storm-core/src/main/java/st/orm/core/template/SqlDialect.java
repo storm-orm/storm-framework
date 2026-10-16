@@ -403,6 +403,25 @@ public interface SqlDialect {
     }
 
     /**
+     * Returns the shortest search term, in characters, that the database's substring index serves.
+     *
+     * <p>A search term matches anywhere in a column, ignoring case: {@code LOWER(column) LIKE LOWER('%term%')}. An
+     * index built for substring matching, such as a trigram index, serves that comparison for terms of a minimum
+     * length, and reads every row for a shorter one. {@code search} therefore matches a shorter term only against the
+     * rows its longer terms found, which keeps the result and leaves the short term no table to read in full, and
+     * {@code suggest} ignores a shorter term. A search of short terms alone still reads every row.</p>
+     *
+     * <p>The default is {@code 0}, which treats every term alike. {@link st.orm.StormConfig#SEARCH_MIN_TERM_LENGTH}
+     * overrides the dialect's value.</p>
+     *
+     * @return the shortest term the substring index serves, or {@code 0} to treat every term alike.
+     * @since 1.15
+     */
+    default int minimumSearchTermLength() {
+        return 0;
+    }
+
+    /**
      * Escapes text so that a {@code LIKE} pattern built from it matches the text literally. Every character the
      * database reads as a wildcard, and the escape character itself, is preceded by {@code !}, the escape character
      * that {@link Operator#CONTAINS}, {@link Operator#STARTS_WITH}, {@link Operator#ENDS_WITH} and their negations

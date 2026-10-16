@@ -284,7 +284,9 @@ public abstract class QueryBuilder<T extends Data, R, ID> {
      * names only the query's own tables holds without one, so a row without related rows still matches through its
      * own columns. {@code search} matches each word on its own, so its words may match different related rows. Without a
      * condition that names the table, the query keeps the rows that have any related row, as the complement of an
-     * anti-join on the same table.</p>
+     * anti-join on the same table. A condition stated on the join, {@code on(Owner.class, it -> it.where(Pet_.type,
+     * EQUALS, dog))}, states which related rows count: every condition that names the table, each word of a search
+     * included, is answered by a related row matching it.</p>
      *
      * <pre>{@code
      * List<Owner> found = owners

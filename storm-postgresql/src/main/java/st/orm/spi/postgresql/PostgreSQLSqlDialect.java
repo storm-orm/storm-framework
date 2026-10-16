@@ -53,6 +53,17 @@ public class PostgreSQLSqlDialect extends DefaultSqlDialect {
     }
 
     /**
+     * A trigram index ({@code pg_trgm}) serves a substring match of three characters or more; a shorter term has no
+     * trigram to look up and reads every row.
+     *
+     * @since 1.15
+     */
+    @Override
+    protected int defaultMinimumSearchTermLength() {
+        return 3;
+    }
+
+    /**
      * PostgreSQL supports multi-value tuples in the IN clause.
      */
     @Override

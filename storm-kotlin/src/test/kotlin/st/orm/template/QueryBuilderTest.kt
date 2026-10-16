@@ -38,6 +38,7 @@ import kotlin.reflect.KClass
 @Sql("/data.sql")
 internal open class QueryBuilderTest(
     @Autowired val orm: ORMTemplate,
+    @Autowired val dataSource: javax.sql.DataSource,
 ) {
 
     // Helper to get a typed metamodel from column for use in typed where/orderBy calls.
@@ -2225,6 +2226,30 @@ internal open class QueryBuilderTest(
         firstNames("davis iggy") shouldBe listOf("Harold")
         firstNames("davis") shouldBe listOf("Betty", "Harold")
         firstNames("lucky") shouldBe listOf("Carlos", "Jeff")
+    }
+
+    @Test
+    fun `suggest should match the words the substring index serves`() {
+        // data.sql: owner 1 (Betty Davis) has pet Leo; owner 4 (Harold Davis) has pet Iggy; owner 6 is Jean Coleman.
+        val trigramOrm = dataSource.orm(st.orm.StormConfig.of(mapOf(st.orm.StormConfig.SEARCH_MIN_TERM_LENGTH to "3")))
+        val petName = metamodel<Pet, String>(orm.entity(Pet::class).model, "name")
+        fun firstNames(template: ORMTemplate, input: String, suggest: Boolean): List<String> {
+            val ownerRepo = template.entity(Owner::class)
+            val lastName = metamodel<Owner, String>(ownerRepo.model, "last_name")
+            val predicate = if (suggest) suggest(input, lastName, petName) else search(input, lastName, petName)
+            return ownerRepo.select()
+                .semiJoin<Pet>().on<Owner>()
+                .where(predicate)
+                .resultList.map { it.firstName }.sorted()
+        }
+        firstNames(trigramOrm, "davis le", suggest = true) shouldBe listOf("Betty", "Harold")
+        firstNames(trigramOrm, "le", suggest = true) shouldBe emptyList()
+        firstNames(trigramOrm, "", suggest = true) shouldBe emptyList()
+        // search keeps the short word, tested on the rows the long word found.
+        firstNames(trigramOrm, "davis le", suggest = false) shouldBe listOf("Betty")
+        firstNames(trigramOrm, "le", suggest = false) shouldBe listOf("Betty", "Jean")
+        // A dialect that treats every word alike keeps the short ones.
+        firstNames(orm, "le", suggest = true) shouldBe listOf("Betty", "Jean")
     }
 
     @Test

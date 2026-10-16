@@ -24,6 +24,7 @@ import java.sql.Connection;
 import java.sql.SQLException;
 import java.sql.Statement;
 import java.util.List;
+import java.util.Map;
 import javax.sql.DataSource;
 import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.AfterEach;
@@ -35,6 +36,7 @@ import st.orm.FK;
 import st.orm.Metamodel;
 import st.orm.PK;
 import st.orm.Ref;
+import st.orm.StormConfig;
 import st.orm.core.template.ORMTemplate;
 import st.orm.core.template.PreparedStatementTemplate;
 import st.orm.core.template.QueryBuilder;
@@ -150,6 +152,35 @@ public abstract class AbstractSemiJoinConformanceTest {
         assertEquals(List.of("Tolkien"), search("TOLKIEN hobbit"));
         assertEquals(List.of("Austen", "Herbert", "Orwell", "Tolkien"), search("e"));
         assertEquals(List.of(), search("hobbit emma"));
+    }
+
+    /**
+     * Searches as a dialect whose substring index serves words of three characters, as a trigram index does, so the
+     * short words render as they do there, whatever the dialect under test.
+     */
+    private List<String> trigramSearch(String input, boolean suggest) {
+        var trigramOrm = ORMTemplate.of(dataSource, StormConfig.of(Map.of(StormConfig.SEARCH_MIN_TERM_LENGTH, "3")));
+        var paths = List.of(AUTHOR_NAME, BOOK_TITLE);
+        return names(trigramOrm.entity(Author.class).select().semiJoin(Book.class).on(Author.class)
+                .where(it -> suggest
+                        ? PredicateBuilderFactory.<Data, Author, Integer>suggest(input, paths)
+                        : PredicateBuilderFactory.<Data, Author, Integer>search(input, paths))
+                .getResultList());
+    }
+
+    @Test
+    public void shortWordIsTestedOnTheRowsTheLongerWordsFound() {
+        assertEquals(List.of("Tolkien"), trigramSearch("tolkien th", false));
+        assertEquals(List.of(), trigramSearch("austen th", false));
+        assertEquals(List.of("Orwell"), trigramSearch("or", false));
+    }
+
+    @Test
+    public void suggestIgnoresShortWords() {
+        assertEquals(List.of("Tolkien"), trigramSearch("tolkien th", true));
+        assertEquals(List.of("Austen"), trigramSearch("austen th", true));
+        assertEquals(List.of(), trigramSearch("th", true));
+        assertEquals(List.of(), trigramSearch("", true));
     }
 
     @Test

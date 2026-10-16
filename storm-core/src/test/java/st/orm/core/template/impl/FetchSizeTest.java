@@ -87,7 +87,8 @@ public class FetchSizeTest {
                 st.orm.spi.StatementOrigin.DIRECT,
                 0L,
                 java.util.List.of(),
-                null);
+                null,
+                java.util.List.of());
         return new QueryImpl(
                 environment,
                 unsafe -> {

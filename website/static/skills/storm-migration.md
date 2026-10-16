@@ -37,6 +37,7 @@ Tips:
 - FK constraints matching @FK annotations
 - UNIQUE constraints for @UK fields
 - Indexes on FK columns and frequent queries
+- Columns a query matches with `search` or an ignore-case text operator (`containsIgnoreCase`, `CONTAINS_IGNORE_CASE`, ...): Storm compares `LOWER(column) LIKE LOWER('%word%')`, which a B-tree index cannot serve. Create the target database's substring index (a trigram or n-gram index) over exactly `LOWER(column)`, one per searched column, also on related tables the search reaches. On a table that already holds data, refresh its statistics in the same migration, or the planner may keep reading every row; verify with the database's query plan, for the parameterized statement, that the index is used. Where the search must ignore accents and the column's collation does not, add a generated column holding the text without accents (wrapping the database's accent function in an immutable one where needed) and put the substring index on that column instead
 - NOT NULL matching entity nullability
 - Enums as strings: VARCHAR. Ordinal: INTEGER.
 - @Version: INTEGER or TIMESTAMP

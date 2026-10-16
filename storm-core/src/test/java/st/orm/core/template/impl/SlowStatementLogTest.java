@@ -60,6 +60,14 @@ public class SlowStatementLogTest {
     }
 
     @Test
+    public void adviceTheStatementCarriesFollowsTheFacts() {
+        String line = SlowStatementLog.render(select(0x3f9a2cL), 1_840_000_000L, 0, 3, true, null, null,
+                "SELECT c.id FROM city c", null, 1, null, 0, java.util.List.of("every search term is short"));
+        assertTrue(line.endsWith("\tshape 00000000003f9a2c  parameters 1" + System.lineSeparator()
+                + "\tadvice every search term is short"), line);
+    }
+
+    @Test
     public void aFetchAndABatchAreLabelled() {
         var fetch = new Context(SqlOperation.SELECT, City.class, ExecutionKind.QUERY, StatementOrigin.FETCH, 1);
         assertTrue(SlowStatementLog.render(fetch, 300_000_000L, 0, 1, true, null, null, "SELECT 1", null, 1, null, 0)
