@@ -396,15 +396,46 @@ abstract class QueryBuilderImpl<T extends Data, R, ID> extends QueryBuilder<T, R
     protected abstract boolean supportsJoin();
 
     /**
+     * Returns whether a subquery in the WHERE clause may read the table the statement targets. A semi-join reads it to
+     * match the statement's rows through their own columns, which some databases refuse inside a DELETE of that
+     * table; there, the rows are matched in the statement itself.
+     *
+     * @return {@code true} if a subquery may read the statement's table, {@code false} otherwise.
+     */
+    protected boolean subqueriesMayReadTable() {
+        return true;
+    }
+
+    /**
+     * Returns whether the statement has a condition: a WHERE condition, or a semi-join or anti-join, which filters the
+     * rows as one.
+     *
+     * @return {@code true} if the statement filters its rows, {@code false} otherwise.
+     */
+    protected final boolean hasCondition() {
+        return !where.isEmpty() || join.stream().anyMatch(FilterJoinPlacement::isFilterJoin);
+    }
+
+    /**
      * Appends the registered joins and the WHERE clause, with multiple where-conditions AND-ed together, to the
      * given template.
      */
     protected final TemplateString appendJoinsAndWhere(TemplateString template) {
-        if (!join.isEmpty()) {
-            template = join.stream()
+        var filterJoins = join.stream().filter(FilterJoinPlacement::isFilterJoin).toList();
+        var joins = filterJoins.isEmpty() ? join : join.stream().filter(it -> !FilterJoinPlacement.isFilterJoin(it)).toList();
+        if (!joins.isEmpty()) {
+            template = joins.stream()
                     .reduce(template,
                             (acc, join) -> TemplateString.combine(acc, wrap(join)),
                             TemplateString::combine);
+        }
+        if (!filterJoins.isEmpty()) {
+            var clauses = new ArrayList<TemplateString>(groupBy.size() + having.size() + orderBy.size());
+            clauses.addAll(groupBy);
+            clauses.addAll(having);
+            clauses.addAll(orderBy);
+            var whereClause = FilterJoinPlacement.where(queryTemplate, filterJoins, where, clauses, subqueriesMayReadTable());
+            return whereClause == null ? template : TemplateString.combine(template, TemplateString.of("\nWHERE "), whereClause);
         }
         if (!where.isEmpty()) {
             if (where.size() == 1) {
@@ -437,6 +468,17 @@ abstract class QueryBuilderImpl<T extends Data, R, ID> extends QueryBuilder<T, R
      */
     @SuppressWarnings("unchecked")
     private QueryBuilder<Data, R, ID> addJoin(Join join) {
+        if (FilterJoinPlacement.isFilterJoin(join)) {
+            FilterJoinPlacement.verify(queryTemplate, fromType, this.join, join);
+        } else if (join.source() instanceof TableSource(var table)) {
+            for (var existing : this.join) {
+                if (FilterJoinPlacement.isFilterJoin(existing)
+                        && existing.source() instanceof TableSource(var existingTable) && existingTable == table) {
+                    throw new PersistenceException("The query already filters by %s through a %s, so a condition naming it could not tell the joins apart."
+                            .formatted(table.getSimpleName(), ((FilterJoinType) existing.type()).method()));
+                }
+            }
+        }
         List<Join> copy = new ArrayList<>(this.join);
         copy.add(join);
         return (QueryBuilder<Data, R, ID>) copyWith(queryTemplate, fromType, copy, where, groupBy, having, orderBy, hints);
@@ -463,6 +505,16 @@ abstract class QueryBuilderImpl<T extends Data, R, ID> extends QueryBuilder<T, R
         List<Where> copy = new ArrayList<>(this.where);
         copy.add(where);
         return copyWith(queryTemplate, fromType, join, copy, groupBy, having, orderBy, hints);
+    }
+
+    /**
+     * Returns a new query builder with the condition added to its WHERE clause, keeping the condition's structure.
+     *
+     * @param condition the condition to add.
+     * @return a new query builder.
+     */
+    QueryBuilderImpl<T, R, ID> withCondition(PredicateNode condition) {
+        return (QueryBuilderImpl<T, R, ID>) addWhere(new Where(new TemplateExpression(condition.toTemplate(), condition), null));
     }
 
     /**
@@ -562,6 +614,32 @@ abstract class QueryBuilderImpl<T extends Data, R, ID> extends QueryBuilder<T, R
     }
 
     /**
+     * Adds a semi-join to the query: the query keeps the rows that have a related row in the given table matching the
+     * conditions that name it.
+     *
+     * @param relation the relation to filter by.
+     * @return the join builder.
+     * @since 1.15
+     */
+    @Override
+    public TypedJoinBuilder<T, R, ID> semiJoin(Class<? extends Data> relation) {
+        return join(FilterJoinType.SEMI, relation, "");
+    }
+
+    /**
+     * Adds an anti-join to the query: the query keeps the rows that have no related row in the given table matching
+     * the condition stated on the join.
+     *
+     * @param relation the relation to filter by.
+     * @return the join builder.
+     * @since 1.15
+     */
+    @Override
+    public TypedJoinBuilder<T, R, ID> antiJoin(Class<? extends Data> relation) {
+        return join(FilterJoinType.ANTI, relation, "");
+    }
+
+    /**
      * Adds a join of the specified type to the query using a template.
      *
      * @param type the join type.
@@ -650,7 +728,8 @@ abstract class QueryBuilderImpl<T extends Data, R, ID> extends QueryBuilder<T, R
      */
     @Override
     public TypedJoinBuilder<T, R, ID> join(JoinType type, Class<? extends Data> relation, String alias) {
-        if (!supportsJoin()) {
+        // A semi-join or anti-join renders in the WHERE clause, so it needs no join support.
+        if (!supportsJoin() && !(type instanceof FilterJoinType)) {
             throw new UnsupportedOperationException("Joins are not supported in this query.");
         }
         requireNonNull(type, "type");
@@ -663,7 +742,22 @@ abstract class QueryBuilderImpl<T extends Data, R, ID> extends QueryBuilder<T, R
             }
 
             @Override
+            @SuppressWarnings("unchecked")
+            public QueryBuilder<Data, R, ID> on(Class<? extends Data> onRelation,
+                                                Function<WhereBuilder<Data, R, ID>, PredicateBuilder<Data, ?, ?>> condition) {
+                requireNonNull(onRelation, "onRelation");
+                requireNonNull(condition, "condition");
+                var whereBuilder = new WhereBuilderImpl<>((QueryBuilderImpl<Data, R, ID>) widen());
+                var predicate = (PredicateBuilderImpl<?, ?, ?>) condition.apply(whereBuilder);
+                return addJoin(new Join(new TableSource(relation), alias, new TableTarget(onRelation, null, predicate.node()), type, false));
+            }
+
+            @Override
             public QueryBuilder<Data, R, ID> on(TemplateString onTemplate) {
+                if (type instanceof FilterJoinType filterJoinType) {
+                    throw new PersistenceException("%s(%s) relates the tables through their foreign key, so it takes the table to join on: on(%s.class), with a condition where one is needed."
+                            .formatted(filterJoinType.method(), relation.getSimpleName(), fromType.getSimpleName()));
+                }
                 return addJoin(new Join(new TableSource(relation), alias, new TemplateTarget(onTemplate), type, false));
             }
         };
@@ -684,39 +778,65 @@ abstract class QueryBuilderImpl<T extends Data, R, ID> extends QueryBuilder<T, R
         private final boolean safe;
         /** The operator joining the terms at the top level, or {@code null} for a single term. */
         private final @Nullable TemplateString operator;
+        /** The boolean structure of the predicate, which a query with a semi-join or anti-join places by its terms. */
+        private final PredicateNode node;
 
         PredicateBuilderImpl(TemplateString template) {
             this(template, true);
         }
 
         PredicateBuilderImpl(TemplateString template, boolean safe) {
-            this(List.of(requireNonNull(template, "template")), safe, null);
+            this(List.of(requireNonNull(template, "template")), safe, null, new PredicateNode.Term(template, safe));
         }
 
-        private PredicateBuilderImpl(List<TemplateString> templates, boolean safe, @Nullable TemplateString operator) {
+        private PredicateBuilderImpl(List<TemplateString> templates,
+                                     boolean safe,
+                                     @Nullable TemplateString operator,
+                                     PredicateNode node) {
             this.templates = templates;
             this.safe = safe;
             this.operator = operator;
+            this.node = node;
         }
 
         @Override
         public PredicateBuilder<TX, RX, IDX> and(PredicateBuilder<? extends TX, ?, ?> predicate) {
-            return combineWith(RAW_AND, operand(RAW_AND, predicate));
+            var other = ((PredicateBuilderImpl<?, ?, ?>) predicate).node;
+            return combineWith(RAW_AND, operand(RAW_AND, predicate), PredicateNode.and(List.of(node, other)));
         }
 
         @Override
         public PredicateBuilder<TX, RX, IDX> and(TemplateString template) {
-            return combineWith(RAW_AND, combine(RAW_OPEN, template, RAW_CLOSE));   // Always wrap a template in parentheses as we don't know if it's a single expression or a complex one.
+            // Always wrap a template in parentheses as we don't know if it's a single expression or a complex one.
+            return combineWith(RAW_AND, combine(RAW_OPEN, template, RAW_CLOSE),
+                    PredicateNode.and(List.of(node, new PredicateNode.Term(template, false))));
         }
 
         @Override
         public PredicateBuilder<TX, RX, IDX> or(PredicateBuilder<? extends TX, ?, ?> predicate) {
-            return combineWith(RAW_OR, operand(RAW_OR, predicate));
+            var other = ((PredicateBuilderImpl<?, ?, ?>) predicate).node;
+            return combineWith(RAW_OR, operand(RAW_OR, predicate), PredicateNode.or(List.of(node, other)));
         }
 
         @Override
         public PredicateBuilder<TX, RX, IDX> or(TemplateString template) {
-            return combineWith(RAW_OR, combine(RAW_OPEN, template, RAW_CLOSE));
+            return combineWith(RAW_OR, combine(RAW_OPEN, template, RAW_CLOSE),
+                    PredicateNode.or(List.of(node, new PredicateNode.Term(template, false))));
+        }
+
+        /**
+         * Returns the predicate marked to be matched on its own: on a semi-joined table, its comparisons are answered
+         * by a related row of their own. It renders as the predicate does.
+         */
+        PredicateBuilderImpl<TX, RX, IDX> scope() {
+            return new PredicateBuilderImpl<>(templates, safe, operator, new PredicateNode.Scope(node));
+        }
+
+        /**
+         * Returns the boolean structure of the predicate.
+         */
+        PredicateNode node() {
+            return node;
         }
 
         /**
@@ -742,19 +862,19 @@ abstract class QueryBuilderImpl<T extends Data, R, ID> extends QueryBuilder<T, R
          * operator differs from the one joining its own terms, so {@code (a or b) and c} renders as written, and when
          * it is a single template that may hold several terms.
          */
-        private PredicateBuilderImpl<TX, RX, IDX> combineWith(TemplateString operator, TemplateString operand) {
+        private PredicateBuilderImpl<TX, RX, IDX> combineWith(TemplateString operator, TemplateString operand, PredicateNode combined) {
             boolean group = templates.size() == 1 ? !safe : operator != this.operator;
-            var combined = new ArrayList<TemplateString>(templates.size() + 4);
+            var parts = new ArrayList<TemplateString>(templates.size() + 4);
             if (group) {
-                combined.add(RAW_OPEN);
+                parts.add(RAW_OPEN);
             }
-            combined.addAll(templates);
+            parts.addAll(templates);
             if (group) {
-                combined.add(RAW_CLOSE);
+                parts.add(RAW_CLOSE);
             }
-            combined.add(operator);
-            combined.add(operand);
-            return new PredicateBuilderImpl<>(combined, true, operator);
+            parts.add(operator);
+            parts.add(operand);
+            return new PredicateBuilderImpl<>(parts, true, operator, combined);
         }
 
         /**
@@ -873,12 +993,13 @@ abstract class QueryBuilderImpl<T extends Data, R, ID> extends QueryBuilder<T, R
             return null;
         }
 
-        private QueryBuilder<TX, RX, IDX> build(TemplateString template) {
+        private QueryBuilder<TX, RX, IDX> build(PredicateBuilderImpl<?, ?, ?> predicate) {
+            var template = predicate.asTemplate();
             Where where;
             if (unwrap(template) instanceof Expression expression) {
                 where = new Where(expression, null);
             } else {
-                where = new Where(new TemplateExpression(template), null);
+                where = new Where(new TemplateExpression(template, predicate.node()), null);
             }
             return queryBuilder.addWhere(where);
         }
@@ -894,7 +1015,7 @@ abstract class QueryBuilderImpl<T extends Data, R, ID> extends QueryBuilder<T, R
     public QueryBuilder<T, R, ID> where(Function<WhereBuilder<T, R, ID>, PredicateBuilder<T, ?, ?>> predicate) {
         requireNonNull(predicate, "predicate");
         var whereBuilder = new WhereBuilderImpl<>(this);
-        return whereBuilder.build(((PredicateBuilderImpl<T, ?, ?>) predicate.apply(whereBuilder)).asTemplate());
+        return whereBuilder.build((PredicateBuilderImpl<?, ?, ?>) predicate.apply(whereBuilder));
     }
 
     /**

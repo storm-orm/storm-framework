@@ -72,7 +72,7 @@ final class CacheableProcessor implements ElementProcessor<Cacheable> {
             boolean ignoreArity
     ) throws SqlTemplateException {
         return switch(cacheable.expression()) {
-            case TemplateExpression(var template) -> keyGenerator.apply(template);
+            case TemplateExpression it -> keyGenerator.apply(it.template());
             case ObjectExpression(var metamodel, var operator, var object) -> {
                 var objectShape = getObjectShape(object, ignoreArity);
                 if (objectShape == null) {

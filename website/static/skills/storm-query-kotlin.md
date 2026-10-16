@@ -96,7 +96,7 @@ User_.email.isNotNull()            // IS_NOT_NULL
 
 **Text compared whatever its case goes through the `IgnoreCase` operators, never through a `LOWER(...)` template.** `eq`, `contains`, `startsWith` and `endsWith` follow the column's collation, which ignores case on MySQL, MariaDB and SQL Server by default and not on PostgreSQL, Oracle and H2, so the same query answers differently per database. `eqIgnoreCase`, `containsIgnoreCase`, `startsWithIgnoreCase` and `endsWithIgnoreCase`, with `neqIgnoreCase` and the `not...IgnoreCase` forms, have the database lower both sides, and the text ones still match their text literally. A search box and a lookup by email address or user name want these; a code, a token or an id compared exactly wants `eq`. They ignore case; accents follow the column's collation, ignored on MySQL and MariaDB by default and compared as they are elsewhere. A plain index does not serve the lowered column: where the lookup must be served by one, index the lowered expression, or keep the plain operator on a column whose collation ignores case already.
 
-**A search box goes through `search`, never through hand-built `containsIgnoreCase` chains.** `.where(search(input, Movie_.title, Movie_.director.name))` takes the input as the box receives it: whitespace separates the words, a quoted phrase is one word, every word must occur in at least one of the columns (ignoring case, literally), and an empty input matches every row. It returns a predicate, so it combines with `and` and `or`. Do not split the input, `reduce` over the words or special-case the empty box in application code.
+**A search box goes through `search`, never through hand-built `containsIgnoreCase` chains.** `.where(search(input, Movie_.title, Movie_.director.name))` takes the input as the box receives it: whitespace separates the words, a quoted phrase is one word, every word must occur in at least one of the columns (ignoring case, literally), and an empty input matches every row. It returns a predicate, so it combines with `and` and `or`. Do not split the input, `reduce` over the words or special-case the empty box in application code. To search the rows related to each row, such as an owner's pets, semi-join the related table and name its column: `.semiJoin<Pet>().on<Owner>().where(search(input, Owner_.lastName, Pet_.name))`. Each word may then match a different related row, and every owner comes back once.
 
 Combine with `and`/`or`:
 ```kotlin
@@ -249,6 +249,8 @@ Scrolling (keyset, better for large tables): `.scroll(Scrollable.of(User_.id, 20
 Explicit joins — two syntax forms depending on context:
 - **Block DSL** (inside `select { }`): `innerJoin<UserRole, Role>()` — reified two-type-arg form, no `.on()`
 - **Chained API**: `.innerJoin<UserRole>().on<Role>()` — the join widens the query; chain `.where()` for root and joined fields alike
+- **A condition on the join**: `.leftJoin<Pet>().on<Owner> { Pet_.name eq "Leo" }` adds the condition to the resolved foreign key (block DSL: `leftJoin<Pet, Owner> { Pet_.name eq "Leo" }`); on a left join it keeps the rows without a match, which the same condition in `where` would drop
+- **Filtering by related rows**: `.semiJoin<Pet>().on<Owner>()` keeps the rows with a related row matching the conditions that name it, each once; `.antiJoin<Visit>().on<Pet> { Visit_.description eq "rabies shot" }` keeps the rows without one (block DSL: `semiJoin<Pet, Owner>()`, `antiJoin<Visit, Pet> { ... }`)
 Select result type: `.select(ResultType::class)` to return a different type than the root entity
 
 **Always prefer entity/metamodel-based QueryBuilder methods over SQL template strings.** SQL templates are an escape hatch for things the QueryBuilder cannot express.
@@ -274,6 +276,30 @@ orders.select()
 ```
 
 Reach for an explicit join when a path cannot express the query: a relationship the entity model does not carry as a foreign key, the to-many side of one (a path navigates to-one only), a self-join that needs its own alias, or a join whose entity you want the query widened to rather than filtered by.
+
+**Filter by the to-many side with `semiJoin` or `antiJoin`, never with a join and `distinct`.** A join to the many side returns a row per related row, which takes `distinct` to undo, and a `DISTINCT` query can only order by the columns it selects. `semiJoin` filters without joining the related rows: every root row comes back once, so scrolling, paging and `resultCount` count root rows.
+
+```kotlin
+// ✅ Owners of a Leo, each once
+owners.select()
+    .semiJoin<Pet>().on<Owner>()
+    .where(Pet_.name eq "Leo")
+    .resultList
+
+// ❌ A row per matching pet, folded back with distinct
+owners.select()
+    .distinct()
+    .innerJoin<Pet>().on<Owner>()
+    .where(Pet_.name eq "Leo")
+    .resultList
+
+// ✅ Pets without a rabies shot: the anti-join's condition goes on the join, never in where
+pets.select()
+    .antiJoin<Visit>().on<Pet> { Visit_.description eq "rabies shot" }
+    .resultList
+```
+
+Conditions joined by `and` on a semi-joined table hold for the same related row; a part of the condition naming only the query's own tables holds without a related row, so `(Owner_.lastName eq "Davis") or (Pet_.name eq "Leo")` also finds a Davis without pets. A semi-joined table adds no columns: ordering, grouping or selecting by it is refused. A `where` condition naming an anti-joined table is refused; it belongs on the join.
 
 Three rules:
 
@@ -380,6 +406,8 @@ The dialect places it: a `/*+ ... */` comment after `SELECT`/`DELETE` on MySQL, 
 
 ## Distinct and Count
 
+`distinct()` removes duplicates from a select of another type, such as the cities of a set of users. It is never the way to return each root row once after a join to a to-many table: that is a `semiJoin` (see **Filtering by Related Rows**).
+
 ```kotlin
 val uniqueCities = orm.entity<User>()
     .select(City::class)
@@ -474,6 +502,30 @@ The plan is prefix-closed: naming `User_.city.country` resolves `User_.city` too
 
 A `Ref` therefore describes a relationship that belongs to particular queries rather than to the entity itself, and this is where such a query asks for it. See the entity skill for which relationships to declare each way.
 
+## Filtering by Related Rows: Path, semiJoin, antiJoin or Join
+
+Pick the form by the direction of the relation and by whether the related rows belong in the result:
+
+| The query needs | Use |
+|-----------------|-----|
+| A column of a row the root references (to-one: a pet's owner) | A path: `Pet_.owner.lastName eq "Davis"`, no join |
+| The rows **with** a related row matching a condition (to-many: owners of a pet named Leo) | `semiJoin<Pet>().on<Owner>()` with the condition in `where` |
+| A search over the row and its related rows (owner name and pet names) | `semiJoin<Pet>().on<Owner>()` with `search(input, Owner_.lastName, Pet_.name)` |
+| The rows **without** a related row matching a condition (pets that never had a rabies shot) | `antiJoin<Visit>().on<Pet> { Visit_.description eq "rabies shot" }` |
+| The rows with any related row (owners with a pet) | `semiJoin<Pet>().on<Owner>()` |
+| The rows without any related row (owners without pets) | `antiJoin<Pet>().on<Owner>()` |
+| The related rows' columns in the result, or ordering and grouping by them, a row per related row | `innerJoin<Pet>().on<Owner>()` or `leftJoin` |
+| Related columns joined while keeping the rows without a match | `leftJoin<Pet>().on<Owner> { Pet_.name eq "Leo" }` |
+
+Read the request for the cue: "with", "that have", "who own", "any of their", "search by ... or their ..." over a to-many relation asks for `semiJoin`; "without", "never", "no", "missing", "not yet" asks for `antiJoin`. A semi-join or anti-join returns each root row once, so it needs no `distinct`, and scrolling, paging and `resultCount` count root rows.
+
+- `semiJoin` conditions go in `where`: conditions joined by `and` hold for the same related row, a part naming only the root's columns holds without a related row, and `search` matches each word on its own related row.
+- `antiJoin` conditions go on the join, never in `where`: a `where` naming the anti-joined table is refused.
+- A semi-joined or anti-joined table adds no columns: when the result, `orderBy` or `groupBy` needs them, the query wants a regular join instead.
+- Both work on `delete()`: `delete().antiJoin<Pet>().on<Owner>()` removes the owners without pets.
+- `semiJoin` and `antiJoin` are complements: on the same table with the same condition on the join, the one keeps the rows the other drops. Without a condition, `semiJoin` keeps the rows with any related row and `antiJoin` the rows without one.
+- Keep `whereExists` for a subquery a foreign key does not express.
+
 ## Subqueries (EXISTS / NOT EXISTS)
 
 ```kotlin
@@ -490,7 +542,7 @@ val citiesWithoutUsers = orm.entity<City>()
     .resultList
 ```
 
-The `whereExists { }` / `whereNotExists { }` lambdas receive a `SubqueryTemplate` that provides the `subquery()` method. The subquery is automatically correlated with the outer query.
+The `whereExists { }` / `whereNotExists { }` lambdas receive a `SubqueryTemplate` that provides the `subquery()` method. The subquery is automatically correlated with the outer query. For a condition on the related rows, `semiJoin` and `antiJoin` are the typed form: see **Filtering by Related Rows**.
 
 ## Choosing the WHERE Form: where() → whereBuilder { }
 

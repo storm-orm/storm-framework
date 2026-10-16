@@ -106,6 +106,15 @@ public class DeleteBuilderImpl<T extends Data, ID> extends QueryBuilderImpl<T, O
     }
 
     /**
+     * Some databases refuse a subquery reading the table a DELETE deletes from, so a semi-join matches the rows
+     * through their own columns in the statement itself.
+     */
+    @Override
+    protected boolean subqueriesMayReadTable() {
+        return false;
+    }
+
+    /**
      * Marks the current query as a distinct query.
      *
      * @return the query builder.
@@ -222,7 +231,7 @@ public class DeleteBuilderImpl<T extends Data, ID> extends QueryBuilderImpl<T, O
     @Override
     public Query build() {
         Query query = queryTemplate.query(toTemplateString());
-        if (unsafe || !where.isEmpty()) {
+        if (unsafe || hasCondition()) {
             query = query.unsafe();
         }
         return query;
@@ -236,7 +245,7 @@ public class DeleteBuilderImpl<T extends Data, ID> extends QueryBuilderImpl<T, O
     @Override
     public QueryPlan plan() {
         var plan = queryTemplate.plan(toTemplateString());
-        if (!unsafe && where.isEmpty()) {
+        if (!unsafe && !hasCondition()) {
             return plan;
         }
         // Queries built by this builder suppress the unsafe warning under the same condition; the returned plan

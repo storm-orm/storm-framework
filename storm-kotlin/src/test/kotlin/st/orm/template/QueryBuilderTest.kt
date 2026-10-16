@@ -2210,6 +2210,77 @@ internal open class QueryBuilderTest(
         firstNames("davis basil") shouldBe emptyList()
     }
 
+    @Test
+    fun `semiJoin search should match each word on a related row of its own`() {
+        // data.sql: owner 6 (Jean Coleman) has pets Samantha and Max; owner 4 (Harold Davis) has pet Iggy.
+        val ownerRepo = orm.entity(Owner::class)
+        val petRepo = orm.entity(Pet::class)
+        val lastName = metamodel<Owner, String>(ownerRepo.model, "last_name")
+        val petName = metamodel<Pet, String>(petRepo.model, "name")
+        fun firstNames(input: String) = ownerRepo.select()
+            .semiJoin<Pet>().on<Owner>()
+            .where(search(input, lastName, petName))
+            .resultList.map { it.firstName }.sorted()
+        firstNames("samantha max") shouldBe listOf("Jean")
+        firstNames("davis iggy") shouldBe listOf("Harold")
+        firstNames("davis") shouldBe listOf("Betty", "Harold")
+        firstNames("lucky") shouldBe listOf("Carlos", "Jeff")
+    }
+
+    @Test
+    fun `semiJoin should hold conditions joined by and to one related row`() {
+        val ownerRepo = orm.entity(Owner::class)
+        val petName = metamodel<Pet, String>(orm.entity(Pet::class).model, "name")
+        ownerRepo.select()
+            .semiJoin<Pet>().on<Owner>()
+            .where((petName eq "Samantha") and (petName eq "Max"))
+            .resultList shouldBe emptyList()
+        ownerRepo.select()
+            .semiJoin<Pet>().on<Owner>()
+            .where((petName eq "Samantha") or (petName eq "Max"))
+            .resultList.map { it.firstName } shouldBe listOf("Jean")
+    }
+
+    @Test
+    fun `antiJoin should keep the rows without a related row matching the join condition`() {
+        // data.sql: pets 1, 2, 3, 4, 6 and 7 (Samantha) have a 'spayed' visit; pet 8 (Max) has none.
+        val petRepo = orm.entity(Pet::class)
+        val description = metamodel<Visit, String>(orm.entity(Visit::class).model, "description")
+        val petName = metamodel<Pet, String>(petRepo.model, "name")
+        petRepo.select()
+            .antiJoin<Visit>().on<Pet> { description eq "spayed" }
+            .where((petName eq "Max") or (petName eq "Samantha"))
+            .resultList.map { it.name } shouldBe listOf("Max")
+        petRepo.select()
+            .antiJoin<Visit>().on<Pet>()
+            .resultList.map { it.name }.sorted() shouldBe listOf("Freddy", "Lucky", "Lucky", "Mulligan", "Sly")
+    }
+
+    @Test
+    fun `left join condition should keep the rows without a match`() {
+        val ownerRepo = orm.entity(Owner::class)
+        val petName = metamodel<Pet, String>(orm.entity(Pet::class).model, "name")
+        ownerRepo.select()
+            .leftJoin<Pet>().on<Owner> { petName eq "Lucky" }
+            .resultList shouldHaveSize 10
+    }
+
+    @Test
+    fun `block semiJoin and antiJoin should filter like the chained builder`() {
+        val ownerRepo = orm.entity(Owner::class)
+        val petRepo = orm.entity(Pet::class)
+        val petName = metamodel<Pet, String>(petRepo.model, "name")
+        val description = metamodel<Visit, String>(orm.entity(Visit::class).model, "description")
+        ownerRepo.select {
+            semiJoin<Pet, Owner>()
+            where(petName eq "Lucky")
+        }.resultList.map { it.firstName }.sorted() shouldBe listOf("Carlos", "Jeff")
+        petRepo.select {
+            antiJoin<Visit, Pet> { description eq "spayed" }
+            where((petName eq "Max") or (petName eq "Samantha"))
+        }.resultList.map { it.name } shouldBe listOf("Max")
+    }
+
     // where with Metamodel and Data (FK reference)
 
     @Test
@@ -2515,6 +2586,8 @@ internal open class QueryBuilderTest(
         override fun innerJoin(relation: KClass<out Data>): TypedJoinBuilder<City, City, Int> = delegate.innerJoin(relation)
         override fun leftJoin(relation: KClass<out Data>): TypedJoinBuilder<City, City, Int> = delegate.leftJoin(relation)
         override fun rightJoin(relation: KClass<out Data>): TypedJoinBuilder<City, City, Int> = delegate.rightJoin(relation)
+        override fun semiJoin(relation: KClass<out Data>): TypedJoinBuilder<City, City, Int> = delegate.semiJoin(relation)
+        override fun antiJoin(relation: KClass<out Data>): TypedJoinBuilder<City, City, Int> = delegate.antiJoin(relation)
         override fun join(type: JoinType, relation: KClass<out Data>, alias: String): TypedJoinBuilder<City, City, Int> = delegate.join(type, relation, alias)
         override fun crossJoin(template: TemplateString): QueryBuilder<Data, City, Int> = delegate.crossJoin(template)
         override fun innerJoin(template: TemplateString, alias: String): JoinBuilder<City, City, Int> = delegate.innerJoin(template, alias)

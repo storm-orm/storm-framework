@@ -239,6 +239,22 @@ internal class QueryBuilderImpl<T : Data, R : Any, ID : Any>(
     override fun rightJoin(relation: KClass<out Data>): TypedJoinBuilder<T, R, ID> = join(JoinType.right(), relation, "")
 
     /**
+     * Adds a semi-join to the query.
+     *
+     * @param relation the table to filter by.
+     * @return the join builder.
+     */
+    override fun semiJoin(relation: KClass<out Data>): TypedJoinBuilder<T, R, ID> = typedJoin(core.semiJoin(relation.java))
+
+    /**
+     * Adds an anti-join to the query.
+     *
+     * @param relation the table to filter by.
+     * @return the join builder.
+     */
+    override fun antiJoin(relation: KClass<out Data>): TypedJoinBuilder<T, R, ID> = typedJoin(core.antiJoin(relation.java))
+
+    /**
      * Adds a join of the specified type to the query.
      *
      * @param type the type of the join (e.g., INNER, LEFT, RIGHT).
@@ -250,13 +266,22 @@ internal class QueryBuilderImpl<T : Data, R : Any, ID : Any>(
         type: JoinType,
         relation: KClass<out Data>,
         alias: String,
-    ): TypedJoinBuilder<T, R, ID> {
-        val joinBuilder = core.join(type, relation.java, alias)
-        return object : TypedJoinBuilder<T, R, ID>() {
-            override fun on(relation: KClass<out Data>): QueryBuilder<Data, R, ID> = QueryBuilderImpl(joinBuilder.on(relation.java))
+    ): TypedJoinBuilder<T, R, ID> = typedJoin(core.join(type, relation.java, alias))
 
-            override fun on(template: TemplateString): QueryBuilder<Data, R, ID> = QueryBuilderImpl<Data, R, ID>(joinBuilder.on(template.unwrap))
-        }
+    private fun typedJoin(joinBuilder: st.orm.core.template.TypedJoinBuilder<T, R, ID>): TypedJoinBuilder<T, R, ID> = object : TypedJoinBuilder<T, R, ID>() {
+        override fun on(relation: KClass<out Data>): QueryBuilder<Data, R, ID> = QueryBuilderImpl(joinBuilder.on(relation.java))
+
+        override fun on(
+            relation: KClass<out Data>,
+            condition: WhereBuilder<Data, R, ID>.() -> PredicateBuilder<out Data, *, *>,
+        ): QueryBuilder<Data, R, ID> = QueryBuilderImpl(
+            joinBuilder.on(relation.java) { whereBuilder ->
+                @Suppress("UNCHECKED_CAST")
+                (condition(WhereBuilderImpl(whereBuilder)) as PredicateBuilderImpl<Data, *, *>).core as st.orm.core.template.PredicateBuilder<Data, *, *>
+            },
+        )
+
+        override fun on(template: TemplateString): QueryBuilder<Data, R, ID> = QueryBuilderImpl<Data, R, ID>(joinBuilder.on(template.unwrap))
     }
 
     /**

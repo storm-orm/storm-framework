@@ -226,6 +226,35 @@ public abstract class QueryBuilder<T extends Data, R, ID> {
     public abstract TypedJoinBuilder<T, R, ID> rightJoin(Class<? extends Data> relation);
 
     /**
+     * Adds a semi-join to the query: the query keeps the rows that have a related row in the given table matching the
+     * conditions that name it, and returns each of them once. The table filters the query but adds no columns to it,
+     * so its columns can be named in conditions only.
+     *
+     * <p>{@code on} resolves the foreign key that relates the table to the table it is joined on, as for the other
+     * typed joins. The conditions that name the table are answered by its related rows: conditions joined by AND hold
+     * for the same related row, and a part of the condition that names only the query's own tables holds without one,
+     * so a row without related rows still matches through its own columns. {@code search} matches each word on its
+     * own, so its words may match different related rows. Without a condition that names the table, the query keeps the
+     * rows that have any related row, as the complement of an anti-join on the same table.</p>
+     *
+     * @param relation the table to filter by.
+     * @return the join builder.
+     * @since 1.15
+     */
+    public abstract TypedJoinBuilder<T, R, ID> semiJoin(Class<? extends Data> relation);
+
+    /**
+     * Adds an anti-join to the query: the query keeps the rows that have no related row in the given table matching
+     * the condition stated on the join, or no related row at all when the join states none. The table's columns can be
+     * named in the join's condition only.
+     *
+     * @param relation the table to filter by.
+     * @return the join builder.
+     * @since 1.15
+     */
+    public abstract TypedJoinBuilder<T, R, ID> antiJoin(Class<? extends Data> relation);
+
+    /**
      * Adds a join of the specified type to the query.
      *
      * @param type the type of the join (e.g., INNER, LEFT, RIGHT).

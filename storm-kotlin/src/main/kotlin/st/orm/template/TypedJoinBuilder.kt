@@ -65,4 +65,39 @@ public abstract class TypedJoinBuilder<T : Data, R : Any, ID : Any> : JoinBuilde
      * @since 1.12
      */
     public inline fun <reified O : Data> on(): QueryBuilder<Data, R, ID> = on(O::class)
+
+    /**
+     * Specifies the relation to join on, with a condition the join adds to the foreign key it resolves. On a left
+     * join, the condition decides which related rows join, so a row without a match is kept; on an anti-join, it
+     * decides which related rows exclude a row.
+     *
+     * ```kotlin
+     * val petsWithoutRabiesShot = pets
+     *     .select()
+     *     .antiJoin<Visit>().on<Pet> { Visit_.description eq "rabies shot" }
+     *     .resultList
+     * ```
+     *
+     * @param relation the relation to join on.
+     * @param condition the condition on the joined rows.
+     * @return the query builder.
+     * @since 1.15
+     */
+    public abstract fun on(
+        relation: KClass<out Data>,
+        condition: WhereBuilder<Data, R, ID>.() -> PredicateBuilder<out Data, *, *>,
+    ): QueryBuilder<Data, R, ID>
+
+    /**
+     * Specifies the relation to join on, with a condition the join adds to the foreign key it resolves.
+     *
+     * @param O the relation to join on.
+     * @param condition the condition on the joined rows.
+     * @return the query builder.
+     * @since 1.15
+     */
+    @JvmName("onCondition")
+    public inline fun <reified O : Data> on(
+        noinline condition: WhereBuilder<Data, R, ID>.() -> PredicateBuilder<out Data, *, *>,
+    ): QueryBuilder<Data, R, ID> = on(O::class, condition)
 }
