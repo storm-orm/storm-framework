@@ -137,16 +137,17 @@ internal class ORMTemplateImpl(private val core: st.orm.core.template.ORMTemplat
         } as R
     }
 
-    private fun createEntityRepository(type: KClass<*>): EntityRepository<*, *>? = createRepositoryFor(type, EntityRepository::class.java, "entity") as EntityRepository<*, *>?
+    @Suppress("UNCHECKED_CAST")
+    private fun createEntityRepository(type: KClass<*>): EntityRepository<*, *>? = dataClassFor(type, EntityRepository::class.java, "entity")?.let { entity(it.kotlin as KClass<Entity<Any>>) }
 
-    private fun createProjectionRepository(type: KClass<*>): ProjectionRepository<*, *>? = createRepositoryFor(type, ProjectionRepository::class.java, "projection") as ProjectionRepository<*, *>?
+    @Suppress("UNCHECKED_CAST")
+    private fun createProjectionRepository(type: KClass<*>): ProjectionRepository<*, *>? = dataClassFor(type, ProjectionRepository::class.java, "projection")?.let { projection(it.kotlin as KClass<Projection<Any>>) }
 
     /**
-     * Creates the backing repository for a proxied repository interface: resolves the data type from the
-     * repository interface's type argument and invokes the given factory method ('entity' or 'projection')
-     * with it, or returns null when the interface does not extend the given repository type.
+     * Resolves the data type of a proxied repository interface from its type argument for the given repository
+     * type, or returns null when the interface does not extend the given repository type.
      */
-    private fun createRepositoryFor(type: KClass<*>, repositoryInterface: Class<*>, factoryMethod: String): Any? {
+    private fun dataClassFor(type: KClass<*>, repositoryInterface: Class<*>, kind: String): Class<*>? {
         if (!repositoryInterface.isAssignableFrom(type.java)) return null
         var dataClass: Class<*>? = null
         for (iface in type.java.genericInterfaces) {
@@ -163,11 +164,9 @@ internal class ORMTemplateImpl(private val core: st.orm.core.template.ORMTemplat
             }
         }
         requireNotNull(dataClass) {
-            "Could not determine $factoryMethod class for repository: ${type.simpleName}."
+            "Could not determine $kind class for repository: ${type.simpleName}."
         }
-        // Use Java reflection to invoke the generic factory method at runtime.
-        val method = this.javaClass.getMethod(factoryMethod, KClass::class.java)
-        return method.invoke(this, dataClass.kotlin)
+        return dataClass
     }
 
     private fun createRepository(): Repository = object : Repository {

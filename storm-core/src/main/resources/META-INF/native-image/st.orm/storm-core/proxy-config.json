@@ -5,7 +5,7 @@
   },
   {
     "condition": { "typeReachable": "st.orm.core.template.impl.MonitoredResource" },
-    "interfaces": ["st.orm.core.template.PreparedQuery", "st.orm.core.template.Query"]
+    "interfaces": ["st.orm.core.template.PreparedQuery", "st.orm.core.template.Query", "st.orm.core.template.impl.KeyedQuery"]
   },
   {
     "condition": { "typeReachable": "st.orm.core.template.impl.MonitoredResource" },
