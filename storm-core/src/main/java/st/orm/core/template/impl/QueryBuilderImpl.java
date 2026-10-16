@@ -46,6 +46,7 @@ import st.orm.Ref;
 import st.orm.Scrollable;
 import st.orm.SqlTemplateException;
 import st.orm.Window;
+import st.orm.core.spi.PositionFactory;
 import st.orm.core.template.JoinBuilder;
 import st.orm.core.template.Model;
 import st.orm.core.template.PredicateBuilder;
@@ -113,17 +114,17 @@ abstract class QueryBuilderImpl<T extends Data, R, ID> extends QueryBuilder<T, R
      * @param columns the cursor columns, in the order their values are wanted.
      * @return the rows with their cursor values.
      */
-    abstract List<KeyedQuery.Row<R>> getKeyedResultList(List<Metamodel<T, ?>> columns);
+    abstract List<KeyedQuery.Row<R>> getKeyedResultList(List<Metamodel<T, ?>> columns, List<TemplateString> expressions);
 
     @Override
     @SuppressWarnings("unchecked")
     public final Window<R> scroll(Scrollable<T> scrollable) {
         requireNonNull(scrollable, "scrollable");
-        if (hasOrderFirst()) {
-            throw new PersistenceException("scroll cannot follow orderFirst: a window continues from the values of its sort columns, and a rank over a condition is not one. Page through the rows instead.");
-        }
-        if (hasOrderBy()) {
-            throw new PersistenceException("scroll manages ORDER BY internally; remove explicit orderBy calls.");
+        // The keys orderFirst added lead the ordering. Each ranks a row 0 or 1, a value the window reads from the row
+        // and carries in its position after the values of the sort fields and the key, like a sort field of its own.
+        var ranks = orderBy;
+        if (ranks.stream().anyMatch(template -> !isOrderFirst(template))) {
+            throw new PersistenceException("scroll manages ORDER BY internally; remove explicit orderBy calls. Rows a condition puts first go through orderFirst, which scroll follows.");
         }
         validateKey(scrollable.key());
         for (var order : scrollable.sort()) {
@@ -134,15 +135,20 @@ abstract class QueryBuilderImpl<T extends Data, R, ID> extends QueryBuilder<T, R
         // A window before a row is read in the reversed ordering and turned around, so it comes back in the
         // request's sort order like every other window.
         boolean reverse = position != null && !position.after();
-        QueryBuilder<T, R, ID> query = this;
+        QueryBuilder<T, R, ID> query = copyWith(queryTemplate, fromType, join, where, groupBy, having, List.of(), hints);
         if (position != null) {
             var values = PositionImpl.of(position).values();
-            if (values.size() != orders.size()) {
-                throw new IllegalArgumentException(
-                        "A position carries one value per sort field and one for the key: expected %d values, got %d."
-                                .formatted(orders.size(), values.size()));
+            if (values.size() != orders.size() + ranks.size()) {
+                throw new IllegalArgumentException(ranks.isEmpty()
+                        ? "A position carries one value per sort field and one for the key: expected %d values, got %d."
+                                .formatted(orders.size(), values.size())
+                        : "A position carries one value per sort field, one for the key and one per orderFirst: expected %d values, got %d."
+                                .formatted(orders.size() + ranks.size(), values.size()));
             }
-            query = query.where(wb -> keysetPredicate(wb, orders, values, reverse));
+            query = query.where(wb -> keysetPredicate(wb, ranks, orders, values, reverse));
+        }
+        for (var rank : ranks) {
+            query = reverse ? query.orderByDescending(rank) : query.orderBy(rank);
         }
         for (var order : orders) {
             var field = (Metamodel<T, Object>) order.field();
@@ -154,7 +160,7 @@ abstract class QueryBuilderImpl<T extends Data, R, ID> extends QueryBuilder<T, R
         for (var order : orders) {
             columns.add((Metamodel<T, ?>) order.field());
         }
-        List<KeyedQuery.Row<R>> rows = limited.getKeyedResultList(columns);
+        List<KeyedQuery.Row<R>> rows = limited.getKeyedResultList(columns, ranks);
         boolean more = rows.size() > size;
         if (more) {
             rows = rows.subList(0, size);
@@ -166,8 +172,8 @@ abstract class QueryBuilderImpl<T extends Data, R, ID> extends QueryBuilder<T, R
         Scrollable<T> next = null;
         Scrollable<T> previous = null;
         if (!rows.isEmpty()) {
-            next = scrollable.after(rows.getLast().cursor());
-            previous = scrollable.before(rows.getFirst().cursor());
+            next = at(scrollable, List.of(rows.getLast().cursor()), true);
+            previous = at(scrollable, List.of(rows.getFirst().cursor()), false);
         }
         // The anchor row of a position lies on the side the request continued from, so that side has rows; the
         // other side is decided by the extra row fetched.
@@ -177,30 +183,70 @@ abstract class QueryBuilderImpl<T extends Data, R, ID> extends QueryBuilder<T, R
     }
 
     /**
-     * Builds the keyset predicate for continuing from a row: for each field in precedence, the fields before it
-     * equal the row's values and the field itself lies beyond the row's value in its direction, all joined by OR.
+     * Returns the request positioned after or before a row, from the values the window read from it: one per sort
+     * field and one for the key, then the rank of each orderFirst key, which {@link Scrollable#after} does not take.
+     */
+    private static <T extends Data> Scrollable<T> at(Scrollable<T> scrollable, List<Object> values, boolean after) {
+        return new Scrollable<>(scrollable.key(), scrollable.keyDescending(), scrollable.sort(), scrollable.size(),
+                PositionFactory.position(values, after));
+    }
+
+    /**
+     * Returns {@code true} if the ORDER BY key ranks the rows by a condition, as {@code orderFirst} adds one.
+     */
+    private static boolean isOrderFirst(TemplateString template) {
+        return template.values().stream().anyMatch(OrderFirst.class::isInstance);
+    }
+
+    /**
+     * Builds the keyset predicate for continuing from a row: for each key in precedence, the keys before it equal
+     * the row's values and the key itself lies beyond the row's value in its direction, all joined by OR. The ranks
+     * of orderFirst keys lead, ascending, compared as the expressions they are; the sort fields and the key follow.
      * Reversing flips every comparison, which reads the rows on the other side of the row.
+     *
+     * @param values the row's values: one per sort field and one for the key, then one per rank.
      */
     @SuppressWarnings("unchecked")
     private static <T extends Data, R, ID> PredicateBuilder<T, ?, ?> keysetPredicate(WhereBuilder<T, R, ID> wb,
+                                                                                    List<TemplateString> ranks,
                                                                                     List<Order> orders,
                                                                                     List<Object> values,
                                                                                     boolean reverse) {
+        int keys = ranks.size() + orders.size();
         PredicateBuilder<T, R, ID> chain = null;
-        for (int i = 0; i < orders.size(); i++) {
+        for (int i = 0; i < keys; i++) {
             PredicateBuilder<T, R, ID> term = null;
             for (int j = 0; j < i; j++) {
-                var field = (Metamodel<T, Object>) orders.get(j).field();
-                var equal = wb.where(field, EQUALS, new Object[] {values.get(j)});
+                var equal = compare(wb, ranks, orders, values, j, "=", EQUALS);
                 term = term == null ? equal : term.and(equal);
             }
-            var field = (Metamodel<T, Object>) orders.get(i).field();
-            boolean descending = orders.get(i).descending() ^ reverse;
-            var beyond = wb.where(field, descending ? LESS_THAN : GREATER_THAN, new Object[] {values.get(i)});
+            boolean descending = (i >= ranks.size() && orders.get(i - ranks.size()).descending()) ^ reverse;
+            var beyond = compare(wb, ranks, orders, values, i, descending ? "<" : ">",
+                    descending ? LESS_THAN : GREATER_THAN);
             term = term == null ? beyond : term.and(beyond);
             chain = chain == null ? term : chain.or(term);
         }
         return requireNonNull(chain);
+    }
+
+    /**
+     * Compares the key at the given precedence with the row's value for it: a rank as its expression, a sort field
+     * or the key through its operator.
+     */
+    @SuppressWarnings("unchecked")
+    private static <T extends Data, R, ID> PredicateBuilder<T, R, ID> compare(WhereBuilder<T, R, ID> wb,
+                                                                             List<TemplateString> ranks,
+                                                                             List<Order> orders,
+                                                                             List<Object> values,
+                                                                             int index,
+                                                                             String symbol,
+                                                                             Operator operator) {
+        if (index < ranks.size()) {
+            var value = values.get(orders.size() + index);
+            return wb.where(TemplateString.combine(ranks.get(index), TemplateString.of(" " + symbol + " "), wrap(value)));
+        }
+        int field = index - ranks.size();
+        return wb.where((Metamodel<T, Object>) orders.get(field).field(), operator, new Object[] {values.get(field)});
     }
 
     /**
@@ -591,7 +637,7 @@ abstract class QueryBuilderImpl<T extends Data, R, ID> extends QueryBuilder<T, R
      * {@code orderFirst} adds one.
      */
     protected final boolean hasOrderFirst() {
-        return orderBy.stream().anyMatch(template -> template.values().stream().anyMatch(OrderFirst.class::isInstance));
+        return orderBy.stream().anyMatch(QueryBuilderImpl::isOrderFirst);
     }
 
     /**

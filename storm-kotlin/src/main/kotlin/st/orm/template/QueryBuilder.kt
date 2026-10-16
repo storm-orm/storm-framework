@@ -941,9 +941,10 @@ public abstract class QueryBuilder<T : Data, R : Any, ID : Any> {
      * the query finds and sorts them all, even with a limit; after a selective condition, such as a search, that is
      * what any ordering of the matches costs.
      *
-     * A keyset `scroll` cannot follow it, since a window continues from the values of its sort columns and a rank over
-     * a condition is not one; page through the rows instead. A `distinct` query cannot either, since the database
-     * orders a distinct result only by the columns it selects, and a semi-joined table adds no columns to order by.
+     * A keyset `scroll` follows it: the keys `orderFirst` added lead the ordering, before the sort fields and the key
+     * of the `Scrollable`, and each window carries the rank of its first and last rows in its position, so the next
+     * window continues from it. A `distinct` query cannot be ranked, since the database orders a distinct result only
+     * by the columns it selects, and a semi-joined table adds no columns to order by.
      *
      * @param predicate the predicate the rows put first match.
      * @return the query builder.

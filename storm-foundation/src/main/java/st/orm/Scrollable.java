@@ -98,22 +98,29 @@ public record Scrollable<T extends Data>(
     /**
      * Returns this request with an ascending sort field appended before the key.
      *
+     * <p>The field may belong to any table in the query, as a field passed to {@code orderBy} may: a table joined to
+     * the query, such as the ratings of the movies it scrolls, sorts the windows as well as the queried table does.
+     * A field of a table that is not part of the query fails when the query is built. The key, which addresses a
+     * row of the result, belongs to the queried table.</p>
+     *
      * @param field the field to sort by; must not allow NULL values.
      * @return the request with the sort field added.
      * @since 1.14
      */
-    public Scrollable<T> sortBy(Metamodel<T, ?> field) {
+    public Scrollable<T> sortBy(Metamodel<?, ?> field) {
         return withSort(Order.asc(field));
     }
 
     /**
      * Returns this request with a descending sort field appended before the key.
      *
+     * <p>The field may belong to any table in the query; see {@link #sortBy(Metamodel)}.</p>
+     *
      * @param field the field to sort by; must not allow NULL values.
      * @return the request with the sort field added.
      * @since 1.14
      */
-    public Scrollable<T> sortByDescending(Metamodel<T, ?> field) {
+    public Scrollable<T> sortByDescending(Metamodel<?, ?> field) {
         return withSort(Order.desc(field));
     }
 

@@ -19,8 +19,11 @@ import static st.orm.ResolveScope.CASCADE;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.function.Function;
 import st.orm.SqlTemplateException;
+import st.orm.core.template.TemplateString;
 import st.orm.core.template.impl.Elements.Cursor;
+import st.orm.core.template.impl.Elements.TemplateExpression;
 
 /**
  * Renders a {@link Cursor} element: the columns the select list lacks, appended after it, and records where every
@@ -43,7 +46,32 @@ final class CursorProcessor implements ElementProcessor<Cursor> {
      */
     @Override
     public Object getCompilationKey(Cursor cursor) {
-        return cursor;
+        // The values of an expression are no part of the shape; the key generator variant keys it.
+        return cursor.expressions().isEmpty() ? cursor : null;
+    }
+
+    /**
+     * Returns a key for the given element, keying each expression by its shape rather than its values.
+     *
+     * @param cursor the element to compute a key for.
+     * @param keyGenerator a function that generates compilation keys for sub-templates.
+     * @return an immutable key for caching, or {@code null} if an expression cannot be cached.
+     */
+    @Override
+    public Object getCompilationKey(Cursor cursor, Function<TemplateString, Object> keyGenerator) {
+        if (cursor.expressions().isEmpty()) {
+            return cursor;
+        }
+        var key = new ArrayList<Object>(cursor.expressions().size() + 1);
+        key.add(cursor.fields());
+        for (var expression : cursor.expressions()) {
+            var expressionKey = keyGenerator.apply(expression);
+            if (expressionKey == null) {
+                return null;
+            }
+            key.add(expressionKey);
+        }
+        return List.copyOf(key);
     }
 
     /**
@@ -76,14 +104,21 @@ final class CursorProcessor implements ElementProcessor<Cursor> {
             }
             positions.add(List.copyOf(fieldPositions));
         }
+        for (var expression : cursor.expressions()) {
+            appended.append(", ").append(compiler.getQueryModel().compileExpression(new TemplateExpression(expression), compiler));
+            positions.add(List.of(-(++appendedCount)));
+        }
         compiler.setCursorColumns(positions);
         return new CompiledElement(appended.toString());
     }
 
     /**
-     * A cursor binds nothing: its columns are read, not written.
+     * A cursor binds the values of its expressions; its columns are read, not written.
      */
     @Override
     public void bind(Cursor cursor, TemplateBinder binder, BindHint bindHint) {
+        for (var expression : cursor.expressions()) {
+            binder.getQueryModel().bindExpression(new TemplateExpression(expression), binder);
+        }
     }
 }

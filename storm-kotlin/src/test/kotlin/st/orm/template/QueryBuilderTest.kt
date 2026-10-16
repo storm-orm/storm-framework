@@ -2266,20 +2266,91 @@ internal open class QueryBuilderTest(
     }
 
     @Test
-    fun `orderFirst should be refused by scroll, distinct and a semi-joined table`() {
+    fun `orderFirst should be refused by distinct and a semi-joined table`() {
         val ownerRepo = orm.entity(Owner::class)
         val lastName = metamodel<Owner, String>(ownerRepo.model, "last_name")
-        val id = metamodel<Owner, Int>(ownerRepo.model, "id")
         val petName = metamodel<Pet, String>(orm.entity(Pet::class).model, "name")
-        assertThrows<PersistenceException> {
-            ownerRepo.select().orderFirst(lastName eq "Davis").scroll(Scrollable.of(id.key(), 2))
-        }.message!! shouldContain "orderFirst"
         assertThrows<PersistenceException> {
             ownerRepo.select().distinct().orderFirst(lastName eq "Davis").resultList
         }.message!! shouldContain "distinct"
         assertThrows<PersistenceException> {
             ownerRepo.select().semiJoin<Pet>().on<Owner>().orderFirst(petName eq "Leo").resultList
         }.message!! shouldContain "semi-joined"
+    }
+
+    @Test
+    fun `scroll should follow orderFirst through every window in both directions`() {
+        val ownerRepo = orm.entity(Owner::class)
+        val lastName = metamodel<Owner, String>(ownerRepo.model, "last_name")
+        val id = metamodel<Owner, Int>(ownerRepo.model, "id")
+        fun query() = ownerRepo.select()
+            .orderFirst(lastName eqIgnoreCase "davis")
+            .orderFirst(lastName startsWithIgnoreCase "e")
+        val expected = listOf("Betty", "Harold", "Maria", "Carlos", "George", "Eduardo", "Peter", "Jean", "Jeff", "David")
+        // Forward through next(), each window continuing after the last row's ranks and key.
+        val forward = mutableListOf<String>()
+        var window = query().scroll(Scrollable.of(id.key(), 3))
+        while (true) {
+            forward += window.content().map { it.firstName }
+            if (!window.hasNext()) break
+            window = query().scroll(window.next()!!)
+        }
+        forward shouldBe expected
+        // Back through previous(), from the last window to the first.
+        val backward = mutableListOf<List<String>>()
+        while (true) {
+            backward.add(0, window.content().map { it.firstName })
+            if (!window.hasPrevious()) break
+            window = query().scroll(window.previous()!!)
+        }
+        backward.flatten() shouldBe expected
+        // Across a cursor string, as a client sends it back.
+        val first = query().scroll(Scrollable.of(id.key(), 2))
+        query().scroll(Scrollable.of(id.key(), 2).from(first.nextCursor()!!))
+            .content().map { it.firstName } shouldBe listOf("Maria", "Carlos")
+    }
+
+    @Test
+    fun `scroll should be refused after a plain orderBy and read a position for its orderFirst keys`() {
+        val ownerRepo = orm.entity(Owner::class)
+        val lastName = metamodel<Owner, String>(ownerRepo.model, "last_name")
+        val id = metamodel<Owner, Int>(ownerRepo.model, "id")
+        assertThrows<PersistenceException> {
+            ownerRepo.select().orderBy(lastName).scroll(Scrollable.of(id.key(), 2))
+        }.message!! shouldContain "orderFirst"
+        // A cursor issued without orderFirst lacks the rank a ranked scroll continues from.
+        val plain = ownerRepo.select().scroll(Scrollable.of(id.key(), 2))
+        assertThrows<IllegalArgumentException> {
+            ownerRepo.select().orderFirst(lastName eq "Davis").scroll(plain.next()!!)
+        }.message!! shouldContain "orderFirst"
+    }
+
+    @Test
+    fun `scroll should sort by a field of a joined table`() {
+        val ownerRepo = orm.entity(Owner::class)
+        val id = metamodel<Owner, Int>(ownerRepo.model, "id")
+        val petName = metamodel<Pet, String>(orm.entity(Pet::class).model, "name")
+        fun query() = ownerRepo.select().innerJoin<Pet>().on<Owner>().narrow<Owner>()
+        val expected = ownerRepo.select().innerJoin<Pet>().on<Owner>()
+            .orderBy(petName).orderBy(id).resultList.map { it.firstName }
+        val scrolled = mutableListOf<String>()
+        var window = query().scroll(Scrollable.of(id.key(), 3).sortBy(petName))
+        while (true) {
+            scrolled += window.content().map { it.firstName }
+            if (!window.hasNext()) break
+            window = query().scroll(Scrollable.of(id.key(), 3).sortBy(petName).from(window.nextCursor()!!))
+        }
+        scrolled shouldBe expected
+    }
+
+    @Test
+    fun `scroll should refuse a sort field of a table outside the query`() {
+        val ownerRepo = orm.entity(Owner::class)
+        val id = metamodel<Owner, Int>(ownerRepo.model, "id")
+        val petName = metamodel<Pet, String>(orm.entity(Pet::class).model, "name")
+        assertThrows<PersistenceException> {
+            ownerRepo.select().scroll(Scrollable.of(id.key(), 3).sortBy(petName))
+        }.message!! shouldContain "Pet is not part of this query"
     }
 
     @Test

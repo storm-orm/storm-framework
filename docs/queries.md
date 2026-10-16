@@ -469,7 +469,7 @@ The operators match the input as they do in a WHERE clause: ignoring case, and l
 
 - No index serves the sort: the database evaluates each key for every row the query finds and sorts them all, even with a limit. After a search, which finds few rows, that costs what any ordering of the matches costs.
 - Rank by the columns of the queried table and of joined tables. A semi-joined table adds no columns to the query, so its columns, such as the name of a credited person a movie was found by, cannot rank it; Storm refuses them.
-- A keyset `scroll` cannot follow `orderFirst`: a window continues from the values of its sort columns, and a rank over a condition is not one. Page through ranked results with `page`.
+- A keyset `scroll` follows `orderFirst`: its keys lead, before the sort fields and the key of the `Scrollable`, and the cursor carries the rank of the row it continues from. The sort fields may belong to a joined table, such as `Rating_.votes` on a movie search, as the fields `orderBy` takes may; see [Scrolling](pagination-and-scrolling.md).
 - A `distinct` query cannot be ranked, since the database orders a distinct result only by the columns it selects. A search over related rows uses a semi-join, which needs no `distinct`.
 
 #### Indexing a Search
@@ -552,7 +552,7 @@ val users = orm.entity<User>()
     .resultList
 ```
 
-It renders `CASE WHEN <predicate> THEN 0 ELSE 1 END`, the same on every database. A keyset `scroll` and a `distinct` query cannot follow it; see [Ranking the Matches](#ranking-the-matches) for ranking search results.
+It renders `CASE WHEN <predicate> THEN 0 ELSE 1 END`, the same on every database. A keyset `scroll` follows it, its keys leading the `Scrollable`'s; a `distinct` query cannot be ranked. See [Ranking the Matches](#ranking-the-matches) for ranking search results.
 
 </TabItem>
 <TabItem value="java" label="Java">
@@ -613,7 +613,7 @@ List<User> users = orm.entity(User.class)
     .getResultList();
 ```
 
-It renders `CASE WHEN <predicate> THEN 0 ELSE 1 END`, the same on every database. A keyset `scroll` and a `distinct` query cannot follow it; see [Ranking the Matches](#ranking-the-matches) for ranking search results.
+It renders `CASE WHEN <predicate> THEN 0 ELSE 1 END`, the same on every database. A keyset `scroll` follows it, its keys leading the `Scrollable`'s; a `distinct` query cannot be ranked. See [Ranking the Matches](#ranking-the-matches) for ranking search results.
 
 </TabItem>
 </Tabs>

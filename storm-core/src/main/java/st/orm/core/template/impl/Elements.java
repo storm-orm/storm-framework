@@ -96,15 +96,24 @@ public final class Elements {
      * through {@link st.orm.core.template.Sql#cursorColumns()}. A multi-column path (an inline record) expands to
      * each of its columns, in model column order. A scroll window reads its sort and key values this way.</p>
      *
+     * <p>A cursor also reads expressions, each one value appended after the fields: the rank an
+     * {@code orderFirst} key gives a row, which a scroll window carries in its position like a sort field.</p>
+     *
      * @param fields the fields to read, in the order their values are wanted.
+     * @param expressions the expressions to read after the fields, in the order their values are wanted.
      * @since 1.15
      */
-    public record Cursor(List<Metamodel<?, ?>> fields) implements Element {
+    public record Cursor(List<Metamodel<?, ?>> fields, List<TemplateString> expressions) implements Element {
         public Cursor {
             fields = List.copyOf(requireNonNull(fields, "fields"));
-            if (fields.isEmpty()) {
+            expressions = List.copyOf(requireNonNull(expressions, "expressions"));
+            if (fields.isEmpty() && expressions.isEmpty()) {
                 throw new IllegalArgumentException("A cursor names at least one field.");
             }
+        }
+
+        public Cursor(List<Metamodel<?, ?>> fields) {
+            this(fields, List.of());
         }
     }
 
