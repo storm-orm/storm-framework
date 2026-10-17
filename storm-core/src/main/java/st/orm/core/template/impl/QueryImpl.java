@@ -240,6 +240,13 @@ class QueryImpl implements Query, KeyedQuery {
      */
     private Observation observe(ExecutionKind kind) {
         try {
+            var advisories = environment.advisories();
+            if (!advisories.isEmpty() && AdviceLog.enabled()) {
+                // Advice is decided when the statement is built; a statement without any costs this test alone.
+                AdviceLog.onExecute(new QueryContextImpl(environment.operation(), environment.dataType(), kind,
+                        environment.statementText(), environment.origin(), environment.shapeId()),
+                        environment.statementText(), advisories);
+            }
             var queryObserver = environment.queryObserver();
             var operators = SqlInterceptorManager.localOperators();
             boolean slowLog = SlowStatementLog.active();

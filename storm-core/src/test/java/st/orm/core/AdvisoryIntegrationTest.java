@@ -31,13 +31,15 @@ import org.springframework.test.context.ContextConfiguration;
 import org.springframework.test.context.junit.jupiter.SpringExtension;
 import st.orm.Pageable;
 import st.orm.core.model.Owner;
+import st.orm.core.model.Owner_;
 import st.orm.core.model.Pet;
 import st.orm.core.template.ORMTemplate;
 import st.orm.core.template.QueryBuilder;
 
 /**
- * A statement carries advice for the slow statement log where its own shape says why it reads more than it needs to:
- * a distinct over a join that repeats its rows, the count behind a page, and a deep offset.
+ * A statement carries advice where its own shape says why it reads more than it needs to, or returns rows in no
+ * stated order: a distinct over a join that repeats its rows, the count behind a page, a deep offset, and a limit or
+ * offset without an ORDER BY.
  */
 @ExtendWith(SpringExtension.class)
 @ContextConfiguration(classes = IntegrationConfig.class)
@@ -78,7 +80,7 @@ public class AdvisoryIntegrationTest {
 
     @Test
     public void countBehindAPageCarriesAdvice() {
-        var advice = advisories(() -> owners().page(Pageable.ofSize(2)));
+        var advice = advisories(() -> owners().page(Pageable.ofSize(2).sortBy(Owner_.id)));
         assertEquals(1, advice.size(), advice.toString());
         assertTrue(advice.getFirst().contains("slice"), advice.getFirst());
     }
@@ -86,24 +88,43 @@ public class AdvisoryIntegrationTest {
     @Test
     public void countOfItsOwnAndSliceCarryNoAdvice() {
         assertEquals(List.of(), advisories(() -> owners().getResultCount()));
-        assertEquals(List.of(), advisories(() -> owners().slice(Pageable.ofSize(2))));
+        assertEquals(List.of(), advisories(() -> owners().slice(Pageable.ofSize(2).sortBy(Owner_.id))));
         // A page that is not full knows its total, so no count runs.
-        assertEquals(List.of(), advisories(() -> owners().page(Pageable.ofSize(1_000))));
+        assertEquals(List.of(), advisories(() -> owners().page(Pageable.ofSize(1_000).sortBy(Owner_.id))));
     }
 
     @Test
     public void deepOffsetCarriesAdvice() {
-        var advice = advisories(() -> owners().offset(1_000).limit(10).getResultList());
+        var advice = advisories(() -> owners().orderBy(Owner_.id).offset(1_000).limit(10).getResultList());
         assertEquals(1, advice.size(), advice.toString());
         assertTrue(advice.getFirst().contains("1000 rows"), advice.getFirst());
         assertTrue(advice.getFirst().contains("scroll"), advice.getFirst());
-        assertEquals(List.of(), advisories(() -> owners().offset(999).limit(10).getResultList()));
+        assertEquals(List.of(), advisories(() -> owners().orderBy(Owner_.id).offset(999).limit(10).getResultList()));
     }
 
     @Test
     public void deepPageCarriesOffsetAdvice() {
-        var advice = advisories(() -> owners().slice(Pageable.of(100, 10)));
+        var advice = advisories(() -> owners().slice(Pageable.of(100, 10).sortBy(Owner_.id)));
         assertEquals(1, advice.size(), advice.toString());
         assertTrue(advice.getFirst().contains("1000 rows"), advice.getFirst());
+    }
+
+    @Test
+    public void limitOrOffsetWithoutAnOrderCarriesAdvice() {
+        for (Supplier<?> query : List.<Supplier<?>>of(
+                () -> owners().limit(5).getResultList(),
+                () -> owners().offset(2).getResultList(),
+                () -> owners().slice(Pageable.ofSize(2)))) {
+            var advice = advisories(query);
+            assertEquals(1, advice.size(), advice.toString());
+            assertTrue(advice.getFirst().contains("without an ORDER BY"), advice.getFirst());
+        }
+    }
+
+    @Test
+    public void orderedOrSingleRowLimitCarriesNoAdvice() {
+        assertEquals(List.of(), advisories(() -> owners().orderBy(Owner_.id).limit(5).getResultList()));
+        assertEquals(List.of(), advisories(() -> owners().limit(1).getResultList()));
+        assertEquals(List.of(), advisories(() -> owners().scroll(st.orm.Scrollable.of(Owner_.id, 2))));
     }
 }

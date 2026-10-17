@@ -16,7 +16,7 @@
 package st.orm.core.template.impl;
 
 /**
- * The advice a statement can carry to the slow statement log, each with the anchor of its section on the advice page.
+ * The advice a statement can carry to the slow statement log and the advice log, each with the anchor of its section on the advice page.
  * The page keeps an anchor for as long as Storm emits the advice, so the link in a log line outlives any change to the
  * rest of the documentation.
  *
@@ -39,6 +39,12 @@ enum Advice {
     PAGE_COUNT("page-count",
             "page counts every matching row to report the total; slice reads the same page without the count, and "
                     + "says whether a next page exists."),
+
+    /** A limit or offset without an ORDER BY. */
+    UNORDERED_LIMIT("unordered-limit",
+            "the statement takes part of the result without an ORDER BY, so which rows it returns is up to the "
+                    + "database and can change between executions, and consecutive pages can repeat or skip rows; "
+                    + "order by a unique key, or by sort fields that end in one."),
 
     /** An offset of at least {@link #DEEP_OFFSET_ROWS} rows. */
     DEEP_OFFSET("deep-offset",

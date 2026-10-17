@@ -1,21 +1,26 @@
 import Tabs from '@theme/Tabs';
 import TabItem from '@theme/TabItem';
 
-# Slow Statement Advice
+# Statement Advice
 
-A line in the [slow statement log](sql-logging.md#the-slow-statement-log) can end with advice: a line of its own, starting with `advice`, where the statement's own shape says why it reads more than it needs to. Each piece of advice links to its section on this page. The links stay valid for as long as Storm gives the advice, so a log line written today still leads here after the rest of the documentation has moved on.
+Storm attaches advice to a statement where the statement's own shape says it reads more than it needs to, or returns rows in no stated order. The advice reaches you two ways:
+
+- **The advice log.** With `st.orm.sql.advice` at `DEBUG`, Storm reports each piece of advice the first time a statement of its shape runs, fast or slow, with the call site. It reports each once, so the log reads as a list of what to change rather than a stream. See [The Advice Log](sql-logging.md#the-advice-log).
+- **The slow statement log.** A line in the [slow statement log](sql-logging.md#the-slow-statement-log) ends with the advice its statement carries, every time it is slow.
 
 ```
-SQL slow (SELECT Owner): 1840 ms in database, 12 rows, OwnerService.kt:42
-    SELECT DISTINCT o.id, o.first_name, o.last_name, ...
-    FROM owner o
-    INNER JOIN pet p ON p.owner_id = o.id
-    WHERE p.name = ?
-	shape 9b34305d1a7c4e02 (typically 1600 ms)  parameters 1
+SQL advice (SELECT Owner): OwnerService.kt:42
+	SELECT DISTINCT o.id, o.first_name, o.last_name, ...
+	FROM owner o
+	INNER JOIN pet p ON p.owner_id = o.id
+	WHERE p.name = ?
+	shape 9b34305d1a7c4e02
 	advice DISTINCT removes the rows the join to Pet repeats, one per related row; semiJoin(Pet) filters by it without repeating rows, so the query needs no DISTINCT. See https://orm.st/docs/advice#distinct-over-join
 ```
 
-Storm does not know which indexes the database has. It advises only on what the statement itself proves, whatever indexes exist, so advice never guesses at a missing index, and a slow statement without advice is slow for a reason the statement does not show: its plan, its parameters, or the load on the database.
+Each piece of advice links to its section on this page. The links stay valid for as long as Storm gives the advice, so a log line written today still leads here after the rest of the documentation has moved on.
+
+Storm does not know which indexes the database has. It advises only on what the statement itself proves, whatever indexes exist, so advice never guesses at a missing index, and a slow statement without advice is slow for a reason the statement does not show: its plan, its parameters, or the load on the database. Advice is decided when Storm builds the statement, so it costs an execution nothing while the advice log is off.
 
 ## A search of short words alone {#unindexed-search}
 
@@ -67,6 +72,14 @@ The advice is given for a `distinct` select of the query's own table over an inn
 `page` reports the total number of matching rows, and finding it takes a count query that visits every one of them, however small the page. On a large or expensive result the count costs more than the page itself.
 
 A list that shows "next" rather than "page 3 of 120" needs no total. `slice` reads the same page with one row beyond it, which says whether a next page exists, and runs no count. Where the total is needed but changes slowly, `page(pageable, totalCount)` takes a total counted once and kept. A page that is not full already knows its total, so its count never runs. See [Slices](pagination-and-scrolling.md#slices).
+
+## A limit or offset without an order {#unordered-limit}
+
+> the statement takes part of the result without an ORDER BY, so which rows it returns is up to the database
+
+Without an ORDER BY, a database returns rows in whatever order is cheapest for it at that moment, and the order can change with the plan, with concurrent writes, or from one execution to the next. A `limit` or `offset` then takes an arbitrary part of the result: the first page and the second can overlap or miss rows between them, which no test on a small, quiet table shows.
+
+Order by a unique key, or by sort fields that end in one, so every row has one place in the order: `orderBy(Owner_.id)`, or `Pageable.ofSize(20).sortBy(Owner_.lastName).sortBy(Owner_.id)`. `scroll` always orders by its key, so it never gets this advice, and neither does a `limit(1)`, which asks for any matching row.
 
 ## A deep offset {#deep-offset}
 

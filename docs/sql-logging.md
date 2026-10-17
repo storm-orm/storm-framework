@@ -16,6 +16,7 @@ Every execution passes one interception point exactly once, and everything Storm
 | `st.orm.sql` | what ran | statement | logger, `DEBUG` | at `TRACE` |
 | `st.orm.sql.perf` | what a call cost | unit of work | logger, `INFO`, plus a boundary | never |
 | `st.orm.sql.slow` | which execution was slow, from where, with what | execution | `WARN`, plus a threshold | at `TRACE` |
+| `st.orm.sql.advice` | which statement shapes to change, and how | shape, once | logger, `DEBUG` | never |
 | Micrometer `storm.query` | how statements behave over time, per shape | execution, aggregated | `ObservationRegistry` | never |
 | SQL comment | the key that joins the database's own slow log and plans to the trace | execution | `storm.tracing.sql-comments` | n/a |
 | `SqlCapture` | assertions in tests | statement | code | yes, in tests |
@@ -309,7 +310,7 @@ Reading the line, headline first:
 - **`shape 9b34305d1a7c4e02 (typically 6.0 ms, 306x)`** is the answer to the question a slow statement raises first: is this statement always this slow, or was it these parameters? The shape is the statement's template identity, the same `storm.shape` the metrics are tagged with, and stable across parameter expansion, so an `IN` list of 3 and one of 32 are one shape. While the slow log is on, each shape keeps a baseline of what it typically costs over its recent minutes (a geometric mean, which an outlier barely moves; reported once eight other executions back it). `typically 6.0 ms, 306x` says the shape is normally fast and this execution was not: look at the values, or at a plan that changed. `typically 310 ms` with no multiplier says the statement is always this slow: look at the query, the graph its type declares (see [Entity Design](entity-design.md)) and its indexes.
 - **`parameters 32 (typically 3)`** is the parameter profile, safe to print in production: the count this execution bound against what the shape typically binds, shown when they differ by half or double. It names an oversized `IN` list, the commonest way a fast shape turns slow, without printing a value.
 - **`comment traceparent='…'`** is the SQL comment the statement carried, when a [`SqlCommenter`](spring-integration.md#observability) is configured. It is the key that joins this line to the database's own record of the same execution; see below.
-- **`advice …`** follows on a line of its own where the statement's own shape says why it reads more than it needs to: a search of short words alone, a `distinct` over a join that repeats rows, the count behind a page, or a deep offset. Each links to its section of [Slow Statement Advice](advice.md), which says what the advice means and what to use instead.
+- **`advice …`** follows on a line of its own where the statement's own shape says why it reads more than it needs to: a search of short words alone, a `distinct` over a join that repeats rows, the count behind a page, or a deep offset. Each links to its section of [Statement Advice](advice.md), which says what the advice means and what to use instead.
 
 The values themselves render while the logger is at `TRACE`, inlined into the statement so it can be pasted into a console, under the rule every Storm SQL logger follows; the line stays at `WARN`, since a slow execution is one whatever detail it is reported with. `st.orm.sql.slow` is a child of `st.orm.sql`, so raising that to `TRACE` for statement logging raises the slow log with it, and no other level shows a value.
 
@@ -360,6 +361,32 @@ Storm can say what ran, from where, with which parameter profile and how it comp
 Storm does not run `EXPLAIN` on your behalf. Beyond the connection and dialect plumbing, `EXPLAIN` with the values filled in shows the plan the database would choose for those literals, and a prepared statement that has run a few times may have executed a different, generic plan; the explanation could show a fast plan for a slow query. The database's own record shows the plan that ran.
 
 ---
+
+## The Advice Log
+
+Some statements cost more than they need to, or return rows in no stated order, whether or not any one execution is slow: a `limit` without an ORDER BY, a `distinct` that removes the rows its join repeated, a count behind every page. Storm decides this when it builds the statement, from the statement's own shape, and attaches the advice to it. The advice log reports it.
+
+```yaml
+logging:
+  level:
+    st.orm.sql.advice: DEBUG
+```
+
+```
+SQL advice (SELECT Owner): OwnerController.kt:31
+	SELECT o.id, o.first_name, o.last_name, ...
+	FROM owner o
+	LIMIT 20
+	shape 4c1e07a9b2d35f18
+	advice the statement takes part of the result without an ORDER BY, so which rows it returns is up to the database and can change between executions, and consecutive pages can repeat or skip rows; order by a unique key, or by sort fields that end in one. See https://orm.st/docs/advice#unordered-limit
+```
+
+- **Once per shape.** Each piece of advice is reported the first time a statement of its shape executes, then not again, so the log reads as a list of what to change. Turn it on while developing or in a test environment, run the application, and work through the lines. It remembers the last four thousand pieces of advice it reported; past that it starts over, which can repeat a line but never changes what one says.
+- **Fast or slow.** The advice log reports what the statement proves regardless of how long it took. The [slow statement log](#the-slow-statement-log) prints the same advice under every slow line.
+- **Free while off.** Advice is decided when the statement is built and cached with it. While the logger is off, an execution pays one test of whether its statement carries advice; only then does Storm ask whether the logger is on.
+- **No values.** The line carries the statement with placeholders, the call site and the shape, never a parameter value, at any level.
+
+Every piece of advice links to its section of [Statement Advice](advice.md), which says what it means and what to use instead.
 
 ## Tips
 
