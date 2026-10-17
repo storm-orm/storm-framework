@@ -99,6 +99,9 @@ const EXAMPLES = [
       'feature that registers entities and repositories from the compile-time ' +
       'type index, so the data layer needs no native configuration at all.',
     chips: ['Kotlin', 'Ktor 3', 'GraalVM'],
+    // Deployed from this repository; the detail page links to it and credits
+    // the host.
+    live: {url: 'https://movies.orm.st', host: 'freepod'},
   },
 ];
 

@@ -1,0 +1,65 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <linearGradient id="bg2b" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#2563eb"/>
+      <stop offset="100%" stop-color="#1e40af"/>
+    </linearGradient>
+    <radialGradient id="starfield2b" cx="0.5" cy="0.38" r="0.45">
+      <stop offset="0%" stop-color="#1e3a8a"/>
+      <stop offset="100%" stop-color="#0c1631"/>
+    </radialGradient>
+    <linearGradient id="pin-stroke2b" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#e0e7ff"/>
+      <stop offset="100%" stop-color="#818cf8"/>
+    </linearGradient>
+    <clipPath id="pin-clip2b">
+      <path d="M256 82 C168 82 100 150 100 232 C100 335 256 438 256 438 C256 438 412 335 412 232 C412 150 344 82 256 82Z"/>
+    </clipPath>
+    <filter id="pin-shadow">
+      <feDropShadow dx="0" dy="4" stdDeviation="8" flood-color="#000" flood-opacity="0.3"/>
+    </filter>
+  </defs>
+  <!-- Rounded square background -->
+  <rect width="512" height="512" rx="112" fill="url(#bg2b)"/>
+  <!-- Subtle radial glow behind pin -->
+  <circle cx="256" cy="250" r="180" fill="#3b82f6" opacity="0.15"/>
+  <!-- Map pin shape -->
+  <g filter="url(#pin-shadow)">
+    <path d="M256 82 C168 82 100 150 100 232 C100 335 256 438 256 438 C256 438 412 335 412 232 C412 150 344 82 256 82Z"
+          fill="url(#starfield2b)" stroke="url(#pin-stroke2b)" stroke-width="5"/>
+  </g>
+  <!-- Stars inside pin -->
+  <g clip-path="url(#pin-clip2b)">
+    <!-- Scattered stars -->
+    <circle cx="170" cy="150" r="2.5" fill="white" opacity="0.85"/>
+    <circle cx="215" cy="185" r="1.8" fill="white" opacity="0.6"/>
+    <circle cx="320" cy="138" r="3" fill="white" opacity="0.8"/>
+    <circle cx="350" cy="205" r="1.8" fill="white" opacity="0.55"/>
+    <circle cx="195" cy="260" r="2" fill="white" opacity="0.65"/>
+    <circle cx="300" cy="290" r="1.8" fill="white" opacity="0.5"/>
+    <circle cx="155" cy="215" r="1.5" fill="white" opacity="0.45"/>
+    <circle cx="360" cy="265" r="2.5" fill="white" opacity="0.6"/>
+    <circle cx="248" cy="128" r="2" fill="white" opacity="0.75"/>
+    <circle cx="280" cy="230" r="1.5" fill="white" opacity="0.5"/>
+    <circle cx="140" cy="175" r="1.5" fill="white" opacity="0.4"/>
+    <circle cx="370" cy="170" r="2" fill="white" opacity="0.65"/>
+    <circle cx="230" cy="310" r="1.5" fill="white" opacity="0.4"/>
+    <!-- Constellation: Caelum-inspired pattern -->
+    <g stroke="white" stroke-width="0.8" opacity="0.25">
+      <line x1="170" y1="150" x2="215" y2="185"/>
+      <line x1="215" y1="185" x2="248" y2="128"/>
+      <line x1="320" y1="138" x2="370" y2="170"/>
+      <line x1="370" y1="170" x2="360" y2="265"/>
+      <line x1="360" y1="265" x2="280" y2="230"/>
+      <line x1="280" y1="230" x2="195" y2="260"/>
+    </g>
+    <!-- Central bright compass star -->
+    <g transform="translate(256,215)">
+      <path d="M0-22 L4-4 L22 0 L4 4 L0 22 L-4 4 L-22 0 L-4-4Z" fill="white" opacity="0.85"/>
+      <path d="M0-12 L2-2 L12 0 L2 2 L0 12 L-2 2 L-12 0 L-2-2Z" fill="white" opacity="0.95"/>
+      <circle cx="0" cy="0" r="3.5" fill="white"/>
+    </g>
+  </g>
+  <!-- Subtle pin highlight -->
+  <ellipse cx="220" cy="185" rx="50" ry="65" fill="white" opacity="0.05"/>
+</svg>

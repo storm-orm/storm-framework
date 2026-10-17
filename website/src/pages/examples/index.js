@@ -10,6 +10,32 @@ import {TUT_CSS, navHtml, FOOT_HTML, heroArt} from '../../components/tutorial/tu
 //
 // These are applications to read and run, not to start from: a project begins
 // at /templates, where the same stacks are one vertical slice each.
+//
+// The Ktor GraalVM variant runs live at movies.orm.st, hosted on Freepod. The
+// Freepod panel uses their own developer copy (freepod.eu/dev) and their mark
+// next to the name set as text, as their own footer shows it.
+
+const LIVE_CSS = `
+  .storm-tut .live{max-width:1080px;margin:0 auto;padding:20px 24px 6px;position:relative;z-index:1}
+  .storm-tut .live .panel{display:grid;grid-template-columns:minmax(0,3fr) minmax(0,2fr);gap:24px;border:1px solid rgba(129,140,248,.45);border-radius:14px;padding:20px 22px;background:var(--panel-2)}
+  .storm-tut .live .tt{font-size:16.5px;font-weight:650;letter-spacing:-.01em}
+  .storm-tut .live .tt .arrow{color:var(--accent);margin-left:8px}
+  .storm-tut .live .td,.storm-tut .live p{color:var(--muted);font-size:13.5px;line-height:1.62;margin:8px 0 0}
+  .storm-tut .live .td a,.storm-tut .live p a{color:var(--accent)}
+  .storm-tut .live a:hover{text-decoration:underline}
+  .storm-tut .live .tm{display:flex;gap:8px;margin-top:12px;flex-wrap:wrap}
+  .storm-tut .live .tm span{font-family:var(--mono);font-size:11px;color:var(--muted);border:1px solid var(--border);border-radius:999px;padding:4px 11px}
+  .storm-tut .live .host{border-left:1px solid var(--border-soft);padding-left:24px}
+  .storm-tut .live .brand{display:flex;gap:12px;align-items:center}
+  .storm-tut .live .logo{width:32px;height:32px;flex:none}
+  .storm-tut .live .eyebrow{font-family:var(--mono);font-size:10.5px;letter-spacing:.16em;text-transform:uppercase;color:var(--faint)}
+  .storm-tut .live .name{font-size:15.5px;font-weight:650;letter-spacing:-.01em}
+  .storm-tut .live code{font-family:var(--mono);font-size:.9em;background:var(--panel);border:1px solid var(--border-soft);border-radius:6px;padding:1px 6px;color:var(--plain);white-space:nowrap}
+  @media (max-width:760px){
+    .storm-tut .live .panel{grid-template-columns:1fr;gap:18px}
+    .storm-tut .live .host{border-left:0;padding-left:0;border-top:1px solid var(--border-soft);padding-top:18px}
+  }
+`;
 
 const TITLE = 'ST/ORM Example Projects · Complete applications built with Storm';
 const DESC =
@@ -23,8 +49,23 @@ ${navHtml('examples')}
 
 <div class="pagehero">
   <h1>Real applications,<br><span class="grad">built with Storm.</span></h1>
-  <p class="sub">The same movie browser on the public IMDB dataset, built on Ktor and Spring Boot, in Kotlin and Java, with GraalVM native-image variants. Each one shows idiomatic Storm at the scale of a real application. Clone one and run it with Docker and Gradle. Beginning a project of your own? Start from a <a href="/templates/">template</a>: the same stacks, one vertical slice each, with nothing to delete first.</p>
+  <p class="sub">The same movie browser on the public IMDB dataset, built on Ktor and Spring Boot, in Kotlin and Java, with GraalVM native-image variants. The Ktor native image runs live at <a href="https://movies.orm.st">movies.orm.st</a>. Each one shows idiomatic Storm at the scale of a real application. Clone one and run it with Docker and Gradle. Beginning a project of your own? Start from a <a href="/templates/">template</a>: the same stacks, one vertical slice each, with nothing to delete first.</p>
   ${heroArt('examples', {priority: true})}
+</div>
+
+<div class="shead" id="live"><span class="mark">//</span>Try it live<span class="sdesc">The Ktor GraalVM variant, running in production on the public IMDB dataset.</span></div>
+<div class="live">
+  <div class="panel">
+    <div class="app">
+      <div class="tt"><a href="https://movies.orm.st">movies.orm.st<span class="arrow">↗</span></a></div>
+      <div class="td">Browse by genre, keep a watchlist, and search the catalog by title or by the people who made it. Every page is a Storm query against PostgreSQL, served by a native binary built from the <a href="/examples/kotlin-ktor-graalvm/">Ktor GraalVM example</a>.</div>
+      <div class="tm"><span>Kotlin</span><span>Ktor 3</span><span>GraalVM</span></div>
+    </div>
+    <div class="host">
+      <div class="brand"><img class="logo" src="/img/partners/freepod.svg" alt="Freepod logo" width="32" height="32" /><div><div class="eyebrow">Hosted on</div><div class="name">Freepod</div></div></div>
+      <p>Agentic and artisanal hosting in the EU. Two commands to production, <code>freepod init</code> and <code>freepod deploy</code>, with Postgres, object storage and sign-in built in. <a href="https://freepod.eu/dev">Freepod for developers →</a></p>
+    </div>
+  </div>
 </div>
 
 <div class="shead" id="projects"><span class="mark">//</span>Example projects<span class="sdesc">Server-rendered movie browsers: entities, repositories, projections, pagination, transactions, and tests in a working application. Written to be read, not to be started from.</span></div>
@@ -55,8 +96,8 @@ ${navHtml('examples')}
   </a>
   <a class="tcard" href="/examples/kotlin-ktor-graalvm/">
     <div class="tt">Storm Movies · Ktor · GraalVM<span class="arrow">→</span></div>
-    <div class="td">The Ktor movie browser as a native image: storm-core ships a GraalVM feature that registers entities and repositories from the compile-time type index, so the data layer needs no native configuration at all.</div>
-    <div class="tm"><span>Kotlin</span><span>Ktor 3</span><span>GraalVM</span></div>
+    <div class="td">The Ktor movie browser as a native image: storm-core ships a GraalVM feature that registers entities and repositories from the compile-time type index, so the data layer needs no native configuration at all. Running live at movies.orm.st.</div>
+    <div class="tm"><span>Kotlin</span><span>Ktor 3</span><span>GraalVM</span><span>Live</span></div>
   </a>
 </div>
 
@@ -91,7 +132,7 @@ export default function Examples() {
           rel="stylesheet"
         />
       </Head>
-      <style dangerouslySetInnerHTML={{__html: TUT_CSS}} />
+      <style dangerouslySetInnerHTML={{__html: TUT_CSS + LIVE_CSS}} />
       <div className="storm-tut" dangerouslySetInnerHTML={{__html: BODY}} />
     </>
   );

@@ -7,7 +7,17 @@ import {TUT_CSS, navHtml, FOOT_HTML, clonebar, wireSqlToggles} from '../tutorial
 // repo, rendered README html, and the base it lives under) as a JSON module
 // prop and renders it in the landing-page style: hero with the clone command
 // and GitHub link, then the README content. A template leads with its
-// "Use this template" button, since starting from it is the point.
+// "Use this template" button, since starting from it is the point. A project
+// that runs live leads with a link to it and credits where it is hosted.
+
+const HOSTS = {
+  freepod: {
+    name: 'Freepod',
+    logo: '/img/partners/freepod.svg',
+    url: 'https://freepod.eu/dev',
+    tagline: 'agentic and artisanal hosting in the EU',
+  },
+};
 
 const README_CSS = `
   .storm-tut .readme{max-width:860px;margin:0 auto;padding:0 24px 48px}
@@ -40,10 +50,15 @@ const README_CSS = `
   .storm-tut .clonebar{display:flex;align-items:center;gap:10px;font-family:var(--mono);font-size:13px;color:var(--plain);
     background:var(--panel);border:1px solid var(--border);border-radius:10px;padding:0 18px;min-height:44px;overflow-x:auto;white-space:nowrap}
   .storm-tut .clonebar .dollar{color:var(--green);user-select:none}
+  .storm-tut .hosted{display:flex;align-items:center;gap:10px;margin-top:18px;color:var(--muted);font-size:13.5px;line-height:1.5}
+  .storm-tut .hosted img{width:22px;height:22px;flex:none}
+  .storm-tut .hosted a{color:var(--accent)}
+  .storm-tut .hosted a:hover{text-decoration:underline}
 `;
 
 export default function ExampleReadmePage({example}) {
-  const {slug, repo, title, description, chips, html, base = 'examples'} = example;
+  const {slug, repo, title, description, chips, html, live, base = 'examples'} = example;
+  const host = live && HOSTS[live.host];
   const isTemplate = base === 'templates';
   const url = `https://orm.st/${base}/${slug}/`;
   const githubUrl = `https://github.com/storm-orm/${repo}`;
@@ -62,9 +77,11 @@ ${navHtml(base)}
   <div class="meta">${chips.map((chip) => `<span>${chip}</span>`).join('')}</div>
   <div class="getit">
     ${isTemplate ? `<a class="btn primary" href="${githubUrl}/generate">Use this template →</a>` : ''}
+    ${live ? `<a class="btn primary" href="${live.url}">Open the live app ↗</a>` : ''}
     ${clonebar(`git clone ${githubUrl}.git`)}
     <a class="btn" href="${githubUrl}">View on GitHub →</a>
   </div>
+  ${host ? `<div class="hosted"><img src="${host.logo}" alt="${host.name} logo" width="22" height="22" /><span>Running live at <a href="${live.url}">${live.url.replace('https://', '')}</a>, hosted on <a href="${host.url}">${host.name}</a>, ${host.tagline}.</span></div>` : ''}
 </div>
 
 <div class="readme">${html}</div>
