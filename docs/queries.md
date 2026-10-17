@@ -383,7 +383,7 @@ WHERE (LOWER(m.title) LIKE LOWER(?) ESCAPE '!' OR LOWER(d.name) LIKE LOWER(?) ES
 | `"ugly` | `"ugly`: an unpaired quote is an ordinary character |
 | empty or blank | none: the predicate matches every row |
 
-Accents follow the column's collation, as for the `IGNORE_CASE` operators: MySQL and MariaDB ignore them under their default collations, and the other databases compare them as they are. Whether a search ignores accents is decided by the schema, not by the query; see [Indexing a Search](#indexing-a-search). `search` matches words; it does not rank the rows it finds, and it does not stem words the way a full-text index does. To put the closest matches first, order by them with `orderFirst`; see [Ranking the Matches](#ranking-the-matches).
+Accents follow the column's collation, as for the `IGNORE_CASE` operators: MySQL and MariaDB ignore them under their default collations, and the other databases compare them as they are. Whether a search ignores accents is decided by the schema and its index, not by the application; see [Ignoring Accents](#ignoring-accents). `search` matches words; it does not rank the rows it finds, and it does not stem words the way a full-text index does. To put the closest matches first, order by them with `orderFirst`; see [Ranking the Matches](#ranking-the-matches).
 
 To search the rows related to each row, such as the names of an owner's pets, semi-join the related table and name its column: `search(input, Owner_.lastName, Pet_.name)` after `semiJoin<Pet>().on<Owner>()` (Java: `semiJoin(Pet.class).on(Owner.class)`). Each word may then match a different pet, every owner comes back once, and each table is read through its own indexes; see [Filtering by Related Rows](#filtering-by-related-rows).
 
@@ -484,11 +484,67 @@ What serves the statement is the database's index for substring matching, a trig
 - Read the query plan on production-sized data to confirm that each table is read through its index. On a small table the planner may read every row regardless, because that is cheaper there.
 - Read the plan of the statement as the application sends it, with the word as a bind parameter, not with the word written into the SQL. A driver that prepares a statement once for many executions lets the database plan it once for every value, and that plan cannot see the word, so it cannot tell a rare word from a common one. A search that also orders by an indexed column and takes the first few rows, as a list of suggestions does, is then read in that column's order, testing every row until enough match, while the same statement planned for its word takes a few rows from the substring index. Where the plans differ, have the search planned for its values: most drivers and databases have a setting that stops a statement from being prepared, or that plans each execution for its parameters.
 - Refresh the table's statistics after creating the index on a table that already holds data; a planner without statistics for the indexed expression may keep reading every row. Where a rare word is still estimated to match many rows, a larger statistics sample for the indexed expression brings the estimate down.
-- Whether accents count is decided by the schema, as case is not. Where the column's collation ignores accents, as the default collations of MySQL and MariaDB do, the search ignores them too. Elsewhere, store the text with its accents removed in a generated column, using the database's own function for it (a generated column takes only a function the database marks as immutable, so wrap the database's function in one where it is not), index that column as above, and search it in place of the original. Remove the accents from the input the same way in the application before passing it, so a typed accent matches as well. The query still selects the original column for display.
+- Whether accents count is decided by the schema, as case is not; see [Ignoring Accents](#ignoring-accents).
 - Keep the predicate. A case-sensitive operator reads every row as well and changes what matches; an `ILIKE` or a case function in a template reads every row just the same.
 - Where the database has no substring index, reading every row is what a substring search costs. Narrow the rows with a selective predicate first, keep the searched table small, or match whole words through the database's full-text search in a [SQL template](sql-templates.md).
 
 A search that reads every row shows up under `st.orm.sql.slow` once its database time passes the threshold; see [The Slow Statement Log](sql-logging.md#the-slow-statement-log). When every word of the search was too short for the index, the line carries advice saying so, and pointing a search box that queries as the user types to `suggest`.
+
+#### Ignoring Accents
+
+A search follows the column's collation for accents. MySQL and MariaDB ignore them under their default collations, so a search there ignores them with nothing more to do. The other databases compare them as they are, so "leon" does not find "Léon".
+
+On those databases the database removes the accents, through a function an index is built on. Declare the function once as a `SqlFunction` and apply it to each searched column; the call goes wherever the column goes, in `search`, `suggest`, every operator, `orderFirst`, `orderBy`, `groupBy` and a template placeholder. A comparison applies the function to both sides, the column and the input, so the database folds both the same way and the application folds neither.
+
+On PostgreSQL, `unaccent` removes the accents. It is not marked immutable, which an index requires, so the migration wraps it in a function that is, and indexes that function's result as the search compares it:
+
+```sql
+CREATE EXTENSION IF NOT EXISTS unaccent;
+CREATE EXTENSION IF NOT EXISTS pg_trgm;
+
+CREATE FUNCTION fold_accents(text) RETURNS text LANGUAGE sql IMMUTABLE PARALLEL SAFE STRICT
+    RETURN public.unaccent('public.unaccent'::regdictionary, $1);
+
+CREATE INDEX idx_movie_title_folded ON movie USING gin (LOWER(fold_accents(title)) gin_trgm_ops);
+```
+
+<Tabs groupId="language">
+<TabItem value="kotlin" label="Kotlin" default>
+
+```kotlin
+val foldAccents = SqlFunction.of<String>("fold_accents")
+
+val movies = orm.entity<Movie>()
+    .select()
+    .where(search(input, foldAccents(Movie_.title)))
+    .orderFirst(foldAccents(Movie_.title) eqIgnoreCase input)
+    .resultList
+```
+
+</TabItem>
+<TabItem value="java" label="Java">
+
+```java
+SqlFunction<String> foldAccents = SqlFunction.of("fold_accents");
+
+List<Movie> movies = orm.entity(Movie.class)
+    .select()
+    .where(it -> it.search(input, foldAccents.apply(Movie_.title)))
+    .orderFirst(it -> it.where(foldAccents.apply(Movie_.title), EQUALS_IGNORE_CASE, input))
+    .getResultList();
+```
+
+</TabItem>
+</Tabs>
+
+The search compares `LOWER(fold_accents(m.title)) LIKE LOWER(fold_accents(?))`, the expression the index holds, so "leon", "Léon" and "LÉON" all find "Léon" through the index. The entity keeps one field for the title, which the query selects with its accents for display.
+
+- Name the function exactly as the index does. A different function, or the same one applied in another order, is another expression, and the plan falls back to reading every row.
+- The database folds the input too, with its own rules. PostgreSQL's `unaccent` maps `ø` to `o` and `æ` to `ae`, which removing combining marks in the application would leave alone; folding both sides in the database keeps the column and the input in step.
+- For the text operators the value the function receives is the pattern, escaped and with its wildcards, so the function must leave `%`, `_`, SQL Server's `[` and the escape character `!` alone. An accent function does.
+- The name is a SQL identifier, optionally qualified by a schema; anything else is refused when the function is declared. The column is a single column: a path through a relation joins its table as for the column itself, and a path spanning several columns is refused.
+- A function call is computed by the database, so a record holds no value for it. A keyset `Scrollable` refuses it as key or sort field; `orderBy` and `Pageable` sort by it.
+- Calls nest: `lower(foldAccents(Movie_.title))` renders `lower(fold_accents(m.title))`.
 
 ---
 

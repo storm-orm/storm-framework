@@ -70,12 +70,13 @@ public abstract class AbstractMetamodel<T extends Data, E, V extends @Nullable O
     }
 
     /**
-     * Equality is based on {@link #fieldType()} of {@link #table()}, {@link #path()} and {@link #field()}.
+     * Equality is based on {@link #fieldType()} of {@link #table()}, {@link #path()} and {@link #field()}. A
+     * {@link SqlFunction} call on the same field is a different expression and never equal.
      */
     @Override
     public final boolean equals(Object o) {
         if (this == o) return true;
-        if (!(o instanceof Metamodel<?, ?> other)) return false;
+        if (!(o instanceof Metamodel<?, ?> other) || SqlFunction.isCall(other)) return false;
         return Objects.equals(this.table().fieldType(), other.table().fieldType())
                 && Objects.equals(this.path, other.path())
                 && Objects.equals(this.field, other.field());

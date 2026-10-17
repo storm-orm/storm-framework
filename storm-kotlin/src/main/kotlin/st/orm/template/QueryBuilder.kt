@@ -1688,6 +1688,27 @@ public fun <T : Data> suggest(
 ): PredicateBuilder<T, T, *> = createSuggest(input, listOf(path.asMetamodel()) + more.map { it.asMetamodel() })
 
 /**
+ * Applies a SQL function to a column, for a query that names the expression an index is built on. The call is taken
+ * wherever the column is: by [search], [suggest], every predicate operator, `orderFirst`, `orderBy`, `groupBy` and a
+ * template placeholder. A comparison applies the function to the column and to the value, so the database computes
+ * both sides alike:
+ *
+ * ```kotlin
+ * val foldAccents = SqlFunction.of<String>("fold_accents")
+ *
+ * select()
+ *     .where(search(input, foldAccents(Movie_.title)))   // LOWER(fold_accents(m.title)) LIKE LOWER(fold_accents(?))
+ *     .orderFirst(foldAccents(Movie_.title) eqIgnoreCase input)
+ * ```
+ *
+ * See [SqlFunction] for what the function must leave alone and where a call is refused.
+ *
+ * @param path the column to apply the function to.
+ * @since 1.15
+ */
+public operator fun <T : Data, E> SqlFunction<E>.invoke(path: Navigable<T, E>): Metamodel<T, E> = apply(path.asMetamodel())
+
+/**
  * Infix functions to create a predicate to check if a field is greater than a value.
  */
 public infix fun <T : Data, V : Any> Navigable<T, V>.greater(value: V): PredicateBuilder<T, T, *> = create(this.asMetamodel(), GREATER_THAN, listOf(value))

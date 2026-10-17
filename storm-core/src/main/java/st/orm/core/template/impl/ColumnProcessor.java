@@ -54,10 +54,11 @@ final class ColumnProcessor implements ElementProcessor<Column> {
     @Override
     public CompiledElement compile(Column column, TemplateCompiler compiler)
             throws SqlTemplateException {
-        var metamodel = MetamodelFactory.canonical(column.field());
+        // A function call renders around the column it is applied to, which resolves as the column alone does.
+        var metamodel = MetamodelFactory.canonical(FunctionCalls.column(column.field()));
         var model = compiler.getModel(metamodel.tableType());
         var columnName = model.getSingleColumn(metamodel).qualifiedName(compiler.dialect());
-        return new CompiledElement(aliasPrefix(metamodel, column.scope(), compiler) + columnName);
+        return new CompiledElement(FunctionCalls.render(column.field(), aliasPrefix(metamodel, column.scope(), compiler) + columnName));
     }
 
     /**

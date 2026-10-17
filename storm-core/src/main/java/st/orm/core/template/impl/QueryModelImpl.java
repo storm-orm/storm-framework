@@ -376,6 +376,10 @@ final class QueryModelImpl implements QueryModel {
                                            Operator operator,
                                            Object object,
                                            TemplateCompiler compiler) throws SqlTemplateException {
+        // A SqlFunction call compares the column it is applied to, with the call around the column and around each
+        // value, so the database computes both sides alike.
+        Metamodel<?, ?> path = metamodel;
+        metamodel = FunctionCalls.column(path);
         //noinspection DuplicatedCode
         Model<Data, ?> model = getModel(metamodel);
         // A predicate column is looked up in the referenced table's model, which drops the path the reference was
@@ -413,7 +417,7 @@ final class QueryModelImpl implements QueryModel {
                 if (column != null && !column.equals(k)) {
                     throw new SqlTemplateException("Multiple columns specified by WHERE clause argument: %s and %s.".formatted(column, k));
                 }
-                placeholders.add(compiler.mapParameter(TextMatch.bindValue(operator, entry.getValue(), metamodel, compiler.dialect())));
+                placeholders.add(FunctionCalls.render(path, compiler.mapParameter(TextMatch.bindValue(operator, entry.getValue(), metamodel, compiler.dialect()))));
                 column = k;
             } else {
                 TextMatch.requireSingleColumn(operator, metamodel);
@@ -425,6 +429,13 @@ final class QueryModelImpl implements QueryModel {
         }
         if (multiValues.isEmpty() && column == null) {
             column = toFullyQualifiedColumn(model.getSingleColumn(metamodel), crossingPath);
+        }
+        if (path != metamodel) {
+            if (!multiValues.isEmpty()) {
+                throw new SqlTemplateException("%s applies a SQL function to %s, which spans several columns. Name one of its fields instead."
+                        .formatted(path, metamodel.fieldPath()));
+            }
+            column = FunctionCalls.render(path, column);
         }
         try {
             return ColumnComparison.render(operator, column, placeholders, multiValues, compiler::mapParameter, compiler.dialect());
@@ -491,6 +502,7 @@ final class QueryModelImpl implements QueryModel {
                                       Operator operator,
                                       Object object,
                                       TemplateBinder binder) throws SqlTemplateException {
+        metamodel = FunctionCalls.column(metamodel);
         var model = getModel(metamodel);
         List<SequencedMap<String, Object>> multiValues = null;
         var values = new ObjectExpressionValues();
