@@ -476,8 +476,8 @@ abstract class QueryBuilderImpl<T extends Data, R, ID> extends QueryBuilder<T, R
         int minimumSearchTermLength = queryTemplate.dialect().minimumSearchTermLength();
         var where = resolveSearches(this.where, minimumSearchTermLength);
         if (where != this.where && this.where.stream().anyMatch(it -> unindexedSearch(it, minimumSearchTermLength))) {
-            template = TemplateString.combine(template, wrap(new Advisory(UNINDEXED_SEARCH_ADVICE
-                    .formatted(minimumSearchTermLength))));
+            template = TemplateString.combine(template, wrap(new Advisory(Advice.UNINDEXED_SEARCH
+                    .format(minimumSearchTermLength))));
         }
         var filterJoins = join.stream().filter(FilterJoinPlacement::isFilterJoin).toList();
         var joins = filterJoins.isEmpty() ? join : join.stream().filter(it -> !FilterJoinPlacement.isFilterJoin(it)).toList();
@@ -508,11 +508,6 @@ abstract class QueryBuilderImpl<T extends Data, R, ID> extends QueryBuilder<T, R
         }
         return template;
     }
-
-    /** The advice a statement carries for a search whose terms are all shorter than the substring index serves. */
-    private static final String UNINDEXED_SEARCH_ADVICE = "every search term is shorter than the %d characters a "
-            + "substring index serves, so the search reads every row; a search box that queries as the user types "
-            + "wants suggest, which matches no rows for such input. See https://orm.st/queries#indexing-a-search";
 
     /**
      * Returns the WHERE conditions with each search in them resolved for the dialect, or the conditions themselves

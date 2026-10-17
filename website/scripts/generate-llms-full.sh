@@ -68,6 +68,7 @@ DOCS=(
   # Advanced Topics - Operational
   configuration.md
   sql-logging.md
+  advice.md
   metrics.md
   security.md
   error-handling.md
