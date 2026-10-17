@@ -521,6 +521,19 @@ val movies = orm.entity<Movie>()
     .resultList
 ```
 
+An extension property names the call after what it computes, so a query reads it as a field of the column. Declare it once, next to the function, and it applies to every text column of every entity:
+
+```kotlin
+val <T : Data> Navigable<T, String>.folded: Metamodel<T, String>
+    get() = foldAccents(this)
+
+orm.entity<Movie>()
+    .select()
+    .where(search(input, Movie_.title.folded, Movie_.director.name.folded))
+    .orderFirst(Movie_.title.folded eqIgnoreCase input)
+    .resultList
+```
+
 </TabItem>
 <TabItem value="java" label="Java">
 
