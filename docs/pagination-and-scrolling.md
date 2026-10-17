@@ -423,7 +423,7 @@ A field of a table that is not part of the query fails when the query is built, 
 
 ### Ranking Before the Sort Fields
 
-`orderFirst` puts the rows matching a condition first, and `scroll` follows it: the keys `orderFirst` added lead the ordering, before the sort fields and the key, so a search can list an exact title first, then titles starting with the input, then the rest by votes, a window at a time. See [Ranking the Matches](queries.md#ranking-the-matches).
+`orderFirst` puts the rows matching a condition first, and `scroll` follows it: the keys `orderFirst` added lead the ordering, before the sort fields and the key, so a search can list an exact title first, then titles starting with the input, then the rest by votes, a window at a time. See [Ranking the Matches](search.md#ranking-the-matches).
 
 ```kotlin
 movieRepository.select()
@@ -435,7 +435,7 @@ movieRepository.select()
     .scroll(Scrollable.of(Movie_.id, 20).sortByDescending(Rating_.votes))
 ```
 
-Each rank is the expression `CASE WHEN <predicate> THEN 0 ELSE 1 END`. A window reads it from its rows like a sort field, its position and cursor carry it after the sort fields and the key, and the next window compares the expression with it. No index serves the expression, so each window evaluates it for every row the query finds and sorts them; after a search, which finds few rows, that is what any ordering of the matches costs. A plain `orderBy` before `scroll` is still refused, since the `Scrollable` states the sort fields.
+Each rank is the expression `CASE WHEN <predicate> THEN 0 ELSE 1 END`. A window reads it from its rows like a sort field, its position and cursor carry it after the sort fields and the key, and the next window compares the expression with it. As with any `orderFirst`, no index serves the expression, so each window sorts every row the query finds. A plain `orderBy` before `scroll` is still refused, since the `Scrollable` states the sort fields.
 
 ### Programmatic Positions
 

@@ -35,6 +35,7 @@ DOCS=(
   relationships.md
   repositories.md
   queries.md
+  search.md
   pagination-and-scrolling.md
   metamodel.md
   refs.md

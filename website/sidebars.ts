@@ -43,6 +43,7 @@ const sidebars: SidebarsConfig = {
         'relationships',
         'repositories',
         'queries',
+        'search',
         'pagination-and-scrolling',
         'metamodel',
         'refs',
