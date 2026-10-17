@@ -43,6 +43,12 @@ A lightweight identifier (`Ref<T>`) that carries only the record type and primar
 **Repository**
 An interface that provides database access methods for an entity or projection type. `EntityRepository<E, ID>` offers built-in CRUD operations; `ProjectionRepository<P, ID>` offers read-only operations. Custom repositories extend these interfaces with domain-specific query methods. See [Repositories](repositories.md).
 
+**Search**
+A predicate built from what a user typed into a search box: `search(input, columns...)` requires every word of the input to occur in at least one of the columns, ignoring case and matched literally, with a quoted phrase as one word. `suggest` is its counterpart for a box that queries as the user types, ignoring words too short for the database's substring index. See [Search](search.md).
+
+**SQL Function**
+A database function of one argument (`SqlFunction`), applied to a column wherever a query takes the column. A comparison applies it to both the column and the value, so an expression index built on the same call serves the query. See [Queries: SQL Functions](queries.md#sql-functions).
+
 **SQL Log**
 Storm's built-in visibility into the statements it executes, in three grains under one logger tree. Raising `st.orm.sql` reports each statement as it executes, with parameter values at `TRACE`; `st.orm.sql.perf` reports what a unit of work, such as one request or one scheduled task, cost the database as a single summary: how many statements ran, how long the database spent on them against how long the call took, and which statement carried the weight; `st.orm.sql.slow` reports each single execution whose database time exceeds a threshold, with its call site and how it compares to what its shape typically costs. Summaries and slow lines carry no parameter values below `TRACE`, so they are safe to log in production. See [SQL Logging](sql-logging.md).
 

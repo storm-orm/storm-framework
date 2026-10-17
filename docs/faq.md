@@ -443,7 +443,7 @@ List<User> users = orm.entity(User.class)
 </TabItem>
 </Tabs>
 
-They ignore case, and accents follow the column's collation: MySQL and MariaDB ignore them under their default collations, and the other databases compare them as they are. To ignore accents on those, have the database remove them through a function an index is built on, applied with `SqlFunction`; see [Ignoring Accents](queries.md#ignoring-accents). A plain index does not serve a lowered column, so index the lowered expression where the comparison must be served by one, and keep the plain operators on a column whose collation ignores case already. A search that matches inside words needs an index built for substring matching; see [Indexing a Search](queries.md#indexing-a-search). See [Queries](queries.md) for the full list.
+They ignore case, and accents follow the column's collation: MySQL and MariaDB ignore them under their default collations, and the other databases compare them as they are. To ignore accents on those, have the database remove them through a function an index is built on, applied with `SqlFunction`; see [Ignoring Accents](search.md#ignoring-accents). A plain index does not serve a lowered column, so index the lowered expression where the comparison must be served by one, and keep the plain operators on a column whose collation ignores case already. A search that matches inside words needs an index built for substring matching; see [Indexing a Search](search.md#indexing-a-search). See [Queries](queries.md) for the full list.
 
 ---
 

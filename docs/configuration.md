@@ -16,7 +16,7 @@ Storm can be configured through `StormConfig`, system properties, Spring Boot's 
 | `storm.update.max_shapes` | `5` | Maximum UPDATE shapes before fallback to full-row |
 | `storm.entity_cache.retention` | `default` | Cache retention mode: `default` or `light` |
 | `storm.template_cache.size` | `2048` | Maximum number of compiled templates to cache |
-| `storm.search.min_term_length` | dialect | Shortest word, in characters, that the database's substring index serves: `search` tests a shorter word only on the rows its longer words found, and `suggest` ignores it. `3` on PostgreSQL, whose trigram index needs three characters; `0`, every word alike, elsewhere (see [Indexing a Search](queries.md#indexing-a-search)) |
+| `storm.search.min_term_length` | dialect | Shortest word, in characters, that the database's substring index serves: `search` tests a shorter word only on the rows its longer words found, and `suggest` ignores it. `3` on PostgreSQL, whose trigram index needs three characters; `0`, every word alike, elsewhere (see [Indexing a Search](search.md#indexing-a-search)) |
 | `storm.validation.record_mode` | `fail` | Record validation mode: `fail`, `warn`, or `none` |
 | `storm.validation.schema_mode` | `fail` | Schema validation mode: `none`, `warn`, or `fail` (Spring Boot and Ktor) |
 | `storm.validation.strict` | `false` | Treat schema validation warnings as errors |
