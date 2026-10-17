@@ -1111,7 +1111,7 @@ public abstract class QueryBuilder<T : Data, R : Any, ID : Any> {
      * @throws PersistenceException if the pageable has sort orders and the query builder has explicit orderBy calls.
      * @since 1.10
      */
-    public fun page(pageable: Pageable): Page<R> {
+    public open fun page(pageable: Pageable): Page<R> {
         val content = pageContent(pageable, pageable.pageSize())
         val totalCount = if (content.size < pageable.pageSize() && (pageable.offset() == 0L || content.isNotEmpty())) {
             // A page that is not full is the last page, so the total follows from the page itself. An empty page

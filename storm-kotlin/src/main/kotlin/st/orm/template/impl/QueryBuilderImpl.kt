@@ -177,6 +177,12 @@ internal class QueryBuilderImpl<T : Data, R : Any, ID : Any>(
          */
         get() = core.resultCount
 
+    /**
+     * Delegates to the core builder, whose count query for the total tells the slow statement log that it serves a
+     * page.
+     */
+    override fun page(pageable: Pageable): Page<R> = core.page(pageable)
+
     override val resultList: List<R>
         /**
          * Eager terminals delegate to the core builder, which executes them without the fetch-size hint,

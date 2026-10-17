@@ -100,6 +100,7 @@ const sidebars: SidebarsConfig = {
           items: [
             'configuration',
             'sql-logging',
+            'advice',
             'metrics',
             'security',
             'error-handling',

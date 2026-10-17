@@ -900,9 +900,21 @@ public abstract class QueryBuilder<T extends Data, R, ID> {
             // beyond the first proves nothing: the offset may lie anywhere past the end.
             totalCount = pageable.offset() + content.size();
         } else {
-            totalCount = getResultCount();
+            totalCount = getPageTotal();
         }
         return new Page<>(content, totalCount, pageable);
+    }
+
+    /**
+     * Returns the total number of results that {@link #page(Pageable)} reports when the fetched page does not
+     * determine it. A select counts them with a count query that tells the slow statement log it serves a page, so a
+     * slow count is reported with the read that needs none.
+     *
+     * @return the total number of results of this query.
+     * @since 1.15
+     */
+    protected long getPageTotal() {
+        return getResultCount();
     }
 
     /**

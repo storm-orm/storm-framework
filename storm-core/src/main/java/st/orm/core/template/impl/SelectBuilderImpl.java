@@ -21,6 +21,8 @@ import static st.orm.SelectMode.PK;
 import static st.orm.core.template.TemplateString.wrap;
 import static st.orm.core.template.Templates.from;
 import static st.orm.core.template.Templates.select;
+import static st.orm.core.template.impl.RecordReflection.findRecordFields;
+import static st.orm.core.template.impl.RecordReflection.getFkFields;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -29,19 +31,24 @@ import java.util.function.Supplier;
 import java.util.stream.Stream;
 import org.jspecify.annotations.Nullable;
 import st.orm.Data;
+import st.orm.DefaultJoinType;
 import st.orm.Metamodel;
 import st.orm.Navigable;
 import st.orm.PersistenceException;
 import st.orm.Ref;
+import st.orm.SqlTemplateException;
 import st.orm.core.template.Model;
 import st.orm.core.template.Query;
 import st.orm.core.template.QueryBuilder;
 import st.orm.core.template.QueryPlan;
 import st.orm.core.template.QueryTemplate;
 import st.orm.core.template.TemplateString;
+import st.orm.core.template.impl.Elements.Advisory;
 import st.orm.core.template.impl.Elements.Cursor;
 import st.orm.core.template.impl.Elements.Fetch;
 import st.orm.core.template.impl.Elements.Select;
+import st.orm.core.template.impl.Elements.TableSource;
+import st.orm.core.template.impl.Elements.TableTarget;
 import st.orm.core.template.impl.Elements.Where;
 
 /**
@@ -302,6 +309,13 @@ public class SelectBuilderImpl<T extends Data, R, ID> extends QueryBuilderImpl<T
             throw new PersistenceException("orderFirst cannot order a distinct query: the database orders a distinct result only by the columns it selects. A semiJoin filters by a related table without repeating rows, so the query needs no distinct.");
         }
         TemplateString template = TemplateString.of("SELECT%s %s".formatted(hintAfterKeyword(), distinct ? "DISTINCT " : ""));
+        if (distinct && selectedRecordType() == fromType) {
+            Class<? extends Data> repeating = repeatingJoin();
+            if (repeating != null) {
+                template = TemplateString.combine(template, wrap(new Advisory(Advice.DISTINCT_OVER_JOIN
+                        .format(repeating.getSimpleName()))));
+            }
+        }
         if (queryTemplate.dialect().applyLimitAfterSelect()) {
             if (limit != null && offset == null) {
                 template = TemplateString.combine(
@@ -356,6 +370,10 @@ public class SelectBuilderImpl<T extends Data, R, ID> extends QueryBuilderImpl<T
             template = TemplateString.combine(template, TemplateString.of("\n"), TemplateString.of(queryTemplate.dialect().limit(offset, limit)));
         } else if (offset != null) {
             template = TemplateString.combine(template, TemplateString.of("\n"), TemplateString.of(queryTemplate.dialect().offset(offset)));
+        }
+        // The offset is inlined as a literal, so the advice belongs to this statement alone, not to every page.
+        if (offset != null && offset >= Advice.DEEP_OFFSET_ROWS) {
+            template = TemplateString.combine(template, wrap(new Advisory(Advice.DEEP_OFFSET.format(offset))));
         }
         if (hasLock && !queryTemplate.dialect().applyLockHintAfterFrom()) {
             template = TemplateString.combine(template, TemplateString.of("\n"), forLock);
@@ -509,6 +527,12 @@ public class SelectBuilderImpl<T extends Data, R, ID> extends QueryBuilderImpl<T
      * it.</p>
      */
     @Nullable
+    private TemplateString toCountTemplateString(@Nullable String advisory) {
+        TemplateString count = toCountTemplateString();
+        return count == null || advisory == null ? count : TemplateString.combine(count, wrap(new Advisory(advisory)));
+    }
+
+    @Nullable
     private TemplateString toCountTemplateString() {
         Class<? extends Data> recordType = selectedRecordType();
         boolean rowShape = distinct || limit != null || offset != null
@@ -549,17 +573,55 @@ public class SelectBuilderImpl<T extends Data, R, ID> extends QueryBuilderImpl<T
      */
     @Override
     public long getResultCount() {
+        return count(null);
+    }
+
+    /**
+     * Counts the results for a page, as {@link #getResultCount()} does, with advice for the slow statement log that
+     * the count serves a page, and that a slice reads the same page without one.
+     */
+    @Override
+    protected long getPageTotal() {
+        return count(Advice.PAGE_COUNT.format());
+    }
+
+    private long count(@Nullable String advisory) {
         if (subquery) {
             throw new PersistenceException("Cannot build a query from a subquery.");
         }
         if (hasLockHint()) {
             return super.getResultCount();
         }
-        TemplateString countTemplate = toCountTemplateString();
+        TemplateString countTemplate = toCountTemplateString(advisory);
         if (countTemplate == null) {
             return super.getResultCount();
         }
         return queryTemplate.query(countTemplate).withoutFetchSize().getSingleResult(Long.class);
+    }
+
+    /**
+     * Returns the table of the first inner join that repeats the query's rows, one per related row: a join to the
+     * many side of a relation, whose table holds the foreign key to the table it is joined on while that table holds
+     * none to it, the order in which the join resolves its ON clause. Returns {@code null} when no join repeats rows.
+     */
+    private @Nullable Class<? extends Data> repeatingJoin() {
+        try {
+            for (var candidate : join) {
+                if (candidate.autoJoin() || candidate.type() != DefaultJoinType.INNER
+                        || !(candidate.source() instanceof TableSource(var table))
+                        || !(candidate.target() instanceof TableTarget(var anchor, var field, var ignore))
+                        || field != null) {
+                    continue;
+                }
+                if (findRecordFields(getFkFields(anchor).toList(), table).isEmpty()
+                        && !findRecordFields(getFkFields(table).toList(), anchor).isEmpty()) {
+                    return table;
+                }
+            }
+            return null;
+        } catch (SqlTemplateException e) {
+            throw new PersistenceException(e);
+        }
     }
 
     /**

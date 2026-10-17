@@ -2641,6 +2641,19 @@ internal open class QueryBuilderTest(
     }
 
     @Test
+    fun `count behind a page carries advice for the slow statement log`() {
+        val advisories = mutableListOf<String>()
+        st.orm.core.template.SqlInterceptor.observe(
+            { sql -> advisories.addAll(sql.advisories()) },
+            Runnable {
+                orm.entity(City::class).select().page(0, 3)
+            },
+        )
+        advisories shouldHaveSize 1
+        advisories.first() shouldContain "slice"
+    }
+
+    @Test
     fun `page with partial last page should infer total`() {
         val page = orm.entity(City::class).select().page(1, 4)
         page.totalCount() shouldBe 6L
