@@ -74,6 +74,7 @@ import st.orm.PK;
 import st.orm.ProjectionQuery;
 import st.orm.Ref;
 import st.orm.SelectMode;
+import st.orm.SqlFunction;
 import st.orm.SqlTemplateException;
 import st.orm.core.spi.ORMReflection;
 import st.orm.core.spi.Providers;
@@ -683,7 +684,7 @@ class TemplatePreparation {
         var groupedPaths = new HashSet<String>();
         for (var field : grouped) {
             // Only an identity grouping determines anything: grouping a value says nothing about other tables.
-            String identity = MetamodelFactory.identityPath(field);
+            String identity = field instanceof SqlFunction.Call<?, ?> ? null : MetamodelFactory.identityPath(field);
             if (identity != null) {
                 groupedPaths.add(identity);
             }
@@ -794,6 +795,10 @@ class TemplatePreparation {
     private static Metamodel<?, ?> resolveColumnsField(Metamodel<?, ?> field, Clause clause,
                                                       @Nullable Class<? extends Data> selected)
             throws SqlTemplateException {
+        if (field instanceof SqlFunction.Call<?, ?>) {
+            // A function call groups and orders by the value it computes, never by an identity.
+            return FunctionCalls.map(field, MetamodelFactory::canonical);
+        }
         var collapsed = MetamodelFactory.canonical(field);
         if (clause != GROUP_BY || selected == null) {
             return collapsed;

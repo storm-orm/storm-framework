@@ -48,6 +48,7 @@ import st.orm.Metamodel;
 import st.orm.Operator;
 import st.orm.PK;
 import st.orm.Scrollable;
+import st.orm.SqlFunction;
 import st.orm.Window;
 import st.orm.core.template.ORMTemplate;
 import st.orm.core.template.PreparedStatementTemplate;
@@ -112,8 +113,12 @@ public abstract class AbstractTextMatchConformanceTest {
     }
 
     private Set<String> match(Operator operator, String text) {
+        return match(CONTENT, operator, text);
+    }
+
+    private Set<String> match(Metamodel<Phrase, String> content, Operator operator, String text) {
         var contents = new TreeSet<String>();
-        orm.entity(Phrase.class).select().where(CONTENT, operator, text).getResultList()
+        orm.entity(Phrase.class).select().where(content, operator, text).getResultList()
                 .forEach(phrase -> contents.add(phrase.content()));
         return contents;
     }
@@ -165,6 +170,25 @@ public abstract class AbstractTextMatchConformanceTest {
     @Test
     public void searchWithoutWordsMatchesEveryRow() {
         assertEquals(new TreeSet<>(CONTENTS), search("  "));
+    }
+
+    @Test
+    public void aFunctionAppliesToTheColumnAndTheValueAndKeepsTheTextLiteral() {
+        // UPPER on the column alone would compare 'MADISON' with 'madison' and match nothing.
+        var upper = SqlFunction.<String>of("UPPER");
+        var content = upper.apply(CONTENT);
+        assertEquals(Set.of("Madison", "MADISON"), match(content, Operator.EQUALS, "madison"));
+        assertEquals(Set.of("50%", "a\\%b"), match(content, CONTAINS, "%"));
+        assertEquals(Set.of("a_b"), match(content, CONTAINS, "_"));
+        assertEquals(Set.of("a!b"), match(content, CONTAINS, "!"));
+        assertEquals(Set.of("a\\b", "a\\%b"), match(content, CONTAINS, "\\"));
+        assertEquals(Set.of("a_b"), match(content, ENDS_WITH, "_b"));
+        var contents = new TreeSet<String>();
+        orm.entity(Phrase.class).select()
+                .where(it -> PredicateBuilderFactory.<Phrase, Phrase, Integer>search("DOLLARS 50", List.of(content)))
+                .getResultList()
+                .forEach(phrase -> contents.add(phrase.content()));
+        assertEquals(Set.of("50 dollars"), contents);
     }
 
     @Test

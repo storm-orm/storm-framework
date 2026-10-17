@@ -63,6 +63,10 @@ public record Scrollable<T extends Data>(
     public Scrollable {
         requireNonNull(key, "key must not be null.");
         sort = copyOf(sort);
+        if (SqlFunction.isCall(key) || sort.stream().anyMatch(order -> SqlFunction.isCall(order.field()))) {
+            throw new IllegalArgumentException(
+                    "A scroll orders by values the cursor carries, and a SqlFunction call is computed by the database; scroll by a column instead.");
+        }
         if (size <= 0) {
             throw new IllegalArgumentException("size must be positive.");
         }

@@ -20,6 +20,7 @@ import static st.orm.core.template.impl.Elements.Clause.GROUP_BY;
 
 import java.util.List;
 import st.orm.Metamodel;
+import st.orm.SqlFunction;
 import st.orm.SqlTemplateException;
 import st.orm.core.template.Column;
 import st.orm.core.template.impl.Elements.Columns;
@@ -81,6 +82,18 @@ final class ColumnsProcessor implements ElementProcessor<Columns> {
      */
     private static String render(Metamodel<?, ?> metamodel, Columns columns, TemplateCompiler compiler)
             throws SqlTemplateException {
+        String suffix = columns.clause().isDescending() ? " DESC" : "";
+        if (metamodel instanceof SqlFunction.Call<?, ?>) {
+            // A function call renders around the single column it is applied to.
+            var column = FunctionCalls.column(metamodel);
+            var resolved = resolve(column, compiler);
+            if (resolved.size() != 1) {
+                throw new SqlTemplateException("%s applies a SQL function to %s, which spans %d columns. Name one of its fields instead."
+                        .formatted(metamodel, column.fieldPath(), resolved.size()));
+            }
+            String prefix = ColumnProcessor.aliasPrefix(column, columns.scope(), compiler);
+            return FunctionCalls.render(metamodel, prefix + resolved.getFirst().qualifiedName(compiler.dialect())) + suffix;
+        }
         var resolved = resolve(metamodel, compiler);
         if (columns.clause() == GROUP_BY && MetamodelFactory.identityPath(metamodel) != null) {
             // An identity grouping: the caller stated one row per row of this table, and the dialect states what it
@@ -88,7 +101,6 @@ final class ColumnsProcessor implements ElementProcessor<Columns> {
             resolved = compiler.dialect().groupBy(resolved, compiler.getModel(metamodel.tableType()).declaredColumns());
         }
         String prefix = ColumnProcessor.aliasPrefix(metamodel, columns.scope(), compiler);
-        String suffix = columns.clause().isDescending() ? " DESC" : "";
         return resolved.stream()
                 .map(column -> prefix + column.qualifiedName(compiler.dialect()) + suffix)
                 .collect(joining(", "));
