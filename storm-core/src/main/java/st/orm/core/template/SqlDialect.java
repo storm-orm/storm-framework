@@ -68,6 +68,45 @@ public interface SqlDialect {
     boolean supportsDeleteAlias();
 
     /**
+     * The forms an UPDATE statement can take to reach the rows it updates through other tables, as the update
+     * builder does for a condition on a related table or an explicit join.
+     *
+     * @since 1.15
+     */
+    enum UpdateJoinSyntax {
+        /**
+         * The statement matches the rows by primary key in a subquery that holds the joins and the condition, so the
+         * UPDATE itself names one table: {@code UPDATE t SET c = ? WHERE (id) IN (SELECT a.id FROM t a JOIN u b ON ...
+         * WHERE ...)}.
+         */
+        SUBQUERY,
+        /**
+         * The joins follow the updated table, before the SET clause, as MySQL and MariaDB write them:
+         * {@code UPDATE t a JOIN u b ON ... SET a.c = ? WHERE ...}.
+         */
+        JOIN_BEFORE_SET,
+        /**
+         * The SET clause names the updated table by its alias, and a FROM clause after it holds the table and its
+         * joins, as SQL Server writes them: {@code UPDATE a SET a.c = ? FROM t a JOIN u b ON ... WHERE ...}.
+         */
+        FROM_AFTER_SET
+    }
+
+    /**
+     * Returns how an UPDATE statement reaches its rows through other tables.
+     *
+     * <p>The default is {@link UpdateJoinSyntax#SUBQUERY}, which every database reads, except where it refuses a
+     * subquery that reads the table being updated, as MySQL and MariaDB do; a dialect whose database joins tables into
+     * an UPDATE of its own returns that form.</p>
+     *
+     * @return the form an UPDATE takes to reach its rows through other tables.
+     * @since 1.15
+     */
+    default UpdateJoinSyntax updateJoinSyntax() {
+        return UpdateJoinSyntax.SUBQUERY;
+    }
+
+    /**
      * Indicates whether the SQL dialect supports multi-value tuples in the IN clause.
      *
      * @return {@code true} if multi-value tuples are supported, {@code false} otherwise.

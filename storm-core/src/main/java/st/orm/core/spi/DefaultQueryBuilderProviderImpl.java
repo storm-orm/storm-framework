@@ -25,10 +25,11 @@ import st.orm.core.template.QueryTemplate;
 import st.orm.core.template.TemplateString;
 import st.orm.core.template.impl.DeleteBuilderImpl;
 import st.orm.core.template.impl.SelectBuilderImpl;
+import st.orm.core.template.impl.UpdateBuilderImpl;
 
 /**
- * Default implementation of {@link QueryBuilderProvider} that are based on {@code SelectBuilderImpl} and
- * {@code DeleteBuilderImpl}.
+ * Default implementation of {@link QueryBuilderProvider} that are based on {@code SelectBuilderImpl},
+ * {@code DeleteBuilderImpl} and {@code UpdateBuilderImpl}.
  */
 @AfterAny
 public class DefaultQueryBuilderProviderImpl implements QueryBuilderProvider {
@@ -91,5 +92,21 @@ public class DefaultQueryBuilderProviderImpl implements QueryBuilderProvider {
                                                                   Class<T> fromType,
                                                                   Supplier<Model<T, ID>> modelSupplier) {
         return new DeleteBuilderImpl<>(queryTemplate, fromType, modelSupplier);
+    }
+
+    /**
+     * Creates a query builder for the specified table to update.
+     *
+     * @param queryTemplate provides the template logic for the query builder.
+     * @param fromType the table to update.
+     * @param modelSupplier a supplier that creates the model when needed.
+     * @return the query builder.
+     * @param <T> the table type to update.
+     */
+    @Override
+    public <T extends Data, ID> QueryBuilder<T, ?, ID> updateFrom(QueryTemplate queryTemplate,
+                                                                  Class<T> fromType,
+                                                                  Supplier<Model<T, ID>> modelSupplier) {
+        return new UpdateBuilderImpl<>(queryTemplate, fromType, modelSupplier);
     }
 }

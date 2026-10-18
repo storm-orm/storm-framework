@@ -164,6 +164,18 @@ public final class Elements {
     }
 
     /**
+     * Names the table an UPDATE writes where a {@link From} element renders that table, its alias and its joins, as
+     * an UPDATE through other tables does on the databases that join into one. Renders nothing itself.
+     *
+     * @since 1.15
+     */
+    public record UpdateTarget(Class<? extends Data> table) implements Element {
+        public UpdateTarget {
+            requireNonNull(table, "table");
+        }
+    }
+
+    /**
      * Renders the SET clause of an UPDATE: assignments taken from the record's columns, or placeholder assignments
      * bound through {@code bindVars} for batch execution. A non-empty {@code fields} restricts the assignments to
      * those columns (a partial update).

@@ -28,7 +28,7 @@ import kotlin.reflect.KClass
  * complementary approaches to database access:
  * - **Template Strings** -- Write SQL using Storm's `TemplateString` with type-safe interpolation of
  *   entity classes, records, and parameters via the [query] method.
- * - **Query Builder** -- Construct queries programmatically using the fluent [selectFrom] and [deleteFrom]
+ * - **Query Builder** -- Construct queries programmatically using the fluent [selectFrom], [updateFrom] and [deleteFrom]
  *   methods, which return a [QueryBuilder].
  *
  * This interface also provides utility methods for creating [BindVars] for batch operations and retrieving
@@ -170,6 +170,19 @@ public interface QueryTemplate : SubqueryTemplate {
      * @param <T> the table type to delete from.
      */
     public fun <T : Data> deleteFrom(fromType: KClass<T>): QueryBuilder<T, *, *>
+
+    /**
+     * Creates a query builder for the specified table to update.
+     *
+     * The builder sets the columns named through `set` on the rows its conditions select. It requires a WHERE clause
+     * unless [QueryBuilder.unsafe] is called, and it increments the version column of a versioned table.
+     *
+     * @param fromType the table to update.
+     * @return the query builder.
+     * @param <T> the table type to update.
+     * @since 1.15
+     */
+    public fun <T : Data> updateFrom(fromType: KClass<T>): QueryBuilder<T, *, *>
 
     /**
      * Creates a query for the specified `query` string.

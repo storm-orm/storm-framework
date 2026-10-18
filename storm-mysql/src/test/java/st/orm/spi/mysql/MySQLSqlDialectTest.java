@@ -15,6 +15,7 @@ import st.orm.Operator;
 import st.orm.PersistenceException;
 import st.orm.SqlTemplateException;
 import st.orm.StormConfig;
+import st.orm.core.template.SqlDialect;
 
 /**
  * Unit tests for {@link MySQLSqlDialect} verifying MySQL-specific SQL generation behavior.
@@ -195,6 +196,11 @@ class MySQLSqlDialectTest {
     @Test
     void supportsDeleteAliasShouldReturnTrue() {
         assertTrue(dialect.supportsDeleteAlias());
+    }
+
+    @Test
+    void updateJoinSyntaxShouldBeJoinBeforeSet() {
+        assertEquals(SqlDialect.UpdateJoinSyntax.JOIN_BEFORE_SET, dialect.updateJoinSyntax());
     }
 
     @Test

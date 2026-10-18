@@ -15,6 +15,7 @@ import org.junit.jupiter.api.Test;
 import st.orm.Operator;
 import st.orm.SqlTemplateException;
 import st.orm.StormConfig;
+import st.orm.core.template.SqlDialect;
 
 class H2SqlDialectTest {
 
@@ -204,6 +205,11 @@ class H2SqlDialectTest {
     @Test
     void supportsDeleteAliasShouldReturnFalse() {
         assertFalse(dialect.supportsDeleteAlias());
+    }
+
+    @Test
+    void updateJoinSyntaxShouldBeSubquery() {
+        assertEquals(SqlDialect.UpdateJoinSyntax.SUBQUERY, dialect.updateJoinSyntax());
     }
 
     @Test

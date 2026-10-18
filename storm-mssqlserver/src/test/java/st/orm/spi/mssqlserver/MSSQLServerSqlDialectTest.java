@@ -9,6 +9,7 @@ import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
 import st.orm.StormConfig;
+import st.orm.core.template.SqlDialect;
 
 /**
  * Unit tests for {@link MSSQLServerSqlDialect} verifying MSSQL-specific SQL generation behavior.
@@ -232,6 +233,11 @@ class MSSQLServerSqlDialectTest {
     @Test
     void supportsDeleteAliasShouldReturnTrue() {
         assertTrue(dialect.supportsDeleteAlias());
+    }
+
+    @Test
+    void updateJoinSyntaxShouldBeFromAfterSet() {
+        assertEquals(SqlDialect.UpdateJoinSyntax.FROM_AFTER_SET, dialect.updateJoinSyntax());
     }
 
     @Test

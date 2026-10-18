@@ -30,7 +30,8 @@ import st.orm.Ref;
  *   <li><strong>String Templates</strong> -- Write SQL using Java String Templates with type-safe interpolation of
  *       entity classes, records, and parameters via the {@link #query(StringTemplate)} method.</li>
  *   <li><strong>Query Builder</strong> -- Construct queries programmatically using the fluent
- *       {@link #selectFrom(Class)} and {@link #deleteFrom(Class)} methods, which return a {@link QueryBuilder}.</li>
+ *       {@link #selectFrom(Class)}, {@link #deleteFrom(Class)} and {@link #updateFrom(Class)} methods, which return a
+ *       {@link QueryBuilder}.</li>
  * </ul>
  *
  * <p>This interface also provides utility methods for creating {@link st.orm.BindVars} for batch operations and
@@ -168,6 +169,20 @@ public interface QueryTemplate extends SubqueryTemplate {
      * @param <T> the table type to delete from.
      */
     <T extends Data> QueryBuilder<T, ?, ?> deleteFrom(Class<T> fromType);
+
+    /**
+     * Creates a query builder for the specified table to update.
+     *
+     * <p>The builder sets the columns named through {@code set} on the rows its conditions select. It requires a
+     * WHERE clause unless {@link QueryBuilder#unsafe()} is called, and it increments the version column of a versioned
+     * table.</p>
+     *
+     * @param fromType the table to update.
+     * @return the query builder.
+     * @param <T> the table type to update.
+     * @since 1.15
+     */
+    <T extends Data> QueryBuilder<T, ?, ?> updateFrom(Class<T> fromType);
 
     /**
      * Creates a query for the specified {@code query} string.

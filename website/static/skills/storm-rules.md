@@ -37,13 +37,22 @@ This is the default to apply. The developer can choose otherwise; where they say
 - **Create a `Ref` from what you have.** From an entity: `city.ref()` in Kotlin (`import st.orm.template.ref`), `Ref.of(city)` in Java. From an id, where it enters the program (a path variable, a request field, a message): `refById<City>(id)` in Kotlin (`import st.orm.template.refById`), `Ref.of(City.class, id)` in Java. Convert once, at that boundary, and pass the `Ref` inward.
 - **Hand the `Ref` to Storm as is.** Repositories and queries take refs directly (`findByRef`, `getByRef`, `findAllByRef`, a foreign key field compared to a `Ref`), so never unwrap one into an id to query. Take a typed id with `entityId()` where an id must leave the program. How DTOs and other transfer types carry a reference is the developer's choice.
 
-### Entities First, Projections for Performance or Customization
+### One Entity per Table, Projections for Performance or Customization
 
 This is the default to apply. The developer can choose otherwise; where they say so, follow that.
 
+- **One type per table.** Never create a second entity, or a partial entity over some of its columns, for a table that already has one, for reads or for writes. Queries, repositories, `Ref`s and tests then all work with the same type, and the table has one mapping to keep in step with its schema.
 - **Read with the entity the table already has**, even where a screen or endpoint uses only a few of its columns. Every entity is checked against the design budget (10 joins and 96 columns beyond its own by default, configurable by the application, reported as design advice), so its read is already bounded, and one type per table keeps the model small: queries, repositories, `Ref`s and tests all work with the same type.
 - **Create a summary projection only when performance counts or customization is required**: a `Projection<ID>` over a subset of an entity's columns is a second type to keep in step with the table, so it needs a reason. Customization is a read that needs a shape the entity cannot give, such as a foreign key inlined that the entity holds as a `Ref`, or a column mapped through another converter. Performance is evidence the entity's width is the cost: `wide-entity-read` advice under a slow statement, a performance log summary showing a read that maps many columns for a call that uses few, a hot path or a large result set the user names, or the user asking. Before adding one, consider a `Ref` on the branch the read does not need, which narrows every read of the entity at once.
-- **Other projections keep their purpose.** A projection over a database view or a `@ProjectionQuery`, and a plain data class or record for an aggregation or computed result, are not summaries of an entity, so this rule does not apply to them.
+- **Write a subset of columns through the same entity.** Rows the transaction did not read take the update builder, which sets the named columns on the rows its conditions select: `pets.update { set(Pet_.owner, newOwner); where(Pet_.owner eq previousOwner) }` in Kotlin, `pets.update().set(Pet_.owner, newOwner).where(Pet_.owner, EQUALS, previousOwner)` in Java. An entity the transaction read takes `update(entity)`, and `@DynamicUpdate(FIELD)` on the entity writes only the columns that changed. Neither needs a partial entity.
+- **Other projections keep their purpose.** A projection over a database view or a `@ProjectionQuery`, and a plain data class or record for an aggregation or computed result, are not tables, so this rule does not apply to them.
+
+### Writing by Condition
+
+- **`remove` and `update(entity)` take what you hold; `delete()` and `update()` builders take a condition.** `remove(entity)`, `removeById`, `removeByRef` and `update(entity)` act on entities, ids or refs the code already has. `delete()` and the `update()` builder find their rows by a condition and return a `QueryBuilder`, ending in `executeUpdate()`; there is no `delete(entity)`.
+- **The builders require a condition.** An UPDATE or DELETE without a WHERE clause, semi-join or anti-join is refused unless `unsafe()` is called.
+- **The update builder sets columns through the metamodel**: a value typed by the field, `null` for a nullable field (Java `setNull`), an entity or `Ref` for a foreign key, or a template computing one column (`set(Pet_.visitCount) { "${Pet_.visitCount} + 1" }`). It refuses the primary key, `@Persist(updatable = false)` fields, the `@Version` field and paths into related tables.
+- **The update builder increments `@Version`, fires no entity callbacks and evicts its type from the transaction's entity cache.** An entity read before it ran is stale: re-read it before writing it as an entity. A column an audit callback stamps on update is `set` in the builder, since callbacks see only operations that carry an entity.
 
 ### Query and Template Rules
 

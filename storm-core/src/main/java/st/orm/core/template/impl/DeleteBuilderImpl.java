@@ -227,9 +227,15 @@ public class DeleteBuilderImpl<T extends Data, ID> extends QueryBuilderImpl<T, O
      * Builds the query based on the current state of the query builder.
      *
      * @return the constructed query.
+     * @throws PersistenceException if the query has no condition and {@link #unsafe()} was not called.
      */
     @Override
     public Query build() {
+        // The builder checks this itself, since the statement that matches its rows through a subquery has a WHERE
+        // clause of its own whatever the builder holds.
+        if (!unsafe && !hasCondition()) {
+            throw new PersistenceException("DELETE without a WHERE clause is potentially unsafe. Use unsafe() to allow this operation.");
+        }
         Query query = queryTemplate.query(toTemplateString());
         if (unsafe || hasCondition()) {
             query = query.unsafe();

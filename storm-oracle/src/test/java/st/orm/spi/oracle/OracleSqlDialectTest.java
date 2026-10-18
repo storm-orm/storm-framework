@@ -14,6 +14,7 @@ import org.junit.jupiter.api.Test;
 import st.orm.Operator;
 import st.orm.SqlTemplateException;
 import st.orm.StormConfig;
+import st.orm.core.template.SqlDialect;
 
 /**
  * Unit tests for {@link OracleSqlDialect} verifying Oracle-specific SQL generation behavior.
@@ -182,6 +183,11 @@ class OracleSqlDialectTest {
     @Test
     void supportsDeleteAliasShouldReturnFalse() {
         assertFalse(dialect.supportsDeleteAlias());
+    }
+
+    @Test
+    void updateJoinSyntaxShouldBeSubquery() {
+        assertEquals(SqlDialect.UpdateJoinSyntax.SUBQUERY, dialect.updateJoinSyntax());
     }
 
     @Test

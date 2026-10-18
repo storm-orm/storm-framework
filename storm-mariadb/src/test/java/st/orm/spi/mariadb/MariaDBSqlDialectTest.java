@@ -10,6 +10,7 @@ import java.util.Map;
 import org.junit.jupiter.api.Test;
 import st.orm.PersistenceException;
 import st.orm.StormConfig;
+import st.orm.core.template.SqlDialect;
 
 /**
  * Unit tests for {@link MariaDBSqlDialect} verifying MariaDB-specific behavior,
@@ -195,6 +196,11 @@ class MariaDBSqlDialectTest {
     @Test
     void supportsDeleteAliasShouldReturnTrue() {
         assertTrue(dialect.supportsDeleteAlias());
+    }
+
+    @Test
+    void updateJoinSyntaxShouldBeJoinBeforeSet() {
+        assertEquals(SqlDialect.UpdateJoinSyntax.JOIN_BEFORE_SET, dialect.updateJoinSyntax());
     }
 
     @Test

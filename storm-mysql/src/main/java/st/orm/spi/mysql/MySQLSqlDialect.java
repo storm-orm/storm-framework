@@ -58,6 +58,18 @@ public class MySQLSqlDialect extends DefaultSqlDialect {
     }
 
     /**
+     * Joins the tables an UPDATE reaches its rows through after the updated table, before the SET clause, since
+     * MySQL refuses a subquery that reads the table being updated.
+     *
+     * @return {@link UpdateJoinSyntax#JOIN_BEFORE_SET}.
+     * @since 1.15
+     */
+    @Override
+    public UpdateJoinSyntax updateJoinSyntax() {
+        return UpdateJoinSyntax.JOIN_BEFORE_SET;
+    }
+
+    /**
      * Indicates whether the SQL dialect supports multi-value tuples in the IN clause.
      *
      * @return {@code true} if multi-value tuples are supported, {@code false} otherwise.

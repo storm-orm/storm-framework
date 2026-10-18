@@ -39,7 +39,7 @@ import java.util.stream.Stream
 import kotlin.reflect.KClass
 
 /**
- * A fluent builder for constructing type-safe SELECT and DELETE queries using the entity graph and metamodel.
+ * A fluent builder for constructing type-safe SELECT, UPDATE and DELETE queries using the entity graph and metamodel.
  *
  * The `QueryBuilder` provides a composable, chainable API for building SQL queries without writing raw SQL.
  * It supports joins, WHERE clauses with type-safe metamodel paths, GROUP BY, HAVING, ORDER BY, LIMIT/OFFSET,
@@ -47,7 +47,7 @@ import kotlin.reflect.KClass
  *
  * Instances are obtained from an [st.orm.repository.EntityRepository] or
  * [st.orm.repository.ProjectionRepository] via their `select()`, `selectCount()`, or
- * `delete()` methods, or from a [QueryTemplate] via `selectFrom()` and `deleteFrom()`.
+ * `update()` or `delete()` methods, or from a [QueryTemplate] via `selectFrom()`, `updateFrom()` and `deleteFrom()`.
  *
  * ## Example: Select with type-safe WHERE clause
  * ```kotlin
@@ -65,6 +65,15 @@ import kotlin.reflect.KClass
  *     .select()
  *     .innerJoin<Order>().on<User>()
  *     .resultList
+ * ```
+ *
+ * ## Example: Update with WHERE clause
+ * ```kotlin
+ * val updated = visitRepository
+ *     .update()
+ *     .set(Visit_.description, "Rescheduled")
+ *     .where(Visit_.visitDate eq closedDay)
+ *     .executeUpdate()
  * ```
  *
  * ## Example: Delete with WHERE clause
@@ -182,6 +191,75 @@ public abstract class QueryBuilder<T : Data, R : Any, ID : Any> {
      * @since 1.2
      */
     public abstract fun unsafe(): QueryBuilder<T, R, ID>
+
+    /**
+     * Sets a column of the rows an UPDATE query updates to the given value.
+     *
+     * ```kotlin
+     * pets.update()
+     *     .set(Pet_.owner, newOwner)
+     *     .where(Pet_.owner eq previousOwner)
+     *     .executeUpdate()
+     * ```
+     *
+     * The field is a column of the table the query updates, or a foreign key or inline record of that table, which
+     * sets each of its columns; a foreign key takes the referenced record and an inline record takes the record whose
+     * values go into its columns. A `null` value sets the columns to `NULL`, which a non-nullable field refuses. The
+     * primary key, a field declared with `@Persist(updatable = false)`, the version field, which the statement
+     * increments itself, and a path reaching into a related table are refused, as is a field set twice.
+     *
+     * Only a builder created by `update()` takes this call; any other refuses it.
+     *
+     * @param field the field to set.
+     * @param value the value, or `null` to set the field's columns to `NULL`.
+     * @return the query builder.
+     * @throws PersistenceException if the builder is not an UPDATE builder, or the field cannot be set.
+     * @since 1.15
+     */
+    public abstract fun <V : Any> set(field: Metamodel<out T, V>, value: V?): QueryBuilder<T, R, ID>
+
+    /**
+     * Sets a foreign key of the rows an UPDATE query updates to the record the given ref refers to.
+     *
+     * @param field the foreign key field to set.
+     * @param ref the ref to the record the foreign key refers to.
+     * @return the query builder.
+     * @throws PersistenceException if the builder is not an UPDATE builder, or the field cannot be set.
+     * @since 1.15
+     */
+    public abstract fun <V : Data> set(field: Metamodel<out T, V>, ref: Ref<V>): QueryBuilder<T, R, ID>
+
+    /**
+     * Sets a column of the rows an UPDATE query updates to the value the given SQL expression computes, such as an
+     * increment of the column itself. The field maps to exactly one column.
+     *
+     * @param field the field to set.
+     * @param template the SQL expression computing the value.
+     * @return the query builder.
+     * @throws PersistenceException if the builder is not an UPDATE builder, or the field cannot be set.
+     * @since 1.15
+     */
+    public abstract fun set(field: Metamodel<out T, *>, template: TemplateString): QueryBuilder<T, R, ID>
+
+    /**
+     * Sets a column of the rows an UPDATE query updates to the value the given SQL expression computes, such as an
+     * increment of the column itself. The expression names columns through the metamodel and binds its values as
+     * parameters. The field maps to exactly one column.
+     *
+     * ```kotlin
+     * pets.update()
+     *     .set(Pet_.visitCount) { "${Pet_.visitCount} + 1" }
+     *     .where(Pet_.owner eq owner)
+     *     .executeUpdate()
+     * ```
+     *
+     * @param field the field to set.
+     * @param builder the SQL expression computing the value.
+     * @return the query builder.
+     * @throws PersistenceException if the builder is not an UPDATE builder, or the field cannot be set.
+     * @since 1.15
+     */
+    public fun set(field: Metamodel<out T, *>, builder: TemplateBuilder): QueryBuilder<T, R, ID> = set(field, builder.build())
 
     /**
      * Marks the current query as a distinct query.
@@ -2196,6 +2274,21 @@ public class SqlScope<T : Data, R : Any, ID : Any> @PublishedApi internal constr
     /** Allows DELETE/UPDATE without a WHERE clause (Storm rejects this by default). */
     public fun unsafe() {
         builder = builder.unsafe()
+    }
+
+    /** Sets a column of the rows an UPDATE updates to [value], or to `NULL`; see [QueryBuilder.set]. */
+    public fun <V : Any> set(field: Metamodel<out T, V>, value: V?) {
+        builder = builder.set(field, value)
+    }
+
+    /** Sets a foreign key of the rows an UPDATE updates to the record [ref] refers to. */
+    public fun <V : Data> set(field: Metamodel<out T, V>, ref: Ref<V>) {
+        builder = builder.set(field, ref)
+    }
+
+    /** Sets a column of the rows an UPDATE updates to the value an expression computes (e.g., `set(Pet_.visitCount) { "${Pet_.visitCount} + 1" }`). */
+    public fun set(field: Metamodel<out T, *>, template: TemplateBuilder) {
+        builder = builder.set(field, template)
     }
 
     /** Locks the selected rows for reading (SELECT ... FOR SHARE). */

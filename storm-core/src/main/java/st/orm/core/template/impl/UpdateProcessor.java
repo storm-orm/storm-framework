@@ -17,6 +17,7 @@ package st.orm.core.template.impl;
 
 import st.orm.SqlTemplateException;
 import st.orm.core.template.impl.Elements.Update;
+import st.orm.core.template.impl.Elements.UpdateTarget;
 
 final class UpdateProcessor implements ElementProcessor<Update> {
 
@@ -72,5 +73,30 @@ final class UpdateProcessor implements ElementProcessor<Update> {
      */
     @Override
     public void bind(Update update, TemplateBinder binder, BindHint bindHint) {
+    }
+
+    /**
+     * Processes the {@link UpdateTarget} of an UPDATE whose table a FROM element renders: it marks the table the
+     * statement writes, so the entity cache of that type is invalidated once it runs, and renders nothing.
+     *
+     * @since 1.15
+     */
+    static final class TargetProcessor implements ElementProcessor<UpdateTarget> {
+
+        @Override
+        public Object getCompilationKey(UpdateTarget target) {
+            return target;
+        }
+
+        @Override
+        public CompiledElement compile(UpdateTarget target, TemplateCompiler compiler) {
+            compiler.setAffectedType(target.table());
+            compiler.setDataType(target.table());
+            return new CompiledElement("");
+        }
+
+        @Override
+        public void bind(UpdateTarget target, TemplateBinder binder, BindHint bindHint) {
+        }
     }
 }

@@ -21,6 +21,7 @@ import static st.orm.GenerationStrategy.NONE;
 import static st.orm.GenerationStrategy.SEQUENCE;
 import static st.orm.core.repository.impl.StreamSupport.partitioned;
 import static st.orm.core.spi.Providers.deleteFrom;
+import static st.orm.core.spi.Providers.updateFrom;
 import static st.orm.core.template.TemplateString.raw;
 
 import java.util.ArrayList;
@@ -496,6 +497,16 @@ public class EntityRepositoryImpl<E extends Entity<ID>, ID>
     @Override
     public QueryBuilder<E, ?, ID> delete() {
         return deleteFrom(ormTemplate, model.type(), () -> model);
+    }
+
+    /**
+     * Creates a new query builder for updating entities of the type managed by this repository.
+     *
+     * @return a new query builder for the entity type.
+     */
+    @Override
+    public QueryBuilder<E, ?, ID> update() {
+        return updateFrom(ormTemplate, model.type(), () -> model);
     }
 
     /**

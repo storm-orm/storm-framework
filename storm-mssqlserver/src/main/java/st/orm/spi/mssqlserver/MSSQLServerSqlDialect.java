@@ -55,6 +55,18 @@ public class MSSQLServerSqlDialect extends DefaultSqlDialect {
     }
 
     /**
+     * Names the updated table by its alias and joins it in a FROM clause after the SET clause, as SQL Server writes
+     * an UPDATE through other tables.
+     *
+     * @return {@link UpdateJoinSyntax#FROM_AFTER_SET}.
+     * @since 1.15
+     */
+    @Override
+    public UpdateJoinSyntax updateJoinSyntax() {
+        return UpdateJoinSyntax.FROM_AFTER_SET;
+    }
+
+    /**
      * Returns the selected columns rather than the key alone.
      *
      * <p>SQL Server does not resolve functional dependency from a grouped key, so every non-aggregated column of the

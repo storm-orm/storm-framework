@@ -587,6 +587,8 @@ orm update city.copy(name = "New City")          // Also falls back to full-row 
 
 This ensures correctness at the cost of losing dirty checking optimization for the remainder of the transaction.
 
+The [`update()` and `delete()` query builders](queries.md#updating-rows-by-condition) name the table they write, so they clear the observed state of that type only. After an `update()` builder sets columns on rows the transaction read, an `update(entity)` of one of those entities writes its full row instead of comparing against values the statement changed, and a versioned entity fails its optimistic lock check, since the statement incremented the version.
+
 ### 3. Nested Records Are Inspected
 
 Storm's dirty checking is not limited to top-level fields. When entities contain embedded records or value objects, Storm flattens the nested structure and inspects individual columns. This means that changing a single field inside a nested record produces a targeted UPDATE rather than rewriting the entire nested structure.

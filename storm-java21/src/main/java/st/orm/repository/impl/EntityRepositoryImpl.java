@@ -101,6 +101,11 @@ public final class EntityRepositoryImpl<E extends Entity<ID>, ID> implements Ent
     }
 
     @Override
+    public QueryBuilder<E, ?, ID> update() {
+        return new QueryBuilderImpl<>(core.update());
+    }
+
+    @Override
     public long count() {
         return core.count();
     }

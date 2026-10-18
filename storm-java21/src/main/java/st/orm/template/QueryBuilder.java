@@ -48,7 +48,7 @@ import st.orm.core.template.impl.Elements.Columns;
 import st.orm.core.template.impl.Elements.ObjectExpression;
 
 /**
- * A fluent builder for constructing type-safe SELECT and DELETE queries using the entity graph and metamodel.
+ * A fluent builder for constructing type-safe SELECT, UPDATE and DELETE queries using the entity graph and metamodel.
  *
  * <p>The {@code QueryBuilder} provides a composable, chainable API for building SQL queries without writing raw SQL.
  * It supports joins, WHERE clauses with type-safe metamodel paths, GROUP BY, HAVING, ORDER BY, LIMIT/OFFSET,
@@ -56,7 +56,8 @@ import st.orm.core.template.impl.Elements.ObjectExpression;
  *
  * <p>Instances are obtained from an {@link st.orm.repository.EntityRepository} or
  * {@link st.orm.repository.ProjectionRepository} via their {@code select()}, {@code selectCount()}, or
- * {@code delete()} methods, or from a {@link QueryTemplate} via {@code selectFrom()} and {@code deleteFrom()}.
+ * {@code update()} or {@code delete()} methods, or from a {@link QueryTemplate} via {@code selectFrom()},
+ * {@code updateFrom()} and {@code deleteFrom()}.
  *
  * <h2>Example: Select with type-safe WHERE clause</h2>
  * <pre>{@code
@@ -73,6 +74,15 @@ import st.orm.core.template.impl.Elements.ObjectExpression;
  * int deleted = userRepository
  *         .delete()
  *         .where(User_.email, IS_NULL)
+ *         .executeUpdate();
+ * }</pre>
+ *
+ * <h2>Example: Update with WHERE clause</h2>
+ * <pre>{@code
+ * int updated = visitRepository
+ *         .update()
+ *         .set(Visit_.description, "Rescheduled")
+ *         .where(Visit_.visitDate, EQUALS, closedDay)
  *         .executeUpdate();
  * }</pre>
  *
@@ -178,6 +188,82 @@ public abstract class QueryBuilder<T extends Data, R, ID> {
      * @since 1.2
      */
     public abstract QueryBuilder<T, R, ID> unsafe();
+
+    /**
+     * Sets a column of the rows an UPDATE query updates to the given value.
+     *
+     * <pre>{@code
+     * pets.update()
+     *     .set(Pet_.owner, newOwner)
+     *     .where(Pet_.owner, EQUALS, previousOwner)
+     *     .executeUpdate();
+     * }</pre>
+     *
+     * <p>The field is a column of the table the query updates, or a foreign key or inline record of that table, which
+     * sets each of its columns; a foreign key takes the referenced record and an inline record takes the record whose
+     * values go into its columns. The primary key, a field declared with {@code @Persist(updatable = false)}, the
+     * version field, which the statement increments itself, and a path reaching into a related table are refused, as
+     * is a field set twice. Use {@link #setNull(Metamodel)} to set a field to {@code NULL}.</p>
+     *
+     * <p>Only a builder created by {@code update()} takes this call; any other refuses it.</p>
+     *
+     * @param field the field to set.
+     * @param value the value.
+     * @return the query builder.
+     * @param <V> the type of the field.
+     * @throws PersistenceException if the builder is not an UPDATE builder, or the field cannot be set.
+     * @since 1.15
+     */
+    public abstract <V> QueryBuilder<T, R, ID> set(Metamodel<? extends T, V> field, V value);
+
+    /**
+     * Sets a foreign key of the rows an UPDATE query updates to the record the given ref refers to.
+     *
+     * @param field the foreign key field to set.
+     * @param ref the ref to the record the foreign key refers to.
+     * @return the query builder.
+     * @param <V> the type of the referenced record.
+     * @throws PersistenceException if the builder is not an UPDATE builder, or the field cannot be set.
+     * @see #set(Metamodel, Object)
+     * @since 1.15
+     */
+    public abstract <V extends Data> QueryBuilder<T, R, ID> set(Metamodel<? extends T, V> field, Ref<V> ref);
+
+    /**
+     * Sets a column of the rows an UPDATE query updates to the value the given SQL expression computes, such as an
+     * increment of the column itself. The expression names columns through the metamodel and binds its values as
+     * parameters. The field maps to exactly one column.
+     *
+     * <pre>{@code
+     * pets.update()
+     *     .set(Pet_.visitCount, RAW."\{Pet_.visitCount} + 1")
+     *     .where(Pet_.owner, owner)
+     *     .executeUpdate();
+     * }</pre>
+     *
+     * @param field the field to set.
+     * @param expression the SQL expression computing the value.
+     * @return the query builder.
+     * @throws PersistenceException if the builder is not an UPDATE builder, or the field cannot be set.
+     * @see #set(Metamodel, Object)
+     * @since 1.15
+     */
+    public abstract QueryBuilder<T, R, ID> set(Metamodel<? extends T, ?> field, StringTemplate expression);
+
+    /**
+     * Sets the columns of a field of the rows an UPDATE query updates to {@code NULL}. A field that is not nullable
+     * is refused.
+     *
+     * @param field the field to set.
+     * @return the query builder.
+     * @throws PersistenceException if the builder is not an UPDATE builder, or the field cannot be set.
+     * @see #set(Metamodel, Object)
+     * @since 1.15
+     */
+    @SuppressWarnings("unchecked")
+    public final QueryBuilder<T, R, ID> setNull(Metamodel<? extends T, ?> field) {
+        return set((Metamodel<? extends T, Object>) field, (Object) null);
+    }
 
     /**
      * Marks the current query as a distinct query.

@@ -15,6 +15,7 @@ import st.orm.Operator;
 import st.orm.PersistenceException;
 import st.orm.SqlTemplateException;
 import st.orm.StormConfig;
+import st.orm.core.template.SqlDialect;
 
 class SQLiteSqlDialectTest {
 
@@ -176,6 +177,11 @@ class SQLiteSqlDialectTest {
     @Test
     void supportsDeleteAliasShouldReturnFalse() {
         assertFalse(dialect.supportsDeleteAlias());
+    }
+
+    @Test
+    void updateJoinSyntaxShouldBeSubquery() {
+        assertEquals(SqlDialect.UpdateJoinSyntax.SUBQUERY, dialect.updateJoinSyntax());
     }
 
     @Test

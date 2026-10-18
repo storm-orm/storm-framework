@@ -15,6 +15,7 @@ import org.junit.jupiter.api.Test;
 import st.orm.PersistenceException;
 import st.orm.SqlTemplateException;
 import st.orm.StormConfig;
+import st.orm.core.template.SqlDialect;
 
 /**
  * Tests for {@link DefaultSqlDialect}.
@@ -39,6 +40,7 @@ public class DefaultSqlDialectTest {
     public void testSupportsDeleteAlias() {
         var dialect = new DefaultSqlDialect();
         assertFalse(dialect.supportsDeleteAlias());
+        assertEquals(SqlDialect.UpdateJoinSyntax.SUBQUERY, dialect.updateJoinSyntax());
     }
 
     @Test

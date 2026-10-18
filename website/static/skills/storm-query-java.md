@@ -37,6 +37,7 @@ Repository/entity methods fall into two categories:
 - `select()` -- build SELECT queries
 - `selectRef()` -- build SELECT queries returning Refs
 - `selectCount()` -- build COUNT queries
+- `update()` -- build UPDATE queries that `set` columns on the rows a condition selects
 - `delete()` -- build DELETE queries
 
 (The `select(predicate)` / `delete(predicate)` shorthands are Kotlin-only — in Java, chain `.where(...)` on the builder.)
@@ -55,14 +56,14 @@ Map<City, List<User>> usersByCity = orm.entity(User.class)
 **Convenience methods** execute immediately and return results directly:
 - `findById()`, `findByRef()`, `findAll()`, `findAllRef()`, `findBy()`, `findAllBy()`, `getById()`, `getByRef()`, `getBy()`, `count()`, `exists()`, `remove()`, `removeById()`, `removeByRef()`, `removeAll()`, `removeAllBy()`, `page()`, `pageRef()`, `scroll()`
 
-The `delete`/`remove` distinction: `remove` operates on entities or ids you already have (immediate execution). `delete` builds a query to find and delete rows by criteria (returns `QueryBuilder`).
+The `delete`/`remove` distinction: `remove` operates on entities or ids you already have (immediate execution). `delete` builds a query to find and delete rows by criteria (returns `QueryBuilder`). Updates split the same way: `update(entity)` writes an entity you hold, the `update()` builder sets columns on the rows a condition selects (see **Bulk DELETE/UPDATE**).
 
 Prefer the simplest approach that works. Three query levels, from simplest to most powerful:
 
 | Level | Approach | Best for |
 |-------|----------|----------|
 | 1 | Convenience methods (`findBy`, `findAllBy`, `removeAllBy`, `countBy`, `existsBy`) | Simple lookups and operations |
-| 2 | Builder chained (`select().where(...)`, `delete().where(...)`) | Most application queries needing ordering, pagination, or joins |
+| 2 | Builder chained (`select().where(...)`, `update().set(...).where(...)`, `delete().where(...)`) | Most application queries needing ordering, pagination, or joins |
 | 3 | SQL Templates (/storm-sql-java) | CTEs, window functions, database-specific features |
 
 ### When to use each — and when NOT to
@@ -75,6 +76,7 @@ Prefer the simplest approach that works. Three query levels, from simplest to mo
 | Count by field | `countBy(field, value)` | `selectCount().where(field, EQUALS, value).getSingleResult()` |
 | Exists check | `existsBy(field, value)` | `countBy(field, value) > 0` |
 | Delete by field | `removeAllBy(field, value)` | `delete().where(field, EQUALS, value).executeUpdate()` |
+| Set columns on rows not read | `update().set(...).where(...).executeUpdate()` | a second, partial entity for the table, or an `orm.query(RAW."UPDATE ...")` template |
 | Parents with their children (one-to-many) | `select().getResultGroupedBy(parentPath)` | per-parent queries in a loop (N+1) or manual grouping after `getResultList()` |
 | Filtered + **ordering/pagination** | `select().where(...).orderBy(...).getResultList()` | convenience methods (can't add ordering) |
 | Filtered + **joins** | `select().innerJoin(...).on(...).getResultList()` | convenience methods (can't add joins) |
@@ -259,7 +261,7 @@ User user = orm.entity(User.class).select()
 
 ## Optimizer Hints
 
-Only when a query needs a hint to keep its plan, add it with `.hint("...")`: the database's own hint text, passed through as is, on `select()` and `delete()`. Never rewrite a query as a SQL template to place a hint.
+Only when a query needs a hint to keep its plan, add it with `.hint("...")`: the database's own hint text, passed through as is, on `select()`, `update()` and `delete()`. Never rewrite a query as a SQL template to place a hint.
 
 ```java
 List<User> users = orm.entity(User.class).select()
@@ -268,7 +270,7 @@ List<User> users = orm.entity(User.class).select()
     .getResultList();
 ```
 
-The dialect places it: a `/*+ ... */` comment after `SELECT`/`DELETE` on MySQL, MariaDB 12+ and Oracle, an `OPTION (...)` clause at the end on SQL Server, and nowhere on PostgreSQL, H2 and SQLite, which have no hint syntax (the query runs unchanged, so H2 tests pass). Several `.hint(...)` calls share one comment or clause. On SQL Server a hinted builder cannot be a subquery; hint the outer query. A hint containing `*/` or `;` is refused.
+The dialect places it: a `/*+ ... */` comment after `SELECT`/`UPDATE`/`DELETE` on MySQL, MariaDB 12+ and Oracle, an `OPTION (...)` clause at the end on SQL Server, and nowhere on PostgreSQL, H2 and SQLite, which have no hint syntax (the query runs unchanged, so H2 tests pass). Several `.hint(...)` calls share one comment or clause. On SQL Server a hinted builder cannot be a subquery; hint the outer query. A hint containing `*/` or `;` is refused.
 
 ## Distinct and Count
 
@@ -384,7 +386,7 @@ Read the request for the cue: "with", "that have", "who own", "any of their", "s
 - `semiJoin` conditions go in `where`: conditions joined by `.and()` hold for the same related row, a part naming only the root's columns holds without a related row, and `search` matches each word on its own related row.
 - `antiJoin` conditions go on the join, never in `where`: a `where` naming the anti-joined table is refused.
 - A semi-joined or anti-joined table adds no columns: when the result, `orderBy` or `groupBy` needs them, the query wants a regular join instead.
-- Both work on `delete()`: `delete().antiJoin(Pet.class).on(Owner.class)` removes the owners without pets.
+- Both work on `delete()` and `update()`: `delete().antiJoin(Pet.class).on(Owner.class)` removes the owners without pets.
 - `semiJoin` and `antiJoin` are complements: on the same table with the same condition on the join, the one keeps the rows the other drops. Without a condition, `semiJoin` keeps the rows with any related row and `antiJoin` the rows without one.
 - Keep `whereExists` for a subquery a foreign key does not express.
 
@@ -513,6 +515,47 @@ orm.entity(User.class).delete().unsafe().executeUpdate();
 // Convenience method: removeAll() executes immediately (calls unsafe() internally)
 users.removeAll();
 ```
+
+`update()` is the UPDATE counterpart: `set` names a column through the metamodel, the conditions select the rows, and `.executeUpdate()` runs one statement without reading the rows. Use it to write a few columns of rows the code did not read; never add a second, partial entity for the table to do so.
+
+```java
+// Transfer pets to a new owner
+pets.update()
+    .set(Pet_.owner, newOwner)
+    .where(Pet_.owner, EQUALS, previousOwner)
+    .executeUpdate();
+
+visits.update()
+    .set(Visit_.description, "Rescheduled")
+    .where(Visit_.visitDate, EQUALS, closedDay)
+    .executeUpdate();
+
+visits.update()
+    .setNull(Visit_.description)                       // nullable field; a bare null is ambiguous
+    .where(Visit_.visitDate, EQUALS, closedDay)
+    .executeUpdate();
+
+// Foreign key: the entity or a Ref; a value computed from the row: a template
+pets.update()
+    .set(Pet_.owner, newOwnerRef)
+    .set(Pet_.visitCount, RAW."\{Pet_.visitCount} + 1")
+    .where(Pet_.owner, owner)
+    .executeUpdate();
+
+// A condition through a related table works on every database
+visits.update()
+    .set(Visit_.description, "Rescheduled")
+    .where(Visit_.pet.owner.address.city, city)
+    .executeUpdate();
+```
+
+Rules for `update()`:
+- **WHERE is required** (or a `semiJoin`/`antiJoin`), as for `delete()`; `unsafe()` confirms an update of every row.
+- **`set` refuses** the primary key, `@Persist(updatable = false)` fields, the `@Version` field, a path into a related table (`Owner_.city.name`), and a field set twice. An inline record field writes each of its columns.
+- **`@Version` is incremented** by the statement (a timestamp version is set to the current time), so an entity read before it fails its optimistic lock check.
+- **No entity callbacks fire**: `beforeUpdate`/`afterUpdate` need an entity and the statement carries none. `set` an audit column in the builder.
+- **The type's entities are evicted from the transaction's entity cache** once it runs, so dirty checking cannot skip a column it changed. Re-read entities it touched before writing them back.
+- `distinct()`, `limit()`, `offset()`, locking, result reads and use as a subquery are refused.
 
 **Always prefer entity/metamodel-based QueryBuilder methods over SQL template strings.** SQL templates are an escape hatch for things the QueryBuilder cannot express.
 

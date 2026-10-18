@@ -96,6 +96,7 @@ import st.orm.core.template.impl.Elements.Table;
 import st.orm.core.template.impl.Elements.TableSource;
 import st.orm.core.template.impl.Elements.TemplateTarget;
 import st.orm.core.template.impl.Elements.Update;
+import st.orm.core.template.impl.Elements.UpdateTarget;
 import st.orm.core.template.impl.Elements.Where;
 import st.orm.core.template.impl.SqlTemplateImpl.ElementNode;
 import st.orm.core.template.impl.SqlTemplateImpl.Wrapped;
@@ -526,6 +527,8 @@ class TemplatePreparation {
                         throw new SqlTemplateException("Insert element is only allowed for insert statements.");
                 case Update ignore when sqlOperation != UPDATE ->
                         throw new SqlTemplateException("Update element is only allowed for update statements.");
+                case UpdateTarget ignore when sqlOperation != UPDATE ->
+                        throw new SqlTemplateException("Update target element is only allowed for update statements.");
                 case Delete ignore when sqlOperation != DELETE ->
                         throw new SqlTemplateException("Delete element is only allowed for delete statements.");
                 case Select it when !template.supportRecords() ->
@@ -558,6 +561,12 @@ class TemplatePreparation {
                     }
                     yield it;
                 }
+                case UpdateTarget it -> {
+                    if (first != null) {
+                        throw new SqlTemplateException("Only a single Update element is allowed.");
+                    }
+                    yield it;
+                }
                 case Delete it -> {
                     if (first != null) {
                         throw new SqlTemplateException("Only a single Delete element is allowed.");
@@ -582,7 +591,8 @@ class TemplatePreparation {
                 case Object o -> resolveObjectElement(sqlOperation, p, o);
                 case null -> param(v);
             };
-            if (first == null && (element instanceof Select || element instanceof Insert || element instanceof Update || element instanceof Delete)) {
+            if (first == null && (element instanceof Select || element instanceof Insert || element instanceof Update
+                    || element instanceof UpdateTarget || element instanceof Delete)) {
                 first = element;
             }
             resolvedValues.add(element);
@@ -1593,6 +1603,10 @@ class TemplatePreparation {
      * <p>Update statements may not support table aliases on all databases. When no explicit alias is provided, the empty
      * alias is registered. Foreign keys of the updated entity are registered for mapping.</p>
      *
+     * <p>An UPDATE through other tables carries an {@link UpdateTarget} and a FROM element of the updated table instead
+     * of an UPDATE element. The FROM element then gets an alias and the joins, as in a SELECT or DELETE, and the
+     * target names the table the statement writes.</p>
+     *
      * @param mutableElements the mutable element list.
      * @param aliasMapper     alias mapper used for alias registration.
      * @param tableMapper     table mapper used for mapping foreign keys.
@@ -1608,6 +1622,41 @@ class TemplatePreparation {
                 .map(Update.class::cast)
                 .findAny()
                 .orElse(null);
+        final UpdateTarget target = mutableElements.stream()
+                .filter(UpdateTarget.class::isInstance)
+                .map(UpdateTarget.class::cast)
+                .findAny()
+                .orElse(null);
+        final From from = mutableElements.stream()
+                .filter(From.class::isInstance)
+                .map(From.class::cast)
+                .filter(f -> f.source() instanceof TableSource)
+                .findAny()
+                .orElse(null);
+        if (target != null) {
+            // The FROM element renders the updated table with its alias and joins, where the database joins other
+            // tables into an UPDATE; the target only names the table the statement writes.
+            if (from == null || !(from.source() instanceof TableSource(var table))) {
+                throw new SqlTemplateException("From element required when using an Update target element.");
+            }
+            if (target.table() != table) {
+                throw new SqlTemplateException("Update entity %s does not match From table %s."
+                        .formatted(target.table().getSimpleName(), table.getSimpleName()));
+            }
+            validateDataType(table);
+            String path = "";
+            final From effectiveFrom;
+            if (from.alias().isEmpty()) {
+                String alias = aliasMapper.generateAlias(table, path, template.dialect());
+                effectiveFrom = new From(new TableSource(table), alias, from.autoJoin());
+                mutableElements.replaceAll(element -> element instanceof From ? effectiveFrom : element);
+            } else {
+                effectiveFrom = from;
+                aliasMapper.setAlias(table, from.alias(), path);
+            }
+            addJoins(table, mutableElements, effectiveFrom, aliasMapper, tableMapper);
+            return;
+        }
         if (update != null) {
             var table = update.table();
             validateDataType(table);

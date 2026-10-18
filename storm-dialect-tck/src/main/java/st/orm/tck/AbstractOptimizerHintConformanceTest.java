@@ -56,6 +56,7 @@ import st.orm.core.template.SqlDialect;
 public abstract class AbstractOptimizerHintConformanceTest {
 
     private static final Metamodel<Item, Integer> ID = Metamodel.of(Item.class, "id");
+    private static final Metamodel<Item, String> NAME = Metamodel.of(Item.class, "name");
 
     public record Item(@PK(generation = NONE) Integer id, String name) implements Entity<Integer> {}
 
@@ -121,7 +122,7 @@ public abstract class AbstractOptimizerHintConformanceTest {
         } else if (dialect().applyOptimizerHintAfterKeyword()) {
             // The hint follows the keyword of the builder's own query block, which a count over a limit wraps in a
             // derived table.
-            assertTrue(Pattern.compile("(SELECT|DELETE) " + Pattern.quote(rendered)).matcher(statement).find(), statement);
+            assertTrue(Pattern.compile("(SELECT|DELETE|UPDATE) " + Pattern.quote(rendered)).matcher(statement).find(), statement);
         } else {
             assertTrue(statement.stripTrailing().endsWith(rendered), statement);
         }
@@ -167,6 +168,14 @@ public abstract class AbstractOptimizerHintConformanceTest {
         var statements = statements(() -> orm.entity(Item.class).delete().hint(hint).where(ID, EQUALS, 2).executeUpdate());
         assertHinted(statements.getFirst(), List.of(hint));
         assertEquals(4, orm.entity(Item.class).count());
+    }
+
+    @Test
+    public void aHintedUpdateSetsTheRowsItNames() {
+        var hint = hints().getFirst();
+        var statements = statements(() -> orm.entity(Item.class).update().hint(hint).set(NAME, "hinted").where(ID, EQUALS, 2).executeUpdate());
+        assertHinted(statements.getFirst(), List.of(hint));
+        assertEquals("hinted", orm.entity(Item.class).getById(2).name());
     }
 
     @Test

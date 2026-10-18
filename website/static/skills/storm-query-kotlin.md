@@ -20,7 +20,7 @@ import st.orm.Window                             // Keyset scrolling result (Win
 import org.junit.jupiter.api.Assertions.*        // assertEquals, assertTrue, assertFalse
 ```
 
-Use `import st.orm.template.*` to get all infix operators and the `ref()` / `orm` extensions in one import. The `select { }` / `delete { }` block DSL and `and` / `or` combinators are member functions — no import needed.
+Use `import st.orm.template.*` to get all infix operators and the `ref()` / `orm` extensions in one import. The `select { }` / `update { }` / `delete { }` block DSL and `and` / `or` combinators are member functions, so they need no import.
 
 **Import both packages with wildcards: `st.orm.template.*` and `st.orm.repository.*`.** Repository operations are top-level extensions in `st.orm.repository`, so `import st.orm.template.*` alone does not bring them in. Naming them individually is how one ends up missing.
 
@@ -174,6 +174,7 @@ Repository/entity methods fall into two categories:
 - `select()`, `select(predicate)`, `select { }` -- build SELECT queries
 - `selectRef()`, `selectRef(predicate)` -- build SELECT queries returning Refs
 - `selectCount()` -- build COUNT queries
+- `update()`, `update { }` -- build UPDATE queries that `set` columns on the rows a condition selects
 - `delete()`, `delete(predicate)`, `delete { }` -- build DELETE queries
 
 Terminal operations: `.resultList`, `.singleResult`, `.optionalResult`, `.resultFlow`, `.resultStream`, `.windows(size)`, `.resultCount`, `.resultGroupedBy(path)`, `.resultGroupedByRef(path)`, `.page()`, `.scroll()`, `.executeUpdate()`
@@ -190,7 +191,7 @@ val usersByCity: Map<City, List<User>> = orm.entity<User>()
 **Convenience methods** execute immediately and return results directly:
 - `findById()`, `findByRef()`, `findAll()`, `findAllRef()`, `findBy()`, `findAllBy()`, `getById()`, `getByRef()`, `getBy()`, `count()`, `exists()`, `remove()`, `removeById()`, `removeByRef()`, `removeAll()`, `removeAll(predicate)`, `removeAllBy()`, `page()`, `pageRef()`, `scroll()`
 
-The `delete`/`remove` distinction: `remove` operates on entities or ids you already have (immediate execution). `delete` builds a query to find and delete rows by criteria (returns `QueryBuilder`).
+The `delete`/`remove` distinction: `remove` operates on entities or ids you already have (immediate execution). `delete` builds a query to find and delete rows by criteria (returns `QueryBuilder`). Updates split the same way: `update(entity)` writes an entity you hold, the `update()` builder sets columns on the rows a condition selects (see **Bulk DELETE/UPDATE**).
 
 Prefer the simplest approach that works. Four query levels, from simplest to most powerful:
 
@@ -198,7 +199,7 @@ Prefer the simplest approach that works. Four query levels, from simplest to mos
 |-------|----------|----------|
 | 1 | Convenience methods (`find`, `findAll`, `removeAll`, `count`, `exists`) | Simple lookups and operations |
 | 2 | Builder with predicate (`select(predicate)`, `delete(predicate)`) | Filtered queries needing ordering, pagination, or joins |
-| 3 | Block DSL (`select { }`, `delete { }`) | Complex queries with multiple joins and conditions |
+| 3 | Block DSL (`select { }`, `update { }`, `delete { }`) | Complex queries with multiple joins and conditions |
 | 4 | SQL Templates (/storm-sql-kotlin) | CTEs, window functions, database-specific features |
 
 ### When to use each — and when NOT to
@@ -214,6 +215,7 @@ Prefer the simplest approach that works. Four query levels, from simplest to mos
 | Exists check | `exists(predicate)` | `count(predicate) > 0` |
 | Delete by predicate | `removeAll(predicate)` | `delete(predicate).executeUpdate()` |
 | Delete by field | `removeAllBy(field, value)` | `delete(field eq value).executeUpdate()` |
+| Set columns on rows not read | `update { set(...); where(...) }` | a second, partial entity for the table, or an `orm.query { "UPDATE ..." }` template |
 | Parents with their children (one-to-many) | `select().resultGroupedBy(parentPath)` | per-parent queries in a loop (N+1) or manual `groupBy` after `resultList` |
 | Filtered + **ordering/pagination** | `select(predicate).orderBy(...).resultList` | convenience methods (can't add ordering) |
 | Filtered + **joins** | `select { }` or `select().innerJoin(...)` | convenience methods (can't add joins) |
@@ -398,7 +400,7 @@ val user = orm.entity<User>()
 
 ## Optimizer Hints
 
-Only when a query needs a hint to keep its plan, add it with `.hint("...")`: the database's own hint text, passed through as is, on `select` and `delete`. Never rewrite a query as a SQL template to place a hint.
+Only when a query needs a hint to keep its plan, add it with `.hint("...")`: the database's own hint text, passed through as is, on `select`, `update` and `delete`. Never rewrite a query as a SQL template to place a hint.
 
 ```kotlin
 val users = orm.entity<User>()
@@ -408,7 +410,7 @@ val users = orm.entity<User>()
     .resultList
 ```
 
-The dialect places it: a `/*+ ... */` comment after `SELECT`/`DELETE` on MySQL, MariaDB 12+ and Oracle, an `OPTION (...)` clause at the end on SQL Server, and nowhere on PostgreSQL, H2 and SQLite, which have no hint syntax (the query runs unchanged, so H2 tests pass). Several `.hint(...)` calls share one comment or clause. On SQL Server a hinted builder cannot be a subquery; hint the outer query. A hint containing `*/` or `;` is refused.
+The dialect places it: a `/*+ ... */` comment after `SELECT`/`UPDATE`/`DELETE` on MySQL, MariaDB 12+ and Oracle, an `OPTION (...)` clause at the end on SQL Server, and nowhere on PostgreSQL, H2 and SQLite, which have no hint syntax (the query runs unchanged, so H2 tests pass). Several `.hint(...)` calls share one comment or clause. On SQL Server a hinted builder cannot be a subquery; hint the outer query. A hint containing `*/` or `;` is refused.
 
 ## Distinct and Count
 
@@ -528,7 +530,7 @@ Read the request for the cue: "with", "that have", "who own", "any of their", "s
 - `semiJoin` conditions go in `where`: conditions joined by `and` hold for the same related row, a part naming only the root's columns holds without a related row, and `search` matches each word on its own related row.
 - `antiJoin` conditions go on the join, never in `where`: a `where` naming the anti-joined table is refused.
 - A semi-joined or anti-joined table adds no columns: when the result, `orderBy` or `groupBy` needs them, the query wants a regular join instead.
-- Both work on `delete()`: `delete().antiJoin<Pet>().on<Owner>()` removes the owners without pets.
+- Both work on `delete()` and `update()`: `delete().antiJoin<Pet>().on<Owner>()` removes the owners without pets.
 - `semiJoin` and `antiJoin` are complements: on the same table with the same condition on the join, the one keeps the rows the other drops. Without a condition, `semiJoin` keeps the rows with any related row and `antiJoin` the rows without one.
 - Keep `whereExists` for a subquery a foreign key does not express.
 
@@ -684,11 +686,54 @@ orm.entity<User>().delete().unsafe().executeUpdate()
 users.removeAll()
 ```
 
+`update()` is the UPDATE counterpart: `set` names a column through the metamodel, the conditions select the rows, and `.executeUpdate()` runs one statement without reading the rows. Use it to write a few columns of rows the code did not read; never add a second, partial entity for the table to do so.
+
+```kotlin
+// Block DSL
+// Transfer pets to a new owner
+pets.update {
+    set(Pet_.owner, newOwner)
+    where(Pet_.owner eq previousOwner)
+}.executeUpdate()
+
+visits.update {
+    set(Visit_.description, null)                     // nullable field
+    where(Visit_.visitDate eq closedDay)
+}.executeUpdate()
+
+// Chained
+visits.update()
+    .set(Visit_.description, "Rescheduled")
+    .where(Visit_.visitDate eq closedDay)
+    .executeUpdate()
+
+// Foreign key: the entity or a Ref; a value computed from the row: a template lambda
+pets.update {
+    set(Pet_.owner, newOwnerRef)
+    set(Pet_.visitCount) { "${Pet_.visitCount} + 1" }
+    where(Pet_.owner eq owner)
+}.executeUpdate()
+
+// A condition through a related table works on every database
+visits.update {
+    set(Visit_.description, "Rescheduled")
+    where(Visit_.pet.owner.address.city eq city)
+}.executeUpdate()
+```
+
+Rules for `update()`:
+- **WHERE is required** (or a `semiJoin`/`antiJoin`), as for `delete()`; `unsafe()` confirms an update of every row.
+- **`set` refuses** the primary key, `@Persist(updatable = false)` fields, the `@Version` field, a path into a related table (`Owner_.city.name`), and a field set twice. An inline record field writes each of its columns.
+- **`@Version` is incremented** by the statement (a timestamp version is set to the current time), so an entity read before it fails its optimistic lock check.
+- **No entity callbacks fire**: `beforeUpdate`/`afterUpdate` need an entity and the statement carries none. `set` an audit column in the builder.
+- **The type's entities are evicted from the transaction's entity cache** once it runs, so dirty checking cannot skip a column it changed. Re-read entities it touched before writing them back.
+- `distinct`, `limit`, `offset`, locking, result reads and use as a subquery are refused.
+
 ## Block-Based Query DSL
 
 **Prefer the chained API for linear queries.** A straight filter/order/limit pipeline reads best as a chain — `select(predicate).orderBy(...).limit(...).resultList`, or `select().where { template }...` when the condition needs a template. Reach for the `select { }` block only when you truly need the block structure: conditional predicates or joins (`if`/`when` inside the block), or queries with many clauses where the scoped layout helps.
 
-Use `select { }` / `delete { }` to build queries without chaining. Both are **builder methods** that return `QueryBuilder` -- they never execute immediately. Inside the block, use scope methods like `where()`, `orderBy()`, `limit()` to construct the query. Then call a terminal operation to execute:
+Use `select { }` / `update { }` / `delete { }` to build queries without chaining. All are **builder methods** that return `QueryBuilder` -- they never execute immediately. Inside the block, use scope methods like `where()`, `orderBy()`, `limit()` to construct the query. Then call a terminal operation to execute:
 
 ```kotlin
 // Standalone: get the entity repository first — there is NO orm.select<T> { block } reified form
@@ -774,7 +819,7 @@ select(UserSummary::class)
 - **Joined entity types** — e.g., selecting `City::class` from a `User` query that joins `City`.
 - **Custom SELECT with template** — e.g., `select<Summary, _, _> { template }` with a custom SQL select clause that maps to the result type's fields.
 
-It does **not** work for selecting a column subset of the root entity — e.g., a `UserSummary` with only `id` and `name` from `User` will fail with "Cannot find alias for column." Read the entity itself; where the column subset matters for performance or the read needs a shape the entity cannot give, use a `Projection<T>` with `ProjectionRepository` (see **Entities First, Projections for Performance or Customization** in the Storm rules).
+It does **not** work for selecting a column subset of the root entity: a `UserSummary` with only `id` and `name` from `User` will fail with "Cannot find alias for column." Read the entity itself; where the column subset matters for performance or the read needs a shape the entity cannot give, use a `Projection<T>` with `ProjectionRepository` (see **One Entity per Table, Projections for Performance or Customization** in the Storm rules).
 
 **Cross-entity pitfall:** Selecting a different entity type from the wrong root repository can fail with "Cannot find alias for column" when both entities have columns with the same name (e.g., `id`). Put the query on the target entity's repository instead.
 
