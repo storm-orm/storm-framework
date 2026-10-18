@@ -20,8 +20,8 @@ import org.jspecify.annotations.Nullable;
 /**
  * The advice a statement can carry, each with the anchor of its section on the advice page and its category. The slow
  * statement log prints every piece of advice a slow statement carries. The advice log reports advice on correctness,
- * such as rows returned in no stated order, by default, and advice on performance once the application asks for its
- * category; advice on a deliberate choice, such as a page that reports its total, holds only once the statement
+ * such as rows returned in no stated order, and on design, such as an entity whose read exceeds the design budget, by
+ * default, and advice on performance once the application asks for its category; advice on a deliberate choice, such as a page that reports its total, holds only once the statement
  * is slow, so only the slow statement log reports it. The advice on what repeated in one unit of
  * work closes the performance log's summary. The page keeps an anchor for as long as Storm emits the advice, so the
  * link in a log line outlives any change to the rest of the documentation.
@@ -58,10 +58,20 @@ enum Advice {
                     + "continues from the last row read, at the same cost for every window."),
 
     /** References of one type fetched one statement at a time, in one unit of work. */
-    REPEATED_FETCH("repeated-fetch", Category.PERFORMANCE, false,
+    REPEATED_FETCH("repeated-fetch", Category.DESIGN, false,
             "%1$d statements each fetched one %2$s; an inline foreign key joins it into every read of the rows, or "
                     + "a query that fetches the references, such as select().fetch(...), resolves them in the "
                     + "statement that reads them."),
+
+    /** An entity whose read exceeds the design budget. */
+    ENTITY_BUDGET("entity-budget", Category.DESIGN, false,
+            "every read of %1$s joins %2$d tables and selects %3$d columns beyond its own, past the design budget of "
+                    + EntityGraph.BUDGET_JOINS + " joins and " + EntityGraph.BUDGET_COLUMNS + " columns; %4$s."),
+
+    /** A slow read of an entity whose read is at least half the design budget. */
+    WIDE_ENTITY_READ("wide-entity-read", Category.DESIGN, true,
+            "every read of %1$s joins %2$d tables and selects %3$d columns beyond its own; where that width is what "
+                    + "makes the read slow, %4$s."),
 
     /** The same single-row read repeated, in one unit of work. */
     REPEATED_SELECT("repeated-select", Category.PERFORMANCE, false,
@@ -89,7 +99,10 @@ enum Advice {
         CORRECTNESS,
 
         /** The statement costs more than it needs to as the data grows. */
-        PERFORMANCE
+        PERFORMANCE,
+
+        /** The entity model makes reads cost more than the application needs, a choice of {@code Ref} or entity. */
+        DESIGN
     }
 
     private final String anchor;

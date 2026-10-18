@@ -103,6 +103,7 @@ final class RecordValidation {
             }
             if ("none".equals(recordMode)) {
                 LOGGER.info("Skipping Data type validation. Set storm.validation.record_mode=fail to enable validation.");
+                DesignCheck.check(TypeDiscovery.getDataTypes());
                 validationCompleted = true;
                 return;
             }
@@ -136,6 +137,8 @@ final class RecordValidation {
             } else {
                 LOGGER.info("Successfully validated %s Data types for correctness.".formatted(dataTypes.size()));
             }
+            // The design budget is known from the model alone, so it is checked with the rest of the model.
+            DesignCheck.check(dataTypes);
             validationCompleted = true;
         }
     }

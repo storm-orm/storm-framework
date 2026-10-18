@@ -35,6 +35,7 @@ import org.springframework.boot.convert.ApplicationConversionService;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.core.env.Environment;
+import org.springframework.util.ClassUtils;
 import st.orm.core.template.impl.AdviceLog;
 import st.orm.core.template.impl.CallSiteCapture;
 import st.orm.core.template.impl.SlowStatementLog;
@@ -65,6 +66,9 @@ import st.orm.core.template.impl.SqlLogRenderer;
 @AutoConfiguration
 @EnableConfigurationProperties(StormProperties.class)
 public class StormSqlLogAutoConfiguration {
+
+    /** A class of Spring Boot DevTools, whose presence marks an application in development. */
+    private static final String DEVTOOLS = "org.springframework.boot.devtools.restart.Restarter";
 
     /**
      * Binds the {@code storm.sql-log} properties ahead of the configuration-properties machinery, for the beans
@@ -100,6 +104,9 @@ public class StormSqlLogAutoConfiguration {
         var categories = sqlLog.getAdvice().getCategories();
         if (categories != null) {
             AdviceLog.categories(categories);
+        } else if (ClassUtils.isPresent(DEVTOOLS, StormSqlLogAutoConfiguration.class.getClassLoader())) {
+            // DevTools is on the classpath in development and left out of a packaged application.
+            AdviceLog.development();
         }
         return beanFactory -> {
         };

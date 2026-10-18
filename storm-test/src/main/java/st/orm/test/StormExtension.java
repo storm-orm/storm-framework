@@ -43,6 +43,7 @@ import org.junit.jupiter.api.extension.ExtensionContext;
 import org.junit.jupiter.api.extension.ParameterContext;
 import org.junit.jupiter.api.extension.ParameterResolutionException;
 import org.junit.jupiter.api.extension.ParameterResolver;
+import st.orm.core.template.impl.AdviceLog;
 
 /**
  * JUnit 5 extension that provides automatic {@link DataSource} creation and parameter injection for Storm tests.
@@ -79,6 +80,8 @@ public class StormExtension implements BeforeAllCallback, BeforeEachCallback, Af
 
     @Override
     public void beforeAll(ExtensionContext context) throws Exception {
+        // A test is development: design and performance advice report unless the application named the categories.
+        AdviceLog.development();
         Class<?> testClass = context.getRequiredTestClass();
         StormTest annotation = testClass.getAnnotation(StormTest.class);
         if (annotation == null) {

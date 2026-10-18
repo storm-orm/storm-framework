@@ -25,7 +25,7 @@ Storm can be configured through `StormConfig`, system properties, Spring Boot's 
 | `storm.sql_log.call_site_skip` | — | Comma-separated package prefixes or source file names skipped in SQL log call-site attribution |
 | `storm.sql_log.slow.threshold` | — | Database time above which a single statement execution is reported under `st.orm.sql.slow`, such as `200ms`. In the Spring and Ktor integrations, unset alongside an enabled performance log it takes that log's duration threshold (see [The Slow Statement Log](sql-logging.md#the-slow-statement-log)) |
 | `storm.sql_log.slow.limit` | `5` | Slow statement lines reported per shape per minute before the rest are suppressed and counted; `0` for no limit |
-| `storm.sql_log.advice.categories` | `correctness` | Categories of advice the advice log reports: `correctness`, `performance`, or both, comma-separated |
+| `storm.sql_log.advice.categories` | `correctness` (all three in development) | Categories of advice the advice log reports, comma-separated: `correctness`, `performance`, `design` |
 
 ### Setting Properties
 

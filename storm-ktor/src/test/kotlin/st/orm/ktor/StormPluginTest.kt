@@ -13,6 +13,7 @@ import io.ktor.server.routing.get
 import io.ktor.server.routing.routing
 import io.ktor.server.testing.testApplication
 import org.junit.jupiter.api.Test
+import st.orm.core.template.impl.AdviceLog
 import st.orm.ktor.model.PetType
 import st.orm.template.ORMTemplate
 import javax.sql.DataSource
@@ -82,6 +83,26 @@ internal class StormPluginTest {
                     }
                     orm shouldNotBe null
                     stormDataSource shouldBe dataSource
+                }
+            }
+        } finally {
+            dataSource.close()
+        }
+    }
+
+    @Test
+    fun `development mode reports every category of advice`() {
+        val dataSource = createTestDataSource()
+        initializeSchema(dataSource)
+        try {
+            // A test application runs in development mode.
+            testApplication {
+                application {
+                    install(Storm) {
+                        this.dataSource = dataSource
+                    }
+                    developmentMode shouldBe true
+                    AdviceLog.categories() shouldBe listOf("correctness", "performance", "design")
                 }
             }
         } finally {

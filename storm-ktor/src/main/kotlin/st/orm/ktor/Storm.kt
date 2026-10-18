@@ -128,6 +128,18 @@ public val Storm: ApplicationPlugin<StormPluginConfig> = createApplicationPlugin
         QueryObservers.semanticConventionFor(it, "storm.observations.semanticConventions", null)
     }
 
+    // ---- Per-call SQL log settings ----
+
+    // Resolved before any template exists: the first template checks the model, which reports design advice only
+    // where its category is on. Ktor's development mode reports every category unless the application names them.
+    val sqlLogSettings = resolveSqlLogSettings(application, pluginConfig)
+    val adviceCategories = sqlLogSettings.adviceCategories
+    if (adviceCategories != null) {
+        AdviceLog.categories(adviceCategories)
+    } else if (application.developmentMode) {
+        AdviceLog.development()
+    }
+
     // ---- Primary database ----
 
     // Ownership is decided at creation: only pools the plugin builds from configuration are closed at
@@ -317,7 +329,6 @@ public val Storm: ApplicationPlugin<StormPluginConfig> = createApplicationPlugin
     // storm.sqlLog, so either log can be switched on through the configuration file alone. The display settings
     // (call-site skip, line width) are JVM-wide by design and are only applied when actually configured, leaving
     // the system-property defaults, or another application's settings, in effect otherwise.
-    val sqlLogSettings = resolveSqlLogSettings(application, pluginConfig)
     // The slow statement log needs no request boundary: it reports each execution whose database time exceeds
     // the threshold, wherever it runs, so it applies with or without the performance log. Left unset while the
     // performance log runs against a duration threshold, it takes that duration: a call holds at least one
@@ -327,7 +338,6 @@ public val Storm: ApplicationPlugin<StormPluginConfig> = createApplicationPlugin
         ?: if (sqlLogSettings.enabled) sqlLogSettings.durationThreshold else null
     slowThreshold?.let { SlowStatementLog.threshold(it.toJavaDuration()) }
     sqlLogSettings.slowLimit?.let { SlowStatementLog.limit(it) }
-    sqlLogSettings.adviceCategories?.let { AdviceLog.categories(it) }
     if (sqlLogSettings.enabled) {
         val limit = sqlLogSettings.limit
         val callSites = sqlLogSettings.callSites

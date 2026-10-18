@@ -139,6 +139,8 @@ final class ModelFactory {
             if (joinedParent.isPresent()) {
                 finalColumns = adjustColumnsForJoinedSubtype(columns, joinedParent.get());
             }
+            // The first model of an entity is the moment it is first used, where no startup check saw it.
+            DesignCheck.check(type);
             return new ModelImpl<>(recordType, tableName, fields, finalColumns);
         } catch (UncheckedSqlTemplateException e) {
             throw e.getCause();

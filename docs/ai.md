@@ -128,6 +128,7 @@ Beyond the data model, Storm provides dedicated tooling for agentic workflows:
 
 - **Skills** guide AI tools through specific tasks (entity creation, queries, repositories, migrations) with framework-aware conventions and rules.
 - **A locally running MCP server** gives AI tools access to your live database schema: table definitions, column types, constraints, and foreign keys. Optionally, the AI can also query individual records (read-only) when sample data would improve type decisions. The AI can inspect your actual database structure to generate entities that match, or validate entities it just created.
+- **Advice on its decisions.** Storm reports where code it can see is suboptimal: an entity graph past the design budget, a page counted where a slice would do, a `distinct` a semi-join makes unnecessary, rows taken in no stated order. Every line names what to use instead and links to a stable section of the [advice page](advice.md), so the AI can make the right call while writing the code and confirm it afterwards. See [Advice as Feedback](#advice-as-feedback).
 - **Built-in verification** through `ORMTemplate.validateSchema()` and `SqlCapture` lets the AI validate its own work. After generating entities, the AI can validate them against the database. After writing queries, it can capture and inspect the actual SQL. Both checks run in an isolated in-memory database through `@StormTest`, so verification happens before anything touches production. For dialect-specific code, `@StormTest(database = POSTGRESQL)` runs the same test against the actual target database in a Testcontainers-managed container.
 
 ---
@@ -317,6 +318,26 @@ You can also ask the AI to keep the test as a permanent regression test. The cho
 
 ---
 
+## Advice as Feedback
+
+Rules and skills tell the AI how Storm is meant to be used. Advice tells it how the code it just wrote actually behaves. Storm decides advice from what it can prove, the shape of a statement, the entity model, and what a unit of work did, and logs it under `st.orm.sql.advice` with what to use instead:
+
+```
+SQL advice (design Visit)
+	graph Visit(Pet(Owner(City), PetType, Clinic(Address, Organization(Country))))  12 joins, 140 columns beyond its own
+	advice every read of Visit joins 12 tables and selects 140 columns beyond its own, past the design budget of 10 joins and 96 columns; a Ref for Clinic.organization removes 4 joins and 52 columns. See https://orm.st/docs/advice#entity-budget
+```
+
+That turns decisions an agent otherwise makes on guesswork into decisions it can check:
+
+- **`Ref` or entity.** Whether a foreign key is an inline entity or a `Ref` is the decision agents get wrong most, in both directions. Storm checks the model against the [design budget](entity-design.md#the-budget) and names the field to cut; real use then shows the rest: a `Ref` that every unit of work fetches anyway should be an entity, and a slow, wide read says what a `Ref` would save.
+- **Query shape.** A `page` that only needs a next-page flag, an offset deep enough to want `scroll`, a `distinct` over a join, a `limit` with no order: each comes back as a line naming the alternative.
+- **Repetition.** The performance log summary of a test or request names what repeated: references fetched one at a time, the same single-row read or write run again and again.
+
+Correctness advice is on everywhere. Design and performance advice are on in development and under every `@StormTest`, where the agent works, and stay out of production. The skills tell the agent to run a test or start the application after a change, read the advice, and act on it: what the model alone proves straight away, what only real use shows once realistic runs show it. They also tell it not to redesign ahead of advice that has not appeared, and not to silence advice to quiet a log.
+
+---
+
 ## Verify, Then Trust
 
 The AI does not just generate code and hope for the best. It generates code, then validates it through Storm's own verification, before anything is committed.
@@ -327,6 +348,7 @@ The AI does not just generate code and hope for the best. It generates code, the
 | **Entities (entity-first)** | Data classes/records + migration script | `validateSchema()` confirms entity and migration agree |
 | **Queries** | QueryBuilder or SQL Template code | `SqlCapture` verifies the generated SQL matches the intended structure and parameters |
 | **Repositories** | Custom query methods | `SqlCapture` confirms each method produces the expected SQL |
+| **Design and query choices** | `Ref` or entity, `page` or `slice`, joins, ordering | The advice log names what the model and the statements prove suboptimal, and what to use instead |
 
 Storm's immutable entities, explicit queries, and convention-based naming make AI-generated code straightforward to verify. The verify-then-trust pattern below closes the gap between "looks right" and "is right":
 
@@ -335,4 +357,4 @@ Storm's immutable entities, explicit queries, and convention-based naming make A
 3. **The AI runs the test.** If it passes, the code is correct by construction, verified by the same validation logic that Storm uses internally. If it fails, the error messages tell the AI exactly what to fix.
 4. **The test stays or goes.** Keep it as a regression test, or let the AI remove it once verified. Either way, the verification happened.
 
-This is the combination that makes it work: an AI-friendly data model that produces stable code, a schema-aware MCP server that gives the AI structural knowledge, and built-in test tooling that lets the AI verify its own work through the framework rather than around it.
+This is the combination that makes it work: an AI-friendly data model that produces stable code, a schema-aware MCP server that gives the AI structural knowledge, advice that tells it where its decisions fall short, and built-in test tooling that lets the AI verify its own work through the framework rather than around it.

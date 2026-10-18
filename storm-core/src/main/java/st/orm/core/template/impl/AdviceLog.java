@@ -35,8 +35,9 @@ import st.orm.spi.QueryContext;
  * The advice log: the advice a statement carries, reported fast or slow under {@code st.orm.sql.advice}, each piece
  * of advice under a logger of its own named after its anchor, such as {@code st.orm.sql.advice.unordered-limit}.
  *
- * <p>The log reports the categories of advice the application asks for: correctness by default, performance as well
- * once {@code storm.sql_log.advice.categories} names it. A piece of advice the application accepts is turned off by
+ * <p>The log reports the categories of advice the application asks for, in {@code storm.sql_log.advice.categories}:
+ * correctness by default, and design and performance as well while developing, as {@link #development()} says. Design advice on an entity is reported
+ * once per entity, when it is checked at startup or first used. A piece of advice the application accepts is turned off by
  * setting its logger to {@code OFF}. Advice that holds only once the statement is slow, such as the count behind a
  * page, is left to the slow statement log.</p>
  *
@@ -73,8 +74,21 @@ public final class AdviceLog {
     /** The advice reported per shape at {@code DEBUG}. */
     private static final Set<Reported> REPORTED = ConcurrentHashMap.newKeySet();
 
+    /** The categories reported unless the application names others. */
+    static final String DEFAULT_CATEGORIES = "correctness";
+
+    /** The categories reported while developing, unless the application names others. */
+    static final String DEVELOPMENT_CATEGORIES = "correctness,design,performance";
+
+    /** The design advice reported, per entity and advice. */
+    private static final Set<String> REPORTED_DESIGN = ConcurrentHashMap.newKeySet();
+
+    /** Whether the application named the categories, which development then leaves as they are. */
+    private static volatile boolean configured =
+            StormConfig.defaults().getProperty(StormConfig.SQL_LOG_ADVICE_CATEGORIES) != null;
+
     private static volatile Set<Category> categories = parse(Objects.requireNonNullElse(
-            StormConfig.defaults().getProperty(StormConfig.SQL_LOG_ADVICE_CATEGORIES), "correctness"));
+            StormConfig.defaults().getProperty(StormConfig.SQL_LOG_ADVICE_CATEGORIES), DEFAULT_CATEGORIES));
 
     private AdviceLog() {
     }
@@ -87,6 +101,18 @@ public final class AdviceLog {
      */
     public static void categories(Collection<String> categories) {
         AdviceLog.categories = parse(String.join(",", categories));
+        configured = true;
+    }
+
+    /**
+     * Reports every category, as suits development, unless the application named the categories. The integrations
+     * call it where their framework says the application is in development, and the test extension for every test,
+     * so design and performance advice reach the developer and stay out of production.
+     */
+    public static void development() {
+        if (!configured) {
+            categories = parse(DEVELOPMENT_CATEGORIES);
+        }
     }
 
     /**
@@ -147,9 +173,27 @@ public final class AdviceLog {
      * Returns whether the advice log reports a piece of advice: never for advice that holds only once slow, otherwise
      * while its category is reported and its logger is enabled.
      */
-    private static boolean reports(Advice advice) {
+    static boolean reports(Advice advice) {
         return !advice.slowOnly() && categories.contains(advice.category())
                 && LOGGERS[advice.ordinal()].isInfoEnabled();
+    }
+
+    /**
+     * Reports design advice on an entity, once per entity and advice, at {@code INFO}: it describes the model rather
+     * than an execution, so the level of {@code st.orm.sql.advice} does not repeat it.
+     *
+     * @param advice the advice.
+     * @param graph the entity's graph.
+     * @param advisory the advice as the line reports it.
+     */
+    static void onDesign(Advice advice, EntityGraph graph, String advisory) {
+        if (!reports(advice) || !REPORTED_DESIGN.add(graph.type().getName() + "#" + advice.anchor())) {
+            return;
+        }
+        LOGGERS[advice.ordinal()].info("{}", "SQL advice (design " + graph.type().getSimpleName() + ")"
+                + System.lineSeparator() + "\tgraph " + graph.graph() + "  " + graph.joins() + " joins, "
+                + graph.columns() + " columns beyond its own"
+                + System.lineSeparator() + "\tadvice " + advisory);
     }
 
     /**
@@ -228,10 +272,12 @@ public final class AdviceLog {
 
     /**
      * Forgets what the log reported, so the next execution reports its advice again, and restores the categories
-     * to {@code correctness}.
+     * to their default.
      */
     static void reset() {
-        categories = Set.of(Category.CORRECTNESS);
+        categories = parse(DEFAULT_CATEGORIES);
+        configured = false;
+        REPORTED_DESIGN.clear();
         REPORTED_ONCE.clear();
         REPORTED.clear();
     }

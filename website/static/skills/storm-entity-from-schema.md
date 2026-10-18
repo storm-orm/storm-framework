@@ -45,6 +45,8 @@ Work bottom-up, never top-down. A table has exactly one class, so a top-down wal
 
 **Existing entities: report, never flip.** When a direct type already in the codebase exceeds the budget, report the table and the overrun and leave the code as written. Divergence is assumed deliberate. The budget describes what generation produces from a schema, not what a model is permitted to be.
 
+**Confirm with Storm's design advice.** In development and under `@StormTest`, Storm runs the same budget check when the application's first template is created: each entity past it is logged once at `INFO` as `SQL advice (design ...)` under `st.orm.sql.advice.entity-budget`, with the field a `Ref<T>` would cut. After generating, run a test or start the application in development and confirm no such line names a generated entity. A line for an existing entity is the report above; leave the code as written and tell the user.
+
 Generation/update rules:
 - snake_case table -> PascalCase class, snake_case column -> camelCase field
 - Remove _id from FK fields (city_id -> city)

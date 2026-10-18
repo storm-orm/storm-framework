@@ -105,7 +105,8 @@ public final class StormConfig {
     public static final String SQL_LOG_SLOW_LIMIT = "storm.sql_log.slow.limit";
     /**
      * Comma-separated categories of advice the {@code st.orm.sql.advice} log reports: {@code correctness},
-     * {@code performance}, or both. Defaults to {@code correctness}.
+     * {@code performance} and {@code design}. Defaults to {@code correctness}; the Spring Boot and Ktor
+     * integrations add design and performance in development, as does the test extension.
      *
      * @since 1.15
      */

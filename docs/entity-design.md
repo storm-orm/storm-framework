@@ -241,6 +241,21 @@ An entity that diverges from the rule is assumed to be doing so deliberately. Th
 
 ---
 
+## Design Advice
+
+Storm checks the choice for you, in two ways that match what can be known when.
+
+**In advance, against the budget.** In development, when the first template is created, Storm checks every entity against [the budget](#the-budget), and the advice log reports each entity past it once, naming the fields a `Ref` would cut by the rules of [Where to Draw the Line](#where-to-draw-the-line). An entity the type index does not list is checked when it is first used. Like generation, the check reports and never changes anything.
+
+**In real use, from what the application does.** Within the budget, no check of the model can tell whether an edge is worth its width; only the way the application reads can. So Storm advises from real use, in both directions:
+
+- A slow read of an entity whose graph reaches half the budget says, in the slow statement log, what a `Ref` would save.
+- A `Ref` that a unit of work fetches again and again says, in the performance log summary, that it should be an inline entity, or resolved with `select().fetch(...)`.
+
+A wide graph that reads fast is never advised, and an entity within the budget is never advised in advance. Design advice is on in development, with Spring Boot DevTools on the classpath, Ktor in development mode, or under `@StormTest`, and stays out of production; see [Statement Advice](advice.md#design-known-in-advance-and-shown-by-real-use) for each piece of advice and how to turn one off.
+
+---
+
 ## Tips
 
 1. **Model foreign keys as direct types until something says otherwise.** Joins on primary keys are cheap, and one query beats several.

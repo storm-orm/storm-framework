@@ -30,6 +30,8 @@ import org.springframework.boot.test.autoconfigure.jdbc.JdbcTest;
 import org.springframework.test.context.ContextConfiguration;
 import org.springframework.test.context.junit.jupiter.SpringExtension;
 import st.orm.Pageable;
+import st.orm.PersistenceException;
+import st.orm.core.model.DesignModel.Chain0;
 import st.orm.core.model.Owner;
 import st.orm.core.model.Owner_;
 import st.orm.core.model.Pet;
@@ -126,5 +128,22 @@ public class AdvisoryIntegrationTest {
         assertEquals(List.of(), advisories(() -> owners().orderBy(Owner_.id).limit(5).getResultList()));
         assertEquals(List.of(), advisories(() -> owners().limit(1).getResultList()));
         assertEquals(List.of(), advisories(() -> owners().scroll(st.orm.Scrollable.of(Owner_.id, 2))));
+    }
+
+    @Test
+    public void aReadOfAWideEntityCarriesAdviceForTheSlowStatementLog() {
+        // No table backs the entity; the statement is built, carries its advice, and fails at the database.
+        var advice = advisories(() -> {
+            try {
+                return ORMTemplate.of(dataSource).entity(Chain0.class).select().getResultList();
+            } catch (PersistenceException e) {
+                return null;
+            }
+        });
+        assertEquals(1, advice.size(), advice.toString());
+        assertTrue(advice.getFirst().contains("a Ref for Chain4.next"), advice.getFirst());
+        assertTrue(advice.getFirst().endsWith("See https://orm.st/docs/advice#wide-entity-read"), advice.getFirst());
+        // A read of an entity well within the budget carries none.
+        assertEquals(List.of(), advisories(() -> owners().orderBy(Owner_.id).getResultList()));
     }
 }
