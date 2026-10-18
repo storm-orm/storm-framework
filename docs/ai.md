@@ -334,7 +334,7 @@ That turns decisions an agent otherwise makes on guesswork into decisions it can
 - **Query shape.** A `page` that only needs a next-page flag, an offset deep enough to want `scroll`, a `distinct` over a join, a `limit` with no order: each comes back as a line naming the alternative.
 - **Repetition.** The performance log summary of a test or request names what repeated: references fetched one at a time, the same single-row read or write run again and again.
 
-Correctness advice is on everywhere. Design and performance advice are on in development and under every `@StormTest`, where the agent works, and stay out of production. The skills tell the agent to run a test or start the application after a change, read the advice, and act on it: what the model alone proves straight away, what only real use shows once realistic runs show it. They also tell it not to redesign ahead of advice that has not appeared, and not to silence advice to quiet a log.
+Correctness advice is on everywhere. Design and performance advice are on in development and under every `@StormTest`, where the agent works, and stay out of production. The skills tell the agent to run a test or start the application after a change, read the advice, and act on it: what the model alone proves straight away, what only real use shows once realistic runs show it. They also tell it not to redesign ahead of advice that has not appeared, and not to silence advice to quiet a log. Where the developer agrees the code is as intended, the agent suggests `@AcceptAdvice`, and the annotation then tells every later session that the decision is made.
 
 ---
 
