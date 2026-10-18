@@ -136,7 +136,7 @@ Run the tests. Show the captured SQL and explain what it proves: does the query 
 
 ## Step 8: Projections
 
-Pages read with the existing entities first: they are checked against the design budget, so their reads are already bounded, and one type per table keeps the code small. Create a projection only for a page where performance is of the essence, such as a list of many rows that shows a few columns of a wide entity, and tell the user why that page earns a second type. Use the Storm skills for correct patterns.
+Pages read with the existing entities first: they are checked against the design budget, so their reads are already bounded, and one type per table keeps the code small. Create a projection only for a page where performance counts, such as a list of many rows that shows a few columns of a wide entity, or where the page needs a shape the entity cannot give, and tell the user why that page earns a second type. Use the Storm skills for correct patterns.
 
 Verify the projection with SqlCapture: show the SELECT the entity read issues next to the one the projection issues, so the saving is visible rather than assumed.
 
