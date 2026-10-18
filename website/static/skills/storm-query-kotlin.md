@@ -309,6 +309,8 @@ pets.select()
 
 Conditions joined by `and` on a semi-joined table hold for the same related row; a part of the condition naming only the query's own tables holds without a related row, so `(Owner_.lastName eq "Davis") or (Pet_.name eq "Leo")` also finds a Davis without pets. A semi-joined table adds no columns: ordering, grouping or selecting by it is refused. A `where` condition naming an anti-joined table is refused; it belongs on the join.
 
+**Recognize it wherever the join hangs.** A select of the query's own table with `distinct()` and an inner join whose columns the result, the ordering and the grouping never use is this pattern, whatever table the join is on. `on<T>()` names any table of the query, including one the root reaches through a path, so `semiJoin<Related>().on<T>()` replaces `.distinct().innerJoin<Related>().on<T>()` one for one, and the query no longer needs the `distinct`. A comment calling the `distinct` required because of the join marks the same pattern, not an exception. When a change touches such a query for another reason, replace it in the same change.
+
 Three rules:
 
 1. **Code-first:** If it can be done with QueryBuilder methods (joins, where, orderBy, groupBy, having), do it in code. Never use a template string for a `WHERE` clause that could be a `.where(predicate)`, or an `ORDER BY` that could be `.orderBy(field)`.
