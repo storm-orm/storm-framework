@@ -525,7 +525,7 @@ public final class SlowStatementLog {
     }
 
     /** Describes the execution the way the statement log does: what it does, to what, and what caused it. */
-    private static String describe(QueryContext context) {
+    static String describe(QueryContext context) {
         String description = context.dataType()
                 .map(type -> "%s %s".formatted(context.operation().name(), type.getSimpleName()))
                 .orElseGet(() -> context.operation().name());
@@ -553,7 +553,7 @@ public final class SlowStatementLog {
         return "%d ms".formatted(micros / 1000);
     }
 
-    private static String indent(String statement) {
+    static String indent(String statement) {
         return statement.lines()
                 .map(line -> "\t" + line)
                 .collect(joining(System.lineSeparator()));

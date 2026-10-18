@@ -25,6 +25,7 @@ internal class SqlLogConfigTest {
         settings.durationThreshold shouldBe null
         settings.slowThreshold shouldBe null
         settings.slowLimit shouldBe null
+        settings.adviceCategories shouldBe null
         settings.callSites shouldBe false
         settings.callSiteSkip shouldBe emptyList()
         settings.lineWidth shouldBe null
@@ -39,6 +40,7 @@ internal class SqlLogConfigTest {
             "storm.sqlLog.performance.threshold.duration" to "250ms",
             "storm.sqlLog.slow.threshold" to "200ms",
             "storm.sqlLog.slow.limit" to "3",
+            "storm.sqlLog.advice.categories" to "correctness, performance",
             "storm.sqlLog.performance.callSites" to "true",
             "storm.sqlLog.callSiteSkip" to "com.myapp.data, com.myapp.plumbing",
             "storm.sqlLog.performance.lineWidth" to "120",
@@ -49,6 +51,7 @@ internal class SqlLogConfigTest {
         settings.durationThreshold shouldBe 250.milliseconds
         settings.slowThreshold shouldBe 200.milliseconds
         settings.slowLimit shouldBe 3
+        settings.adviceCategories shouldBe listOf("correctness", "performance")
         settings.callSites shouldBe true
         settings.callSiteSkip shouldBe listOf("com.myapp.data", "com.myapp.plumbing")
         settings.lineWidth shouldBe 120
@@ -63,6 +66,7 @@ internal class SqlLogConfigTest {
             "storm.sql_log.performance.threshold.duration" to "2s",
             "storm.sql_log.slow.threshold" to "1s",
             "storm.sql_log.slow.limit" to "0",
+            "storm.sql_log.advice.categories" to "performance",
             "storm.sql_log.performance.call_sites" to "true",
             "storm.sql_log.call_site_skip" to "com.myapp.data",
             "storm.sql_log.performance.line_width" to "240",
@@ -73,6 +77,7 @@ internal class SqlLogConfigTest {
         settings.durationThreshold shouldBe 2.seconds
         settings.slowThreshold shouldBe 1.seconds
         settings.slowLimit shouldBe 0
+        settings.adviceCategories shouldBe listOf("performance")
         settings.callSites shouldBe true
         settings.callSiteSkip shouldBe listOf("com.myapp.data")
         settings.lineWidth shouldBe 240

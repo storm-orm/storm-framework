@@ -267,9 +267,10 @@ public class StormProperties {
     }
 
     /**
-     * SQL log configuration. The umbrella covers two logs that answer different questions about the same
-     * executions: the performance log ({@code st.orm.sql.perf}) says what a unit of work cost the database, and
-     * the slow statement log ({@code st.orm.sql.slow}) names the single execution that cost too much. Each has
+     * SQL log configuration. The umbrella covers logs that answer different questions about the same
+     * executions: the performance log ({@code st.orm.sql.perf}) says what a unit of work cost the database,
+     * the slow statement log ({@code st.orm.sql.slow}) names the single execution that cost too much, and the
+     * advice log ({@code st.orm.sql.advice}) says what to change about a statement. Each has
      * its own section; call-site attribution is shared, since both logs name the frame the same way.
      */
     public static class SqlLog {
@@ -304,6 +305,15 @@ public class StormProperties {
 
         /** Sets the slow statement log configuration. */
         public void setSlow(Slow slow) { this.slow = slow; }
+
+        /** The advice log. */
+        private Advice advice = new Advice();
+
+        /** Returns the advice log configuration. */
+        public Advice getAdvice() { return advice; }
+
+        /** Sets the advice log configuration. */
+        public void setAdvice(Advice advice) { this.advice = advice; }
 
         /**
          * The performance log: what one unit of work cost the database, reported as a single summary under
@@ -461,6 +471,23 @@ public class StormProperties {
 
             /** Sets the slow statement lines reported per shape per minute. */
             public void setLimit(@Nullable Integer limit) { this.limit = limit; }
+        }
+
+        /**
+         * The advice log: what to change about a statement, fast or slow, reported under {@code st.orm.sql.advice}.
+         */
+        public static class Advice {
+
+            /**
+             * Categories of advice the log reports: "correctness", "performance", or both. Defaults to correctness.
+             */
+            private @Nullable List<String> categories;
+
+            /** Returns the categories of advice the log reports. */
+            public @Nullable List<String> getCategories() { return categories; }
+
+            /** Sets the categories of advice the log reports. */
+            public void setCategories(@Nullable List<String> categories) { this.categories = categories; }
         }
     }
 

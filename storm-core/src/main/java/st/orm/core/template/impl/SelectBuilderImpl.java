@@ -371,6 +371,10 @@ public class SelectBuilderImpl<T extends Data, R, ID> extends QueryBuilderImpl<T
         } else if (offset != null) {
             template = TemplateString.combine(template, TemplateString.of("\n"), TemplateString.of(queryTemplate.dialect().offset(offset)));
         }
+        // A limit of one asks for any matching row, which needs no order.
+        if (withOrderBy && orderBy.isEmpty() && (offset != null || (limit != null && limit > 1))) {
+            template = TemplateString.combine(template, wrap(new Advisory(Advice.UNORDERED_LIMIT.format())));
+        }
         // The offset is inlined as a literal, so the advice belongs to this statement alone, not to every page.
         if (offset != null && offset >= Advice.DEEP_OFFSET_ROWS) {
             template = TemplateString.combine(template, wrap(new Advisory(Advice.DEEP_OFFSET.format(offset))));

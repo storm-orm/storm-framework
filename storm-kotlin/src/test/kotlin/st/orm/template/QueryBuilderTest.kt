@@ -2642,11 +2642,13 @@ internal open class QueryBuilderTest(
 
     @Test
     fun `count behind a page carries advice for the slow statement log`() {
+        val repo = orm.entity(City::class)
+        val idPath = metamodel<City, Int>(repo.model, "id")
         val advisories = mutableListOf<String>()
         st.orm.core.template.SqlInterceptor.observe(
             { sql -> advisories.addAll(sql.advisories()) },
             Runnable {
-                orm.entity(City::class).select().page(0, 3)
+                repo.select().page(Pageable.ofSize(3).sortBy(idPath))
             },
         )
         advisories shouldHaveSize 1

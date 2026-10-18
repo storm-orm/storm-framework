@@ -43,6 +43,7 @@ import org.springframework.mock.web.MockHttpServletRequest;
 import org.springframework.mock.web.MockHttpServletResponse;
 import org.springframework.scheduling.annotation.Scheduled;
 import st.orm.core.template.ORMTemplate;
+import st.orm.core.template.impl.AdviceLog;
 import st.orm.core.template.impl.SlowStatementLog;
 
 /**
@@ -290,6 +291,18 @@ public class StormSqlLogAutoConfigurationTest {
                     });
         } finally {
             SlowStatementLog.threshold(null);
+        }
+    }
+
+    @Test
+    public void testTheAdviceCategoriesPropertyChoosesWhatTheAdviceLogReports() {
+        try {
+            contextRunner
+                    .withUserConfiguration(JobConfiguration.class)
+                    .withPropertyValues("storm.sql-log.advice.categories=correctness,performance")
+                    .run(context -> assertEquals(List.of("correctness", "performance"), AdviceLog.categories()));
+        } finally {
+            AdviceLog.categories(List.of("correctness"));
         }
     }
 

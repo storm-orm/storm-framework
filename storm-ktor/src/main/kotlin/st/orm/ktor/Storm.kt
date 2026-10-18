@@ -35,6 +35,7 @@ import io.micrometer.observation.ObservationRegistry
 import org.slf4j.LoggerFactory
 import st.orm.core.spi.JdbcConnectionProviderImpl
 import st.orm.core.spi.JdbcTransactionTemplateProviderImpl
+import st.orm.core.template.impl.AdviceLog
 import st.orm.core.template.impl.CallSiteCapture
 import st.orm.core.template.impl.SlowStatementLog
 import st.orm.core.template.impl.SqlLogRenderer
@@ -326,6 +327,7 @@ public val Storm: ApplicationPlugin<StormPluginConfig> = createApplicationPlugin
         ?: if (sqlLogSettings.enabled) sqlLogSettings.durationThreshold else null
     slowThreshold?.let { SlowStatementLog.threshold(it.toJavaDuration()) }
     sqlLogSettings.slowLimit?.let { SlowStatementLog.limit(it) }
+    sqlLogSettings.adviceCategories?.let { AdviceLog.categories(it) }
     if (sqlLogSettings.enabled) {
         val limit = sqlLogSettings.limit
         val callSites = sqlLogSettings.callSites
