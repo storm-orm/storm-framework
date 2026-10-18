@@ -630,8 +630,44 @@ Refs implement `equals()` and `hashCode()` based on their entity type and primar
 val userScores: Map<Ref<User>, Int> = ...
 
 // Access by ref without loading full entity
-val score = userScores[Ref.of(User::class.java, userId)]
+val score = userScores[refById<User>(userId)]
 ```
+
+### Passing References Around
+
+Code that refers to a row, rather than needing its data, can hold a `Ref` instead of the raw id: method parameters and return values, fields of commands, events and DTOs, collections of rows to act on. A `Ref` is type-safe where an id is not. A `Ref<City>` cannot be passed where a `Ref<Owner>` is expected, while a `Long` id fits anywhere, including in the wrong place.
+
+Convert an id to a `Ref` once, where it enters the program, and pass the `Ref` inward. Repositories take it as is (`findByRef`, `getByRef`, `findAllByRef`), queries compare a foreign key to it, and the [serialization modules](serialization.md) write an unloaded `Ref` as its id, so an API reads the same as with an id field.
+
+<Tabs groupId="language">
+<TabItem value="kotlin" label="Kotlin" default>
+
+```kotlin
+// At the boundary: the id becomes a Ref once.
+fun moveOwner(ownerId: Int, cityId: Int) =
+    ownerService.move(refById<Owner>(ownerId), refById<City>(cityId))
+
+// Inward: the types say which row is which.
+fun move(owner: Ref<Owner>, city: Ref<City>) { ... }
+```
+
+</TabItem>
+<TabItem value="java" label="Java">
+
+```java
+// At the boundary: the id becomes a Ref once.
+void moveOwner(int ownerId, int cityId) {
+    ownerService.move(Ref.of(Owner.class, ownerId), Ref.of(City.class, cityId));
+}
+
+// Inward: the types say which row is which.
+void move(Ref<Owner> owner, Ref<City> city) { ... }
+```
+
+</TabItem>
+</Tabs>
+
+This is what Storm's AI rules and skills tell an agent to do by default. Whether to pass ids or refs remains your call.
 
 ### Deferred Loading
 
