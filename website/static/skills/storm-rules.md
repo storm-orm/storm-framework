@@ -29,6 +29,14 @@ Detect the framework from the build file and existing dependencies before sugges
 
 The setup and repository skills listed below carry the per-framework entry points, transaction placement, and configuration.
 
+### References, Not Ids
+
+This is the default to apply. The developer can choose otherwise; where they say so, or the code they own already passes ids by design, follow that.
+
+- **Refer to a row with `Ref<T>`, never with its raw id.** Wherever code passes, returns, stores or maps a reference to a row (method parameters, return values, map keys, set members, lists of which rows to act on), use `Ref<City>`, not an `Int`, `Long`, `UUID` or `String` id. A `Ref` is type-safe: a `Ref<City>` cannot be passed where a `Ref<Owner>` is expected, while a bare `Long` fits anywhere. It carries the type and the primary key, loads nothing until `fetch()`, and compares by type and key, so it is a correct map key and set member.
+- **Create a `Ref` from what you have.** From an entity: `city.ref()` in Kotlin (`import st.orm.template.ref`), `Ref.of(city)` in Java. From an id, where it enters the program (a path variable, a request field, a message): `refById<City>(id)` in Kotlin (`import st.orm.template.refById`), `Ref.of(City.class, id)` in Java. Convert once, at that boundary, and pass the `Ref` inward.
+- **Hand the `Ref` to Storm as is.** Repositories and queries take refs directly (`findByRef`, `getByRef`, `findAllByRef`, a foreign key field compared to a `Ref`), so never unwrap one into an id to query. Take a typed id with `entityId()` where an id must leave the program. How DTOs and other transfer types carry a reference is the developer's choice.
+
 ### Query and Template Rules
 
 - **Prefer the QueryBuilder and metamodel-based methods** for joins, where clauses, ordering, and pagination. Fall back to SQL templates only when the QueryBuilder cannot express the query.

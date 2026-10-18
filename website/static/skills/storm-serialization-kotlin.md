@@ -147,7 +147,7 @@ The format is fully round-trippable. Jackson and kotlinx.serialization produce i
 
 ## Rules
 
-- Refs deserialized from JSON are **detached** by default: they carry the ID but have no database connection. Calling `fetch()` on a deserialized ref throws `PersistenceException`. Use the deserialized ID to query the database directly. (Supplying a `RefFactory` to the Storm module yields attached, fetchable refs instead.)
+- Refs deserialized from JSON are **detached** by default: they carry the ID but have no database connection. Calling `fetch()` on a deserialized ref throws `PersistenceException`. Pass the ref itself to `findByRef`, `getByRef` or `findAllByRef`, which read it by its id; never unwrap it into an id to query. (Supplying a `RefFactory` to the Storm module yields attached, fetchable refs instead.)
 - Entities without `Ref` fields need no Storm module registration.
 - Both Jackson modules (`storm-jackson2`, `storm-jackson3`) provide the same `StormModule` API.
 - **Kotlinx cascade**: if an entity is `@Serializable`, every entity it references (directly or via `Ref<T>`) must also be `@Serializable`.
