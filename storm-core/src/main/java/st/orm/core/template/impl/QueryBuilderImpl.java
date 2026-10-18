@@ -507,7 +507,7 @@ abstract class QueryBuilderImpl<T extends Data, R, ID> extends QueryBuilder<T, R
             clauses.addAll(groupBy);
             clauses.addAll(having);
             clauses.addAll(orderBy);
-            var whereClause = FilterJoinPlacement.where(queryTemplate, filterJoins, where, clauses, subqueriesMayReadTable());
+            var whereClause = FilterJoinPlacement.where(queryTemplate, fromType, join, where, clauses, subqueriesMayReadTable());
             return whereClause == null ? template : TemplateString.combine(template, TemplateString.of("\nWHERE "), whereClause);
         }
         if (!where.isEmpty()) {

@@ -16,6 +16,8 @@ import st.orm.Metamodel;
 import st.orm.PersistenceException;
 import st.orm.core.model.City;
 import st.orm.core.model.City_;
+import st.orm.core.model.Owner;
+import st.orm.core.model.OwnerPrimaryPet;
 import st.orm.core.model.Pet;
 import st.orm.core.model.Pet_;
 import st.orm.core.model.Visit;
@@ -174,6 +176,23 @@ public class DeleteBuilderIntegrationTest {
         long count = visits.count();
         long ofLeo = visits.select().where(Visit_.pet.name, EQUALS, "Leo").getResultCount();
         int deleted = visits.delete().where(Visit_.pet.name, EQUALS, "Leo").executeUpdate();
+        assertEquals(ofLeo, deleted);
+        assertEquals(count - ofLeo, visits.count());
+    }
+
+    @Test
+    public void deletesTheRowsANestedSemiJoinSelects() {
+        // The visits of the pets that are an owner's primary pet: Leo's.
+        var orm = ORMTemplate.of(dataSource);
+        orm.entity(OwnerPrimaryPet.class).insert(new OwnerPrimaryPet(orm.entity(Owner.class).getById(1), orm.entity(Pet.class).getById(1)));
+        var visits = orm.entity(Visit.class);
+        long count = visits.count();
+        long ofLeo = visits.select().where(Visit_.pet.name, EQUALS, "Leo").getResultCount();
+        assertTrue(ofLeo > 0);
+        int deleted = visits.delete()
+                .semiJoin(Pet.class).on(Visit.class)
+                .semiJoin(OwnerPrimaryPet.class).on(Pet.class)
+                .executeUpdate();
         assertEquals(ofLeo, deleted);
         assertEquals(count - ofLeo, visits.count());
     }

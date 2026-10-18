@@ -23,7 +23,9 @@ import static st.orm.core.template.impl.RecordReflection.getFkFields;
 import static st.orm.core.template.impl.RecordReflection.getRefDataType;
 import static st.orm.core.template.impl.RecordReflection.isTableJoinCandidate;
 
+import java.util.ArrayDeque;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -74,6 +76,17 @@ import st.orm.mapping.RecordField;
  * indexes, where an OR across two tables reads every related row. An anti-join renders as {@code NOT EXISTS} over the
  * rows matching its join condition.</p>
  *
+ * <p>A semi-join or anti-join may be joined on a semi-joined or anti-joined table, or on a table that one holds a
+ * foreign key to, which filters through two to-many relations. Its subquery then sits inside the subquery of the table
+ * it hangs off, correlated to that subquery's row, and the rules above hold at each level: a condition naming the
+ * inner table goes into the inner subquery, and conditions joined by AND on the outer filtered table and the tables
+ * inside its subquery hold for the same outer related row. A table reached through a foreign key is correlated on that
+ * foreign key's columns, so the subquery does not read the table in between. A table the query reaches itself, as its
+ * own table, a table it joins, or a table its own foreign keys join, stays the query's.</p>
+ *
+ * <p>A table filtered inside an anti-join's subquery decides which related rows exclude a row, so, like the anti-joined
+ * table, it takes its condition on the join and not in the WHERE clause.</p>
+ *
  * @since 1.15
  */
 final class FilterJoinPlacement {
@@ -89,37 +102,62 @@ final class FilterJoinPlacement {
     private record Relation(RecordField foreignKey, boolean tableHoldsKey, boolean composite) {}
 
     /**
-     * A semi-join or anti-join.
+     * A semi-join or anti-join. Joins are compared by identity, as each filters by its own table.
      *
      * @param table the filtered table.
      * @param anchor the table it is joined on.
      * @param relation how the two relate.
      * @param condition the condition stated on the join, or {@code null}.
      * @param type the join type.
+     * @param parent the semi-join or anti-join whose subquery holds this one's, or {@code null} when the anchor is a
+     *               table of the query.
+     * @param anchorKey the foreign key field of the parent's table that references the anchor, or {@code null} when
+     *                  the anchor is the parent's table itself or a table of the query.
      */
     private record FilterJoin(Class<? extends Data> table,
                               Class<? extends Data> anchor,
                               Relation relation,
                               @Nullable PredicateNode condition,
-                              FilterJoinType type) {}
+                              FilterJoinType type,
+                              @Nullable FilterJoin parent,
+                              @Nullable RecordField anchorKey) {
+
+        @Override
+        public boolean equals(Object other) {
+            return this == other;
+        }
+
+        @Override
+        public int hashCode() {
+            return System.identityHashCode(this);
+        }
+    }
+
+    /**
+     * A foreign key of a filtered table through which a semi-join or anti-join reaches the table it is joined on.
+     */
+    private record Hop(FilterJoin filterJoin, RecordField foreignKey) {}
 
     private final QueryTemplate queryTemplate;
     private final boolean branchOnAnchor;
-    private final Map<Class<? extends Data>, FilterJoin> semiJoins = new LinkedHashMap<>();
-    private final Map<Class<? extends Data>, FilterJoin> antiJoins = new LinkedHashMap<>();
+    /** Every semi-join and anti-join by its table, a join before the joins its subquery holds. */
+    private final Map<Class<? extends Data>, FilterJoin> filterJoins = new LinkedHashMap<>();
 
     /**
      * @param queryTemplate the template the query builds its subqueries with.
-     * @param joins the query's semi-joins and anti-joins.
+     * @param fromType the query's table.
+     * @param joins the query's joins.
      * @param branchOnAnchor whether a subquery may read the table a semi-join is joined on, which a DELETE refuses on
      *                       some databases for the table it deletes from.
      */
-    private FilterJoinPlacement(QueryTemplate queryTemplate, List<Join> joins, boolean branchOnAnchor) {
+    private FilterJoinPlacement(QueryTemplate queryTemplate,
+                                Class<? extends Data> fromType,
+                                List<Join> joins,
+                                boolean branchOnAnchor) {
         this.queryTemplate = queryTemplate;
         this.branchOnAnchor = branchOnAnchor;
-        for (var join : joins) {
-            var filterJoin = filterJoin(queryTemplate, join);
-            (filterJoin.type() == FilterJoinType.SEMI ? semiJoins : antiJoins).put(filterJoin.table(), filterJoin);
+        for (var filterJoin : resolve(queryTemplate, fromType, joins)) {
+            filterJoins.put(filterJoin.table(), filterJoin);
         }
     }
 
@@ -153,25 +191,29 @@ final class FilterJoinPlacement {
                         .formatted(type.method(), table.getSimpleName(), table.getSimpleName()));
             }
         }
-        filterJoin(queryTemplate, join);
+        var withJoin = new ArrayList<>(joins);
+        withJoin.add(join);
+        resolve(queryTemplate, fromType, withJoin);
     }
 
     /**
      * Renders the WHERE clause of a query with semi-joins or anti-joins.
      *
      * @param queryTemplate the template the query builds its subqueries with.
-     * @param filterJoins the query's semi-joins and anti-joins.
+     * @param fromType the query's table.
+     * @param joins the query's joins, of which the semi-joins and anti-joins are placed.
      * @param where the query's WHERE conditions.
      * @param clauses the query's other clauses, which may not name a filtered table.
      * @param branchOnAnchor whether a subquery may read the table a semi-join is joined on.
      * @return the WHERE condition, or {@code null} for none.
      */
     static @Nullable TemplateString where(QueryTemplate queryTemplate,
-                                          List<Join> filterJoins,
+                                          Class<? extends Data> fromType,
+                                          List<Join> joins,
                                           List<Where> where,
                                           List<TemplateString> clauses,
                                           boolean branchOnAnchor) {
-        var placement = new FilterJoinPlacement(queryTemplate, filterJoins, branchOnAnchor);
+        var placement = new FilterJoinPlacement(queryTemplate, fromType, joins, branchOnAnchor);
         placement.verifyClauses(clauses);
         return placement.where(where);
     }
@@ -181,29 +223,69 @@ final class FilterJoinPlacement {
         for (var condition : where) {
             conjuncts.add(node(condition));
         }
-        for (var antiJoin : antiJoins.values()) {
+        for (var filterJoin : filterJoins.values()) {
+            var antiJoin = antiJoinHolding(filterJoin);
+            if (antiJoin == null) {
+                continue;
+            }
             for (var conjunct : conjuncts) {
-                if (references(conjunct).contains(antiJoin.table())) {
+                if (!references(conjunct).contains(filterJoin.table())) {
+                    continue;
+                }
+                if (antiJoin == filterJoin) {
                     throw new PersistenceException("A condition names the anti-joined %1$s, but the query keeps the rows without a matching %1$s, so the condition belongs to the join: antiJoin(%1$s).on(%2$s, condition)."
                             .formatted(antiJoin.table().getSimpleName(), antiJoin.anchor().getSimpleName()));
                 }
+                throw new PersistenceException("A condition names %1$s, which decides which %2$s rows the anti-join on %2$s counts, but the query keeps the rows without such a %2$s, so the condition belongs to the join: %3$s(%1$s).on(%4$s, condition)."
+                        .formatted(filterJoin.table().getSimpleName(), antiJoin.table().getSimpleName(),
+                                filterJoin.type().method(), filterJoin.anchor().getSimpleName()));
             }
         }
+        var condition = condition(null, conjuncts, false);
+        return condition == null ? null : condition.toTemplate();
+    }
+
+    /**
+     * Returns the condition of one level of the query: the statement itself, or the subquery of a semi-join or
+     * anti-join. The conditions naming a semi-join of the level, or a table filtered inside its subquery, go into that
+     * semi-join's subquery; a semi-join no condition names keeps the rows with any related row, and an anti-join the
+     * rows without one.
+     *
+     * @param level the semi-join or anti-join whose subquery the condition is for, or {@code null} for the statement.
+     * @param conjuncts the conditions of the level, joined by AND.
+     * @param residual whether the conditions are tested only on the rows the rest of the condition found.
+     * @return the condition, or {@code null} for none.
+     */
+    private @Nullable PredicateNode condition(@Nullable FilterJoin level, List<PredicateNode> conjuncts, boolean residual) {
         var parts = new ArrayList<PredicateNode>();
         if (!conjuncts.isEmpty()) {
-            parts.add(place(PredicateNode.and(conjuncts), false));
+            parts.add(place(level, PredicateNode.and(conjuncts), residual));
         }
-        for (var semiJoin : semiJoins.values()) {
+        for (var filterJoin : filterJoins.values()) {
+            if (filterJoin.parent() != level) {
+                continue;
+            }
             // Without a condition naming the table, the semi-join keeps the rows that have a related row at all: the
             // complement of the anti-join on the same table.
-            if (conjuncts.stream().noneMatch(conjunct -> references(conjunct).contains(semiJoin.table()))) {
-                parts.add(new Term(exists(semiJoin, semiJoin.condition()), true));
+            if (filterJoin.type() == FilterJoinType.ANTI
+                    || conjuncts.stream().noneMatch(conjunct -> namesAny(conjunct, tablesOf(filterJoin)))) {
+                parts.add(new Term(exists(filterJoin, filterJoin.condition()), true));
             }
         }
-        for (var antiJoin : antiJoins.values()) {
-            parts.add(new Term(exists(antiJoin, antiJoin.condition()), true));
+        return parts.isEmpty() ? null : PredicateNode.and(parts);
+    }
+
+    /**
+     * Returns the anti-join whose subquery holds the filtered table, the join itself when it is an anti-join, or
+     * {@code null} when no anti-join holds it.
+     */
+    private static @Nullable FilterJoin antiJoinHolding(FilterJoin filterJoin) {
+        for (FilterJoin join = filterJoin; join != null; join = join.parent()) {
+            if (join.type() == FilterJoinType.ANTI) {
+                return join;
+            }
         }
-        return parts.isEmpty() ? null : PredicateNode.and(parts).toTemplate();
+        return null;
     }
 
     /**
@@ -214,7 +296,7 @@ final class FilterJoinPlacement {
             var tables = new LinkedHashSet<Class<? extends Data>>();
             collect(clause, tables);
             for (var table : tables) {
-                var filterJoin = semiJoins.containsKey(table) ? semiJoins.get(table) : antiJoins.get(table);
+                var filterJoin = filterJoins.get(table);
                 if (filterJoin != null) {
                     throw new PersistenceException("%1$s is %2$s: it filters the query but adds no columns to it, so the query cannot order, group or select by its columns. Join %1$s to use its columns."
                             .formatted(table.getSimpleName(), filterJoin.type() == FilterJoinType.SEMI ? "semi-joined" : "anti-joined"));
@@ -225,20 +307,22 @@ final class FilterJoinPlacement {
 
     /**
      * Places the conditions on semi-joined tables of a predicate, answering the predicate as one scope: its terms
-     * joined by AND on one semi-joined table hold for the same related row.
+     * joined by AND on one semi-joined table, or on the tables filtered inside its subquery, hold for the same related
+     * row.
      *
+     * @param level the semi-join or anti-join whose subquery the predicate is for, or {@code null} for the statement.
      * @param residual whether the predicate is tested only on the rows the rest of the condition found, rather than
      *                 read through an index of its own.
      */
-    private PredicateNode place(PredicateNode node, boolean residual) {
+    private PredicateNode place(@Nullable FilterJoin level, PredicateNode node, boolean residual) {
         var parts = new ArrayList<PredicateNode>();
         var groups = new LinkedHashMap<FilterJoin, List<PredicateNode>>();
         for (var conjunct : conjuncts(node)) {
-            if (conjunct instanceof Scope(var inner, var innerResidual) && !semiJoinsOf(inner).isEmpty()) {
-                parts.add(place(inner, residual || innerResidual));
+            if (conjunct instanceof Scope(var inner, var innerResidual) && !semiJoinsOf(level, inner).isEmpty()) {
+                parts.add(place(level, inner, residual || innerResidual));
                 continue;
             }
-            var named = semiJoinsOf(conjunct);
+            var named = semiJoinsOf(level, conjunct);
             if (named.isEmpty()) {
                 parts.add(conjunct);
             } else if (named.size() > 1) {
@@ -255,7 +339,7 @@ final class FilterJoinPlacement {
     }
 
     /**
-     * Places the conditions of one scope that name one semi-joined table.
+     * Places the conditions of one scope that name one semi-joined table, or the tables filtered inside its subquery.
      *
      * <p>A residual scope renders as {@code EXISTS} over the related rows of each row, which the database tests on the
      * rows the rest of the condition found. An {@code IN} over a {@code UNION} reads the rows matching the condition
@@ -279,7 +363,7 @@ final class FilterJoinPlacement {
         var condition = PredicateNode.and(conditions);
         var exists = new Term(exists(semiJoin, restricted(semiJoin, condition)), true);
         // The rows without a related row match through the part of the condition that names none.
-        var withoutRelated = withoutTable(condition, semiJoin.table());
+        var withoutRelated = withoutTables(condition, tablesOf(semiJoin));
         return withoutRelated == null ? exists : PredicateNode.or(List.of(withoutRelated, exists));
     }
 
@@ -290,12 +374,13 @@ final class FilterJoinPlacement {
      * alone; the anchor's terms stay outside the subquery, which reads the semi-joined table only.
      */
     private @Nullable PredicateNode residual(FilterJoin semiJoin, List<PredicateNode> operands) {
+        var tables = tablesOf(semiJoin);
         var anchorTerms = new ArrayList<PredicateNode>(operands.size());
         var tableTerms = new ArrayList<PredicateNode>(operands.size());
         for (var operand : operands) {
-            if (onlyNames(operand, semiJoin.table())) {
+            if (onlyNames(operand, tables)) {
                 tableTerms.add(operand);
-            } else if (!references(operand).contains(semiJoin.table())) {
+            } else if (!namesAny(operand, tables)) {
                 anchorTerms.add(operand);
             } else {
                 return null;
@@ -324,9 +409,9 @@ final class FilterJoinPlacement {
         var anchorTerms = new ArrayList<PredicateNode>();
         var tableTerms = new ArrayList<PredicateNode>();
         for (var operand : operands) {
-            if (onlyNames(operand, semiJoin.anchor())) {
+            if (onlyNames(operand, Set.of(semiJoin.anchor()))) {
                 anchorTerms.add(operand);
-            } else if (onlyNames(operand, semiJoin.table())) {
+            } else if (onlyNames(operand, Set.of(semiJoin.table()))) {
                 tableTerms.add(operand);
             } else {
                 return null;
@@ -364,32 +449,58 @@ final class FilterJoinPlacement {
 
     /**
      * Returns {@code EXISTS}, or for an anti-join {@code NOT EXISTS}, over the related rows matching the condition.
+     * The semi-joins and anti-joins joined on the filtered table, or on a table it holds a foreign key to, are placed
+     * in the subquery, with the parts of the condition that name them. The database tests the subquery's condition on
+     * the related rows of one row at a time, so the conditions in it are residual: an {@code IN} over a {@code UNION}
+     * there would read every matching row of the tables for each of them.
      */
     private TemplateString exists(FilterJoin filterJoin, @Nullable PredicateNode condition) {
         var relation = filterJoin.relation();
-        PredicateNode correlated = new Term(wrap(new Correlation(filterJoin.table(), filterJoin.anchor(), relation.foreignKey(), relation.tableHoldsKey())), true);
-        if (condition != null) {
-            correlated = PredicateNode.and(List.of(correlated, condition));
+        var parent = filterJoin.parent();
+        var correlation = filterJoin.anchorKey() == null || parent == null
+                ? new Correlation(filterJoin.table(), filterJoin.anchor(), relation.foreignKey(), relation.tableHoldsKey())
+                : new Correlation(filterJoin.table(), parent.table(), relation.foreignKey(), true, filterJoin.anchorKey());
+        var parts = new ArrayList<PredicateNode>(2);
+        parts.add(new Term(wrap(correlation), true));
+        var inner = condition(filterJoin, condition == null ? List.of() : List.of(condition), true);
+        if (inner != null) {
+            parts.add(inner);
         }
         var subquery = (QueryBuilderImpl<?, ?, ?>) queryTemplate.subquery(filterJoin.table(), TemplateString.of("1"));
-        var template = subquery.withCondition(correlated).getSubquery();
+        var template = subquery.withCondition(PredicateNode.and(parts)).getSubquery();
         return TemplateString.raw(filterJoin.type() == FilterJoinType.SEMI ? "EXISTS (\0)" : "NOT EXISTS (\0)",
                 new Subquery(template, true));
     }
 
     /**
-     * Returns the predicate with every term naming the table taken as false, or {@code null} when the predicate is
-     * then false: the condition a row without a related row is held to.
+     * Returns the filtered table and the tables filtered inside its subquery, at any depth.
      */
-    private static @Nullable PredicateNode withoutTable(PredicateNode node, Class<? extends Data> table) {
+    private Set<Class<? extends Data>> tablesOf(FilterJoin filterJoin) {
+        var tables = new LinkedHashSet<Class<? extends Data>>();
+        for (var candidate : filterJoins.values()) {
+            for (FilterJoin join = candidate; join != null; join = join.parent()) {
+                if (join == filterJoin) {
+                    tables.add(candidate.table());
+                    break;
+                }
+            }
+        }
+        return tables;
+    }
+
+    /**
+     * Returns the predicate with every term naming one of the tables taken as false, or {@code null} when the
+     * predicate is then false: the condition a row without a related row is held to.
+     */
+    private static @Nullable PredicateNode withoutTables(PredicateNode node, Set<Class<? extends Data>> tables) {
         return switch (node) {
-            case Term term -> references(term).contains(table) ? null : term;
-            case Scope(var inner, var ignore) -> withoutTable(inner, table);
-            case Search search -> withoutTable(search.resolve(0), table);
+            case Term term -> namesAny(term, tables) ? null : term;
+            case Scope(var inner, var ignore) -> withoutTables(inner, tables);
+            case Search search -> withoutTables(search.resolve(0), tables);
             case Group(var and, var operands) -> {
                 var kept = new ArrayList<PredicateNode>(operands.size());
                 for (var operand : operands) {
-                    var without = withoutTable(operand, table);
+                    var without = withoutTables(operand, tables);
                     if (without == null) {
                         if (and) {
                             yield null;
@@ -411,37 +522,51 @@ final class FilterJoinPlacement {
     }
 
     /**
-     * Returns the semi-joins whose table the predicate names.
+     * Returns the semi-joins of the level whose table, or a table filtered inside whose subquery, the predicate names.
+     *
+     * @param level the semi-join or anti-join whose subquery the predicate is for, or {@code null} for the statement.
      */
-    private Set<FilterJoin> semiJoinsOf(PredicateNode node) {
+    private Set<FilterJoin> semiJoinsOf(@Nullable FilterJoin level, PredicateNode node) {
         var named = new LinkedHashSet<FilterJoin>();
         for (var table : references(node)) {
-            var semiJoin = semiJoins.get(table);
-            if (semiJoin != null) {
-                named.add(semiJoin);
+            var join = filterJoins.get(table);
+            while (join != null && join.parent() != level) {
+                join = join.parent();
+            }
+            if (join != null && join.type() == FilterJoinType.SEMI) {
+                named.add(join);
             }
         }
         return named;
     }
 
+    private static boolean namesAny(PredicateNode node, Set<Class<? extends Data>> tables) {
+        for (var table : references(node)) {
+            if (tables.contains(table)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     /**
-     * Returns whether every term of the predicate names the table and no other, through typed references alone, so the
-     * predicate can move into a subquery reading only that table.
+     * Returns whether every term of the predicate names one or more of the tables and no other, through typed
+     * references alone, so the predicate can move into a subquery reading only those tables.
      */
-    private static boolean onlyNames(PredicateNode node, Class<? extends Data> table) {
+    private static boolean onlyNames(PredicateNode node, Set<Class<? extends Data>> tables) {
         return switch (node) {
             case Term term -> {
                 var template = term.template();
                 if (template.fragments().stream().anyMatch(fragment -> !fragment.isBlank())) {
                     yield false;    // Text of its own may name any alias of the enclosing query.
                 }
-                var tables = new LinkedHashSet<Class<? extends Data>>();
-                collect(template, tables);
-                yield tables.equals(Set.of(table));
+                var named = new LinkedHashSet<Class<? extends Data>>();
+                collect(template, named);
+                yield !named.isEmpty() && tables.containsAll(named);
             }
-            case Scope(var inner, var ignore) -> onlyNames(inner, table);
-            case Search search -> onlyNames(search.resolve(0), table);
-            case Group group -> group.operands().stream().allMatch(operand -> onlyNames(operand, table));
+            case Scope(var inner, var ignore) -> onlyNames(inner, tables);
+            case Search search -> onlyNames(search.resolve(0), tables);
+            case Group group -> group.operands().stream().allMatch(operand -> onlyNames(operand, tables));
         };
     }
 
@@ -504,15 +629,173 @@ final class FilterJoinPlacement {
         return new Term(expression == null ? wrap(where) : wrap(expression), true);
     }
 
-    private static FilterJoin filterJoin(QueryTemplate queryTemplate, Join join) {
+    /**
+     * Resolves the semi-joins and anti-joins of a query in the order they were added, each with the join whose
+     * subquery holds it.
+     *
+     * <p>A join is joined on a table of the query when the anchor is the query's table, a table the query joins, or a
+     * table its own foreign keys join. Otherwise it is joined on a semi-joined or anti-joined table named as the
+     * anchor, or on a table one of them holds a foreign key to. An anchor neither reaches stays the query's, which
+     * resolves it as it resolves any table, including the tables of an enclosing query.</p>
+     */
+    private static List<FilterJoin> resolve(QueryTemplate queryTemplate, Class<? extends Data> fromType, List<Join> joins) {
+        var joined = new HashSet<Class<? extends Data>>();
+        var resolved = new LinkedHashMap<Class<? extends Data>, FilterJoin>();
+        for (var join : joins) {
+            if (!isFilterJoin(join)) {
+                if (join.source() instanceof TableSource(var table)) {
+                    joined.add(table);
+                }
+                continue;
+            }
+            var filterJoin = filterJoin(queryTemplate, fromType, joined, resolved, join);
+            resolved.put(filterJoin.table(), filterJoin);
+        }
+        return List.copyOf(resolved.values());
+    }
+
+    private static FilterJoin filterJoin(QueryTemplate queryTemplate,
+                                         Class<? extends Data> fromType,
+                                         Set<Class<? extends Data>> joined,
+                                         Map<Class<? extends Data>, FilterJoin> resolved,
+                                         Join join) {
         var type = (FilterJoinType) join.type();
         var table = ((TableSource) join.source()).table();
         var target = (TableTarget) join.target();
+        var anchor = target.table();
         var condition = target.condition();
         if (condition != null) {
             condition = PredicateNode.resolve(condition, queryTemplate.dialect().minimumSearchTermLength());
         }
-        return new FilterJoin(table, target.table(), relation(queryTemplate, type, table, target.table()), condition, type);
+        var parent = resolved.get(anchor);
+        RecordField anchorKey = null;
+        if (parent == null && anchor != fromType && !joined.contains(anchor) && !joinedThroughForeignKeys(fromType, anchor)) {
+            var hop = hop(queryTemplate, type, table, anchor, resolved.values());
+            if (hop != null) {
+                parent = hop.filterJoin();
+                anchorKey = hop.foreignKey();
+            }
+        }
+        var relation = relation(queryTemplate, type, table, anchor);
+        if (parent != null && anchorKey != null && !relation.tableHoldsKey()) {
+            throw new PersistenceException("%1$s(%2$s).on(%3$s): %3$s is reached through the foreign key %4$s.%5$s, but %3$s holds the foreign key to %2$s, so the subquery of %4$s would have to read %3$s. Filter by %3$s itself first: semiJoin(%3$s).on(%4$s), then %1$s(%2$s).on(%3$s)."
+                    .formatted(type.method(), table.getSimpleName(), anchor.getSimpleName(),
+                            parent.table().getSimpleName(), anchorKey.name()));
+        }
+        return new FilterJoin(table, anchor, relation, condition, type, parent, anchorKey);
+    }
+
+    /**
+     * Returns the foreign key of a semi-joined or anti-joined table that references the anchor, or {@code null} when
+     * none does.
+     *
+     * @throws PersistenceException if more than one foreign key references it, or a filtered table reaches it only
+     *                              through another table.
+     */
+    private static @Nullable Hop hop(QueryTemplate queryTemplate,
+                                     FilterJoinType type,
+                                     Class<? extends Data> table,
+                                     Class<? extends Data> anchor,
+                                     Iterable<FilterJoin> filterJoins) {
+        var hops = new ArrayList<Hop>();
+        try {
+            for (var filterJoin : filterJoins) {
+                var fields = getFkFields(filterJoin.table()).toList();
+                var matches = findRecordFields(fields, anchor);
+                if (matches.isEmpty()) {
+                    matches = byTable(queryTemplate, fields, anchor);
+                }
+                for (var match : matches) {
+                    hops.add(new Hop(filterJoin, match));
+                }
+            }
+            if (hops.size() > 1) {
+                throw new PersistenceException("%s(%s).on(%s): %s is reached through more than one foreign key of the filtered tables (%s), so the table to filter by is ambiguous. Filter by %s itself first: semiJoin(%s).on(<table>), with the table holding the foreign key to use."
+                        .formatted(type.method(), table.getSimpleName(), anchor.getSimpleName(), anchor.getSimpleName(),
+                                hops.stream().map(hop -> hop.filterJoin().table().getSimpleName() + "." + hop.foreignKey().name()).collect(joining(", ")),
+                                anchor.getSimpleName(), anchor.getSimpleName()));
+            }
+            if (hops.isEmpty()) {
+                for (var filterJoin : filterJoins) {
+                    var via = via(filterJoin.table(), anchor);
+                    if (via != null) {
+                        throw new PersistenceException("%1$s(%2$s).on(%3$s): %3$s is not part of this query, and the filtered %4$s reaches it only through %5$s. Filter by each table on the way, so each is reached through a foreign key of the one before: semiJoin(%5$s).on(%4$s), and on to %3$s."
+                                .formatted(type.method(), table.getSimpleName(), anchor.getSimpleName(),
+                                        filterJoin.table().getSimpleName(), via.getSimpleName()));
+                    }
+                }
+            }
+        } catch (SqlTemplateException e) {
+            throw new PersistenceException(e);
+        }
+        return hops.isEmpty() ? null : hops.getFirst();
+    }
+
+    /**
+     * Returns whether the query's own foreign keys join the table: a foreign key holding the table's record, on the
+     * query's table or on a table such a key joins in turn.
+     */
+    private static boolean joinedThroughForeignKeys(Class<? extends Data> fromType, Class<? extends Data> table) {
+        var visited = new HashSet<Class<?>>();
+        var pending = new ArrayDeque<Class<?>>();
+        pending.add(fromType);
+        while (!pending.isEmpty()) {
+            var current = pending.poll();
+            if (!visited.add(current)) {
+                continue;
+            }
+            for (var field : getFkFields(current).toList()) {
+                var type = field.type();
+                if (Ref.class.isAssignableFrom(type) || !Data.class.isAssignableFrom(type)) {
+                    continue;   // A Ref is not joined.
+                }
+                if (type == table) {
+                    return true;
+                }
+                pending.add(type);
+            }
+        }
+        return false;
+    }
+
+    /**
+     * Returns the table a filtered table's foreign key references on the way to the anchor through further foreign
+     * keys, or {@code null} when its foreign keys do not reach the anchor.
+     */
+    private static @Nullable Class<? extends Data> via(Class<? extends Data> table, Class<? extends Data> anchor)
+            throws SqlTemplateException {
+        var visited = new HashSet<Class<?>>();
+        visited.add(table);
+        var pending = new ArrayDeque<Map.Entry<Class<? extends Data>, Class<? extends Data>>>();
+        for (var field : getFkFields(table).toList()) {
+            var referenced = referenced(field);
+            if (referenced != null) {
+                pending.add(Map.entry(referenced, referenced));
+            }
+        }
+        while (!pending.isEmpty()) {
+            var entry = pending.poll();
+            var current = entry.getKey();
+            if (!visited.add(current)) {
+                continue;
+            }
+            for (var field : getFkFields(current).toList()) {
+                var referenced = referenced(field);
+                if (referenced == anchor) {
+                    return entry.getValue();
+                }
+                if (referenced != null) {
+                    pending.add(Map.entry(referenced, entry.getValue()));
+                }
+            }
+        }
+        return null;
+    }
+
+    @SuppressWarnings("unchecked")
+    private static @Nullable Class<? extends Data> referenced(RecordField field) throws SqlTemplateException {
+        Class<?> type = Ref.class.isAssignableFrom(field.type()) ? getRefDataType(field) : field.type();
+        return Data.class.isAssignableFrom(type) && !type.isSealed() ? (Class<? extends Data>) type : null;
     }
 
     /**

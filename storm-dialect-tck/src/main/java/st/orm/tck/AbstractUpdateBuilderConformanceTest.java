@@ -55,7 +55,8 @@ import st.orm.core.template.TemplateString;
 /**
  * Update builder conformance: an UPDATE built through the query builder sets the columns it names on the rows its
  * conditions select, on every database, whether the conditions name the updated table alone or reach other tables
- * through a path, an explicit join, a semi-join or an anti-join.
+ * through a path, an explicit join, a semi-join or an anti-join, including a semi-join or anti-join on a semi-joined
+ * table, which nests in the subquery of the table it hangs off.
  *
  * <p>The dialect decides how the statement reaches other tables: joined into the UPDATE before the SET clause on MySQL,
  * which refuses a subquery that reads the table being updated, and on MariaDB, in a FROM clause after it on SQL
@@ -384,6 +385,44 @@ public abstract class AbstractUpdateBuilderConformanceTest {
                 .executeUpdate();
         assertEquals(1, updated);
         assertEquals(Map.of("Davis", "null", "Franklin", "55127", "Black", "null"), telephonesByLastName());
+    }
+
+    @Test
+    public void setsTheRowsANestedSemiJoinSelects() {
+        // Leo, Rosy and Jewel had a visit.
+        int updated = orm.entity(Owner.class).update()
+                .set(OWNER_TELEPHONE, "55128")
+                .semiJoin(Pet.class).on(Owner.class)
+                .semiJoin(Visit.class).on(Pet.class)
+                .where(PET_NAME, EQUALS, "Jewel")
+                .executeUpdate();
+        assertEquals(1, updated);
+        assertEquals(Map.of("Davis", "null", "Franklin", "55128", "Black", "null"), telephonesByLastName());
+    }
+
+    @Test
+    public void setsTheRowsANestedAntiJoinSelects() {
+        // Basil, a pet of Davis, is the only pet with an owner and without a visit.
+        int updated = orm.entity(Owner.class).update()
+                .set(OWNER_TELEPHONE, "55129")
+                .semiJoin(Pet.class).on(Owner.class)
+                .antiJoin(Visit.class).on(Pet.class)
+                .executeUpdate();
+        assertEquals(1, updated);
+        assertEquals(Map.of("Davis", "55129", "Franklin", "null", "Black", "null"), telephonesByLastName());
+    }
+
+    @Test
+    public void setsTheRowsANestedSemiJoinAndAPathSelect() {
+        // The path joins the city into the statement on the databases that join; the semi-joins nest in its WHERE.
+        int updated = orm.entity(Owner.class).update()
+                .set(OWNER_TELEPHONE, "55130")
+                .semiJoin(Pet.class).on(Owner.class)
+                .semiJoin(Visit.class).on(Pet.class)
+                .where(OWNER_CITY_NAME, EQUALS, "Monona")
+                .executeUpdate();
+        assertEquals(1, updated);
+        assertEquals(Map.of("Davis", "null", "Franklin", "55130", "Black", "null"), telephonesByLastName());
     }
 
     @Test

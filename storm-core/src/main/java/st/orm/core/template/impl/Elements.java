@@ -454,17 +454,34 @@ public final class Elements {
      * Renders the condition that relates a row of a subquery's table to a row of the enclosing query: each key column
      * of the inner table equal to its counterpart on the outer table.
      *
+     * <p>With an {@code outerForeignKey}, the outer table is not the table the relation references but a table holding
+     * a foreign key to it: the inner table's foreign key columns equal the outer table's columns of that foreign key, so
+     * the referenced table is related without being read.</p>
+     *
      * @param inner the subquery's table, whose alias resolves in the subquery.
      * @param outer the enclosing query's table, whose alias resolves in the enclosing query.
      * @param foreignKey the foreign key field of the relation.
      * @param innerHoldsKey {@code true} if {@code inner} holds the foreign key, {@code false} if {@code outer} does.
+     * @param outerForeignKey the foreign key field of {@code outer} that references the same table as
+     *                        {@code foreignKey}, or {@code null} when {@code outer} is the table of the relation itself.
      * @since 1.15
      */
-    public record Correlation(Class<? extends Data> inner, Class<? extends Data> outer, RecordField foreignKey, boolean innerHoldsKey) implements Element {
+    public record Correlation(Class<? extends Data> inner,
+                              Class<? extends Data> outer,
+                              RecordField foreignKey,
+                              boolean innerHoldsKey,
+                              @Nullable RecordField outerForeignKey) implements Element {
         public Correlation {
             requireNonNull(inner, "inner");
             requireNonNull(outer, "outer");
             requireNonNull(foreignKey, "foreignKey");
+            if (outerForeignKey != null && !innerHoldsKey) {
+                throw new IllegalArgumentException("A correlation through a foreign key of the outer table needs the inner table to hold the foreign key.");
+            }
+        }
+
+        public Correlation(Class<? extends Data> inner, Class<? extends Data> outer, RecordField foreignKey, boolean innerHoldsKey) {
+            this(inner, outer, foreignKey, innerHoldsKey, null);
         }
     }
 

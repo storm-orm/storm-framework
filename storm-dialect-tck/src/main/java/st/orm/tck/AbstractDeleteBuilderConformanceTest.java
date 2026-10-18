@@ -46,7 +46,8 @@ import st.orm.core.template.PreparedStatementTemplate;
 /**
  * Delete builder conformance: a DELETE built through the query builder removes the rows its conditions select, on
  * every database, whether the conditions name the deleted table alone or reach other tables through a path, an
- * explicit join, a semi-join or an anti-join.
+ * explicit join, a semi-join or an anti-join, including a semi-join or anti-join on a semi-joined table, which nests in
+ * the subquery of the table it hangs off.
  *
  * <p>The dialect decides how the statement reaches other tables: joined into the DELETE on MySQL, MariaDB and SQL
  * Server, and through a subquery matching the primary key elsewhere. A DELETE without a condition refuses to run on
@@ -134,6 +135,10 @@ public abstract class AbstractDeleteBuilderConformanceTest {
         return orm.entity(Pet.class).select().getResultList().stream().map(Pet::name).sorted().toList();
     }
 
+    private List<String> cityNames() {
+        return orm.entity(City.class).select().getResultList().stream().map(City::name).sorted().toList();
+    }
+
     private List<String> ownerLastNames() {
         return orm.entity(Owner.class).select().getResultList().stream().map(Owner::lastName).sorted().toList();
     }
@@ -185,6 +190,29 @@ public abstract class AbstractDeleteBuilderConformanceTest {
                 .executeUpdate();
         assertEquals(1, deleted);
         assertEquals(List.of("Davis", "Franklin"), ownerLastNames());
+    }
+
+    @Test
+    public void deletesTheRowsANestedSemiJoinSelects() {
+        // Leo, a pet of Davis in Madison, is the only pet with more than ten visits.
+        int deleted = orm.entity(City.class).delete()
+                .semiJoin(Owner.class).on(City.class)
+                .semiJoin(Pet.class).on(Owner.class)
+                .where(PET_VISIT_COUNT, GREATER_THAN, 10)
+                .executeUpdate();
+        assertEquals(1, deleted);
+        assertEquals(List.of("Monona"), cityNames());
+    }
+
+    @Test
+    public void deletesTheRowsANestedAntiJoinSelects() {
+        // Franklin, in Monona, has no pet with more than ten visits.
+        int deleted = orm.entity(City.class).delete()
+                .semiJoin(Owner.class).on(City.class)
+                .antiJoin(Pet.class).on(Owner.class, it -> it.where(PET_VISIT_COUNT, GREATER_THAN, 10))
+                .executeUpdate();
+        assertEquals(1, deleted);
+        assertEquals(List.of("Madison"), cityNames());
     }
 
     @Test

@@ -402,6 +402,13 @@ public abstract class QueryBuilder<T : Data, R : Any, ID : Any> {
      * same table. A condition stated on the join, `on<Owner> { Pet_.type eq dog }`, states which related rows count:
      * every condition that names the table, each word of a search included, is answered by a related row matching it.
      *
+     * `on` may also name a semi-joined or anti-joined table, or a table such a table references through a foreign key,
+     * to filter through two to-many relations: `semiJoin<Pet>().on<Owner>()` followed by `semiJoin<Visit>().on<Pet>()`
+     * keeps the owners with a pet that had a visit matching the conditions that name `Visit`. The inner table's
+     * subquery nests in the outer one's, and conditions joined by `and` on the two tables hold for the same outer related
+     * row. A table referenced through a foreign key, such as the table a link row points at, is related through that
+     * foreign key's columns, without reading the table itself.
+     *
      * ```kotlin
      * val found = owners
      *     .select()
@@ -429,6 +436,10 @@ public abstract class QueryBuilder<T : Data, R : Any, ID : Any> {
      * Adds an anti-join to the query: the query keeps the rows that have no related row in the given table matching
      * the condition stated on the join, or no related row at all when the join states none. The table's columns can be
      * named in the join's condition only.
+     *
+     * As for a semi-join, `on` may name a semi-joined or anti-joined table, which nests the anti-join in that table's
+     * subquery: `semiJoin<Pet>().on<Owner>()` followed by `antiJoin<Visit>().on<Pet>()` keeps the owners with a pet
+     * that never had a visit.
      *
      * ```kotlin
      * val petsWithoutRabiesShot = pets

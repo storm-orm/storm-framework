@@ -38,8 +38,10 @@ import st.orm.PersistenceException;
 import st.orm.StormConfig;
 import st.orm.core.model.Address;
 import st.orm.core.model.Owner;
+import st.orm.core.model.OwnerPrimaryPet;
 import st.orm.core.model.Owner_;
 import st.orm.core.model.Pet;
+import st.orm.core.model.PetType;
 import st.orm.core.model.Pet_;
 import st.orm.core.model.VetSpecialty;
 import st.orm.core.model.Visit;
@@ -394,6 +396,160 @@ public class SemiJoinIntegrationTest {
         assertThrows(PersistenceException.class, () -> orm().entity(Owner.class).select()
                 .innerJoin(Pet.class).on(Owner.class)
                 .semiJoin(Pet.class).on(Owner.class));
+    }
+
+    @Test
+    public void semiJoinOnASemiJoinedTableNestsInItsSubquery() {
+        // data.sql: the neutered visits are of Basil (George), Jewel (Eduardo) and Max (Jean).
+        var owners = capture(() -> ownersWithPets()
+                .semiJoin(Visit.class).on(Pet.class)
+                .where(it -> it.where(Visit_.description, EQUALS, "neutered"))
+                .getResultList());
+        assertEquals(List.of("Eduardo", "George", "Jean"), firstNames(owners));
+        assertTrue(statement().contains("WHERE EXISTS (SELECT 1 FROM pet p WHERE p.owner_id = o.id AND EXISTS (SELECT 1 FROM visit v WHERE v.pet_id = p.id AND v.description = ?))"), statement());
+        assertEquals(3, ownersWithPets()
+                .semiJoin(Visit.class).on(Pet.class)
+                .where(it -> it.where(Visit_.description, EQUALS, "neutered"))
+                .getResultCount());
+    }
+
+    @Test
+    public void semiJoinOnASemiJoinedTableWithoutConditionKeepsTheRowsWithARelatedRowOfARelatedRow() {
+        // data.sql: the pets of Jeff, Maria, David and Carlos have no visits.
+        var owners = ownersWithPets()
+                .semiJoin(Visit.class).on(Pet.class)
+                .getResultList();
+        assertEquals(List.of("Betty", "Eduardo", "George", "Harold", "Jean", "Peter"), firstNames(owners));
+    }
+
+    @Test
+    public void conditionsJoinedByAndAcrossLevelsHoldForTheSameOuterRelatedRow() {
+        // Betty's Leo was spayed, and Basil, a pet of George, was neutered: no pet named Leo was neutered.
+        assertEquals(List.of(), firstNames(ownersWithPets()
+                .semiJoin(Visit.class).on(Pet.class)
+                .where(it -> it.where(Pet_.name, EQUALS, "Leo").and(it.where(Visit_.description, EQUALS, "neutered")))
+                .getResultList()));
+        var owners = capture(() -> ownersWithPets()
+                .semiJoin(Visit.class).on(Pet.class)
+                .where(it -> it.where(Pet_.name, EQUALS, "Basil").and(it.where(Visit_.description, EQUALS, "neutered")))
+                .getResultList());
+        assertEquals(List.of("George"), firstNames(owners));
+        assertTrue(statement().contains("WHERE EXISTS (SELECT 1 FROM pet p WHERE p.owner_id = o.id AND p.name = ? AND EXISTS (SELECT 1 FROM visit v WHERE v.pet_id = p.id AND v.description = ?))"), statement());
+    }
+
+    @Test
+    public void orAcrossLevelsTestsTheInnerTableOnTheRelatedRowsOfEachRow() {
+        var owners = capture(() -> ownersWithPets()
+                .semiJoin(Visit.class).on(Pet.class)
+                .where(it -> it.where(Pet_.name, EQUALS, "Leo").or(it.where(Visit_.description, EQUALS, "neutered")))
+                .getResultList());
+        assertEquals(List.of("Betty", "Eduardo", "George", "Jean"), firstNames(owners));
+        // Inside the subquery of the pets, the visits are read for each pet alone.
+        assertTrue(statement().contains("(p.name = ? OR EXISTS (SELECT 1 FROM visit v WHERE v.pet_id = p.id AND v.description = ?))"), statement());
+        assertFalse(statement().contains(" UNION "), statement());
+    }
+
+    @Test
+    public void conditionOnTheRootNextToANestedSemiJoinHoldsWithoutRelatedRows() {
+        var owners = ownersWithPets()
+                .semiJoin(Visit.class).on(Pet.class)
+                .where(it -> it.where(Owner_.lastName, EQUALS, "Black").or(it.where(Visit_.description, EQUALS, "neutered")))
+                .getResultList();
+        assertEquals(List.of("Eduardo", "George", "Jean", "Jeff"), firstNames(owners));
+    }
+
+    @Test
+    public void antiJoinOnASemiJoinedTableNestsAsNotExists() {
+        // data.sql: Lucky (Jeff and Carlos), Mulligan (Maria) and Freddy (David) have no visits.
+        var owners = capture(() -> ownersWithPets()
+                .antiJoin(Visit.class).on(Pet.class)
+                .getResultList());
+        assertEquals(List.of("Carlos", "David", "Jeff", "Maria"), firstNames(owners));
+        assertTrue(statement().contains("WHERE EXISTS (SELECT 1 FROM pet p WHERE p.owner_id = o.id AND NOT EXISTS (SELECT 1 FROM visit v WHERE v.pet_id = p.id))"), statement());
+    }
+
+    @Test
+    public void antiJoinOnASemiJoinedTableTakesItsConditionOnTheJoin() {
+        // The owners with a pet that was never spayed: Max of Jean, Iggy of Harold, and the pets without visits.
+        var owners = ownersWithPets()
+                .antiJoin(Visit.class).on(Pet.class, it -> it.where(Visit_.description, EQUALS, "spayed"))
+                .getResultList();
+        assertEquals(List.of("Carlos", "David", "Harold", "Jean", "Jeff", "Maria"), firstNames(owners));
+        var e = assertThrows(PersistenceException.class, () -> ownersWithPets()
+                .antiJoin(Visit.class).on(Pet.class)
+                .where(it -> it.where(Visit_.description, EQUALS, "spayed"))
+                .getResultList());
+        assertTrue(e.getMessage().contains("antiJoin(Visit).on(Pet, condition)"), e.getMessage());
+    }
+
+    @Test
+    public void semiJoinOnAnAntiJoinedTableDecidesWhichRelatedRowsExclude() {
+        // The owners without a pet that was neutered.
+        var owners = capture(() -> orm().entity(Owner.class).select()
+                .antiJoin(Pet.class).on(Owner.class)
+                .semiJoin(Visit.class).on(Pet.class, it -> it.where(Visit_.description, EQUALS, "neutered"))
+                .getResultList());
+        assertEquals(List.of("Betty", "Carlos", "David", "Harold", "Jeff", "Maria", "Peter"), firstNames(owners));
+        assertTrue(statement().contains("WHERE NOT EXISTS (SELECT 1 FROM pet p WHERE p.owner_id = o.id AND EXISTS (SELECT 1 FROM visit v WHERE v.pet_id = p.id AND v.description = ?))"), statement());
+        // The condition decides which pets exclude an owner, so it belongs on the join.
+        var e = assertThrows(PersistenceException.class, () -> orm().entity(Owner.class).select()
+                .antiJoin(Pet.class).on(Owner.class)
+                .semiJoin(Visit.class).on(Pet.class)
+                .where(it -> it.where(Visit_.description, EQUALS, "neutered"))
+                .getResultList());
+        assertTrue(e.getMessage().contains("semiJoin(Visit).on(Pet, condition)"), e.getMessage());
+    }
+
+    @Test
+    public void semiJoinOnATableASemiJoinedTableReferencesCorrelatesOnTheForeignKey() {
+        var primaryPets = orm().entity(OwnerPrimaryPet.class);
+        var pets = orm().entity(Pet.class);
+        var owners = orm().entity(Owner.class);
+        // Leo (Betty) was spayed; Jewel (Eduardo) was neutered.
+        primaryPets.insert(new OwnerPrimaryPet(owners.getById(1), pets.getById(1)));
+        primaryPets.insert(new OwnerPrimaryPet(owners.getById(3), pets.getById(4)));
+        var neutered = capture(() -> owners.select()
+                .semiJoin(OwnerPrimaryPet.class).on(Owner.class)
+                .semiJoin(Visit.class).on(Pet.class)
+                .where(it -> it.where(Visit_.description, EQUALS, "neutered"))
+                .getResultList());
+        assertEquals(List.of("Eduardo"), firstNames(neutered));
+        // The visit relates to the primary pet through the link's foreign key, without reading the pet table.
+        assertTrue(statement().contains("WHERE EXISTS (SELECT 1 FROM owner_primary_pet opp WHERE opp.owner_id = o.id AND EXISTS (SELECT 1 FROM visit v WHERE v.pet_id = opp.pet_id AND v.description = ?))"), statement());
+        assertFalse(statement().contains("FROM pet"), statement());
+        assertEquals(List.of("Betty"), firstNames(owners.select()
+                .semiJoin(OwnerPrimaryPet.class).on(Owner.class)
+                .antiJoin(Visit.class).on(Pet.class, it -> it.where(Visit_.description, EQUALS, "neutered"))
+                .getResultList()));
+    }
+
+    @Test
+    public void semiJoinOnATableThatReferencesTheSemiJoinedTablesTableIsRefused() {
+        // Pet holds the key to its type, so a subquery of the link would have to read the pet to reach the type.
+        var e = assertThrows(PersistenceException.class, () -> orm().entity(Owner.class).select()
+                .semiJoin(OwnerPrimaryPet.class).on(Owner.class)
+                .semiJoin(PetType.class).on(Pet.class)
+                .getResultList());
+        assertTrue(e.getMessage().contains("semiJoin(Pet).on(OwnerPrimaryPet)"), e.getMessage());
+    }
+
+    @Test
+    public void semiJoinOnATableOfTheQueryStaysOnTheQuery() {
+        // Visit is filtered in the subquery of the pets; the owner the pet's own foreign key joins stays the query's.
+        var pets = capture(() -> orm().entity(Pet.class).select()
+                .semiJoin(Visit.class).on(Pet.class)
+                .semiJoin(OwnerPrimaryPet.class).on(Owner.class)
+                .getResultList());
+        assertEquals(List.of(), petNames(pets));
+        assertTrue(statement().contains("EXISTS (SELECT 1 FROM owner_primary_pet opp WHERE opp.owner_id = o.id)"), statement());
+    }
+
+    @Test
+    public void semiJoinOnATableNoFilterReachesIsRefused() {
+        var e = assertThrows(PersistenceException.class, () -> orm().entity(Owner.class).select()
+                .semiJoin(Visit.class).on(Pet.class)
+                .getResultList());
+        assertTrue(e.getMessage().contains("Pet is not part of this query"), e.getMessage());
     }
 
     @Test
