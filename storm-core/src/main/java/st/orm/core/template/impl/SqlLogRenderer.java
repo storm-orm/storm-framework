@@ -19,10 +19,14 @@ import static java.util.Comparator.comparingLong;
 import static java.util.concurrent.TimeUnit.NANOSECONDS;
 import static st.orm.core.spi.StormConfigHelper.getInt;
 
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import st.orm.StormConfig;
 import st.orm.core.template.SqlLog.StatementLine;
 import st.orm.core.template.SqlLog.Summary;
+import st.orm.spi.SqlOperation;
 import st.orm.spi.StatementOrigin;
 
 /**
@@ -68,11 +72,74 @@ public final class SqlLogRenderer {
      * @return the rendered summary.
      */
     public static String render(Summary summary) {
-        return render(summary.name(), summary.recorded(), summary.count(StatementOrigin.FETCH),
-                summary.cacheHits(), NANOSECONDS.toMillis(summary.databaseNanos()),
-                NANOSECONDS.toMillis(summary.databaseElapsedNanos()), summary.peakConcurrency(),
-                NANOSECONDS.toMillis(summary.durationNanos()), summary.byStatement(),
-                summary.recorded() - summary.statements().size());
+        var rendered = new StringBuilder(render(summary.name(), summary.recorded(),
+                summary.count(StatementOrigin.FETCH), summary.cacheHits(),
+                NANOSECONDS.toMillis(summary.databaseNanos()), NANOSECONDS.toMillis(summary.databaseElapsedNanos()),
+                summary.peakConcurrency(), NANOSECONDS.toMillis(summary.durationNanos()), summary.byStatement(),
+                summary.recorded() - summary.statements().size()));
+        for (var advisory : advisories(summary)) {
+            rendered.append(System.lineSeparator()).append("\tadvice ").append(advisory);
+        }
+        return rendered.toString();
+    }
+
+    /** A statement that repeated in the unit of work, under construction. */
+    private static final class Repeat {
+        final SqlOperation operation;
+        final String type;
+        int executions;
+        boolean singleRows = true;
+
+        Repeat(SqlOperation operation, String type) {
+            this.operation = operation;
+            this.type = type;
+        }
+    }
+
+    /**
+     * Returns the advice on what the unit of work repeated, over its recorded statements: references of one type
+     * fetched one statement at a time, and the same single-row read or unbatched single-row write run again and
+     * again. Each counts from {@link Advice#REPEAT_THRESHOLD} executions; a statement without a type is not advised
+     * on, since the advice names it.
+     */
+    static List<String> advisories(Summary summary) {
+        Map<String, Integer> fetches = new LinkedHashMap<>();
+        Map<Object, Repeat> repeats = new LinkedHashMap<>();
+        for (var statement : summary.statements()) {
+            var dataType = statement.dataType();
+            if (dataType == null) {
+                continue;
+            }
+            String type = dataType.getSimpleName();
+            if (statement.origin() == StatementOrigin.FETCH) {
+                fetches.merge(type, 1, Integer::sum);
+                continue;
+            }
+            // Grouped as the summary's rows are: by shape, by text for a statement without one.
+            Object key = statement.shapeId() != 0 ? statement.shapeId() : statement.statement();
+            var repeat = repeats.computeIfAbsent(key, ignore -> new Repeat(statement.operation(), type));
+            repeat.executions++;
+            // A batch is one execution, so a row count of at most one per execution means no batch took the rows.
+            repeat.singleRows &= statement.exactRows() && statement.rows() <= 1;
+        }
+        var advisories = new ArrayList<String>();
+        fetches.forEach((type, count) -> {
+            if (count >= Advice.REPEAT_THRESHOLD) {
+                advisories.add(Advice.REPEATED_FETCH.format(count, type));
+            }
+        });
+        for (var repeat : repeats.values()) {
+            if (repeat.executions < Advice.REPEAT_THRESHOLD || !repeat.singleRows) {
+                continue;
+            }
+            switch (repeat.operation) {
+                case SELECT -> advisories.add(Advice.REPEATED_SELECT.format(repeat.executions, repeat.type));
+                case INSERT, UPDATE, DELETE -> advisories.add(Advice.REPEATED_WRITE.format(repeat.operation.name(),
+                        repeat.type, repeat.executions));
+                default -> { }
+            }
+        }
+        return advisories;
     }
 
     /**

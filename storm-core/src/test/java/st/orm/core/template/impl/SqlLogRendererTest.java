@@ -15,12 +15,21 @@
  */
 package st.orm.core.template.impl;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import java.util.ArrayList;
 import java.util.List;
 import org.junit.jupiter.api.Test;
+import st.orm.Data;
+import st.orm.core.model.City;
+import st.orm.core.model.Owner;
+import st.orm.core.template.SqlLog.Statement;
 import st.orm.core.template.SqlLog.StatementLine;
+import st.orm.core.template.SqlLog.Summary;
+import st.orm.spi.SqlOperation;
+import st.orm.spi.StatementOrigin;
 
 /**
  * Tests the summary a log reader sees: the heaviest statement leads, repetition reads as a multiplier, and the
@@ -182,5 +191,48 @@ public class SqlLogRendererTest {
         assertTrue(rendered.contains("40 ms  500* rows  1x  City  INSERT INTO city (name) VALUES (?)"), rendered);
         // The star participates in the column width, so the exact count aligns under it.
         assertTrue(rendered.contains(" 5 ms     3 rows  1x  City  SELECT c FROM city"), rendered);
+    }
+
+    /** A unit of work that ran the statement the given number of times, each producing the given rows. */
+    private static Summary repeated(SqlOperation operation, Class<? extends Data> type, StatementOrigin origin,
+                                    int executions, long rows, boolean exactRows) {
+        var statements = new ArrayList<Statement>();
+        for (int i = 0; i < executions; i++) {
+            statements.add(new Statement(operation, type, origin, "SQL " + type.getSimpleName(), i, i + 1, i + 1,
+                    type.getName().hashCode(), null, rows, exactRows));
+        }
+        return new Summary("call", statements, executions, 0, executions);
+    }
+
+    @Test
+    public void repeatedFetchesOfOneTypeCarryAdvice() {
+        var summary = repeated(SqlOperation.SELECT, City.class, StatementOrigin.FETCH, 10, 1, true);
+        assertEquals(1, SqlLogRenderer.advisories(summary).size());
+        String rendered = SqlLogRenderer.render(summary);
+        assertTrue(rendered.contains(NL + "\tadvice 10 statements each fetched one City; fetch on the query"), rendered);
+        assertTrue(rendered.endsWith("See https://orm.st/docs/advice#repeated-fetch"), rendered);
+    }
+
+    @Test
+    public void repeatedSingleRowReadsAndWritesCarryAdvice() {
+        var read = SqlLogRenderer.advisories(repeated(SqlOperation.SELECT, Owner.class, StatementOrigin.DIRECT, 12, 1, true));
+        assertEquals(1, read.size(), read.toString());
+        assertTrue(read.getFirst().startsWith("the same SELECT of Owner ran 12 times, one row each"), read.getFirst());
+        var write = SqlLogRenderer.advisories(repeated(SqlOperation.INSERT, Owner.class, StatementOrigin.DIRECT, 10, 1, true));
+        assertEquals(1, write.size(), write.toString());
+        assertTrue(write.getFirst().startsWith("the same INSERT of Owner ran 10 times, one row each"), write.getFirst());
+    }
+
+    @Test
+    public void fewerRepetitionsOrMoreRowsCarryNoAdvice() {
+        assertEquals(List.of(), SqlLogRenderer.advisories(repeated(SqlOperation.SELECT, City.class, StatementOrigin.FETCH, 9, 1, true)));
+        assertEquals(List.of(), SqlLogRenderer.advisories(repeated(SqlOperation.SELECT, Owner.class, StatementOrigin.DIRECT, 9, 1, true)));
+        // A read of several rows a time is not a lookup by key: scrolling window after window repeats it too.
+        assertEquals(List.of(), SqlLogRenderer.advisories(repeated(SqlOperation.SELECT, Owner.class, StatementOrigin.DIRECT, 20, 5, true)));
+        // A batch affects its rows in one execution; a count the driver did not report proves nothing.
+        assertEquals(List.of(), SqlLogRenderer.advisories(repeated(SqlOperation.INSERT, Owner.class, StatementOrigin.DIRECT, 10, 50, true)));
+        assertEquals(List.of(), SqlLogRenderer.advisories(repeated(SqlOperation.INSERT, Owner.class, StatementOrigin.DIRECT, 10, 1, false)));
+        assertFalse(SqlLogRenderer.render(repeated(SqlOperation.SELECT, Owner.class, StatementOrigin.DIRECT, 9, 1, true))
+                .contains("advice"));
     }
 }

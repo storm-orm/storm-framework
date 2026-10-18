@@ -22,8 +22,9 @@ import org.jspecify.annotations.Nullable;
  * statement log prints every piece of advice a slow statement carries. The advice log reports advice on correctness,
  * such as rows returned in no stated order, by default, and advice on performance once the application asks for its
  * category; advice on a deliberate choice, such as a page that reports its total, holds only once the statement
- * is slow, so only the slow statement log reports it. The page keeps an anchor for as long as Storm emits the advice,
- * so the link in a log line outlives any change to the rest of the documentation.
+ * is slow, so only the slow statement log reports it. The advice on what repeated in one unit of
+ * work closes the performance log's summary. The page keeps an anchor for as long as Storm emits the advice, so the
+ * link in a log line outlives any change to the rest of the documentation.
  *
  * @since 1.15
  */
@@ -54,7 +55,25 @@ enum Advice {
     /** An offset of at least {@link #DEEP_OFFSET_ROWS} rows. */
     DEEP_OFFSET("deep-offset", Category.PERFORMANCE, false,
             "the database reads and discards the %d rows the offset skips before it returns the first; scroll "
-                    + "continues from the last row read, at the same cost for every window.");
+                    + "continues from the last row read, at the same cost for every window."),
+
+    /** References of one type fetched one statement at a time, in one unit of work. */
+    REPEATED_FETCH("repeated-fetch", Category.PERFORMANCE, false,
+            "%1$d statements each fetched one %2$s; fetch on the query that read the references resolves them in "
+                    + "that statement, and an inline foreign key joins them."),
+
+    /** The same single-row read repeated, in one unit of work. */
+    REPEATED_SELECT("repeated-select", Category.PERFORMANCE, false,
+            "the same SELECT of %2$s ran %1$d times, one row each; one query for all of them, such as findAllById "
+                    + "or a where with IN, reads the rows in one round trip."),
+
+    /** The same single-row write repeated without a batch, in one unit of work. */
+    REPEATED_WRITE("repeated-write", Category.PERFORMANCE, false,
+            "the same %1$s of %2$s ran %3$d times, one row each; the overloads that take a list send the rows as "
+                    + "one batch.");
+
+    /** The executions in one unit of work from which a repeated statement or fetch carries advice. */
+    static final int REPEAT_THRESHOLD = 10;
 
     /** The offset from which a statement carries {@link #DEEP_OFFSET}. */
     static final int DEEP_OFFSET_ROWS = 1_000;
