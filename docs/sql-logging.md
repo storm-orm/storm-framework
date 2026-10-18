@@ -16,7 +16,7 @@ Every execution passes one interception point exactly once, and everything Storm
 | `st.orm.sql` | what ran | statement | logger, `DEBUG` | at `TRACE` |
 | `st.orm.sql.perf` | what a call cost | unit of work | logger, `INFO`, plus a boundary | never |
 | `st.orm.sql.slow` | which execution was slow, from where, with what | execution | `WARN`, plus a threshold | at `TRACE` |
-| `st.orm.sql.advice` | which statement shapes to change, and how | shape, once | logger, `DEBUG` | never |
+| `st.orm.sql.advice` | which statements to change, and how | kind once (`INFO`), shape once (`DEBUG`), execution (`TRACE`) | logger, `INFO` | never |
 | Micrometer `storm.query` | how statements behave over time, per shape | execution, aggregated | `ObservationRegistry` | never |
 | SQL comment | the key that joins the database's own slow log and plans to the trace | execution | `storm.tracing.sql-comments` | n/a |
 | `SqlCapture` | assertions in tests | statement | code | yes, in tests |
@@ -364,7 +364,7 @@ Storm does not run `EXPLAIN` on your behalf. Beyond the connection and dialect p
 
 ## The Advice Log
 
-Some statements cost more than they need to, or return rows in no stated order, whether or not any one execution is slow: a `limit` without an ORDER BY, a `distinct` that removes the rows its join repeated, a count behind every page. Storm decides this when it builds the statement, from the statement's own shape, and attaches the advice to it. The advice log reports it.
+Some statements are wrong to write whether or not any one execution is slow, such as a `limit` without an ORDER BY, which returns an arbitrary part of the result. Others cost more than they need to as the data grows, such as the count behind every page. Storm decides this when it builds the statement, from the statement's own shape, and attaches the advice to it. The advice log reports it, fast or slow.
 
 ```yaml
 logging:
@@ -381,9 +381,17 @@ SQL advice (SELECT Owner): OwnerController.kt:31
 	advice the statement takes part of the result without an ORDER BY, so which rows it returns is up to the database and can change between executions, and consecutive pages can repeat or skip rows; order by a unique key, or by sort fields that end in one. See https://orm.st/docs/advice#unordered-limit
 ```
 
-- **Once per shape.** Each piece of advice is reported the first time a statement of its shape executes, then not again, so the log reads as a list of what to change. Turn it on while developing or in a test environment, run the application, and work through the lines. It remembers the last four thousand pieces of advice it reported; past that it starts over, which can repeat a line but never changes what one says.
-- **Fast or slow.** The advice log reports what the statement proves regardless of how long it took. The [slow statement log](#the-slow-statement-log) prints the same advice under every slow line.
-- **Free while off.** Advice is decided when the statement is built and cached with it. While the logger is off, an execution pays one test of whether its statement carries advice; only then does Storm ask whether the logger is on.
+Each level reports more than the one above it:
+
+| Level | Reports | How often |
+|-------|---------|-----------|
+| `INFO` | advice that holds at any speed, such as a `limit` without an ORDER BY | once per kind of advice |
+| `DEBUG` | advice about cost as well, such as the count behind a page or a deep offset | once per statement shape |
+| `TRACE` | all advice | at every execution |
+
+- **Quiet at `INFO`.** An application that logs at `INFO` sees at most one line for each kind of advice that holds at any speed, showing the first statement that drew it. Advice about cost stays with the [slow statement log](#the-slow-statement-log), which prints all advice under every slow line.
+- **A list at `DEBUG`.** Each piece of advice is reported the first time a statement of its shape executes, then not again, so the log reads as a list of what to change. Turn it on while developing or in a test environment, run the application, and work through the lines. A page's offset is part of its statement, so each page of the same query is a shape of its own. The log remembers the last four thousand pieces of advice it reported; past that it starts over, which can repeat a line but never changes what one says.
+- **Cheap.** Advice is decided when the statement is built and cached with it. A statement without advice pays one test of whether it carries any; only a statement with advice asks whether the logger is on, and then whether it reported the advice before.
 - **No values.** The line carries the statement with placeholders, the call site and the shape, never a parameter value, at any level.
 
 Every piece of advice links to its section of [Statement Advice](advice.md), which says what it means and what to use instead.

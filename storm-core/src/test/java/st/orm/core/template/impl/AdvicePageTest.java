@@ -54,4 +54,11 @@ public class AdvicePageTest {
             assertTrue(advice.format(3).endsWith(" See https://orm.st/docs/advice#" + advice.anchor()), advice.name());
         }
     }
+
+    @Test
+    public void anAdvisoryIsRecognizedByItsLink() {
+        for (var advice : Advice.values()) {
+            assertEquals(advice, Advice.of(advice.format(3, "Owner")), advice.name());
+        }
+    }
 }

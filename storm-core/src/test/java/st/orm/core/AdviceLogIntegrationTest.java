@@ -32,13 +32,16 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.jdbc.JdbcTest;
 import org.springframework.test.context.ContextConfiguration;
 import org.springframework.test.context.junit.jupiter.SpringExtension;
+import st.orm.Pageable;
 import st.orm.core.model.Owner;
 import st.orm.core.model.Owner_;
+import st.orm.core.model.Pet;
 import st.orm.core.template.ORMTemplate;
 import st.orm.core.template.impl.AdviceLogTestSupport;
 
 /**
- * The advice log reports the advice a statement carries at {@code DEBUG}, fast or slow, once per shape.
+ * The advice log reports more at each level: at {@code INFO} the advice that holds at any speed, once per kind; at
+ * {@code DEBUG} all advice, once per shape; at {@code TRACE} all advice, every time.
  */
 @ExtendWith(SpringExtension.class)
 @ContextConfiguration(classes = IntegrationConfig.class)
@@ -82,15 +85,30 @@ public class AdviceLogIntegrationTest {
         ORMTemplate.of(dataSource).entity(Owner.class).select().limit(5).getResultList();
     }
 
+    /** Pages of a statement without an order, each of its own shape, since the offset is part of the statement. */
+    private void unorderedPages() {
+        var owners = ORMTemplate.of(dataSource).entity(Owner.class);
+        owners.select().offset(2).limit(2).getResultList();
+        owners.select().offset(4).limit(2).getResultList();
+    }
+
+    /** The count behind a page, a deep offset and a distinct over a repeating join: advice about cost. */
+    private void costlyStatements() {
+        var owners = ORMTemplate.of(dataSource).entity(Owner.class);
+        owners.select().page(Pageable.ofSize(2).sortBy(Owner_.id));
+        owners.select().orderBy(Owner_.id).offset(1_000).limit(10).getResultList();
+        owners.select().distinct().innerJoin(Pet.class).on(Owner.class).getResultList();
+    }
+
     @Test
-    public void adviceIsReportedAtDebugOncePerShape() {
-        var events = capture(Level.DEBUG, () -> {
+    public void infoReportsEachKindOfAdviceOnce() {
+        var events = capture(Level.INFO, () -> {
             unorderedPage();
-            unorderedPage();
+            unorderedPages();
         });
         assertEquals(1, events.size(), events.toString());
         var event = events.getFirst();
-        assertEquals(Level.DEBUG, event.getLevel());
+        assertEquals(Level.INFO, event.getLevel());
         var line = event.getFormattedMessage();
         assertTrue(line.startsWith("SQL advice (SELECT Owner)"), line);
         assertTrue(line.contains("\tshape "), line);
@@ -99,15 +117,46 @@ public class AdviceLogIntegrationTest {
     }
 
     @Test
+    public void infoLeavesAdviceAboutCostToTheSlowStatementLog() {
+        assertEquals(List.of(), capture(Level.INFO, this::costlyStatements));
+    }
+
+    @Test
+    public void debugReportsAllAdviceOncePerShape() {
+        var events = capture(Level.DEBUG, () -> {
+            unorderedPage();
+            unorderedPage();
+            unorderedPages();
+            costlyStatements();
+        });
+        var lines = events.stream().map(ILoggingEvent::getFormattedMessage).toList();
+        assertEquals(6, lines.size(), lines.toString());
+        assertTrue(events.stream().allMatch(event -> event.getLevel() == Level.DEBUG), lines.toString());
+        assertTrue(lines.get(3).contains("#page-count"), lines.get(3));
+        assertTrue(lines.get(4).contains("#deep-offset"), lines.get(4));
+        assertTrue(lines.get(5).contains("#distinct-over-join"), lines.get(5));
+    }
+
+    @Test
+    public void traceReportsAllAdviceEveryTime() {
+        var events = capture(Level.TRACE, () -> {
+            unorderedPage();
+            unorderedPage();
+        });
+        assertEquals(2, events.size(), events.toString());
+        assertEquals(Level.TRACE, events.getFirst().getLevel());
+    }
+
+    @Test
     public void nothingIsReportedWhileTheLoggerIsOff() {
-        assertEquals(List.of(), capture(Level.INFO, this::unorderedPage));
+        assertEquals(List.of(), capture(Level.WARN, this::unorderedPage));
         // Nothing was recorded as reported while off, so turning the log on reports the advice.
-        assertEquals(1, capture(Level.DEBUG, this::unorderedPage).size());
+        assertEquals(1, capture(Level.INFO, this::unorderedPage).size());
     }
 
     @Test
     public void aStatementWithoutAdviceIsNotReported() {
-        assertEquals(List.of(), capture(Level.DEBUG, () -> ORMTemplate.of(dataSource).entity(Owner.class).select()
+        assertEquals(List.of(), capture(Level.TRACE, () -> ORMTemplate.of(dataSource).entity(Owner.class).select()
                 .orderBy(Owner_.id).limit(5).getResultList()));
     }
 }

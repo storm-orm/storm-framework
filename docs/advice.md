@@ -3,13 +3,27 @@ import TabItem from '@theme/TabItem';
 
 # Statement Advice
 
-Storm attaches advice to a statement where the statement's own shape says it reads more than it needs to, or returns rows in no stated order. The advice reaches you two ways:
+Storm attaches advice to a statement where the statement's own shape says it reads more than it needs to, or returns rows in no stated order. Advice comes in two kinds:
 
-- **The advice log.** With `st.orm.sql.advice` at `DEBUG`, Storm reports each piece of advice the first time a statement of its shape runs, fast or slow, with the call site. It reports each once, so the log reads as a list of what to change rather than a stream. See [The Advice Log](sql-logging.md#the-advice-log).
-- **The slow statement log.** A line in the [slow statement log](sql-logging.md#the-slow-statement-log) ends with the advice its statement carries, every time it is slow.
+- **Advice that holds at any speed.** A [limit or offset without an order](#unordered-limit) returns an arbitrary part of the result however fast it runs.
+- **Advice about cost.** A count behind a page, a deep offset, a `distinct` over a join that repeats rows, or a search of short words alone costs more as the data grows, and on a small table costs nothing worth changing. It matters once the statement is slow.
+
+The advice reaches you two ways.
+
+**The slow statement log.** A line in the [slow statement log](sql-logging.md#the-slow-statement-log) ends with every piece of advice its statement carries, of either kind, every time it is slow.
+
+**The advice log.** The `st.orm.sql.advice` logger reports advice whether the statement is fast or slow, with the statement, its call site and its shape. Each level reports more than the one above it:
+
+| Level | Reports | How often |
+|-------|---------|-----------|
+| `INFO` | advice that holds at any speed | once per kind of advice |
+| `DEBUG` | advice about cost as well | once per statement shape |
+| `TRACE` | all advice | at every execution |
+
+At `INFO` the log stays quiet: an application sees at most one line for each kind of advice, showing the first statement that drew it. At `DEBUG` it lists every statement shape to change, a list to work through while developing or in a test environment. The offset of a page is part of its statement, so each page of the same query is a shape of its own. `TRACE` shows each execution that carries advice. See [The Advice Log](sql-logging.md#the-advice-log).
 
 ```
-SQL advice (SELECT Owner): OwnerService.kt:42
+SQL slow (SELECT Owner): 412 ms in database, 12 rows, OwnerService.kt:42
 	SELECT DISTINCT o.id, o.first_name, o.last_name, ...
 	FROM owner o
 	INNER JOIN pet p ON p.owner_id = o.id
@@ -77,7 +91,7 @@ A list that shows "next" rather than "page 3 of 120" needs no total. `slice` rea
 
 > the statement takes part of the result without an ORDER BY, so which rows it returns is up to the database
 
-Without an ORDER BY, a database returns rows in whatever order is cheapest for it at that moment, and the order can change with the plan, with concurrent writes, or from one execution to the next. A `limit` or `offset` then takes an arbitrary part of the result: the first page and the second can overlap or miss rows between them, which no test on a small, quiet table shows.
+Without an ORDER BY, a database returns rows in whatever order is cheapest for it at that moment, and the order can change with the plan, with concurrent writes, or from one execution to the next. A `limit` or `offset` then takes an arbitrary part of the result: the first page and the second can overlap or miss rows between them, which no test on a small, quiet table shows. Because it holds however fast the statement runs, the advice log reports this advice too.
 
 Order by a unique key, or by sort fields that end in one, so every row has one place in the order: `orderBy(Owner_.id)`, or `Pageable.ofSize(20).sortBy(Owner_.lastName).sortBy(Owner_.id)`. `scroll` always orders by its key, so it never gets this advice, and neither does a `limit(1)`, which asks for any matching row.
 
