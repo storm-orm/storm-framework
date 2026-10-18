@@ -37,6 +37,14 @@ This is the default to apply. The developer can choose otherwise; where they say
 - **Create a `Ref` from what you have.** From an entity: `city.ref()` in Kotlin (`import st.orm.template.ref`), `Ref.of(city)` in Java. From an id, where it enters the program (a path variable, a request field, a message): `refById<City>(id)` in Kotlin (`import st.orm.template.refById`), `Ref.of(City.class, id)` in Java. Convert once, at that boundary, and pass the `Ref` inward.
 - **Hand the `Ref` to Storm as is.** Repositories and queries take refs directly (`findByRef`, `getByRef`, `findAllByRef`, a foreign key field compared to a `Ref`), so never unwrap one into an id to query. Take a typed id with `entityId()` where an id must leave the program. How DTOs and other transfer types carry a reference is the developer's choice.
 
+### Entities First, Projections for Performance or Customization
+
+This is the default to apply. The developer can choose otherwise; where they say so, follow that.
+
+- **Read with the entity the table already has**, even where a screen or endpoint uses only a few of its columns. Every entity is checked against the design budget (10 joins and 96 columns beyond its own, reported as design advice), so its read is already bounded, and one type per table keeps the model small: queries, repositories, `Ref`s and tests all work with the same type.
+- **Create a summary projection only when performance counts or customization is required**: a `Projection<ID>` over a subset of an entity's columns is a second type to keep in step with the table, so it needs a reason. Customization is a read that needs a shape the entity cannot give, such as a foreign key inlined that the entity holds as a `Ref`, or a column mapped through another converter. Performance is evidence the entity's width is the cost: `wide-entity-read` advice under a slow statement, a performance log summary showing a read that maps many columns for a call that uses few, a hot path or a large result set the user names, or the user asking. Before adding one, consider a `Ref` on the branch the read does not need, which narrows every read of the entity at once.
+- **Other projections keep their purpose.** A projection over a database view or a `@ProjectionQuery`, and a plain data class or record for an aggregation or computed result, are not summaries of an entity, so this rule does not apply to them.
+
 ### Query and Template Rules
 
 - **Prefer the QueryBuilder and metamodel-based methods** for joins, where clauses, ordering, and pagination. Fall back to SQL templates only when the QueryBuilder cannot express the query.

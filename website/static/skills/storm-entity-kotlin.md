@@ -176,6 +176,8 @@ Generation rules:
 
 16. **Write hooks belong on the entity, in a callback class**: a field the database does not fill, such as `createdAt`, is set by an `EntityCallback` the entity declares with `@EntityCallbacks(PostAuditCallback::class)`. Storm creates the callback and applies it wherever the entity is written, so nothing is registered in Spring Boot or Ktor. The hooks live in the callback class, never as methods on the entity; a callback that needs collaborators is registered as a bean instead (see the repository skill).
 
+17. **Reuse the entity before creating a projection**: read with the existing entity, even where a caller uses only a few of its columns. Entities are checked against the design budget, so their reads are already bounded, and one type per table keeps queries, repositories and `Ref`s on the same type. Create a summary projection, such as `data class OwnerSummary(@PK val id: Int, val lastName: String) : Projection<Int>`, only when performance counts or customization is required. Customization is a read that needs a shape the entity cannot give, such as a foreign key inlined that the entity holds as a `Ref`, or a column mapped through another converter. Performance is evidence the entity's width is the cost: `wide-entity-read` advice under a slow statement, a performance log summary showing many columns mapped for a call that uses few, a hot path or large result set the user names, or the user asking. Consider a `Ref` on the branch the read does not need first. Projections over views, `@ProjectionQuery` types and aggregation result types are not summaries and keep their purpose.
+
 After generating, remind the user to rebuild for metamodel generation (e.g., `City_`).
 
 ## Verification

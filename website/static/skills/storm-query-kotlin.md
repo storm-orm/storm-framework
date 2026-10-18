@@ -774,7 +774,7 @@ select(UserSummary::class)
 - **Joined entity types** — e.g., selecting `City::class` from a `User` query that joins `City`.
 - **Custom SELECT with template** — e.g., `select<Summary, _, _> { template }` with a custom SQL select clause that maps to the result type's fields.
 
-It does **not** work for selecting a column subset of the root entity — e.g., a `UserSummary` with only `id` and `name` from `User` will fail with "Cannot find alias for column." For column subsets, use a `Projection<T>` with `ProjectionRepository`.
+It does **not** work for selecting a column subset of the root entity — e.g., a `UserSummary` with only `id` and `name` from `User` will fail with "Cannot find alias for column." Read the entity itself; where the column subset matters for performance or the read needs a shape the entity cannot give, use a `Projection<T>` with `ProjectionRepository` (see **Entities First, Projections for Performance or Customization** in the Storm rules).
 
 **Cross-entity pitfall:** Selecting a different entity type from the wrong root repository can fail with "Cannot find alias for column" when both entities have columns with the same name (e.g., `id`). Put the query on the target entity's repository instead.
 

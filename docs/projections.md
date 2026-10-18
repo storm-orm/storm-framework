@@ -26,7 +26,7 @@ Projections are **read-only** data structures for the query side of your applica
 
 **Database views:** Represent database views or materialized views as first-class types in your application.
 
-**Lightweight table reads:** Map a subset of a table's columns for list views, dropdowns, and search results without loading full entities.
+**Lightweight or customized table reads:** Map a subset of a table's columns where the entity's width shows as the cost, such as a list of many rows that shows a few columns of a wide entity. Start with the entity itself: Storm checks it against the [design budget](entity-design.md#the-budget), so its read is already bounded, and one type per table keeps the model small. A projection is a second type to keep in step with the table, so add one where the [slow statement log](sql-logging.md#the-slow-statement-log) or the [performance log](sql-logging.md#the-performance-log) shows the width matters, or where a read needs a shape the entity cannot give, such as a foreign key inlined that the entity holds as a `Ref`.
 
 **Complex reusable queries:** Use `@ProjectionQuery` to define projections backed by complex SQL involving joins, aggregations, or subqueries that you want to reuse across your application.
 
