@@ -51,14 +51,14 @@ public class AdvicePageTest {
     @Test
     public void adviceLinksToItsSection() {
         for (var advice : Advice.values()) {
-            assertTrue(advice.format(3).endsWith(" See https://orm.st/docs/advice#" + advice.anchor()), advice.name());
+            assertTrue(advice.format(3, "Owner", 3).endsWith(" See https://orm.st/docs/advice#" + advice.anchor()), advice.name());
         }
     }
 
     @Test
     public void anAdvisoryIsRecognizedByItsLink() {
         for (var advice : Advice.values()) {
-            assertEquals(advice, Advice.of(advice.format(3, "Owner")), advice.name());
+            assertEquals(advice, Advice.of(advice.format(3, "Owner", 3)), advice.name());
         }
     }
 

@@ -123,6 +123,17 @@ The headline separates three durations:
 
 Summed database time exceeds elapsed time whenever statements run concurrently, which is why both appear. The concurrency clause is omitted when nothing overlapped. And `214 ms in database` against `678 ms total` says most of that call was spent somewhere other than the database. Consuming a streamed read counts on the `total` side of that comparison, not the database side: a stream held open while the application works through it is the application's time.
 
+A summary closes with advice where the unit of work repeated what it could have done once: ten or more fetches of one type, or the same single-row read or write run ten or more times.
+
+```
+SQL (GET /owners): 31 statements, 24 fetches, 41 ms in database, 96 ms total
+	28 ms  24 rows  24x  City  fetch  SELECT c.id, c.name FROM city c WHERE c.id = ?
+	13 ms  70 rows   7x  Pet          SELECT p.id, p.name FROM pet p WHERE p.owner_id = ?
+	advice 24 statements each fetched one City; an inline foreign key joins it into every read of the rows, or a query that fetches the references, such as select().fetch(...), resolves them in the statement that reads them. See https://orm.st/docs/advice#repeated-fetch
+```
+
+The advice is worked out from the summary when it is printed, so it costs nothing beyond the summary itself, and it links to its section of [Statement Advice](advice.md).
+
 The headline also counts what cost nothing: `3 from cache` reports the reads the transaction's entity cache served without a statement: a reference resolving to an entity the transaction had already read, or an identity lookup at `REPEATABLE_READ` and above. The fetch count is the cache misses; this is the other side, and it appears only when any read was served.
 
 A scope covers whatever runs inside it, whichever repository, query builder or template issued the statement. Summaries log under `st.orm.sql.perf` at `INFO`, and statements are recorded only while that logger is enabled.

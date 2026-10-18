@@ -12,6 +12,8 @@ The advice reaches you two ways.
 
 **The slow statement log.** A line in the [slow statement log](sql-logging.md#the-slow-statement-log) ends with every piece of advice its statement carries, every time it is slow.
 
+**The performance log.** A [performance log](sql-logging.md#the-performance-log) summary ends with advice on what its unit of work repeated, which no single statement shows: references fetched one at a time, and the same single-row read or write run again and again.
+
 **The advice log.** The `st.orm.sql.advice` logger reports advice whether the statement is fast or slow, with the statement, its call site and its shape:
 
 - **Correctness is on by default.** An application that logs at `INFO` sees advice on correctness without asking for it.
@@ -119,3 +121,35 @@ Category: performance. Logger: `st.orm.sql.advice.deep-offset`.
 An offset tells the database to skip rows, and it skips them by reading them: page 100 of ten rows reads a thousand rows to return ten, and each page further reads ten more. Storm gives this advice from an offset of a thousand rows.
 
 `scroll` continues from the last row read instead: it compares the sort fields and the key with that row's values, which an index on them serves, so every window costs what the first one does. It needs a unique key to continue from; a query without one reads deep pages through an offset, and the advice then says what each of them costs. See [Scrolling](pagination-and-scrolling.md#scrolling).
+
+## References fetched one at a time {#repeated-fetch}
+
+> 24 statements each fetched one City; an inline foreign key joins it into every read of the rows, or a query that fetches the references, such as select().fetch(...), resolves them in the statement that reads them
+
+Category: performance, reported by the [performance log](sql-logging.md#the-performance-log) summary of the unit of work.
+
+Each `Ref.fetch()` that the transaction's entity cache cannot serve is a statement of its own, so a loop over rows that fetches a reference from each runs one statement per row: the N+1 pattern. The performance log counts these as fetches, and advises once a unit of work fetched ten or more of one type.
+
+Where every reader needs the referenced row, make the foreign key inline: `@FK val pet: Pet` rather than `Ref<Pet>` joins the pet into every read of a visit, repository methods such as `findById` included. See [Entity Design](entity-design.md).
+
+Where only some readers need it, keep the `Ref` and read the rows with a query that fetches it: `select().fetch(Visit_.pet)` adds the pets to the statement that reads the visits. A repository method such as `findById` or `findAll` takes no `fetch`, so write that read as a `select()` that does. See [Resolving a Ref as Part of the Query](refs.md#resolving-a-ref-as-part-of-the-query).
+
+## The same row lookup, again and again {#repeated-select}
+
+> the same SELECT of Owner ran 12 times, one row each
+
+Category: performance, reported by the [performance log](sql-logging.md#the-performance-log) summary of the unit of work.
+
+A unit of work that runs the same SELECT ten or more times, each returning at most one row, is looking rows up one at a time, typically by key inside a loop. Every lookup is a round trip to the database.
+
+Read them in one query: `findAllById(ids)`, or a `where` with `IN` over the keys, returns all of them in one statement. A read of several rows each time, such as scrolling window after window, gets no advice.
+
+## The same single-row write, again and again {#repeated-write}
+
+> the same INSERT of Owner ran 10 times, one row each
+
+Category: performance, reported by the [performance log](sql-logging.md#the-performance-log) summary of the unit of work.
+
+A unit of work that runs the same INSERT, UPDATE or DELETE ten or more times, one row each, sends every row in a round trip of its own.
+
+The repository overloads that take a list, such as `insert(owners)`, send the rows as one JDBC batch. A batch already counts as one execution, so batched writes never get this advice.
