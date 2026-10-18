@@ -56,15 +56,15 @@ public class SlowStatementLogTest {
         assertTrue(line.startsWith("SQL slow (SELECT City): 1840 ms in database, 3 rows, PetService.kt:42"), line);
         // The statement follows as sent, indented like the statement log's.
         assertTrue(line.contains(System.lineSeparator() + "\tSELECT c.id" + System.lineSeparator() + "\tFROM city c"), line);
-        assertTrue(line.endsWith("\tshape 00000000003f9a2c  parameters 1"), line);
+        assertTrue(line.endsWith("\tshape: 00000000003f9a2c  parameters: 1"), line);
     }
 
     @Test
     public void adviceTheStatementCarriesFollowsTheFacts() {
         String line = SlowStatementLog.render(select(0x3f9a2cL), 1_840_000_000L, 0, 3, true, null, null,
                 "SELECT c.id FROM city c", null, 1, null, 0, java.util.List.of("every search term is short"));
-        assertTrue(line.endsWith("\tshape 00000000003f9a2c  parameters 1" + System.lineSeparator()
-                + "\tadvice every search term is short"), line);
+        assertTrue(line.endsWith("\tshape: 00000000003f9a2c  parameters: 1" + System.lineSeparator()
+                + "\tadvice: every search term is short"), line);
     }
 
     @Test
@@ -95,16 +95,16 @@ public class SlowStatementLogTest {
         var outlier = new ShapeStats.Baseline(64, 6_000_000L, 12);
         String line = SlowStatementLog.render(select(1), 1_840_000_000L, 0, 3, true, null, null, "SELECT 1", outlier,
                 4812, null, 0);
-        assertTrue(line.contains("shape 0000000000000001 (typically 6.0 ms, 306x)  parameters 4812 (typically 12)"), line);
+        assertTrue(line.contains("shape: 0000000000000001 (typically 6.0 ms, 306x)  parameters: 4812 (typically 12)"), line);
         var uniform = new ShapeStats.Baseline(64, 310_000_000L, 1);
         String usual = SlowStatementLog.render(select(1), 340_000_000L, 0, 3, true, null, null, "SELECT 1", uniform,
                 1, null, 0);
-        assertTrue(usual.contains("shape 0000000000000001 (typically 310 ms)  parameters 1"), usual);
+        assertTrue(usual.contains("shape: 0000000000000001 (typically 310 ms)  parameters: 1"), usual);
         assertFalse(usual.contains("x)"), usual);
         // Too few executions to trust, so no baseline: the line states the shape alone.
         String early = SlowStatementLog.render(select(1), 1_840_000_000L, 0, 3, true, null, null, "SELECT 1", null,
                 4812, null, 0);
-        assertTrue(early.contains("shape 0000000000000001  parameters 4812"), early);
+        assertTrue(early.contains("shape: 0000000000000001  parameters: 4812"), early);
         assertFalse(early.contains("typically"), early);
     }
 
@@ -112,7 +112,7 @@ public class SlowStatementLogTest {
     public void theCommentAndSuppressedCountFollowTheFacts() {
         String line = SlowStatementLog.render(select(1), 300_000_000L, 0, 1, true, null, null, "SELECT 1", null, 1,
                 "traceparent='00-4bf92f35-00f067aa-01'", 37);
-        assertTrue(line.endsWith("shape 0000000000000001  parameters 1  comment traceparent='00-4bf92f35-00f067aa-01'  +37 suppressed"),
+        assertTrue(line.endsWith("shape: 0000000000000001  parameters: 1  comment: traceparent='00-4bf92f35-00f067aa-01'  +37 suppressed"),
                 line);
     }
 

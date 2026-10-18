@@ -483,7 +483,7 @@ public final class SlowStatementLog {
         var facts = new StringBuilder();
         long shapeId = context.shapeId();
         if (shapeId != 0) {
-            facts.append("shape ").append("%016x".formatted(shapeId));
+            facts.append("shape: ").append("%016x".formatted(shapeId));
             if (baseline != null && baseline.typicalNanos() > 0) {
                 facts.append(" (typically ").append(millis(baseline.typicalNanos()));
                 long ratio = databaseNanos / baseline.typicalNanos();
@@ -494,7 +494,7 @@ public final class SlowStatementLog {
             }
         }
         if (context.kind() != ExecutionKind.BATCH) {
-            append(facts, "parameters " + parameterCount);
+            append(facts, "parameters: " + parameterCount);
             if (baseline != null) {
                 int typical = baseline.typicalParameters();
                 if (parameterCount >= 2 * Math.max(1, typical) || 2 * parameterCount <= typical) {
@@ -503,7 +503,7 @@ public final class SlowStatementLog {
             }
         }
         if (comment != null) {
-            append(facts, "comment " + comment);
+            append(facts, "comment: " + comment);
         }
         if (suppressed > 0) {
             append(facts, "+" + suppressed + " suppressed");
@@ -512,7 +512,7 @@ public final class SlowStatementLog {
             rendered.append(System.lineSeparator()).append('\t').append(facts);
         }
         for (var advisory : advisories) {
-            rendered.append(System.lineSeparator()).append("\tadvice ").append(advisory);
+            rendered.append(System.lineSeparator()).append("\tadvice: ").append(advisory);
         }
         return rendered.toString();
     }

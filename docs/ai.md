@@ -324,8 +324,8 @@ Rules and skills tell the AI how Storm is meant to be used. Advice tells it how 
 
 ```
 SQL advice (design Visit)
-	graph Visit(Pet(Owner(City), PetType, Clinic(Address, Organization(Country))))  12 joins, 140 columns beyond its own
-	advice every read of Visit joins 12 tables and selects 140 columns beyond its own, past the design budget of 10 joins and 96 columns; a Ref for Clinic.organization removes 4 joins and 52 columns. See https://orm.st/docs/advice#entity-budget
+	graph: Visit(Pet(Owner(City), PetType, Clinic(Address, Organization(Country))))  12 joins, 140 columns beyond its own
+	advice: every read of Visit joins 12 tables and selects 140 columns beyond its own, past the design budget of 10 joins and 96 columns; a Ref for Clinic.organization removes 4 joins and 52 columns. See https://orm.st/docs/advice#entity-budget
 ```
 
 That turns decisions an agent otherwise makes on guesswork into decisions it can check:

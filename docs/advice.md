@@ -39,8 +39,8 @@ SQL slow (SELECT Owner): 412 ms in database, 12 rows, OwnerService.kt:42
 	FROM owner o
 	INNER JOIN pet p ON p.owner_id = o.id
 	WHERE p.name = ?
-	shape 9b34305d1a7c4e02
-	advice DISTINCT removes the rows the join to Pet repeats, one per related row; semiJoin(Pet) filters by it without repeating rows, so the query needs no DISTINCT. See https://orm.st/docs/advice#distinct-over-join
+	shape: 9b34305d1a7c4e02
+	advice: DISTINCT removes the rows the join to Pet repeats, one per related row; semiJoin(Pet) filters by it without repeating rows, so the query needs no DISTINCT. See https://orm.st/docs/advice#distinct-over-join
 ```
 
 ### Design: known in advance, and shown by real use
@@ -138,8 +138,8 @@ Category: design. Logger: `st.orm.sql.advice.entity-budget`. Reported once per e
 
 ```
 SQL advice (design Visit)
-	graph Visit(Pet(Owner(City), PetType, Clinic(Address, Organization(Country))))  12 joins, 140 columns beyond its own
-	advice every read of Visit joins 12 tables and selects 140 columns beyond its own, past the design budget of 10 joins and 96 columns; a Ref for Clinic.organization removes 4 joins and 52 columns. See https://orm.st/docs/advice#entity-budget
+	graph: Visit(Pet(Owner(City), PetType, Clinic(Address, Organization(Country))))  12 joins, 140 columns beyond its own
+	advice: every read of Visit joins 12 tables and selects 140 columns beyond its own, past the design budget of 10 joins and 96 columns; a Ref for Clinic.organization removes 4 joins and 52 columns. See https://orm.st/docs/advice#entity-budget
 ```
 
 An entity component joins its table into every read and brings that table's whole select list, along with every entity it declares in turn. The [design budget](entity-design.md#the-budget) bounds what a read adds beyond the entity's own columns: 10 joins and 96 columns. It is calibrated so ordinary schemas never reach it; an entity past it has a graph that grew, usually through entities nobody was editing.

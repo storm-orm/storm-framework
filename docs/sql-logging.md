@@ -129,7 +129,7 @@ A summary closes with advice where the unit of work repeated what it could have 
 SQL (GET /owners): 31 statements, 24 fetches, 41 ms in database, 96 ms total
 	28 ms  24 rows  24x  City  fetch  SELECT c.id, c.name FROM city c WHERE c.id = ?
 	13 ms  70 rows   7x  Pet          SELECT p.id, p.name FROM pet p WHERE p.owner_id = ?
-	advice 24 statements each fetched one City; an inline foreign key joins it into every read of the rows, or a query that fetches the references, such as select().fetch(...), resolves them in the statement that reads them. See https://orm.st/docs/advice#repeated-fetch
+	advice: 24 statements each fetched one City; an inline foreign key joins it into every read of the rows, or a query that fetches the references, such as select().fetch(...), resolves them in the statement that reads them. See https://orm.st/docs/advice#repeated-fetch
 ```
 
 The advice is worked out from the summary when it is printed, so it costs nothing beyond the summary itself, and it links to its section of [Statement Advice](advice.md).
@@ -306,7 +306,7 @@ SQL slow (SELECT Pet): 1840 ms in database, 3 rows, PetService.kt:42
 	INNER JOIN owner o ON o.id = p.owner_id
 	INNER JOIN city c ON c.id = o.city_id
 	WHERE o.city_id IN (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-	shape 9b34305d1a7c4e02 (typically 6.0 ms, 306x)  parameters 32 (typically 3)  comment traceparent='00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01'
+	shape: 9b34305d1a7c4e02 (typically 6.0 ms, 306x)  parameters: 32 (typically 3)  comment: traceparent='00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01'
 ```
 
 The statement is printed as sent, in full; the example is abridged to fit the page.
@@ -318,10 +318,10 @@ Reading the line, headline first:
 - **`1840 ms in database`** is the database time, prepare to return. A read whose rows took a while to consume adds `12400 rows read over 3200 ms`, so a large stream is not mistaken for a slow query, and a slow query is not hidden inside a large stream.
 - **`3 rows`** produced or affected, marked `*` when the count is a lower bound (a batch entry answered with `SUCCESS_NO_INFO`, a stream closed before its end). A batch reads `(INSERT Visit, batch)` and its rows are the rows the batch affected. An execution that failed, a lock wait or a statement timeout that ran its course before the database gave up, reads `failed (SQLTimeoutException)` instead: its time was spent all the same, and the line carries what the caller's exception does not, the call site and the baseline. The failure is named by class alone, since a driver's message may quote values.
 - **`PetService.kt:42`** is the application frame that caused the execution, subject to the same `call-site-skip` setting the performance log uses.
-- **`shape 9b34305d1a7c4e02 (typically 6.0 ms, 306x)`** is the answer to the question a slow statement raises first: is this statement always this slow, or was it these parameters? The shape is the statement's template identity, the same `storm.shape` the metrics are tagged with, and stable across parameter expansion, so an `IN` list of 3 and one of 32 are one shape. While the slow log is on, each shape keeps a baseline of what it typically costs over its recent minutes (a geometric mean, which an outlier barely moves; reported once eight other executions back it). `typically 6.0 ms, 306x` says the shape is normally fast and this execution was not: look at the values, or at a plan that changed. `typically 310 ms` with no multiplier says the statement is always this slow: look at the query, the graph its type declares (see [Entity Design](entity-design.md)) and its indexes.
-- **`parameters 32 (typically 3)`** is the parameter profile, safe to print in production: the count this execution bound against what the shape typically binds, shown when they differ by half or double. It names an oversized `IN` list, the commonest way a fast shape turns slow, without printing a value.
-- **`comment traceparent='…'`** is the SQL comment the statement carried, when a [`SqlCommenter`](spring-integration.md#observability) is configured. It is the key that joins this line to the database's own record of the same execution; see below.
-- **`advice …`** follows on a line of its own where the statement's own shape says why it reads more than it needs to: a search of short words alone, a `distinct` over a join that repeats rows, the count behind a page, or a deep offset. Each links to its section of [Statement Advice](advice.md), which says what the advice means and what to use instead.
+- **`shape: 9b34305d1a7c4e02 (typically 6.0 ms, 306x)`** is the answer to the question a slow statement raises first: is this statement always this slow, or was it these parameters? The shape is the statement's template identity, the same `storm.shape` the metrics are tagged with, and stable across parameter expansion, so an `IN` list of 3 and one of 32 are one shape. While the slow log is on, each shape keeps a baseline of what it typically costs over its recent minutes (a geometric mean, which an outlier barely moves; reported once eight other executions back it). `typically 6.0 ms, 306x` says the shape is normally fast and this execution was not: look at the values, or at a plan that changed. `typically 310 ms` with no multiplier says the statement is always this slow: look at the query, the graph its type declares (see [Entity Design](entity-design.md)) and its indexes.
+- **`parameters: 32 (typically 3)`** is the parameter profile, safe to print in production: the count this execution bound against what the shape typically binds, shown when they differ by half or double. It names an oversized `IN` list, the commonest way a fast shape turns slow, without printing a value.
+- **`comment: traceparent='…'`** is the SQL comment the statement carried, when a [`SqlCommenter`](spring-integration.md#observability) is configured. It is the key that joins this line to the database's own record of the same execution; see below.
+- **`advice: …`** follows on a line of its own where the statement's own shape says why it reads more than it needs to: a search of short words alone, a `distinct` over a join that repeats rows, the count behind a page, or a deep offset. Each links to its section of [Statement Advice](advice.md), which says what the advice means and what to use instead.
 
 The values themselves render while the logger is at `TRACE`, inlined into the statement so it can be pasted into a console, under the rule every Storm SQL logger follows; the line stays at `WARN`, since a slow execution is one whatever detail it is reported with. `st.orm.sql.slow` is a child of `st.orm.sql`, so raising that to `TRACE` for statement logging raises the slow log with it, and no other level shows a value.
 
@@ -382,8 +382,8 @@ SQL advice (SELECT Owner): OwnerController.kt:31
 	SELECT o.id, o.first_name, o.last_name, ...
 	FROM owner o
 	LIMIT 20
-	shape 4c1e07a9b2d35f18
-	advice the statement takes part of the result without an ORDER BY, so which rows it returns is up to the database and can change between executions, and consecutive pages can repeat or skip rows; order by a unique key, or by sort fields that end in one. See https://orm.st/docs/advice#unordered-limit
+	shape: 4c1e07a9b2d35f18
+	advice: the statement takes part of the result without an ORDER BY, so which rows it returns is up to the database and can change between executions, and consecutive pages can repeat or skip rows; order by a unique key, or by sort fields that end in one. See https://orm.st/docs/advice#unordered-limit
 ```
 
 Each piece of advice has a category, correctness, performance or design, and the log reports the categories the application asks for:

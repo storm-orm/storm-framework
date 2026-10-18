@@ -191,9 +191,9 @@ public final class AdviceLog {
             return;
         }
         LOGGERS[advice.ordinal()].info("{}", "SQL advice (design " + graph.type().getSimpleName() + ")"
-                + System.lineSeparator() + "\tgraph " + graph.graph() + "  " + graph.joins() + " joins, "
+                + System.lineSeparator() + "\tgraph: " + graph.graph() + "  " + graph.joins() + " joins, "
                 + graph.columns() + " columns beyond its own"
-                + System.lineSeparator() + "\tadvice " + advisory);
+                + System.lineSeparator() + "\tadvice: " + advisory);
     }
 
     /**
@@ -262,10 +262,10 @@ public final class AdviceLog {
             rendered.append(System.lineSeparator()).append(SlowStatementLog.indent(statement));
         }
         if (context.shapeId() != 0) {
-            rendered.append(System.lineSeparator()).append("\tshape ").append("%016x".formatted(context.shapeId()));
+            rendered.append(System.lineSeparator()).append("\tshape: ").append("%016x".formatted(context.shapeId()));
         }
         for (var advisory : advisories) {
-            rendered.append(System.lineSeparator()).append("\tadvice ").append(advisory);
+            rendered.append(System.lineSeparator()).append("\tadvice: ").append(advisory);
         }
         return rendered.toString();
     }

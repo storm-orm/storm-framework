@@ -128,8 +128,8 @@ public class AdviceLogIntegrationTest {
         assertEquals(LOGGER + ".unordered-limit", event.getLoggerName());
         var line = event.getFormattedMessage();
         assertTrue(line.startsWith("SQL advice (SELECT Owner)"), line);
-        assertTrue(line.contains("\tshape "), line);
-        assertTrue(line.contains("\tadvice the statement takes part of the result without an ORDER BY"), line);
+        assertTrue(line.contains("\tshape: "), line);
+        assertTrue(line.contains("\tadvice: the statement takes part of the result without an ORDER BY"), line);
         assertTrue(line.contains("See https://orm.st/docs/advice#unordered-limit"), line);
     }
 
@@ -244,7 +244,7 @@ public class AdviceLogIntegrationTest {
         assertEquals(LOGGER + ".entity-budget", event.getLoggerName());
         var line = event.getFormattedMessage();
         assertTrue(line.startsWith("SQL advice (design Chain0)"), line);
-        assertTrue(line.contains("\tgraph Chain0(Chain1(Chain2("), line);
+        assertTrue(line.contains("\tgraph: Chain0(Chain1(Chain2("), line);
         assertTrue(line.contains("11 joins, 22 columns beyond its own"), line);
         assertTrue(line.contains("a Ref for Chain9.next removes 2 joins and 3 columns"), line);
         assertTrue(line.endsWith("See https://orm.st/docs/advice#entity-budget"), line);

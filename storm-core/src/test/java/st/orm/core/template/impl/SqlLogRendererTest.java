@@ -209,7 +209,7 @@ public class SqlLogRendererTest {
         var summary = repeated(SqlOperation.SELECT, City.class, StatementOrigin.FETCH, 10, 1, true);
         assertEquals(1, SqlLogRenderer.advisories(summary).size());
         String rendered = SqlLogRenderer.render(summary);
-        assertTrue(rendered.contains(NL + "\tadvice 10 statements each fetched one City; an inline foreign key joins it"), rendered);
+        assertTrue(rendered.contains(NL + "\tadvice: 10 statements each fetched one City; an inline foreign key joins it"), rendered);
         assertTrue(rendered.endsWith("See https://orm.st/docs/advice#repeated-fetch"), rendered);
     }
 
