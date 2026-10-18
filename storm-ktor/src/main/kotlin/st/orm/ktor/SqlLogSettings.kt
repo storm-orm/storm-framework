@@ -27,7 +27,7 @@ import kotlin.time.Duration
  * log switchable through `application.conf` without a code change, mirroring the Spring starter's
  * `storm.sql-log.*` properties.
  *
- * [lineWidth], [slowThreshold] and [slowLimit] are `null` when neither the DSL nor the configuration sets them,
+ * [lineWidth], [slowThreshold], [slowLimit] and [adviceCategories] are `null` when neither the DSL nor the configuration sets them,
  * so installation leaves the JVM-wide settings (the `storm.sql_log.*` system properties, or another
  * application's configuration in the same JVM) untouched.
  */
@@ -38,6 +38,7 @@ internal class SqlLogSettings(
     val durationThreshold: Duration?,
     val slowThreshold: Duration?,
     val slowLimit: Int?,
+    val adviceCategories: List<String>?,
     val callSites: Boolean,
     val callSiteSkip: List<String>,
     val lineWidth: Int?,
@@ -57,6 +58,7 @@ internal fun resolveSqlLogSettings(application: Application, pluginConfig: Storm
         ?: durationProperty(application, "performance.threshold.duration"),
     slowThreshold = pluginConfig.sqlLogSlowThreshold ?: durationProperty(application, "slow.threshold"),
     slowLimit = pluginConfig.sqlLogSlowLimit ?: intProperty(application, "slow.limit"),
+    adviceCategories = pluginConfig.sqlLogAdviceCategories ?: listProperty(application, "advice.categories"),
     callSites = pluginConfig.sqlLogPerformanceCallSites
         ?: booleanProperty(application, "performance.callSites") ?: false,
     // Shared: both logs attribute a frame the same way, so the skip list sits above the two sections.

@@ -3,24 +3,31 @@ import TabItem from '@theme/TabItem';
 
 # Statement Advice
 
-Storm attaches advice to a statement where the statement's own shape says it reads more than it needs to, or returns rows in no stated order. Advice comes in two kinds:
+Storm attaches advice to a statement where the statement's own shape says it reads more than it needs to, or returns rows in no stated order. Each piece of advice has a category:
 
-- **Advice that holds at any speed.** A [limit or offset without an order](#unordered-limit) returns an arbitrary part of the result however fast it runs.
-- **Advice about cost.** A count behind a page, a deep offset, a `distinct` over a join that repeats rows, or a search of short words alone costs more as the data grows, and on a small table costs nothing worth changing. It matters once the statement is slow.
+- **Correctness.** A [limit or offset without an order](#unordered-limit) returns an arbitrary part of the result, however fast it runs.
+- **Performance.** A deep offset, a `distinct` over a join that repeats rows, or a search of short words alone costs more as the data grows, and on a small table costs nothing worth changing.
 
 The advice reaches you two ways.
 
-**The slow statement log.** A line in the [slow statement log](sql-logging.md#the-slow-statement-log) ends with every piece of advice its statement carries, of either kind, every time it is slow.
+**The slow statement log.** A line in the [slow statement log](sql-logging.md#the-slow-statement-log) ends with every piece of advice its statement carries, every time it is slow.
 
-**The advice log.** The `st.orm.sql.advice` logger reports advice whether the statement is fast or slow, with the statement, its call site and its shape. Each level reports more than the one above it:
+**The advice log.** The `st.orm.sql.advice` logger reports advice whether the statement is fast or slow, with the statement, its call site and its shape:
 
-| Level | Reports | How often |
-|-------|---------|-----------|
-| `INFO` | advice that holds at any speed | once per kind of advice |
-| `DEBUG` | advice about cost as well | once per statement shape |
-| `TRACE` | all advice | at every execution |
+- **Correctness is on by default.** An application that logs at `INFO` sees advice on correctness without asking for it.
+- **Performance is on request.** Name it in the categories the log reports: `storm.sql-log.advice.categories: correctness, performance` in Spring Boot, `storm.sqlLog.advice.categories` in Ktor, or the `storm.sql_log.advice.categories` system property.
+- **Accepted advice is turned off.** Each piece of advice has a logger of its own, named after its section on this page. Set it to `OFF` when the statement is as intended, such as `st.orm.sql.advice.deep-offset: OFF`.
+- **A deliberate choice is advised only when slow.** A page that reports its total is a choice of `page` over `slice`, so its [count](#page-count) is advised in the slow statement log alone.
 
-At `INFO` the log stays quiet: an application sees at most one line for each kind of advice, showing the first statement that drew it. At `DEBUG` it lists every statement shape to change, a list to work through while developing or in a test environment. The offset of a page is part of its statement, so each page of the same query is a shape of its own. `TRACE` shows each execution that carries advice. See [The Advice Log](sql-logging.md#the-advice-log).
+The level of `st.orm.sql.advice` decides how often a piece of advice is reported:
+
+| Level | How often |
+|-------|-----------|
+| `INFO` | once per piece of advice, at the first statement that drew it |
+| `DEBUG` | once per statement shape |
+| `TRACE` | at every execution |
+
+At `INFO` the log stays quiet. At `DEBUG` it lists every statement shape to change, a list to work through while developing or in a test environment. The offset of a page is part of its statement, so each page of the same query is a shape of its own. See [The Advice Log](sql-logging.md#the-advice-log).
 
 ```
 SQL slow (SELECT Owner): 412 ms in database, 12 rows, OwnerService.kt:42
@@ -40,6 +47,8 @@ Storm does not know which indexes the database has. It advises only on what the 
 
 > every search term is shorter than the 3 characters a substring index serves, so the search reads every row
 
+Category: performance. Logger: `st.orm.sql.advice.unindexed-search`.
+
 A substring index, such as PostgreSQL's trigram index, serves words of a minimum length, three characters for a trigram. `search` tests a shorter word only on the rows its longer words found, but an input of short words alone, such as `de`, leaves it nothing to start from, so the database reads every row of each searched table.
 
 A search box that queries as the user types meets such input on almost every keystroke. Use `suggest` there: it ignores the words the index cannot serve and matches no rows for an input without a longer one, so every statement it renders is served by the index. The search page the box leads to keeps `search`. See [Suggestions as the User Types](search.md#suggestions-as-the-user-types) and [Indexing a Search](search.md#indexing-a-search).
@@ -47,6 +56,8 @@ A search box that queries as the user types meets such input on almost every key
 ## DISTINCT over a join that repeats rows {#distinct-over-join}
 
 > DISTINCT removes the rows the join to Pet repeats, one per related row; semiJoin(Pet) filters by it without repeating rows
+
+Category: performance. Logger: `st.orm.sql.advice.distinct-over-join`.
 
 An inner join to the many side of a relation returns a row per related row: an owner with three pets that match comes back three times, and `distinct` removes the copies again. The database builds every copy first, then sorts or hashes the whole result to find them.
 
@@ -83,6 +94,8 @@ The advice is given for a `distinct` select of the query's own table over an inn
 
 > page counts every matching row to report the total; slice reads the same page without the count
 
+Category: performance, reported by the slow statement log only: choosing `page` over `slice` is a decision about the screen, not a mistake in the statement, so the count is advised once it is slow.
+
 `page` reports the total number of matching rows, and finding it takes a count query that visits every one of them, however small the page. On a large or expensive result the count costs more than the page itself.
 
 A list that shows "next" rather than "page 3 of 120" needs no total. `slice` reads the same page with one row beyond it, which says whether a next page exists, and runs no count. Where the total is needed but changes slowly, `page(pageable, totalCount)` takes a total counted once and kept. A page that is not full already knows its total, so its count never runs. See [Slices](pagination-and-scrolling.md#slices).
@@ -91,6 +104,8 @@ A list that shows "next" rather than "page 3 of 120" needs no total. `slice` rea
 
 > the statement takes part of the result without an ORDER BY, so which rows it returns is up to the database
 
+Category: correctness. Logger: `st.orm.sql.advice.unordered-limit`.
+
 Without an ORDER BY, a database returns rows in whatever order is cheapest for it at that moment, and the order can change with the plan, with concurrent writes, or from one execution to the next. A `limit` or `offset` then takes an arbitrary part of the result: the first page and the second can overlap or miss rows between them, which no test on a small, quiet table shows. Because it holds however fast the statement runs, the advice log reports this advice too.
 
 Order by a unique key, or by sort fields that end in one, so every row has one place in the order: `orderBy(Owner_.id)`, or `Pageable.ofSize(20).sortBy(Owner_.lastName).sortBy(Owner_.id)`. `scroll` always orders by its key, so it never gets this advice, and neither does a `limit(1)`, which asks for any matching row.
@@ -98,6 +113,8 @@ Order by a unique key, or by sort fields that end in one, so every row has one p
 ## A deep offset {#deep-offset}
 
 > the database reads and discards the 1000 rows the offset skips before it returns the first
+
+Category: performance. Logger: `st.orm.sql.advice.deep-offset`.
 
 An offset tells the database to skip rows, and it skips them by reading them: page 100 of ten rows reads a thousand rows to return ten, and each page further reads ten more. Storm gives this advice from an offset of a thousand rows.
 

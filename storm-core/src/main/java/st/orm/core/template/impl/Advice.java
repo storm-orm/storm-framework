@@ -18,40 +18,41 @@ package st.orm.core.template.impl;
 import org.jspecify.annotations.Nullable;
 
 /**
- * The advice a statement can carry, each with the anchor of its section on the advice page. The slow statement log
- * prints every piece of advice a slow statement carries. The advice log reports the advice that holds at any speed, such
- * as rows returned in no stated order, from {@code INFO}; advice about cost, such as the count behind a page, matters
- * only once the statement is slow, so the advice log reports it only from {@code DEBUG}. The page keeps an anchor for as long as Storm emits
- * the advice, so the link in a log line outlives any change to the rest of the documentation.
+ * The advice a statement can carry, each with the anchor of its section on the advice page and its category. The slow
+ * statement log prints every piece of advice a slow statement carries. The advice log reports advice on correctness,
+ * such as rows returned in no stated order, by default, and advice on performance once the application asks for its
+ * category; advice on a deliberate choice, such as a page that reports its total, holds only once the statement
+ * is slow, so only the slow statement log reports it. The page keeps an anchor for as long as Storm emits the advice,
+ * so the link in a log line outlives any change to the rest of the documentation.
  *
  * @since 1.15
  */
 enum Advice {
 
     /** A search whose terms are all shorter than the substring index serves. */
-    UNINDEXED_SEARCH("unindexed-search", false,
+    UNINDEXED_SEARCH("unindexed-search", Category.PERFORMANCE, false,
             "every search term is shorter than the %d characters a substring index serves, so the search reads every "
                     + "row; a search box that queries as the user types wants suggest, which matches no rows for such "
                     + "input."),
 
     /** A distinct select over a join that repeats its rows. */
-    DISTINCT_OVER_JOIN("distinct-over-join", false,
+    DISTINCT_OVER_JOIN("distinct-over-join", Category.PERFORMANCE, false,
             "DISTINCT removes the rows the join to %1$s repeats, one per related row; semiJoin(%1$s) filters by it "
                     + "without repeating rows, so the query needs no DISTINCT."),
 
-    /** The count query behind a page. */
-    PAGE_COUNT("page-count", false,
+    /** The count query behind a page, a deliberate choice of page over slice, so advised only when slow. */
+    PAGE_COUNT("page-count", Category.PERFORMANCE, true,
             "page counts every matching row to report the total; slice reads the same page without the count, and "
                     + "says whether a next page exists."),
 
     /** A limit or offset without an ORDER BY. */
-    UNORDERED_LIMIT("unordered-limit", true,
+    UNORDERED_LIMIT("unordered-limit", Category.CORRECTNESS, false,
             "the statement takes part of the result without an ORDER BY, so which rows it returns is up to the "
                     + "database and can change between executions, and consecutive pages can repeat or skip rows; "
                     + "order by a unique key, or by sort fields that end in one."),
 
     /** An offset of at least {@link #DEEP_OFFSET_ROWS} rows. */
-    DEEP_OFFSET("deep-offset", false,
+    DEEP_OFFSET("deep-offset", Category.PERFORMANCE, false,
             "the database reads and discards the %d rows the offset skips before it returns the first; scroll "
                     + "continues from the last row read, at the same cost for every window.");
 
@@ -61,27 +62,47 @@ enum Advice {
     /** The page that documents every piece of advice, one section per anchor. */
     static final String PAGE = "https://orm.st/docs/advice";
 
+    /** What a piece of advice is about. */
+    enum Category {
+
+        /** The statement can return other rows than intended, however fast it runs. */
+        CORRECTNESS,
+
+        /** The statement costs more than it needs to as the data grows. */
+        PERFORMANCE
+    }
+
     private final String anchor;
-    private final boolean anySpeed;
+    private final Category category;
+    private final boolean slowOnly;
     private final String text;
     private final String link;
 
-    Advice(String anchor, boolean anySpeed, String text) {
+    Advice(String anchor, Category category, boolean slowOnly, String text) {
         this.anchor = anchor;
-        this.anySpeed = anySpeed;
+        this.category = category;
+        this.slowOnly = slowOnly;
         this.text = text;
         this.link = " See " + PAGE + "#" + anchor;
     }
 
     /**
-     * Returns whether the advice holds however fast the statement runs, so the advice log reports it at {@code INFO}.
-     * Advice about cost holds only once the statement is slow, so the slow statement log reports it, and the advice log
-     * from {@code DEBUG}.
+     * Returns what the advice is about.
      *
-     * @return {@code true} for advice that holds at any speed.
+     * @return the category.
      */
-    boolean anySpeed() {
-        return anySpeed;
+    Category category() {
+        return category;
+    }
+
+    /**
+     * Returns whether the advice holds only once the statement is slow, as for a deliberate choice of API, so only the
+     * slow statement log reports it.
+     *
+     * @return {@code true} for advice the advice log never reports.
+     */
+    boolean slowOnly() {
+        return slowOnly;
     }
 
     /**

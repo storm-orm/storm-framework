@@ -61,4 +61,11 @@ public class AdvicePageTest {
             assertEquals(advice, Advice.of(advice.format(3, "Owner")), advice.name());
         }
     }
+
+    @Test
+    public void eachPieceOfAdviceHasALoggerNamedAfterItsAnchor() {
+        for (var advice : Advice.values()) {
+            assertEquals("st.orm.sql.advice." + advice.anchor(), AdviceLog.logger(advice), advice.name());
+        }
+    }
 }

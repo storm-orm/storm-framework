@@ -35,6 +35,7 @@ import org.springframework.boot.convert.ApplicationConversionService;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.core.env.Environment;
+import st.orm.core.template.impl.AdviceLog;
 import st.orm.core.template.impl.CallSiteCapture;
 import st.orm.core.template.impl.SlowStatementLog;
 import st.orm.core.template.impl.SqlLogRenderer;
@@ -78,7 +79,7 @@ public class StormSqlLogAutoConfiguration {
     }
 
     /**
-     * Applies the slow statement threshold. Statements execute while the application starts, migrations and
+     * Applies the slow statement threshold and the categories of advice the advice log reports. Statements execute while the application starts, migrations and
      * schema validation among them, so the threshold is applied when this bean is defined, which a bean factory
      * post-processor is before any singleton exists; the processor itself has nothing left to do.
      *
@@ -95,6 +96,10 @@ public class StormSqlLogAutoConfiguration {
         var limit = sqlLog.getSlow().getLimit();
         if (limit != null) {
             SlowStatementLog.limit(limit);
+        }
+        var categories = sqlLog.getAdvice().getCategories();
+        if (categories != null) {
+            AdviceLog.categories(categories);
         }
         return beanFactory -> {
         };

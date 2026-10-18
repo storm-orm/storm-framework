@@ -186,6 +186,16 @@ public class StormPluginConfig {
     public var sqlLogSlowLimit: Int? = null
 
     /**
+     * Categories of advice the advice log (`st.orm.sql.advice`) reports: `correctness`, `performance`, or both.
+     * Configuration key `storm.sqlLog.advice.categories`, a list or comma-separated string. Applied JVM-wide at
+     * installation; when unset, the `storm.sql_log.advice.categories` system property's setting, or its default of
+     * `correctness`, stays in effect.
+     *
+     * @since 1.15
+     */
+    public var sqlLogAdviceCategories: List<String>? = null
+
+    /**
      * Whether each execution is attributed to the application frame that caused it, shown per row as
      * `@ File.ext:line`. Costs a stack walk per execution while a scope records; suited to development.
      * Configuration key `storm.sqlLog.performance.callSites`; defaults to false.

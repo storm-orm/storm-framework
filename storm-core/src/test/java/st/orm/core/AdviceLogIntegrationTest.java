@@ -16,6 +16,7 @@
 package st.orm.core;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import ch.qos.logback.classic.Level;
@@ -23,6 +24,7 @@ import ch.qos.logback.classic.LoggerContext;
 import ch.qos.logback.classic.spi.ILoggingEvent;
 import ch.qos.logback.core.read.ListAppender;
 import java.util.List;
+import java.util.Map;
 import javax.sql.DataSource;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -37,11 +39,13 @@ import st.orm.core.model.Owner;
 import st.orm.core.model.Owner_;
 import st.orm.core.model.Pet;
 import st.orm.core.template.ORMTemplate;
+import st.orm.core.template.impl.AdviceLog;
 import st.orm.core.template.impl.AdviceLogTestSupport;
 
 /**
- * The advice log reports more at each level: at {@code INFO} the advice that holds at any speed, once per kind; at
- * {@code DEBUG} all advice, once per shape; at {@code TRACE} all advice, every time.
+ * The advice log reports the categories of advice the application asks for, correctness by default, each piece of
+ * advice under its own logger. The level of {@code st.orm.sql.advice} decides how often: once per piece of advice at
+ * {@code INFO}, once per shape at {@code DEBUG}, every time at {@code TRACE}.
  */
 @ExtendWith(SpringExtension.class)
 @ContextConfiguration(classes = IntegrationConfig.class)
@@ -58,8 +62,12 @@ public class AdviceLogIntegrationTest {
         AdviceLogTestSupport.reset();
     }
 
-    /** Collects the events the advice logger emits at the given level while the action runs. */
     private static List<ILoggingEvent> capture(Level level, Runnable action) {
+        return capture(level, Map.of(), action);
+    }
+
+    /** Collects the events the advice loggers emit, with the given levels set, while the action runs. */
+    private static List<ILoggingEvent> capture(Level level, Map<String, Level> levels, Runnable action) {
         var context = (LoggerContext) LoggerFactory.getILoggerFactory();
         var logger = context.getLogger(LOGGER);
         var appender = new ListAppender<ILoggingEvent>();
@@ -67,6 +75,7 @@ public class AdviceLogIntegrationTest {
         appender.start();
         Level previous = logger.getLevel();
         logger.setLevel(level);
+        levels.forEach((name, value) -> context.getLogger(name).setLevel(value));
         logger.addAppender(appender);
         // Captured events stay out of the build log.
         logger.setAdditive(false);
@@ -76,9 +85,14 @@ public class AdviceLogIntegrationTest {
             logger.detachAppender(appender);
             logger.setAdditive(true);
             logger.setLevel(previous);
+            levels.keySet().forEach(name -> context.getLogger(name).setLevel(null));
             appender.stop();
         }
         return List.copyOf(appender.list);
+    }
+
+    private static List<String> lines(List<ILoggingEvent> events) {
+        return events.stream().map(ILoggingEvent::getFormattedMessage).toList();
     }
 
     private void unorderedPage() {
@@ -92,7 +106,7 @@ public class AdviceLogIntegrationTest {
         owners.select().offset(4).limit(2).getResultList();
     }
 
-    /** The count behind a page, a deep offset and a distinct over a repeating join: advice about cost. */
+    /** The count behind a page, a deep offset and a distinct over a repeating join. */
     private void costlyStatements() {
         var owners = ORMTemplate.of(dataSource).entity(Owner.class);
         owners.select().page(Pageable.ofSize(2).sortBy(Owner_.id));
@@ -101,7 +115,7 @@ public class AdviceLogIntegrationTest {
     }
 
     @Test
-    public void infoReportsEachKindOfAdviceOnce() {
+    public void correctnessIsReportedOnceAtInfo() {
         var events = capture(Level.INFO, () -> {
             unorderedPage();
             unorderedPages();
@@ -109,6 +123,7 @@ public class AdviceLogIntegrationTest {
         assertEquals(1, events.size(), events.toString());
         var event = events.getFirst();
         assertEquals(Level.INFO, event.getLevel());
+        assertEquals(LOGGER + ".unordered-limit", event.getLoggerName());
         var line = event.getFormattedMessage();
         assertTrue(line.startsWith("SQL advice (SELECT Owner)"), line);
         assertTrue(line.contains("\tshape "), line);
@@ -117,24 +132,63 @@ public class AdviceLogIntegrationTest {
     }
 
     @Test
-    public void infoLeavesAdviceAboutCostToTheSlowStatementLog() {
+    public void performanceIsLeftToTheSlowStatementLogByDefault() {
         assertEquals(List.of(), capture(Level.INFO, this::costlyStatements));
     }
 
     @Test
-    public void debugReportsAllAdviceOncePerShape() {
+    public void performanceIsReportedOnceAtInfoWhenAskedFor() {
+        AdviceLog.categories(List.of("correctness", "performance"));
+        var events = capture(Level.INFO, () -> {
+            costlyStatements();
+            costlyStatements();
+        });
+        // A page reporting its total is a choice, advised only when slow.
+        assertEquals(List.of(LOGGER + ".deep-offset", LOGGER + ".distinct-over-join"),
+                events.stream().map(ILoggingEvent::getLoggerName).toList());
+        assertTrue(events.stream().allMatch(event -> event.getLevel() == Level.INFO), events.toString());
+    }
+
+    @Test
+    public void anUnknownCategoryIsRefused() {
+        var e = assertThrows(IllegalArgumentException.class, () -> AdviceLog.categories(List.of("speed")));
+        assertTrue(e.getMessage().contains("[correctness, performance]"), e.getMessage());
+    }
+
+    @Test
+    public void debugReportsAdviceOncePerShape() {
+        AdviceLog.categories(List.of("correctness", "performance"));
         var events = capture(Level.DEBUG, () -> {
             unorderedPage();
             unorderedPage();
             unorderedPages();
             costlyStatements();
         });
-        var lines = events.stream().map(ILoggingEvent::getFormattedMessage).toList();
-        assertEquals(6, lines.size(), lines.toString());
+        var lines = lines(events);
+        // Three shapes without an order, a deep offset and a distinct; a page reporting its total is a choice.
+        assertEquals(5, lines.size(), lines.toString());
         assertTrue(events.stream().allMatch(event -> event.getLevel() == Level.DEBUG), lines.toString());
-        assertTrue(lines.get(3).contains("#page-count"), lines.get(3));
-        assertTrue(lines.get(4).contains("#deep-offset"), lines.get(4));
-        assertTrue(lines.get(5).contains("#distinct-over-join"), lines.get(5));
+        assertTrue(lines.stream().noneMatch(line -> line.contains("#page-count")), lines.toString());
+    }
+
+    @Test
+    public void performanceIsLeftOutAtEveryLevelUntilAskedFor() {
+        assertEquals(List.of(), capture(Level.TRACE, this::costlyStatements));
+    }
+
+    @Test
+    public void adviceTheApplicationAcceptsIsTurnedOff() {
+        assertEquals(List.of(), capture(Level.DEBUG, Map.of(LOGGER + ".unordered-limit", Level.OFF),
+                this::unorderedPage));
+    }
+
+    @Test
+    public void adviceIsReportedWhileOnlyItsOwnLoggerIsOn() {
+        var events = capture(Level.OFF, Map.of(LOGGER + ".unordered-limit", Level.INFO), () -> {
+            unorderedPage();
+            unorderedPages();
+        });
+        assertEquals(1, events.size(), events.toString());
     }
 
     @Test

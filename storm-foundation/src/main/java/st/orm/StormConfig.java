@@ -103,6 +103,13 @@ public final class StormConfig {
      * limit. Defaults to 5.
      */
     public static final String SQL_LOG_SLOW_LIMIT = "storm.sql_log.slow.limit";
+    /**
+     * Comma-separated categories of advice the {@code st.orm.sql.advice} log reports: {@code correctness},
+     * {@code performance}, or both. Defaults to {@code correctness}.
+     *
+     * @since 1.15
+     */
+    public static final String SQL_LOG_ADVICE_CATEGORIES = "storm.sql_log.advice.categories";
 
     private static final Set<String> SQL_SHAPING_KEYS = sqlShapingKeysFromDeclarations();
 
