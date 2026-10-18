@@ -252,7 +252,7 @@ Storm checks the choice for you, in two ways that match what can be known when.
 - A slow read of an entity whose graph reaches half the budget says, in the slow statement log, what a `Ref` would save.
 - A `Ref` that a unit of work fetches again and again says, in the performance log summary, that it should be an inline entity, or resolved with `select().fetch(...)`.
 
-A wide graph that reads fast is never advised, and an entity within the budget is never advised in advance. Design advice is on in development, with Spring Boot DevTools on the classpath, Ktor in development mode, or under `@StormTest`, and stays out of production; see [Statement Advice](advice.md#design-known-in-advance-and-shown-by-real-use) for each piece of advice and how to turn one off.
+A wide graph that reads fast is never advised, and an entity within the budget is never advised in advance. Design advice is on in development, with Spring Boot DevTools on the classpath, Ktor in development mode, or under `@StormTest`, and stays out of production; see [Statement Advice](advice.md#design-known-in-advance-and-shown-by-real-use) for each piece of advice and how to accept one.
 
 ---
 

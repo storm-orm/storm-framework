@@ -20,7 +20,7 @@ The advice reaches you two ways.
 - **Correctness is on by default.** An application that logs at `INFO` sees it without asking, in production too: rows in no stated order are wrong wherever they run.
 - **Design and performance are on in development.** Spring Boot with DevTools on the classpath, Ktor in development mode, and every `@StormTest` report all three categories, so the developer and the agent see what to change while writing the code, and a production deployment never runs the design check. Design advice on an entity is reported once per entity, at startup or when the entity is first used.
 - **Named categories win.** `storm.sql-log.advice.categories: correctness, design, performance` in Spring Boot, `storm.sqlLog.advice.categories` in Ktor, or the `storm.sql_log.advice.categories` system property sets them in any environment, development included.
-- **Accepted advice is turned off.** Each piece of advice has a logger of its own, named after its section on this page. Set it to `OFF` when the statement is as intended, such as `st.orm.sql.advice.deep-offset: OFF`.
+- **Accepted advice stays quiet.** Where an entity or a query is as intended, [accept the advice](#accepting-advice) there with `@AcceptAdvice`, and the advice log stops reporting it there.
 - **A deliberate choice is advised only when slow.** A page that reports its total is a choice of `page` over `slice`, so its [count](#page-count) is advised in the slow statement log alone.
 
 The level of `st.orm.sql.advice` decides how often a piece of advice is reported:
@@ -42,6 +42,55 @@ SQL slow (SELECT Owner): 412 ms in database, 12 rows, OwnerService.kt:42
 	shape: 9b34305d1a7c4e02
 	advice: DISTINCT removes the rows the join to Pet repeats, one per related row; semiJoin(Pet) filters by it without repeating rows, so the query needs no DISTINCT. See https://orm.st/docs/advice#distinct-over-join
 ```
+
+### Accepting advice
+
+Advice is a suggestion. Where the code is as intended, accept the advice with `@AcceptAdvice`, and the advice log no longer reports it there, across restarts too:
+
+<Tabs groupId="language">
+<TabItem value="kotlin" label="Kotlin" default>
+
+```kotlin
+// The admin export reads every order with its full graph.
+@AcceptAdvice("entity-budget")
+data class Order(@PK val id: Int = 0, ...) : Entity<Int>
+
+interface OrderRepository : EntityRepository<Order, Int> {
+
+    // The admin screen shows the total.
+    @AcceptAdvice("page-count")
+    fun adminOrders(pageable: Pageable): Page<Order> = select().page(pageable)
+}
+```
+
+</TabItem>
+<TabItem value="java" label="Java">
+
+```java
+// The admin export reads every order with its full graph.
+@AcceptAdvice("entity-budget")
+record Order(@PK Integer id, ...) implements Entity<Integer> {}
+
+interface OrderRepository extends EntityRepository<Order, Integer> {
+
+    // The admin screen shows the total.
+    @AcceptAdvice("page-count")
+    default Page<Order> adminOrders(Pageable pageable) {
+        return select().page(pageable);
+    }
+}
+```
+
+</TabItem>
+</Tabs>
+
+- **Name the advice by its anchor**, the part of its link after `#`, such as `page-count`. Without a name, every piece of advice is accepted there. A name that matches no advice is ignored.
+- **On an entity**, it accepts advice on the statements that read or write the entity, and the entity's own design advice.
+- **On a method or class**, it accepts advice on the statements issued while the method runs: a service method, a repository's own method, or a repository interface, whose built-in methods such as `page(...)` count too. A lambda counts as part of the method that declares it, and so does the block of a `transaction { }`. A query a service builds from `select()` executes in the service, so accept its advice on the service method.
+- **Decided once per statement shape.** The first execution of a shape that carries the advice settles whether it is accepted, so accepting costs one look at the call stack per shape, and a statement without advice pays nothing.
+- **The slow statement log and the performance log show accepted advice still.** They show everything a statement carries; a slow statement is reason to look at the advice again.
+
+To accept a piece of advice everywhere, set its logger to `OFF`, such as `st.orm.sql.advice.deep-offset: OFF`.
 
 ### Design: known in advance, and shown by real use
 
@@ -146,7 +195,7 @@ An entity component joins its table into every read and brings that table's whol
 
 The advice names the fields a `Ref` would cut to bring the read back within the budget, by the rules of [Where to Draw the Line](entity-design.md#where-to-draw-the-line): the deepest field that is enough on its own, since a cut near the leaves narrows every entity above it at once, and otherwise the widest fields first. It never names an identifying foreign key, which is composition, nor an entity without foreign keys of its own, such as a lookup table, which can never grow. A `Ref` keeps the relationship: filter, join and fetch through it as before, and resolve it in the queries that need it with `select().fetch(...)`.
 
-Where you know the path is read constantly, an entity past the budget can stay as it is: set `st.orm.sql.advice.entity-budget` to `OFF`, or leave `design` out of the categories.
+Where you know the path is read constantly, an entity past the budget can stay as it is: put `@AcceptAdvice("entity-budget")` on it.
 
 ## A slow read of a wide entity {#wide-entity-read}
 

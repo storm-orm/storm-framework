@@ -37,8 +37,9 @@ import st.orm.spi.QueryContext;
  *
  * <p>The log reports the categories of advice the application asks for, in {@code storm.sql_log.advice.categories}:
  * correctness by default, and design and performance as well while developing, as {@link #development()} says. Design advice on an entity is reported
- * once per entity, when it is checked at startup or first used. A piece of advice the application accepts is turned off by
- * setting its logger to {@code OFF}. Advice that holds only once the statement is slow, such as the count behind a
+ * once per entity, when it is checked at startup or first used. Advice the application accepts for an entity, a
+ * repository or the code that issues a statement, with {@link st.orm.AcceptAdvice}, is not reported there; a piece of
+ * advice the application accepts everywhere is turned off by setting its logger to {@code OFF}. Advice that holds only once the statement is slow, such as the count behind a
  * page, is left to the slow statement log.</p>
  *
  * <p>How often a piece of advice is reported follows the level of {@code st.orm.sql.advice}: once per piece of advice
@@ -187,7 +188,8 @@ public final class AdviceLog {
      * @param advisory the advice as the line reports it.
      */
     static void onDesign(Advice advice, EntityGraph graph, String advisory) {
-        if (!reports(advice) || !REPORTED_DESIGN.add(graph.type().getName() + "#" + advice.anchor())) {
+        if (!reports(advice) || AdviceAcceptance.accepts(advice, graph.type())
+                || !REPORTED_DESIGN.add(graph.type().getName() + "#" + advice.anchor())) {
             return;
         }
         LOGGERS[advice.ordinal()].info("{}", "SQL advice (design " + graph.type().getSimpleName() + ")"
@@ -210,7 +212,10 @@ public final class AdviceLog {
         String callSite = null;
         for (var advisory : advisories) {
             var advice = Advice.of(advisory);
-            if (advice == null || !reports(advice) || !firstReport(context.shapeId(), advice, level)) {
+            // Whether the application accepts the advice is asked only of advice the log would report now.
+            if (advice == null || !reports(advice) || reported(context.shapeId(), advice, level)
+                    || AdviceAcceptance.accepts(advice, context.shapeId(), context.dataType().orElse(null))
+                    || !firstReport(context.shapeId(), advice, level)) {
                 continue;
             }
             if (callSite == null) {
@@ -227,6 +232,18 @@ public final class AdviceLog {
                 logger.info("{}", line);
             }
         }
+    }
+
+    /**
+     * Returns whether the advice was reported already at the frequency of the level: never at {@code TRACE}, for its
+     * shape at {@code DEBUG}, at all at {@code INFO}.
+     */
+    private static boolean reported(long shapeId, Advice advice, Level level) {
+        return switch (level) {
+            case TRACE -> false;
+            case DEBUG -> REPORTED.contains(new Reported(shapeId, advice));
+            default -> REPORTED_ONCE.contains(advice);
+        };
     }
 
     /**
@@ -280,5 +297,6 @@ public final class AdviceLog {
         REPORTED_DESIGN.clear();
         REPORTED_ONCE.clear();
         REPORTED.clear();
+        AdviceAcceptance.reset();
     }
 }
