@@ -859,6 +859,8 @@ Unlike Single-Table, DML operations for Joined Table entities are multi-statemen
 
 Note that SQL-level upsert operations (`INSERT ... ON CONFLICT`, `MERGE`, etc.) are not supported for Joined Table entities, because these SQL constructs are fundamentally single-table operations. Storm will throw a clear error if you attempt an upsert on a joined sealed entity. You can still use `insert()` and `update()` separately, which correctly handle the multi-table logic.
 
+The [`update()` and `delete()` query builders](queries.md#deleting-rows-by-condition) are refused for the sealed type and for each of its subtypes for the same reason: a single UPDATE or DELETE writes one table, and the rows of a Joined Table entity span the base table and an extension table. Remove the entities with `remove` or `removeById`, which delete from every table in order, and update them with `update(entity)`.
+
 ### Foreign Keys to Joined Table Entities
 
 Foreign keys reference the base table, just like Single-Table. From the referencing entity's perspective, there is no difference between pointing to a Single-Table or Joined Table entity. When Storm joins to a Joined Table entity (e.g., loading a `Visit` with its `Pet`), it automatically chains the extension table LEFT JOINs.

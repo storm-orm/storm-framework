@@ -167,13 +167,13 @@ visits.update()
     .executeUpdate();
 
 // a value computed from the row
-pets.update()
-    .set(Pet_.visitCount, RAW."\{Pet_.visitCount} + 1")
-    .where(Pet_.owner, owner)
+owners.update()
+    .set(Owner_.lastName, RAW."UPPER(\{Owner_.lastName})")
+    .where(Owner_.address.city, EQUALS, city)
     .executeUpdate();
 ```
 
-`set` takes a value typed by the field, the entity or a `Ref` for a foreign key, a record for an inline record (each of its columns), or a template computing one column; `setNull(field)` sets a nullable field to `NULL` (a bare `null` is ambiguous between the overloads). It refuses, naming the field: the primary key, `@Persist(updatable = false)` fields, the `@Version` field, a path into a related table (`Owner_.city.name`), and a field set twice. The builder requires a WHERE clause (or a semi-join/anti-join) unless `unsafe()` is called, increments the `@Version` column, fires **no** entity callbacks (there is no entity), and evicts the entities of its type from the transaction's entity cache. Conditions through a path, an explicit join, `semiJoin` or `antiJoin` work on every database.
+`set` takes a value typed by the field, the entity or a `Ref` for a foreign key, a record for an inline record (each of its columns), or a template computing one column; `setNull(field)` sets a nullable field to `NULL` (a bare `null` is ambiguous between the overloads). It refuses, naming the field: the primary key, `@Persist(updatable = false)` fields, the `@Version` field, a path into a related table (`Owner_.address.city.name`), and a field set twice. The builder requires a WHERE clause (or a semi-join/anti-join) unless `unsafe()` is called, increments the `@Version` column, fires **no** entity callbacks (there is no entity), and evicts the entities of its type from the transaction's entity cache. Conditions through a path, an explicit join, `semiJoin` or `antiJoin` work on every database. Both builders refuse a Joined Table entity (sealed type or subtype), whose rows span two tables.
 
 Never create a second, partial entity mapping a table that already has one in order to write a few of its columns: rows the transaction did not read take the `update()` builder, and an entity it did read takes `update(entity)`, with `@DynamicUpdate(FIELD)` on the entity (/storm-entity-java) to write only the changed columns.
 
@@ -362,10 +362,11 @@ is `@Version` (optimistic locking), unchanged by any of the above.
 Bulk mutations bypass dirty checking, and Storm invalidates observed state so later comparisons
 stay truthful: a mutation with a known entity type (`update()` and `delete()` builders, template
 mutations naming the type) clears the observed state of that type; a raw SQL mutation clears all
-observed state in the transaction. Updates after such a mutation fall back to full-row writes, so a
-column an `update()` builder changed is never taken for unchanged; an entity read before the builder
-ran is stale, and a versioned one fails its optimistic lock check, since the builder incremented the
-version. Re-read rows the builder touched before writing them as entities.
+observed state in the transaction. Updates after such a mutation fall back to full-row writes. An
+entity read before an `update()` builder ran still holds its old values, so its full-row write puts
+them back over the columns the builder set; a versioned one fails its optimistic lock check instead,
+since the builder incremented the version. Re-read the rows the builder touched before writing them
+as entities.
 
 ## Entity Lifecycle Callbacks
 

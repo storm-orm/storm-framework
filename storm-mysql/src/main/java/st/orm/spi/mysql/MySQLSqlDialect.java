@@ -45,28 +45,15 @@ public class MySQLSqlDialect extends DefaultSqlDialect {
     }
 
     /**
-     * Indicates whether the SQL dialect supports delete aliases.
+     * Joins the tables an UPDATE or DELETE reaches its rows through after the written table, in MySQL's multiple-table
+     * form, since MySQL refuses a subquery that reads the table being written.
      *
-     * <p>Delete aliases allow delete statements to use table aliases in joins,  making it easier to filter rows based
-     * on related data.</p>
-     *
-     * @return {@code true} if delete aliases are supported, {@code false} otherwise.
-     */
-    @Override
-    public boolean supportsDeleteAlias() {
-        return true;
-    }
-
-    /**
-     * Joins the tables an UPDATE reaches its rows through after the updated table, before the SET clause, since
-     * MySQL refuses a subquery that reads the table being updated.
-     *
-     * @return {@link UpdateJoinSyntax#JOIN_BEFORE_SET}.
+     * @return {@link WriteJoinSyntax#MULTI_TABLE}.
      * @since 1.15
      */
     @Override
-    public UpdateJoinSyntax updateJoinSyntax() {
-        return UpdateJoinSyntax.JOIN_BEFORE_SET;
+    public WriteJoinSyntax writeJoinSyntax() {
+        return WriteJoinSyntax.MULTI_TABLE;
     }
 
     /**

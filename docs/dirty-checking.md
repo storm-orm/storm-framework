@@ -587,7 +587,7 @@ orm update city.copy(name = "New City")          // Also falls back to full-row 
 
 This ensures correctness at the cost of losing dirty checking optimization for the remainder of the transaction.
 
-The [`update()` and `delete()` query builders](queries.md#updating-rows-by-condition) name the table they write, so they clear the observed state of that type only. After an `update()` builder sets columns on rows the transaction read, an `update(entity)` of one of those entities writes its full row instead of comparing against values the statement changed, and a versioned entity fails its optimistic lock check, since the statement incremented the version.
+The [`update()`](queries.md#updating-rows-by-condition) and [`delete()`](queries.md#deleting-rows-by-condition) query builders name the table they write, so they clear the observed state of that type only. After an `update()` builder sets columns on rows the transaction read, the entities read before it still hold their old values: re-read the entities the statement touched before writing them back. An `update(entity)` of a copy read before the statement writes its full row, putting its stale values back over the columns the statement set; a versioned entity fails its optimistic lock check instead, since the statement incremented the version.
 
 ### 3. Nested Records Are Inspected
 

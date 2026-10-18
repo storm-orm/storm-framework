@@ -16,6 +16,7 @@
 package st.orm.tck;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -27,6 +28,8 @@ import static st.orm.core.template.SqlInterceptor.observe;
 import java.sql.Connection;
 import java.sql.SQLException;
 import java.sql.Statement;
+import java.sql.Timestamp;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -54,11 +57,12 @@ import st.orm.core.template.TemplateString;
  * conditions select, on every database, whether the conditions name the updated table alone or reach other tables
  * through a path, an explicit join, a semi-join or an anti-join.
  *
- * <p>The dialect decides how the statement reaches other tables: joined into the UPDATE before the SET clause on MySQL
- * and MariaDB, which refuse a subquery that reads the table being updated, in a FROM clause after it on SQL Server,
- * and through a subquery matching the primary key elsewhere. The suite covers a value, a value computed from the row,
- * a foreign key set to a ref and to null, the version increment, and the refusal of an UPDATE without a
- * condition.</p>
+ * <p>The dialect decides how the statement reaches other tables: joined into the UPDATE before the SET clause on MySQL,
+ * which refuses a subquery that reads the table being updated, and on MariaDB, in a FROM clause after it on SQL
+ * Server, and through a subquery matching the primary key elsewhere. The suite covers a value, several values in one
+ * statement, a value computed from the row, a foreign key set to a ref and to null, the counter and timestamp version,
+ * the row count of rows that keep their value, and the refusal of an UPDATE without a condition, by the builder, its
+ * plan and the query alike.</p>
  *
  * <p>The suite creates and drops its own tables, so a dialect module runs it with {@code rollback = false}.</p>
  */
@@ -80,18 +84,45 @@ public abstract class AbstractUpdateBuilderConformanceTest {
                       @Nullable @FK Owner owner,
                       int visitCount) implements Entity<Integer> {}
 
+    @DbTable("update_visit")
+    public record Visit(@PK(generation = NONE) Integer id,
+                        @Nullable String description,
+                        @FK Pet pet,
+                        @Nullable @Version Instant updatedAt) implements Entity<Integer> {}
+
     private static final Metamodel<Owner, String> OWNER_LAST_NAME = Metamodel.of(Owner.class, "lastName");
     private static final Metamodel<Owner, String> OWNER_TELEPHONE = Metamodel.of(Owner.class, "telephone");
     private static final Metamodel<Owner, String> OWNER_CITY_NAME = Metamodel.of(Owner.class, "city.name");
     private static final Metamodel<Pet, Integer> PET_ID = Metamodel.of(Pet.class, "id");
+    private static final Metamodel<Pet, String> PET_NAME = Metamodel.of(Pet.class, "name");
     private static final Metamodel<Pet, Integer> PET_VISIT_COUNT = Metamodel.of(Pet.class, "visitCount");
     private static final Metamodel<Pet, Owner> PET_OWNER = Metamodel.of(Pet.class, "owner");
     private static final Metamodel<Pet, String> PET_CITY_NAME = Metamodel.of(Pet.class, "owner.city.name");
+    private static final Metamodel<Visit, String> VISIT_DESCRIPTION = Metamodel.of(Visit.class, "description");
+    private static final Metamodel<Visit, String> VISIT_CITY_NAME = Metamodel.of(Visit.class, "pet.owner.city.name");
 
-    private static final List<String> TABLES = List.of("update_pet", "update_owner", "update_city");
+    /** The version every visit starts with, well before the statements of the suite run. */
+    private static final Instant INITIAL_VERSION = Instant.parse("2000-01-01T00:00:00Z");
+
+    private static final List<String> TABLES = List.of("update_visit", "update_pet", "update_owner", "update_city");
 
     private DataSource dataSource;
     private ORMTemplate orm;
+
+    /**
+     * The column type of a timestamp. SQL Server reads {@code TIMESTAMP} as a row version, so its module declares
+     * {@code DATETIME2}.
+     */
+    protected String timestampType() {
+        return "TIMESTAMP";
+    }
+
+    /**
+     * Whether the database refuses a subquery that reads the table an UPDATE updates, as MySQL does.
+     */
+    protected boolean refusesSubqueryOfUpdatedTable() {
+        return false;
+    }
 
     /**
      * {@code @StormTest} resolves the data source as a parameter, so it is bound here rather than injected into the
@@ -106,6 +137,7 @@ public abstract class AbstractUpdateBuilderConformanceTest {
             statement.execute("CREATE TABLE update_city (id INT PRIMARY KEY, name VARCHAR(100) NOT NULL)");
             statement.execute("CREATE TABLE update_owner (id INT PRIMARY KEY, last_name VARCHAR(100) NOT NULL, city_id INT, telephone VARCHAR(100), version INT NOT NULL)");
             statement.execute("CREATE TABLE update_pet (id INT PRIMARY KEY, name VARCHAR(100) NOT NULL, owner_id INT, visit_count INT NOT NULL)");
+            statement.execute("CREATE TABLE update_visit (id INT PRIMARY KEY, description VARCHAR(100), pet_id INT NOT NULL, updated_at " + timestampType() + " NULL)");
         }
         orm = PreparedStatementTemplate.ORM(dataSource);
         var madison = new City(1, "Madison");
@@ -121,6 +153,19 @@ public abstract class AbstractUpdateBuilderConformanceTest {
                 new Pet(3, "Rosy", franklin, 9),
                 new Pet(4, "Jewel", franklin, 2),
                 new Pet(5, "Stray", null, 1)));
+        // An insert stamps a timestamp version with the current time; the visits start with an earlier one, so the
+        // version an UPDATE sets differs from it on a database that keeps whole seconds.
+        try (Connection connection = dataSource.getConnection();
+             var statement = connection.prepareStatement("INSERT INTO update_visit (id, description, pet_id, updated_at) VALUES (?, ?, ?, ?)")) {
+            int[][] visits = {{1, 1}, {2, 3}, {3, 4}};
+            for (int[] visit : visits) {
+                statement.setInt(1, visit[0]);
+                statement.setString(2, "checkup");
+                statement.setInt(3, visit[1]);
+                statement.setTimestamp(4, Timestamp.from(INITIAL_VERSION));
+                statement.executeUpdate();
+            }
+        }
     }
 
     @AfterEach
@@ -286,5 +331,96 @@ public abstract class AbstractUpdateBuilderConformanceTest {
                 .executeUpdate();
         assertEquals(1, updated);
         assertEquals("55126", orm.entity(Owner.class).getById(1).telephone());
+    }
+
+    @Test
+    public void setsSeveralColumnsInOneStatementThroughAPath() {
+        orm.entity(Pet.class).update()
+                .set(PET_NAME, "Moved")
+                .set(PET_OWNER, Ref.of(Owner.class, 3))
+                .set(PET_VISIT_COUNT, TemplateString.raw("\0 + 100", PET_VISIT_COUNT))
+                .where(PET_CITY_NAME, EQUALS, "Madison")
+                .executeUpdate();
+        var moved = orm.entity(Pet.class).select().getResultList().stream()
+                .filter(pet -> pet.name().equals("Moved"))
+                .toList();
+        assertEquals(2, moved.size());
+        assertTrue(moved.stream().allMatch(pet -> pet.owner() != null && pet.owner().id() == 3), moved.toString());
+        assertEquals(List.of(103, 112), moved.stream().map(Pet::visitCount).sorted().toList());
+    }
+
+    @Test
+    public void setsATimestampVersionToTheCurrentTime() {
+        orm.entity(Visit.class).update()
+                .set(VISIT_DESCRIPTION, "rescheduled")
+                .where(VISIT_CITY_NAME, EQUALS, "Madison")
+                .executeUpdate();
+        var versions = orm.entity(Visit.class).select().getResultList().stream()
+                .collect(Collectors.toMap(Visit::id, visit -> String.valueOf(visit.updatedAt())));
+        var visit = orm.entity(Visit.class).getById(1);
+        assertEquals("rescheduled", visit.description());
+        assertTrue(visit.updatedAt() != null && visit.updatedAt().isAfter(INITIAL_VERSION.plusSeconds(86_400)), versions.toString());
+        assertEquals(INITIAL_VERSION, orm.entity(Visit.class).getById(2).updatedAt(), versions.toString());
+        assertEquals(INITIAL_VERSION, orm.entity(Visit.class).getById(3).updatedAt(), versions.toString());
+    }
+
+    @Test
+    public void countsTheRowsTheConditionSelectsWhenTheyKeepTheirValue() {
+        // The pet table has no version, so the statement leaves the rows as they are; the count is the rows the
+        // condition selects on every database.
+        int updated = orm.entity(Pet.class).update()
+                .set(PET_NAME, "Leo")
+                .where(PET_NAME, EQUALS, "Leo")
+                .executeUpdate();
+        assertEquals(1, updated);
+    }
+
+    @Test
+    public void setsTheRowsASemiJoinWithAConditionSelects() {
+        int updated = orm.entity(Owner.class).update()
+                .set(OWNER_TELEPHONE, "55127")
+                .semiJoin(Pet.class).on(Owner.class)
+                .where(PET_NAME, EQUALS, "Rosy")
+                .executeUpdate();
+        assertEquals(1, updated);
+        assertEquals(Map.of("Davis", "null", "Franklin", "55127", "Black", "null"), telephonesByLastName());
+    }
+
+    @Test
+    public void readsTheUpdatedTableInASubqueryWhereTheDatabaseAllowsIt() {
+        var builder = orm.entity(Pet.class).update()
+                .set(PET_VISIT_COUNT, 0)
+                .whereExists(orm.subquery(Pet.class).where(PET_NAME, EQUALS, "Leo"));
+        if (refusesSubqueryOfUpdatedTable()) {
+            assertThrows(PersistenceException.class, builder::executeUpdate);
+            assertFalse(visitCountsByName().containsValue(0));
+        } else {
+            assertEquals(5, builder.executeUpdate());
+            assertTrue(visitCountsByName().values().stream().allMatch(count -> count == 0));
+        }
+    }
+
+    @Test
+    public void runsAnUpdateWithoutAConditionWhenTheQueryIsMarkedUnsafe() {
+        assertEquals(3, orm.entity(Owner.class).update()
+                .set(OWNER_TELEPHONE, "55128")
+                .build()
+                .unsafe()
+                .executeUpdate());
+    }
+
+    @Test
+    public void leavesTheConditionCheckOfAPlanToItsQueries() {
+        // A plan binds no fixed values, so it sets a value computed from the row.
+        var plan = orm.entity(Pet.class).update()
+                .set(PET_VISIT_COUNT, TemplateString.raw("\0 + 1", PET_VISIT_COUNT))
+                .plan();
+        var exception = assertThrows(PersistenceException.class, () -> plan.query().executeUpdate());
+        assertTrue(exception.getMessage().contains("WHERE"), exception.getMessage());
+        assertEquals(Map.of("Leo", 12, "Basil", 3, "Rosy", 9, "Jewel", 2,
+                "Stray", 1), visitCountsByName());
+        assertEquals(5, plan.query().unsafe().executeUpdate());
+        assertEquals(Map.of("Leo", 13, "Basil", 4, "Rosy", 10, "Jewel", 3,
+                "Stray", 2), visitCountsByName());
     }
 }

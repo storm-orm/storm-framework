@@ -29,6 +29,7 @@ import java.util.Optional;
 import java.util.SequencedMap;
 import java.util.function.Function;
 import java.util.stream.Stream;
+import org.jspecify.annotations.Nullable;
 import st.orm.Data;
 import st.orm.JoinType;
 import st.orm.Metamodel;
@@ -79,7 +80,7 @@ import st.orm.core.template.impl.Elements.ObjectExpression;
  *
  * <h2>Example: Update with WHERE clause</h2>
  * <pre>{@code
- * int updated = visitRepository
+ * int updated = visits
  *         .update()
  *         .set(Visit_.description, "Rescheduled")
  *         .where(Visit_.visitDate, EQUALS, closedDay)
@@ -203,18 +204,20 @@ public abstract class QueryBuilder<T extends Data, R, ID> {
      * sets each of its columns; a foreign key takes the referenced record and an inline record takes the record whose
      * values go into its columns. The primary key, a field declared with {@code @Persist(updatable = false)}, the
      * version field, which the statement increments itself, and a path reaching into a related table are refused, as
-     * is a field set twice. Use {@link #setNull(Metamodel)} to set a field to {@code NULL}.</p>
+     * is a field set twice. A {@code null} value sets the columns to {@code NULL}, which a non-nullable field
+     * refuses; {@link #setNull(Metamodel)} does the same where a {@code null} literal would match more than one
+     * overload.</p>
      *
-     * <p>Only a builder created by {@code update()} takes this call; any other refuses it.</p>
+     * <p>Only a builder created by {@code update()} takes this call; a select or delete builder refuses it.</p>
      *
      * @param field the field to set.
-     * @param value the value.
+     * @param value the value, or {@code null} to set the field's columns to {@code NULL}.
      * @return the query builder.
      * @param <V> the type of the field.
      * @throws PersistenceException if the builder is not an UPDATE builder, or the field cannot be set.
      * @since 1.15
      */
-    public abstract <V> QueryBuilder<T, R, ID> set(Metamodel<? extends T, V> field, V value);
+    public abstract <V> QueryBuilder<T, R, ID> set(Metamodel<? extends T, V> field, @Nullable V value);
 
     /**
      * Sets a foreign key of the rows an UPDATE query updates to the record the given ref refers to.
@@ -235,20 +238,20 @@ public abstract class QueryBuilder<T extends Data, R, ID> {
      * parameters. The field maps to exactly one column.
      *
      * <pre>{@code
-     * pets.update()
-     *     .set(Pet_.visitCount, RAW."\{Pet_.visitCount} + 1")
-     *     .where(Pet_.owner, owner)
+     * owners.update()
+     *     .set(Owner_.lastName, RAW."UPPER(\{Owner_.lastName})")
+     *     .where(Owner_.address.city, EQUALS, city)
      *     .executeUpdate();
      * }</pre>
      *
      * @param field the field to set.
-     * @param expression the SQL expression computing the value.
+     * @param template the SQL expression computing the value.
      * @return the query builder.
      * @throws PersistenceException if the builder is not an UPDATE builder, or the field cannot be set.
      * @see #set(Metamodel, Object)
      * @since 1.15
      */
-    public abstract QueryBuilder<T, R, ID> set(Metamodel<? extends T, ?> field, StringTemplate expression);
+    public abstract QueryBuilder<T, R, ID> set(Metamodel<? extends T, ?> field, StringTemplate template);
 
     /**
      * Sets the columns of a field of the rows an UPDATE query updates to {@code NULL}. A field that is not nullable

@@ -32,4 +32,9 @@ public class MySQLUpdateBuilderConformanceTest extends AbstractUpdateBuilderConf
         }
         return ContainerDataSource.of(container.getJdbcUrl(), container.getUsername(), container.getPassword());
     }
+
+    @Override
+    protected boolean refusesSubqueryOfUpdatedTable() {
+        return true;
+    }
 }

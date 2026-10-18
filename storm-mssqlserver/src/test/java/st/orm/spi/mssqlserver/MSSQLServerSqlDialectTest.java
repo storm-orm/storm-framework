@@ -231,13 +231,8 @@ class MSSQLServerSqlDialectTest {
     }
 
     @Test
-    void supportsDeleteAliasShouldReturnTrue() {
-        assertTrue(dialect.supportsDeleteAlias());
-    }
-
-    @Test
-    void updateJoinSyntaxShouldBeFromAfterSet() {
-        assertEquals(SqlDialect.UpdateJoinSyntax.FROM_AFTER_SET, dialect.updateJoinSyntax());
+    void writeJoinSyntaxShouldBeFromClause() {
+        assertEquals(SqlDialect.WriteJoinSyntax.FROM_CLAUSE, dialect.writeJoinSyntax());
     }
 
     @Test
@@ -309,7 +304,7 @@ class MSSQLServerSqlDialectTest {
         var sqlDialect = provider.getSqlDialect(StormConfig.of(Map.of()));
         assertNotNull(sqlDialect);
         assertEquals("MS SQL Server", sqlDialect.name());
-        assertTrue(sqlDialect.supportsDeleteAlias());
+        assertEquals(SqlDialect.WriteJoinSyntax.FROM_CLAUSE, sqlDialect.writeJoinSyntax());
         assertFalse(sqlDialect.supportsMultiValueTuples());
         assertTrue(sqlDialect.applyLimitAfterSelect());
         assertTrue(sqlDialect.applyLockHintAfterFrom());

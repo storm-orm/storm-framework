@@ -139,7 +139,7 @@ public abstract class QueryBuilder<T extends Data, R, ID> {
      * refuses. The primary key, a field declared with {@code @Persist(updatable = false)}, the version field, which
      * the statement increments itself, and a path reaching into a related table are refused, as is a field set twice.</p>
      *
-     * <p>Only a builder created by {@code update()} takes this call; any other refuses it.</p>
+     * <p>Only a builder created by {@code update()} takes this call; a select or delete builder refuses it.</p>
      *
      * @param field the field to set.
      * @param value the value, or {@code null} to set the field's columns to {@code NULL}.
@@ -148,9 +148,7 @@ public abstract class QueryBuilder<T extends Data, R, ID> {
      * @throws PersistenceException if the builder is not an UPDATE builder, or the field cannot be set.
      * @since 1.15
      */
-    public <V> QueryBuilder<T, R, ID> set(Metamodel<? extends T, V> field, @Nullable V value) {
-        throw new PersistenceException("Only an UPDATE query sets columns: create one with update().");
-    }
+    public abstract <V> QueryBuilder<T, R, ID> set(Metamodel<? extends T, V> field, @Nullable V value);
 
     /**
      * Sets a foreign key of the rows an UPDATE query updates to the record the given ref refers to.
@@ -163,9 +161,7 @@ public abstract class QueryBuilder<T extends Data, R, ID> {
      * @see #set(Metamodel, Object)
      * @since 1.15
      */
-    public <V extends Data> QueryBuilder<T, R, ID> set(Metamodel<? extends T, V> field, Ref<V> ref) {
-        throw new PersistenceException("Only an UPDATE query sets columns: create one with update().");
-    }
+    public abstract <V extends Data> QueryBuilder<T, R, ID> set(Metamodel<? extends T, V> field, Ref<V> ref);
 
     /**
      * Sets a column of the rows an UPDATE query updates to the value the given SQL expression computes, such as an
@@ -173,15 +169,13 @@ public abstract class QueryBuilder<T extends Data, R, ID> {
      * binds its values as parameters. The field maps to exactly one column.
      *
      * @param field the field to set.
-     * @param expression the SQL expression computing the value.
+     * @param template the SQL expression computing the value.
      * @return the query builder.
      * @throws PersistenceException if the builder is not an UPDATE builder, or the field cannot be set.
      * @see #set(Metamodel, Object)
      * @since 1.15
      */
-    public QueryBuilder<T, R, ID> set(Metamodel<? extends T, ?> field, TemplateString expression) {
-        throw new PersistenceException("Only an UPDATE query sets columns: create one with update().");
-    }
+    public abstract QueryBuilder<T, R, ID> set(Metamodel<? extends T, ?> field, TemplateString template);
 
     /**
      * Marks the current query as a distinct query.

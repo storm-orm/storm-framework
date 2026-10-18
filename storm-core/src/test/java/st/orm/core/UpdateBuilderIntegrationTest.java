@@ -36,6 +36,9 @@ import st.orm.core.model.VetSpecialty;
 import st.orm.core.model.VetSpecialty_;
 import st.orm.core.model.Visit;
 import st.orm.core.model.Visit_;
+import st.orm.core.model.polymorphic.JoinedAnimal;
+import st.orm.core.model.polymorphic.JoinedCat;
+import st.orm.core.model.polymorphic.JoinedCat_;
 import st.orm.core.template.ORMTemplate;
 import st.orm.core.template.TemplateString;
 
@@ -231,6 +234,19 @@ public class UpdateBuilderIntegrationTest {
     }
 
     @Test
+    public void refusesATypeOfAJoinedInheritanceHierarchy() {
+        // Its rows span the base table and an extension table, and an UPDATE writes the columns of one table.
+        // The base type has no metamodel of its own fields, so its refusal comes when the statement is built.
+        var base = assertThrows(PersistenceException.class, () -> orm().entity(JoinedAnimal.class).update()
+                .unsafe()
+                .executeUpdate());
+        assertTrue(base.getMessage().contains("joined inheritance"), base.getMessage());
+        var subtype = assertThrows(PersistenceException.class, () -> orm().entity(JoinedCat.class).update()
+                .set(JoinedCat_.indoor, false));
+        assertTrue(subtype.getMessage().contains("joined inheritance"), subtype.getMessage());
+    }
+
+    @Test
     public void refusesSetOnASelectOrDelete() {
         assertThrows(PersistenceException.class, () -> orm().entity(City.class).select().set(City_.name, "x"));
         assertThrows(PersistenceException.class, () -> orm().entity(City.class).delete().set(City_.name, "x"));
@@ -244,19 +260,15 @@ public class UpdateBuilderIntegrationTest {
         var exception = assertThrows(PersistenceException.class,
                 () -> cities.update().set(City_.name, "Everywhere").executeUpdate());
         assertTrue(exception.getMessage().contains("unsafe()"), exception.getMessage());
-        assertThrows(PersistenceException.class, () -> cities.update().set(City_.name, "Everywhere").plan());
+        // A plan leaves the check to its queries, which refuse to run unless they are marked unsafe. A plan binds no
+        // fixed values, so it sets a value computed from the row.
+        var plan = cities.update().set(City_.name, TemplateString.raw("UPPER(\0)", City_.name)).plan();
+        var planned = assertThrows(PersistenceException.class, () -> plan.query().executeUpdate());
+        assertTrue(planned.getMessage().contains("unsafe()"), planned.getMessage());
         assertFalse(cities.select().getResultList().stream().anyMatch(city -> city.name().equals("Everywhere")));
         int updated = cities.update().set(City_.name, "Everywhere").unsafe().executeUpdate();
         assertEquals(cities.count(), updated);
         assertTrue(cities.select().getResultList().stream().allMatch(city -> city.name().equals("Everywhere")));
-    }
-
-    @Test
-    public void refusesADeleteWithoutAConditionUnlessUnsafe() {
-        var exception = assertThrows(PersistenceException.class,
-                () -> orm().entity(Visit.class).delete().executeUpdate());
-        assertTrue(exception.getMessage().contains("unsafe()"), exception.getMessage());
-        assertTrue(orm().entity(Visit.class).count() > 0);
     }
 
     @Test

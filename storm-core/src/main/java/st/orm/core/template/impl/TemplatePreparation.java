@@ -563,7 +563,7 @@ class TemplatePreparation {
                 }
                 case UpdateTarget it -> {
                     if (first != null) {
-                        throw new SqlTemplateException("Only a single Update element is allowed.");
+                        throw new SqlTemplateException("Only a single Update target element is allowed.");
                     }
                     yield it;
                 }

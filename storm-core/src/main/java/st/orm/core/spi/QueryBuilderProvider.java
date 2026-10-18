@@ -22,7 +22,6 @@ import st.orm.core.template.Model;
 import st.orm.core.template.QueryBuilder;
 import st.orm.core.template.QueryTemplate;
 import st.orm.core.template.TemplateString;
-import st.orm.core.template.impl.UpdateBuilderImpl;
 
 /**
  * Provides pluggable query builder logic.
@@ -92,9 +91,7 @@ public interface QueryBuilderProvider extends Provider {
      * @param <T> the table type to update.
      * @since 1.15
      */
-    default <T extends Data, ID> QueryBuilder<T, ?, ID> updateFrom(QueryTemplate queryTemplate,
-                                                                   Class<T> fromType,
-                                                                   Supplier<Model<T, ID>> modelSupplier) {
-        return new UpdateBuilderImpl<>(queryTemplate, fromType, modelSupplier);
-    }
+    <T extends Data, ID> QueryBuilder<T, ?, ID> updateFrom(QueryTemplate queryTemplate,
+                                                           Class<T> fromType,
+                                                           Supplier<Model<T, ID>> modelSupplier);
 }

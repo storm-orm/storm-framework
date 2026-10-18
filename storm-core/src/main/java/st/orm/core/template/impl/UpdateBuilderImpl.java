@@ -47,6 +47,7 @@ import st.orm.core.template.QueryBuilder;
 import st.orm.core.template.QueryPlan;
 import st.orm.core.template.QueryTemplate;
 import st.orm.core.template.TemplateString;
+import st.orm.core.template.impl.Elements.Unconditional;
 import st.orm.core.template.impl.Elements.UpdateTarget;
 import st.orm.core.template.impl.Elements.Where;
 
@@ -55,9 +56,9 @@ import st.orm.core.template.impl.Elements.Where;
  *
  * <p>The builder sets the columns named through {@code set} on the rows its conditions select, and increments the
  * version column of a versioned entity alongside, so a later update of an entity read before this statement fails its
- * optimistic lock check. It reaches rows through other tables as {@link DeleteBuilderImpl} does: in the statement
- * itself where the dialect joins tables into an UPDATE, and through a subquery matching the primary key
- * elsewhere.</p>
+ * optimistic lock check. It reaches rows through other tables as {@link DeleteBuilderImpl} does, in the form
+ * {@link st.orm.core.template.SqlDialect#writeJoinSyntax()} states: in the statement itself where the dialect joins
+ * tables into an UPDATE, and through a subquery matching the primary key elsewhere.</p>
  *
  * @param <T> the type of the table being updated.
  * @param <ID> the type of the primary key.
@@ -158,21 +159,21 @@ public class UpdateBuilderImpl<T extends Data, ID> extends QueryBuilderImpl<T, O
     }
 
     /**
-     * Sets the single column of the field to the value the expression computes.
+     * Sets the single column of the field to the value the template computes.
      *
      * @param field the field to set.
-     * @param expression the SQL expression computing the value.
+     * @param template the SQL expression computing the value.
      * @return the query builder.
      */
     @Override
-    public QueryBuilder<T, Object, ID> set(Metamodel<? extends T, ?> field, TemplateString expression) {
-        requireNonNull(expression, "expression");
+    public QueryBuilder<T, Object, ID> set(Metamodel<? extends T, ?> field, TemplateString template) {
+        requireNonNull(template, "template");
         var columns = columnsOf(field);
         if (columns.size() != 1) {
             throw new PersistenceException("Field %s maps to %d columns, and an expression sets one: set each column on its own, or set the field to a value."
                     .formatted(describe(field), columns.size()));
         }
-        return with(new Assignment(field, columns, List.of(), expression));
+        return with(new Assignment(field, columns, List.of(), template));
     }
 
     private Assignment assignValue(Metamodel<? extends T, ?> field, @Nullable Object value) {
@@ -218,11 +219,8 @@ public class UpdateBuilderImpl<T extends Data, ID> extends QueryBuilderImpl<T, O
         if (!field.isColumn() && !field.isInline()) {
             throw new PersistenceException("Cannot set %s: the path names the table, not a column.".formatted(fromType.getSimpleName()));
         }
+        refuseJoinedInheritance("UPDATE");
         var model = modelSupplier.get();
-        if (model.isJoinedInheritance()) {
-            throw new PersistenceException("Cannot update %s through the update builder: its columns span the tables of a joined inheritance hierarchy."
-                    .formatted(fromType.getSimpleName()));
-        }
         List<Column> columns;
         try {
             columns = model.getColumns(field);
@@ -371,18 +369,18 @@ public class UpdateBuilderImpl<T extends Data, ID> extends QueryBuilderImpl<T, O
     }
 
     private TemplateString toTemplateString() {
-        var syntax = queryTemplate.dialect().updateJoinSyntax();
-        TemplateString template = switch (syntax) {
+        refuseJoinedInheritance("UPDATE");
+        TemplateString template = switch (queryTemplate.dialect().writeJoinSyntax()) {
             // UPDATE pet p INNER JOIN owner o ON ... SET p.name = ? WHERE o.last_name = ?. The joins render after the
             // FROM element wherever they sit in the template, so they are appended after the SET clause.
-            case JOIN_BEFORE_SET -> appendJoinsAndWhere(TemplateString.combine(
+            case MULTI_TABLE -> appendJoinsAndWhere(TemplateString.combine(
                     TemplateString.of("UPDATE" + hintAfterKeyword() + " "),
                     wrap(new UpdateTarget(fromType)),
                     wrap(from(fromType, true)),
                     TemplateString.of("\nSET "),
                     getSetTemplate(true)));
             // UPDATE p SET p.name = ? FROM pet p INNER JOIN owner o ON ... WHERE o.last_name = ?.
-            case FROM_AFTER_SET -> appendJoinsAndWhere(TemplateString.combine(
+            case FROM_CLAUSE -> appendJoinsAndWhere(TemplateString.combine(
                     TemplateString.of("UPDATE" + hintAfterKeyword() + " "),
                     wrap(new UpdateTarget(fromType)),
                     wrap(alias(fromType)),
@@ -401,18 +399,11 @@ public class UpdateBuilderImpl<T extends Data, ID> extends QueryBuilderImpl<T, O
                         wrap(subquery(select, false)), TemplateString.of(")"));
             }
         };
+        if (!hasCondition()) {
+            template = TemplateString.combine(template, wrap(new Unconditional()));
+        }
         String hint = hintAtEnd();
         return hint.isEmpty() ? template : TemplateString.combine(template, TemplateString.of(hint));
-    }
-
-    /**
-     * Refuses an UPDATE without a condition unless {@link #unsafe()} was called. The builder checks it itself, since
-     * the statement that matches its rows through a subquery has a WHERE clause of its own whatever the builder holds.
-     */
-    private void requireCondition() {
-        if (!unsafe && !hasCondition()) {
-            throw new PersistenceException("UPDATE without a WHERE clause is potentially unsafe. Use unsafe() to allow this operation.");
-        }
     }
 
     @Override
@@ -423,13 +414,14 @@ public class UpdateBuilderImpl<T extends Data, ID> extends QueryBuilderImpl<T, O
     /**
      * Builds the query based on the current state of the query builder.
      *
+     * <p>A query without a condition refuses to run unless {@link #unsafe()} was called on the builder, or
+     * {@link Query#unsafe()} on the query.</p>
+     *
      * @return the constructed query.
-     * @throws PersistenceException if the query sets no column, or has no condition and {@link #unsafe()} was not
-     * called.
+     * @throws PersistenceException if the query sets no column.
      */
     @Override
     public Query build() {
-        requireCondition();
         Query query = queryTemplate.query(toTemplateString());
         if (unsafe || hasCondition()) {
             query = query.unsafe();
@@ -440,13 +432,14 @@ public class UpdateBuilderImpl<T extends Data, ID> extends QueryBuilderImpl<T, O
     /**
      * Compiles this query into a reusable plan.
      *
+     * <p>The queries of a plan without a condition refuse to run unless {@link #unsafe()} was called on the builder,
+     * or {@link Query#unsafe()} on the query.</p>
+     *
      * @return a reusable plan for this query.
-     * @throws PersistenceException if the query sets no column, or has no condition and {@link #unsafe()} was not
-     * called.
+     * @throws PersistenceException if the query sets no column.
      */
     @Override
     public QueryPlan plan() {
-        requireCondition();
         var plan = queryTemplate.plan(toTemplateString());
         if (!unsafe && !hasCondition()) {
             return plan;

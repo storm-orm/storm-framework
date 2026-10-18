@@ -150,7 +150,7 @@ userRepository.delete().unsafe().executeUpdate();
 </Tabs>
 
 :::warning Safety Check
-Storm rejects DELETE and UPDATE queries that have no WHERE clause, throwing a `PersistenceException`. This prevents accidental bulk deletions, which is especially important because `QueryBuilder` is immutable and a lost `where()` return value would silently drop the filter. Call `unsafe()` to opt out of this check when you intentionally want to affect all rows. The `removeAll()` convenience method calls `unsafe()` internally.
+Storm rejects a DELETE or UPDATE built without a condition, throwing a `PersistenceException`; a WHERE clause, a semi-join or an anti-join counts as a condition. This prevents accidental bulk deletions and updates, which is especially important because `QueryBuilder` is immutable and a lost `where()` return value would silently drop the filter. Call `unsafe()` to opt out of this check when you intentionally want to affect all rows. The `removeAll()` convenience method calls `unsafe()` internally.
 :::
 
 Storm uses dirty checking to determine which columns to include in the UPDATE statement. See [Dirty Checking](dirty-checking.md) for configuration details.

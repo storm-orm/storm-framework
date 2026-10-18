@@ -90,19 +90,6 @@ public class DefaultSqlDialect implements SqlDialect {
     }
 
     /**
-     * Indicates whether the SQL dialect supports delete aliases.
-     *
-     * <p>Delete aliases allow delete statements to use table aliases in joins, making it easier to filter rows based
-     * on related data.</p>
-     *
-     * @return {@code true} if delete aliases are supported, {@code false} otherwise.
-     */
-    @Override
-    public boolean supportsDeleteAlias() {
-        return false;
-    }
-
-    /**
      * Indicates whether the SQL dialect supports multi-value tuples in the IN clause.
      *
      * @return {@code true} if multi-value tuples are supported, {@code false} otherwise.

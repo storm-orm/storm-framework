@@ -37,10 +37,9 @@ public class DefaultSqlDialectTest {
     }
 
     @Test
-    public void testSupportsDeleteAlias() {
+    public void testWriteJoinSyntax() {
         var dialect = new DefaultSqlDialect();
-        assertFalse(dialect.supportsDeleteAlias());
-        assertEquals(SqlDialect.UpdateJoinSyntax.SUBQUERY, dialect.updateJoinSyntax());
+        assertEquals(SqlDialect.WriteJoinSyntax.SUBQUERY, dialect.writeJoinSyntax());
     }
 
     @Test

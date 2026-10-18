@@ -181,13 +181,8 @@ class OracleSqlDialectTest {
     }
 
     @Test
-    void supportsDeleteAliasShouldReturnFalse() {
-        assertFalse(dialect.supportsDeleteAlias());
-    }
-
-    @Test
-    void updateJoinSyntaxShouldBeSubquery() {
-        assertEquals(SqlDialect.UpdateJoinSyntax.SUBQUERY, dialect.updateJoinSyntax());
+    void writeJoinSyntaxShouldBeSubquery() {
+        assertEquals(SqlDialect.WriteJoinSyntax.SUBQUERY, dialect.writeJoinSyntax());
     }
 
     @Test
@@ -259,7 +254,7 @@ class OracleSqlDialectTest {
         var sqlDialect = provider.getSqlDialect(StormConfig.of(Map.of()));
         assertNotNull(sqlDialect);
         assertEquals("Oracle", sqlDialect.name());
-        assertFalse(sqlDialect.supportsDeleteAlias());
+        assertEquals(SqlDialect.WriteJoinSyntax.SUBQUERY, sqlDialect.writeJoinSyntax());
         assertTrue(sqlDialect.supportsMultiValueTuples());
         assertEquals("FOR UPDATE", sqlDialect.forUpdateLockHint());
         assertEquals("", sqlDialect.forShareLockHint());

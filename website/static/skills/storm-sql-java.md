@@ -36,13 +36,15 @@ Even in full SQL templates, users still benefit from bind variables (`\{value}`)
 - Ordering — use `orderBy()`, `orderByDescending()`
 - Pagination, scrolling, window iteration — use `page()`, `scroll()`, `windows()`
 - Simple CRUD — use `findBy`, `findAll`, `remove`, `removeAll`, `insert`, `update`
+- Set-based UPDATE and DELETE: use the `update()` and `delete()` builders (`set`, `where`, `semiJoin`, `antiJoin`), see /storm-query-java
 
 **Mutations bypass dirty checking.** Entity updates through repositories compare against the
 transaction's observed state and can skip or narrow the UPDATE; template and raw SQL mutations
 write unconditionally. To keep later comparisons truthful, a template mutation whose entity type is
 known invalidates the observed state of that type, and a raw SQL string without type information
-clears all observed state in the transaction — repository updates after it fall back to full-row
-writes. Prefer entity updates for row-level changes; keep templates for set-based mutations.
+clears all observed state in the transaction; repository updates after it fall back to full-row
+writes. Prefer entity updates for row-level changes. Set-based mutations take the `update()` and
+`delete()` builders, which name their type; keep templates for what the builders cannot express.
 
 **Inside SQL templates, always use metamodel references** (`\{User_.email}`, `\{City_.id}`) instead of hardcoding column names. This keeps queries type-safe and refactor-proof. Only use `\{unsafe("raw sql")}` when there is truly no metamodel equivalent.
 

@@ -175,13 +175,8 @@ class SQLiteSqlDialectTest {
     }
 
     @Test
-    void supportsDeleteAliasShouldReturnFalse() {
-        assertFalse(dialect.supportsDeleteAlias());
-    }
-
-    @Test
-    void updateJoinSyntaxShouldBeSubquery() {
-        assertEquals(SqlDialect.UpdateJoinSyntax.SUBQUERY, dialect.updateJoinSyntax());
+    void writeJoinSyntaxShouldBeSubquery() {
+        assertEquals(SqlDialect.WriteJoinSyntax.SUBQUERY, dialect.writeJoinSyntax());
     }
 
     @Test
@@ -235,7 +230,7 @@ class SQLiteSqlDialectTest {
         var sqlDialect = provider.getSqlDialect(StormConfig.of(Map.of()));
         assertNotNull(sqlDialect);
         assertEquals("SQLite", sqlDialect.name());
-        assertFalse(sqlDialect.supportsDeleteAlias());
+        assertEquals(SqlDialect.WriteJoinSyntax.SUBQUERY, sqlDialect.writeJoinSyntax());
         assertFalse(sqlDialect.supportsMultiValueTuples());
         assertEquals("", sqlDialect.forUpdateLockHint());
         assertEquals("", sqlDialect.forShareLockHint());

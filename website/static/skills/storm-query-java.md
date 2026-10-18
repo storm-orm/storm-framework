@@ -386,7 +386,7 @@ Read the request for the cue: "with", "that have", "who own", "any of their", "s
 - `semiJoin` conditions go in `where`: conditions joined by `.and()` hold for the same related row, a part naming only the root's columns holds without a related row, and `search` matches each word on its own related row.
 - `antiJoin` conditions go on the join, never in `where`: a `where` naming the anti-joined table is refused.
 - A semi-joined or anti-joined table adds no columns: when the result, `orderBy` or `groupBy` needs them, the query wants a regular join instead.
-- Both work on `delete()` and `update()`: `delete().antiJoin(Pet.class).on(Owner.class)` removes the owners without pets.
+- Both filter `delete()` and `update()` as they filter a select: `owners.delete().antiJoin(Pet.class).on(Owner.class)` removes the owners without pets, and `owners.update().setNull(Owner_.telephone).semiJoin(Pet.class).on(Owner.class).where(Pet_.name, EQUALS, "Leo")` clears the telephone of the owners of a pet named Leo.
 - `semiJoin` and `antiJoin` are complements: on the same table with the same condition on the join, the one keeps the rows the other drops. Without a condition, `semiJoin` keeps the rows with any related row and `antiJoin` the rows without one.
 - Keep `whereExists` for a subquery a foreign key does not express.
 
@@ -535,26 +535,31 @@ visits.update()
     .where(Visit_.visitDate, EQUALS, closedDay)
     .executeUpdate();
 
-// Foreign key: the entity or a Ref; a value computed from the row: a template
+// Foreign key: the entity or a Ref
 pets.update()
     .set(Pet_.owner, newOwnerRef)
-    .set(Pet_.visitCount, RAW."\{Pet_.visitCount} + 1")
-    .where(Pet_.owner, owner)
+    .where(Pet_.owner, EQUALS, previousOwner)
+    .executeUpdate();
+
+// A value computed from the row: a template
+owners.update()
+    .set(Owner_.lastName, RAW."UPPER(\{Owner_.lastName})")
+    .where(Owner_.address.city, EQUALS, city)
     .executeUpdate();
 
 // A condition through a related table works on every database
 visits.update()
     .set(Visit_.description, "Rescheduled")
-    .where(Visit_.pet.owner.address.city, city)
+    .where(Visit_.pet.owner.address.city, EQUALS, city)
     .executeUpdate();
 ```
 
 Rules for `update()`:
 - **WHERE is required** (or a `semiJoin`/`antiJoin`), as for `delete()`; `unsafe()` confirms an update of every row.
-- **`set` refuses** the primary key, `@Persist(updatable = false)` fields, the `@Version` field, a path into a related table (`Owner_.city.name`), and a field set twice. An inline record field writes each of its columns.
+- **`set` refuses** the primary key, `@Persist(updatable = false)` fields, the `@Version` field, a path into a related table (`Owner_.address.city.name`), and a field set twice. An inline record field writes each of its columns. The `update()` and `delete()` builders refuse a Joined Table entity (sealed type or subtype): its rows span two tables; use `remove`/`removeById` and `update(entity)`.
 - **`@Version` is incremented** by the statement (a timestamp version is set to the current time), so an entity read before it fails its optimistic lock check.
 - **No entity callbacks fire**: `beforeUpdate`/`afterUpdate` need an entity and the statement carries none. `set` an audit column in the builder.
-- **The type's entities are evicted from the transaction's entity cache** once it runs, so dirty checking cannot skip a column it changed. Re-read entities it touched before writing them back.
+- **The type's entities are evicted from the transaction's entity cache** once it runs. An entity read before it still holds its old values: re-read the entities it touched before writing them back. `update(entity)` of a stale copy writes its full row, putting the old values back over the columns the statement set; a versioned entity fails its optimistic lock check instead.
 - `distinct()`, `limit()`, `offset()`, locking, result reads and use as a subquery are refused.
 
 **Always prefer entity/metamodel-based QueryBuilder methods over SQL template strings.** SQL templates are an escape hatch for things the QueryBuilder cannot express.

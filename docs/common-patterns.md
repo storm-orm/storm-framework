@@ -212,6 +212,8 @@ public EntityCallback<?> auditTimestampCallback() {
 
 To apply auditing to all entities (not just `Article`), parameterize the callback with `Entity<?>` and use pattern matching to handle each entity type. See the [Entity Lifecycle](entity-lifecycle.md) page for details.
 
+The [`update()` query builder](queries.md#updating-rows-by-condition) sets columns on rows it does not read, so it carries no entity and the callback does not fire for it. Set the updated-at column in the builder with its own `set`, such as `set(Article_.updatedAt, Instant.now())`. See [The Update Builder](entity-lifecycle.md#the-update-builder).
+
 ---
 
 ## Soft Deletes
@@ -351,7 +353,7 @@ public class SoftDeleteGuard implements EntityCallback<Customer> {
 </TabItem>
 </Tabs>
 
-This catches `remove(entity)`, but it is not an enforcement point: `removeById`, `removeByRef`, `removeAll` and the `delete()` query builder identify rows without reading them, so there is no entity to pass and `beforeRemove` does not fire. Treat it as a development guard that surfaces the call sites to fix, and enforce the rule in the database where it has to hold. See [Remove Callbacks](entity-lifecycle.md#remove-callbacks).
+This catches `remove(entity)`, but it is not an enforcement point: `removeById`, `removeByRef`, `removeAll` and the `delete()` query builder identify rows without reading them, so there is no entity to pass and `beforeRemove` does not fire. The `update()` query builder carries no entity either, so a guard in `beforeUpdate` does not fire for it. Treat it as a development guard that surfaces the call sites to fix, and enforce the rule in the database where it has to hold. See [Remove Callbacks](entity-lifecycle.md#remove-callbacks).
 
 ---
 
@@ -622,3 +624,4 @@ public class TenantIsolationCallback implements EntityCallback<TenantEntity<?>> 
 </TabItem>
 </Tabs>
 
+The callbacks guard the operations that carry an entity. The [`delete()`](queries.md#deleting-rows-by-condition) and [`update()`](queries.md#updating-rows-by-condition) query builders select rows by condition and carry no entity, so `beforeRemove` and `beforeUpdate` do not fire for them and a builder can change or remove another tenant's rows. Add the tenant condition to the `where` of every builder statement, or enforce the isolation in the database with row-level security policies. See [Remove Callbacks](entity-lifecycle.md#remove-callbacks) and [The Update Builder](entity-lifecycle.md#the-update-builder).

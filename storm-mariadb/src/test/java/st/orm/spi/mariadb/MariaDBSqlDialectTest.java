@@ -194,13 +194,8 @@ class MariaDBSqlDialectTest {
     }
 
     @Test
-    void supportsDeleteAliasShouldReturnTrue() {
-        assertTrue(dialect.supportsDeleteAlias());
-    }
-
-    @Test
-    void updateJoinSyntaxShouldBeJoinBeforeSet() {
-        assertEquals(SqlDialect.UpdateJoinSyntax.JOIN_BEFORE_SET, dialect.updateJoinSyntax());
+    void writeJoinSyntaxShouldBeMultiTable() {
+        assertEquals(SqlDialect.WriteJoinSyntax.MULTI_TABLE, dialect.writeJoinSyntax());
     }
 
     @Test
@@ -257,7 +252,7 @@ class MariaDBSqlDialectTest {
         var sqlDialect = provider.getSqlDialect(StormConfig.of(Map.of()));
         assertNotNull(sqlDialect);
         assertEquals("MariaDB", sqlDialect.name());
-        assertTrue(sqlDialect.supportsDeleteAlias());
+        assertEquals(SqlDialect.WriteJoinSyntax.MULTI_TABLE, sqlDialect.writeJoinSyntax());
         assertTrue(sqlDialect.supportsMultiValueTuples());
         assertEquals("FOR UPDATE", sqlDialect.forUpdateLockHint());
         assertEquals("FOR SHARE", sqlDialect.forShareLockHint());

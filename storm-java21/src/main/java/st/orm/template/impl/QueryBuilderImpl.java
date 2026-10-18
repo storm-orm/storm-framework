@@ -26,6 +26,7 @@ import java.util.List;
 import java.util.Optional;
 import java.util.function.Function;
 import java.util.stream.Stream;
+import org.jspecify.annotations.Nullable;
 import st.orm.Data;
 import st.orm.JoinType;
 import st.orm.Metamodel;
@@ -109,7 +110,7 @@ public final class QueryBuilderImpl<T extends Data, R, ID> extends QueryBuilder<
     }
 
     @Override
-    public <V> QueryBuilder<T, R, ID> set(Metamodel<? extends T, V> field, V value) {
+    public <V> QueryBuilder<T, R, ID> set(Metamodel<? extends T, V> field, @Nullable V value) {
         return new QueryBuilderImpl<>(core.set(field, value));
     }
 
@@ -119,8 +120,8 @@ public final class QueryBuilderImpl<T extends Data, R, ID> extends QueryBuilder<
     }
 
     @Override
-    public QueryBuilder<T, R, ID> set(Metamodel<? extends T, ?> field, StringTemplate expression) {
-        return new QueryBuilderImpl<>(core.set(field, convert(expression)));
+    public QueryBuilder<T, R, ID> set(Metamodel<? extends T, ?> field, StringTemplate template) {
+        return new QueryBuilderImpl<>(core.set(field, convert(template)));
     }
 
     /**

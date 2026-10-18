@@ -34,6 +34,7 @@ import st.orm.core.template.impl.Elements.Select;
 import st.orm.core.template.impl.Elements.Set;
 import st.orm.core.template.impl.Elements.Subquery;
 import st.orm.core.template.impl.Elements.Table;
+import st.orm.core.template.impl.Elements.Unconditional;
 import st.orm.core.template.impl.Elements.Unsafe;
 import st.orm.core.template.impl.Elements.Update;
 import st.orm.core.template.impl.Elements.UpdateTarget;
@@ -66,6 +67,7 @@ class ElementRouter {
     private static final UnsafeProcessor UNSAFE_PROCESSOR = new UnsafeProcessor();
     private static final AdvisoryProcessor ADVISORY_PROCESSOR = new AdvisoryProcessor();
     private static final OrderFirstProcessor ORDER_FIRST_PROCESSOR = new OrderFirstProcessor();
+    private static final UnconditionalProcessor UNCONDITIONAL_PROCESSOR = new UnconditionalProcessor();
     private static final CacheableProcessor CACHEABLE_PROCESSOR = new CacheableProcessor();
     private static final RelationKeyProcessor RELATION_KEY_PROCESSOR = new RelationKeyProcessor();
     private static final RelationKeyProcessor.CorrelationProcessor CORRELATION_PROCESSOR = new RelationKeyProcessor.CorrelationProcessor();
@@ -96,6 +98,7 @@ class ElementRouter {
             case Unsafe ignored -> UNSAFE_PROCESSOR;
             case Advisory ignored -> ADVISORY_PROCESSOR;
             case OrderFirst ignored -> ORDER_FIRST_PROCESSOR;
+            case Unconditional ignored -> UNCONDITIONAL_PROCESSOR;
             case Cacheable ignored -> CACHEABLE_PROCESSOR;
             case RelationKey ignored -> RELATION_KEY_PROCESSOR;
             case Correlation ignored -> CORRELATION_PROCESSOR;

@@ -1088,13 +1088,68 @@ WHERE NOT EXISTS (SELECT 1 FROM visit v WHERE v.pet_id = p.id AND v.description 
 
 `NOT EXISTS`, unlike `NOT IN`, keeps its meaning when a related row's foreign key is null. A condition in `where` that names the anti-joined table is refused when the query is built, pointing at the join's condition.
 
-Semi-joins and anti-joins filter a `delete()` and an `update()` as well: `orm.entity<Owner>().delete().antiJoin<Pet>().on<Owner>().executeUpdate()` (Java: `delete().antiJoin(Pet.class).on(Owner.class)`) removes the owners without pets.
+Semi-joins and anti-joins filter a [`delete()`](#deleting-rows-by-condition) and an [`update()`](#updating-rows-by-condition) as well.
+
+---
+
+## Deleting Rows by Condition
+
+`delete()` builds a DELETE that removes the rows its conditions select, in one statement and without reading the rows. Its conditions, joins, semi-joins and anti-joins are the ones a select takes. `remove(entity)` removes entities you read; the builder removes rows by what they hold.
+
+<Tabs groupId="language">
+<TabItem value="kotlin" label="Kotlin" default>
+
+```kotlin
+// Block DSL, like select { }.
+visits.delete {
+    where(Visit_.visitDate less cutoff)
+}.executeUpdate()
+
+// Chained.
+visits.delete()
+    .where(Visit_.visitDate less cutoff)
+    .executeUpdate()
+
+// Through a related table: the owners without pets.
+owners.delete()
+    .antiJoin<Pet>().on<Owner>()
+    .executeUpdate()
+```
+
+</TabItem>
+<TabItem value="java" label="Java">
+
+```java
+visits.delete()
+    .where(Visit_.visitDate, LESS_THAN, cutoff)
+    .executeUpdate();
+
+// Through a related table: the owners without pets.
+owners.delete()
+    .antiJoin(Pet.class).on(Owner.class)
+    .executeUpdate();
+```
+
+</TabItem>
+</Tabs>
+
+`executeUpdate()` returns the number of rows deleted. `orm.deleteFrom(Visit::class)` (Java: `orm.deleteFrom(Visit.class)`) and, in Kotlin, `orm.delete<Visit>()` create the same builder. `removeBy`, `removeAllBy` and `removeAll(predicate)` are shorthands for it.
+
+How it behaves:
+
+- **A condition is required.** A DELETE without a WHERE clause, semi-join or anti-join is refused unless `unsafe()` is called; see [Why does my DELETE without a WHERE clause throw an exception?](faq.md#why-does-my-delete-without-a-where-clause-throw-an-exception).
+- **Entity callbacks do not fire.** The statement carries no entity to pass to `beforeRemove` or `afterRemove`; see [Remove Callbacks](entity-lifecycle.md#remove-callbacks).
+- **The transaction forgets the entities of the type.** Once the statement runs, the entities of the deleted type observed in the current transaction are evicted from its [entity cache](entity-cache.md#after-mutations), so a later read does not return a row the statement removed.
+- **DISTINCT, LIMIT, OFFSET and locking are refused**, as is reading results, scrolling, or using the builder as a subquery.
+- **A Joined Table entity is refused**, its sealed type and each subtype: its rows span the base table and an extension table, and a DELETE removes the rows of one. `remove` and `removeById` delete from every table; see [Joined Table Inheritance](polymorphism.md#joined-table-inheritance).
+
+A condition through a path, an explicit join, a semi-join or an anti-join reaches the rows through other tables. On MySQL, MariaDB and SQL Server the statement joins those tables itself, as MySQL refuses a subquery that reads the table being changed; on PostgreSQL, Oracle, H2 and SQLite it matches the rows by primary key in a subquery. The builder reads the same on every database.
 
 ---
 
 ## Updating Rows by Condition
 
-`update()` builds an UPDATE that sets columns on the rows its conditions select, in one statement and without reading the rows. It is the counterpart of `delete()`: the conditions, joins, semi-joins and anti-joins are the ones a select takes, and `set` names the columns to write through the metamodel, so the table's own entity serves the write and no second type is needed for it.
+`update()` builds an UPDATE that sets columns on the rows its conditions select, in one statement and without reading the rows. It is the counterpart of [`delete()`](#deleting-rows-by-condition): the conditions, joins, semi-joins and anti-joins are the ones a select takes, and `set` names the columns to write through the metamodel, so the table's own entity serves the write and no second type is needed for it.
 
 <Tabs groupId="language">
 <TabItem value="kotlin" label="Kotlin" default>
@@ -1113,9 +1168,9 @@ visits.update()
     .executeUpdate()
 
 // A value computed from the row.
-pets.update {
-    set(Pet_.visitCount) { "${Pet_.visitCount} + 1" }
-    where(Pet_.owner eq owner)
+owners.update {
+    set(Owner_.lastName) { "UPPER(${Owner_.lastName})" }
+    where(Owner_.address.city eq city)
 }.executeUpdate()
 ```
 
@@ -1134,9 +1189,9 @@ visits.update()
     .executeUpdate();
 
 // A value computed from the row.
-pets.update()
-    .set(Pet_.visitCount, RAW."\{Pet_.visitCount} + 1")
-    .where(Pet_.owner, owner)
+owners.update()
+    .set(Owner_.lastName, RAW."UPPER(\{Owner_.lastName})")
+    .where(Owner_.address.city, EQUALS, city)
     .executeUpdate();
 ```
 
@@ -1152,25 +1207,18 @@ What `set` takes:
 - **An inline record** takes a record of its type and writes each of its columns; a field inside it, such as `Owner_.address.city`, writes its own.
 - **An expression**, a template computing the value of a single column from the row.
 
-`set` refuses, with a message naming the field: the primary key and each part of a compound key, a field declared `@Persist(updatable = false)`, the `@Version` field, a path into a related table such as `Owner_.city.name`, and a field set twice. An UPDATE without any `set` is refused when it runs.
+`set` refuses, with a message naming the field: the primary key and each part of a compound key, a field declared `@Persist(updatable = false)`, the `@Version` field, a path into a related table such as `Owner_.address.city.name`, and a field set twice. An UPDATE without any `set` is refused when it runs.
 
 How it behaves:
 
 - **A condition is required.** As for `delete()`, an UPDATE without a WHERE clause, semi-join or anti-join is refused unless `unsafe()` is called.
 - **The version moves.** On an entity with a `@Version` field the statement increments it, or sets it to the current timestamp for a timestamp version, as `update(entity)` does. An entity read before the statement then fails its optimistic lock check when it is updated afterwards, rather than writing its stale values over the new ones.
 - **Entity callbacks do not fire.** The statement carries no entity to pass to `beforeUpdate` or `afterUpdate`, as `delete()` carries none for the remove callbacks; see [Entity Lifecycle](entity-lifecycle.md). Bookkeeping a callback does on update, such as an updated-at timestamp, is set in the builder.
-- **The transaction forgets the entities of the type.** Once the statement runs, the entities of the updated type observed in the current transaction are evicted from its [entity cache](entity-cache.md), so a later read returns the new values and a later `update(entity)` writes all of its columns rather than skipping one that [dirty checking](dirty-checking.md) would take for unchanged.
+- **The transaction forgets the entities of the type.** Once the statement runs, the entities of the updated type observed in the current transaction are evicted from its [entity cache](entity-cache.md#after-mutations), so a later read returns the new values. An entity read before the statement still holds its old values: re-read the entities the statement touched before writing them back. An `update(entity)` of a copy read before the statement writes its full row, since [dirty checking](dirty-checking.md) has no observed state to compare against, and so puts its stale values back over the columns the statement set; a versioned entity fails its optimistic lock check instead.
 - **DISTINCT, LIMIT, OFFSET and locking are refused**, as is reading results, scrolling, or using the builder as a subquery.
+- **A Joined Table entity is refused**, its sealed type and each subtype, as for `delete()`: an UPDATE writes the columns of one table. `update(entity)` writes each table of the hierarchy.
 
-The dialect decides how the statement reaches rows through other tables:
-
-| Database | Statement |
-|----------|-----------|
-| MySQL, MariaDB | `UPDATE pet p INNER JOIN owner o ON ... SET p.name = ? WHERE o.last_name = ?` |
-| SQL Server | `UPDATE p SET p.name = ? FROM pet p INNER JOIN owner o ON ... WHERE o.last_name = ?` |
-| PostgreSQL, Oracle, H2, SQLite | `UPDATE pet SET name = ? WHERE (id) IN (SELECT p.id FROM pet p INNER JOIN owner o ON ... WHERE o.last_name = ?)` |
-
-MySQL and MariaDB refuse a subquery that reads the table being updated, so they join the related tables into the UPDATE itself; elsewhere the rows are matched by primary key in a subquery. A condition through a path, an explicit join, a semi-join and an anti-join run on every database, and an [optimizer hint](#optimizer-hints) goes where it goes for a delete.
+Rows reached through other tables take the same form as for [`delete()`](#deleting-rows-by-condition): the statement joins the tables itself on MySQL, MariaDB and SQL Server, and matches the rows by primary key in a subquery elsewhere.
 
 ---
 

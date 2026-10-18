@@ -33,4 +33,9 @@ public class MSSQLServerUpdateBuilderConformanceTest extends AbstractUpdateBuild
         }
         return ContainerDataSource.of(container.getJdbcUrl(), container.getUsername(), container.getPassword());
     }
+
+    @Override
+    protected String timestampType() {
+        return "DATETIME2";
+    }
 }

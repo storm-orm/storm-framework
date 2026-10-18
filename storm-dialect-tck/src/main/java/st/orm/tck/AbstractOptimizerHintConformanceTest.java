@@ -35,6 +35,7 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import st.orm.Entity;
+import st.orm.FK;
 import st.orm.Metamodel;
 import st.orm.PK;
 import st.orm.PersistenceException;
@@ -60,6 +61,10 @@ public abstract class AbstractOptimizerHintConformanceTest {
 
     public record Item(@PK(generation = NONE) Integer id, String name) implements Entity<Integer> {}
 
+    public record ItemTag(@PK(generation = NONE) Integer id, String label, @FK Item item) implements Entity<Integer> {}
+
+    private static final Metamodel<ItemTag, String> TAG_LABEL = Metamodel.of(ItemTag.class, "label");
+
     private DataSource dataSource;
     private ORMTemplate orm;
 
@@ -82,22 +87,28 @@ public abstract class AbstractOptimizerHintConformanceTest {
         try (Connection connection = dataSource.getConnection();
              Statement statement = connection.createStatement()) {
             statement.execute("CREATE TABLE item (id INT PRIMARY KEY, name VARCHAR(100) NOT NULL)");
+            statement.execute("CREATE TABLE item_tag (id INT PRIMARY KEY, label VARCHAR(100) NOT NULL, item_id INT NOT NULL)");
         }
         orm = PreparedStatementTemplate.ORM(dataSource);
         var items = orm.entity(Item.class);
+        var tags = orm.entity(ItemTag.class);
         for (int id = 1; id <= 5; id++) {
-            items.insert(new Item(id, "item " + id));
+            var item = new Item(id, "item " + id);
+            items.insert(item);
+            tags.insert(new ItemTag(id, id % 2 == 0 ? "even" : "odd", item));
         }
     }
 
     @AfterEach
     final void dropItem() {
         // Not every dialect spells the drop conditionally: Oracle has no DROP TABLE IF EXISTS.
-        try (Connection connection = dataSource.getConnection();
-             Statement statement = connection.createStatement()) {
-            statement.execute("DROP TABLE item");
-        } catch (SQLException ignored) {
-            // The table was not there to drop.
+        for (var table : List.of("item_tag", "item")) {
+            try (Connection connection = dataSource.getConnection();
+                 Statement statement = connection.createStatement()) {
+                statement.execute("DROP TABLE " + table);
+            } catch (SQLException ignored) {
+                // The table was not there to drop.
+            }
         }
     }
 
@@ -176,6 +187,32 @@ public abstract class AbstractOptimizerHintConformanceTest {
         var statements = statements(() -> orm.entity(Item.class).update().hint(hint).set(NAME, "hinted").where(ID, EQUALS, 2).executeUpdate());
         assertHinted(statements.getFirst(), List.of(hint));
         assertEquals("hinted", orm.entity(Item.class).getById(2).name());
+    }
+
+    @Test
+    public void aHintedDeleteThroughAJoinRemovesTheRowsItNames() {
+        // A delete through another table takes the dialect's join form: joined into the statement, or matched by
+        // primary key in a subquery. The hint goes where it goes for that form.
+        var hint = hints().getFirst();
+        var statements = statements(() -> orm.entity(ItemTag.class).delete().hint(hint)
+                .innerJoin(Item.class).on(ItemTag.class)
+                .where(NAME, EQUALS, "item 2")
+                .executeUpdate());
+        assertHinted(statements.getFirst(), List.of(hint));
+        assertEquals(4, orm.entity(ItemTag.class).count());
+    }
+
+    @Test
+    public void aHintedUpdateThroughAJoinSetsTheRowsItNames() {
+        var hint = hints().getFirst();
+        var statements = statements(() -> orm.entity(ItemTag.class).update().hint(hint)
+                .set(TAG_LABEL, "hinted")
+                .innerJoin(Item.class).on(ItemTag.class)
+                .where(NAME, EQUALS, "item 2")
+                .executeUpdate());
+        assertHinted(statements.getFirst(), List.of(hint));
+        assertEquals("hinted", orm.entity(ItemTag.class).getById(2).label());
+        assertEquals(1, orm.entity(ItemTag.class).select().where(TAG_LABEL, EQUALS, "hinted").getResultCount());
     }
 
     @Test

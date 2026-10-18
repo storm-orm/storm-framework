@@ -489,6 +489,15 @@ public final class Elements {
      */
     public record OrderFirst() implements Element {}
 
+    /**
+     * Marks an UPDATE or DELETE whose query builder holds no condition. It renders nothing; the statement is flagged as
+     * potentially unsafe whatever WHERE clause it renders, since the form that matches its rows by primary key in a
+     * subquery carries a WHERE clause of its own. The query refuses to run unless it is marked unsafe.
+     *
+     * @since 1.15
+     */
+    public record Unconditional() implements Element {}
+
     /** Raw SQL rendered verbatim, bypassing the template's safety checks. */
     public record Unsafe(String sql) implements Element {
         public Unsafe {

@@ -69,7 +69,7 @@ import kotlin.reflect.KClass
  *
  * ## Example: Update with WHERE clause
  * ```kotlin
- * val updated = visitRepository
+ * val updated = visits
  *     .update()
  *     .set(Visit_.description, "Rescheduled")
  *     .where(Visit_.visitDate eq closedDay)
@@ -208,7 +208,7 @@ public abstract class QueryBuilder<T : Data, R : Any, ID : Any> {
      * primary key, a field declared with `@Persist(updatable = false)`, the version field, which the statement
      * increments itself, and a path reaching into a related table are refused, as is a field set twice.
      *
-     * Only a builder created by `update()` takes this call; any other refuses it.
+     * Only a builder created by `update()` takes this call; a select or delete builder refuses it.
      *
      * @param field the field to set.
      * @param value the value, or `null` to set the field's columns to `NULL`.
@@ -225,6 +225,7 @@ public abstract class QueryBuilder<T : Data, R : Any, ID : Any> {
      * @param ref the ref to the record the foreign key refers to.
      * @return the query builder.
      * @throws PersistenceException if the builder is not an UPDATE builder, or the field cannot be set.
+     * @see set
      * @since 1.15
      */
     public abstract fun <V : Data> set(field: Metamodel<out T, V>, ref: Ref<V>): QueryBuilder<T, R, ID>
@@ -237,6 +238,7 @@ public abstract class QueryBuilder<T : Data, R : Any, ID : Any> {
      * @param template the SQL expression computing the value.
      * @return the query builder.
      * @throws PersistenceException if the builder is not an UPDATE builder, or the field cannot be set.
+     * @see set
      * @since 1.15
      */
     public abstract fun set(field: Metamodel<out T, *>, template: TemplateString): QueryBuilder<T, R, ID>
@@ -247,9 +249,9 @@ public abstract class QueryBuilder<T : Data, R : Any, ID : Any> {
      * parameters. The field maps to exactly one column.
      *
      * ```kotlin
-     * pets.update()
-     *     .set(Pet_.visitCount) { "${Pet_.visitCount} + 1" }
-     *     .where(Pet_.owner eq owner)
+     * owners.update()
+     *     .set(Owner_.lastName) { "UPPER(${Owner_.lastName})" }
+     *     .where(Owner_.address.city eq city)
      *     .executeUpdate()
      * ```
      *
@@ -2286,7 +2288,7 @@ public class SqlScope<T : Data, R : Any, ID : Any> @PublishedApi internal constr
         builder = builder.set(field, ref)
     }
 
-    /** Sets a column of the rows an UPDATE updates to the value an expression computes (e.g., `set(Pet_.visitCount) { "${Pet_.visitCount} + 1" }`). */
+    /** Sets a column of the rows an UPDATE updates to the value an expression computes (e.g., `set(Owner_.lastName) { "UPPER(${Owner_.lastName})" }`). */
     public fun set(field: Metamodel<out T, *>, template: TemplateBuilder) {
         builder = builder.set(field, template)
     }
