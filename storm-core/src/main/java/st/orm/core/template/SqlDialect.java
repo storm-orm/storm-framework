@@ -58,14 +58,43 @@ public interface SqlDialect {
     String name();
 
     /**
-     * Indicates whether the SQL dialect supports delete aliases.
+     * The forms an UPDATE or DELETE statement can take to reach the rows it writes through other tables, as the update
+     * and delete builders do for a condition on a related table or an explicit join.
      *
-     * <p>Delete aliases allow delete statements to use table aliases in joins,  making it easier to filter rows based
-     * on related data.</p>
-     *
-     * @return {@code true} if delete aliases are supported, {@code false} otherwise.
+     * @since 1.15
      */
-    boolean supportsDeleteAlias();
+    enum WriteJoinSyntax {
+        /**
+         * The statement matches the rows by primary key in a subquery that holds the joins and the condition, so the
+         * statement itself names one table: {@code UPDATE t SET c = ? WHERE (id) IN (SELECT a.id FROM t a JOIN u b ON
+         * ... WHERE ...)} and {@code DELETE FROM t WHERE (id) IN (SELECT ...)}.
+         */
+        SUBQUERY,
+        /**
+         * The joins follow the written table in a multiple-table statement: {@code UPDATE t a JOIN u b ON ... SET a.c = ?
+         * WHERE ...} and {@code DELETE a FROM t a JOIN u b ON ... WHERE ...}.
+         */
+        MULTI_TABLE,
+        /**
+         * The statement names the written table by its alias, and a FROM clause holds the table and its joins:
+         * {@code UPDATE a SET a.c = ? FROM t a JOIN u b ON ... WHERE ...} and {@code DELETE a FROM t a JOIN u b ON ...
+         * WHERE ...}.
+         */
+        FROM_CLAUSE
+    }
+
+    /**
+     * Returns how an UPDATE or DELETE statement reaches its rows through other tables.
+     *
+     * <p>The default is {@link WriteJoinSyntax#SUBQUERY}. A dialect whose database refuses a subquery that reads the
+     * table being written, or that joins tables into an UPDATE and a DELETE of its own, returns that form.</p>
+     *
+     * @return the form an UPDATE or DELETE takes to reach its rows through other tables.
+     * @since 1.15
+     */
+    default WriteJoinSyntax writeJoinSyntax() {
+        return WriteJoinSyntax.SUBQUERY;
+    }
 
     /**
      * Indicates whether the SQL dialect supports multi-value tuples in the IN clause.
@@ -391,8 +420,8 @@ public interface SqlDialect {
 
     /**
      * Returns {@code true} if optimizer hints go right after the statement's leading keyword, as a
-     * {@code /*+ ... *}{@code /} comment does on MySQL, MariaDB and Oracle, and {@code false} if they end the statement,
-     * as SQL Server's {@code OPTION (...)} clause does.
+     * {@code /*+ ... *}{@code /} comment does, and {@code false} if they end the statement, as an
+     * {@code OPTION (...)} clause does.
      *
      * @return {@code true} to render the hints after the leading keyword, {@code false} to render them at the end of
      * the statement.
@@ -426,7 +455,7 @@ public interface SqlDialect {
      * database reads as a wildcard, and the escape character itself, is preceded by {@code !}, the escape character
      * that {@link Operator#CONTAINS}, {@link Operator#STARTS_WITH}, {@link Operator#ENDS_WITH} and their negations
      * render. No other character is escaped, since a database may refuse an escape character that precedes anything
-     * but a wildcard or itself, as Oracle does.
+     * but a wildcard or itself.
      *
      * <p>The default escapes {@code %} and {@code _}, the wildcards of standard SQL. A dialect whose database reads
      * further characters as wildcards escapes those as well.</p>

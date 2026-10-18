@@ -68,6 +68,8 @@ internal class EntityRepositoryImpl<E, ID : Any>(
 
     override fun delete(): QueryBuilder<E, *, ID> = QueryBuilderImpl(core.delete())
 
+    override fun update(): QueryBuilder<E, *, ID> = QueryBuilderImpl(core.update())
+
     override fun count(): Long = core.count()
 
     override fun exists(): Boolean = core.exists()

@@ -34,8 +34,10 @@ import st.orm.core.template.impl.Elements.Select;
 import st.orm.core.template.impl.Elements.Set;
 import st.orm.core.template.impl.Elements.Subquery;
 import st.orm.core.template.impl.Elements.Table;
+import st.orm.core.template.impl.Elements.Unconditional;
 import st.orm.core.template.impl.Elements.Unsafe;
 import st.orm.core.template.impl.Elements.Update;
+import st.orm.core.template.impl.Elements.UpdateTarget;
 import st.orm.core.template.impl.Elements.Values;
 import st.orm.core.template.impl.Elements.Where;
 import st.orm.core.template.impl.SqlTemplateImpl.Wrapped;
@@ -46,6 +48,7 @@ class ElementRouter {
     private static final SelectProcessor SELECT_PROCESSOR = new SelectProcessor();
     private static final InsertProcessor INSERT_PROCESSOR = new InsertProcessor();
     private static final UpdateProcessor UPDATE_PROCESSOR = new UpdateProcessor();
+    private static final UpdateProcessor.TargetProcessor UPDATE_TARGET_PROCESSOR = new UpdateProcessor.TargetProcessor();
     private static final DeleteProcessor DELETE_PROCESSOR = new DeleteProcessor();
     private static final FromProcessor FROM_PROCESSOR = new FromProcessor();
     private static final JoinProcessor JOIN_PROCESSOR = new JoinProcessor();
@@ -64,6 +67,7 @@ class ElementRouter {
     private static final UnsafeProcessor UNSAFE_PROCESSOR = new UnsafeProcessor();
     private static final AdvisoryProcessor ADVISORY_PROCESSOR = new AdvisoryProcessor();
     private static final OrderFirstProcessor ORDER_FIRST_PROCESSOR = new OrderFirstProcessor();
+    private static final UnconditionalProcessor UNCONDITIONAL_PROCESSOR = new UnconditionalProcessor();
     private static final CacheableProcessor CACHEABLE_PROCESSOR = new CacheableProcessor();
     private static final RelationKeyProcessor RELATION_KEY_PROCESSOR = new RelationKeyProcessor();
     private static final RelationKeyProcessor.CorrelationProcessor CORRELATION_PROCESSOR = new RelationKeyProcessor.CorrelationProcessor();
@@ -75,6 +79,7 @@ class ElementRouter {
             case Select ignored -> SELECT_PROCESSOR;
             case Insert ignored -> INSERT_PROCESSOR;
             case Update ignored -> UPDATE_PROCESSOR;
+            case UpdateTarget ignored -> UPDATE_TARGET_PROCESSOR;
             case Delete ignored -> DELETE_PROCESSOR;
             case From ignored -> FROM_PROCESSOR;
             case Join ignored -> JOIN_PROCESSOR;
@@ -93,6 +98,7 @@ class ElementRouter {
             case Unsafe ignored -> UNSAFE_PROCESSOR;
             case Advisory ignored -> ADVISORY_PROCESSOR;
             case OrderFirst ignored -> ORDER_FIRST_PROCESSOR;
+            case Unconditional ignored -> UNCONDITIONAL_PROCESSOR;
             case Cacheable ignored -> CACHEABLE_PROCESSOR;
             case RelationKey ignored -> RELATION_KEY_PROCESSOR;
             case Correlation ignored -> CORRELATION_PROCESSOR;

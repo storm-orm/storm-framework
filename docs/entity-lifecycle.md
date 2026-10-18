@@ -301,6 +301,10 @@ This follows the same principle as the "after" callback state above. Removing by
 A callback that throws in order to block a removal only blocks the paths that carry an entity, so `removeById`, `removeByRef` and the `delete()` builder pass straight through. Enforce an invariant in the database (a foreign key, a trigger, or a restricted grant) and use the callback for the bookkeeping that follows.
 :::
 
+### The Update Builder
+
+The `update()` query builder sets columns on the rows its conditions select without reading them, so like the `delete()` builder it has no entity to hand to a callback: `beforeUpdate` and `afterUpdate` do not fire for it. Bookkeeping an update callback does, such as stamping an updated-at column, is written into the builder with its own `set`, and an invariant a callback enforces on update holds only for `update(entity)` and its collection and stream forms.
+
 ### Database Operations Inside Callbacks
 
 Callbacks execute on the thread that performed the write and on its connection, so they see exactly the transaction the write runs in. A callback can perform additional database work, such as inserting related entities, querying for validation data, or updating audit logs, and inside a transaction that work is part of it: a rollback takes back the callback's changes along with the write, and an "after" callback that throws rolls the write back with it.

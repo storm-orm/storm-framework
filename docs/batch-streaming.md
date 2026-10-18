@@ -47,7 +47,7 @@ orm.entity(User.class).insert(users);
 
 ### Batch Update
 
-Pass a list of modified entities and Storm generates a batched UPDATE statement. Each entity in the list produces one row in the batch. This is especially useful when you need to apply a transformation to many rows at once.
+Pass a list of modified entities and Storm generates a batched UPDATE statement. Each entity in the list produces one row in the batch. This is especially useful when you need to apply a transformation to many entities you have read. Rows the code has not read take the [`update()` builder](queries.md#updating-rows-by-condition) instead, which sets their columns in one statement without reading them.
 
 <Tabs groupId="language">
 <TabItem value="kotlin" label="Kotlin" default>

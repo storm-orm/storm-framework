@@ -22,9 +22,11 @@ import static st.orm.core.template.Templates.subquery;
 import java.util.List;
 import java.util.function.Supplier;
 import java.util.stream.Stream;
+import org.jspecify.annotations.Nullable;
 import st.orm.Data;
 import st.orm.Metamodel;
 import st.orm.PersistenceException;
+import st.orm.Ref;
 import st.orm.core.template.Column;
 import st.orm.core.template.Model;
 import st.orm.core.template.Query;
@@ -32,6 +34,7 @@ import st.orm.core.template.QueryBuilder;
 import st.orm.core.template.QueryPlan;
 import st.orm.core.template.QueryTemplate;
 import st.orm.core.template.TemplateString;
+import st.orm.core.template.impl.Elements.Unconditional;
 import st.orm.core.template.impl.Elements.Where;
 
 /**
@@ -98,11 +101,12 @@ public class DeleteBuilderImpl<T extends Data, ID> extends QueryBuilderImpl<T, O
     }
 
     /**
-     * Indicates whether the DELETE query supports joins.
+     * Joins are supported on every dialect: in the statement itself where the dialect joins tables into a DELETE, and
+     * in the subquery that matches the rows elsewhere.
      */
+    @Override
     protected boolean supportsJoin() {
-        // Only use joins if DELETE alias is supported by the SQL dialect.
-        return queryTemplate.dialect().supportsDeleteAlias();
+        return true;
     }
 
     /**
@@ -112,6 +116,21 @@ public class DeleteBuilderImpl<T extends Data, ID> extends QueryBuilderImpl<T, O
     @Override
     protected boolean subqueriesMayReadTable() {
         return false;
+    }
+
+    @Override
+    public <V> QueryBuilder<T, Object, ID> set(Metamodel<? extends T, V> field, @Nullable V value) {
+        throw new PersistenceException("Cannot use SET in a DELETE query.");
+    }
+
+    @Override
+    public <V extends Data> QueryBuilder<T, Object, ID> set(Metamodel<? extends T, V> field, Ref<V> ref) {
+        throw new PersistenceException("Cannot use SET in a DELETE query.");
+    }
+
+    @Override
+    public QueryBuilder<T, Object, ID> set(Metamodel<? extends T, ?> field, TemplateString template) {
+        throw new PersistenceException("Cannot use SET in a DELETE query.");
     }
 
     /**
@@ -201,18 +220,23 @@ public class DeleteBuilderImpl<T extends Data, ID> extends QueryBuilderImpl<T, O
     }
 
     private TemplateString toTemplateString() {
-        TemplateString template;
-        if (supportsJoin()) {
-            template = TemplateString.combine(TemplateString.of("DELETE" + hintAfterKeyword()),
-                    TemplateString.raw(" \0\nFROM \0", fromType, from(fromType, supportsJoin())));
-        } else {
-            template = TemplateString.combine(TemplateString.of("SELECT "), getPrimaryKeyTemplate(true), TemplateString.raw("\nFROM \0", from(fromType, true)));
-        }
-        template = appendJoinsAndWhere(template);
-        if (!supportsJoin()) {
-            template = TemplateString.combine(TemplateString.of("DELETE" + hintAfterKeyword()),
-                    TemplateString.raw("\nFROM \0\nWHERE (", from(fromType, false)),
-                    getPrimaryKeyTemplate(false), TemplateString.of(") IN ("), wrap(subquery(template, false)), TemplateString.of(")"));
+        refuseJoinedInheritance("DELETE");
+        TemplateString template = switch (queryTemplate.dialect().writeJoinSyntax()) {
+            // DELETE p FROM pet p INNER JOIN owner o ON ... WHERE o.last_name = ?.
+            case MULTI_TABLE, FROM_CLAUSE -> appendJoinsAndWhere(TemplateString.combine(
+                    TemplateString.of("DELETE" + hintAfterKeyword()),
+                    TemplateString.raw(" \0\nFROM \0", fromType, from(fromType, true))));
+            // DELETE FROM pet WHERE (id) IN (SELECT p.id FROM pet p INNER JOIN owner o ON ... WHERE ...).
+            case SUBQUERY -> {
+                var select = appendJoinsAndWhere(TemplateString.combine(TemplateString.of("SELECT "), getPrimaryKeyTemplate(true),
+                        TemplateString.raw("\nFROM \0", from(fromType, true))));
+                yield TemplateString.combine(TemplateString.of("DELETE" + hintAfterKeyword()),
+                        TemplateString.raw("\nFROM \0\nWHERE (", from(fromType, false)),
+                        getPrimaryKeyTemplate(false), TemplateString.of(") IN ("), wrap(subquery(select, false)), TemplateString.of(")"));
+            }
+        };
+        if (!hasCondition()) {
+            template = TemplateString.combine(template, wrap(new Unconditional()));
         }
         String hint = hintAtEnd();
         return hint.isEmpty() ? template : TemplateString.combine(template, TemplateString.of(hint));
@@ -225,6 +249,9 @@ public class DeleteBuilderImpl<T extends Data, ID> extends QueryBuilderImpl<T, O
 
     /**
      * Builds the query based on the current state of the query builder.
+     *
+     * <p>A query without a condition refuses to run unless {@link #unsafe()} was called on the builder, or
+     * {@link Query#unsafe()} on the query.</p>
      *
      * @return the constructed query.
      */
@@ -239,6 +266,9 @@ public class DeleteBuilderImpl<T extends Data, ID> extends QueryBuilderImpl<T, O
 
     /**
      * Compiles this query into a reusable plan.
+     *
+     * <p>The queries of a plan without a condition refuse to run unless {@link #unsafe()} was called on the builder,
+     * or {@link Query#unsafe()} on the query.</p>
      *
      * @return a reusable plan for this query.
      */

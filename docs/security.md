@@ -104,7 +104,7 @@ When you intentionally need to perform such an operation, call `unsafe()` on the
 <TabItem value="kotlin" label="Kotlin" default>
 
 ```kotlin
-// This would throw: "DELETE without WHERE clause is potentially unsafe."
+// This would throw: "DELETE without a WHERE clause is potentially unsafe. Use Query.unsafe() to allow this operation."
 // userRepository.delete().executeUpdate()
 
 // Explicitly marking as unsafe allows the operation.
@@ -115,7 +115,7 @@ orm.entity<User>().delete().unsafe().executeUpdate()
 <TabItem value="java" label="Java">
 
 ```java
-// This would throw: "DELETE without WHERE clause is potentially unsafe."
+// This would throw: "DELETE without a WHERE clause is potentially unsafe. Use Query.unsafe() to allow this operation."
 // userRepository.delete().executeUpdate();
 
 // Explicitly marking as unsafe allows the operation.

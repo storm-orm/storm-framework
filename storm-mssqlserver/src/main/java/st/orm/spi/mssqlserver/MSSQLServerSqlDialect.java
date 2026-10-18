@@ -45,13 +45,15 @@ public class MSSQLServerSqlDialect extends DefaultSqlDialect {
     }
 
     /**
-     * Indicates whether the SQL dialect supports delete aliases.
+     * Names the written table by its alias and joins it in a FROM clause, as SQL Server writes an UPDATE or DELETE
+     * through other tables.
      *
-     * @return {@code true} if delete aliases are supported, {@code false} otherwise.
+     * @return {@link WriteJoinSyntax#FROM_CLAUSE}.
+     * @since 1.15
      */
     @Override
-    public boolean supportsDeleteAlias() {
-        return true;
+    public WriteJoinSyntax writeJoinSyntax() {
+        return WriteJoinSyntax.FROM_CLAUSE;
     }
 
     /**

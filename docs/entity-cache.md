@@ -173,6 +173,8 @@ Why invalidate rather than update? The database may modify data in ways not visi
 
 By invalidating, the next read fetches the actual persisted state.
 
+The [`update()`](queries.md#updating-rows-by-condition) and [`delete()`](queries.md#deleting-rows-by-condition) query builders name a table, not rows: they change the rows their conditions select without reading them. Once the statement runs, Storm evicts all entities of the builder's type observed in the transaction; entities of other types stay cached.
+
 ### Raw SQL Mutations
 
 When you execute raw SQL mutations, Storm cannot determine which entities were affected:
@@ -190,7 +192,7 @@ transaction {
 }
 ```
 
-To preserve cache efficiency, prefer using repository methods or typed templates that specify the entity type.
+To preserve cache efficiency, prefer repository methods, and for a change to many rows the [`update()` builder](queries.md#updating-rows-by-condition): it names its type, so only the entities of that type are evicted.
 
 ---
 

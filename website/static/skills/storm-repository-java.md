@@ -114,7 +114,7 @@ Three levels, from simplest to most powerful — always prefer the simplest that
 | Level | Approach | Best for |
 |-------|----------|----------|
 | 1 | Convenience methods (`findBy`, `findAllBy`, `removeAllBy`, `countBy`, `existsBy`) | Simple lookups and operations |
-| 2 | Builder chained (`select().where(...)`, `delete().where(...)`) | Most application queries needing ordering, pagination, or joins |
+| 2 | Builder chained (`select().where(...)`, `update().set(...).where(...)`, `delete().where(...)`) | Most application queries needing ordering, pagination, or joins |
 | 3 | SQL Templates (/storm-sql-java) | CTEs, window functions, database-specific features |
 
 Unlike Kotlin, Java has no `select(predicate)` / `delete(predicate)` shorthand and no block DSL — always chain `.where(...)` on the builder.
@@ -149,6 +149,33 @@ users.delete().where(User_.postalCode, IS_NULL).executeUpdate();
 ```
 
 > ⚠️ There is **no** `delete(entity)` or `delete(id)` overload (unlike JPA / Spring Data `CrudRepository`). `delete()` returns a `QueryBuilder`, so it takes no entity argument. To delete an entity or id you already hold, use `remove(entity)` / `removeById(id)` / `removeByRef(ref)`.
+
+The same split holds for updates. `update(entity)` writes an entity you hold. The `update()` builder sets columns on the rows its conditions select, in one statement, without reading them; `set` names each column through the metamodel, so the table's own entity serves the write:
+```java
+// update(entity): you read the entity in this transaction, write it back
+users.update(new User(user.id(), user.email(), "Alice Johnson", user.birthDate(), user.city()));
+
+// update builder: set columns on rows you did not read
+pets.update()
+    .set(Pet_.owner, newOwner)
+    .where(Pet_.owner, EQUALS, previousOwner)
+    .executeUpdate();
+
+visits.update()
+    .set(Visit_.description, "Rescheduled")
+    .where(Visit_.visitDate, EQUALS, closedDay)
+    .executeUpdate();
+
+// a value computed from the row
+owners.update()
+    .set(Owner_.lastName, RAW."UPPER(\{Owner_.lastName})")
+    .where(Owner_.address.city, EQUALS, city)
+    .executeUpdate();
+```
+
+`set` takes a value typed by the field, the entity or a `Ref` for a foreign key, a record for an inline record (each of its columns), or a template computing one column; `setNull(field)` sets a nullable field to `NULL` (a bare `null` is ambiguous between the overloads). It refuses, naming the field: the primary key, `@Persist(updatable = false)` fields, the `@Version` field, a path into a related table (`Owner_.address.city.name`), and a field set twice. The builder requires a WHERE clause (or a semi-join/anti-join) unless `unsafe()` is called, increments the `@Version` column, fires **no** entity callbacks (there is no entity), and evicts the entities of its type from the transaction's entity cache. Conditions through a path, an explicit join, `semiJoin` or `antiJoin` work on every database. Both builders refuse a Joined Table entity (sealed type or subtype), whose rows span two tables.
+
+Never create a second, partial entity mapping a table that already has one in order to write a few of its columns: rows the transaction did not read take the `update()` builder, and an entity it did read takes `update(entity)`, with `@DynamicUpdate(FIELD)` on the entity (/storm-entity-java) to write only the changed columns.
 
 ## CRUD Operations
 
@@ -333,9 +360,13 @@ Dirty checking decides what to write; it does not detect concurrent writers. Los
 is `@Version` (optimistic locking), unchanged by any of the above.
 
 Bulk mutations bypass dirty checking, and Storm invalidates observed state so later comparisons
-stay truthful: a mutation with a known entity type (`delete(...)` builders, template mutations
-naming the type) clears the observed state of that type; a raw SQL mutation clears all observed
-state in the transaction. Updates after such a mutation fall back to full-row writes.
+stay truthful: a mutation with a known entity type (`update()` and `delete()` builders, template
+mutations naming the type) clears the observed state of that type; a raw SQL mutation clears all
+observed state in the transaction. Updates after such a mutation fall back to full-row writes. An
+entity read before an `update()` builder ran still holds its old values, so its full-row write puts
+them back over the columns the builder set; a versioned one fails its optimistic lock check instead,
+since the builder incremented the version. Re-read the rows the builder touched before writing them
+as entities.
 
 ## Entity Lifecycle Callbacks
 
@@ -343,7 +374,9 @@ state in the transaction. Updates after such a mutation fall back to full-row wr
 service method. `beforeInsert` / `beforeUpdate` / `beforeUpsert` return the entity to persist; `afterInsert` /
 `afterUpdate` / `afterUpsert` / `afterRemove` observe what the calling method reports; `beforeRemove` and
 `afterRemove` fire only where the operation carries an entity (`remove(entity)` and its batch forms, never
-`removeById`, `removeAll` or a `delete()` builder). The type parameter selects the entity type, and
+`removeById`, `removeAll` or a `delete()` builder), and `beforeUpdate` / `afterUpdate` never fire for the `update()`
+builder, which carries no entity: an audit column it should stamp is `set` in the builder. The type parameter
+selects the entity type, and
 `EntityCallback<Entity<?>>` fires for every type.
 
 ```java

@@ -15,6 +15,7 @@ import st.orm.Operator;
 import st.orm.PersistenceException;
 import st.orm.SqlTemplateException;
 import st.orm.StormConfig;
+import st.orm.core.template.SqlDialect;
 
 /**
  * Unit tests for {@link MySQLSqlDialect} verifying MySQL-specific SQL generation behavior.
@@ -193,8 +194,8 @@ class MySQLSqlDialectTest {
     }
 
     @Test
-    void supportsDeleteAliasShouldReturnTrue() {
-        assertTrue(dialect.supportsDeleteAlias());
+    void writeJoinSyntaxShouldBeMultiTable() {
+        assertEquals(SqlDialect.WriteJoinSyntax.MULTI_TABLE, dialect.writeJoinSyntax());
     }
 
     @Test
@@ -248,7 +249,7 @@ class MySQLSqlDialectTest {
         var sqlDialect = provider.getSqlDialect(StormConfig.of(Map.of()));
         assertNotNull(sqlDialect);
         assertEquals("MySQL", sqlDialect.name());
-        assertTrue(sqlDialect.supportsDeleteAlias());
+        assertEquals(SqlDialect.WriteJoinSyntax.MULTI_TABLE, sqlDialect.writeJoinSyntax());
         assertTrue(sqlDialect.supportsMultiValueTuples());
         assertEquals("FOR UPDATE", sqlDialect.forUpdateLockHint());
         assertEquals("FOR SHARE", sqlDialect.forShareLockHint());

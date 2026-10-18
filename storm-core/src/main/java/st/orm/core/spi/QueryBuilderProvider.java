@@ -80,4 +80,18 @@ public interface QueryBuilderProvider extends Provider {
     <T extends Data, ID> QueryBuilder<T, ?, ID> deleteFrom(QueryTemplate queryTemplate,
                                                            Class<T> fromType,
                                                            Supplier<Model<T, ID>> modelSupplier);
+
+    /**
+     * Creates a query builder for the specified table to update.
+     *
+     * @param queryTemplate provides the template logic for the query builder.
+     * @param fromType the table to update.
+     * @param modelSupplier a supplier that creates the model when needed.
+     * @return the query builder.
+     * @param <T> the table type to update.
+     * @since 1.15
+     */
+    <T extends Data, ID> QueryBuilder<T, ?, ID> updateFrom(QueryTemplate queryTemplate,
+                                                           Class<T> fromType,
+                                                           Supplier<Model<T, ID>> modelSupplier);
 }

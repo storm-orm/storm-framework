@@ -356,6 +356,48 @@ public interface EntityRepository<E, ID : Any> : Repository where E : Entity<ID>
         return scope.builder
     }
 
+    /**
+     * Creates a new query builder for updating entities of the type managed by this repository.
+     *
+     * The builder sets the columns named through `set` on the rows its conditions select, in one statement, without
+     * reading them. It requires a WHERE clause unless `unsafe()` is called, and it increments the version column of a
+     * versioned entity, so an entity read before the statement fails its optimistic lock check when it is updated
+     * afterwards. Entity callbacks do not fire, since the statement carries no entity, and the entities of this type
+     * observed in the current transaction are forgotten once it runs, so a later update of one writes all of its
+     * columns rather than relying on dirty checking.
+     *
+     * ```kotlin
+     * visits.update()
+     *     .set(Visit_.description, "Rescheduled")
+     *     .where(Visit_.visitDate eq closedDay)
+     *     .executeUpdate()
+     * ```
+     *
+     * @return a new query builder for the entity type.
+     * @since 1.15
+     */
+    public fun update(): QueryBuilder<E, *, ID>
+
+    /**
+     * Constructs an UPDATE query using a block-based DSL.
+     *
+     * ```kotlin
+     * pets.update {
+     *     set(Pet_.owner, newOwner)
+     *     where(Pet_.owner eq previousOwner)
+     * }.executeUpdate()
+     * ```
+     *
+     * @see update
+     * @since 1.15
+     */
+    @Suppress("UNCHECKED_CAST")
+    public fun update(block: SqlScope<E, Any, ID>.() -> Any?): QueryBuilder<Data, Any, ID> {
+        val scope = SqlScope<E, Any, ID>(update() as QueryBuilder<Data, Any, ID>)
+        scope.validateResult(scope.block())
+        return scope.builder
+    }
+
     // Base methods.
 
     /**

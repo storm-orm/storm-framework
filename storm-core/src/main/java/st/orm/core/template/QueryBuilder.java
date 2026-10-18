@@ -131,6 +131,53 @@ public abstract class QueryBuilder<T extends Data, R, ID> {
     public abstract QueryBuilder<T, R, ID> unsafe();
 
     /**
+     * Sets a column of the rows an UPDATE query updates to the given value.
+     *
+     * <p>The field is a column of the table the query updates, or a foreign key or inline record of that table, which
+     * sets each of its columns; a foreign key takes the referenced record and an inline record takes the record whose
+     * values go into its columns. A {@code null} value sets the columns to {@code NULL}, which a non-nullable field
+     * refuses. The primary key, a field declared with {@code @Persist(updatable = false)}, the version field, which
+     * the statement increments itself, and a path reaching into a related table are refused, as is a field set twice.</p>
+     *
+     * <p>Only a builder created by {@code update()} takes this call; a select or delete builder refuses it.</p>
+     *
+     * @param field the field to set.
+     * @param value the value, or {@code null} to set the field's columns to {@code NULL}.
+     * @return the query builder.
+     * @param <V> the type of the field.
+     * @throws PersistenceException if the builder is not an UPDATE builder, or the field cannot be set.
+     * @since 1.15
+     */
+    public abstract <V> QueryBuilder<T, R, ID> set(Metamodel<? extends T, V> field, @Nullable V value);
+
+    /**
+     * Sets a foreign key of the rows an UPDATE query updates to the record the given ref refers to.
+     *
+     * @param field the foreign key field to set.
+     * @param ref the ref to the record the foreign key refers to.
+     * @return the query builder.
+     * @param <V> the type of the referenced record.
+     * @throws PersistenceException if the builder is not an UPDATE builder, or the field cannot be set.
+     * @see #set(Metamodel, Object)
+     * @since 1.15
+     */
+    public abstract <V extends Data> QueryBuilder<T, R, ID> set(Metamodel<? extends T, V> field, Ref<V> ref);
+
+    /**
+     * Sets a column of the rows an UPDATE query updates to the value the given SQL expression computes, such as an
+     * increment of the column itself. The expression is a template, so it names columns through the metamodel and
+     * binds its values as parameters. The field maps to exactly one column.
+     *
+     * @param field the field to set.
+     * @param template the SQL expression computing the value.
+     * @return the query builder.
+     * @throws PersistenceException if the builder is not an UPDATE builder, or the field cannot be set.
+     * @see #set(Metamodel, Object)
+     * @since 1.15
+     */
+    public abstract QueryBuilder<T, R, ID> set(Metamodel<? extends T, ?> field, TemplateString template);
+
+    /**
      * Marks the current query as a distinct query.
      *
      * @return the query builder.

@@ -164,6 +164,20 @@ public interface QueryTemplate extends SubqueryTemplate {
     <T extends Data> QueryBuilder<T, ?, ?> deleteFrom(Class<T> fromType);
 
     /**
+     * Creates a query builder for the specified table to update.
+     *
+     * <p>The builder sets the columns named through {@code set} on the rows its conditions select. It requires a
+     * WHERE clause unless {@link QueryBuilder#unsafe()} is called, and it increments the version column of a versioned
+     * table.</p>
+     *
+     * @param fromType the table to update.
+     * @return the query builder.
+     * @param <T> the table type to update.
+     * @since 1.15
+     */
+    <T extends Data> QueryBuilder<T, ?, ?> updateFrom(Class<T> fromType);
+
+    /**
      * Creates a query for the specified {@code query} string.
      *
      * @param query the query.

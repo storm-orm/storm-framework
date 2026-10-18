@@ -305,6 +305,19 @@ public interface EntityRepository<E extends Entity<ID>, ID> extends Repository {
      */
     QueryBuilder<E, ?, ID> delete();
 
+    /**
+     * Creates a new query builder for updating entities of the type managed by this repository.
+     *
+     * <p>The builder sets the columns named through {@code set} on the rows its conditions select, in one statement,
+     * without reading them. It requires a WHERE clause unless {@link QueryBuilder#unsafe()} is called, and it
+     * increments the version column of a versioned entity. Entity callbacks do not fire, since the statement carries
+     * no entity, and the entities of this type cached in the current transaction are evicted once it runs.</p>
+     *
+     * @return a new query builder for the entity type.
+     * @since 1.15
+     */
+    QueryBuilder<E, ?, ID> update();
+
     // Base methods.
 
     /**

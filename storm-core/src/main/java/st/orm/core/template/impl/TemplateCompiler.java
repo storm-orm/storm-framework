@@ -248,6 +248,14 @@ interface TemplateCompiler {
     void addAdvisory(String advisory);
 
     /**
+     * Flags the statement as potentially unsafe, as an UPDATE or DELETE without a condition, whatever WHERE clause it
+     * renders.
+     *
+     * @since 1.15
+     */
+    void markUnconditional();
+
+    /**
      * Returns the fetch plan of the compilation in progress: the references the statement resolves as part of its
      * select list, collected from the template's fetch elements before its elements compile.
      *

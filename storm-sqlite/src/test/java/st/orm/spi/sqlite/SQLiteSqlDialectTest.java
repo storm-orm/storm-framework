@@ -15,6 +15,7 @@ import st.orm.Operator;
 import st.orm.PersistenceException;
 import st.orm.SqlTemplateException;
 import st.orm.StormConfig;
+import st.orm.core.template.SqlDialect;
 
 class SQLiteSqlDialectTest {
 
@@ -174,8 +175,8 @@ class SQLiteSqlDialectTest {
     }
 
     @Test
-    void supportsDeleteAliasShouldReturnFalse() {
-        assertFalse(dialect.supportsDeleteAlias());
+    void writeJoinSyntaxShouldBeSubquery() {
+        assertEquals(SqlDialect.WriteJoinSyntax.SUBQUERY, dialect.writeJoinSyntax());
     }
 
     @Test
@@ -229,7 +230,7 @@ class SQLiteSqlDialectTest {
         var sqlDialect = provider.getSqlDialect(StormConfig.of(Map.of()));
         assertNotNull(sqlDialect);
         assertEquals("SQLite", sqlDialect.name());
-        assertFalse(sqlDialect.supportsDeleteAlias());
+        assertEquals(SqlDialect.WriteJoinSyntax.SUBQUERY, sqlDialect.writeJoinSyntax());
         assertFalse(sqlDialect.supportsMultiValueTuples());
         assertEquals("", sqlDialect.forUpdateLockHint());
         assertEquals("", sqlDialect.forShareLockHint());

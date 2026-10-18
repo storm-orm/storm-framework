@@ -314,9 +314,9 @@ Window<User> next = userRepository.scroll(window.next());
 
 ### Why does my DELETE without a WHERE clause throw an exception?
 
-By default, Storm rejects DELETE and UPDATE queries that have no WHERE clause with a `PersistenceException`. This is a safety mechanism that prevents accidental deletion or modification of every row in a table.
+By default, the `delete()` and `update()` query builders reject a statement without a condition, throwing a `PersistenceException`. A WHERE clause, a semi-join or an anti-join counts as a condition. This is a safety mechanism that prevents accidental deletion or modification of every row in a table.
 
-This protection is particularly valuable because `QueryBuilder` is immutable. If you accidentally ignore the return value of `where()` on a delete builder, the WHERE clause is silently lost and the query would affect all rows. The safety check catches this at runtime:
+This protection is particularly valuable because `QueryBuilder` is immutable. If you accidentally ignore the return value of `where()` on a delete or update builder, the WHERE clause is silently lost and the query would affect all rows. The safety check catches this at runtime:
 
 <Tabs groupId="language">
 <TabItem value="kotlin" label="Kotlin" default>
@@ -391,7 +391,7 @@ userRepository.delete().unsafe().executeUpdate();
 </TabItem>
 </Tabs>
 
-The `unsafe()` method signals that the absence of a WHERE clause is intentional. Without it, Storm assumes the missing WHERE clause is a mistake. The `removeAll()` convenience method calls `unsafe()` internally.
+The `unsafe()` method signals that the absence of a condition is intentional, for a DELETE and an UPDATE alike. Without it, Storm assumes the missing condition is a mistake. The `removeAll()` convenience method calls `unsafe()` internally.
 
 ### Can I use database-specific functions?
 
@@ -573,7 +573,7 @@ var results = userRepository.select()
 
 This applies to all builder methods: `where()`, `orderBy()`, `limit()`, `offset()`, `distinct()`, `groupBy()`, `having()`, joins, and locking methods like `forUpdate()`. Always use the returned builder.
 
-For DELETE and UPDATE queries, this mistake is especially dangerous because a lost WHERE clause means the operation applies to every row in the table. Storm guards against this by default: executing a DELETE or UPDATE without a WHERE clause throws a `PersistenceException`. See [Why does my DELETE without a WHERE clause throw an exception?](#why-does-my-delete-without-a-where-clause-throw-an-exception) below for details.
+For DELETE and UPDATE queries, this mistake is especially dangerous because a lost WHERE clause means the operation applies to every row in the table. Storm guards against this by default: executing a DELETE or UPDATE without a condition (a WHERE clause, semi-join or anti-join) throws a `PersistenceException`. See [Why does my DELETE without a WHERE clause throw an exception?](#why-does-my-delete-without-a-where-clause-throw-an-exception) below for details.
 
 ### My entity isn't mapping correctly
 

@@ -230,6 +230,13 @@ public final class Providers {
         return queryBuilderProvider().deleteFrom(queryTemplate, fromType, modelSupplier);
     }
 
+    public static <T extends Data, ID> QueryBuilder<T, ?, ID> updateFrom(
+            QueryTemplate queryTemplate,
+            Class<T> fromType,
+            Supplier<Model<T, ID>> modelSupplier) {
+        return queryBuilderProvider().updateFrom(queryTemplate, fromType, modelSupplier);
+    }
+
     public static SqlDialect getSqlDialect() {
         return getSqlDialect(StormConfig.defaults());
     }

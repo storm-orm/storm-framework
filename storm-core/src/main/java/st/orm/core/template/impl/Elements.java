@@ -164,6 +164,18 @@ public final class Elements {
     }
 
     /**
+     * Names the table an UPDATE writes where a {@link From} element renders that table, its alias and its joins, as
+     * an UPDATE through other tables does on the databases that join into one. Renders nothing itself.
+     *
+     * @since 1.15
+     */
+    public record UpdateTarget(Class<? extends Data> table) implements Element {
+        public UpdateTarget {
+            requireNonNull(table, "table");
+        }
+    }
+
+    /**
      * Renders the SET clause of an UPDATE: assignments taken from the record's columns, or placeholder assignments
      * bound through {@code bindVars} for batch execution. A non-empty {@code fields} restricts the assignments to
      * those columns (a partial update).
@@ -476,6 +488,15 @@ public final class Elements {
      * @since 1.15
      */
     public record OrderFirst() implements Element {}
+
+    /**
+     * Marks an UPDATE or DELETE whose query builder holds no condition. It renders nothing; the statement is flagged as
+     * potentially unsafe whatever WHERE clause it renders, since the form that matches its rows by primary key in a
+     * subquery carries a WHERE clause of its own. The query refuses to run unless it is marked unsafe.
+     *
+     * @since 1.15
+     */
+    public record Unconditional() implements Element {}
 
     /** Raw SQL rendered verbatim, bypassing the template's safety checks. */
     public record Unsafe(String sql) implements Element {

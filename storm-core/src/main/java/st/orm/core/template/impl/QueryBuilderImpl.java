@@ -448,13 +448,28 @@ abstract class QueryBuilderImpl<T extends Data, R, ID> extends QueryBuilder<T, R
 
     /**
      * Returns whether a subquery in the WHERE clause may read the table the statement targets. A semi-join reads it to
-     * match the statement's rows through their own columns, which some databases refuse inside a DELETE of that
-     * table; there, the rows are matched in the statement itself.
+     * match the statement's rows through their own columns, which some databases refuse inside an UPDATE or DELETE of
+     * that table; there, the rows are matched in the statement itself.
      *
      * @return {@code true} if a subquery may read the statement's table, {@code false} otherwise.
      */
     protected boolean subqueriesMayReadTable() {
         return true;
+    }
+
+    /**
+     * Refuses an UPDATE or DELETE of a type of a joined inheritance hierarchy, the sealed base type or one of its
+     * subtypes: the rows of such a type span the base table and an extension table, and a single statement writes one
+     * table.
+     *
+     * @param operation the statement, {@code "UPDATE"} or {@code "DELETE"}.
+     * @throws PersistenceException if the type is part of a joined inheritance hierarchy.
+     */
+    protected final void refuseJoinedInheritance(String operation) {
+        if (modelSupplier.get().isJoinedInheritance() || RecordReflection.findJoinedSealedParent(fromType).isPresent()) {
+            throw new PersistenceException("Cannot %s %s through the %s builder: its rows span the tables of a joined inheritance hierarchy, and the statement writes one table."
+                    .formatted(operation.toLowerCase(), fromType.getSimpleName(), operation.toLowerCase()));
+        }
     }
 
     /**

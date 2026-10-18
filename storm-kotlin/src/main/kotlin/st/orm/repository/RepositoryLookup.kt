@@ -671,6 +671,16 @@ public inline fun <reified T> RepositoryLookup.delete(): QueryBuilder<T, *, *>
         where T : Data, T : Entity<*> = entity<T>().delete()
 
 /**
+ * Creates a query builder to update records of type [T], setting the columns named through `set` on the rows its
+ * conditions select.
+ *
+ * @return A [QueryBuilder] for updating records of type [T].
+ * @since 1.15
+ */
+public inline fun <reified T> RepositoryLookup.update(): QueryBuilder<T, *, *>
+        where T : Data, T : Entity<*> = entity<T>().update()
+
+/**
  * Removes an entity of type [T] from the repository.
  *
  * @param entity The entity to remove.

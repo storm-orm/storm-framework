@@ -150,10 +150,39 @@ userRepository.delete().unsafe().executeUpdate();
 </Tabs>
 
 :::warning Safety Check
-Storm rejects DELETE and UPDATE queries that have no WHERE clause, throwing a `PersistenceException`. This prevents accidental bulk deletions, which is especially important because `QueryBuilder` is immutable and a lost `where()` return value would silently drop the filter. Call `unsafe()` to opt out of this check when you intentionally want to affect all rows. The `removeAll()` convenience method calls `unsafe()` internally.
+Storm rejects a DELETE or UPDATE built without a condition, throwing a `PersistenceException`; a WHERE clause, a semi-join or an anti-join counts as a condition. This prevents accidental bulk deletions and updates, which is especially important because `QueryBuilder` is immutable and a lost `where()` return value would silently drop the filter. Call `unsafe()` to opt out of this check when you intentionally want to affect all rows. The `removeAll()` convenience method calls `unsafe()` internally.
 :::
 
 Storm uses dirty checking to determine which columns to include in the UPDATE statement. See [Dirty Checking](dirty-checking.md) for configuration details.
+
+### Updating Columns by Condition
+
+`update(entity)` writes an entity you read. To set a few columns on rows you have not read, use the `update()` builder, the counterpart of `delete()`: `set` names the columns through the metamodel and the conditions select the rows, in one statement.
+
+<Tabs groupId="language">
+<TabItem value="kotlin" label="Kotlin" default>
+
+```kotlin
+pets.update {
+    set(Pet_.owner, newOwner)
+    where(Pet_.owner eq previousOwner)
+}.executeUpdate()
+```
+
+</TabItem>
+<TabItem value="java" label="Java">
+
+```java
+pets.update()
+    .set(Pet_.owner, newOwner)
+    .where(Pet_.owner, EQUALS, previousOwner)
+    .executeUpdate();
+```
+
+</TabItem>
+</Tabs>
+
+Which to use depends on whether the transaction read the rows. Rows it did not read take the builder. An entity it did read takes `update(entity)`, and `@DynamicUpdate(FIELD)` on the entity writes only the columns that changed. Either way the table keeps one entity: a second, partial entity mapping the same table for writes is not needed. Like `delete()`, the builder requires a condition unless `unsafe()` is called; it also increments the `@Version` field, fires no entity callbacks, and evicts the entities of its type from the transaction's entity cache. See [Updating Rows by Condition](queries.md#updating-rows-by-condition) for what `set` takes and refuses and the SQL each database runs.
 
 ---
 

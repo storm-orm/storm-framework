@@ -54,6 +54,12 @@ internal class QueryBuilderImpl<T : Data, R : Any, ID : Any>(
      */
     override fun unsafe(): QueryBuilder<T, R, ID> = QueryBuilderImpl<T, R, ID>(core.unsafe())
 
+    override fun <V : Any> set(field: Metamodel<out T, V>, value: V?): QueryBuilder<T, R, ID> = QueryBuilderImpl<T, R, ID>(core.set(field, value))
+
+    override fun <V : Data> set(field: Metamodel<out T, V>, ref: Ref<V>): QueryBuilder<T, R, ID> = QueryBuilderImpl<T, R, ID>(core.set(field, ref))
+
+    override fun set(field: Metamodel<out T, *>, template: TemplateString): QueryBuilder<T, R, ID> = QueryBuilderImpl<T, R, ID>(core.set(field, template.unwrap))
+
     /**
      * Marks the current query as a distinct query.
      *

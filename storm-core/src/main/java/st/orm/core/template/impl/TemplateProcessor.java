@@ -187,6 +187,12 @@ class TemplateProcessor {
     private List<String> advisories = List.of();
 
     /**
+     * Compile-time only: whether the template marks the statement as an UPDATE or DELETE without a condition, which is
+     * flagged as potentially unsafe whatever WHERE clause it renders.
+     */
+    private boolean unconditional;
+
+    /**
      * Compile-time only: the select list the query model generated, which a cursor element finds its columns in.
      */
     @Nullable
@@ -658,7 +664,7 @@ class TemplateProcessor {
                 session.parameters,
                 ofNullable(session.bindVariables),
                 generatedKeys != null ? generatedKeys : List.of(),
-                ofNullable(affectedType),
+                ofNullable(affectedType()),
                 ofNullable(dataType != null ? dataType : affectedType),
                 fetchPaths != null ? fetchPaths : List.of(),
                 cursorColumns != null ? cursorColumns : List.of(),
@@ -671,10 +677,23 @@ class TemplateProcessor {
     }
 
     /**
+     * Returns the type the statement writes. A DELETE that names its table in the FROM clause alone, as
+     * {@code DELETE FROM t WHERE ...} does, has no delete element to record it; the table of its FROM clause, the
+     * first data type the statement records, is the one it deletes from.
+     */
+    private @Nullable Class<? extends Data> affectedType() {
+        if (affectedType == null && operation == SqlOperation.DELETE) {
+            return dataType;
+        }
+        return affectedType;
+    }
+
+    /**
      * Performs a basic safety check for potentially unsafe statements.
      *
-     * <p>UPDATE and DELETE statements without a WHERE clause are flagged as potentially unsafe. The returned message is
-     * informational and can be used by callers to warn users or reject execution.</p>
+     * <p>UPDATE and DELETE statements without a WHERE clause, or that a query builder marks as holding no condition,
+     * are flagged as potentially unsafe. The returned message is informational and can be used by callers to warn
+     * users or reject execution.</p>
      *
      * @param sql       the compiled SQL to analyze.
      * @param operation the operation represented by the SQL.
@@ -684,7 +703,7 @@ class TemplateProcessor {
         return switch (operation) {
             case SELECT, INSERT, UNDEFINED -> empty();
             case UPDATE, DELETE -> {
-                if (!hasWhereClause(sql, template.dialect())) {
+                if (unconditional || !hasWhereClause(sql, template.dialect())) {
                     yield Optional.of("%s without a WHERE clause is potentially unsafe.".formatted(operation));
                 }
                 yield empty();
@@ -994,6 +1013,11 @@ class TemplateProcessor {
             if (fetchPaths == null) {
                 fetchPaths = List.copyOf(paths);
             }
+        }
+
+        @Override
+        public void markUnconditional() {
+            unconditional = true;
         }
 
         @Override

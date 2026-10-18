@@ -41,6 +41,8 @@ internal open class QueryTemplateImpl(private val core: st.orm.core.template.Que
 
     override fun <T : Data> deleteFrom(fromType: KClass<T>): QueryBuilder<T, *, *> = QueryBuilderImpl(core.deleteFrom<T>(fromType.java))
 
+    override fun <T : Data> updateFrom(fromType: KClass<T>): QueryBuilder<T, *, *> = QueryBuilderImpl(core.updateFrom<T>(fromType.java))
+
     override fun query(query: String): Query = QueryImpl(core.query(query))
 
     override fun query(template: TemplateString): Query = QueryImpl(core.query(template.unwrap))

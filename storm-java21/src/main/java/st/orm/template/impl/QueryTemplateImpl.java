@@ -73,6 +73,11 @@ public class QueryTemplateImpl implements QueryTemplate {
     }
 
     @Override
+    public <T extends Data> QueryBuilder<T, ?, ?> updateFrom(Class<T> fromType) {
+        return new QueryBuilderImpl<>(core.updateFrom(fromType));
+    }
+
+    @Override
     public Query query(String query) {
         return new QueryImpl(core.query(query));
     }

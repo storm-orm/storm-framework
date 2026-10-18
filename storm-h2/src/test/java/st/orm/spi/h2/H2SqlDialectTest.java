@@ -15,6 +15,7 @@ import org.junit.jupiter.api.Test;
 import st.orm.Operator;
 import st.orm.SqlTemplateException;
 import st.orm.StormConfig;
+import st.orm.core.template.SqlDialect;
 
 class H2SqlDialectTest {
 
@@ -202,8 +203,8 @@ class H2SqlDialectTest {
     }
 
     @Test
-    void supportsDeleteAliasShouldReturnFalse() {
-        assertFalse(dialect.supportsDeleteAlias());
+    void writeJoinSyntaxShouldBeSubquery() {
+        assertEquals(SqlDialect.WriteJoinSyntax.SUBQUERY, dialect.writeJoinSyntax());
     }
 
     @Test
@@ -257,7 +258,7 @@ class H2SqlDialectTest {
         var sqlDialect = provider.getSqlDialect(StormConfig.of(Map.of()));
         assertNotNull(sqlDialect);
         assertEquals("H2", sqlDialect.name());
-        assertFalse(sqlDialect.supportsDeleteAlias());
+        assertEquals(SqlDialect.WriteJoinSyntax.SUBQUERY, sqlDialect.writeJoinSyntax());
         assertTrue(sqlDialect.supportsMultiValueTuples());
         assertEquals("FOR UPDATE", sqlDialect.forUpdateLockHint());
         assertEquals("", sqlDialect.forShareLockHint());

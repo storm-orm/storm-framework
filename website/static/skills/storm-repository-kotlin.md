@@ -131,7 +131,7 @@ Four levels, from simplest to most powerful — always prefer the simplest that 
 |-------|----------|----------|
 | 1 | Convenience methods (`find`, `findAll`, `removeAll`, `count`, `exists`) | Simple lookups and operations |
 | 2 | Builder with predicate (`select(predicate)`, `delete(predicate)`) | Filtered queries needing ordering, pagination, or joins |
-| 3 | Block DSL (`select { }`, `delete { }`) | Complex queries with multiple joins and conditions |
+| 3 | Block DSL (`select { }`, `update { }`, `delete { }`) | Complex queries with multiple joins and conditions |
 | 4 | SQL Templates (/storm-sql-kotlin) | CTEs, window functions, database-specific features |
 
 **Level 1 — Convenience methods** execute immediately and return results directly:
@@ -192,6 +192,33 @@ users.delete { where(User_.score less 10) }.executeUpdate()
 ```
 
 > ⚠️ There is **no** `delete(entity)` or `delete(id)` overload (unlike JPA / Spring Data `CrudRepository`). Every `delete(...)` returns a `QueryBuilder`, so a bare `users.delete(entity)` treats the entity as a predicate argument and does **not** compile as an immediate delete. To delete an entity or id you already hold, use `remove(entity)` / `removeById(id)` / `removeByRef(ref)`.
+
+The same split holds for updates. `update(entity)` writes an entity you hold. The `update()` builder sets columns on the rows its conditions select, in one statement, without reading them; `set` names each column through the metamodel, so the table's own entity serves the write:
+```kotlin
+// update(entity): you read the entity in this transaction, write it back
+users.update(user.copy(name = "Alice Johnson"))
+
+// update builder: set columns on rows you did not read
+pets.update {
+    set(Pet_.owner, newOwner)
+    where(Pet_.owner eq previousOwner)
+}.executeUpdate()
+
+visits.update()
+    .set(Visit_.description, "Rescheduled")
+    .where(Visit_.visitDate eq closedDay)
+    .executeUpdate()
+
+// a value computed from the row
+owners.update {
+    set(Owner_.lastName) { "UPPER(${Owner_.lastName})" }
+    where(Owner_.address.city eq city)
+}.executeUpdate()
+```
+
+`set` takes a value typed by the field, `null` for a nullable field, the entity or a `Ref` for a foreign key, a record for an inline record (each of its columns), or a template lambda computing one column. It refuses, naming the field: the primary key, `@Persist(updatable = false)` fields, the `@Version` field, a path into a related table (`Owner_.address.city.name`), and a field set twice. The builder requires a WHERE clause (or a semi-join/anti-join) unless `unsafe()` is called, increments the `@Version` column, fires **no** entity callbacks (there is no entity), and evicts the entities of its type from the transaction's entity cache. Conditions through a path, an explicit join, `semiJoin` or `antiJoin` work on every database. Both builders refuse a Joined Table entity (sealed type or subtype), whose rows span two tables.
+
+Never create a second, partial entity mapping a table that already has one in order to write a few of its columns: rows the transaction did not read take the `update()` builder, and an entity it did read takes `update(entity)`, with `@DynamicUpdate(FIELD)` on the entity (/storm-entity-kotlin) to write only the changed columns.
 
 ## CRUD Operations
 
@@ -437,9 +464,13 @@ Dirty checking decides what to write; it does not detect concurrent writers. Los
 is `@Version` (optimistic locking), unchanged by any of the above.
 
 Bulk mutations bypass dirty checking, and Storm invalidates observed state so later comparisons
-stay truthful: a mutation with a known entity type (`delete(...)` builders, template mutations
-naming the type) clears the observed state of that type; a raw SQL mutation clears all observed
-state in the transaction. Updates after such a mutation fall back to full-row writes.
+stay truthful: a mutation with a known entity type (`update()` and `delete()` builders, template
+mutations naming the type) clears the observed state of that type; a raw SQL mutation clears all
+observed state in the transaction. Updates after such a mutation fall back to full-row writes. An
+entity read before an `update()` builder ran still holds its old values, so its full-row write puts
+them back over the columns the builder set; a versioned one fails its optimistic lock check instead,
+since the builder incremented the version. Re-read the rows the builder touched before writing them
+as entities.
 
 ## Entity Lifecycle Callbacks
 
@@ -447,7 +478,9 @@ state in the transaction. Updates after such a mutation fall back to full-row wr
 service method. `beforeInsert` / `beforeUpdate` / `beforeUpsert` return the entity to persist (`copy()` it);
 `afterInsert` / `afterUpdate` / `afterUpsert` / `afterRemove` observe what the calling method reports;
 `beforeRemove` and `afterRemove` fire only where the operation carries an entity (`remove(entity)` and its batch
-forms, never `removeById`, `removeAll` or a `delete()` builder). The type parameter selects the entity type, and
+forms, never `removeById`, `removeAll` or a `delete()` builder), and `beforeUpdate` / `afterUpdate` never fire for
+the `update()` builder, which carries no entity: an audit column it should stamp is `set` in the builder. The type
+parameter selects the entity type, and
 `EntityCallback<Entity<*>>` fires for every type.
 
 ```kotlin

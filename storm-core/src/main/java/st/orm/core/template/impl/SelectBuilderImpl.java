@@ -133,6 +133,21 @@ public class SelectBuilderImpl<T extends Data, R, ID> extends QueryBuilderImpl<T
         return this;
     }
 
+    @Override
+    public <V> QueryBuilder<T, R, ID> set(Metamodel<? extends T, V> field, @Nullable V value) {
+        throw new PersistenceException("Cannot use SET in a SELECT query.");
+    }
+
+    @Override
+    public <V extends Data> QueryBuilder<T, R, ID> set(Metamodel<? extends T, V> field, Ref<V> ref) {
+        throw new PersistenceException("Cannot use SET in a SELECT query.");
+    }
+
+    @Override
+    public QueryBuilder<T, R, ID> set(Metamodel<? extends T, ?> field, TemplateString template) {
+        throw new PersistenceException("Cannot use SET in a SELECT query.");
+    }
+
     /**
      * Returns a new query builder instance with the specified parameters.
      *

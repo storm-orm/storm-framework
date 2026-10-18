@@ -9,6 +9,7 @@ import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
 import st.orm.StormConfig;
+import st.orm.core.template.SqlDialect;
 
 /**
  * Unit tests for {@link MSSQLServerSqlDialect} verifying MSSQL-specific SQL generation behavior.
@@ -230,8 +231,8 @@ class MSSQLServerSqlDialectTest {
     }
 
     @Test
-    void supportsDeleteAliasShouldReturnTrue() {
-        assertTrue(dialect.supportsDeleteAlias());
+    void writeJoinSyntaxShouldBeFromClause() {
+        assertEquals(SqlDialect.WriteJoinSyntax.FROM_CLAUSE, dialect.writeJoinSyntax());
     }
 
     @Test
@@ -303,7 +304,7 @@ class MSSQLServerSqlDialectTest {
         var sqlDialect = provider.getSqlDialect(StormConfig.of(Map.of()));
         assertNotNull(sqlDialect);
         assertEquals("MS SQL Server", sqlDialect.name());
-        assertTrue(sqlDialect.supportsDeleteAlias());
+        assertEquals(SqlDialect.WriteJoinSyntax.FROM_CLAUSE, sqlDialect.writeJoinSyntax());
         assertFalse(sqlDialect.supportsMultiValueTuples());
         assertTrue(sqlDialect.applyLimitAfterSelect());
         assertTrue(sqlDialect.applyLockHintAfterFrom());

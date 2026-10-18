@@ -164,6 +164,18 @@ class QueryTemplateImpl implements QueryTemplate {
     }
 
     /**
+     * Creates a query builder for the specified table to update.
+     *
+     * @param fromType the table to update.
+     * @return the query builder.
+     * @param <T> the table type to update.
+     */
+    @Override
+    public <T extends Data> QueryBuilder<T, ?, ?> updateFrom(Class<T> fromType) {
+        return Providers.updateFrom(this, fromType, modelBuilder.supplier(fromType, true));
+    }
+
+    /**
      * Create a subquery for the given table and select type using the given {@code template}.
      *
      * @param fromType the table to create the subquery for.

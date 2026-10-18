@@ -14,6 +14,7 @@ import org.junit.jupiter.api.Test;
 import st.orm.Operator;
 import st.orm.SqlTemplateException;
 import st.orm.StormConfig;
+import st.orm.core.template.SqlDialect;
 
 /**
  * Unit tests for {@link PostgreSQLSqlDialect} verifying PostgreSQL-specific SQL generation behavior.
@@ -198,8 +199,8 @@ class PostgreSQLSqlDialectTest {
     }
 
     @Test
-    void supportsDeleteAliasShouldReturnFalse() {
-        assertFalse(dialect.supportsDeleteAlias());
+    void writeJoinSyntaxShouldBeSubquery() {
+        assertEquals(SqlDialect.WriteJoinSyntax.SUBQUERY, dialect.writeJoinSyntax());
     }
 
     @Test
@@ -253,7 +254,7 @@ class PostgreSQLSqlDialectTest {
         var sqlDialect = provider.getSqlDialect(StormConfig.of(Map.of()));
         assertNotNull(sqlDialect);
         assertEquals("PostgreSQL", sqlDialect.name());
-        assertFalse(sqlDialect.supportsDeleteAlias());
+        assertEquals(SqlDialect.WriteJoinSyntax.SUBQUERY, sqlDialect.writeJoinSyntax());
         assertTrue(sqlDialect.supportsMultiValueTuples());
         assertEquals("FOR UPDATE", sqlDialect.forUpdateLockHint());
         assertEquals("FOR KEY SHARE", sqlDialect.forShareLockHint());
