@@ -218,7 +218,7 @@ owners.update {
 
 `set` takes a value typed by the field, `null` for a nullable field, the entity or a `Ref` for a foreign key, a record for an inline record (each of its columns), or a template lambda computing one column. It refuses, naming the field: the primary key, `@Persist(updatable = false)` fields, the `@Version` field, a path into a related table (`Owner_.address.city.name`), and a field set twice. The builder requires a WHERE clause (or a semi-join/anti-join) unless `unsafe()` is called, increments the `@Version` column, fires **no** entity callbacks (there is no entity), and evicts the entities of its type from the transaction's entity cache. Conditions through a path, an explicit join, `semiJoin` or `antiJoin` work on every database. Both builders refuse a Joined Table entity (sealed type or subtype), whose rows span two tables.
 
-Never create a second, partial entity mapping a table that already has one in order to write a few of its columns: rows the transaction did not read take the `update()` builder, and an entity it did read takes `update(entity)`, with `@DynamicUpdate(FIELD)` on the entity (/storm-entity-kotlin) to write only the changed columns.
+Don't create a second, partial entity mapping a table that already has one just to write a few of its columns: rows the transaction did not read take the `update()` builder, and an entity it did read takes `update(entity)`, with `@DynamicUpdate(FIELD)` on the entity (/storm-entity-kotlin) to write only the changed columns.
 
 ## CRUD Operations
 
