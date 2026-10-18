@@ -186,10 +186,10 @@ public class StormPluginConfig {
     public var sqlLogSlowLimit: Int? = null
 
     /**
-     * Categories of advice the advice log (`st.orm.sql.advice`) reports: `correctness`, `performance`, or both.
+     * Categories of advice the advice log (`st.orm.sql.advice`) reports: `correctness`, `performance` and `design`.
      * Configuration key `storm.sqlLog.advice.categories`, a list or comma-separated string. Applied JVM-wide at
-     * installation; when unset, the `storm.sql_log.advice.categories` system property's setting, or its default of
-     * `correctness`, stays in effect.
+     * installation; when unset, the `storm.sql_log.advice.categories` system property's setting, or its default
+     * stays in effect: `correctness`, and all three in Ktor's development mode.
      *
      * @since 1.15
      */

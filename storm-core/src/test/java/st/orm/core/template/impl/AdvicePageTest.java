@@ -51,14 +51,14 @@ public class AdvicePageTest {
     @Test
     public void adviceLinksToItsSection() {
         for (var advice : Advice.values()) {
-            assertTrue(advice.format(3, "Owner", 3).endsWith(" See https://orm.st/docs/advice#" + advice.anchor()), advice.name());
+            assertTrue(advice.format(sample(advice)).endsWith(" See https://orm.st/docs/advice#" + advice.anchor()), advice.name());
         }
     }
 
     @Test
     public void anAdvisoryIsRecognizedByItsLink() {
         for (var advice : Advice.values()) {
-            assertEquals(advice, Advice.of(advice.format(3, "Owner", 3)), advice.name());
+            assertEquals(advice, Advice.of(advice.format(sample(advice))), advice.name());
         }
     }
 
@@ -67,5 +67,14 @@ public class AdvicePageTest {
         for (var advice : Advice.values()) {
             assertEquals("st.orm.sql.advice." + advice.anchor(), AdviceLog.logger(advice), advice.name());
         }
+    }
+
+    /** Arguments of the types each piece of advice formats. */
+    private static Object[] sample(Advice advice) {
+        return switch (advice) {
+            case ENTITY_BUDGET, WIDE_ENTITY_READ -> new Object[] {"Visit", 12, 140, "a Ref for Clinic.organization"};
+            case REPEATED_WRITE -> new Object[] {"INSERT", "Owner", 10};
+            default -> new Object[] {3, "Owner", 3};
+        };
     }
 }

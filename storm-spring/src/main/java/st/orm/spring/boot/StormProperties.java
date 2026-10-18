@@ -479,7 +479,9 @@ public class StormProperties {
         public static class Advice {
 
             /**
-             * Categories of advice the log reports: "correctness", "performance", or both. Defaults to correctness.
+             * Categories of advice the log reports: "correctness", "performance" and "design". Defaults to
+             * correctness, and to all three while Spring Boot DevTools is on the classpath, as it is in development
+             * and never in a packaged application.
              */
             private @Nullable List<String> categories;
 

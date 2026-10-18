@@ -316,6 +316,13 @@ public class SelectBuilderImpl<T extends Data, R, ID> extends QueryBuilderImpl<T
                         .format(repeating.getSimpleName()))));
             }
         }
+        if (!subquery && selectedRecordType() == fromType) {
+            // Whether the width of a read costs too much shows in real use, so a slow read says what a Ref would save.
+            String wideRead = EntityGraph.wideReadAdvice(fromType);
+            if (wideRead != null) {
+                template = TemplateString.combine(template, wrap(new Advisory(wideRead)));
+            }
+        }
         if (queryTemplate.dialect().applyLimitAfterSelect()) {
             if (limit != null && offset == null) {
                 template = TemplateString.combine(

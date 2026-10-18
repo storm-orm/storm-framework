@@ -97,8 +97,8 @@ public class SlowStatementLogIntegrationTest {
         assertTrue(Pattern.compile(", [A-Za-z0-9_$.]+:\\d+" + System.lineSeparator()).matcher(message).find(), message);
         assertTrue(message.contains("\tSELECT c.id, c.name"), message);
         assertTrue(message.contains("WHERE c.id = ?"), message);
-        assertTrue(message.contains("\tshape "), message);
-        assertTrue(message.contains("parameters 1"), message);
+        assertTrue(message.contains("\tshape: "), message);
+        assertTrue(message.contains("parameters: 1"), message);
     }
 
     @Test

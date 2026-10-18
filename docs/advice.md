@@ -3,10 +3,11 @@ import TabItem from '@theme/TabItem';
 
 # Statement Advice
 
-Storm attaches advice to a statement where the statement's own shape says it reads more than it needs to, or returns rows in no stated order. Each piece of advice has a category:
+Storm gives advice where a statement's own shape says it reads more than it needs to or returns rows in no stated order, and where the entity model makes reads cost more than the application needs. Each piece of advice has a category:
 
 - **Correctness.** A [limit or offset without an order](#unordered-limit) returns an arbitrary part of the result, however fast it runs.
 - **Performance.** A deep offset, a `distinct` over a join that repeats rows, or a search of short words alone costs more as the data grows, and on a small table costs nothing worth changing.
+- **Design.** Whether a foreign key is an inline entity or a `Ref` decides what every read of the entity joins. The schema is what it is; this choice is yours, and [Entity Design](entity-design.md) gives the reasoning.
 
 The advice reaches you two ways.
 
@@ -16,8 +17,9 @@ The advice reaches you two ways.
 
 **The advice log.** The `st.orm.sql.advice` logger reports advice whether the statement is fast or slow, with the statement, its call site and its shape:
 
-- **Correctness is on by default.** An application that logs at `INFO` sees advice on correctness without asking for it.
-- **Performance is on request.** Name it in the categories the log reports: `storm.sql-log.advice.categories: correctness, performance` in Spring Boot, `storm.sqlLog.advice.categories` in Ktor, or the `storm.sql_log.advice.categories` system property.
+- **Correctness is on by default.** An application that logs at `INFO` sees it without asking, in production too: rows in no stated order are wrong wherever they run.
+- **Design and performance are on in development.** Spring Boot with DevTools on the classpath, Ktor in development mode, and every `@StormTest` report all three categories, so the developer and the agent see what to change while writing the code, and a production deployment never runs the design check. Design advice on an entity is reported once per entity, at startup or when the entity is first used.
+- **Named categories win.** `storm.sql-log.advice.categories: correctness, design, performance` in Spring Boot, `storm.sqlLog.advice.categories` in Ktor, or the `storm.sql_log.advice.categories` system property sets them in any environment, development included.
 - **Accepted advice is turned off.** Each piece of advice has a logger of its own, named after its section on this page. Set it to `OFF` when the statement is as intended, such as `st.orm.sql.advice.deep-offset: OFF`.
 - **A deliberate choice is advised only when slow.** A page that reports its total is a choice of `page` over `slice`, so its [count](#page-count) is advised in the slow statement log alone.
 
@@ -37,9 +39,15 @@ SQL slow (SELECT Owner): 412 ms in database, 12 rows, OwnerService.kt:42
 	FROM owner o
 	INNER JOIN pet p ON p.owner_id = o.id
 	WHERE p.name = ?
-	shape 9b34305d1a7c4e02
-	advice DISTINCT removes the rows the join to Pet repeats, one per related row; semiJoin(Pet) filters by it without repeating rows, so the query needs no DISTINCT. See https://orm.st/docs/advice#distinct-over-join
+	shape: 9b34305d1a7c4e02
+	advice: DISTINCT removes the rows the join to Pet repeats, one per related row; semiJoin(Pet) filters by it without repeating rows, so the query needs no DISTINCT. See https://orm.st/docs/advice#distinct-over-join
 ```
+
+### Design: known in advance, and shown by real use
+
+Some of the design is knowable from the model alone. An entity whose read [exceeds the design budget](#entity-budget) does so however the application uses it: its graph has run away, and every read pays for it. In development, Storm checks every entity against the budget, once, and the advice log reports the ones past it.
+
+The rest only shows in real use. Whether a `Clinic` on every `Visit` is worth its width depends on how the application reads visits, which no check of the model can know. Real use answers it both ways: a read that is [slow and wide](#wide-entity-read) says what a `Ref` would save, and a `Ref` that every unit of work [fetches anyway](#repeated-fetch) says it should be an inline entity. A wide graph that reads fast is never advised, and an entity within the budget is never advised in advance.
 
 Each piece of advice links to its section on this page. The links stay valid for as long as Storm gives the advice, so a log line written today still leads here after the rest of the documentation has moved on.
 
@@ -122,11 +130,37 @@ An offset tells the database to skip rows, and it skips them by reading them: pa
 
 `scroll` continues from the last row read instead: it compares the sort fields and the key with that row's values, which an index on them serves, so every window costs what the first one does. It needs a unique key to continue from; a query without one reads deep pages through an offset, and the advice then says what each of them costs. See [Scrolling](pagination-and-scrolling.md#scrolling).
 
+## An entity past the design budget {#entity-budget}
+
+> every read of Visit joins 12 tables and selects 140 columns beyond its own, past the design budget of 10 joins and 96 columns; a Ref for Clinic.organization removes 4 joins and 52 columns
+
+Category: design. Logger: `st.orm.sql.advice.entity-budget`. Reported once per entity, at startup where the integration checks the model, or when the entity is first used:
+
+```
+SQL advice (design Visit)
+	graph: Visit(Pet(Owner(City), PetType, Clinic(Address, Organization(Country))))  12 joins, 140 columns beyond its own
+	advice: every read of Visit joins 12 tables and selects 140 columns beyond its own, past the design budget of 10 joins and 96 columns; a Ref for Clinic.organization removes 4 joins and 52 columns. See https://orm.st/docs/advice#entity-budget
+```
+
+An entity component joins its table into every read and brings that table's whole select list, along with every entity it declares in turn. The [design budget](entity-design.md#the-budget) bounds what a read adds beyond the entity's own columns: 10 joins and 96 columns. It is calibrated so ordinary schemas never reach it; an entity past it has a graph that grew, usually through entities nobody was editing.
+
+The advice names the fields a `Ref` would cut to bring the read back within the budget, by the rules of [Where to Draw the Line](entity-design.md#where-to-draw-the-line): the deepest field that is enough on its own, since a cut near the leaves narrows every entity above it at once, and otherwise the widest fields first. It never names an identifying foreign key, which is composition, nor an entity without foreign keys of its own, such as a lookup table, which can never grow. A `Ref` keeps the relationship: filter, join and fetch through it as before, and resolve it in the queries that need it with `select().fetch(...)`.
+
+Where you know the path is read constantly, an entity past the budget can stay as it is: set `st.orm.sql.advice.entity-budget` to `OFF`, or leave `design` out of the categories.
+
+## A slow read of a wide entity {#wide-entity-read}
+
+> every read of Visit joins 6 tables and selects 58 columns beyond its own; where that width is what makes the read slow, a Ref for Clinic.organization removes 3 joins and 31 columns
+
+Category: design, reported by the slow statement log only: whether a read within the budget is too wide shows only in real use, so the advice comes with a read that turned out slow.
+
+A read of an entity whose graph reaches half the design budget, 5 joins or 48 columns beyond its own, carries this advice to the slow statement log. A read can be slow for other reasons, such as its `WHERE` clause or a missing index, so the advice says what the width costs and what a `Ref` would save, not that the width is the cause. Compare the statement's plan with and without the joins before cutting. The field it names is chosen as for [an entity past the budget](#entity-budget), aiming below half the budget.
+
 ## References fetched one at a time {#repeated-fetch}
 
 > 24 statements each fetched one City; an inline foreign key joins it into every read of the rows, or a query that fetches the references, such as select().fetch(...), resolves them in the statement that reads them
 
-Category: performance, reported by the [performance log](sql-logging.md#the-performance-log) summary of the unit of work.
+Category: design, reported by the [performance log](sql-logging.md#the-performance-log) summary of the unit of work: a `Ref` the application fetches on every read is evidence from real use that it should be an inline entity.
 
 Each `Ref.fetch()` that the transaction's entity cache cannot serve is a statement of its own, so a loop over rows that fetches a reference from each runs one statement per row: the N+1 pattern. The performance log counts these as fetches, and advises once a unit of work fetched ten or more of one type.
 
