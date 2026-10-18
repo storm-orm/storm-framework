@@ -309,7 +309,7 @@ pets.select()
 
 Conditions joined by `and` on a semi-joined table hold for the same related row; a part of the condition naming only the query's own tables holds without a related row, so `(Owner_.lastName eq "Davis") or (Pet_.name eq "Leo")` also finds a Davis without pets. A semi-joined table adds no columns: ordering, grouping or selecting by it is refused. A `where` condition naming an anti-joined table is refused; it belongs on the join.
 
-**Recognize it wherever the join hangs.** A select of the query's own table with `distinct()` and an inner join whose columns the result, the ordering and the grouping never use is this pattern, whatever table the join is on. `on<T>()` names any table of the query, including one the root reaches through a path, so `semiJoin<Related>().on<T>()` replaces `.distinct().innerJoin<Related>().on<T>()` one for one, and the query no longer needs the `distinct`. A comment calling the `distinct` required because of the join marks the same pattern, not an exception. When a change touches such a query for another reason, replace it in the same change.
+**Recognize it wherever the join hangs.** A select of the query's own table with `distinct()` and an inner join whose columns the result, the ordering and the grouping never use is this pattern, whatever table the join is on. `on<T>()` names any table of the query, including one the root reaches through a path, so `semiJoin<Related>().on<T>()` replaces `.distinct().innerJoin<Related>().on<T>()` one for one, and the query no longer needs the `distinct`. A chain of inner joins through two to-many relations with `distinct`, such as owner to pet to visit or a link table and the table hanging off the row it points at, is the same pattern: each join becomes a semi-join on the table before it, `.semiJoin<Pet>().on<Owner>().semiJoin<Visit>().on<Pet>()`. A comment calling the `distinct` required because of the join marks the same pattern, not an exception. When a change touches such a query for another reason, replace it in the same change.
 
 Three rules:
 
@@ -523,6 +523,7 @@ Pick the form by the direction of the relation and by whether the related rows b
 | A search over the row and its related rows (owner name and pet names) | `semiJoin<Pet>().on<Owner>()` with `search(input, Owner_.lastName, Pet_.name)` |
 | The rows **without** a related row matching a condition (pets that never had a rabies shot) | `antiJoin<Visit>().on<Pet> { Visit_.description eq "rabies shot" }` |
 | The rows with any related row (owners with a pet) | `semiJoin<Pet>().on<Owner>()` |
+| The rows with a related row of a related row (owners with a pet that had a visit this year) | `semiJoin<Pet>().on<Owner>()` then `semiJoin<Visit>().on<Pet>()`, the condition in `where` |
 | The rows without any related row (owners without pets) | `antiJoin<Pet>().on<Owner>()` |
 | The related rows' columns in the result, or ordering and grouping by them, a row per related row | `innerJoin<Pet>().on<Owner>()` or `leftJoin` |
 | Related columns joined while keeping the rows without a match | `leftJoin<Pet>().on<Owner> { Pet_.name eq "Leo" }` |
@@ -533,6 +534,7 @@ Read the request for the cue: "with", "that have", "who own", "any of their", "s
 - `antiJoin` conditions go on the join, never in `where`: a `where` naming the anti-joined table is refused.
 - A semi-joined or anti-joined table adds no columns: when the result, `orderBy` or `groupBy` needs them, the query wants a regular join instead.
 - Both filter `delete()` and `update()` as they filter a select: `owners.delete().antiJoin<Pet>().on<Owner>()` removes the owners without pets, and `owners.update().set(Owner_.telephone, null).semiJoin<Pet>().on<Owner>().where(Pet_.name eq "Leo")` clears the telephone of the owners of a pet named Leo.
+- Through two to-many relations, chain the semi-joins: `on` names a semi-joined table, so `.semiJoin<Pet>().on<Owner>().semiJoin<Visit>().on<Pet>().where(Visit_.visitDate greaterEq date)` finds the owners with a pet that had a visit since the date, each once. The visit's `EXISTS` nests in the pet's, and conditions joined by `and` on `Pet` and `Visit` hold for the same pet. Through a link table, `on` names the table the link row points at: `.semiJoin<PetSitting>().on<Owner>().semiJoin<Visit>().on<Pet>()` relates the visit to the link's `pet_id` without reading the pet table. An `antiJoin` on a semi-joined table nests as `NOT EXISTS` (owners with a pet that never had a visit); a semi-join on an anti-joined table takes its condition on the join.
 - `semiJoin` and `antiJoin` are complements: on the same table with the same condition on the join, the one keeps the rows the other drops. Without a condition, `semiJoin` keeps the rows with any related row and `antiJoin` the rows without one.
 - Keep `whereExists` for a subquery a foreign key does not express.
 

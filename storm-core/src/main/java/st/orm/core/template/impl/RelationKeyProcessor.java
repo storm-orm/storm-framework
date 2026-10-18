@@ -91,7 +91,9 @@ final class RelationKeyProcessor implements ElementProcessor<RelationKey> {
             var innerAlias = compiler.getAlias(Metamodel.root(correlation.inner()), INNER);
             var outerAlias = compiler.getAlias(Metamodel.root(correlation.outer()), OUTER);
             var innerColumns = keyColumns(correlation.inner(), correlation.foreignKey(), correlation.innerHoldsKey(), compiler);
-            var outerColumns = keyColumns(correlation.outer(), correlation.foreignKey(), !correlation.innerHoldsKey(), compiler);
+            var outerColumns = correlation.outerForeignKey() != null
+                    ? keyColumns(correlation.outer(), correlation.outerForeignKey(), true, compiler)
+                    : keyColumns(correlation.outer(), correlation.foreignKey(), !correlation.innerHoldsKey(), compiler);
             if (innerColumns.size() != outerColumns.size()) {
                 throw new SqlTemplateException("Mismatch in PK/FK column count between %s and %s: found %d and %d column(s). Ensure the foreign key definition matches the referenced primary key structure."
                         .formatted(correlation.inner().getSimpleName(), correlation.outer().getSimpleName(), innerColumns.size(), outerColumns.size()));

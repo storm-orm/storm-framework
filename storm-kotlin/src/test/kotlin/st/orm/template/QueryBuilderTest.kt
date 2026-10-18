@@ -30,6 +30,7 @@ import st.orm.TypedMetamodel
 import st.orm.Window
 import st.orm.repository.entity
 import st.orm.template.model.*
+import st.orm.test.SqlCapture
 import java.util.stream.Stream
 import kotlin.reflect.KClass
 
@@ -2380,6 +2381,49 @@ internal open class QueryBuilderTest(
         petRepo.select()
             .antiJoin<Visit>().on<Pet>()
             .resultList.map { it.name }.sorted() shouldBe listOf("Freddy", "Lucky", "Lucky", "Mulligan", "Sly")
+    }
+
+    @Test
+    fun `semiJoin on a semi-joined table should nest in its subquery`() {
+        // data.sql: the neutered visits are of Basil (George), Jewel (Eduardo) and Max (Jean).
+        val description = metamodel<Visit, String>(orm.entity(Visit::class).model, "description")
+        val capture = SqlCapture()
+        val owners = capture.execute {
+            orm.entity(Owner::class).select()
+                .semiJoin<Pet>().on<Owner>()
+                .semiJoin<Visit>().on<Pet>()
+                .where(description eq "neutered")
+                .resultList
+        }
+        owners.map { it.firstName }.sorted() shouldBe listOf("Eduardo", "George", "Jean")
+        capture.statements().single().statement().replace(Regex("\\s+"), " ").replace("( ", "(").replace(" )", ")") shouldContain
+            "EXISTS (SELECT 1 FROM pet p WHERE p.owner_id = o.id AND EXISTS (SELECT 1 FROM visit v WHERE v.pet_id = p.id AND v.description = ?))"
+    }
+
+    @Test
+    fun `antiJoin on a semi-joined table should nest as not exists`() {
+        // data.sql: Lucky (Jeff and Carlos), Mulligan (Maria) and Freddy (David) have no visits.
+        val owners = orm.entity(Owner::class).select()
+            .semiJoin<Pet>().on<Owner>()
+            .antiJoin<Visit>().on<Pet>()
+            .resultList
+        owners.map { it.firstName }.sorted() shouldBe listOf("Carlos", "David", "Jeff", "Maria")
+    }
+
+    @Test
+    fun `block semiJoin on a semi-joined table should filter like the chained builder`() {
+        val petName = metamodel<Pet, String>(orm.entity(Pet::class).model, "name")
+        val description = metamodel<Visit, String>(orm.entity(Visit::class).model, "description")
+        orm.entity(Owner::class).select {
+            semiJoin<Pet, Owner>()
+            semiJoin<Visit, Pet>()
+            where((petName eq "Basil") and (description eq "neutered"))
+        }.resultList.map { it.firstName } shouldBe listOf("George")
+        orm.entity(Owner::class).select {
+            antiJoin<Pet, Owner>()
+            semiJoin<Visit, Pet> { description eq "neutered" }
+        }.resultList.map { it.firstName }.sorted() shouldBe
+            listOf("Betty", "Carlos", "David", "Harold", "Jeff", "Maria", "Peter")
     }
 
     @Test

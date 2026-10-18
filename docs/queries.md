@@ -1088,7 +1088,60 @@ WHERE NOT EXISTS (SELECT 1 FROM visit v WHERE v.pet_id = p.id AND v.description 
 
 `NOT EXISTS`, unlike `NOT IN`, keeps its meaning when a related row's foreign key is null. A condition in `where` that names the anti-joined table is refused when the query is built, pointing at the join's condition.
 
-Semi-joins and anti-joins filter a [`delete()`](#deleting-rows-by-condition) and an [`update()`](#updating-rows-by-condition) as well.
+### Filtering Through Two Relations
+
+`on` also names a semi-joined table, to filter through two to-many relations. The owners with a pet that had a visit this year:
+
+<Tabs groupId="language">
+<TabItem value="kotlin" label="Kotlin" default>
+
+```kotlin
+val owners = orm.entity<Owner>()
+    .select()
+    .semiJoin<Pet>().on<Owner>()
+    .semiJoin<Visit>().on<Pet>()
+    .where(Visit_.visitDate greaterEq LocalDate.of(2026, 1, 1))
+    .resultList
+```
+
+</TabItem>
+<TabItem value="java" label="Java">
+
+```java
+List<Owner> owners = orm.entity(Owner.class)
+    .select()
+    .semiJoin(Pet.class).on(Owner.class)
+    .semiJoin(Visit.class).on(Pet.class)
+    .where(Visit_.visitDate, GREATER_THAN_OR_EQUAL, LocalDate.of(2026, 1, 1))
+    .getResultList();
+```
+
+</TabItem>
+</Tabs>
+
+```sql
+SELECT ...
+FROM owner o
+WHERE EXISTS (
+    SELECT 1 FROM pet p
+    WHERE p.owner_id = o.id
+      AND EXISTS (SELECT 1 FROM visit v WHERE v.pet_id = p.id AND v.visit_date >= ?))
+```
+
+The visit's subquery nests in the pet's, and the rules of a semi-join hold at each level: a condition naming `Visit` goes into the visit's subquery, and conditions joined by `and` on `Pet` and `Visit` hold for the same pet. Each owner still comes back once. An anti-join on a semi-joined table nests as a `NOT EXISTS`: `semiJoin<Pet>().on<Owner>()` followed by `antiJoin<Visit>().on<Pet>()` finds the owners with a pet that never had a visit. A semi-join on an anti-joined table decides which related rows exclude a row, so like the anti-join it takes its condition on the join.
+
+`on` also names a table that a semi-joined table references through a foreign key, such as the table a link row points at. With a link table `PetSitting(sitter: Owner, pet: Pet)`, `semiJoin<PetSitting>().on<Owner>()` followed by `semiJoin<Visit>().on<Pet>()` finds the owners who sat a pet that had a visit. The visit relates to the link row through the link's foreign key, without reading the pet table:
+
+```sql
+WHERE EXISTS (
+    SELECT 1 FROM pet_sitting ps
+    WHERE ps.sitter_id = o.id
+      AND EXISTS (SELECT 1 FROM visit v WHERE v.pet_id = ps.pet_id))
+```
+
+A table the query reaches itself, as its own table, a joined table or a table its foreign keys join, stays the query's.
+
+Semi-joins and anti-joins filter a [`delete()`](#deleting-rows-by-condition) and an [`update()`](#updating-rows-by-condition) as well, nested ones included.
 
 ---
 

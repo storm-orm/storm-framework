@@ -21,6 +21,8 @@ import st.orm.template.model.Address
 import st.orm.template.model.City
 import st.orm.template.model.Owner
 import st.orm.template.model.Pet
+import st.orm.template.model.Visit
+import st.orm.test.SqlCapture
 
 /**
  * The UPDATE builder through the Kotlin API: the block DSL and the chained form, values, refs, null and expressions,
@@ -45,6 +47,7 @@ internal open class UpdateBuilderTest(
     private val petName = Metamodel.of<Pet, String>(Pet::class.java, "name")
     private val petOwner = Metamodel.of<Pet, Owner>(Pet::class.java, "owner")
     private val petOwnerFirstName = Metamodel.of<Pet, String>(Pet::class.java, "owner.firstName")
+    private val visitDescription = Metamodel.of<Visit, String>(Visit::class.java, "description")
 
     @Test
     fun `block DSL sets columns on the rows the condition selects`() {
@@ -103,6 +106,23 @@ internal open class UpdateBuilderTest(
             where(petName eq "Leo")
         }.executeUpdate() shouldBe 1
         owners.getById(1).telephone shouldBe "5553333"
+    }
+
+    @Test
+    fun `block DSL sets the rows a nested semi-join selects`() {
+        // data.sql: the neutered visits are of pets of owners 2, 3 and 6.
+        val owners = orm.entity(Owner::class)
+        val capture = SqlCapture()
+        capture.execute {
+            owners.update {
+                set(ownerTelephone, "5554444")
+                semiJoin<Pet, Owner>()
+                semiJoin<Visit, Pet>()
+                where(visitDescription eq "neutered")
+            }.executeUpdate()
+        } shouldBe 3
+        capture.statements().single().statement().replace(Regex("\\s+"), " ").replace("( ", "(").replace(" )", ")") shouldContain "AND EXISTS (SELECT 1 FROM visit v"
+        owners.select { where(ownerTelephone eq "5554444") }.resultList.map { it.id }.sorted() shouldBe listOf(2, 3, 6)
     }
 
     @Test

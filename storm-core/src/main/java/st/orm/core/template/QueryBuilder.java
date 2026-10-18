@@ -284,6 +284,13 @@ public abstract class QueryBuilder<T extends Data, R, ID> {
      * own, so its words may match different related rows. Without a condition that names the table, the query keeps the
      * rows that have any related row, as the complement of an anti-join on the same table.</p>
      *
+     * <p>{@code on} may also name a semi-joined or anti-joined table, or a table such a table references through a
+     * foreign key, to filter through two to-many relations: {@code semiJoin(Pet.class).on(Owner.class)} followed by
+     * {@code semiJoin(Visit.class).on(Pet.class)} keeps the owners with a pet that had a visit matching the conditions
+     * that name {@code Visit}. The inner table's subquery nests in the outer one's, and conditions joined by AND on the
+     * two tables hold for the same outer related row. A table referenced through a foreign key, such as the table a link
+     * row points at, is related through that foreign key's columns, without reading the table itself.</p>
+     *
      * @param relation the table to filter by.
      * @return the join builder.
      * @since 1.15
@@ -294,6 +301,10 @@ public abstract class QueryBuilder<T extends Data, R, ID> {
      * Adds an anti-join to the query: the query keeps the rows that have no related row in the given table matching
      * the condition stated on the join, or no related row at all when the join states none. The table's columns can be
      * named in the join's condition only.
+     *
+     * <p>As for a semi-join, {@code on} may name a semi-joined or anti-joined table, which nests the anti-join in that
+     * table's subquery: {@code semiJoin(Pet.class).on(Owner.class)} followed by
+     * {@code antiJoin(Visit.class).on(Pet.class)} keeps the owners with a pet that never had a visit.</p>
      *
      * @param relation the table to filter by.
      * @return the join builder.

@@ -29,6 +29,7 @@ import st.orm.core.model.Address;
 import st.orm.core.model.City;
 import st.orm.core.model.City_;
 import st.orm.core.model.Owner;
+import st.orm.core.model.OwnerPrimaryPet;
 import st.orm.core.model.Owner_;
 import st.orm.core.model.Pet;
 import st.orm.core.model.Pet_;
@@ -307,6 +308,37 @@ public class UpdateBuilderIntegrationTest {
                 .executeUpdate();
         assertEquals(1, updated);
         assertEquals("5554444", owners.getById(1).telephone());
+    }
+
+    @Test
+    public void setsTheRowsANestedSemiJoinSelects() {
+        // data.sql: the neutered visits are of Basil (owner 2), Jewel (owner 3) and Max (owner 6).
+        var owners = orm().entity(Owner.class);
+        int updated = owners.update()
+                .set(Owner_.telephone, "5556666")
+                .semiJoin(Pet.class).on(Owner.class)
+                .semiJoin(Visit.class).on(Pet.class)
+                .where(Visit_.description, EQUALS, "neutered")
+                .executeUpdate();
+        assertEquals(3, updated);
+        assertEquals(List.of(2, 3, 6), owners.select().where(Owner_.telephone, EQUALS, "5556666").getResultList()
+                .stream().map(Owner::id).sorted().toList());
+    }
+
+    @Test
+    public void setsTheRowsASemiJoinThroughALinkSelects() {
+        var owners = orm().entity(Owner.class);
+        var primaryPets = orm().entity(OwnerPrimaryPet.class);
+        primaryPets.insert(new OwnerPrimaryPet(owners.getById(1), orm().entity(Pet.class).getById(1)));
+        primaryPets.insert(new OwnerPrimaryPet(owners.getById(3), orm().entity(Pet.class).getById(4)));
+        int updated = owners.update()
+                .set(Owner_.telephone, "5557777")
+                .semiJoin(OwnerPrimaryPet.class).on(Owner.class)
+                .semiJoin(Visit.class).on(Pet.class)
+                .where(Visit_.description, EQUALS, "neutered")
+                .executeUpdate();
+        assertEquals(1, updated);
+        assertEquals("5557777", owners.getById(3).telephone());
     }
 
     @Test
