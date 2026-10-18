@@ -72,7 +72,7 @@ public class AdvicePageTest {
     /** Arguments of the types each piece of advice formats. */
     private static Object[] sample(Advice advice) {
         return switch (advice) {
-            case ENTITY_BUDGET, WIDE_ENTITY_READ -> new Object[] {"Visit", 12, 140, "a Ref for Clinic.organization"};
+            case ENTITY_BUDGET, WIDE_ENTITY_READ -> new Object[] {"Visit", 12, 140, "a Ref for Clinic.organization", 10, 96};
             case REPEATED_WRITE -> new Object[] {"INSERT", "Owner", 10};
             default -> new Object[] {3, "Owner", 3};
         };

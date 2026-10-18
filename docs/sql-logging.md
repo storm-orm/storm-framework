@@ -390,14 +390,16 @@ Each piece of advice has a category, correctness, performance or design, and the
 
 ```yaml
 storm:
-  sql-log:
-    advice:
-      categories: correctness, design, performance   # default: correctness, all three in development
+  advice:
+    categories: correctness, design, performance   # default: correctness, all three in development
+    entity-budget:
+      joins: 10      # the design budget design advice checks entities against
+      columns: 96
 ```
 
 - **Correctness by default.** Advice on correctness, such as a `limit` without an ORDER BY, reports at `INFO`, so an application that logs at `INFO` sees it without asking, in production too.
 - **Design and performance in development.** Spring Boot with DevTools on the classpath, Ktor in development mode, and every `@StormTest` report all three categories, unless the categories are named. Design advice, such as an entity whose read exceeds the [design budget](entity-design.md#the-budget), is reported once per entity, when the first template checks the model at startup or when the entity is first used, so a production deployment never runs the check. Design advice that only real use can show comes with the slow statement log and the performance log instead; see [Statement Advice](advice.md#design-known-in-advance-and-shown-by-real-use).
-- **Named categories win.** Advice on performance, such as a deep offset or a `distinct` over a repeating join, reports in development or once its category is named: `storm.sql-log.advice.categories` in Spring Boot, `storm.sqlLog.advice.categories` in Ktor, or the `storm.sql_log.advice.categories` system property. A page that reports its total is a deliberate choice of `page` over `slice`, so its count is advised only by the [slow statement log](#the-slow-statement-log), which prints all advice under every slow line.
+- **Named categories win.** Advice on performance, such as a deep offset or a `distinct` over a repeating join, reports in development or once its category is named: `storm.advice.categories`, in Spring Boot, Ktor or as a system property. A page that reports its total is a deliberate choice of `page` over `slice`, so its count is advised only by the [slow statement log](#the-slow-statement-log), which prints all advice under every slow line.
 - **Accept with `@AcceptAdvice`.** Put it on the entity, method, class or repository where the advice is as intended, naming the advice by its anchor, as in each line's link: `@AcceptAdvice("deep-offset")`. The log stops reporting it there; see [Accepting advice](advice.md#accepting-advice). Each piece of advice also has a logger of its own, `st.orm.sql.advice.<anchor>`, which `OFF` turns off everywhere.
 
 The level of `st.orm.sql.advice` decides how often:

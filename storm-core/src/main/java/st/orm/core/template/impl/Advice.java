@@ -66,7 +66,7 @@ enum Advice {
     /** An entity whose read exceeds the design budget. */
     ENTITY_BUDGET("entity-budget", Category.DESIGN, false,
             "every read of %1$s joins %2$d tables and selects %3$d columns beyond its own, past the design budget of "
-                    + EntityGraph.BUDGET_JOINS + " joins and " + EntityGraph.BUDGET_COLUMNS + " columns; %4$s."),
+                    + "%5$d joins and %6$d columns; %4$s."),
 
     /** A slow read of an entity whose read is at least half the design budget. */
     WIDE_ENTITY_READ("wide-entity-read", Category.DESIGN, true,

@@ -27,7 +27,7 @@ import kotlin.time.Duration
  * log switchable through `application.conf` without a code change, mirroring the Spring starter's
  * `storm.sql-log.*` properties.
  *
- * [lineWidth], [slowThreshold], [slowLimit] and [adviceCategories] are `null` when neither the DSL nor the configuration sets them,
+ * [lineWidth], [slowThreshold], [slowLimit], [adviceCategories], [entityBudgetJoins] and [entityBudgetColumns] are `null` when neither the DSL nor the configuration sets them,
  * so installation leaves the JVM-wide settings (the `storm.sql_log.*` system properties, or another
  * application's configuration in the same JVM) untouched.
  */
@@ -39,6 +39,8 @@ internal class SqlLogSettings(
     val slowThreshold: Duration?,
     val slowLimit: Int?,
     val adviceCategories: List<String>?,
+    val entityBudgetJoins: Int?,
+    val entityBudgetColumns: Int?,
     val callSites: Boolean,
     val callSiteSkip: List<String>,
     val lineWidth: Int?,
@@ -58,7 +60,11 @@ internal fun resolveSqlLogSettings(application: Application, pluginConfig: Storm
         ?: durationProperty(application, "performance.threshold.duration"),
     slowThreshold = pluginConfig.sqlLogSlowThreshold ?: durationProperty(application, "slow.threshold"),
     slowLimit = pluginConfig.sqlLogSlowLimit ?: intProperty(application, "slow.limit"),
-    adviceCategories = pluginConfig.sqlLogAdviceCategories ?: listProperty(application, "advice.categories"),
+    // Advice is a feature of its own, configured under `storm.advice` rather than `storm.sqlLog`.
+    adviceCategories = pluginConfig.adviceCategories ?: listProperty(application, "categories", ADVICE),
+    entityBudgetJoins = pluginConfig.adviceEntityBudgetJoins ?: intProperty(application, "entityBudget.joins", ADVICE),
+    entityBudgetColumns = pluginConfig.adviceEntityBudgetColumns
+        ?: intProperty(application, "entityBudget.columns", ADVICE),
     callSites = pluginConfig.sqlLogPerformanceCallSites
         ?: booleanProperty(application, "performance.callSites") ?: false,
     // Shared: both logs attribute a frame the same way, so the skip list sits above the two sections.
@@ -68,33 +74,39 @@ internal fun resolveSqlLogSettings(application: Application, pluginConfig: Storm
     lineWidth = pluginConfig.sqlLogPerformanceLineWidth ?: intProperty(application, "performance.lineWidth"),
 )
 
+/** The section of the SQL log settings. */
+private const val SQL_LOG = "sqlLog"
+
+/** The section of the advice settings. */
+private const val ADVICE = "advice"
+
 /**
- * Reads a SQL log property, trying the camelCase key under `storm.sqlLog` first (HOCON convention), then the
- * snake_case key under `storm.sql_log` (Storm convention).
+ * Reads a property of a section, trying the camelCase key under `storm.<section>` first (HOCON convention), then the
+ * snake_case key (Storm convention): `storm.sqlLog.slow.threshold`, then `storm.sql_log.slow.threshold`.
  */
-private fun stringProperty(application: Application, relativeKey: String): Pair<String, String>? {
+private fun stringProperty(application: Application, relativeKey: String, section: String): Pair<String, String>? {
     val config = application.environment.config
-    val camelKey = "storm.sqlLog.$relativeKey"
-    val snakeKey = "storm.sql_log." + camelToSnake(relativeKey)
+    val camelKey = "storm.$section.$relativeKey"
+    val snakeKey = "storm.${camelToSnake(section)}." + camelToSnake(relativeKey)
     config.propertyOrNull(camelKey)?.let { return camelKey to it.getString() }
     config.propertyOrNull(snakeKey)?.let { return snakeKey to it.getString() }
     return null
 }
 
-private fun booleanProperty(application: Application, relativeKey: String): Boolean? {
-    val (key, value) = stringProperty(application, relativeKey) ?: return null
+private fun booleanProperty(application: Application, relativeKey: String, section: String = SQL_LOG): Boolean? {
+    val (key, value) = stringProperty(application, relativeKey, section) ?: return null
     return value.toBooleanStrictOrNull()
         ?: throw IllegalStateException("Invalid value '$value' for $key. Valid values are: true, false.")
 }
 
-private fun intProperty(application: Application, relativeKey: String): Int? {
-    val (key, value) = stringProperty(application, relativeKey) ?: return null
+private fun intProperty(application: Application, relativeKey: String, section: String = SQL_LOG): Int? {
+    val (key, value) = stringProperty(application, relativeKey, section) ?: return null
     return value.toIntOrNull()
         ?: throw IllegalStateException("Invalid value '$value' for $key. The value must be an integer.")
 }
 
-private fun durationProperty(application: Application, relativeKey: String): Duration? {
-    val (key, value) = stringProperty(application, relativeKey) ?: return null
+private fun durationProperty(application: Application, relativeKey: String, section: String = SQL_LOG): Duration? {
+    val (key, value) = stringProperty(application, relativeKey, section) ?: return null
     return Duration.parseOrNull(value)
         ?: throw IllegalStateException(
             "Invalid value '$value' for $key. The value must be a duration such as 500ms, 2s, or PT0.5S.",
@@ -102,12 +114,12 @@ private fun durationProperty(application: Application, relativeKey: String): Dur
 }
 
 /**
- * Reads a list-valued SQL log property: a HOCON list, or a single comma-separated string.
+ * Reads a list-valued property of a section: a HOCON list, or a single comma-separated string.
  */
-private fun listProperty(application: Application, relativeKey: String): List<String>? {
+private fun listProperty(application: Application, relativeKey: String, section: String = SQL_LOG): List<String>? {
     val config = application.environment.config
-    val camelKey = "storm.sqlLog.$relativeKey"
-    val snakeKey = "storm.sql_log." + camelToSnake(relativeKey)
+    val camelKey = "storm.$section.$relativeKey"
+    val snakeKey = "storm.${camelToSnake(section)}." + camelToSnake(relativeKey)
     val property = config.propertyOrNull(camelKey) ?: config.propertyOrNull(snakeKey) ?: return null
     val values = runCatching { property.getList() }.getOrElse { property.getString().split(',') }
     return values.map { it.trim() }.filter { it.isNotEmpty() }

@@ -19,7 +19,7 @@ The advice reaches you two ways.
 
 - **Correctness is on by default.** An application that logs at `INFO` sees it without asking, in production too: rows in no stated order are wrong wherever they run.
 - **Design and performance are on in development.** Spring Boot with DevTools on the classpath, Ktor in development mode, and every `@StormTest` report all three categories, so the developer and the agent see what to change while writing the code, and a production deployment never runs the design check. Design advice on an entity is reported once per entity, at startup or when the entity is first used.
-- **Named categories win.** `storm.sql-log.advice.categories: correctness, design, performance` in Spring Boot, `storm.sqlLog.advice.categories` in Ktor, or the `storm.sql_log.advice.categories` system property sets them in any environment, development included.
+- **Named categories win.** `storm.advice.categories: correctness, design, performance`, in Spring Boot, Ktor or as a system property, sets them in any environment, development included.
 - **Accepted advice stays quiet.** Where an entity or a query is as intended, [accept the advice](#accepting-advice) there with `@AcceptAdvice`, and the advice log stops reporting it there.
 - **A deliberate choice is advised only when slow.** A page that reports its total is a choice of `page` over `slice`, so its [count](#page-count) is advised in the slow statement log alone.
 
@@ -191,11 +191,11 @@ SQL advice (design Visit)
 	advice: every read of Visit joins 12 tables and selects 140 columns beyond its own, past the design budget of 10 joins and 96 columns; a Ref for Clinic.organization removes 4 joins and 52 columns. See https://orm.st/docs/advice#entity-budget
 ```
 
-An entity component joins its table into every read and brings that table's whole select list, along with every entity it declares in turn. The [design budget](entity-design.md#the-budget) bounds what a read adds beyond the entity's own columns: 10 joins and 96 columns. It is calibrated so ordinary schemas never reach it; an entity past it has a graph that grew, usually through entities nobody was editing.
+An entity component joins its table into every read and brings that table's whole select list, along with every entity it declares in turn. The [design budget](entity-design.md#the-budget) bounds what a read adds beyond the entity's own columns: 10 joins and 96 columns, unless the application [sets its own](entity-design.md#the-budget). The advice states the budget in effect. The default is calibrated so ordinary schemas never reach it; an entity past it has a graph that grew, usually through entities nobody was editing.
 
 The advice names the fields a `Ref` would cut to bring the read back within the budget, by the rules of [Where to Draw the Line](entity-design.md#where-to-draw-the-line): the deepest field that is enough on its own, since a cut near the leaves narrows every entity above it at once, and otherwise the widest fields first. It never names an identifying foreign key, which is composition, nor an entity without foreign keys of its own, such as a lookup table, which can never grow. A `Ref` keeps the relationship: filter, join and fetch through it as before, and resolve it in the queries that need it with `select().fetch(...)`.
 
-Where you know the path is read constantly, an entity past the budget can stay as it is: put `@AcceptAdvice("entity-budget")` on it.
+Where you know the path is read constantly, an entity past the budget can stay as it is: put `@AcceptAdvice("entity-budget")` on it. Where the budget does not suit the model as a whole, [set the budget](entity-design.md#the-budget) instead.
 
 ## A slow read of a wide entity {#wide-entity-read}
 
@@ -203,7 +203,7 @@ Where you know the path is read constantly, an entity past the budget can stay a
 
 Category: design, reported by the slow statement log only: whether a read within the budget is too wide shows only in real use, so the advice comes with a read that turned out slow.
 
-A read of an entity whose graph reaches half the design budget, 5 joins or 48 columns beyond its own, carries this advice to the slow statement log. A read can be slow for other reasons, such as its `WHERE` clause or a missing index, so the advice says what the width costs and what a `Ref` would save, not that the width is the cause. Compare the statement's plan with and without the joins before cutting. The field it names is chosen as for [an entity past the budget](#entity-budget), aiming below half the budget.
+A read of an entity whose graph reaches half the design budget, 5 joins or 48 columns beyond its own by default, carries this advice to the slow statement log. A read can be slow for other reasons, such as its `WHERE` clause or a missing index, so the advice says what the width costs and what a `Ref` would save, not that the width is the cause. Compare the statement's plan with and without the joins before cutting. The field it names is chosen as for [an entity past the budget](#entity-budget), aiming below half the budget.
 
 ## References fetched one at a time {#repeated-fetch}
 

@@ -26,7 +26,6 @@ import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Optional;
 import java.util.Set;
 import org.jspecify.annotations.Nullable;
 import st.orm.Entity;
@@ -34,6 +33,7 @@ import st.orm.FK;
 import st.orm.PK;
 import st.orm.Ref;
 import st.orm.SqlTemplateException;
+import st.orm.StormConfig;
 import st.orm.mapping.RecordField;
 import st.orm.mapping.RecordType;
 
@@ -44,7 +44,7 @@ import st.orm.mapping.RecordType;
  * <p>An entity component joins its table and brings its whole select list, recursively. A {@code Ref} is its foreign
  * key column and stops. An inline record is columns on the same row, so an entity it carries joins from the row that
  * holds it. The design budget of {@code entity-design.md} bounds what a read adds beyond the entity's own columns:
- * {@link #BUDGET_JOINS} joins and {@link #BUDGET_COLUMNS} columns.</p>
+ * 10 joins and 96 columns unless the application sets its own, as {@link Budget} says.</p>
  *
  * @param type the entity.
  * @param ownColumns the columns on the entity's own row.
@@ -56,11 +56,70 @@ import st.orm.mapping.RecordType;
  */
 record EntityGraph(Class<?> type, int ownColumns, int joins, int columns, String graph, List<Cut> cuts) {
 
-    /** The most tables the design budget lets a read join. */
-    static final int BUDGET_JOINS = 10;
+    /**
+     * The design budget: the most tables a read may join and the most columns it may select beyond the entity's own.
+     * A read from half the budget, in joins or in columns, is wide.
+     *
+     * @param joins the most tables a read may join; at least one.
+     * @param columns the most columns a read may select beyond the entity's own; at least one.
+     */
+    record Budget(int joins, int columns) {
 
-    /** The most columns the design budget lets a read select beyond the entity's own. */
-    static final int BUDGET_COLUMNS = 96;
+        /** The budget unless the application sets its own. */
+        static final Budget DEFAULT = new Budget(10, 96);
+
+        Budget {
+            if (joins < 1 || columns < 1) {
+                throw new IllegalArgumentException(
+                        "The entity budget must allow at least one join and one column; got %d joins and %d columns."
+                                .formatted(joins, columns));
+            }
+        }
+
+        /** Returns the joins from which a read is wide. */
+        int wideJoins() {
+            return Math.max(1, joins / 2);
+        }
+
+        /** Returns the columns from which a read is wide. */
+        int wideColumns() {
+            return Math.max(1, columns / 2);
+        }
+    }
+
+    private static volatile Budget budget = new Budget(
+            property(StormConfig.ADVICE_ENTITY_BUDGET_JOINS, Budget.DEFAULT.joins()),
+            property(StormConfig.ADVICE_ENTITY_BUDGET_COLUMNS, Budget.DEFAULT.columns()));
+
+    private static int property(String key, int defaultValue) {
+        String value = StormConfig.defaults().getProperty(key);
+        if (value == null || value.isBlank()) {
+            return defaultValue;
+        }
+        try {
+            return Integer.parseInt(value.trim());
+        } catch (NumberFormatException e) {
+            throw new IllegalArgumentException("%s must be a whole number; got '%s'.".formatted(key, value), e);
+        }
+    }
+
+    /**
+     * Returns the design budget in effect.
+     *
+     * @return the budget.
+     */
+    static Budget budget() {
+        return budget;
+    }
+
+    /**
+     * Sets the design budget.
+     *
+     * @param budget the budget.
+     */
+    static void budget(Budget budget) {
+        EntityGraph.budget = budget;
+    }
 
     /**
      * A field whose inline entity a {@code Ref} would cut, with what the cut removes from the graph, summed over every
@@ -91,15 +150,20 @@ record EntityGraph(Class<?> type, int ownColumns, int joins, int columns, String
         }
     };
 
-    private static final ClassValue<Optional<String>> WIDE_READS = new ClassValue<>() {
+    /** The advice a slow read of an entity carries, for the budget it was worked out for. */
+    private record WideRead(Budget budget, @Nullable String advice) {}
+
+    private static final ClassValue<WideRead> WIDE_READS = new ClassValue<>() {
         @Override
-        protected Optional<String> computeValue(Class<?> type) {
+        protected WideRead computeValue(Class<?> type) {
+            var current = budget;
             var graph = of(type);
-            if (!graph.wide() || graph.cuts().isEmpty()) {
-                return Optional.empty();
+            if (!graph.wide(current) || graph.cuts().isEmpty()) {
+                return new WideRead(current, null);
             }
-            return Optional.of(Advice.WIDE_ENTITY_READ.format(type.getSimpleName(), graph.joins(), graph.columns(),
-                    String.join(", and ", graph.belowWide().stream().map(Cut::describe).toList())));
+            return new WideRead(current, Advice.WIDE_ENTITY_READ.format(type.getSimpleName(), graph.joins(),
+                    graph.columns(), String.join(", and ", graph.belowWide(current).stream()
+                            .map(Cut::describe).toList())));
         }
     };
 
@@ -125,7 +189,13 @@ record EntityGraph(Class<?> type, int ownColumns, int joins, int columns, String
             return null;
         }
         try {
-            return WIDE_READS.get(type).orElse(null);
+            var read = WIDE_READS.get(type);
+            if (!read.budget().equals(budget)) {
+                // The budget changed since the advice was worked out, which happens at startup if at all.
+                WIDE_READS.remove(type);
+                read = WIDE_READS.get(type);
+            }
+            return read.advice();
         } catch (RuntimeException e) {
             // Advice never stands in the way of a query.
             return null;
@@ -135,10 +205,11 @@ record EntityGraph(Class<?> type, int ownColumns, int joins, int columns, String
     /**
      * Returns whether a read exceeds the design budget.
      *
-     * @return {@code true} past {@link #BUDGET_JOINS} joins or {@link #BUDGET_COLUMNS} columns.
+     * @return {@code true} past the budget's joins or columns.
      */
     boolean overBudget() {
-        return joins > BUDGET_JOINS || columns > BUDGET_COLUMNS;
+        var current = budget;
+        return joins > current.joins() || columns > current.columns();
     }
 
     /**
@@ -147,7 +218,11 @@ record EntityGraph(Class<?> type, int ownColumns, int joins, int columns, String
      * @return {@code true} from half the budget.
      */
     boolean wide() {
-        return joins >= BUDGET_JOINS / 2 || columns >= BUDGET_COLUMNS / 2;
+        return wide(budget);
+    }
+
+    private boolean wide(Budget budget) {
+        return joins >= budget.wideJoins() || columns >= budget.wideColumns();
     }
 
     /**
@@ -157,7 +232,8 @@ record EntityGraph(Class<?> type, int ownColumns, int joins, int columns, String
      * @see #cutsTo(int, int)
      */
     List<Cut> withinBudget() {
-        return cutsTo(BUDGET_JOINS, BUDGET_COLUMNS);
+        var current = budget;
+        return cutsTo(current.joins(), current.columns());
     }
 
     /**
@@ -167,7 +243,11 @@ record EntityGraph(Class<?> type, int ownColumns, int joins, int columns, String
      * @see #cutsTo(int, int)
      */
     List<Cut> belowWide() {
-        return cutsTo(BUDGET_JOINS / 2 - 1, BUDGET_COLUMNS / 2 - 1);
+        return belowWide(budget);
+    }
+
+    private List<Cut> belowWide(Budget budget) {
+        return cutsTo(budget.wideJoins() - 1, budget.wideColumns() - 1);
     }
 
     /**
@@ -208,12 +288,14 @@ record EntityGraph(Class<?> type, int ownColumns, int joins, int columns, String
      * @return the advice.
      */
     String budgetAdvice() {
-        var within = withinBudget();
+        var current = budget;
+        var within = cutsTo(current.joins(), current.columns());
         String remedy = within.isEmpty()
                 ? "every joined entity is part of an identifying key or a lookup table without foreign keys, so a "
                         + "projection is the way to read less"
                 : String.join(", and ", within.stream().map(Cut::describe).toList());
-        return Advice.ENTITY_BUDGET.format(type.getSimpleName(), joins, columns, remedy);
+        return Advice.ENTITY_BUDGET.format(type.getSimpleName(), joins, columns, remedy, current.joins(),
+                current.columns());
     }
 
     private static boolean inside(Cut cut, List<Cut> chosen) {

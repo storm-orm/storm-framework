@@ -35,12 +35,16 @@ import st.orm.spi.QueryContext;
  * The advice log: the advice a statement carries, reported fast or slow under {@code st.orm.sql.advice}, each piece
  * of advice under a logger of its own named after its anchor, such as {@code st.orm.sql.advice.unordered-limit}.
  *
- * <p>The log reports the categories of advice the application asks for, in {@code storm.sql_log.advice.categories}:
+ * <p>The log reports the categories of advice the application asks for, in {@code storm.advice.categories}:
  * correctness by default, and design and performance as well while developing, as {@link #development()} says. Design advice on an entity is reported
  * once per entity, when it is checked at startup or first used. Advice the application accepts for an entity, a
  * repository or the code that issues a statement, with {@link st.orm.AcceptAdvice}, is not reported there; a piece of
  * advice the application accepts everywhere is turned off by setting its logger to {@code OFF}. Advice that holds only once the statement is slow, such as the count behind a
  * page, is left to the slow statement log.</p>
+ *
+ * <p>Design advice checks entities against the design budget, 10 joins and 96 columns beyond an entity's own unless
+ * the application sets its own in {@code storm.advice.entity_budget.joins} and {@code .columns}, or through
+ * {@link #entityBudget(Integer, Integer)}.</p>
  *
  * <p>How often a piece of advice is reported follows the level of {@code st.orm.sql.advice}: once per piece of advice
  * at {@code INFO}, once per statement shape at {@code DEBUG}, and at every execution at {@code TRACE}.</p>
@@ -86,10 +90,10 @@ public final class AdviceLog {
 
     /** Whether the application named the categories, which development then leaves as they are. */
     private static volatile boolean configured =
-            StormConfig.defaults().getProperty(StormConfig.SQL_LOG_ADVICE_CATEGORIES) != null;
+            StormConfig.defaults().getProperty(StormConfig.ADVICE_CATEGORIES) != null;
 
     private static volatile Set<Category> categories = parse(Objects.requireNonNullElse(
-            StormConfig.defaults().getProperty(StormConfig.SQL_LOG_ADVICE_CATEGORIES), DEFAULT_CATEGORIES));
+            StormConfig.defaults().getProperty(StormConfig.ADVICE_CATEGORIES), DEFAULT_CATEGORIES));
 
     private AdviceLog() {
     }
@@ -103,6 +107,40 @@ public final class AdviceLog {
     public static void categories(Collection<String> categories) {
         AdviceLog.categories = parse(String.join(",", categories));
         configured = true;
+    }
+
+    /**
+     * Sets the design budget entities are checked against: the most tables a read may join and the most columns it
+     * may select beyond the entity's own, 10 and 96 unless set. A read from half the budget is wide, which a slow
+     * read of it is advised on. Set it before the first template is created, which checks the model.
+     *
+     * @param joins the most tables a read may join, or {@code null} to keep the current setting.
+     * @param columns the most columns a read may select beyond the entity's own, or {@code null} to keep the current
+     *                setting.
+     * @throws IllegalArgumentException if a value is below one.
+     */
+    public static void entityBudget(@Nullable Integer joins, @Nullable Integer columns) {
+        var current = EntityGraph.budget();
+        EntityGraph.budget(new EntityGraph.Budget(joins != null ? joins : current.joins(),
+                columns != null ? columns : current.columns()));
+    }
+
+    /**
+     * Returns the most tables the design budget lets a read join.
+     *
+     * @return the joins of the design budget.
+     */
+    public static int entityBudgetJoins() {
+        return EntityGraph.budget().joins();
+    }
+
+    /**
+     * Returns the most columns the design budget lets a read select beyond the entity's own.
+     *
+     * @return the columns of the design budget.
+     */
+    public static int entityBudgetColumns() {
+        return EntityGraph.budget().columns();
     }
 
     /**
@@ -289,10 +327,11 @@ public final class AdviceLog {
 
     /**
      * Forgets what the log reported, so the next execution reports its advice again, and restores the categories
-     * to their default.
+     * and the design budget to their defaults.
      */
     static void reset() {
         categories = parse(DEFAULT_CATEGORIES);
+        EntityGraph.budget(EntityGraph.Budget.DEFAULT);
         configured = false;
         REPORTED_DESIGN.clear();
         REPORTED_ONCE.clear();

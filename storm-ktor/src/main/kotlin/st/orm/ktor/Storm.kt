@@ -130,9 +130,13 @@ public val Storm: ApplicationPlugin<StormPluginConfig> = createApplicationPlugin
 
     // ---- Per-call SQL log settings ----
 
-    // Resolved before any template exists: the first template checks the model, which reports design advice only
-    // where its category is on. Ktor's development mode reports every category unless the application names them.
+    // Resolved before any template exists: the first template checks the model against the design budget, which
+    // reports design advice only where its category is on. Ktor's development mode reports every category unless the
+    // application names them.
     val sqlLogSettings = resolveSqlLogSettings(application, pluginConfig)
+    if (sqlLogSettings.entityBudgetJoins != null || sqlLogSettings.entityBudgetColumns != null) {
+        AdviceLog.entityBudget(sqlLogSettings.entityBudgetJoins, sqlLogSettings.entityBudgetColumns)
+    }
     val adviceCategories = sqlLogSettings.adviceCategories
     if (adviceCategories != null) {
         AdviceLog.categories(adviceCategories)

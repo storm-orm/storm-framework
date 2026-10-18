@@ -299,10 +299,26 @@ public class StormSqlLogAutoConfigurationTest {
         try {
             contextRunner
                     .withUserConfiguration(JobConfiguration.class)
-                    .withPropertyValues("storm.sql-log.advice.categories=correctness,performance")
+                    .withPropertyValues("storm.advice.categories=correctness,performance")
                     .run(context -> assertEquals(List.of("correctness", "performance"), AdviceLog.categories()));
         } finally {
             AdviceLog.categories(List.of("correctness"));
+        }
+    }
+
+    @Test
+    public void testTheEntityBudgetPropertiesSetTheDesignBudget() {
+        try {
+            contextRunner
+                    .withUserConfiguration(JobConfiguration.class)
+                    .withPropertyValues("storm.advice.entity-budget.joins=14",
+                            "storm.advice.entity-budget.columns=150")
+                    .run(context -> {
+                        assertEquals(14, AdviceLog.entityBudgetJoins());
+                        assertEquals(150, AdviceLog.entityBudgetColumns());
+                    });
+        } finally {
+            AdviceLog.entityBudget(10, 96);
         }
     }
 
