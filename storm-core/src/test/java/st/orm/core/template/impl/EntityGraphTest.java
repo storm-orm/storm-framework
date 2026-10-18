@@ -19,6 +19,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.util.List;
@@ -86,5 +87,43 @@ public class EntityGraphTest {
         // Within budget and without a field to cut, a read carries nothing.
         assertNull(EntityGraph.wideReadAdvice(Chain10.class));
         assertNull(EntityGraph.wideReadAdvice(Owner.class));
+    }
+
+    @Test
+    public void theBudgetTheApplicationSetsDecidesWhatIsPastItAndWhatIsWide() {
+        try {
+            AdviceLog.entityBudget(12, null);
+            assertFalse(EntityGraph.of(Chain0.class).overBudget());
+            AdviceLog.entityBudget(6, 20);
+            var graph = EntityGraph.of(Chain0.class);
+            assertTrue(graph.overBudget());
+            assertTrue(graph.budgetAdvice().contains("past the design budget of 6 joins and 20 columns;"),
+                    graph.budgetAdvice());
+            // Half of six joins is three, so a read of Visit is wide now, and its advice is worked out again.
+            assertNotNull(EntityGraph.wideReadAdvice(Visit.class));
+        } finally {
+            AdviceLog.reset();
+        }
+        assertEquals(10, AdviceLog.entityBudgetJoins());
+        assertEquals(96, AdviceLog.entityBudgetColumns());
+        assertNull(EntityGraph.wideReadAdvice(Visit.class));
+    }
+
+    @Test
+    public void aBudgetSetOnOneSideKeepsTheOther() {
+        try {
+            AdviceLog.entityBudget(null, 120);
+            assertEquals(10, AdviceLog.entityBudgetJoins());
+            assertEquals(120, AdviceLog.entityBudgetColumns());
+        } finally {
+            AdviceLog.reset();
+        }
+    }
+
+    @Test
+    public void aBudgetBelowOneIsRefused() {
+        var e = assertThrows(IllegalArgumentException.class, () -> AdviceLog.entityBudget(0, null));
+        assertTrue(e.getMessage().contains("at least one join and one column"), e.getMessage());
+        assertEquals(10, AdviceLog.entityBudgetJoins());
     }
 }

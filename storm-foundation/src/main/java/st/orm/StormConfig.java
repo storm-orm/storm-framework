@@ -110,7 +110,23 @@ public final class StormConfig {
      *
      * @since 1.15
      */
-    public static final String SQL_LOG_ADVICE_CATEGORIES = "storm.sql_log.advice.categories";
+    public static final String ADVICE_CATEGORIES = "storm.advice.categories";
+
+    /**
+     * The most tables the design budget lets an entity's read join, which design advice checks entities against.
+     * Defaults to {@code 10}; at least {@code 1}.
+     *
+     * @since 1.15
+     */
+    public static final String ADVICE_ENTITY_BUDGET_JOINS = "storm.advice.entity_budget.joins";
+
+    /**
+     * The most columns the design budget lets an entity's read select beyond its own, which design advice checks
+     * entities against. Defaults to {@code 96}; at least {@code 1}.
+     *
+     * @since 1.15
+     */
+    public static final String ADVICE_ENTITY_BUDGET_COLUMNS = "storm.advice.entity_budget.columns";
 
     private static final Set<String> SQL_SHAPING_KEYS = sqlShapingKeysFromDeclarations();
 

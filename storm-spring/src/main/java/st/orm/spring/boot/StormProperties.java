@@ -69,6 +69,9 @@ public class StormProperties {
     /** Per-request SQL log configuration. */
     private SqlLog sqlLog = new SqlLog();
 
+    /** Statement advice configuration. */
+    private Advice advice = new Advice();
+
     /** Whether to enable ANSI escape sequences in Storm's log output. */
     private Boolean ansiEscaping;
 
@@ -107,6 +110,12 @@ public class StormProperties {
 
     /** Sets the per-request SQL log configuration. */
     public void setSqlLog(SqlLog sqlLog) { this.sqlLog = sqlLog; }
+
+    /** Returns the statement advice configuration. */
+    public Advice getAdvice() { return advice; }
+
+    /** Sets the statement advice configuration. */
+    public void setAdvice(Advice advice) { this.advice = advice; }
 
     /** Sets the tracing configuration. */
     public void setTracing(Tracing tracing) { this.tracing = tracing; }
@@ -269,9 +278,9 @@ public class StormProperties {
     /**
      * SQL log configuration. The umbrella covers logs that answer different questions about the same
      * executions: the performance log ({@code st.orm.sql.perf}) says what a unit of work cost the database,
-     * the slow statement log ({@code st.orm.sql.slow}) names the single execution that cost too much, and the
-     * advice log ({@code st.orm.sql.advice}) says what to change about a statement. Each has
-     * its own section; call-site attribution is shared, since both logs name the frame the same way.
+     * and the slow statement log ({@code st.orm.sql.slow}) names the single execution that cost too much. Each has
+     * its own section; call-site attribution is shared, since both logs name the frame the same way. Statement
+     * advice is configured under {@code storm.advice}.
      */
     public static class SqlLog {
 
@@ -305,15 +314,6 @@ public class StormProperties {
 
         /** Sets the slow statement log configuration. */
         public void setSlow(Slow slow) { this.slow = slow; }
-
-        /** The advice log. */
-        private Advice advice = new Advice();
-
-        /** Returns the advice log configuration. */
-        public Advice getAdvice() { return advice; }
-
-        /** Sets the advice log configuration. */
-        public void setAdvice(Advice advice) { this.advice = advice; }
 
         /**
          * The performance log: what one unit of work cost the database, reported as a single summary under
@@ -472,25 +472,61 @@ public class StormProperties {
             /** Sets the slow statement lines reported per shape per minute. */
             public void setLimit(@Nullable Integer limit) { this.limit = limit; }
         }
+    }
+
+    /**
+     * Statement advice: what to change about a statement or an entity, reported under {@code st.orm.sql.advice}.
+     *
+     * <p>Mapped to the {@code storm.advice.*} namespace.</p>
+     */
+    public static class Advice {
 
         /**
-         * The advice log: what to change about a statement, fast or slow, reported under {@code st.orm.sql.advice}.
+         * Categories of advice the log reports: "correctness", "performance" and "design". Defaults to
+         * correctness, and to all three while Spring Boot DevTools is on the classpath, as it is in development
+         * and never in a packaged application.
          */
-        public static class Advice {
+        private @Nullable List<String> categories;
 
-            /**
-             * Categories of advice the log reports: "correctness", "performance" and "design". Defaults to
-             * correctness, and to all three while Spring Boot DevTools is on the classpath, as it is in development
-             * and never in a packaged application.
-             */
-            private @Nullable List<String> categories;
+        /** Returns the categories of advice the log reports. */
+        public @Nullable List<String> getCategories() { return categories; }
 
-            /** Returns the categories of advice the log reports. */
-            public @Nullable List<String> getCategories() { return categories; }
+        /** Sets the categories of advice the log reports. */
+        public void setCategories(@Nullable List<String> categories) { this.categories = categories; }
 
-            /** Sets the categories of advice the log reports. */
-            public void setCategories(@Nullable List<String> categories) { this.categories = categories; }
-        }
+        /** The design budget entities are checked against. */
+        private EntityBudget entityBudget = new EntityBudget();
+
+        /** Returns the design budget entities are checked against. */
+        public EntityBudget getEntityBudget() { return entityBudget; }
+
+        /** Sets the design budget entities are checked against. */
+        public void setEntityBudget(EntityBudget entityBudget) { this.entityBudget = entityBudget; }
+    }
+
+    /**
+     * The design budget design advice checks entities against: what an entity's read may add beyond its own
+     * columns. A read from half the budget is wide, which a slow read of it is advised on.
+     */
+    public static class EntityBudget {
+
+        /** The most tables a read may join. Defaults to 10. */
+        private @Nullable Integer joins;
+
+        /** The most columns a read may select beyond the entity's own. Defaults to 96. */
+        private @Nullable Integer columns;
+
+        /** Returns the most tables a read may join. */
+        public @Nullable Integer getJoins() { return joins; }
+
+        /** Sets the most tables a read may join. */
+        public void setJoins(@Nullable Integer joins) { this.joins = joins; }
+
+        /** Returns the most columns a read may select beyond the entity's own. */
+        public @Nullable Integer getColumns() { return columns; }
+
+        /** Sets the most columns a read may select beyond the entity's own. */
+        public void setColumns(@Nullable Integer columns) { this.columns = columns; }
     }
 
     /** Query observation configuration. */

@@ -204,6 +204,46 @@ Storm's schema-first generation holds this invariant for every table, treated as
 - The table's inline closure adds at most **10 joins**.
 - The table's inline closure adds at most **96 columns**, excluding the table's own.
 
+These numbers are defaults, and the [design advice](#design-advice) checks entities against the same budget. They suit most schemas. An application whose model is deliberately wider, or that wants to hold itself to a narrower one, sets its own budget rather than accepting the advice on entity after entity:
+
+<Tabs groupId="config">
+<TabItem value="spring" label="Spring Boot" default>
+
+```yaml
+storm:
+  advice:
+    entity-budget:
+      joins: 14
+      columns: 160
+```
+
+</TabItem>
+<TabItem value="ktor" label="Ktor">
+
+```hocon
+storm {
+  advice {
+    entityBudget {
+      joins = 14
+      columns = 160
+    }
+  }
+}
+```
+
+</TabItem>
+<TabItem value="property" label="System property">
+
+```
+-Dstorm.advice.entity_budget.joins=14
+-Dstorm.advice.entity_budget.columns=160
+```
+
+</TabItem>
+</Tabs>
+
+Each value can be set on its own and must be at least 1. Half the budget is where a read counts as wide, which is when a [slow read is advised on](advice.md#wide-entity-read). `@StormTest` reads the system properties, so set them in the build's test task too, such as Maven Surefire's `systemPropertyVariables` or Gradle's `systemProperty`, for tests to check against the same budget. Keep [`@AcceptAdvice("entity-budget")`](advice.md#accepting-advice) for the one entity that is the exception.
+
 A table's *inline closure* is the set of tables reachable from it through direct-type foreign keys. Define `columns(T)` as the table's own column count, counting [inline record](entities.md#embedded-components) components, which live in the same table and cost no join. Then `cost(T) = columns(T) + Σ cost(X)` across every edge from `T` that is inlined, and `joins(T)` is the number of joins that closure produces.
 
 ### The Algorithm

@@ -114,7 +114,8 @@ public class StormPluginConfig {
      *
      * Every `sqlLog*` option can come from the application configuration instead, under `storm.sqlLog` (or
      * `storm.sql_log`), so the log can be switched on in production without a redeploy. A setting here overrides
-     * the configuration file; when neither sets an option, its default applies.
+     * the configuration file; when neither sets an option, its default applies. The `advice*` options come from
+     * `storm.advice` the same way.
      *
      * ```
      * storm.sqlLog {
@@ -187,13 +188,32 @@ public class StormPluginConfig {
 
     /**
      * Categories of advice the advice log (`st.orm.sql.advice`) reports: `correctness`, `performance` and `design`.
-     * Configuration key `storm.sqlLog.advice.categories`, a list or comma-separated string. Applied JVM-wide at
-     * installation; when unset, the `storm.sql_log.advice.categories` system property's setting, or its default
+     * Configuration key `storm.advice.categories`, a list or comma-separated string. Applied JVM-wide at
+     * installation; when unset, the `storm.advice.categories` system property's setting, or its default
      * stays in effect: `correctness`, and all three in Ktor's development mode.
      *
      * @since 1.15
      */
-    public var sqlLogAdviceCategories: List<String>? = null
+    public var adviceCategories: List<String>? = null
+
+    /**
+     * The most tables the design budget lets an entity's read join, which design advice checks entities against.
+     * Configuration key `storm.advice.entityBudget.joins`. Applied JVM-wide at installation; when unset, the
+     * `storm.advice.entity_budget.joins` system property's setting, or its default of 10, stays in effect.
+     *
+     * @since 1.15
+     */
+    public var adviceEntityBudgetJoins: Int? = null
+
+    /**
+     * The most columns the design budget lets an entity's read select beyond its own, which design advice checks
+     * entities against. Configuration key `storm.advice.entityBudget.columns`. Applied JVM-wide at
+     * installation; when unset, the `storm.advice.entity_budget.columns` system property's setting, or its
+     * default of 96, stays in effect.
+     *
+     * @since 1.15
+     */
+    public var adviceEntityBudgetColumns: Int? = null
 
     /**
      * Whether each execution is attributed to the application frame that caused it, shown per row as

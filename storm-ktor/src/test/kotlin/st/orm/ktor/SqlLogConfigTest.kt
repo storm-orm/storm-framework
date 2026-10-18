@@ -26,6 +26,8 @@ internal class SqlLogConfigTest {
         settings.slowThreshold shouldBe null
         settings.slowLimit shouldBe null
         settings.adviceCategories shouldBe null
+        settings.entityBudgetJoins shouldBe null
+        settings.entityBudgetColumns shouldBe null
         settings.callSites shouldBe false
         settings.callSiteSkip shouldBe emptyList()
         settings.lineWidth shouldBe null
@@ -40,7 +42,9 @@ internal class SqlLogConfigTest {
             "storm.sqlLog.performance.threshold.duration" to "250ms",
             "storm.sqlLog.slow.threshold" to "200ms",
             "storm.sqlLog.slow.limit" to "3",
-            "storm.sqlLog.advice.categories" to "correctness, performance",
+            "storm.advice.categories" to "correctness, performance",
+            "storm.advice.entityBudget.joins" to "14",
+            "storm.advice.entityBudget.columns" to "150",
             "storm.sqlLog.performance.callSites" to "true",
             "storm.sqlLog.callSiteSkip" to "com.myapp.data, com.myapp.plumbing",
             "storm.sqlLog.performance.lineWidth" to "120",
@@ -52,6 +56,8 @@ internal class SqlLogConfigTest {
         settings.slowThreshold shouldBe 200.milliseconds
         settings.slowLimit shouldBe 3
         settings.adviceCategories shouldBe listOf("correctness", "performance")
+        settings.entityBudgetJoins shouldBe 14
+        settings.entityBudgetColumns shouldBe 150
         settings.callSites shouldBe true
         settings.callSiteSkip shouldBe listOf("com.myapp.data", "com.myapp.plumbing")
         settings.lineWidth shouldBe 120
@@ -66,7 +72,9 @@ internal class SqlLogConfigTest {
             "storm.sql_log.performance.threshold.duration" to "2s",
             "storm.sql_log.slow.threshold" to "1s",
             "storm.sql_log.slow.limit" to "0",
-            "storm.sql_log.advice.categories" to "performance",
+            "storm.advice.categories" to "performance",
+            "storm.advice.entity_budget.joins" to "8",
+            "storm.advice.entity_budget.columns" to "64",
             "storm.sql_log.performance.call_sites" to "true",
             "storm.sql_log.call_site_skip" to "com.myapp.data",
             "storm.sql_log.performance.line_width" to "240",
@@ -78,6 +86,8 @@ internal class SqlLogConfigTest {
         settings.slowThreshold shouldBe 1.seconds
         settings.slowLimit shouldBe 0
         settings.adviceCategories shouldBe listOf("performance")
+        settings.entityBudgetJoins shouldBe 8
+        settings.entityBudgetColumns shouldBe 64
         settings.callSites shouldBe true
         settings.callSiteSkip shouldBe listOf("com.myapp.data")
         settings.lineWidth shouldBe 240

@@ -75,15 +75,26 @@ public class StormSqlLogAutoConfiguration {
      * created before it.
      */
     private static StormProperties.SqlLog bind(Environment environment) {
-        return new Binder(
-                ConfigurationPropertySources.get(environment),
-                new PropertySourcesPlaceholdersResolver(environment),
-                ApplicationConversionService.getSharedInstance())
-                .bindOrCreate("storm.sql-log", StormProperties.SqlLog.class);
+        return binder(environment).bindOrCreate("storm.sql-log", StormProperties.SqlLog.class);
     }
 
     /**
-     * Applies the slow statement threshold and the categories of advice the advice log reports. Statements execute while the application starts, migrations and
+     * Binds the {@code storm.advice} properties ahead of the configuration-properties machinery, as the first
+     * template checks the model against them.
+     */
+    private static StormProperties.Advice bindAdvice(Environment environment) {
+        return binder(environment).bindOrCreate("storm.advice", StormProperties.Advice.class);
+    }
+
+    private static Binder binder(Environment environment) {
+        return new Binder(
+                ConfigurationPropertySources.get(environment),
+                new PropertySourcesPlaceholdersResolver(environment),
+                ApplicationConversionService.getSharedInstance());
+    }
+
+    /**
+     * Applies the slow statement threshold, the categories of advice the advice log reports and the design budget. Statements execute while the application starts, migrations and
      * schema validation among them, so the threshold is applied when this bean is defined, which a bean factory
      * post-processor is before any singleton exists; the processor itself has nothing left to do.
      *
@@ -101,7 +112,12 @@ public class StormSqlLogAutoConfiguration {
         if (limit != null) {
             SlowStatementLog.limit(limit);
         }
-        var categories = sqlLog.getAdvice().getCategories();
+        var advice = bindAdvice(environment);
+        var entityBudget = advice.getEntityBudget();
+        if (entityBudget.getJoins() != null || entityBudget.getColumns() != null) {
+            AdviceLog.entityBudget(entityBudget.getJoins(), entityBudget.getColumns());
+        }
+        var categories = advice.getCategories();
         if (categories != null) {
             AdviceLog.categories(categories);
         } else if (ClassUtils.isPresent(DEVTOOLS, StormSqlLogAutoConfiguration.class.getClassLoader())) {

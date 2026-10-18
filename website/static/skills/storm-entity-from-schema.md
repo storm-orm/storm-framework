@@ -27,6 +27,8 @@ Hold this invariant for EVERY table, treated as a potential root:
 - its inline closure adds at most **10 joins**, and
 - its inline closure adds at most **96 columns**, excluding the table's own columns.
 
+These are the default design budget. If the application sets its own (Spring Boot `storm.advice.entity-budget.joins`/`.columns`, Ktor `storm.advice.entityBudget.joins`/`.columns`, or the `storm.advice.entity_budget.joins`/`.columns` system properties), use its numbers instead, so the generated entities pass the design advice Storm checks them with.
+
 The *inline closure* of a table is the set of tables reachable from it through direct-type FKs. With `columns(T)` as the table's own column count (counting inline record components, which live in the same table and cost no join), `cost(T) = columns(T) + Σ cost(X)` over every inlined edge from T, and `joins(T)` is the number of joins that closure produces.
 
 Algorithm:
