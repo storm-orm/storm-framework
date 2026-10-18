@@ -516,7 +516,7 @@ orm.entity(User.class).delete().unsafe().executeUpdate();
 users.removeAll();
 ```
 
-`update()` is the UPDATE counterpart: `set` names a column through the metamodel, the conditions select the rows, and `.executeUpdate()` runs one statement without reading the rows. Use it to write a few columns of rows the code did not read; never add a second, partial entity for the table to do so.
+`update()` is the UPDATE counterpart: `set` names a column through the metamodel, the conditions select the rows, and `.executeUpdate()` runs one statement without reading the rows. Use it to write a few columns of rows the code did not read, rather than a second, partial entity for the table.
 
 ```java
 // Transfer pets to a new owner
