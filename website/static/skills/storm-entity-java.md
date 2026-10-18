@@ -152,7 +152,7 @@ Generation rules:
 
 13. Use descriptive variable names, never abbreviated.
 
-14. **Use `Ref`, never a raw id, to refer to a row**: when mapping data or passing it around (method parameters and return values, DTO, command and event fields, map keys, set members, lists of rows to act on), hold a `Ref<Entity>`, not the id. A `Ref` is type-safe: a `Ref<City>` cannot stand in for a `Ref<Owner>`, while a `long` id fits anywhere. Get one with `Ref.of(entity)`, or with `Ref.of(City.class, id)` where an id enters the program, once, at that boundary. `Ref` provides identity-based `equals`/`hashCode` on the type and primary key, so it is a safe map key and set member, and it loads nothing until `fetch()`. When a projection already returns `Ref<T>`, use it directly. This is the default; follow the developer where they choose ids.
+14. **Use `Ref`, never a raw id, to refer to a row**: when mapping data or passing it around (method parameters and return values, map keys, set members, lists of rows to act on), hold a `Ref<Entity>`, not the id. A `Ref` is type-safe: a `Ref<City>` cannot stand in for a `Ref<Owner>`, while a `long` id fits anywhere. Get one with `Ref.of(entity)`, or with `Ref.of(City.class, id)` where an id enters the program, once, at that boundary. `Ref` provides identity-based `equals`/`hashCode` on the type and primary key, so it is a safe map key and set member, and it loads nothing until `fetch()`. When a projection already returns `Ref<T>`, use it directly. This is the default; follow the developer where they choose ids.
 
 15. **Typed ID from `Ref`:** Use `Ref.entityId(ref)` to extract a type-safe ID from a `Ref`. For projections, use `Ref.projectionId(ref)`. Avoid `ref.id()` — it returns `Object` and requires an unsafe cast.
 

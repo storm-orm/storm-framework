@@ -635,9 +635,9 @@ val score = userScores[refById<User>(userId)]
 
 ### Passing References Around
 
-Code that refers to a row, rather than needing its data, can hold a `Ref` instead of the raw id: method parameters and return values, fields of commands, events and DTOs, collections of rows to act on. A `Ref` is type-safe where an id is not. A `Ref<City>` cannot be passed where a `Ref<Owner>` is expected, while a `Long` id fits anywhere, including in the wrong place.
+Code that refers to a row, rather than needing its data, can hold a `Ref` instead of the raw id: method parameters and return values, map keys and sets, collections of rows to act on. A `Ref` is type-safe where an id is not. A `Ref<City>` cannot be passed where a `Ref<Owner>` is expected, while a `Long` id fits anywhere, including in the wrong place.
 
-Convert an id to a `Ref` once, where it enters the program, and pass the `Ref` inward. Repositories take it as is (`findByRef`, `getByRef`, `findAllByRef`), queries compare a foreign key to it, and the [serialization modules](serialization.md) write an unloaded `Ref` as its id, so an API reads the same as with an id field.
+Convert an id to a `Ref` once, where it enters the program, and pass the `Ref` inward. Repositories take it as is (`findByRef`, `getByRef`, `findAllByRef`), and queries compare a foreign key to it.
 
 <Tabs groupId="language">
 <TabItem value="kotlin" label="Kotlin" default>
