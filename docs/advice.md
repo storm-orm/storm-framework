@@ -124,13 +124,15 @@ An offset tells the database to skip rows, and it skips them by reading them: pa
 
 ## References fetched one at a time {#repeated-fetch}
 
-> 24 statements each fetched one City; fetch on the query that read the references resolves them in that statement
+> 24 statements each fetched one City; an inline foreign key joins it into every read of the rows, or a query that fetches the references, such as select().fetch(...), resolves them in the statement that reads them
 
 Category: performance, reported by the [performance log](sql-logging.md#the-performance-log) summary of the unit of work.
 
 Each `Ref.fetch()` that the transaction's entity cache cannot serve is a statement of its own, so a loop over rows that fetches a reference from each runs one statement per row: the N+1 pattern. The performance log counts these as fetches, and advises once a unit of work fetched ten or more of one type.
 
-Resolve the references in the query that read them: `fetch(Visit_.pet)` on that query adds them to its statement. Where every reader needs the referenced row, an inline foreign key (`@FK val pet: Pet` rather than `Ref<Pet>`) joins it by default. See [Resolving a Ref as Part of the Query](refs.md#resolving-a-ref-as-part-of-the-query) and [Entity Design](entity-design.md).
+Where every reader needs the referenced row, make the foreign key inline: `@FK val pet: Pet` rather than `Ref<Pet>` joins the pet into every read of a visit, repository methods such as `findById` included. See [Entity Design](entity-design.md).
+
+Where only some readers need it, keep the `Ref` and read the rows with a query that fetches it: `select().fetch(Visit_.pet)` adds the pets to the statement that reads the visits. A repository method such as `findById` or `findAll` takes no `fetch`, so write that read as a `select()` that does. See [Resolving a Ref as Part of the Query](refs.md#resolving-a-ref-as-part-of-the-query).
 
 ## The same row lookup, again and again {#repeated-select}
 

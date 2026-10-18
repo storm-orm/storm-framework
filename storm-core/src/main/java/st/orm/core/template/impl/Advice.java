@@ -59,8 +59,9 @@ enum Advice {
 
     /** References of one type fetched one statement at a time, in one unit of work. */
     REPEATED_FETCH("repeated-fetch", Category.PERFORMANCE, false,
-            "%1$d statements each fetched one %2$s; fetch on the query that read the references resolves them in "
-                    + "that statement, and an inline foreign key joins them."),
+            "%1$d statements each fetched one %2$s; an inline foreign key joins it into every read of the rows, or "
+                    + "a query that fetches the references, such as select().fetch(...), resolves them in the "
+                    + "statement that reads them."),
 
     /** The same single-row read repeated, in one unit of work. */
     REPEATED_SELECT("repeated-select", Category.PERFORMANCE, false,

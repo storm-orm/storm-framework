@@ -129,7 +129,7 @@ A summary closes with advice where the unit of work repeated what it could have 
 SQL (GET /owners): 31 statements, 24 fetches, 41 ms in database, 96 ms total
 	28 ms  24 rows  24x  City  fetch  SELECT c.id, c.name FROM city c WHERE c.id = ?
 	13 ms  70 rows   7x  Pet          SELECT p.id, p.name FROM pet p WHERE p.owner_id = ?
-	advice 24 statements each fetched one City; fetch on the query that read the references resolves them in that statement, and an inline foreign key joins them. See https://orm.st/docs/advice#repeated-fetch
+	advice 24 statements each fetched one City; an inline foreign key joins it into every read of the rows, or a query that fetches the references, such as select().fetch(...), resolves them in the statement that reads them. See https://orm.st/docs/advice#repeated-fetch
 ```
 
 The advice is worked out from the summary when it is printed, so it costs nothing beyond the summary itself, and it links to its section of [Statement Advice](advice.md).
