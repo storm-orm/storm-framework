@@ -95,7 +95,7 @@ Match the compiler plugin suffix to the project's Kotlin version: 2.0.x uses `st
 - Optionally: `st.orm:storm-ktor-test` (test scope, for `testStormApplication` DSL)
 - The plugin exposes the `ORMTemplate` and every auto-registered repository through Ktor's built-in dependency injection (`ktor-server-di`), each under its own interface type: `val users: UserRepository by dependencies`. Koin users bridge the same registry with a few lines of application code; the Ktor integration docs include the recipe
 - Add `com.zaxxer:HikariCP` when using the built-in HOCON-configured DataSource (`storm.datasource.jdbcUrl` etc. in application.conf) — not needed when passing your own DataSource to `install(Storm)`
-- Install with `install(Storm)`; repositories from the compile-time index auto-register, accessed via a bare `repository<T>()` in routes; `orm`, `entity<T>()`, and `projection<T>()` extensions are available too
+- Install with `install(Storm)`; repositories from the compile-time index auto-register, accessed via a bare `repository<T>()` in routes; `orm`, `entity(User::class)`, and `projection(UserView::class)` extensions are available too
 - Run migrations in the plugin's `migration { }` hook so the default fail-mode schema validation sees the migrated schema
 
 ## Getting ORMTemplate

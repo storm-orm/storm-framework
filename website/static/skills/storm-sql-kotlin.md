@@ -15,7 +15,7 @@ SQL Templates exist for two scenarios:
 **1. Template fragments** — a single clause (SELECT, HAVING) needs SQL that QueryBuilder cannot express, but the rest of the query is code-based. This is the most common case:
 ```kotlin
 // Prefer code over templates — use templates only for expressions QueryBuilder can't produce
-orm.entity<City>()
+orm.entity(City::class)
     .select<CityUserCount, _, _> { "${City::class}, COUNT(*)" }
     .leftJoin<User>().on<City>()
     .groupBy(City_.id)
@@ -85,7 +85,7 @@ data class CityUserCount(val city: City, val userCount: Long)
 
 // Use select() with custom return type + minimal SQL template for the aggregate only.
 // The result type is explicit; the underscores let Kotlin infer the entity and ID types.
-val cityCounts = orm.entity<City>()
+val cityCounts = orm.entity(City::class)
     .select<CityUserCount, _, _> { "${City::class}, COUNT(*)" }
     .leftJoin<User>().on<City>()
     .groupBy(City_.id)
@@ -108,13 +108,13 @@ Critical rules:
 - **Metamodel navigation depth**: Multiple levels of navigation are allowed on the root entity. However, joined (non-root) entities can only navigate one level deep. If you need deeper navigation from a joined entity, explicitly join the intermediate entity:
   ```kotlin
   // ❌ Wrong - two levels from joined entity
-  orm.entity<Role>()
+  orm.entity(Role::class)
       .select<RoleSummary, _, _> { "..." }
       .innerJoin<UserRole>().on<Role>()
       .having { "COUNT(DISTINCT ${UserRole_.user.city}) > 1" }
 
   // ✅ Correct - explicitly join intermediate, then one level
-  orm.entity<Role>()
+  orm.entity(Role::class)
       .select<RoleSummary, _, _> { "..." }
       .innerJoin<UserRole>().on<Role>()
       .innerJoin<User>().on<UserRole>()

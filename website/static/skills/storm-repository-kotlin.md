@@ -10,7 +10,7 @@ Help the user write a Storm repository using Kotlin.
 
 ```kotlin
 import st.orm.repository.*                       // EntityRepository, plus every repository extension:
-                                                 //   entity<User>(), repository<UserRepository>(),
+                                                 //   repository<UserRepository>(),
                                                  //   select<Result, _, _> { }, selectRef, findBy, findAllBy,
                                                  //   insert, writeSet, exists, count, ...
                                                  // Use the wildcard: these are top-level extensions, and naming
@@ -48,7 +48,7 @@ data class CityUserCount(val city: City, val userCount: Long)
 
 Detect the project's framework from its build file (pom.xml or build.gradle.kts): look for `storm-kotlin-spring-boot-starter` or `spring-boot-starter` (Spring Boot), `storm-ktor` or `ktor-server-core` (Ktor), or neither (standalone). Use the detected framework to suggest the appropriate repository registration pattern below.
 
-**DI preference:** In Spring Boot or Ktor projects, always prefer constructor-injected repositories over `orm.entity<T>()` or `orm.repository<T>()` lookups. Repository lookup via `orm` is for standalone (non-DI) use and tests only. In DI environments, repositories are beans/components — inject them.
+**DI preference:** In Spring Boot or Ktor projects, always prefer constructor-injected repositories over `orm.entity(User::class)` or `orm.repository<UserRepository>()` lookups. Repository lookup via `orm` is for standalone (non-DI) use and tests only. In DI environments, repositories are beans/components — inject them.
 
 ## Getting a Repository
 
@@ -86,14 +86,14 @@ Create repositories directly from the `ORMTemplate` (no DI container):
 
 ```kotlin
 // Generic entity access (no custom interface needed)
-val users = orm.entity<User>()               // preferred — reified, import st.orm.repository.entity
-val users = orm.entity(User::class)          // also works, no import needed
+val users = orm.entity(User::class)          // EntityRepository<User, Int>: the ID type is inferred from User
+val users = orm.entity<User, _>()            // the same repository; the underscore infers the ID type
 
 // Custom repository (interface with explicit query method bodies)
 val userRepository = orm.repository<UserRepository>()  // import st.orm.repository.repository
 ```
 
-**Star projection caveat:** `orm.entity<User>()` returns `EntityRepository<User, *>` — the ID type is erased. Methods that depend on the ID type parameter (`existsById`, `findById`, `removeById`, etc.) will fail with star projection errors. For ID-based operations, use `orm.entity<User, _>()` (reified; the underscore infers the ID type from the entity declaration), a typed custom repository (`EntityRepository<User, Int>`), or `orm.entity(User::class)` (the ID type is inferred from context).
+Look repositories up by class and write the query that follows in the reified forms: `orm.entity(User::class).select<City, _, _>()`. Where a codebase already uses `orm.entity<User, _>()`, keep to it rather than mixing the two lookups. The one-argument `orm.entity<User>()` returns `EntityRepository<User, *>`, without the ID type, so ID-based operations (`findById`, `existsById`, `removeById`) and `select<Result, _, _>()` do not resolve on it.
 
 ```kotlin
 // ⚠️ Repository interfaces MUST import the predicate operators — they are Kotlin extension functions:
@@ -112,7 +112,7 @@ interface UserRepository : EntityRepository<User, Int> {
 Key rules:
 1. ALL query methods have EXPLICIT BODIES. Storm does NOT derive queries from method names.
 2. Inherited CRUD: insert, update, remove, removeById, removeByRef, removeAll, findById, findBy(Key), count, existsById, page, scroll, windows.
-3. Descriptive variable names: `val users = orm.entity<User>()`, not `val repo`.
+3. Descriptive variable names: `val users = orm.entity(User::class)`, not `val repo`.
 4. QueryBuilder is IMMUTABLE. Always chain or capture the return value (or use the `select { }` DSL which handles this automatically).
 5. Streaming: `select().resultFlow` returns a `Flow` with automatic resource cleanup; while rows remain to be emitted it is one open statement and its connection is consume-only (a query, `Ref.fetch()` or write from the collector inside `transaction { }` throws, on every database). A loop that reads or writes per row uses `windows(size)` (`Flow<Window<E>>`): one closed statement per window, write per window with `update(window.content().map { ... })`.
 6. DELETE/UPDATE without WHERE throws. Use `unsafe()` for intentional bulk ops.
@@ -869,20 +869,20 @@ interface UserRepository : EntityRepository<User, Int> {
 
 Both `select { }` and `delete { }` return a `QueryBuilder`, so you pick the terminal: `.resultList`, `.singleResult`, `.optionalResult`, `.scroll(scrollable)`, `.page(0, 20)`, `.resultFlow`, `.resultCount` (for select), or `.executeUpdate()` (for delete). **Do NOT combine `orderBy()` with `.scroll(Scrollable)`** — see Keyset Scrolling section above.
 
-**Result types and the block DSL:** There is **no** `select(ResultType::class) { block }` form. The block DSL always returns the root entity type. (In `select(ResultType::class) { ... }` / `select<ResultType, _, _> { ... }` the trailing lambda is a SQL template for the SELECT clause, not a block DSL.) To select a different result type, use the chained API:
+**Result types and the block DSL:** There is **no** `select<ResultType, _, _> { block }` form. The block DSL always returns the root entity type. (In `select<ResultType, _, _> { ... }` / `select(ResultType::class) { ... }` the trailing lambda is a SQL template for the SELECT clause, not a block DSL.) To select a different result type, use the chained API:
 ```kotlin
 // ❌ Not valid — no block DSL overload for result type
-fun findSummaries(): List<UserSummary> = select(UserSummary::class) {
+fun findSummaries(): List<UserSummary> = select<UserSummary, _, _> {
     where(User_.email like "%@example.com")
 }.resultList
 
 // ✅ Use chained API — note: joins use .innerJoin<A>().on<B>(), not the two-type-arg form
-fun findSummaries(): List<UserSummary> = select(UserSummary::class)
+fun findSummaries(): List<UserSummary> = select<UserSummary, _, _>()
     .where(User_.email like "%@example.com")
     .resultList
 ```
 
-**What `select(ResultType::class)` is for:** It selects a different result type from the query. This works for joined entity types (e.g., `City::class` from a `User` query) and custom SELECT with a template string (`select<Summary, _, _> { template }` — the result type is explicit; the underscores let Kotlin infer the repository's entity and ID types). Style: use the underscore form only in code that is otherwise fully reified; in `::class`-style code write `select(Summary::class) { template }` — keep each snippet internally consistent. It does **not** work for column subsets of the root entity — `select(UserSummary::class)` where `UserSummary` has a subset of `User` fields will fail with "Cannot find alias for column." For column subsets, use a `Projection<T>` with `ProjectionRepository`.
+**What `select<ResultType, _, _>()` is for:** It selects a different result type from the query. This works for joined entity types (e.g., `select<City, _, _>()` from a `User` query) and custom SELECT with a template string (`select<Summary, _, _> { template }` — the result type is explicit; the underscores let Kotlin infer the repository's entity and ID types). Style: in `::class`-style code write `select(Summary::class)` and `select(Summary::class) { template }` — keep each snippet internally consistent. It does **not** work for column subsets of the root entity — `select<UserSummary, _, _>()` where `UserSummary` has a subset of `User` fields will fail with "Cannot find alias for column." For column subsets, use a `Projection<T>` with `ProjectionRepository`.
 
 **Cross-entity pitfall:** Selecting a different entity type from the wrong root repository can fail with "Cannot find alias for column" when both entities have columns with the same name (e.g., `id`). Put the query on the target entity's repository instead.
 
@@ -922,7 +922,7 @@ users.delete(User_.postalCode.isNull()).executeUpdate()
 
 Standalone usage via `ORMTemplate` — note there is **no** `orm.select<T> { block }` reified form; get the entity repository first:
 ```kotlin
-val users = orm.entity<User>().select {
+val users = orm.entity(User::class).select {
     where(User_.name eq "Alice")
     orderBy(User_.email)
     limit(10)
@@ -943,7 +943,7 @@ class UserRepositoryTest {
     @Test
     fun findByCity(orm: ORMTemplate, capture: SqlCapture) {
         val userRepository = orm.repository<UserRepository>()
-        val city = orm.entity<City, _>().getById(1)   // getById is ID-based — use the two-type-arg form
+        val city = orm.entity(City::class).getById(1)   // getById is ID-based — use the two-type-arg form
         val users = capture.execute { userRepository.findByCity(city) }
         // Verify intent: single query, filtered by city, returns expected data.
         assertEquals(1, capture.count(Operation.SELECT))

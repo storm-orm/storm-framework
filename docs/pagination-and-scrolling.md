@@ -51,7 +51,7 @@ For direct offset/limit control, use `offset` and `limit` on the query builder. 
 <TabItem value="kotlin" label="Kotlin" default>
 
 ```kotlin
-val results = orm.entity<User>()
+val results = orm.entity(User::class)
     .select()
     .orderBy(User_.createdAt)
     .offset(20)
@@ -135,14 +135,14 @@ Use the `page` terminal method on the query builder. Pass a `Pageable` to specif
 
 ```kotlin
 val pageable = Pageable.ofSize(10)
-val page: Page<User> = orm.entity<User>()
+val page: Page<User> = orm.entity(User::class)
     .select()
     .where(User_.city eq city)
     .page(pageable)
 
 // Navigate
 if (page.hasNext()) {
-    val nextPage = orm.entity<User>()
+    val nextPage = orm.entity(User::class)
         .select()
         .where(User_.city eq city)
         .page(page.next())

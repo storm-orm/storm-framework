@@ -108,7 +108,7 @@ When you intentionally need to perform such an operation, call `unsafe()` on the
 // userRepository.delete().executeUpdate()
 
 // Explicitly marking as unsafe allows the operation.
-orm.entity<User>().delete().unsafe().executeUpdate()
+orm.entity(User::class).delete().unsafe().executeUpdate()
 ```
 
 </TabItem>

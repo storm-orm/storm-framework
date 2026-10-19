@@ -179,7 +179,7 @@ public inline fun <reified T : Entity<ID>, ID : Any> RepositoryLookup.entity(): 
  * Returns the repository for entity type [T] without binding the primary key type.
  *
  * The resulting repository supports query building and record-based operations, but not ID-based operations such
- * as `findById`; use `entity<T, _>()` when the primary key type is needed.
+ * as `findById`; look the repository up with `entity(User::class)` when the primary key type is needed.
  */
 @Suppress("UNCHECKED_CAST")
 public inline fun <reified T : Entity<*>> RepositoryLookup.entity(): EntityRepository<T, *> = entity(T::class as KClass<Entity<Any>>) as EntityRepository<T, *>
@@ -201,7 +201,7 @@ public inline fun <reified T : Projection<ID>, ID : Any> RepositoryLookup.projec
  * Returns the repository for projection type [T] without binding the primary key type.
  *
  * The resulting repository supports query building and record-based operations, but not ID-based operations such
- * as `findById`; use `projection<T, _>()` when the primary key type is needed.
+ * as `findById`; look the repository up with `projection(OwnerView::class)` when the primary key type is needed.
  */
 @Suppress("UNCHECKED_CAST")
 public inline fun <reified T : Projection<*>> RepositoryLookup.projection(): ProjectionRepository<T, *> = projection(T::class as KClass<Projection<Any>>) as ProjectionRepository<T, *>

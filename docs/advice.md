@@ -126,7 +126,7 @@ When the joined table only filters the query, a semi-join says so. It keeps each
 <TabItem value="kotlin" label="Kotlin" default>
 
 ```kotlin
-val owners = orm.entity<Owner>()
+val owners = orm.entity(Owner::class)
     .select()
     .semiJoin<Pet>().on<Owner>()
     .where(Pet_.name eq "Leo")

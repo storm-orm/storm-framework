@@ -68,7 +68,7 @@ Storm's Kotlin API provides first-class coroutine support. Query results can be 
 
 ```kotlin
 // Streaming with Flow
-val users: Flow<User> = orm.entity<User>().select().resultFlow
+val users: Flow<User> = orm.entity(User::class).select().resultFlow
 users.collect { processUser(it) }
 
 // Suspending transaction

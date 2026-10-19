@@ -154,7 +154,7 @@ results are grouped during hydration:
 
 ```kotlin
 // Load cities with their users in one query
-val usersByCity: Map<City, List<User>> = orm.entity<User>()
+val usersByCity: Map<City, List<User>> = orm.entity(User::class)
     .select()
     .resultGroupedBy(User_.city)
 ```
@@ -231,7 +231,7 @@ val userRoles: List<UserRole> = orm.findAll(UserRole_.role eq role)
 val users: List<User> = userRoles.map { it.user }
 
 // Find roles for many users at once, grouped per user
-val rolesByUser: Map<User, List<Role>> = orm.entity<UserRole>()
+val rolesByUser: Map<User, List<Role>> = orm.entity(UserRole::class)
     .select()
     .where(UserRole_.user inList users)
     .resultGroupedBy(UserRole_.user)
@@ -241,7 +241,7 @@ val rolesByUser: Map<User, List<Role>> = orm.entity<UserRole>()
 For more control, use explicit join queries:
 
 ```kotlin
-val roles: List<Role> = orm.entity<Role>()
+val roles: List<Role> = orm.entity(Role::class)
     .select()
     .innerJoin<UserRole>().on<Role>()
     .where(UserRole_.user eq user)

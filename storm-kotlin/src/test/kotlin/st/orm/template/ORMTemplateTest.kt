@@ -1,6 +1,7 @@
 package st.orm.template
 
 import io.kotest.matchers.collections.shouldHaveSize
+import io.kotest.matchers.collections.shouldNotBeEmpty
 import io.kotest.matchers.nulls.shouldBeNull
 import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.shouldBe
@@ -461,6 +462,12 @@ internal open class ORMTemplateTest(
     }
 
     @Test
+    fun `select with reified result type and template should work on a repository with its primary key type`() {
+        val cities = orm.entity(City::class).select<City, _, _> { t(City::class) }.resultList
+        cities shouldHaveSize 6
+    }
+
+    @Test
     fun `entity with inferred id type should support id-based operations`() {
         // The underscore operator infers the primary key type from City : Entity<Int>.
         val cities = orm.entity<City, _>()
@@ -479,9 +486,80 @@ internal open class ORMTemplateTest(
     }
 
     @Test
+    fun `entity and projection without primary key type should support queries`() {
+        orm.entity<City>().select().resultList shouldHaveSize 6
+        orm.projection<OwnerView>().select().resultList.shouldNotBeEmpty()
+    }
+
+    @Test
     fun `selectFrom with reified types and template should return typed results`() {
         val cities = orm.selectFrom<City, City> { t(City::class) }.resultList
         cities shouldHaveSize 6
+    }
+
+    @Test
+    fun `select with reified related type should match the class form`() {
+        val pets = orm.entity(Pet::class)
+        val owners = pets.select<Owner, _, _>().distinct().resultList
+        owners shouldBe pets.select(Owner::class).distinct().resultList
+        owners.shouldNotBeEmpty()
+    }
+
+    @Test
+    fun `select with reified related type should keep the primary key type`() {
+        val pets = orm.entity(Pet::class)
+        val owners = pets.select<Owner, _, _>().where(1).resultList
+        owners shouldBe pets.select(Owner::class).where(1).resultList
+        owners shouldHaveSize 1
+    }
+
+    @Test
+    fun `selectRef with reified related type should match the class form`() {
+        val pets = orm.entity(Pet::class)
+        val owners = pets.selectRef<Owner, _, _>().distinct().resultList
+        owners shouldBe pets.selectRef(Owner::class).distinct().resultList
+        owners.shouldNotBeEmpty()
+    }
+
+    @Test
+    fun `selectFrom with reified table type should match the class form`() {
+        orm.selectFrom<City>().resultList shouldBe orm.selectFrom(City::class).resultList
+    }
+
+    @Test
+    fun `selectFrom with reified table and result types should match the class form`() {
+        orm.selectFrom<Pet, Pet>().resultList shouldBe orm.selectFrom(Pet::class, Pet::class).resultList
+    }
+
+    @Test
+    fun `subquery with reified table type should match the class form`() {
+        val owners = orm.entity(Owner::class)
+        val withPets = owners.select().whereExists { subquery<Pet>() }.resultList
+        withPets shouldBe owners.select().whereExists { subquery(Pet::class) }.resultList
+        withPets.shouldNotBeEmpty()
+    }
+
+    @Test
+    fun `subquery with reified table and select types should match the class form`() {
+        val owners = orm.entity(Owner::class)
+        val withPets = owners.select().whereExists { subquery<Pet, Pet>() }.resultList
+        withPets shouldBe owners.select().whereExists { subquery(Pet::class, Pet::class) }.resultList
+        withPets.shouldNotBeEmpty()
+    }
+
+    @Test
+    fun `subquery with reified table type and template should match the class form`() {
+        val owners = orm.entity(Owner::class)
+        val withPets = owners.select().whereExists { subquery<Pet> { "1" } }.resultList
+        withPets shouldBe owners.select().whereExists { subquery(Pet::class) { "1" } }.resultList
+        withPets.shouldNotBeEmpty()
+    }
+
+    @Test
+    fun `subquery with reified table type should be available on the template`() {
+        val owners = orm.entity(Owner::class)
+        val withPets = owners.select().whereExists(orm.subquery<Pet>()).resultList
+        withPets shouldBe owners.select().whereExists(orm.subquery(Pet::class)).resultList
     }
 
     // EntityRepository: Flow-based batch operations (default batch size)

@@ -90,7 +90,7 @@ Calling `fetch()` costs one query per reference. When you know up front that you
 <TabItem value="kotlin" label="Kotlin" default>
 
 ```kotlin
-val users = orm.entity<User>().select()
+val users = orm.entity(User::class).select()
     .fetch(User_.city, User_.city.country)
     .resultList
 
@@ -151,7 +151,7 @@ Pair `fetch(...)` on the query with `getOrThrow()` at the use site to close that
 <TabItem value="kotlin" label="Kotlin" default>
 
 ```kotlin
-val users = orm.entity<User>().select()
+val users = orm.entity(User::class).select()
     .fetch(User_.city)
     .resultList
 
@@ -243,8 +243,8 @@ When you need to collect entity identifiers without loading full rows, select re
 
 ```kotlin
 val role: Role = ...
-val userRefs: Flow<Ref<User>> = orm.entity<UserRole>()
-    .selectRef(User::class)
+val userRefs: Flow<Ref<User>> = orm.entity(UserRole::class)
+    .selectRef<User, _, _>()
     .where(UserRole_.role eq role)
     .resultFlow
 ```
@@ -286,8 +286,8 @@ Refs integrate directly into query filter expressions. You can pass a collection
 
 ```kotlin
 val userRefs: List<Ref<User>> = ...
-val roles: List<Role> = orm.entity<UserRole>()
-    .select(Role::class)
+val roles: List<Role> = orm.entity(UserRole::class)
+    .select<Role, _, _>()
     .distinct()
     .where(UserRole_.user inRefs userRefs)
     .resultList
@@ -335,7 +335,7 @@ Consider `User` with `@FK val city: Ref<City>`, where `City` has a `country` for
 ```kotlin
 // Filter and order through the reference. The city and country tables are joined only because
 // the query navigates beyond the city foreign key.
-val users = orm.entity<User>()
+val users = orm.entity(User::class)
     .select()
     .where(User_.city.country.name eq "United States")
     .orderBy(User_.city.name)
@@ -370,7 +370,7 @@ A custom projection that references a beyond-reference column adds the join and 
 ```kotlin
 data class CountryName(val name: String)
 
-val names = orm.entity<User>()
+val names = orm.entity(User::class)
     .select<CountryName, _, _> { "${User_.city.country.name}" }
     .where(User_.city.country.name eq "United States")
     .resultList
@@ -397,11 +397,11 @@ A reference carries the target's primary key: `ref.id()` returns it without fetc
 
 ```kotlin
 // No join: the key is already on the user row, exactly as user.city.id() reads it without fetching.
-orm.entity<User>().select().where(User_.city.id eq 42).resultList
+orm.entity(User::class).select().where(User_.city.id eq 42).resultList
 // SELECT ... FROM user u WHERE u.city_id = ?
 
 // Joins: the name is not part of the reference, exactly as user.city.fetch().name needs the target.
-orm.entity<User>().select().where(User_.city.name eq "Sunnyvale").resultList
+orm.entity(User::class).select().where(User_.city.name eq "Sunnyvale").resultList
 // SELECT ... FROM user u INNER JOIN city c ON u.city_id = c.id WHERE c.name = ?
 ```
 
@@ -418,7 +418,7 @@ A path names the referenced table one column at a time. A query can also name th
 
 ```kotlin
 // Selects the referenced entity: the city table is joined on demand, and so is its own country foreign key.
-val cities = orm.entity<User>().select(City::class).resultList
+val cities = orm.entity(User::class).select<City, _, _>().resultList
 ```
 
 </TabItem>
@@ -434,7 +434,7 @@ List<City> cities = orm.entity(User.class).select(City.class).getResultList();
 
 An explicit `innerJoin(...).on(City.class)` names the table the same way, and the reference brings it in for the join to resolve against. A query that names the table both ways gets one occurrence: a path navigating to it resolves against the same join, and a table the query joins explicitly keeps that occurrence, so an explicit join stays in charge of the table it brings in.
 
-Bringing the table in is not the same as resolving the reference. A join makes the referenced table available to the rest of the statement, and `select(City::class)` makes it the result, but neither one touches the `User.city` of a selected user: it stays an unloaded foreign key. Resolving it into the user is what [`fetch(User_.city)`](#resolving-a-ref-as-part-of-the-query) does, and it works on the select list rather than on the tables the query can name. The two also differ in what they do to the rows: an inner join drops users whose city does not match, while `fetch(...)` uses an outer join for a nullable reference so every row survives.
+Bringing the table in is not the same as resolving the reference. A join makes the referenced table available to the rest of the statement, and `select<City, _, _>()` makes it the result, but neither one touches the `User.city` of a selected user: it stays an unloaded foreign key. Resolving it into the user is what [`fetch(User_.city)`](#resolving-a-ref-as-part-of-the-query) does, and it works on the select list rather than on the tables the query can name. The two also differ in what they do to the rows: an inner join drops users whose city does not match, while `fetch(...)` uses an outer join for a nullable reference so every row survives.
 
 ### What You Can and Cannot Do Beyond a Ref
 
@@ -558,7 +558,7 @@ data class GroupedByCity(
     val count: Long
 )
 
-val counts: Map<Ref<City>, Long> = orm.entity<User>()
+val counts: Map<Ref<City>, Long> = orm.entity(User::class)
     .select<GroupedByCity, _, _> { "${User_.city}, COUNT(*)" }
     .groupBy(User_.city)
     .resultList

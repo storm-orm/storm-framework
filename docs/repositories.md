@@ -17,12 +17,14 @@ Storm provides two ways to obtain a repository. The generic `entity()` method re
 ```kotlin
 val orm = ORMTemplate.of(dataSource)
 
-// Generic entity repository (reified extension function, preferred)
-val userRepository = orm.entity<User>()
-
-// Or passing the class explicitly
+// Generic entity repository: EntityRepository<User, Int>, the ID type inferred from User
 val userRepository = orm.entity(User::class)
+
+// The same repository, looked up with type arguments: the underscore infers the ID type
+val userRepository = orm.entity<User, _>()
 ```
+
+Both lookups return the same repository, and the examples in this documentation use the class form. The one-argument `orm.entity<User>()` returns `EntityRepository<User, *>`, without the ID type, so ID-based operations such as `findById` do not resolve on it.
 
 </TabItem>
 <TabItem value="java" label="Java">
@@ -88,7 +90,7 @@ val user = orm insert User(
 )
 
 // Read
-val found: User? = orm.entity<User>().findById(user.id)
+val found: User? = orm.entity(User::class).findById(user.id)
 val alice: User? = orm.find(User_.name eq "Alice")
 val all: List<User> = orm.findAll(User_.city eq city)
 
@@ -108,7 +110,7 @@ orm.removeAll(User_.postalCode.isNull())
 orm.removeAll<User>()
 
 // Delete all (builder approach, requires unsafe() to confirm intent)
-orm.entity<User>().delete().unsafe().executeUpdate()
+orm.entity(User::class).delete().unsafe().executeUpdate()
 ```
 
 </TabItem>

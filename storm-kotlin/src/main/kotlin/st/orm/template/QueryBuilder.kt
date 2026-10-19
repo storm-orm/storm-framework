@@ -112,7 +112,7 @@ public abstract class QueryBuilder<T : Data, R : Any, ID : Any> {
     /**
      * Returns a query builder whose primary key type is [pkType], so the operations that take an id can be used.
      *
-     * A builder that did not come from a typed entity lookup carries no primary key type. `selectFrom(...)` names the
+     * A builder that did not come from a repository carries no primary key type. `selectFrom(...)` names the
      * table but not its key, so the id is a star projection and [WhereBuilder.whereId] has nothing to match against.
      * Stating the key type resolves it:
      *
@@ -279,7 +279,7 @@ public abstract class QueryBuilder<T : Data, R : Any, ID : Any> {
      * [Ref.isLoaded] reports `true`.
      *
      * ```kotlin
-     * val users = orm.entity<User>().select()
+     * val users = orm.entity(User::class).select()
      *     .fetch(User_.city, User_.city.country)
      *     .resultList
      *
@@ -1441,7 +1441,7 @@ public abstract class QueryBuilder<T : Data, R : Any, ID : Any> {
      * entity of a foreign key:
      *
      * ```kotlin
-     * val ownersWithPets: Map<Owner, List<Pet>> = orm.entity<Pet>()
+     * val ownersWithPets: Map<Owner, List<Pet>> = orm.entity(Pet::class)
      *     .select()
      *     .where(Pet_.owner.city eq city)
      *     .orderBy(Pet_.owner)
@@ -1490,7 +1490,7 @@ public abstract class QueryBuilder<T : Data, R : Any, ID : Any> {
      *   them afterwards in a single query with `findAllByRef(map.keys)`:
      *
      * ```kotlin
-     * val visitsByPet: Map<Ref<Pet>, List<Visit>> = orm.entity<Visit>()
+     * val visitsByPet: Map<Ref<Pet>, List<Visit>> = orm.entity(Visit::class)
      *     .select()
      *     .resultGroupedByRef(Visit_.pet)
      * ```

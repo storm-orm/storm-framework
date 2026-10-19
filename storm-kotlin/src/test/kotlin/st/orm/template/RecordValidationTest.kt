@@ -33,14 +33,14 @@ internal open class RecordValidationTest(
     @Test
     fun `entity with var field should throw PersistenceException`(): Unit = runBlocking {
         assertThrows<PersistenceException> {
-            orm.entity<VarField>()
+            orm.entity(VarField::class)
         }
     }
 
     @Test
     fun `entity with private field should throw PersistenceException`(): Unit = runBlocking {
         assertThrows<PersistenceException> {
-            orm.entity<PrivateField>()
+            orm.entity(PrivateField::class)
         }
     }
 }

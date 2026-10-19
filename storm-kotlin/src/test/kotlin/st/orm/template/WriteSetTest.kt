@@ -52,11 +52,11 @@ internal open class WriteSetTest(
         val rex = Pet(name = "Rex", birthDate = LocalDate.of(2024, 2, 2), type = dog, owner = owner)
         val visit = Visit(visitDate = LocalDate.of(2026, 7, 14), description = "Check-up", pet = wolfie, timestamp = Instant.now())
         orm.writeSet().insert(listOf(wolfie, rex, visit))
-        val owners = orm.entity<Owner, _>().findAll().filter { it.firstName == "Alice" }
+        val owners = orm.entity(Owner::class).findAll().filter { it.firstName == "Alice" }
         owners shouldHaveSize 1
-        val pets = orm.entity<Pet, _>().findAll().filter { it.owner?.id == owners.single().id }
+        val pets = orm.entity(Pet::class).findAll().filter { it.owner?.id == owners.single().id }
         pets shouldHaveSize 2
-        val fetchedVisit = orm.entity<Visit, _>().findAll().single { it.description == "Check-up" }
+        val fetchedVisit = orm.entity(Visit::class).findAll().single { it.description == "Check-up" }
         fetchedVisit.pet.name shouldBe "Wolfie"
         fetchedVisit.pet.owner.shouldNotBeNull().firstName shouldBe "Alice"
     }
@@ -82,13 +82,13 @@ internal open class WriteSetTest(
             update(inserted.copy(description = "Block visit updated"))
             inserted
         }
-        orm.entity<Visit, _>().findAll().single { it.id == visit.id }.description shouldBe "Block visit updated"
+        orm.entity(Visit::class).findAll().single { it.id == visit.id }.description shouldBe "Block visit updated"
         visit.pet.owner.shouldNotBeNull().firstName shouldBe "Block"
     }
 
     @Test
     fun `writeSet should be accessible from a repository`() {
-        val pets = orm.entity<Pet, _>()
+        val pets = orm.entity(Pet::class)
         val owner = newOwner("FromRepo")
         pets.writeSet().insert(listOf(Pet(name = "RepoPet", birthDate = LocalDate.of(2023, 6, 6), type = dog, owner = owner)))
         val fetched = pets.findAll().single { it.name == "RepoPet" }
@@ -111,9 +111,9 @@ internal open class WriteSetTest(
         val inserted = orm.writeSet().insertAndFetch(listOf(owner, pet, visit))
         // Parents first in the argument list; the write set reorders (H2 enforces the FK constraints).
         orm.writeSet().remove(inserted)
-        orm.entity<Owner, _>().findAll().none { it.firstName == "Removable" } shouldBe true
-        orm.entity<Pet, _>().findAll().none { it.name == "Doomed" } shouldBe true
-        orm.entity<Visit, _>().findAll().none { it.description == "Last visit" } shouldBe true
+        orm.entity(Owner::class).findAll().none { it.firstName == "Removable" } shouldBe true
+        orm.entity(Pet::class).findAll().none { it.name == "Doomed" } shouldBe true
+        orm.entity(Visit::class).findAll().none { it.description == "Last visit" } shouldBe true
     }
 
     @Test
@@ -126,9 +126,9 @@ internal open class WriteSetTest(
         val insertedPet = inserted[0] as Pet
         val insertedVisit = inserted[1] as Visit
         orm.writeSet().remove(insertedPet.owner.shouldNotBeNull(), insertedPet, insertedVisit)
-        orm.entity<Owner, _>().findAll().none { it.firstName == "Vera" } shouldBe true
-        orm.entity<Pet, _>().findAll().none { it.name == "VarargPet" } shouldBe true
-        orm.entity<Visit, _>().findAll().none { it.description == "Vararg visit" } shouldBe true
+        orm.entity(Owner::class).findAll().none { it.firstName == "Vera" } shouldBe true
+        orm.entity(Pet::class).findAll().none { it.name == "VarargPet" } shouldBe true
+        orm.entity(Visit::class).findAll().none { it.description == "Vararg visit" } shouldBe true
     }
 
     @Test
@@ -138,8 +138,8 @@ internal open class WriteSetTest(
         val visit = Visit(visitDate = LocalDate.of(2026, 7, 22), description = "Vararg ids visit", pet = pet, timestamp = Instant.now())
         val ids = orm.writeSet().insertAndFetchIds(pet, visit)
         ids shouldHaveSize 2
-        orm.entity<Pet, _>().findAll().single { it.name == "VarargIdsPet" }.id shouldBe ids[0]
-        orm.entity<Visit, _>().findAll().single { it.description == "Vararg ids visit" }.id shouldBe ids[1]
+        orm.entity(Pet::class).findAll().single { it.name == "VarargIdsPet" }.id shouldBe ids[0]
+        orm.entity(Visit::class).findAll().single { it.description == "Vararg ids visit" }.id shouldBe ids[1]
     }
 
     @Test

@@ -73,3 +73,41 @@ public interface SubqueryTemplate {
      */
     public fun <T : Data> subquery(fromType: KClass<T>, template: TemplateString): QueryBuilder<T, *, *>
 }
+
+/**
+ * Creates a subquery for table [T].
+ *
+ * ```kotlin
+ * orm.entity(City::class).select()
+ *     .whereExists { subquery<User>() }
+ *     .resultList
+ * ```
+ *
+ * @param T the table type to select from.
+ * @return the subquery builder.
+ * @since 1.15
+ */
+public inline fun <reified T : Data> SubqueryTemplate.subquery(): QueryBuilder<T, *, *> = subquery(T::class)
+
+/**
+ * Creates a subquery for table [T] selecting the columns of [R].
+ *
+ * @param T the table type to select from.
+ * @param R the type to select.
+ * @return the subquery builder.
+ * @since 1.15
+ */
+@JvmName("subqueryTyped")
+public inline fun <reified T : Data, reified R : Data> SubqueryTemplate.subquery(): QueryBuilder<T, *, *> = subquery(T::class, R::class)
+
+/**
+ * Creates a subquery for table [T] using the given select clause `template`.
+ *
+ * @param T the table type to select from.
+ * @param template the select clause template.
+ * @return the subquery builder.
+ * @since 1.15
+ */
+public inline fun <reified T : Data> SubqueryTemplate.subquery(
+    noinline template: TemplateBuilder,
+): QueryBuilder<T, *, *> = subquery(T::class, template)

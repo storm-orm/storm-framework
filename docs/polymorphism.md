@@ -403,7 +403,7 @@ All CRUD operations go through the sealed interface type. Storm determines the c
 <TabItem value="kotlin" label="Kotlin" default>
 
 ```kotlin
-val pets = orm.entity<Pet>()
+val pets = orm.entity(Pet::class)
 
 // Select all pets - returns Cat and Dog instances
 val all: List<Pet> = pets.select().resultList
@@ -750,7 +750,7 @@ CRUD operations work through the sealed interface type, just like Single-Table. 
 <TabItem value="kotlin" label="Kotlin" default>
 
 ```kotlin
-val pets = orm.entity<Pet>()
+val pets = orm.entity(Pet::class)
 
 // Select all - Storm auto-joins extension tables
 val all: List<Pet> = pets.select().resultList
@@ -1153,11 +1153,11 @@ Each subtype is an independent entity with its own repository. You insert, updat
 
 ```kotlin
 // CRUD on subtypes - standard entity operations
-val posts = orm.entity<Post>()
+val posts = orm.entity(Post::class)
 val post = posts.insertAndFetch(Post(title = "New Post"))
 
 // Insert a comment referencing the post
-val comments = orm.entity<Comment>()
+val comments = orm.entity(Comment::class)
 comments.insert(Comment(
     text = "Great post!",
     target = post.ref()
@@ -1206,7 +1206,7 @@ Polymorphic FK targets cannot be auto-joined. With Single-Table and Joined Table
 <TabItem value="kotlin" label="Kotlin" default>
 
 ```kotlin
-val comments = orm.entity<Comment>().select().resultList
+val comments = orm.entity(Comment::class).select().resultList
 for (comment in comments) {
     val target: Commentable = comment.target.fetch()
     when (target) {

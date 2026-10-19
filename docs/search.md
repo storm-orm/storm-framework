@@ -23,7 +23,7 @@ A search results page takes the words the user submitted and shows the rows that
 <TabItem value="kotlin" label="Kotlin" default>
 
 ```kotlin
-val movies = orm.entity<Movie>()
+val movies = orm.entity(Movie::class)
     .select()
     .where(search(input, Movie_.title, Movie_.director.name))
     .resultList
@@ -71,7 +71,7 @@ A type-ahead box queries as the user types and shows a handful of matches under 
 <TabItem value="kotlin" label="Kotlin" default>
 
 ```kotlin
-val suggestions = orm.entity<Movie>()
+val suggestions = orm.entity(Movie::class)
     .select()
     .where(suggest(input, Movie_.title, Movie_.director.name))
     .limit(6)
@@ -108,7 +108,7 @@ Sometimes the user remembers something about a related row rather than the row i
 <TabItem value="kotlin" label="Kotlin" default>
 
 ```kotlin
-val owners = orm.entity<Owner>()
+val owners = orm.entity(Owner::class)
     .select()
     .semiJoin<Pet>().on<Owner>()
     .where(search(input, Owner_.lastName, Pet_.name))
@@ -143,7 +143,7 @@ A user who types `alien` into a movie search expects "Alien" at the top, then "A
 <TabItem value="kotlin" label="Kotlin" default>
 
 ```kotlin
-val suggestions = orm.entity<Movie>()
+val suggestions = orm.entity(Movie::class)
     .select()
     .where(suggest(input, Movie_.title, Movie_.director.name))
     .orderFirst(Movie_.title eqIgnoreCase input)
@@ -224,7 +224,7 @@ CREATE INDEX idx_movie_title_folded ON movie USING gin (LOWER(fold_accents(title
 ```kotlin
 val foldAccents = SqlFunction.of<String>("fold_accents")
 
-val movies = orm.entity<Movie>()
+val movies = orm.entity(Movie::class)
     .select()
     .where(search(input, foldAccents(Movie_.title)))
     .orderFirst(foldAccents(Movie_.title) eqIgnoreCase input)
@@ -237,7 +237,7 @@ An extension property names the call after what it computes, so a query reads it
 val <T : Data> Navigable<T, String>.folded: Metamodel<T, String>
     get() = foldAccents(this)
 
-orm.entity<Movie>()
+orm.entity(Movie::class)
     .select()
     .where(search(input, Movie_.title.folded, Movie_.director.name.folded))
     .orderFirst(Movie_.title.folded eqIgnoreCase input)
