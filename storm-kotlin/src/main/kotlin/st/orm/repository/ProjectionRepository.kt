@@ -916,6 +916,38 @@ public interface ProjectionRepository<P, ID : Any> : Repository where P : Projec
 }
 
 /**
+ * Constructs a SELECT query producing results of type [R], such as an entity the projection references.
+ *
+ * The projection type and primary key type are inferred from the repository; use the underscore operator for their
+ * type arguments:
+ *
+ * ```kotlin
+ * petViews.select<OwnerView, _, _>().distinct().resultList
+ * ```
+ *
+ * @param R the result type of the query.
+ * @return a query builder producing results of type [R].
+ * @since 1.15
+ */
+public inline fun <reified R : Any, P : Projection<ID>, ID : Any> ProjectionRepository<P, ID>.select(): QueryBuilder<P, R, ID> = select(R::class)
+
+/**
+ * Constructs a SELECT query producing refs to records of type [R], such as an entity the projection references.
+ *
+ * The projection type and primary key type are inferred from the repository; use the underscore operator for their
+ * type arguments:
+ *
+ * ```kotlin
+ * petViews.selectRef<OwnerView, _, _>().distinct().resultList
+ * ```
+ *
+ * @param R the type that is selected as ref.
+ * @return a query builder producing refs of type [R].
+ * @since 1.15
+ */
+public inline fun <reified R : Data, P : Projection<ID>, ID : Any> ProjectionRepository<P, ID>.selectRef(): QueryBuilder<P, Ref<R>, ID> = selectRef(R::class)
+
+/**
  * Constructs a SELECT query with a custom select clause producing results of type [R].
  *
  * The projection type and primary key type are inferred from the repository; use the underscore operator for

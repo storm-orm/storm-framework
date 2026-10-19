@@ -177,7 +177,7 @@ For large data sets that do not fit in memory, use the streaming batch methods:
 
 ```kotlin
 // Insert a stream of entities in batches of 1000.
-orm.entity<User>().insert(userStream, batchSize = 1000)
+orm.entity(User::class).insert(userStream, batchSize = 1000)
 ```
 
 </TabItem>

@@ -190,7 +190,7 @@ internal open class SqlDslTest(
     fun `select entities with reified inner join`() {
         // data.sql: 13 pets total, but Pet(id=13, name='Sly') has NULL owner_id.
         // Inner join excludes pets with no matching owner, yielding 12.
-        val pets = orm.entity<Pet>().select {
+        val pets = orm.entity(Pet::class).select {
             innerJoin<Owner, Pet>()
         }.resultList
         pets shouldHaveSize 12
@@ -199,7 +199,7 @@ internal open class SqlDslTest(
     @Test
     fun `select entities with reified left join`() {
         // data.sql: 13 pets total. Left join preserves all pets, including Pet 13 with NULL owner.
-        val pets = orm.entity<Pet>().select {
+        val pets = orm.entity(Pet::class).select {
             leftJoin<Owner, Pet>()
         }.resultList
         pets shouldHaveSize 13
@@ -308,7 +308,7 @@ internal open class SqlDslTest(
     @Test
     fun `select entities with aliased class join in the block`() {
         // data.sql: 12 of 13 pets have an owner.
-        val pets = orm.entity<Pet>().select {
+        val pets = orm.entity(Pet::class).select {
             join(JoinType.inner(), Owner::class, "o", Pet::class)
         }.resultList
         pets shouldHaveSize 12
@@ -316,7 +316,7 @@ internal open class SqlDslTest(
 
     @Test
     fun `select entities with aliased class join and template ON in the block`() {
-        val pets = orm.entity<Pet>().select {
+        val pets = orm.entity(Pet::class).select {
             join(JoinType.inner(), Owner::class, "o") { "o.id = ${t(Templates.alias(Pet::class))}.owner_id" }
         }.resultList
         pets shouldHaveSize 12
@@ -545,11 +545,11 @@ internal open class SqlDslTest(
     @Test
     fun `select entities with class joins in the block`() {
         // data.sql: 12 of 13 pets have an owner; a left join keeps the thirteenth.
-        orm.entity<Pet>().select { innerJoin(Owner::class, Pet::class) }.resultList shouldHaveSize 12
-        orm.entity<Pet>().select { leftJoin(Owner::class, Pet::class) }.resultList shouldHaveSize 13
+        orm.entity(Pet::class).select { innerJoin(Owner::class, Pet::class) }.resultList shouldHaveSize 12
+        orm.entity(Pet::class).select { leftJoin(Owner::class, Pet::class) }.resultList shouldHaveSize 13
         // Every owner has a pet, so the right join yields the twelve owned pets.
-        orm.entity<Pet>().select { rightJoin(Owner::class, Pet::class) }.resultList shouldHaveSize 12
-        orm.entity<Pet>().select { rightJoin<Owner, Pet>() }.resultList shouldHaveSize 12
+        orm.entity(Pet::class).select { rightJoin(Owner::class, Pet::class) }.resultList shouldHaveSize 12
+        orm.entity(Pet::class).select { rightJoin<Owner, Pet>() }.resultList shouldHaveSize 12
     }
 
     @Test

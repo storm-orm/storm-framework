@@ -74,8 +74,8 @@ data class OrderWithItems(
 )
 
 fun findOrderWithItems(orderId: Long): OrderWithItems? {
-    val order = orm.entity<Order, _>().findById(orderId) ?: return null
-    val lineItems = orm.entity<LineItem>().findAll(LineItem_.order eq order)
+    val order = orm.entity(Order::class).findById(orderId) ?: return null
+    val lineItems = orm.entity(LineItem::class).findAll(LineItem_.order eq order)
     return OrderWithItems(order, lineItems)
 }
 ```
@@ -515,13 +515,13 @@ For large-scale data imports, use Storm's streaming batch methods. These process
 val entityStream = csvReader.lines()
     .map { line -> parseUser(line) }
 
-orm.entity<User>().insert(entityStream, batchSize = 500)
+orm.entity(User::class).insert(entityStream, batchSize = 500)
 ```
 
 For imports where auto-generated primary keys should be ignored (e.g., migrating data with existing IDs):
 
 ```kotlin
-orm.entity<User>().insert(entityStream, batchSize = 500, ignoreAutoGenerate = true)
+orm.entity(User::class).insert(entityStream, batchSize = 500, ignoreAutoGenerate = true)
 ```
 
 </TabItem>

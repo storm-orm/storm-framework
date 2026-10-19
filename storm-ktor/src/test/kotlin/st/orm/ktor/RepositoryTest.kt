@@ -4,7 +4,12 @@ import com.zaxxer.hikari.HikariConfig
 import com.zaxxer.hikari.HikariDataSource
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.shouldNotBe
+import io.ktor.client.request.get
+import io.ktor.client.statement.bodyAsText
 import io.ktor.server.application.install
+import io.ktor.server.response.respondText
+import io.ktor.server.routing.get
+import io.ktor.server.routing.routing
 import io.ktor.server.testing.testApplication
 import org.junit.jupiter.api.Test
 import st.orm.ktor.model.Pet
@@ -258,6 +263,39 @@ internal class RepositoryTest {
                     val petViews = projection<PetView>()
                     petViews.findAll().size shouldBe 3
                 }
+            }
+        } finally {
+            dataSource.close()
+        }
+    }
+
+    @Test
+    fun `class lookups infer the primary key type`() {
+        val dataSource = createTestDataSource()
+        initializeSchema(dataSource)
+        try {
+            testApplication {
+                application {
+                    install(Storm) {
+                        this.dataSource = dataSource
+                    }
+                    entity(Pet::class).findById(1)?.name shouldBe "Leo"
+                    projection(PetView::class).findById(2)?.name shouldBe "Basil"
+                    routing {
+                        get("/routing-context") {
+                            val pet = entity(Pet::class).findById(1)
+                            val petView = projection(PetView::class).findById(2)
+                            call.respondText("${pet?.name},${petView?.name}")
+                        }
+                        get("/call") {
+                            val pet = call.entity(Pet::class).findById(1)
+                            val petView = call.projection(PetView::class).findById(2)
+                            call.respondText("${pet?.name},${petView?.name}")
+                        }
+                    }
+                }
+                client.get("/routing-context").bodyAsText() shouldBe "Leo,Basil"
+                client.get("/call").bodyAsText() shouldBe "Leo,Basil"
             }
         } finally {
             dataSource.close()

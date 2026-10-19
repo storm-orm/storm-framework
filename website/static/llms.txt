@@ -255,7 +255,7 @@ val cityName = user.city.fetch().name  // Fetches when needed
 
 A Ref stays queryable. Filter, order, and select through it with the metamodel; Storm adds the join for the referenced table on demand, only when the query navigates beyond the FK. Selecting the root leaves the field an unloaded Ref:
 ```kotlin
-val users = orm.entity<User>()
+val users = orm.entity(User::class)
     .select()
     .where(User_.city.country.name eq "United States")  // joins city + country on demand
     .resultList

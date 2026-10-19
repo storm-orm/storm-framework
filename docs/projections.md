@@ -201,7 +201,7 @@ Obtain a `ProjectionRepository` from the ORM template. This is the read-only cou
 <TabItem value="kotlin" label="Kotlin" default>
 
 ```kotlin
-val ownerViews = orm.projection<OwnerView, _>()
+val ownerViews = orm.projection(OwnerView::class)
 ```
 
 </TabItem>
@@ -285,12 +285,12 @@ val owners = ownerViews.select()
     .resultList
 
 // Filter with comparison operators
-val recentVisits = orm.projection<VisitView>().select()
+val recentVisits = orm.projection(VisitView::class).select()
     .where(VisitView_.visitDate greater LocalDate.of(2024, 1, 1))
     .resultList
 
 // Filter by nested foreign key
-val ownerPets = orm.projection<PetView>().select()
+val ownerPets = orm.projection(PetView::class).select()
     .where(PetView_.owner.id eq 1)
     .resultList
 
@@ -478,7 +478,7 @@ data class PetListItem(
 The `Ref` contains only the foreign key value. You can resolve it later if needed:
 
 ```kotlin
-val pet = orm.projection<PetListItem, _>().getById(1)
+val pet = orm.projection(PetListItem::class).getById(1)
 
 // Access the foreign key without loading the owner
 val ownerId = pet.owner.projectionId()  // import st.orm.template.projectionId
@@ -594,10 +594,10 @@ In read-heavy scenarios (dashboards, lists, search results), projections reduce 
 
 ```kotlin
 // Instead of loading full entities
-val owners = orm.entity<Owner>().findAll()  // Loads all columns
+val owners = orm.entity(Owner::class).findAll()  // Loads all columns
 
 // Load only what you need
-val owners = orm.projection<OwnerListItem>().findAll()  // Loads 3 columns
+val owners = orm.projection(OwnerListItem::class).findAll()  // Loads 3 columns
 ```
 
 ### 4. Use Void for Keyless Results

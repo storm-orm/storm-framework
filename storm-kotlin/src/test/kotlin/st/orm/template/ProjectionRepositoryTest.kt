@@ -50,6 +50,22 @@ internal open class ProjectionRepositoryTest(
         views shouldHaveSize 10
     }
 
+    @Test
+    fun `select with reified result type should match the class form`() {
+        val ownerViews = orm.projection(OwnerView::class)
+        val views = ownerViews.select<OwnerView, _, _>().where(1).resultList
+        views shouldBe ownerViews.select(OwnerView::class).where(1).resultList
+        views shouldHaveSize 1
+    }
+
+    @Test
+    fun `selectRef with reified type should match the class form`() {
+        val ownerViews = orm.projection(OwnerView::class)
+        val refs = ownerViews.selectRef<OwnerView, _, _>().resultList
+        refs shouldBe ownerViews.selectRef(OwnerView::class).resultList
+        refs shouldHaveSize 10
+    }
+
     // ProjectionRepository: findById
 
     @Test

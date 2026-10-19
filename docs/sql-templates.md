@@ -351,9 +351,9 @@ The `alias()` and `column()` template functions accept an optional `ResolveScope
 <TabItem value="kotlin" label="Kotlin" default>
 
 ```kotlin
-val pets = orm.entity<Pet>()
+val pets = orm.entity(Pet::class)
     .select()
-    .whereExists { subquery(Visit::class)
+    .whereExists { subquery<Visit>()
         .where { "${column(Visit_.pet, INNER)} = ${column(Pet_.id, OUTER)}" }
     }
     .resultList

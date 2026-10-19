@@ -13,7 +13,7 @@ The simplest way to query is with predicate methods directly on the ORM template
 <TabItem value="kotlin" label="Kotlin" default>
 
 ```kotlin
-val users = orm.entity<User, _>()
+val users = orm.entity(User::class)
 
 // Find all users in a city
 val usersInCity: List<User> = users.findAll(User_.city eq city)
@@ -139,7 +139,7 @@ For queries that need ordering, pagination, joins, or aggregation, use the fluen
 <TabItem value="kotlin" label="Kotlin" default>
 
 ```kotlin
-val users = orm.entity<User>()
+val users = orm.entity(User::class)
 
 // Ordering and pagination
 val page = users.select()
@@ -149,7 +149,7 @@ val page = users.select()
     .resultList
 
 // Joins (for entities not directly referenced by @FK)
-val roles = orm.entity<Role>()
+val roles = orm.entity(Role::class)
     .select()
     .innerJoin<UserRole>().on<Role>()
     .where(UserRole_.user eq user)
@@ -207,7 +207,7 @@ For large result sets, streaming avoids loading all rows into memory at once. Ro
 Kotlin uses `Flow`, which provides automatic resource management through structured concurrency:
 
 ```kotlin
-val users: Flow<User> = orm.entity<User>().select().resultFlow
+val users: Flow<User> = orm.entity(User::class).select().resultFlow
 
 // Process each row
 users.collect { user -> println(user.name) }

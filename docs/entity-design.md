@@ -88,7 +88,7 @@ A reference does not terminate the metamodel; paths continue straight through it
 
 ```kotlin
 // city is a Ref<City>, and the filter still reaches through it into country.
-orm.entity<User>()
+orm.entity(User::class)
     .select()
     .where(User_.city.country.name eq "Netherlands")
     .resultList
@@ -115,7 +115,7 @@ The same paths are available inside a select template, so a query is free to ret
 
 ```kotlin
 // Selects a column two hops past the reference, joining city and country for this query alone.
-orm.entity<User>()
+orm.entity(User::class)
     .select<UsersPerCountry, _, _> { "${User_.city.country.name}, COUNT(*)" }
     .groupBy(User_.city.country.name)
     .resultList

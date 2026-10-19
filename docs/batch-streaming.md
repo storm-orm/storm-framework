@@ -137,7 +137,7 @@ Storm automatically groups batch operations for optimal performance. Batch opera
 
 ```kotlin
 // Insert in batches of 500
-orm.entity<User>().insert(users, 500)
+orm.entity(User::class).insert(users, 500)
 ```
 
 </TabItem>
@@ -172,7 +172,7 @@ Streams returned by Storm must be closed after use. Use `.use {}` (Kotlin) or tr
 Kotlin uses `Flow` for streaming. The flow is cold: building it runs nothing, the query executes when the flow is collected, and the statement closes when the collection completes or the coroutine is cancelled, without explicit cleanup code. Several flows may be built up front and collected one after the other, a flow that is never collected holds no connection, and each collection runs the query again.
 
 ```kotlin
-val users: Flow<User> = orm.entity<User>().select().resultFlow
+val users: Flow<User> = orm.entity(User::class).select().resultFlow
 
 // Process one at a time -- only one row in memory
 users.collect { user ->
@@ -240,7 +240,7 @@ The loop above needs the connection while it iterates. That is what windows are 
 
 ```kotlin
 transaction {
-    val users = orm.entity<User>()
+    val users = orm.entity(User::class)
     users.select()
         .where(User_.city eq city)
         .windows(1000)

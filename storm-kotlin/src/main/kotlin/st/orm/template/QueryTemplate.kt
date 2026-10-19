@@ -210,6 +210,37 @@ public interface QueryTemplate : SubqueryTemplate {
 }
 
 /**
+ * Creates a query builder for table [T].
+ *
+ * ```kotlin
+ * orm.selectFrom<User>().where(User_.email eq email).resultList
+ * ```
+ *
+ * @param T the table type to select from.
+ * @return the query builder.
+ * @since 1.15
+ */
+public inline fun <reified T : Data> QueryTemplate.selectFrom(): QueryBuilder<T, T, *> = selectFrom(T::class)
+
+/**
+ * Creates a query builder for table [T] producing results of type [R].
+ *
+ * The select list is rendered from the FROM table, so [R] may be any record shape over those columns, such as a
+ * wrapper record nesting the from-entity; it need not be a `Data` type itself.
+ *
+ * ```kotlin
+ * orm.selectFrom<Pet, PetSummary>().resultList
+ * ```
+ *
+ * @param T the table type to select from.
+ * @param R the result type of the query.
+ * @return the query builder.
+ * @since 1.15
+ */
+@JvmName("selectFromTyped")
+public inline fun <reified T : Data, reified R : Any> QueryTemplate.selectFrom(): QueryBuilder<T, R, *> = selectFrom(T::class, R::class)
+
+/**
  * Creates a query builder for table [T] producing results of type [R] using the given select clause `template`.
  *
  * ```kotlin

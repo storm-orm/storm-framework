@@ -264,7 +264,7 @@ Storm supports two strategies. **Offset-based pagination** uses `offset()` and `
 <TabItem value="kotlin" label="Kotlin" default>
 
 ```kotlin
-val page = orm.entity<User>()
+val page = orm.entity(User::class)
     .select()
     .orderByDescending(User_.createdAt)
     .offset(20)
@@ -522,7 +522,7 @@ Yes. Storm adds minimal overhead on top of JDBC. There are no runtime proxies, n
 Loading millions of rows into a `List` consumes proportional memory and delays processing until the entire result set is fetched. Streaming processes rows one at a time as the database returns them, keeping memory usage constant regardless of result set size. In Kotlin, Storm exposes streams as `Flow`, which integrates naturally with coroutines.
 
 ```kotlin
-val users: Flow<User> = orm.entity<User>().select().resultFlow
+val users: Flow<User> = orm.entity(User::class).select().resultFlow
 users.collect { processUser(it) }
 ```
 

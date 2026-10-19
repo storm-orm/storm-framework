@@ -1916,6 +1916,38 @@ public interface EntityRepository<E, ID : Any> : Repository where E : Entity<ID>
 }
 
 /**
+ * Constructs a SELECT query producing results of type [R], such as an entity the entity references.
+ *
+ * The entity type and primary key type are inferred from the repository; use the underscore operator for their
+ * type arguments:
+ *
+ * ```kotlin
+ * pets.select<Owner, _, _>().distinct().resultList
+ * ```
+ *
+ * @param R the result type of the query.
+ * @return a query builder producing results of type [R].
+ * @since 1.15
+ */
+public inline fun <reified R : Any, E : Entity<ID>, ID : Any> EntityRepository<E, ID>.select(): QueryBuilder<E, R, ID> = select(R::class)
+
+/**
+ * Constructs a SELECT query producing refs to records of type [R], such as an entity the entity references.
+ *
+ * The entity type and primary key type are inferred from the repository; use the underscore operator for their
+ * type arguments:
+ *
+ * ```kotlin
+ * pets.selectRef<Owner, _, _>().distinct().resultList
+ * ```
+ *
+ * @param R the type that is selected as ref.
+ * @return a query builder producing refs of type [R].
+ * @since 1.15
+ */
+public inline fun <reified R : Data, E : Entity<ID>, ID : Any> EntityRepository<E, ID>.selectRef(): QueryBuilder<E, Ref<R>, ID> = selectRef(R::class)
+
+/**
  * Constructs a SELECT query with a custom select clause producing results of type [R].
  *
  * The entity type and primary key type are inferred from the repository; use the underscore operator for their

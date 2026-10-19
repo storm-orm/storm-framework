@@ -10,7 +10,7 @@ Help the user write Storm queries using Kotlin.
 
 ```kotlin
 import st.orm.template.*                         // QueryBuilder, eq, neq, like, ref, orm, etc.
-import st.orm.repository.*                       // entity<T>(), select<Result, _, _> { }, findBy, insert, ... (wildcard: see below)
+import st.orm.repository.*                       // select<Result, _, _> { }, selectRef, findBy, insert, ... (wildcard: see below)
 import st.orm.Operator.*                         // escape hatch: only when the operator is chosen at runtime
 import st.orm.Ref                                // Lazy-loaded reference
 import st.orm.Page                               // Offset-based pagination result
@@ -36,7 +36,7 @@ All infix predicate operators (`eq`, `neq`, `like`, `contains`, `startsWith`, `e
 
 Ask what data they need, filters, ordering, or pagination.
 
-**Repository rule:** All database queries must live in repository interfaces, not inline in services or other classes. In Spring Boot or Ktor projects, repositories are constructor-injected (see /storm-repository-kotlin). Use `orm.entity<T>()` and `orm.repository<T>()` lookups only in standalone (non-DI) contexts and tests.
+**Repository rule:** All database queries must live in repository interfaces, not inline in services or other classes. In Spring Boot or Ktor projects, repositories are constructor-injected (see /storm-repository-kotlin). Use `orm.entity(User::class)` and `orm.repository<UserRepository>()` lookups only in standalone (non-DI) contexts and tests.
 
 **Layering rule:** Follow the codebase's existing convention first — if handlers already use repositories directly, or a service layer is consistently in place, match that style rather than introduce a competing one. Absent a clear stance (new code, greenfield), promote the layered architecture: controller → service → repository, where controllers never inject repositories — all data access flows through services, which own the transaction boundaries and return view-model types. Whatever the stance, do not mix styles: layer-skipping controllers undermine the service layer's cross-cutting concerns (transactions, caching, authorization).
 
@@ -129,13 +129,13 @@ User_.city eq refById<City>(cityId)   // ✅ import st.orm.template.refById
 data class CityUserCount(val city: Ref<City>, val userCount: Long)
 
 // ✅ The foreign key field names the foreign key column
-orm.entity<User>()
+orm.entity(User::class)
     .select<CityUserCount, _, _> { "${User_.city}, COUNT(*)" }
     .groupBy(User_.city)
     .resultList
 
 // ❌ Redundant `.id` — identical SQL, and it reads like a join into City
-orm.entity<User>()
+orm.entity(User::class)
     .select<CityUserCount, _, _> { "${User_.city.id}, COUNT(*)" }
     .groupBy(User_.city.id)
     .resultList
@@ -183,7 +183,7 @@ Terminal operations: `.resultList`, `.singleResult`, `.optionalResult`, `.result
 
 ```kotlin
 // Load cities with their users in one query
-val usersByCity: Map<City, List<User>> = orm.entity<User>()
+val usersByCity: Map<City, List<User>> = orm.entity(User::class)
     .select()
     .resultGroupedBy(User_.city)
 ```
@@ -242,7 +242,7 @@ val users = users
 
 Alternatively, use `select()` chained with `.where()` — equivalent, just a style preference:
 ```kotlin
-val users = orm.entity<User>()
+val users = orm.entity(User::class)
     .select()
     .where((User_.city eq city) and (User_.birthDate less LocalDate.of(2000, 1, 1)))
     .orderBy(User_.name)
@@ -259,7 +259,7 @@ Explicit joins — two syntax forms depending on context:
 - **Chained API**: `.innerJoin<UserRole>().on<Role>()` — the join widens the query; chain `.where()` for root and joined fields alike
 - **A condition on the join**: `.leftJoin<Pet>().on<Owner> { Pet_.name eq "Leo" }` adds the condition to the resolved foreign key (block DSL: `leftJoin<Pet, Owner> { Pet_.name eq "Leo" }`); on a left join it keeps the rows without a match, which the same condition in `where` would drop
 - **Filtering by related rows**: `.semiJoin<Pet>().on<Owner>()` keeps the rows with a related row matching the conditions that name it, each once; `.antiJoin<Visit>().on<Pet> { Visit_.description eq "rabies shot" }` keeps the rows without one (block DSL: `semiJoin<Pet, Owner>()`, `antiJoin<Visit, Pet> { ... }`)
-Select result type: `.select(ResultType::class)` to return a different type than the root entity
+Select result type: `.select<ResultType, _, _>()` to return a different type than the root entity
 
 **Always prefer entity/metamodel-based QueryBuilder methods over SQL template strings.** SQL templates are an escape hatch for things the QueryBuilder cannot express.
 
@@ -322,10 +322,10 @@ When you do use template lambdas, use `${}` interpolation (the compiler plugin h
 ## Aggregation
 
 ```kotlin
-val userCount = orm.entity<User>().selectCount().singleResult
+val userCount = orm.entity(User::class).selectCount().singleResult
 
-val citySummaries = orm.entity<City>()
-    .select(CitySummary::class)
+val citySummaries = orm.entity(City::class)
+    .select<CitySummary, _, _>()
     .groupBy(City_.country)
     .having(City_.population greater 100000)
     .resultList
@@ -351,7 +351,7 @@ val citySummaries = orm.entity<City>()
  */
 data class CityUserCount(val city: City, val userCount: Long)
 
-val cityCounts = orm.entity<City>()
+val cityCounts = orm.entity(City::class)
     .select<CityUserCount, _, _> { "${City::class}, COUNT(*)" }
     .leftJoin<User>().on<City>()
     .groupBy(City_.id)
@@ -361,7 +361,7 @@ val cityCounts = orm.entity<City>()
 data class CityUserStats(val cityName: String, val averageAge: Double, val userCount: Long)
 
 val minUsers = 10
-val topCities = orm.entity<City>()
+val topCities = orm.entity(City::class)
     .select<CityUserStats, _, _> { "${City_.name}, AVG(${User_.age}), COUNT(*)" }
     .leftJoin<User>().on<City>()
     .groupBy(City_.name)
@@ -372,7 +372,7 @@ val topCities = orm.entity<City>()
 // Multi-field groupBy — always use the varargs metamodel form:
 data class CityPostalCodeCount(val city: Ref<City>, val postalCode: String?, val userCount: Long)
 
-val counts = orm.entity<User>()
+val counts = orm.entity(User::class)
     .select<CityPostalCodeCount, _, _> { "${User_.city}, ${User_.postalCode}, COUNT(*)" }
     .groupBy(User_.city, User_.postalCode)    // ✅ varargs metamodel form
     .resultList
@@ -390,7 +390,7 @@ Always prefer code over templates. Templates are for expressions QueryBuilder ca
 ## Row Locking
 
 ```kotlin
-val user = orm.entity<User>()
+val user = orm.entity(User::class)
     .select()
     .where(User_.id eq userId)
     .forUpdate()         // SELECT ... FOR UPDATE
@@ -405,7 +405,7 @@ val user = orm.entity<User>()
 Only when a query needs a hint to keep its plan, add it with `.hint("...")`: the database's own hint text, passed through as is, on `select`, `update` and `delete`. Never rewrite a query as a SQL template to place a hint.
 
 ```kotlin
-val users = orm.entity<User>()
+val users = orm.entity(User::class)
     .select()
     .where(User_.email contains query)
     .hint("MAX_EXECUTION_TIME(1000)")   // MySQL: SELECT /*+ MAX_EXECUTION_TIME(1000) */ ...
@@ -419,12 +419,12 @@ The dialect places it: a `/*+ ... */` comment after `SELECT`/`UPDATE`/`DELETE` o
 `distinct()` removes duplicates from a select of another type, such as the cities of a set of users. It is never the way to return each root row once after a join to a to-many table: that is a `semiJoin` (see **Filtering by Related Rows**).
 
 ```kotlin
-val uniqueCities = orm.entity<User>()
-    .select(City::class)
+val uniqueCities = orm.entity(User::class)
+    .select<City, _, _>()
     .distinct()
     .resultList
 
-val count = orm.entity<User>()
+val count = orm.entity(User::class)
     .selectCount()
     .where(User_.email like "%@example.com")
     .singleResult
@@ -434,19 +434,19 @@ val count = orm.entity<User>()
 
 ```kotlin
 // Query by ref
-val user = orm.entity<User>()
+val user = orm.entity(User::class)
     .select()
     .where(userRef)
     .singleResult
 
 // Query by multiple refs
-val users = orm.entity<User>()
+val users = orm.entity(User::class)
     .select()
     .whereRef(userRefs)
     .resultList
 
 // Select refs instead of full entities (lightweight)
-val refs = orm.entity<User>()
+val refs = orm.entity(User::class)
     .selectRef()
     .where(User_.city eq city)
     .resultList
@@ -459,7 +459,7 @@ A `Ref<T>` foreign key is still navigable in queries. Filter, order, and select 
 ```kotlin
 // User.city is Ref<City>; City has a country FK. The city and country tables are joined
 // only because the query navigates beyond the city foreign key.
-val users = orm.entity<User>()
+val users = orm.entity(User::class)
     .select()
     .where(User_.city.country.name eq "United States")
     .orderBy(User_.city.name)
@@ -467,17 +467,17 @@ val users = orm.entity<User>()
 
 // Select a column from beyond the reference.
 data class CountryName(val name: String)
-val names = orm.entity<User>()
+val names = orm.entity(User::class)
     .select<CountryName, _, _> { "${User_.city.country.name}" }
     .where(User_.city.country.name eq "United States")
     .resultList
 
 // Select the referenced entity itself: the city table is joined on demand and hydrated
 // with its own country foreign key.
-val cities = orm.entity<User>().select(City::class).resultList
+val cities = orm.entity(User::class).select<City, _, _>().resultList
 
 // Join another table onto the referenced one; the join brings the city table in.
-val sharingACity = orm.entity<User>().select()
+val sharingACity = orm.entity(User::class).select()
     .innerJoin<User>().on<City>()
     .resultList
 ```
@@ -489,7 +489,7 @@ Nodes beyond a reference are navigation-only: usable in `where`, `orderBy`, `gro
 A `Ref` is resolved on demand by `fetch()` on the reference itself, and that is always correct. When a read already knows it needs the referenced record, `select().fetch(path...)` folds that load into the same statement instead of a query of its own. It names the references the statement resolves: the referenced table's columns take the place of the foreign key column, so the reference comes back loaded and reading it costs no query. The record type is unchanged — the property stays a `Ref` — so the same type serves queries that resolve it and queries that do not.
 
 ```kotlin
-val users = orm.entity<User>().select()
+val users = orm.entity(User::class).select()
     .fetch(User_.city, User_.city.country)
     .resultList
 
@@ -542,15 +542,15 @@ Read the request for the cue: "with", "that have", "who own", "any of their", "s
 
 ```kotlin
 // WHERE EXISTS — filter entities that have related data
-val citiesWithUsers = orm.entity<City>()
+val citiesWithUsers = orm.entity(City::class)
     .select()
-    .whereExists { subquery(User::class) }
+    .whereExists { subquery<User>() }
     .resultList
 
 // WHERE NOT EXISTS
-val citiesWithoutUsers = orm.entity<City>()
+val citiesWithoutUsers = orm.entity(City::class)
     .select()
-    .whereNotExists { subquery(User::class) }
+    .whereNotExists { subquery<User>() }
     .resultList
 ```
 
@@ -565,13 +565,13 @@ Two forms build a WHERE clause: **always use `where(predicate)` unless the condi
 
 ```kotlin
 // ✅ Compound predicates belong in where() — infix and/or, parenthesized per group
-val users = orm.entity<User>()
+val users = orm.entity(User::class)
     .select()
     .where(((User_.email like "%@example.com") and User_.email.isNotNull()) or (User_.role eq "admin"))
     .resultList
 
 // ❌ whereBuilder adds nothing here — same query, more machinery
-val users = orm.entity<User>()
+val users = orm.entity(User::class)
     .select()
     .whereBuilder {
         where(User_.email, LIKE, "%@example.com")
@@ -603,7 +603,7 @@ A genuine `whereBuilder { }` case — a subquery composed into compound logic (a
 ```kotlin
 users.select()
     .whereBuilder {
-        (User_.email like "%@example.com") and exists(subquery(UserRole::class).where(UserRole_.role eq role))
+        (User_.email like "%@example.com") and exists(subquery<UserRole>().where(UserRole_.role eq role))
     }
     .resultList
 ```
@@ -678,13 +678,13 @@ val nextCursor: String? = window.nextCursor()                          // null w
 
 ```kotlin
 // DELETE with WHERE (safe) -- builder returns QueryBuilder, terminal executes
-orm.entity<User>().delete().where(User_.postalCode.isNull()).executeUpdate()
+orm.entity(User::class).delete().where(User_.postalCode.isNull()).executeUpdate()
 
 // DELETE with predicate shorthand -- also returns QueryBuilder
-orm.entity<User>().delete(User_.postalCode.isNull()).executeUpdate()
+orm.entity(User::class).delete(User_.postalCode.isNull()).executeUpdate()
 
 // DELETE/UPDATE without WHERE throws by default. Use unsafe() to confirm intent:
-orm.entity<User>().delete().unsafe().executeUpdate()
+orm.entity(User::class).delete().unsafe().executeUpdate()
 
 // Convenience method: removeAll() executes immediately (calls unsafe() internally)
 users.removeAll()
@@ -746,7 +746,7 @@ Use `select { }` / `update { }` / `delete { }` to build queries without chaining
 
 ```kotlin
 // Standalone: get the entity repository first — there is NO orm.select<T> { block } reified form
-orm.entity<User>().select {
+orm.entity(User::class).select {
     where(User_.email like "%@example.com")
     orderBy(User_.name)
     limit(10)
@@ -805,27 +805,27 @@ Available in the block: `where`, `whereBuilder`, `whereExists`, `whereNotExists`
 
 **Note:** The block DSL has `orderBy { template }` but NOT `orderByDescending { template }`. For template-based descending order, use the chained API: `.orderByDescending { template }` or escape to raw SQL.
 
-The block DSL is typed to the root entity. There is **no** `select(ResultType::class) { block }` form — `select { }` always returns the root entity type. (In `select(ResultType::class) { ... }` / `select<ResultType, _, _> { ... }` the trailing lambda is a SQL template for the SELECT clause, not a block DSL.) To select a different result type, use the chained API:
+The block DSL is typed to the root entity. There is **no** `select<ResultType, _, _> { block }` form — `select { }` always returns the root entity type. (In `select<ResultType, _, _> { ... }` / `select(ResultType::class) { ... }` the trailing lambda is a SQL template for the SELECT clause, not a block DSL.) To select a different result type, use the chained API:
 ```kotlin
 // ❌ Not valid — no block DSL overload for result type
-select(UserSummary::class) {
+select<UserSummary, _, _> {
     where(User_.email like "%@example.com")
 }.resultList
 
 // ✅ Use chained API for a different result type
-select(UserSummary::class)
+select<UserSummary, _, _>()
     .where(User_.email like "%@example.com")
     .resultList
 
 // ✅ With joins — chained API uses .innerJoin<A>().on<B>(), not the two-type-arg form
-select(UserSummary::class)
+select<UserSummary, _, _>()
     .innerJoin<UserRole>().on<User>()
     .where(UserRole_.role eq role)
     .scroll(Scrollable.of(User_.id, 20))
 ```
 
-**What `select(ResultType::class)` is for:** It selects a different result type from the query. This works for:
-- **Joined entity types** — e.g., selecting `City::class` from a `User` query that joins `City`.
+**What `select<ResultType, _, _>()` is for:** It selects a different result type from the query. This works for:
+- **Joined entity types** — e.g., `select<City, _, _>()` from a `User` query that joins `City`.
 - **Custom SELECT with template** — e.g., `select<Summary, _, _> { template }` with a custom SQL select clause that maps to the result type's fields.
 
 It does **not** work for selecting a column subset of the root entity: a `UserSummary` with only `id` and `name` from `User` will fail with "Cannot find alias for column." Read the entity itself; where the column subset matters for performance or the read needs a shape the entity cannot give, use a `Projection<T>` with `ProjectionRepository` (see **One Entity per Table, Projections for Performance or Customization** in the Storm rules).
@@ -926,9 +926,9 @@ Tell the user what you are doing and why: explain that `SqlCapture` records ever
 class UserQueryTest {
     @Test
     fun findExampleUsersInCity(orm: ORMTemplate, capture: SqlCapture) {
-        val city = orm.entity<City, _>().getById(1)   // getById is ID-based — use the two-type-arg form
+        val city = orm.entity(City::class).getById(1)   // getById is ID-based — use the two-type-arg form
         val users = capture.execute {
-            orm.entity<User>().select()
+            orm.entity(User::class).select()
                 .where((User_.city eq city) and (User_.email like "%@example.com"))
                 .orderBy(User_.name)
                 .resultList

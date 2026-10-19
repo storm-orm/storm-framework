@@ -246,7 +246,7 @@ class OrderQueryTest {
     @Test
     fun findShippedOrders(orm: ORMTemplate, capture: SqlCapture) {
         val orders = capture.execute {
-            orm.entity<Order>().select()
+            orm.entity(Order::class).select()
                 .where(Order_.status eq "SHIPPED")
                 .orderBy(Order_.createdAt)
                 .resultList

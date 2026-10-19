@@ -52,7 +52,7 @@ fun Application.module() {
 
     routing {
         get("/users/{id}") {
-            val user = entity<User, _>().findById(call.parameters.getOrFail("id").toInt())
+            val user = entity(User::class).findById(call.parameters.getOrFail("id").toInt())
             call.respond(user ?: HttpStatusCode.NotFound)
         }
     }
@@ -149,21 +149,21 @@ The `ORMTemplate` is stored in the application's attributes and accessible throu
 
 | Extension | Available in | Example |
 |-----------|-------------|---------|
-| `Application.orm` | Application setup, plugins | `application.orm.entity<User>()` |
-| `ApplicationCall.orm` | Route handlers | `call.orm.entity<User>()` |
-| `RoutingContext.orm` | Route handlers (implicit `this`) | `orm.entity<User>()` |
+| `Application.orm` | Application setup, plugins | `application.orm.entity(User::class)` |
+| `ApplicationCall.orm` | Route handlers | `call.orm.entity(User::class)` |
+| `RoutingContext.orm` | Route handlers (implicit `this`) | `orm.entity(User::class)` |
 
 ```kotlin
 // In route handlers via ApplicationCall (explicit)
 get("/users") {
-    val users = call.orm.entity<User>()
+    val users = call.orm.entity(User::class)
     call.respond(users.findAll())
 }
 
 // In route handlers via RoutingContext (implicit, most concise)
 routing {
     get("/users") {
-        val users = orm.entity<User>()
+        val users = orm.entity(User::class)
         call.respond(users.findAll())
     }
 }
@@ -194,7 +194,7 @@ Simple reads do not require an explicit transaction. The ORM acquires a connecti
 
 ```kotlin
 get("/users/{id}") {
-    val user = entity<User, _>().findById(call.parameters.getOrFail("id").toInt())
+    val user = entity(User::class).findById(call.parameters.getOrFail("id").toInt())
     call.respond(user ?: HttpStatusCode.NotFound)
 }
 ```
@@ -274,7 +274,7 @@ For reads that span several queries, such as a report assembled from multiple lo
 ```kotlin
 get("/reports/summary") {
     val summary = transaction(readOnly = true) {
-        val orders = call.orm.entity<Order>().findAll()
+        val orders = call.orm.entity(Order::class).findAll()
         val total = orders.sumOf { it.amount }
         ReportSummary(orderCount = orders.size, totalAmount = total)
     }
@@ -389,21 +389,21 @@ fun Application.module() {
 
 ### Direct Entity and Projection Access
 
-For simple operations that do not require custom query methods, skip custom repositories entirely: the `entity<T>()` and `projection<T>()` extensions are available on `Application`, `ApplicationCall`, and `RoutingContext`, just like `repository<T>()` and `orm`:
+For simple operations that do not require custom query methods, skip custom repositories entirely: the `entity(User::class)` and `projection(OwnerSummary::class)` extensions are available on `Application`, `ApplicationCall`, and `RoutingContext`, just like `repository<T>()` and `orm`. The type-argument forms `entity<User, _>()` and `projection<OwnerSummary, _>()` return the same repositories:
 
 ```kotlin
 get("/users") {
-    call.respond(entity<User>().findAll())
+    call.respond(entity(User::class).findAll())
 }
 
 get("/users/{id}") {
-    // entity<T, _> binds the primary key type, enabling findById
-    val user = entity<User, _>().findById(call.parameters.getOrFail("id").toInt())
+    // the primary key type is inferred from User, enabling findById
+    val user = entity(User::class).findById(call.parameters.getOrFail("id").toInt())
     call.respond(user ?: HttpStatusCode.NotFound)
 }
 
 get("/owners") {
-    call.respond(projection<OwnerSummary>().findAll())
+    call.respond(projection(OwnerSummary::class).findAll())
 }
 ```
 

@@ -89,7 +89,7 @@ val users = orm.findAll(User_.email eq email)
 val users = orm.findAll(User_.city.country.code eq "US")
 
 // Multiple conditions
-val users = orm.entity<User>()
+val users = orm.entity(User::class)
     .select()
     .where(
         (User_.city eq city) and (User_.birthDate less LocalDate.of(2000, 1, 1))
@@ -193,7 +193,7 @@ data class User(
 ) : Entity<Int>
 
 // Short form works - Country appears only once in User's entity graph
-val users = orm.entity<User>().select {
+val users = orm.entity(User::class).select {
     where(Country_.name eq "United States")  // Resolves to User → City → Country
 }.resultList
 ```
@@ -230,17 +230,17 @@ data class User(
 ) : Entity<Int>
 
 // ERROR at query time: Multiple paths to Country in User's entity graph
-val users = orm.entity<User>().select {
+val users = orm.entity(User::class).select {
     where(Country_.name eq "United States")
 }.resultList
 
 // OK: Nested paths are unambiguous (and can use where since they're rooted at User_)
-val users = orm.entity<User>()
+val users = orm.entity(User::class)
     .select()
     .where(User_.city.country.name eq "United States")
     .resultList
 
-val users = orm.entity<User>()
+val users = orm.entity(User::class)
     .select()
     .where(User_.birthCountry.name eq "United States")
     .resultList
@@ -268,7 +268,7 @@ Entity Graph                          Custom Join
 When you add custom joins to a query, those joined tables can **only** be referenced using short form:
 
 ```kotlin
-val users = orm.entity<User>()
+val users = orm.entity(User::class)
     .select()
     .innerJoin<Order>().on<User>()  // Custom join widens the query
     .where(Order_.total greater BigDecimal(100))  // Short form required
@@ -280,7 +280,7 @@ Custom joins are not part of the entity graph traversal, so nested paths cannot 
 **Uniqueness still applies:** If you join the same table multiple times, you must use the `join` method with explicit aliases to disambiguate:
 
 ```kotlin
-val users = orm.entity<User>()
+val users = orm.entity(User::class)
     .select()
     .join(JoinType.inner(), Order::class, "recent").on(User::class)
     .join(JoinType.inner(), Order::class, "first").on(User::class)
@@ -313,7 +313,7 @@ Given `User` with `@FK val city: Ref<City>` and `City` with a `country` foreign 
 User_.city.country.name eq "United States"
 
 // Selecting the root leaves User.city as an unloaded Ref; no join is added.
-orm.entity<User>().select().resultList
+orm.entity(User::class).select().resultList
 ```
 
 ### Value Nodes and Navigation-Only Nodes
@@ -327,15 +327,15 @@ Navigation-only nodes can be used anywhere a query needs a column reference: `wh
 
 ```kotlin
 // Compiles: the reference node is value-extractable and yields the Ref.
-val visitsByPet: Map<Ref<Pet>, List<Visit>> = orm.entity<Visit>()
+val visitsByPet: Map<Ref<Pet>, List<Visit>> = orm.entity(Visit::class)
     .select()
     .resultGroupedByRef(Visit_.pet)
 
 // Does not compile: a node beyond the reference is navigation-only.
-// orm.entity<Visit>().select().resultGroupedBy(Visit_.pet.owner)
+// orm.entity(Visit::class).select().resultGroupedBy(Visit_.pet.owner)
 ```
 
-A path is not the only way to reach the referenced table. Naming the table by type does it too: selecting it (`select(City::class)`) joins it and hydrates it with its own foreign keys, and joining onto it (`innerJoin<X>().on<City>()`) brings it in. Both share the occurrence a navigating path resolves against, so a query that names the table both ways joins it once. A table the query joins explicitly keeps that occurrence.
+A path is not the only way to reach the referenced table. Naming the table by type does it too: selecting it (`select<City, _, _>()`) joins it and hydrates it with its own foreign keys, and joining onto it (`innerJoin<X>().on<City>()`) brings it in. Both share the occurrence a navigating path resolves against, so a query that names the table both ways joins it once. A table the query joins explicitly keeps that occurrence.
 
 ### Cyclic References
 
@@ -362,7 +362,7 @@ User_.invitedBy.invitedBy.invitedBy.name    does not compile
 **The query engine itself has no depth limit.** To navigate a cycle beyond the generated depth, name the path as a string; the engine adds one join per hop:
 
 ```kotlin
-orm.entity<User>()
+orm.entity(User::class)
     .select()
     .where(Metamodel.of(User::class.java, "invitedBy.invitedBy.invitedBy.name") eq "Alice")
     .resultList
