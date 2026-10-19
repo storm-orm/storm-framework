@@ -244,7 +244,7 @@ When you need to collect entity identifiers without loading full rows, select re
 ```kotlin
 val role: Role = ...
 val userRefs: Flow<Ref<User>> = orm.entity(UserRole::class)
-    .selectRef<User, _, _>()
+    .selectRef(User::class)
     .where(UserRole_.role eq role)
     .resultFlow
 ```
@@ -287,7 +287,7 @@ Refs integrate directly into query filter expressions. You can pass a collection
 ```kotlin
 val userRefs: List<Ref<User>> = ...
 val roles: List<Role> = orm.entity(UserRole::class)
-    .select<Role, _, _>()
+    .select(Role::class)
     .distinct()
     .where(UserRole_.user inRefs userRefs)
     .resultList
@@ -371,7 +371,7 @@ A custom projection that references a beyond-reference column adds the join and 
 data class CountryName(val name: String)
 
 val names = orm.entity(User::class)
-    .select<CountryName, _, _> { "${User_.city.country.name}" }
+    .select(CountryName::class) { "${User_.city.country.name}" }
     .where(User_.city.country.name eq "United States")
     .resultList
 ```
@@ -418,7 +418,7 @@ A path names the referenced table one column at a time. A query can also name th
 
 ```kotlin
 // Selects the referenced entity: the city table is joined on demand, and so is its own country foreign key.
-val cities = orm.entity(User::class).select<City, _, _>().resultList
+val cities = orm.entity(User::class).select(City::class).resultList
 ```
 
 </TabItem>
@@ -434,7 +434,7 @@ List<City> cities = orm.entity(User.class).select(City.class).getResultList();
 
 An explicit `innerJoin(...).on(City.class)` names the table the same way, and the reference brings it in for the join to resolve against. A query that names the table both ways gets one occurrence: a path navigating to it resolves against the same join, and a table the query joins explicitly keeps that occurrence, so an explicit join stays in charge of the table it brings in.
 
-Bringing the table in is not the same as resolving the reference. A join makes the referenced table available to the rest of the statement, and `select<City, _, _>()` makes it the result, but neither one touches the `User.city` of a selected user: it stays an unloaded foreign key. Resolving it into the user is what [`fetch(User_.city)`](#resolving-a-ref-as-part-of-the-query) does, and it works on the select list rather than on the tables the query can name. The two also differ in what they do to the rows: an inner join drops users whose city does not match, while `fetch(...)` uses an outer join for a nullable reference so every row survives.
+Bringing the table in is not the same as resolving the reference. A join makes the referenced table available to the rest of the statement, and `select(City::class)` makes it the result, but neither one touches the `User.city` of a selected user: it stays an unloaded foreign key. Resolving it into the user is what [`fetch(User_.city)`](#resolving-a-ref-as-part-of-the-query) does, and it works on the select list rather than on the tables the query can name. The two also differ in what they do to the rows: an inner join drops users whose city does not match, while `fetch(...)` uses an outer join for a nullable reference so every row survives.
 
 ### What You Can and Cannot Do Beyond a Ref
 
@@ -559,7 +559,7 @@ data class GroupedByCity(
 )
 
 val counts: Map<Ref<City>, Long> = orm.entity(User::class)
-    .select<GroupedByCity, _, _> { "${User_.city}, COUNT(*)" }
+    .select(GroupedByCity::class) { "${User_.city}, COUNT(*)" }
     .groupBy(User_.city)
     .resultList
     .associate { it.city to it.count }

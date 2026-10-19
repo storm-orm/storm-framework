@@ -47,7 +47,7 @@ Use JSON aggregation functions to load one-to-many relationships in a single que
 data class RolesByUser(val user: User, @Json val roles: List<Role>)
 
 val results = orm.entity(User::class)
-    .select<RolesByUser, _, _> { "${User::class}, JSON_OBJECTAGG(${Role::class})" }
+    .select(RolesByUser::class) { "${User::class}, JSON_OBJECTAGG(${Role::class})" }
     .innerJoin<UserRole>().on<User>()
     .groupBy(User_.id)
     .resultList

@@ -389,7 +389,7 @@ fun Application.module() {
 
 ### Direct Entity and Projection Access
 
-For simple operations that do not require custom query methods, skip custom repositories entirely: the `entity(User::class)` and `projection(OwnerSummary::class)` extensions are available on `Application`, `ApplicationCall`, and `RoutingContext`, just like `repository<T>()` and `orm`. The type-argument forms `entity<User, _>()` and `projection<OwnerSummary, _>()` return the same repositories:
+For simple operations that do not require custom query methods, skip custom repositories entirely: the `entity(User::class)` and `projection(OwnerSummary::class)` extensions are available on `Application`, `ApplicationCall`, and `RoutingContext`, just like `repository<T>()` and `orm`:
 
 ```kotlin
 get("/users") {

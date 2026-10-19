@@ -36,7 +36,7 @@ import kotlin.reflect.KClass
  *
  * ## Example: Query with QueryBuilder
  * ```kotlin
- * val users = orm.selectFrom(User::class)
+ * val users = orm.selectFrom<User>()
  *     .where(User_.name eq "Alice")
  *     .resultList
  * ```

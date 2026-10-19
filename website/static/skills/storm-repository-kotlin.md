@@ -11,8 +11,8 @@ Help the user write a Storm repository using Kotlin.
 ```kotlin
 import st.orm.repository.*                       // EntityRepository, plus every repository extension:
                                                  //   repository<UserRepository>(),
-                                                 //   select<Result, _, _> { }, selectRef, findBy, findAllBy,
-                                                 //   insert, writeSet, exists, count, ...
+                                                 //   findBy, findAllBy, insert, writeSet,
+                                                 //   exists, count, ...
                                                  // Use the wildcard: these are top-level extensions, and naming
                                                  // them one by one is how an import ends up missing.
 import st.orm.template.*                         // ORMTemplate, QueryBuilder, orm, ref, eq, neq, etc.
@@ -87,13 +87,12 @@ Create repositories directly from the `ORMTemplate` (no DI container):
 ```kotlin
 // Generic entity access (no custom interface needed)
 val users = orm.entity(User::class)          // EntityRepository<User, Int>: the ID type is inferred from User
-val users = orm.entity<User, _>()            // the same repository; the underscore infers the ID type
 
 // Custom repository (interface with explicit query method bodies)
 val userRepository = orm.repository<UserRepository>()  // import st.orm.repository.repository
 ```
 
-Look repositories up by class and write the query that follows in the reified forms: `orm.entity(User::class).select<City, _, _>()`. Where a codebase already uses `orm.entity<User, _>()`, keep to it rather than mixing the two lookups. The one-argument `orm.entity<User>()` returns `EntityRepository<User, *>`, without the ID type, so ID-based operations (`findById`, `existsById`, `removeById`) and `select<Result, _, _>()` do not resolve on it.
+Look repositories up by class. A type argument is used only where it alone gives the full result (`orm.repository<UserRepository>()`, `innerJoin<City>()`, `subquery<Visit>()`); where Kotlin would need `_` for the remaining type arguments, pass a class literal instead (`orm.entity(User::class)`, `users.select(City::class)`). The one-argument `orm.entity<User>()` returns `EntityRepository<User, *>`, without the ID type, so ID-based operations (`findById`, `existsById`, `removeById`) do not resolve on it.
 
 ```kotlin
 // ⚠️ Repository interfaces MUST import the predicate operators — they are Kotlin extension functions:
@@ -869,20 +868,20 @@ interface UserRepository : EntityRepository<User, Int> {
 
 Both `select { }` and `delete { }` return a `QueryBuilder`, so you pick the terminal: `.resultList`, `.singleResult`, `.optionalResult`, `.scroll(scrollable)`, `.page(0, 20)`, `.resultFlow`, `.resultCount` (for select), or `.executeUpdate()` (for delete). **Do NOT combine `orderBy()` with `.scroll(Scrollable)`** — see Keyset Scrolling section above.
 
-**Result types and the block DSL:** There is **no** `select<ResultType, _, _> { block }` form. The block DSL always returns the root entity type. (In `select<ResultType, _, _> { ... }` / `select(ResultType::class) { ... }` the trailing lambda is a SQL template for the SELECT clause, not a block DSL.) To select a different result type, use the chained API:
+**Result types and the block DSL:** There is **no** `select(ResultType::class) { block }` form. The block DSL always returns the root entity type. (In `select(ResultType::class) { ... }` the trailing lambda is a SQL template for the SELECT clause, not a block DSL.) To select a different result type, use the chained API:
 ```kotlin
 // ❌ Not valid — no block DSL overload for result type
-fun findSummaries(): List<UserSummary> = select<UserSummary, _, _> {
+fun findSummaries(): List<UserSummary> = select(UserSummary::class) {
     where(User_.email like "%@example.com")
 }.resultList
 
 // ✅ Use chained API — note: joins use .innerJoin<A>().on<B>(), not the two-type-arg form
-fun findSummaries(): List<UserSummary> = select<UserSummary, _, _>()
+fun findSummaries(): List<UserSummary> = select(UserSummary::class)
     .where(User_.email like "%@example.com")
     .resultList
 ```
 
-**What `select<ResultType, _, _>()` is for:** It selects a different result type from the query. This works for joined entity types (e.g., `select<City, _, _>()` from a `User` query) and custom SELECT with a template string (`select<Summary, _, _> { template }` — the result type is explicit; the underscores let Kotlin infer the repository's entity and ID types). Style: in `::class`-style code write `select(Summary::class)` and `select(Summary::class) { template }` — keep each snippet internally consistent. It does **not** work for column subsets of the root entity — `select<UserSummary, _, _>()` where `UserSummary` has a subset of `User` fields will fail with "Cannot find alias for column." For column subsets, use a `Projection<T>` with `ProjectionRepository`.
+**What `select(ResultType::class)` is for:** It selects a different result type from the query. This works for joined entity types (e.g., `select(City::class)` from a `User` query) and custom SELECT with a template string (`select(Summary::class) { template }` — the result type is explicit). It does **not** work for column subsets of the root entity — `select(UserSummary::class)` where `UserSummary` has a subset of `User` fields will fail with "Cannot find alias for column." For column subsets, use a `Projection<T>` with `ProjectionRepository`.
 
 **Cross-entity pitfall:** Selecting a different entity type from the wrong root repository can fail with "Cannot find alias for column" when both entities have columns with the same name (e.g., `id`). Put the query on the target entity's repository instead.
 
