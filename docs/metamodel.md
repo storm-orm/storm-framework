@@ -282,8 +282,8 @@ Custom joins are not part of the entity graph traversal, so nested paths cannot 
 ```kotlin
 val users = orm.entity(User::class)
     .select()
-    .join(JoinType.inner(), Order::class, "recent").on(User::class)
-    .join(JoinType.inner(), Order::class, "first").on(User::class)
+    .join(JoinType.inner(), Order::class, "recent").on<User>()
+    .join(JoinType.inner(), Order::class, "first").on<User>()
     .where(/* use SQL template with explicit aliases */)
     .resultList
 ```
@@ -335,7 +335,7 @@ val visitsByPet: Map<Ref<Pet>, List<Visit>> = orm.entity(Visit::class)
 // orm.entity(Visit::class).select().resultGroupedBy(Visit_.pet.owner)
 ```
 
-A path is not the only way to reach the referenced table. Naming the table by type does it too: selecting it (`select<City, _, _>()`) joins it and hydrates it with its own foreign keys, and joining onto it (`innerJoin<X>().on<City>()`) brings it in. Both share the occurrence a navigating path resolves against, so a query that names the table both ways joins it once. A table the query joins explicitly keeps that occurrence.
+A path is not the only way to reach the referenced table. Naming the table by type does it too: selecting it (`select(City::class)`) joins it and hydrates it with its own foreign keys, and joining onto it (`innerJoin<X>().on<City>()`) brings it in. Both share the occurrence a navigating path resolves against, so a query that names the table both ways joins it once. A table the query joins explicitly keeps that occurrence.
 
 ### Cyclic References
 

@@ -116,7 +116,7 @@ The same paths are available inside a select template, so a query is free to ret
 ```kotlin
 // Selects a column two hops past the reference, joining city and country for this query alone.
 orm.entity(User::class)
-    .select<UsersPerCountry, _, _> { "${User_.city.country.name}, COUNT(*)" }
+    .select(UsersPerCountry::class) { "${User_.city.country.name}, COUNT(*)" }
     .groupBy(User_.city.country.name)
     .resultList
 ```

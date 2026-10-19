@@ -546,7 +546,7 @@ To perform GROUP BY queries with aggregate functions like COUNT, SUM, or AVG, de
 data class CityCount(val city: City, val count: Long)
 
 val counts: List<CityCount> = orm.entity(User::class)
-    .select<CityCount, _, _> { "${City::class}, COUNT(*)" }
+    .select(CityCount::class) { "${City::class}, COUNT(*)" }
     .groupBy(User_.city)
     .resultList
 ```
@@ -608,7 +608,7 @@ Storm generates the form each product accepts, from the same source:
 
 ```kotlin
 orm.entity(User::class)
-    .select<CityCount, _, _> { "${City::class}, COUNT(*)" }
+    .select(CityCount::class) { "${City::class}, COUNT(*)" }
     .groupBy(User_.city)
 ```
 
@@ -656,7 +656,7 @@ val counts: List<Long> = orm.entity(User::class)
 
 // Aggregate: a template
 val busy = orm.entity(User::class)
-    .select<CityCount, _, _> { "${City::class}, COUNT(*)" }
+    .select(CityCount::class) { "${City::class}, COUNT(*)" }
     .groupBy(User_.city)
     .having { "COUNT(*) > $minimum" }
     .resultList
@@ -776,7 +776,7 @@ Add `.distinct()` to eliminate duplicate rows from the result set. This is usefu
 
 ```kotlin
 val cities = orm.entity(User::class)
-    .select<City, _, _>()
+    .select(City::class)
     .distinct()
     .resultList
 ```
@@ -1424,7 +1424,7 @@ Inline records expand in GROUP BY the same way, and a foreign key groups by its 
 data class CityOrderCount(val city: City, val count: Long)
 
 val orders = orm.entity(Order::class)
-val window = orders.select<CityOrderCount, _, _> { "${City::class}, COUNT(*)" }
+val window = orders.select(CityOrderCount::class) { "${City::class}, COUNT(*)" }
     .groupBy(Order_.city)
     .scroll(Scrollable.of(Order_.city.key(), 20))
 ```

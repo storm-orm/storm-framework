@@ -19,9 +19,6 @@ val orm = ORMTemplate.of(dataSource)
 
 // Generic entity repository: EntityRepository<User, Int>, the ID type inferred from User
 val userRepository = orm.entity(User::class)
-
-// The same repository, looked up with type arguments: the underscore infers the ID type
-val userRepository = orm.entity<User, _>()
 ```
 
 Both lookups return the same repository, and the examples in this documentation use the class form. The one-argument `orm.entity<User>()` returns `EntityRepository<User, *>`, without the ID type, so ID-based operations such as `findById` do not resolve on it.
