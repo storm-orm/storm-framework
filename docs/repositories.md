@@ -21,8 +21,6 @@ val orm = ORMTemplate.of(dataSource)
 val userRepository = orm.entity(User::class)
 ```
 
-Both lookups return the same repository, and the examples in this documentation use the class form. The one-argument `orm.entity<User>()` returns `EntityRepository<User, *>`, without the ID type, so ID-based operations such as `findById` do not resolve on it.
-
 </TabItem>
 <TabItem value="java" label="Java">
 

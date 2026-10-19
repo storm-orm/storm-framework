@@ -92,7 +92,7 @@ val users = orm.entity(User::class)          // EntityRepository<User, Int>: the
 val userRepository = orm.repository<UserRepository>()  // import st.orm.repository.repository
 ```
 
-Look repositories up by class. A type argument is used only where it alone gives the full result (`orm.repository<UserRepository>()`, `innerJoin<City>()`, `subquery<Visit>()`); where Kotlin would need `_` for the remaining type arguments, pass a class literal instead (`orm.entity(User::class)`, `users.select(City::class)`). The one-argument `orm.entity<User>()` returns `EntityRepository<User, *>`, without the ID type, so ID-based operations (`findById`, `existsById`, `removeById`) do not resolve on it.
+Prefer the reified form unless it needs `_` placeholders; then use the class literal. Repositories are looked up by class, `orm.entity(User::class)`, which infers the ID type, and a different result type is selected by class, `users.select(City::class)`.
 
 ```kotlin
 // ⚠️ Repository interfaces MUST import the predicate operators — they are Kotlin extension functions:
