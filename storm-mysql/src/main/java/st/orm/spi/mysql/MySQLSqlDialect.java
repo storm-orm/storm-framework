@@ -187,7 +187,7 @@ public class MySQLSqlDialect extends DefaultSqlDialect {
      * dialect. The list is the one shape the tuple wins: same plan, but the optimizer is spared a 500-branch OR
      * tree. The ordering comparison is the shape it loses outright, so that renders lexicographically.</p>
      *
-     * <p>{@link st.orm.spi.mariadb.MariaDBSqlDialect} inherits this and measures the same way, more sharply.</p>
+     * <p>{@code MariaDBSqlDialect} inherits this and measures the same way, more sharply.</p>
      *
      * @param operator the comparison operator to apply.
      * @param rowCount the number of value rows in the comparison.
