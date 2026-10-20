@@ -11,6 +11,14 @@
          dialect tests send such statements on purpose. -->
     <logger name="org.mariadb.jdbc.message.server.ErrorPacket" level="ERROR"/>
 
+    <!-- A context that fails to start logs the failure it also throws; the auto-configuration tests start contexts
+         with invalid settings on purpose and assert the failure. -->
+    <logger name="org.springframework.context.annotation.AnnotationConfigApplicationContext" level="ERROR"/>
+
+    <!-- Hibernate logs each SQL exception it converts, which it also throws to the caller; the JPA integration tests
+         send such statements on purpose. -->
+    <logger name="org.hibernate.engine.jdbc.spi.SqlExceptionHelper" level="OFF"/>
+
     <root level="WARN">
         <appender-ref ref="STDOUT"/>
     </root>

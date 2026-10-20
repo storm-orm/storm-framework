@@ -20,6 +20,8 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 
 import jakarta.transaction.Status;
+import jakarta.transaction.Transaction;
+import jakarta.transaction.TransactionManager;
 import jakarta.transaction.UserTransaction;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.autoconfigure.AutoConfigurations;
@@ -67,18 +69,25 @@ public class StormTransactionAutoConfigurationTest {
     static class JtaConfiguration {
         @Bean
         JtaTransactionManager transactionManager() {
-            return new JtaTransactionManager(new NoOpUserTransaction());
+            var jta = new NoOpJtaTransaction();
+            return new JtaTransactionManager(jta, jta);
         }
     }
 
-    /** Stands in for the {@code UserTransaction} an application server provides; the test never drives it. */
-    static final class NoOpUserTransaction implements UserTransaction {
+    /**
+     * Stands in for the {@code UserTransaction} and {@code TransactionManager} an application server provides; the
+     * test never drives it.
+     */
+    static final class NoOpJtaTransaction implements UserTransaction, TransactionManager {
         @Override public void begin() {}
         @Override public void commit() {}
         @Override public void rollback() {}
         @Override public void setRollbackOnly() {}
         @Override public int getStatus() { return Status.STATUS_NO_TRANSACTION; }
         @Override public void setTransactionTimeout(int seconds) {}
+        @Override public Transaction getTransaction() { return null; }
+        @Override public Transaction suspend() { return null; }
+        @Override public void resume(Transaction transaction) {}
     }
 
     @Test

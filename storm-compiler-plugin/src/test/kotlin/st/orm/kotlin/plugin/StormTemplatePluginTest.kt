@@ -6,8 +6,14 @@ import com.tschuchort.compiletesting.SourceFile
 import org.jetbrains.kotlin.compiler.plugin.ExperimentalCompilerApi
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertTrue
-import org.junit.jupiter.api.Assumptions.assumeTrue
+import org.junit.jupiter.api.Tag
 import org.junit.jupiter.api.Test
+
+/**
+ * Tags the tests whose fixtures use multi-dollar interpolation, stable from Kotlin 2.2; the modules that build the
+ * plugin for an older compiler exclude them.
+ */
+internal const val MULTI_DOLLAR = "multi-dollar"
 
 /**
  * Tests for the Storm Template compiler plugin.
@@ -64,14 +70,6 @@ class StormTemplatePluginTest {
         // The messages are the fixtures' own diagnostics, which the tests read from the result.
         messageOutputStream = java.io.OutputStream.nullOutputStream()
     }.compile()
-
-    /** Assumes compilation succeeded; skips the test if the compiler does not support the required language features. */
-    private fun assumeCompilationSuccess(result: JvmCompilationResult) {
-        assumeTrue(
-            result.exitCode == KotlinCompilation.ExitCode.OK,
-            "Compilation failed (compiler may not support the required language features): ${result.messages.lines().take(5).joinToString("\n")}",
-        )
-    }
 
     private fun JvmCompilationResult.runMain(): String {
         val output = StringBuilder()
@@ -970,6 +968,7 @@ class StormTemplatePluginTest {
     // -- Multi-dollar string interpolation ($$) tests --
 
     @Test
+    @Tag(MULTI_DOLLAR)
     fun `multi-dollar single interpolation is auto-wrapped`() {
         val source = SourceFile.kotlin(
             "Test.kt",
@@ -986,7 +985,7 @@ class StormTemplatePluginTest {
             """,
         )
         val result = compile(source, languageVersion = "2.2")
-        assumeCompilationSuccess(result)
+        assertEquals(KotlinCompilation.ExitCode.OK, result.exitCode, result.messages)
         val output = result.runMain()
         val lines = output.lines()
         assertEquals("SELECT * FROM users WHERE id = |", lines[0])
@@ -994,6 +993,7 @@ class StormTemplatePluginTest {
     }
 
     @Test
+    @Tag(MULTI_DOLLAR)
     fun `multi-dollar literal dollar sign is preserved as fragment`() {
         val source = SourceFile.kotlin(
             "Test.kt",
@@ -1010,7 +1010,7 @@ class StormTemplatePluginTest {
             """,
         )
         val result = compile(source, languageVersion = "2.2")
-        assumeCompilationSuccess(result)
+        assertEquals(KotlinCompilation.ExitCode.OK, result.exitCode, result.messages)
         val output = result.runMain()
         val lines = output.lines()
         assertEquals("SELECT * FROM users WHERE cost > ${'$'}5 AND id = |", lines[0])
@@ -1018,6 +1018,7 @@ class StormTemplatePluginTest {
     }
 
     @Test
+    @Tag(MULTI_DOLLAR)
     fun `multi-dollar multiple interpolations are auto-wrapped`() {
         val source = SourceFile.kotlin(
             "Test.kt",
@@ -1035,7 +1036,7 @@ class StormTemplatePluginTest {
             """,
         )
         val result = compile(source, languageVersion = "2.2")
-        assumeCompilationSuccess(result)
+        assertEquals(KotlinCompilation.ExitCode.OK, result.exitCode, result.messages)
         val output = result.runMain()
         val lines = output.lines()
         assertEquals("SELECT * FROM users WHERE id = | AND status = |", lines[0])
@@ -1043,6 +1044,7 @@ class StormTemplatePluginTest {
     }
 
     @Test
+    @Tag(MULTI_DOLLAR)
     fun `multi-dollar inline string constant is auto-wrapped`() {
         val source = SourceFile.kotlin(
             "Test.kt",
@@ -1059,7 +1061,7 @@ class StormTemplatePluginTest {
             """,
         )
         val result = compile(source, languageVersion = "2.2")
-        assumeCompilationSuccess(result)
+        assertEquals(KotlinCompilation.ExitCode.OK, result.exitCode, result.messages)
         val output = result.runMain()
         val lines = output.lines()
         assertEquals("SELECT * FROM users WHERE id = | AND email LIKE |", lines[0])
@@ -1067,6 +1069,7 @@ class StormTemplatePluginTest {
     }
 
     @Test
+    @Tag(MULTI_DOLLAR)
     fun `multi-dollar plain string literal is unchanged`() {
         val source = SourceFile.kotlin(
             "Test.kt",
@@ -1082,7 +1085,7 @@ class StormTemplatePluginTest {
             """,
         )
         val result = compile(source, languageVersion = "2.2")
-        assumeCompilationSuccess(result)
+        assertEquals(KotlinCompilation.ExitCode.OK, result.exitCode, result.messages)
         val output = result.runMain()
         val lines = output.lines()
         assertEquals("SELECT COUNT(*) FROM users", lines[0])
@@ -1128,9 +1131,6 @@ class StormTemplatePluginTest {
             """,
         )
         val result = compile(source, languageVersion = languageVersion)
-        if (languageVersion != "2.0") {
-            assumeCompilationSuccess(result)
-        }
         assertEquals(KotlinCompilation.ExitCode.OK, result.exitCode, result.messages)
         val lines = result.runMainEscaped()
         assertEquals(expectedFragments, lines[0])
@@ -1258,6 +1258,7 @@ class StormTemplatePluginTest {
     }
 
     @Test
+    @Tag(MULTI_DOLLAR)
     fun `multi-dollar escape before inline constant is split`() {
         assertTemplate(
             """ ${'$'}${'$'}"a\nb${'$'}${'$'}{"c"}d" """.trim(),
@@ -1268,6 +1269,7 @@ class StormTemplatePluginTest {
     }
 
     @Test
+    @Tag(MULTI_DOLLAR)
     fun `multi-dollar literal marker with inline constant stays text`() {
         assertTemplate(
             """ ${'$'}${'$'}"WHERE ${'$'}{x} = ${'$'}${'$'}{"c"}" """.trim(),
@@ -1278,6 +1280,7 @@ class StormTemplatePluginTest {
     }
 
     @Test
+    @Tag(MULTI_DOLLAR)
     fun `multi-dollar surplus dollar before inline constant stays text`() {
         assertTemplate(
             """ ${'$'}${'$'}"a${'$'}${'$'}${'$'}{"c"}b" """.trim(),

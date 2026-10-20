@@ -1,5 +1,6 @@
 package st.orm.core;
 
+import ch.qos.logback.classic.Level;
 import ch.qos.logback.classic.Logger;
 import org.junit.jupiter.api.extension.AfterEachCallback;
 import org.junit.jupiter.api.extension.BeforeEachCallback;
@@ -16,13 +17,16 @@ public final class QuietValidationLog implements BeforeEachCallback, AfterEachCa
 
     private static final Logger LOGGER = (Logger) LoggerFactory.getLogger("st.orm.validation");
 
+    private Level previous;
+
     @Override
     public void beforeEach(ExtensionContext context) {
-        LOGGER.setAdditive(false);
+        previous = LOGGER.getLevel();
+        LOGGER.setLevel(Level.OFF);
     }
 
     @Override
     public void afterEach(ExtensionContext context) {
-        LOGGER.setAdditive(true);
+        LOGGER.setLevel(previous);
     }
 }

@@ -62,7 +62,7 @@ public open class StormAutoConfiguration {
      * fall back to system properties and then to built-in defaults.
      *
      * Integration strategies are consumed from the application context when present: the Spring-aware connection and
-     * transaction template providers contributed by [StormTransactionAutoConfiguration] (or user-defined
+     * transaction template providers contributed by [StormTransactionAutoConfiguration][st.orm.spring.boot.StormTransactionAutoConfiguration] (or user-defined
      * replacements), and optional [ExceptionMapper] and [QueryObserver] beans. Without such beans the template falls
      * back to `ServiceLoader` discovery, matching standalone behavior.
      *

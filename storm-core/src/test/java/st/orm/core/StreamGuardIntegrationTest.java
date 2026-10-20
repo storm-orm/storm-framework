@@ -114,10 +114,11 @@ public class StreamGuardIntegrationTest {
             var orm = ORMTemplate.of(connection);
             var vets = orm.entity(Vet.class);
             // The batched write executes its first batch while the stream still has rows to read.
-            var exception = assertThrows(PersistenceException.class,
-                    () -> vets.update(vets.select().getResultStream()
-                            .map(vet -> vet.toBuilder().lastName(vet.lastName() + " DVM").build()), 2));
-            assertTrue(exception.getMessage().contains("result stream is still open"), exception.getMessage());
+            try (var stream = vets.select().getResultStream()) {
+                var exception = assertThrows(PersistenceException.class,
+                        () -> vets.update(stream.map(vet -> vet.toBuilder().lastName(vet.lastName() + " DVM").build()), 2));
+                assertTrue(exception.getMessage().contains("result stream is still open"), exception.getMessage());
+            }
         }
     }
 
@@ -144,8 +145,9 @@ public class StreamGuardIntegrationTest {
                 assertEquals(6, vets.count());
             }
             // The same holds for a batched write fed by a stream it reads to the end before its first batch.
-            vets.update(vets.select().getResultStream()
-                    .map(vet -> vet.toBuilder().lastName(vet.lastName() + " DVM").build()));
+            try (var stream = vets.select().getResultStream()) {
+                vets.update(stream.map(vet -> vet.toBuilder().lastName(vet.lastName() + " DVM").build()));
+            }
             assertTrue(vets.select().getResultList().stream().allMatch(vet -> vet.lastName().endsWith(" DVM")));
         }
     }

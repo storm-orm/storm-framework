@@ -190,7 +190,8 @@
                              every test classpath, where Logback and Spring Boot both find it. The properties hold
                              in every module, since modules merge them with their own: java.util.logging reads its
                              file from the same directory, the Ktor modules' SLF4J simple binding defaults to warn,
-                             and Spring Boot prints no banner. -->
+                             and Spring Boot prints no banner and leaves Logback as configured, rather than resetting
+                             it for each context it starts while other threads may be logging. -->
                         <additionalClasspathElements>
                             <additionalClasspathElement>${maven.multiModuleProjectDirectory}/.mvn/test-logging</additionalClasspathElement>
                         </additionalClasspathElements>
@@ -198,6 +199,7 @@
                             <java.util.logging.config.file>${maven.multiModuleProjectDirectory}/.mvn/test-logging/logging.properties</java.util.logging.config.file>
                             <org.slf4j.simpleLogger.defaultLogLevel>warn</org.slf4j.simpleLogger.defaultLogLevel>
                             <spring.main.banner-mode>off</spring.main.banner-mode>
+                            <org.springframework.boot.logging.LoggingSystem>none</org.springframework.boot.logging.LoggingSystem>
                         </systemPropertyVariables>
                     </configuration>
                 </plugin>
