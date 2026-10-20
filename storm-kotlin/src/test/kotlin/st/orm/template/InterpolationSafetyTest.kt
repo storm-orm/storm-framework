@@ -4,6 +4,8 @@ import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.string.shouldContain
 import org.junit.jupiter.api.Test
+import java.util.logging.Level
+import java.util.logging.Logger
 
 /**
  * Tests for the interpolation safety check applied by [build].
@@ -52,7 +54,9 @@ internal class InterpolationSafetyTest {
     @Test
     fun `warn mode builds a template without the plugin marker`() {
         withInterpolationMode("warn") {
-            TemplateString.raw(TemplateContext::explicitTWithoutMarker).shouldNotBeNull()
+            withoutTemplateLog {
+                TemplateString.raw(TemplateContext::explicitTWithoutMarker).shouldNotBeNull()
+            }
         }
     }
 
@@ -100,6 +104,18 @@ private fun withInterpolationMode(mode: String, block: () -> Unit) {
         block()
     } finally {
         if (previous == null) System.clearProperty(MODE_PROPERTY) else System.setProperty(MODE_PROPERTY, previous)
+    }
+}
+
+/** Keeps the warning the warn mode logs for a template without the plugin marker out of the build log. */
+private fun withoutTemplateLog(block: () -> Unit) {
+    val logger = Logger.getLogger("st.orm.template")
+    val previous = logger.level
+    logger.level = Level.OFF
+    try {
+        block()
+    } finally {
+        logger.level = previous
     }
 }
 

@@ -228,7 +228,7 @@ internal class RepositoryTest {
     }
 
     @Test
-    fun `entity extension resolves with and without primary key type`() {
+    fun `entity extension with type arguments infers the primary key type`() {
         val dataSource = createTestDataSource()
         initializeSchema(dataSource)
         try {
@@ -239,8 +239,6 @@ internal class RepositoryTest {
                     }
                     val typedPets = entity<Pet, _>()
                     typedPets.findById(1) shouldNotBe null
-                    val pets = entity<Pet>()
-                    pets.findAll().size shouldBe 3
                 }
             }
         } finally {
@@ -249,7 +247,7 @@ internal class RepositoryTest {
     }
 
     @Test
-    fun `projection extension resolves with and without primary key type`() {
+    fun `projection extension with type arguments infers the primary key type`() {
         val dataSource = createTestDataSource()
         initializeSchema(dataSource)
         try {
@@ -260,8 +258,6 @@ internal class RepositoryTest {
                     }
                     val typedPetViews = projection<PetView, _>()
                     typedPetViews.findById(1) shouldNotBe null
-                    val petViews = projection<PetView>()
-                    petViews.findAll().size shouldBe 3
                 }
             }
         } finally {

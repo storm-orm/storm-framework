@@ -172,17 +172,15 @@ public fun <ID : Any> WriteSet.upsertAndFetchIds(vararg entities: Entity<ID>): L
  *
  * @since 1.12
  */
-@JvmName("entityTyped")
 public inline fun <reified T : Entity<ID>, ID : Any> RepositoryLookup.entity(): EntityRepository<T, ID> = entity(T::class)
 
 /**
- * Returns the repository for entity type [T] without binding the primary key type.
- *
- * The resulting repository supports query building and record-based operations, but not ID-based operations such
- * as `findById`; look the repository up with `entity(User::class)` when the primary key type is needed.
+ * Returns the repository for entity type [T] without binding the primary key type, for the shortcuts that take
+ * records rather than ids.
  */
+@PublishedApi
 @Suppress("UNCHECKED_CAST")
-public inline fun <reified T : Entity<*>> RepositoryLookup.entity(): EntityRepository<T, *> = entity(T::class as KClass<Entity<Any>>) as EntityRepository<T, *>
+internal fun <T : Entity<*>> RepositoryLookup.erasedEntity(type: KClass<T>): EntityRepository<T, *> = entity(type as KClass<Entity<Any>>) as EntityRepository<T, *>
 
 /**
  * Returns the repository for projection type [T] with primary key type [ID].
@@ -194,17 +192,7 @@ public inline fun <reified T : Entity<*>> RepositoryLookup.entity(): EntityRepos
  *
  * @since 1.12
  */
-@JvmName("projectionTyped")
 public inline fun <reified T : Projection<ID>, ID : Any> RepositoryLookup.projection(): ProjectionRepository<T, ID> = projection(T::class)
-
-/**
- * Returns the repository for projection type [T] without binding the primary key type.
- *
- * The resulting repository supports query building and record-based operations, but not ID-based operations such
- * as `findById`; look the repository up with `projection(OwnerView::class)` when the primary key type is needed.
- */
-@Suppress("UNCHECKED_CAST")
-public inline fun <reified T : Projection<*>> RepositoryLookup.projection(): ProjectionRepository<T, *> = projection(T::class as KClass<Projection<Any>>) as ProjectionRepository<T, *>
 
 /**
  * Returns the repository of type [R].
@@ -620,7 +608,7 @@ public inline fun <reified T : Data> RepositoryLookup.exists(predicate: Predicat
  * @param entity The entity to insert.
  * @return The inserted entity after fetching from the database.
  */
-public inline infix fun <reified T : Entity<*>> RepositoryLookup.insert(entity: T): T = entity<T>().insertAndFetch(entity)
+public inline infix fun <reified T : Entity<*>> RepositoryLookup.insert(entity: T): T = erasedEntity(T::class).insertAndFetch(entity)
 
 /**
  * Inserts multiple entities of type [T] into the repository.
@@ -628,7 +616,7 @@ public inline infix fun <reified T : Entity<*>> RepositoryLookup.insert(entity: 
  * @param entities Iterable collection of entities to insert.
  * @return list of inserted entities after fetching from the database.
  */
-public inline infix fun <reified T : Entity<*>> RepositoryLookup.insert(entities: Iterable<T>): List<T> = entity<T>().insertAndFetch(entities)
+public inline infix fun <reified T : Entity<*>> RepositoryLookup.insert(entities: Iterable<T>): List<T> = erasedEntity(T::class).insertAndFetch(entities)
 
 /**
  * Inserts multiple entities of type [T] into the repository.
@@ -636,7 +624,7 @@ public inline infix fun <reified T : Entity<*>> RepositoryLookup.insert(entities
  * @param entities Flow of entities to insert.
  * @return flow of inserted entities after fetching from the database.
  */
-public inline infix fun <reified T : Entity<*>> RepositoryLookup.insert(entities: Flow<T>): Flow<T> = entity<T>().insertAndFetch(entities)
+public inline infix fun <reified T : Entity<*>> RepositoryLookup.insert(entities: Flow<T>): Flow<T> = erasedEntity(T::class).insertAndFetch(entities)
 
 /**
  * Upserts (inserts or updates) an entity of type [T] into the repository.
@@ -644,7 +632,7 @@ public inline infix fun <reified T : Entity<*>> RepositoryLookup.insert(entities
  * @param entity The entity to upsert.
  * @return The upserted entity after fetching from the database.
  */
-public inline infix fun <reified T : Entity<*>> RepositoryLookup.upsert(entity: T): T = entity<T>().upsertAndFetch(entity)
+public inline infix fun <reified T : Entity<*>> RepositoryLookup.upsert(entity: T): T = erasedEntity(T::class).upsertAndFetch(entity)
 
 /**
  * Upserts (inserts or updates) multiple entities of type [T] into the repository.
@@ -652,7 +640,7 @@ public inline infix fun <reified T : Entity<*>> RepositoryLookup.upsert(entity: 
  * @param entities Iterable collection of entities to upsert.
  * @return list of upserted entities after fetching from the database.
  */
-public inline infix fun <reified T : Entity<*>> RepositoryLookup.upsert(entities: Iterable<T>): List<T> = entity<T>().upsertAndFetch(entities)
+public inline infix fun <reified T : Entity<*>> RepositoryLookup.upsert(entities: Iterable<T>): List<T> = erasedEntity(T::class).upsertAndFetch(entities)
 
 /**
  * Upserts (inserts or updates) multiple entities of type [T] into the repository.
@@ -660,7 +648,7 @@ public inline infix fun <reified T : Entity<*>> RepositoryLookup.upsert(entities
  * @param entities Flow of entities to upsert.
  * @return flow of upserted entities after fetching from the database.
  */
-public inline infix fun <reified T : Entity<*>> RepositoryLookup.upsert(entities: Flow<T>): Flow<T> = entity<T>().upsertAndFetch(entities)
+public inline infix fun <reified T : Entity<*>> RepositoryLookup.upsert(entities: Flow<T>): Flow<T> = erasedEntity(T::class).upsertAndFetch(entities)
 
 /**
  * Creates a query builder to delete records of type [T].
@@ -668,7 +656,7 @@ public inline infix fun <reified T : Entity<*>> RepositoryLookup.upsert(entities
  * @return A [QueryBuilder] for deleting records of type [T].
  */
 public inline fun <reified T> RepositoryLookup.delete(): QueryBuilder<T, *, *>
-        where T : Data, T : Entity<*> = entity<T>().delete()
+        where T : Data, T : Entity<*> = erasedEntity(T::class).delete()
 
 /**
  * Creates a query builder to update records of type [T], setting the columns named through `set` on the rows its
@@ -678,49 +666,49 @@ public inline fun <reified T> RepositoryLookup.delete(): QueryBuilder<T, *, *>
  * @since 1.15
  */
 public inline fun <reified T> RepositoryLookup.update(): QueryBuilder<T, *, *>
-        where T : Data, T : Entity<*> = entity<T>().update()
+        where T : Data, T : Entity<*> = erasedEntity(T::class).update()
 
 /**
  * Removes an entity of type [T] from the repository.
  *
  * @param entity The entity to remove.
  */
-public inline infix fun <reified T : Entity<*>> RepositoryLookup.remove(entity: T) = entity<T>().remove(entity)
+public inline infix fun <reified T : Entity<*>> RepositoryLookup.remove(entity: T) = erasedEntity(T::class).remove(entity)
 
 /**
  * Removes multiple entities of type [T] from the repository.
  *
  * @param entity List of entities to remove.
  */
-public inline infix fun <reified T : Entity<*>> RepositoryLookup.remove(entity: Iterable<T>) = entity<T>().remove(entity)
+public inline infix fun <reified T : Entity<*>> RepositoryLookup.remove(entity: Iterable<T>) = erasedEntity(T::class).remove(entity)
 
 /**
  * Removes multiple entities of type [T] from the repository.
  *
  * @param entity Flow of entities to remove.
  */
-public suspend inline infix fun <reified T : Entity<*>> RepositoryLookup.remove(entity: Flow<T>) = entity<T>().remove(entity)
+public suspend inline infix fun <reified T : Entity<*>> RepositoryLookup.remove(entity: Flow<T>) = erasedEntity(T::class).remove(entity)
 
 /**
  * Removes an entity of type [T] from the repository.
  *
  * @param ref The entity to remove.
  */
-public inline infix fun <reified T : Entity<*>> RepositoryLookup.removeByRef(ref: Ref<T>) = entity<T>().removeByRef(ref)
+public inline infix fun <reified T : Entity<*>> RepositoryLookup.removeByRef(ref: Ref<T>) = erasedEntity(T::class).removeByRef(ref)
 
 /**
  * Removes multiple entities of type [T] from the repository.
  *
  * @param refs List of entities to remove.
  */
-public inline infix fun <reified T : Entity<*>> RepositoryLookup.removeByRef(refs: Iterable<Ref<T>>) = entity<T>().removeByRef(refs)
+public inline infix fun <reified T : Entity<*>> RepositoryLookup.removeByRef(refs: Iterable<Ref<T>>) = erasedEntity(T::class).removeByRef(refs)
 
 /**
  * Removes multiple entities of type [T] from the repository.
  *
  * @param refs Flow of entities to remove.
  */
-public suspend inline infix fun <reified T : Entity<*>> RepositoryLookup.removeByRef(refs: Flow<Ref<T>>) = entity<T>().removeByRef(refs)
+public suspend inline infix fun <reified T : Entity<*>> RepositoryLookup.removeByRef(refs: Flow<Ref<T>>) = erasedEntity(T::class).removeByRef(refs)
 
 /**
  * Updates an entity of type [T] in the repository.
@@ -728,7 +716,7 @@ public suspend inline infix fun <reified T : Entity<*>> RepositoryLookup.removeB
  * @param entity The entity to update.
  * @return The updated entity after fetching from the database.
  */
-public inline infix fun <reified T : Entity<*>> RepositoryLookup.update(entity: T): T = entity<T>().updateAndFetch(entity)
+public inline infix fun <reified T : Entity<*>> RepositoryLookup.update(entity: T): T = erasedEntity(T::class).updateAndFetch(entity)
 
 /**
  * Updates multiple entities of type [T] in the repository.
@@ -736,7 +724,7 @@ public inline infix fun <reified T : Entity<*>> RepositoryLookup.update(entity: 
  * @param entities Iterable collection of entities to update.
  * @return list of updated entities after fetching from the database.
  */
-public inline infix fun <reified T : Entity<*>> RepositoryLookup.update(entities: Iterable<T>): List<T> = entity<T>().updateAndFetch(entities)
+public inline infix fun <reified T : Entity<*>> RepositoryLookup.update(entities: Iterable<T>): List<T> = erasedEntity(T::class).updateAndFetch(entities)
 
 /**
  * Updates multiple entities of type [T] in the repository.
@@ -744,14 +732,14 @@ public inline infix fun <reified T : Entity<*>> RepositoryLookup.update(entities
  * @param entities Flow of entities to update.
  * @return flow of updated entities after fetching from the database.
  */
-public inline infix fun <reified T : Entity<*>> RepositoryLookup.update(entities: Flow<T>): Flow<T> = entity<T>().updateAndFetch(entities)
+public inline infix fun <reified T : Entity<*>> RepositoryLookup.update(entities: Flow<T>): Flow<T> = erasedEntity(T::class).updateAndFetch(entities)
 
 /**
  * Removes all entities of type [T] from the repository.
  *
  * @return Unit
  */
-public inline fun <reified T : Entity<*>> RepositoryLookup.removeAll() = entity<T>().removeAll()
+public inline fun <reified T : Entity<*>> RepositoryLookup.removeAll() = erasedEntity(T::class).removeAll()
 
 /**
  * Removes entities of type [T] matching the specified predicate.
@@ -759,7 +747,7 @@ public inline fun <reified T : Entity<*>> RepositoryLookup.removeAll() = entity<
  * @param predicate Lambda to build the WHERE clause.
  * @return the number of entities removed.
  */
-public inline fun <reified T : Entity<*>> RepositoryLookup.removeAll(predicate: PredicateBuilder<T, *, *>): Int = entity<T>().removeAll(predicate)
+public inline fun <reified T : Entity<*>> RepositoryLookup.removeAll(predicate: PredicateBuilder<T, *, *>): Int = erasedEntity(T::class).removeAll(predicate)
 
 /**
  * Removes entities of type [T] matching the specified ID field and its value.
@@ -768,7 +756,7 @@ public inline fun <reified T : Entity<*>> RepositoryLookup.removeAll(predicate: 
  * @param value the ID value to match against.
  * @return the number of entities removed (0 or 1).
  */
-public inline fun <reified T : Entity<ID>, ID : Any> RepositoryLookup.removeBy(field: Metamodel<T, ID>, value: ID): Int = entity<T>().delete().where(field eq value).executeUpdate()
+public inline fun <reified T : Entity<ID>, ID : Any> RepositoryLookup.removeBy(field: Metamodel<T, ID>, value: ID): Int = erasedEntity(T::class).delete().where(field eq value).executeUpdate()
 
 /**
  * Removes entities of type [T] matching the specified ID field and its value.
@@ -777,7 +765,7 @@ public inline fun <reified T : Entity<ID>, ID : Any> RepositoryLookup.removeBy(f
  * @param value the ID value to match against.
  * @return the number of entities removed (0 or 1).
  */
-public inline fun <reified T : Entity<*>> RepositoryLookup.removeBy(field: Metamodel<T, T>, value: Ref<T>): Int = entity<T>().delete().where(field, value).executeUpdate()
+public inline fun <reified T : Entity<*>> RepositoryLookup.removeBy(field: Metamodel<T, T>, value: Ref<T>): Int = erasedEntity(T::class).delete().where(field, value).executeUpdate()
 
 /**
  * Removes entities of type [T] matching the specified field and value.
@@ -786,7 +774,7 @@ public inline fun <reified T : Entity<*>> RepositoryLookup.removeBy(field: Metam
  * @param value the value to match against.
  * @return the number of entities removed.
  */
-public inline fun <reified T : Entity<*>, V : Any> RepositoryLookup.removeAllBy(field: Metamodel<T, V>, value: V): Int = entity<T>().delete().where(field eq value).executeUpdate()
+public inline fun <reified T : Entity<*>, V : Any> RepositoryLookup.removeAllBy(field: Metamodel<T, V>, value: V): Int = erasedEntity(T::class).delete().where(field eq value).executeUpdate()
 
 /**
  * Removes entities of type [T] matching the specified field and referenced value.
@@ -795,7 +783,7 @@ public inline fun <reified T : Entity<*>, V : Any> RepositoryLookup.removeAllBy(
  * @param value the referenced value to match against.
  * @return the number of entities removed.
  */
-public inline fun <reified T : Entity<*>, V : Data> RepositoryLookup.removeAllBy(field: Metamodel<T, V>, value: Ref<V>): Int = entity<T>().delete().where(field, value).executeUpdate()
+public inline fun <reified T : Entity<*>, V : Data> RepositoryLookup.removeAllBy(field: Metamodel<T, V>, value: Ref<V>): Int = erasedEntity(T::class).delete().where(field, value).executeUpdate()
 
 /**
  * Removes entities of type [T] matching the specified field against multiple values.
@@ -804,7 +792,7 @@ public inline fun <reified T : Entity<*>, V : Data> RepositoryLookup.removeAllBy
  * @param values Iterable of values to match against.
  * @return the number of entities removed.
  */
-public inline fun <reified T : Entity<*>, V : Any> RepositoryLookup.removeAllBy(field: Metamodel<T, V>, values: Iterable<V>): Int = entity<T>().delete().where(field inList values).executeUpdate()
+public inline fun <reified T : Entity<*>, V : Any> RepositoryLookup.removeAllBy(field: Metamodel<T, V>, values: Iterable<V>): Int = erasedEntity(T::class).delete().where(field inList values).executeUpdate()
 
 /**
  * Removes entities of type [T] matching the specified field against multiple referenced values.
@@ -816,4 +804,4 @@ public inline fun <reified T : Entity<*>, V : Any> RepositoryLookup.removeAllBy(
 public inline fun <reified T, V> RepositoryLookup.removeAllByRef(
     field: Metamodel<T, V>,
     values: Iterable<Ref<V>>,
-): Int where T : Entity<*>, V : Data = entity<T>().delete().whereRef(field, values).executeUpdate()
+): Int where T : Entity<*>, V : Data = erasedEntity(T::class).delete().whereRef(field, values).executeUpdate()

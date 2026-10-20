@@ -27,7 +27,7 @@ import javax.sql.DataSource
  * by the same `storm.*` properties: the Spring-aware connection and transaction template providers, SQL
  * failure translation to Spring's `DataAccessException` hierarchy, query and transaction observations, and
  * trace-context SQL comments. The observations resolve their semantic conventions against the given data
- * source and, when a [database] name is given, carry it as the low-cardinality `storm.database` key value, so
+ * source and, when a `database` name is given, carry it as the low-cardinality `storm.database` key value, so
  * the templates stay separable in dashboards.
  *
  * ```kotlin
@@ -35,7 +35,7 @@ import javax.sql.DataSource
  * fun orderTemplate(factory: OrmTemplateFactory) = factory.create(orderDataSource, "orders")
  * ```
  *
- * The [customize] block runs after the integration is composed, so application-specific composition, such as
+ * The `customize` block of [create] runs after the integration is composed, so application-specific composition, such as
  * a table name resolver, applies on top without the application touching the integration SPI. A template that
  * needs a different integration altogether defines it in the block, overriding what the factory set.
  *

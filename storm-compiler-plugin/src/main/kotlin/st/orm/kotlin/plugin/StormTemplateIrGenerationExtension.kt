@@ -7,7 +7,7 @@ import org.jetbrains.kotlin.ir.declarations.IrModuleFragment
 import org.jetbrains.kotlin.ir.visitors.transformChildrenVoid
 
 /**
- * IR generation extension that rewrites string template interpolations inside [TemplateBuilder] lambdas. Delegates to
+ * IR generation extension that rewrites string template interpolations inside `TemplateBuilder` lambdas. Delegates to
  * [StormTemplateIrTransformer] for the actual transformation. Diagnostics, e.g. for folded constants that cannot be
  * split back into template text and values, are reported through [messageCollector].
  */

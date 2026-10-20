@@ -158,7 +158,7 @@ val roles = orm.entity(Role::class)
 // Aggregation
 data class CityCount(val city: City, val count: Long)
 
-val counts = users.select<CityCount, _, _> { "${City::class}, COUNT(*)" }
+val counts = users.select(CityCount::class) { "${City::class}, COUNT(*)" }
     .groupBy(User_.city)
     .resultList
 ```

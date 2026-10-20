@@ -1797,7 +1797,7 @@ public fun <T : Data> suggest(
  * @param path the column to apply the function to.
  * @since 1.15
  */
-public operator fun <T : Data, E> SqlFunction<E>.invoke(path: Navigable<T, E>): Metamodel<T, E> = apply(path.asMetamodel())
+public operator fun <T : Data, E : Any> SqlFunction<E>.invoke(path: Navigable<T, E>): Metamodel<T, E> = apply(path.asMetamodel())
 
 /**
  * Infix functions to create a predicate to check if a field is greater than a value.

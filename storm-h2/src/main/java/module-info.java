@@ -1,3 +1,5 @@
+// The module name carries the database it binds, which javac's module lint flags as a terminal digit.
+@SuppressWarnings("module")
 module storm.h2 {
     uses st.orm.core.spi.EntityRepositoryProvider;
     requires storm.foundation;

@@ -11,6 +11,7 @@ import org.jetbrains.kotlin.ir.IrElement
 import org.jetbrains.kotlin.ir.builders.irCall
 import org.jetbrains.kotlin.ir.builders.irConcat
 import org.jetbrains.kotlin.ir.builders.irGet
+import org.jetbrains.kotlin.ir.declarations.IrClass
 import org.jetbrains.kotlin.ir.declarations.IrFile
 import org.jetbrains.kotlin.ir.declarations.IrSimpleFunction
 import org.jetbrains.kotlin.ir.declarations.IrValueParameter
@@ -28,15 +29,14 @@ import org.jetbrains.kotlin.ir.expressions.impl.IrConstImpl
 import org.jetbrains.kotlin.ir.symbols.UnsafeDuringIrConstructionAPI
 import org.jetbrains.kotlin.ir.types.IrType
 import org.jetbrains.kotlin.ir.types.classFqName
+import org.jetbrains.kotlin.ir.types.classOrNull
 import org.jetbrains.kotlin.ir.util.functions
 import org.jetbrains.kotlin.ir.visitors.IrElementTransformerVoid
 import org.jetbrains.kotlin.ir.visitors.transformChildrenVoid
-import org.jetbrains.kotlin.name.ClassId
 import org.jetbrains.kotlin.name.FqName
-import org.jetbrains.kotlin.name.Name
 
 /**
- * IR transformer that auto-wraps string interpolations in `t()` calls inside [TemplateBuilder] lambdas.
+ * IR transformer that auto-wraps string interpolations in `t()` calls inside `TemplateBuilder` lambdas.
  *
  * The transformer detects lambda functions whose extension receiver type is `st.orm.template.TemplateContext`, then
  * finds `IrStringConcatenation` nodes (Kotlin string templates) inside those lambdas. For each non-constant
@@ -74,7 +74,6 @@ class StormTemplateIrTransformer(
 
     companion object {
         private val TEMPLATE_CONTEXT_FQN = FqName("st.orm.template.TemplateContext")
-        private val TEMPLATE_CONTEXT_CLASS_ID = ClassId(FqName("st.orm.template"), Name.identifier("TemplateContext"))
         private val STRING_FQN = FqName("kotlin.String")
     }
 
@@ -128,6 +127,8 @@ class StormTemplateIrTransformer(
         if (receiverFqName != TEMPLATE_CONTEXT_FQN) {
             return super.visitFunctionExpression(expression)
         }
+        // The receiver's class declares the functions the rewrite calls.
+        val templateContextClass = extensionReceiver.type.classOrNull?.owner ?: return super.visitFunctionExpression(expression)
         // We're inside a TemplateBuilder lambda. Set the receiver so nested visits can use it.
         val previousReceiver = templateContextReceiver
         val previousTextPosition = textPosition
@@ -135,10 +136,10 @@ class StormTemplateIrTransformer(
         textPosition = true
         // Resolve function symbols if not already cached.
         if (tFunctionSymbol == null) {
-            tFunctionSymbol = resolveTFunction()
+            tFunctionSymbol = resolveTFunction(templateContextClass)
         }
         if (autoInterpolationSymbol == null) {
-            autoInterpolationSymbol = resolveAutoInterpolationFunction()
+            autoInterpolationSymbol = resolveAutoInterpolationFunction(templateContextClass)
         }
         val result = super.visitFunctionExpression(expression)
         // Recover templates that folded into a single constant; they have no concatenation for the visitor above.
@@ -518,16 +519,14 @@ class StormTemplateIrTransformer(
     }
 
     /** Resolves the `TemplateContext.t(Any?): String` function symbol. */
-    private fun resolveTFunction(): IrSimpleFunction? {
-        val templateContextClass = pluginContext.referenceClass(TEMPLATE_CONTEXT_CLASS_ID) ?: return null
-        return templateContextClass.owner.functions
+    private fun resolveTFunction(templateContextClass: IrClass): IrSimpleFunction? {
+        return templateContextClass.functions
             .firstOrNull { it.name.asString() == "t" && it.valueParameters.size == 1 }
     }
 
     /** Resolves the `TemplateContext.autoInterpolation()` function symbol. */
-    private fun resolveAutoInterpolationFunction(): IrSimpleFunction? {
-        val templateContextClass = pluginContext.referenceClass(TEMPLATE_CONTEXT_CLASS_ID) ?: return null
-        return templateContextClass.owner.functions
+    private fun resolveAutoInterpolationFunction(templateContextClass: IrClass): IrSimpleFunction? {
+        return templateContextClass.functions
             .firstOrNull { it.name.asString() == "autoInterpolation" && it.valueParameters.isEmpty() }
     }
 }

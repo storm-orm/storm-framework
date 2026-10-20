@@ -144,9 +144,11 @@ public class SlowStatementLogIntegrationTest {
         var orm = ORMTemplate.of(dataSource);
         // The claim is that the two figures are kept apart, not that the database is fast; a first execution on a
         // cold JVM costs enough to blur that, so the read is warmed before the one that is measured.
-        try (var warmUp = orm.entity(City.class).select().getResultStream()) {
-            warmUp.count();
-        }
+        capture(Level.WARN, () -> {
+            try (var warmUp = orm.entity(City.class).select().getResultStream()) {
+                return warmUp.count();
+            }
+        });
         var events = capture(Level.WARN, () -> {
             try (var stream = orm.entity(City.class).select().getResultStream()) {
                 Thread.sleep(50);

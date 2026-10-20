@@ -10,7 +10,7 @@ Help the user write Storm queries using Kotlin.
 
 ```kotlin
 import st.orm.template.*                         // QueryBuilder, eq, neq, like, ref, orm, etc.
-import st.orm.repository.*                       // select<Result, _, _> { }, selectRef, findBy, insert, ... (wildcard: see below)
+import st.orm.repository.*                       // findBy, findAllBy, insert, writeSet, ... (wildcard: see below)
 import st.orm.Operator.*                         // escape hatch: only when the operator is chosen at runtime
 import st.orm.Ref                                // Lazy-loaded reference
 import st.orm.Page                               // Offset-based pagination result
@@ -24,7 +24,7 @@ Use `import st.orm.template.*` to get all infix operators and the `ref()` / `orm
 
 **Import both packages with wildcards: `st.orm.template.*` and `st.orm.repository.*`.** Repository operations are top-level extensions in `st.orm.repository`, so `import st.orm.template.*` alone does not bring them in. Naming them individually is how one ends up missing.
 
-The custom-result form `select<Result, _, _> { ... }` is the one that punishes this hardest. Without its import the extension is out of scope, and no `select` member matches a call that passes a template lambda and three type arguments, so nothing applies. On Kotlin 2.0.x the compiler crashes while reporting that resolution failure rather than naming the missing import:
+A call that uses `_` type-argument placeholders punishes a missing import hardest. On Kotlin 2.0.x the compiler crashes while reporting the resolution failure rather than naming the missing import:
 
 ```
 org.jetbrains.kotlin.util.FileAnalysisException: ... Unexpected FirPlaceholderProjectionImpl
@@ -130,13 +130,13 @@ data class CityUserCount(val city: Ref<City>, val userCount: Long)
 
 // ✅ The foreign key field names the foreign key column
 orm.entity(User::class)
-    .select<CityUserCount, _, _> { "${User_.city}, COUNT(*)" }
+    .select(CityUserCount::class) { "${User_.city}, COUNT(*)" }
     .groupBy(User_.city)
     .resultList
 
 // ❌ Redundant `.id` — identical SQL, and it reads like a join into City
 orm.entity(User::class)
-    .select<CityUserCount, _, _> { "${User_.city.id}, COUNT(*)" }
+    .select(CityUserCount::class) { "${User_.city.id}, COUNT(*)" }
     .groupBy(User_.city.id)
     .resultList
 
@@ -259,7 +259,8 @@ Explicit joins — two syntax forms depending on context:
 - **Chained API**: `.innerJoin<UserRole>().on<Role>()` — the join widens the query; chain `.where()` for root and joined fields alike
 - **A condition on the join**: `.leftJoin<Pet>().on<Owner> { Pet_.name eq "Leo" }` adds the condition to the resolved foreign key (block DSL: `leftJoin<Pet, Owner> { Pet_.name eq "Leo" }`); on a left join it keeps the rows without a match, which the same condition in `where` would drop
 - **Filtering by related rows**: `.semiJoin<Pet>().on<Owner>()` keeps the rows with a related row matching the conditions that name it, each once; `.antiJoin<Visit>().on<Pet> { Visit_.description eq "rabies shot" }` keeps the rows without one (block DSL: `semiJoin<Pet, Owner>()`, `antiJoin<Visit, Pet> { ... }`)
-Select result type: `.select<ResultType, _, _>()` to return a different type than the root entity
+- **A join named by class** (an aliased `join(JoinType.inner(), Order::class, "recent")`): its `on` takes the class too, `.on(User::class)`; a join and its `on` use the same form
+Select result type: `.select(ResultType::class)` to return a different type than the root entity
 
 **Always prefer entity/metamodel-based QueryBuilder methods over SQL template strings.** SQL templates are an escape hatch for things the QueryBuilder cannot express.
 
@@ -325,7 +326,7 @@ When you do use template lambdas, use `${}` interpolation (the compiler plugin h
 val userCount = orm.entity(User::class).selectCount().singleResult
 
 val citySummaries = orm.entity(City::class)
-    .select<CitySummary, _, _>()
+    .select(CitySummary::class)
     .groupBy(City_.country)
     .having(City_.population greater 100000)
     .resultList
@@ -338,7 +339,7 @@ val citySummaries = orm.entity(City::class)
 .having { "COUNT(*) > ${minimum}" }                       // aggregate — template
 ```
 
-**Computed aggregates (COUNT, AVG, SUM, etc.):** When the SELECT clause needs expressions that QueryBuilder can't produce, use `select<ResultType, _, _> { template }` for the SELECT only — keep joins, groupBy, having, orderBy, and limit in code. The result type is explicit; the underscores let Kotlin infer the repository's entity and ID types. Style: use the underscore form only in code that is otherwise fully reified; if the surrounding query uses `::class` calls, write `select(ResultType::class) { template }` instead — keep each snippet internally consistent (template interpolations like `${City::class}` don't count).
+**Computed aggregates (COUNT, AVG, SUM, etc.):** When the SELECT clause needs expressions that QueryBuilder can't produce, use `select(ResultType::class) { template }` for the SELECT only — keep joins, groupBy, having, orderBy, and limit in code. The result type is a class literal, as in every call where a type argument alone would not give Kotlin the repository's entity and ID types.
 
 **`Data` means "represents a table".** Only types that map to a database table implement `Data` (or its subtypes `Entity`/`Projection`). Ad-hoc query result types — aggregation DTOs, computed shapes — are plain data classes with no marker at all. Storm maps result columns to any suitable data class, including nested entity and `Ref<T>` components. Implementing `Data` on a result type pulls it into Storm's type discovery, so schema validation (`validateSchema()` without arguments, or `storm.validation.schema-mode` at startup) fails with `TABLE_NOT_FOUND` — which then requires `@DbIgnore` to suppress. `: Data` + `@DbIgnore` on a result type is an anti-pattern (opting in and immediately opting out); a plain data class expresses the intent directly. Define result types next to the code that produces them — typically top-level in the repository file whose queries return them; the model package is reserved for table-backed types — and document them as query result shapes (not backed by a table or view) so readers immediately see why they carry no marker.
 
@@ -352,7 +353,7 @@ val citySummaries = orm.entity(City::class)
 data class CityUserCount(val city: City, val userCount: Long)
 
 val cityCounts = orm.entity(City::class)
-    .select<CityUserCount, _, _> { "${City::class}, COUNT(*)" }
+    .select(CityUserCount::class) { "${City::class}, COUNT(*)" }
     .leftJoin<User>().on<City>()
     .groupBy(City_.id)
     .resultList
@@ -362,7 +363,7 @@ data class CityUserStats(val cityName: String, val averageAge: Double, val userC
 
 val minUsers = 10
 val topCities = orm.entity(City::class)
-    .select<CityUserStats, _, _> { "${City_.name}, AVG(${User_.age}), COUNT(*)" }
+    .select(CityUserStats::class) { "${City_.name}, AVG(${User_.age}), COUNT(*)" }
     .leftJoin<User>().on<City>()
     .groupBy(City_.name)
     .having { "COUNT(*) >= $minUsers" }               // template form for aggregate expressions
@@ -373,7 +374,7 @@ val topCities = orm.entity(City::class)
 data class CityPostalCodeCount(val city: Ref<City>, val postalCode: String?, val userCount: Long)
 
 val counts = orm.entity(User::class)
-    .select<CityPostalCodeCount, _, _> { "${User_.city}, ${User_.postalCode}, COUNT(*)" }
+    .select(CityPostalCodeCount::class) { "${User_.city}, ${User_.postalCode}, COUNT(*)" }
     .groupBy(User_.city, User_.postalCode)    // ✅ varargs metamodel form
     .resultList
 
@@ -420,7 +421,7 @@ The dialect places it: a `/*+ ... */` comment after `SELECT`/`UPDATE`/`DELETE` o
 
 ```kotlin
 val uniqueCities = orm.entity(User::class)
-    .select<City, _, _>()
+    .select(City::class)
     .distinct()
     .resultList
 
@@ -468,13 +469,13 @@ val users = orm.entity(User::class)
 // Select a column from beyond the reference.
 data class CountryName(val name: String)
 val names = orm.entity(User::class)
-    .select<CountryName, _, _> { "${User_.city.country.name}" }
+    .select(CountryName::class) { "${User_.city.country.name}" }
     .where(User_.city.country.name eq "United States")
     .resultList
 
 // Select the referenced entity itself: the city table is joined on demand and hydrated
 // with its own country foreign key.
-val cities = orm.entity(User::class).select<City, _, _>().resultList
+val cities = orm.entity(User::class).select(City::class).resultList
 
 // Join another table onto the referenced one; the join brings the city table in.
 val sharingACity = orm.entity(User::class).select()
@@ -805,28 +806,28 @@ Available in the block: `where`, `whereBuilder`, `whereExists`, `whereNotExists`
 
 **Note:** The block DSL has `orderBy { template }` but NOT `orderByDescending { template }`. For template-based descending order, use the chained API: `.orderByDescending { template }` or escape to raw SQL.
 
-The block DSL is typed to the root entity. There is **no** `select<ResultType, _, _> { block }` form — `select { }` always returns the root entity type. (In `select<ResultType, _, _> { ... }` / `select(ResultType::class) { ... }` the trailing lambda is a SQL template for the SELECT clause, not a block DSL.) To select a different result type, use the chained API:
+The block DSL is typed to the root entity. There is **no** `select(ResultType::class) { block }` form — `select { }` always returns the root entity type. (In `select(ResultType::class) { ... }` the trailing lambda is a SQL template for the SELECT clause, not a block DSL.) To select a different result type, use the chained API:
 ```kotlin
 // ❌ Not valid — no block DSL overload for result type
-select<UserSummary, _, _> {
+select(UserSummary::class) {
     where(User_.email like "%@example.com")
 }.resultList
 
 // ✅ Use chained API for a different result type
-select<UserSummary, _, _>()
+select(UserSummary::class)
     .where(User_.email like "%@example.com")
     .resultList
 
 // ✅ With joins — chained API uses .innerJoin<A>().on<B>(), not the two-type-arg form
-select<UserSummary, _, _>()
+select(UserSummary::class)
     .innerJoin<UserRole>().on<User>()
     .where(UserRole_.role eq role)
     .scroll(Scrollable.of(User_.id, 20))
 ```
 
-**What `select<ResultType, _, _>()` is for:** It selects a different result type from the query. This works for:
-- **Joined entity types** — e.g., `select<City, _, _>()` from a `User` query that joins `City`.
-- **Custom SELECT with template** — e.g., `select<Summary, _, _> { template }` with a custom SQL select clause that maps to the result type's fields.
+**What `select(ResultType::class)` is for:** It selects a different result type from the query. This works for:
+- **Joined entity types** — e.g., `select(City::class)` from a `User` query that joins `City`.
+- **Custom SELECT with template** — e.g., `select(Summary::class) { template }` with a custom SQL select clause that maps to the result type's fields.
 
 It does **not** work for selecting a column subset of the root entity: a `UserSummary` with only `id` and `name` from `User` will fail with "Cannot find alias for column." Read the entity itself; where the column subset matters for performance or the read needs a shape the entity cannot give, use a `Projection<T>` with `ProjectionRepository` (see **One Entity per Table, Projections for Performance or Customization** in the Storm rules).
 

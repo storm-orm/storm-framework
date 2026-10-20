@@ -11,7 +11,7 @@ import org.jetbrains.kotlin.config.CompilerConfiguration
  * Entry point for the Storm Template compiler plugin.
  *
  * Registers an IR extension that auto-wraps string interpolations inside
- * [TemplateBuilder][st.orm.template.TemplateBuilder] lambdas with [t()][st.orm.template.TemplateContext.t] calls.
+ * `TemplateBuilder` lambdas with `t()` calls.
  *
  * Without the plugin, users write:
  * ```kotlin
