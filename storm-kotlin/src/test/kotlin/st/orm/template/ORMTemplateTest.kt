@@ -486,12 +486,6 @@ internal open class ORMTemplateTest(
     }
 
     @Test
-    fun `entity and projection without primary key type should support queries`() {
-        orm.entity<City>().select().resultList shouldHaveSize 6
-        orm.projection<OwnerView>().select().resultList.shouldNotBeEmpty()
-    }
-
-    @Test
     fun `selectFrom with reified types and template should return typed results`() {
         val cities = orm.selectFrom<City, City> { t(City::class) }.resultList
         cities shouldHaveSize 6

@@ -235,20 +235,9 @@ public inline fun <reified T : Repository> RoutingContext.repository(): T = call
  * @throws IllegalStateException if the Storm plugin is not installed.
  * @since 1.12
  */
-@JvmName("entityTyped")
 public inline fun <reified T : Entity<ID>, ID : Any> Application.entity(): EntityRepository<T, ID> = orm.entity<T, ID>()
 
 /**
- * Returns the repository for entity type [T] without binding the primary key type.
- *
- * Use `entity(User::class)` when ID-based operations such as `findById` are needed.
- *
- * @throws IllegalStateException if the Storm plugin is not installed.
- * @since 1.12
- */
-public inline fun <reified T : Entity<*>> Application.entity(): EntityRepository<T, *> = orm.entity<T>()
-
-/**
  * Returns the repository for entity type [T] with primary key type [ID].
  *
  * Convenience extension for use in route handlers. See [Application.entity].
@@ -256,20 +245,9 @@ public inline fun <reified T : Entity<*>> Application.entity(): EntityRepository
  * @throws IllegalStateException if the Storm plugin is not installed.
  * @since 1.12
  */
-@JvmName("entityTyped")
 public inline fun <reified T : Entity<ID>, ID : Any> ApplicationCall.entity(): EntityRepository<T, ID> = application.entity<T, ID>()
 
 /**
- * Returns the repository for entity type [T] without binding the primary key type.
- *
- * Convenience extension for use in route handlers. See [Application.entity].
- *
- * @throws IllegalStateException if the Storm plugin is not installed.
- * @since 1.12
- */
-public inline fun <reified T : Entity<*>> ApplicationCall.entity(): EntityRepository<T, *> = application.entity<T>()
-
-/**
  * Returns the repository for entity type [T] with primary key type [ID].
  *
  * Convenience extension for use in route handlers. See [Application.entity].
@@ -277,18 +255,7 @@ public inline fun <reified T : Entity<*>> ApplicationCall.entity(): EntityReposi
  * @throws IllegalStateException if the Storm plugin is not installed.
  * @since 1.12
  */
-@JvmName("entityTyped")
 public inline fun <reified T : Entity<ID>, ID : Any> RoutingContext.entity(): EntityRepository<T, ID> = call.application.entity<T, ID>()
-
-/**
- * Returns the repository for entity type [T] without binding the primary key type.
- *
- * Convenience extension for use in route handlers. See [Application.entity].
- *
- * @throws IllegalStateException if the Storm plugin is not installed.
- * @since 1.12
- */
-public inline fun <reified T : Entity<*>> RoutingContext.entity(): EntityRepository<T, *> = call.application.entity<T>()
 
 /**
  * Returns the repository for projection type [T] with primary key type [ID].
@@ -298,20 +265,9 @@ public inline fun <reified T : Entity<*>> RoutingContext.entity(): EntityReposit
  * @throws IllegalStateException if the Storm plugin is not installed.
  * @since 1.12
  */
-@JvmName("projectionTyped")
 public inline fun <reified T : Projection<ID>, ID : Any> Application.projection(): ProjectionRepository<T, ID> = orm.projection<T, ID>()
 
 /**
- * Returns the repository for projection type [T] without binding the primary key type.
- *
- * Use `projection(OwnerView::class)` when ID-based operations such as `findById` are needed.
- *
- * @throws IllegalStateException if the Storm plugin is not installed.
- * @since 1.12
- */
-public inline fun <reified T : Projection<*>> Application.projection(): ProjectionRepository<T, *> = orm.projection<T>()
-
-/**
  * Returns the repository for projection type [T] with primary key type [ID].
  *
  * Convenience extension for use in route handlers. See [Application.projection].
@@ -319,20 +275,9 @@ public inline fun <reified T : Projection<*>> Application.projection(): Projecti
  * @throws IllegalStateException if the Storm plugin is not installed.
  * @since 1.12
  */
-@JvmName("projectionTyped")
 public inline fun <reified T : Projection<ID>, ID : Any> ApplicationCall.projection(): ProjectionRepository<T, ID> = application.projection<T, ID>()
 
 /**
- * Returns the repository for projection type [T] without binding the primary key type.
- *
- * Convenience extension for use in route handlers. See [Application.projection].
- *
- * @throws IllegalStateException if the Storm plugin is not installed.
- * @since 1.12
- */
-public inline fun <reified T : Projection<*>> ApplicationCall.projection(): ProjectionRepository<T, *> = application.projection<T>()
-
-/**
  * Returns the repository for projection type [T] with primary key type [ID].
  *
  * Convenience extension for use in route handlers. See [Application.projection].
@@ -340,18 +285,7 @@ public inline fun <reified T : Projection<*>> ApplicationCall.projection(): Proj
  * @throws IllegalStateException if the Storm plugin is not installed.
  * @since 1.12
  */
-@JvmName("projectionTyped")
 public inline fun <reified T : Projection<ID>, ID : Any> RoutingContext.projection(): ProjectionRepository<T, ID> = call.application.projection<T, ID>()
-
-/**
- * Returns the repository for projection type [T] without binding the primary key type.
- *
- * Convenience extension for use in route handlers. See [Application.projection].
- *
- * @throws IllegalStateException if the Storm plugin is not installed.
- * @since 1.12
- */
-public inline fun <reified T : Projection<*>> RoutingContext.projection(): ProjectionRepository<T, *> = call.application.projection<T>()
 
 /**
  * Returns the repository for entity type [type], with the primary key type inferred from the entity.
