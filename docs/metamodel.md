@@ -282,8 +282,8 @@ Custom joins are not part of the entity graph traversal, so nested paths cannot 
 ```kotlin
 val users = orm.entity(User::class)
     .select()
-    .join(JoinType.inner(), Order::class, "recent").on<User>()
-    .join(JoinType.inner(), Order::class, "first").on<User>()
+    .join(JoinType.inner(), Order::class, "recent").on(User::class)
+    .join(JoinType.inner(), Order::class, "first").on(User::class)
     .where(/* use SQL template with explicit aliases */)
     .resultList
 ```

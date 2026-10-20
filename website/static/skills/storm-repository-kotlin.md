@@ -92,7 +92,7 @@ val users = orm.entity(User::class)          // EntityRepository<User, Int>: the
 val userRepository = orm.repository<UserRepository>()  // import st.orm.repository.repository
 ```
 
-Prefer the reified form unless it needs `_` placeholders; then use the class literal. Repositories are looked up by class, `orm.entity(User::class)`, which infers the ID type, and a different result type is selected by class, `users.select(City::class)`.
+Prefer the reified form unless it needs `_` placeholders; then use the class literal. A join and its `on` use the same form. Repositories are looked up by class, `orm.entity(User::class)`, which infers the ID type, and a different result type is selected by class, `users.select(City::class)`.
 
 ```kotlin
 // ⚠️ Repository interfaces MUST import the predicate operators — they are Kotlin extension functions:

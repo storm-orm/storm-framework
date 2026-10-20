@@ -259,6 +259,7 @@ Explicit joins — two syntax forms depending on context:
 - **Chained API**: `.innerJoin<UserRole>().on<Role>()` — the join widens the query; chain `.where()` for root and joined fields alike
 - **A condition on the join**: `.leftJoin<Pet>().on<Owner> { Pet_.name eq "Leo" }` adds the condition to the resolved foreign key (block DSL: `leftJoin<Pet, Owner> { Pet_.name eq "Leo" }`); on a left join it keeps the rows without a match, which the same condition in `where` would drop
 - **Filtering by related rows**: `.semiJoin<Pet>().on<Owner>()` keeps the rows with a related row matching the conditions that name it, each once; `.antiJoin<Visit>().on<Pet> { Visit_.description eq "rabies shot" }` keeps the rows without one (block DSL: `semiJoin<Pet, Owner>()`, `antiJoin<Visit, Pet> { ... }`)
+- **A join named by class** (an aliased `join(JoinType.inner(), Order::class, "recent")`): its `on` takes the class too, `.on(User::class)`; a join and its `on` use the same form
 Select result type: `.select(ResultType::class)` to return a different type than the root entity
 
 **Always prefer entity/metamodel-based QueryBuilder methods over SQL template strings.** SQL templates are an escape hatch for things the QueryBuilder cannot express.
