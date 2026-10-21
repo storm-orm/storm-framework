@@ -41,8 +41,7 @@ public class PostgreSQLSchemaValidatorConformanceTest extends AbstractSchemaVali
                 statement.execute("CREATE INDEX index_partial_view_a ON index_partial_view (a)");
                 var dialect = Providers.getSqlDialect(connection, StormConfig.defaults());
                 var schema = DatabaseSchema.read(connection, connection.getCatalog(), connection.getSchema(),
-                        dialect.sequenceDiscoveryStrategy(), dialect.constraintDiscoveryStrategy(),
-                        dialect.indexDiscoveryStrategy());
+                    DatabaseSchema.Discovery.of(dialect));
                 var partial = schema.getIndexes("index_partial").stream()
                         .filter(index -> index.indexName().equals("index_partial_a"))
                         .toList();

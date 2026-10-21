@@ -216,8 +216,7 @@ public abstract class AbstractSchemaValidatorConformanceTest {
                 statement.execute("CREATE UNIQUE INDEX index_probe_c ON index_probe (c)");
                 var dialect = Providers.getSqlDialect(connection, StormConfig.defaults());
                 var schema = DatabaseSchema.read(connection, connection.getCatalog(), connection.getSchema(),
-                        dialect.sequenceDiscoveryStrategy(), dialect.constraintDiscoveryStrategy(),
-                        dialect.indexDiscoveryStrategy());
+                    DatabaseSchema.Discovery.of(dialect));
                 assertTrue(schema.isDiscovered("index_probe", ConstraintKind.INDEX));
                 var indexes = schema.getIndexes("index_probe");
                 var composite = indexes.stream()
@@ -259,8 +258,7 @@ public abstract class AbstractSchemaValidatorConformanceTest {
                 SchemaValidator.of(dataSource).load(List.of());
                 var dialect = Providers.getSqlDialect(connection, StormConfig.defaults());
                 var schema = DatabaseSchema.read(connection, connection.getCatalog(), connection.getSchema(),
-                        dialect.sequenceDiscoveryStrategy(), dialect.constraintDiscoveryStrategy(),
-                        dialect.indexDiscoveryStrategy());
+                    DatabaseSchema.Discovery.of(dialect));
                 var expression = schema.getIndexes("index_probe").stream()
                         .filter(index -> index.indexName().equalsIgnoreCase("index_probe_lower"))
                         .toList();

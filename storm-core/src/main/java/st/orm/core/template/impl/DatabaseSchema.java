@@ -34,8 +34,8 @@ import java.util.TreeSet;
 import org.jspecify.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import st.orm.core.template.SqlDialect;
 import st.orm.core.template.SqlDialect.ConstraintDiscoveryStrategy;
-import st.orm.core.template.SqlDialect.IndexDiscoveryStrategy;
 import st.orm.core.template.SqlDialect.SequenceDiscoveryStrategy;
 
 /**
@@ -155,6 +155,55 @@ public final class DatabaseSchema {
         INDEX
     }
 
+    /**
+     * How a schema read discovers what the columns do not show: the standard strategies, and the queries a dialect
+     * supplies for a database that lists its keys, sequences or indexes in a catalog of its own. A query takes the
+     * schema name as its only parameter; without a schema name to bind, the strategy is used instead.
+     *
+     * @param sequences the strategy for discovering sequences.
+     * @param constraints the strategy for discovering primary keys, unique keys, and foreign keys.
+     * @param keyQuery the query that lists primary and unique keys, as {@link SqlDialect#keyDiscoveryQuery()}
+     *                 describes it, or {@code null} to use the strategy.
+     * @param foreignKeyQuery the query that lists foreign keys, as {@link SqlDialect#foreignKeyDiscoveryQuery()}
+     *                        describes it, or {@code null} to use the strategy.
+     * @param sequenceQuery the query that lists sequences, as {@link SqlDialect#sequenceDiscoveryQuery()} describes
+     *                      it, or {@code null} to use the strategy.
+     * @param indexQuery the query that lists indexes, as {@link SqlDialect#indexDiscoveryQuery()} describes it, or
+     *                   {@code null} to read them per table through JDBC metadata.
+     * @since 1.15
+     */
+    public record Discovery(
+            SequenceDiscoveryStrategy sequences,
+            ConstraintDiscoveryStrategy constraints,
+            @Nullable String keyQuery,
+            @Nullable String foreignKeyQuery,
+            @Nullable String sequenceQuery,
+            @Nullable String indexQuery
+    ) {
+        /**
+         * Returns the discovery the given strategies describe, without dialect queries.
+         *
+         * @param sequences the strategy for discovering sequences.
+         * @param constraints the strategy for discovering primary keys, unique keys, and foreign keys.
+         * @return the discovery.
+         */
+        public static Discovery of(SequenceDiscoveryStrategy sequences, ConstraintDiscoveryStrategy constraints) {
+            return new Discovery(sequences, constraints, null, null, null, null);
+        }
+
+        /**
+         * Returns the discovery the dialect describes: its strategies and its queries.
+         *
+         * @param dialect the dialect of the database.
+         * @return the discovery.
+         */
+        public static Discovery of(SqlDialect dialect) {
+            return new Discovery(dialect.sequenceDiscoveryStrategy(), dialect.constraintDiscoveryStrategy(),
+                    dialect.keyDiscoveryQuery(), dialect.foreignKeyDiscoveryQuery(), dialect.sequenceDiscoveryQuery(),
+                    dialect.indexDiscoveryQuery());
+        }
+    }
+
     // Case-insensitive maps: table name -> columns/PKs/UKs/FKs.
     private final SortedMap<String, List<DbColumn>> columnsByTable;
     private final SortedMap<String, List<DbPrimaryKey>> primaryKeysByTable;
@@ -228,19 +277,16 @@ public final class DatabaseSchema {
      */
     public static DatabaseSchema read(Connection connection) throws SQLException {
         return read(connection, connection.getCatalog(), connection.getSchema(),
-                SequenceDiscoveryStrategy.INFORMATION_SCHEMA, ConstraintDiscoveryStrategy.INFORMATION_SCHEMA,
-                IndexDiscoveryStrategy.JDBC_METADATA);
+                Discovery.of(SequenceDiscoveryStrategy.INFORMATION_SCHEMA, ConstraintDiscoveryStrategy.INFORMATION_SCHEMA));
     }
 
     /**
-     * Reads the database schema from the given connection using the specified discovery strategies.
+     * Reads the database schema from the given connection as the given discovery describes.
      *
-     * @param connection                    the JDBC connection.
-     * @param catalog                       the catalog name (may be null).
-     * @param schemaPattern                 the schema pattern (may be null).
-     * @param sequenceDiscoveryStrategy     the strategy for discovering sequences.
-     * @param constraintDiscoveryStrategy   the strategy for discovering primary keys, unique keys, and foreign keys.
-     * @param indexDiscoveryStrategy        the strategy for discovering indexes.
+     * @param connection    the JDBC connection.
+     * @param catalog       the catalog name (may be null).
+     * @param schemaPattern the schema pattern (may be null).
+     * @param discovery     the strategies and queries to discover keys, sequences, and indexes with.
      * @return the database schema.
      * @throws SQLException if a database access error occurs.
      */
@@ -248,9 +294,7 @@ public final class DatabaseSchema {
             Connection connection,
             @Nullable String catalog,
             @Nullable String schemaPattern,
-            SequenceDiscoveryStrategy sequenceDiscoveryStrategy,
-            ConstraintDiscoveryStrategy constraintDiscoveryStrategy,
-            IndexDiscoveryStrategy indexDiscoveryStrategy
+            Discovery discovery
     ) throws SQLException {
         DatabaseMetaData metadata = connection.getMetaData();
         // Normalize the schema pattern to match the database's identifier casing convention.
@@ -287,9 +331,8 @@ public final class DatabaseSchema {
                 if (!columnsByTable.containsKey(tableName)) {
                     continue;
                 }
-                // The columns are read in their result set order. Oracle returns COLUMN_DEF as a LONG, which its
-                // driver streams: reading a later column first closes the stream, and COLUMN_DEF can no longer be
-                // read.
+                // The columns are read in their result set order. A driver may return COLUMN_DEF as a streamed long
+                // value: reading a later column first closes the stream, and COLUMN_DEF can no longer be read.
                 String columnName = columns.getString("COLUMN_NAME");
                 int dataType = columns.getInt("DATA_TYPE");
                 String typeName = columns.getString("TYPE_NAME");
@@ -305,16 +348,45 @@ public final class DatabaseSchema {
                         .add(new DbColumn(tableName, columnName, dataType, typeName, columnSize, nullable, autoIncrement, hasDefault));
             }
         }
-        // Discover primary keys, unique keys, and foreign keys using the dialect-provided strategy.
+        // A database that names its schemas as catalogs has no schema pattern; its catalog is the schema the
+        // dialect's queries filter on.
+        String schema = schemaPattern != null ? schemaPattern : catalog;
+        // Discover primary keys, unique keys, and foreign keys with the dialect's queries, or its strategy.
         Map<ConstraintKind, SortedSet<String>> discoveredByKind = new EnumMap<>(ConstraintKind.class);
-        readConstraints(connection, metadata, catalog, schemaPattern, columnsByTable,
-                primaryKeysByTable, uniqueKeysByTable, foreignKeysByTable, constraintDiscoveryStrategy,
-                discoveredByKind);
-        // Discover indexes using the dialect-provided strategy.
-        readIndexes(connection, metadata, catalog, schemaPattern, columnsByTable, indexesByTable,
-                indexDiscoveryStrategy, discoveredByKind);
-        // Discover sequences using the dialect-provided strategy.
-        boolean sequencesDiscovered = readSequences(connection, catalog, schemaPattern, sequences, sequenceDiscoveryStrategy);
+        String keyQuery = schema == null ? null : discovery.keyQuery();
+        String foreignKeyQuery = schema == null ? null : discovery.foreignKeyQuery();
+        if (keyQuery == null || foreignKeyQuery == null) {
+            readConstraints(connection, metadata, catalog, schemaPattern, columnsByTable,
+                    primaryKeysByTable, uniqueKeysByTable, foreignKeysByTable, discovery.constraints(),
+                    discoveredByKind);
+        }
+        if (keyQuery != null) {
+            primaryKeysByTable.clear();
+            uniqueKeysByTable.clear();
+            discoveredByKind.remove(ConstraintKind.PRIMARY_KEY);
+            discoveredByKind.remove(ConstraintKind.UNIQUE_KEY);
+            readKeys(connection, keyQuery, List.of(schema), columnsByTable, primaryKeysByTable, uniqueKeysByTable,
+                    discoveredByKind);
+        }
+        if (foreignKeyQuery != null) {
+            foreignKeysByTable.clear();
+            discoveredByKind.remove(ConstraintKind.FOREIGN_KEY);
+            readForeignKeys(connection, foreignKeyQuery, List.of(schema), columnsByTable, foreignKeysByTable,
+                    discoveredByKind);
+        }
+        // Discover indexes with the dialect's query, or per table.
+        String indexQuery = schema == null ? null : discovery.indexQuery();
+        if (indexQuery == null) {
+            readIndexesFromJdbcMetadata(metadata, catalog, schemaPattern, columnsByTable, indexesByTable,
+                    discoveredByKind);
+        } else {
+            readIndexesWithQuery(connection, indexQuery, schema, columnsByTable, indexesByTable, discoveredByKind);
+        }
+        // Discover sequences with the dialect's query, or its strategy.
+        String sequenceQuery = schema == null ? null : discovery.sequenceQuery();
+        boolean sequencesDiscovered = sequenceQuery != null
+                ? readSequences(connection, sequenceQuery, List.of(schema), sequences)
+                : readSequences(connection, catalog, schemaPattern, sequences, discovery.sequences());
         return new DatabaseSchema(columnsByTable, primaryKeysByTable, uniqueKeysByTable, foreignKeysByTable,
                 indexesByTable, sequences, sequencesDiscovered, discoveredByKind, views);
     }
@@ -347,9 +419,6 @@ public final class DatabaseSchema {
                     primaryKeysByTable, uniqueKeysByTable, foreignKeysByTable, discovered);
             case INFORMATION_SCHEMA_REFERENCING -> readConstraintsFromInformationSchemaReferencing(
                     connection, catalog, schemaPattern, columnsByTable,
-                    primaryKeysByTable, uniqueKeysByTable, foreignKeysByTable, discovered);
-            case ALL_CONSTRAINTS -> readConstraintsFromAllConstraints(
-                    connection, schemaPattern, columnsByTable,
                     primaryKeysByTable, uniqueKeysByTable, foreignKeysByTable, discovered);
         }
     }
@@ -631,153 +700,81 @@ public final class DatabaseSchema {
     }
 
     /**
-     * Reads constraints using {@code ALL_CONSTRAINTS} and {@code ALL_CONS_COLUMNS} dictionary views.
+     * Reads primary and unique keys with a query that selects {@code CONSTRAINT_TYPE} ({@code PRIMARY KEY} or
+     * {@code UNIQUE}), {@code CONSTRAINT_NAME}, {@code TABLE_NAME}, {@code COLUMN_NAME} and {@code ORDINAL_POSITION}.
+     * A query that fails leaves the keys unknown.
      */
-    private static void readConstraintsFromAllConstraints(
+    private static void readKeys(
             Connection connection,
-            @Nullable String schemaPattern,
+            String sql,
+            List<String> parameters,
             SortedMap<String, List<DbColumn>> columnsByTable,
             SortedMap<String, List<DbPrimaryKey>> primaryKeysByTable,
             SortedMap<String, List<DbUniqueKey>> uniqueKeysByTable,
-            SortedMap<String, List<DbForeignKey>> foreignKeysByTable,
             Map<ConstraintKind, SortedSet<String>> discovered
     ) {
-        // Primary keys and unique constraints.
-        try {
-            StringBuilder sql = new StringBuilder("""
-                    SELECT ac.CONSTRAINT_TYPE, ac.CONSTRAINT_NAME,
-                           acc.TABLE_NAME, acc.COLUMN_NAME, acc.POSITION
-                    FROM ALL_CONSTRAINTS ac
-                    JOIN ALL_CONS_COLUMNS acc
-                      ON ac.OWNER = acc.OWNER
-                      AND ac.CONSTRAINT_NAME = acc.CONSTRAINT_NAME
-                    WHERE ac.CONSTRAINT_TYPE IN ('P', 'U')""");
-            List<String> parameters = new ArrayList<>();
-            appendFilter(sql, true, "ac.OWNER", schemaPattern, parameters);
-            try (var statement = prepareSchemaQuery(connection, sql.toString(), parameters);
-                 var resultSet = statement.executeQuery()) {
-                while (resultSet.next()) {
-                    String tableName = resultSet.getString("TABLE_NAME");
-                    if (!columnsByTable.containsKey(tableName)) {
-                        continue;
-                    }
-                    String constraintType = resultSet.getString("CONSTRAINT_TYPE");
-                    String constraintName = resultSet.getString("CONSTRAINT_NAME");
-                    String columnName = resultSet.getString("COLUMN_NAME");
-                    int position = resultSet.getInt("POSITION");
-                    if ("P".equals(constraintType)) {
-                        primaryKeysByTable.computeIfAbsent(tableName, k -> new ArrayList<>())
-                                .add(new DbPrimaryKey(tableName, columnName, position));
-                    } else {
-                        uniqueKeysByTable.computeIfAbsent(tableName, k -> new ArrayList<>())
-                                .add(new DbUniqueKey(tableName, constraintName, columnName, position));
-                    }
+        try (var statement = prepareSchemaQuery(connection, sql, parameters);
+             var resultSet = statement.executeQuery()) {
+            while (resultSet.next()) {
+                String tableName = resultSet.getString("TABLE_NAME");
+                if (!columnsByTable.containsKey(tableName)) {
+                    continue;
+                }
+                String constraintType = resultSet.getString("CONSTRAINT_TYPE");
+                String constraintName = resultSet.getString("CONSTRAINT_NAME");
+                String columnName = resultSet.getString("COLUMN_NAME");
+                int ordinalPosition = resultSet.getInt("ORDINAL_POSITION");
+                if ("PRIMARY KEY".equals(constraintType)) {
+                    primaryKeysByTable.computeIfAbsent(tableName, k -> new ArrayList<>())
+                            .add(new DbPrimaryKey(tableName, columnName, ordinalPosition));
+                } else {
+                    uniqueKeysByTable.computeIfAbsent(tableName, k -> new ArrayList<>())
+                            .add(new DbUniqueKey(tableName, constraintName, columnName, ordinalPosition));
                 }
             }
             discovered(discovered, ConstraintKind.PRIMARY_KEY, columnsByTable.keySet());
             discovered(discovered, ConstraintKind.UNIQUE_KEY, columnsByTable.keySet());
         } catch (SQLException e) {
-            // ALL_CONSTRAINTS not available; the primary and unique keys stay unknown.
-            LOGGER.debug("Failed to read primary and unique keys from ALL_CONSTRAINTS.", e);
+            // The query is not available; the primary and unique keys stay unknown.
+            LOGGER.debug("Failed to read primary and unique keys.", e);
         }
-        // Foreign keys.
-        try {
-            StringBuilder sql = new StringBuilder("""
-                    SELECT fkc.TABLE_NAME AS FK_TABLE, fkc.COLUMN_NAME AS FK_COLUMN,
-                           pkc.TABLE_NAME AS PK_TABLE, pkc.COLUMN_NAME AS PK_COLUMN
-                    FROM ALL_CONSTRAINTS fk
-                    JOIN ALL_CONS_COLUMNS fkc
-                      ON fk.OWNER = fkc.OWNER
-                      AND fk.CONSTRAINT_NAME = fkc.CONSTRAINT_NAME
-                    JOIN ALL_CONSTRAINTS pk
-                      ON fk.R_OWNER = pk.OWNER
-                      AND fk.R_CONSTRAINT_NAME = pk.CONSTRAINT_NAME
-                    JOIN ALL_CONS_COLUMNS pkc
-                      ON pk.OWNER = pkc.OWNER
-                      AND pk.CONSTRAINT_NAME = pkc.CONSTRAINT_NAME
-                      AND fkc.POSITION = pkc.POSITION
-                    WHERE fk.CONSTRAINT_TYPE = 'R'""");
-            List<String> parameters = new ArrayList<>();
-            appendFilter(sql, true, "fk.OWNER", schemaPattern, parameters);
-            try (var statement = prepareSchemaQuery(connection, sql.toString(), parameters);
-                 var resultSet = statement.executeQuery()) {
-                while (resultSet.next()) {
-                    String fkTableName = resultSet.getString("FK_TABLE");
-                    if (!columnsByTable.containsKey(fkTableName)) {
-                        continue;
-                    }
-                    String fkColumnName = resultSet.getString("FK_COLUMN");
-                    String pkTableName = resultSet.getString("PK_TABLE");
-                    String pkColumnName = resultSet.getString("PK_COLUMN");
-                    foreignKeysByTable.computeIfAbsent(fkTableName, k -> new ArrayList<>())
-                            .add(new DbForeignKey(fkTableName, fkColumnName, pkTableName, pkColumnName));
+    }
+
+    /**
+     * Reads foreign keys with a query that selects {@code FK_TABLE}, {@code FK_COLUMN}, {@code PK_TABLE} and
+     * {@code PK_COLUMN}, one row per column, in key order. A query that fails leaves the foreign keys unknown.
+     */
+    private static void readForeignKeys(
+            Connection connection,
+            String sql,
+            List<String> parameters,
+            SortedMap<String, List<DbColumn>> columnsByTable,
+            SortedMap<String, List<DbForeignKey>> foreignKeysByTable,
+            Map<ConstraintKind, SortedSet<String>> discovered
+    ) {
+        try (var statement = prepareSchemaQuery(connection, sql, parameters);
+             var resultSet = statement.executeQuery()) {
+            while (resultSet.next()) {
+                String fkTableName = resultSet.getString("FK_TABLE");
+                if (!columnsByTable.containsKey(fkTableName)) {
+                    continue;
                 }
+                String fkColumnName = resultSet.getString("FK_COLUMN");
+                String pkTableName = resultSet.getString("PK_TABLE");
+                String pkColumnName = resultSet.getString("PK_COLUMN");
+                foreignKeysByTable.computeIfAbsent(fkTableName, k -> new ArrayList<>())
+                        .add(new DbForeignKey(fkTableName, fkColumnName, pkTableName, pkColumnName));
             }
             discovered(discovered, ConstraintKind.FOREIGN_KEY, columnsByTable.keySet());
         } catch (SQLException e) {
-            // ALL_CONSTRAINTS FK query not available; the foreign keys stay unknown.
-            LOGGER.debug("Failed to read foreign keys from ALL_CONSTRAINTS.", e);
+            // The query is not available; the foreign keys stay unknown.
+            LOGGER.debug("Failed to read foreign keys.", e);
         }
     }
 
     // ------------------------------------------------------------------------------------------------------------------
-    // Index discovery strategies.
+    // Index discovery.
     // ------------------------------------------------------------------------------------------------------------------
-
-    /**
-     * Dispatches index discovery to the appropriate strategy. A strategy that fails leaves the indexes unknown, which
-     * {@link #isDiscovered(String, ConstraintKind)} reports for {@link ConstraintKind#INDEX}.
-     */
-    private static void readIndexes(
-            Connection connection,
-            DatabaseMetaData metadata,
-            @Nullable String catalog,
-            @Nullable String schemaPattern,
-            SortedMap<String, List<DbColumn>> columnsByTable,
-            SortedMap<String, List<DbIndex>> indexesByTable,
-            IndexDiscoveryStrategy strategy,
-            Map<ConstraintKind, SortedSet<String>> discovered
-    ) {
-        switch (strategy) {
-            case JDBC_METADATA -> readIndexesFromJdbcMetadata(
-                    metadata, catalog, schemaPattern, columnsByTable, indexesByTable, discovered);
-            case INFORMATION_SCHEMA_STATISTICS -> readIndexesFromCatalog(connection, """
-                    SELECT TABLE_NAME, INDEX_NAME, COLUMN_NAME, SEQ_IN_INDEX AS ORDINAL_POSITION,
-                           CASE WHEN NON_UNIQUE = 0 THEN 1 ELSE 0 END AS IS_UNIQUE,
-                           0 AS IS_PARTIAL
-                    FROM INFORMATION_SCHEMA.STATISTICS
-                    WHERE 1=1""",
-                    // For databases that use catalogs as schemas, the catalog value is the database name, which maps
-                    // to TABLE_SCHEMA in INFORMATION_SCHEMA views.
-                    "TABLE_SCHEMA", schemaPattern != null ? schemaPattern : catalog,
-                    columnsByTable, indexesByTable, discovered);
-            case PG_INDEX -> readIndexesFromCatalog(connection, """
-                    SELECT t.relname AS TABLE_NAME, i.relname AS INDEX_NAME, a.attname AS COLUMN_NAME,
-                           k.ordinality AS ORDINAL_POSITION,
-                           CASE WHEN ix.indisunique THEN 1 ELSE 0 END AS IS_UNIQUE,
-                           CASE WHEN ix.indpred IS NULL THEN 0 ELSE 1 END AS IS_PARTIAL
-                    FROM pg_catalog.pg_index ix
-                    JOIN pg_catalog.pg_class t ON t.oid = ix.indrelid
-                    JOIN pg_catalog.pg_class i ON i.oid = ix.indexrelid
-                    JOIN pg_catalog.pg_namespace n ON n.oid = t.relnamespace
-                    CROSS JOIN LATERAL unnest(ix.indkey::int2[]) WITH ORDINALITY AS k(attnum, ordinality)
-                    LEFT JOIN pg_catalog.pg_attribute a ON a.attrelid = t.oid AND a.attnum = k.attnum AND k.attnum > 0
-                    WHERE k.ordinality <= ix.indnkeyatts""",
-                    "n.nspname", schemaPattern, columnsByTable, indexesByTable, discovered);
-            case ALL_IND_COLUMNS -> readIndexesFromCatalog(connection, """
-                    SELECT ic.TABLE_NAME, ic.INDEX_NAME,
-                           CASE WHEN ic.COLUMN_NAME LIKE 'SYS!_NC%' ESCAPE '!' THEN NULL ELSE ic.COLUMN_NAME END AS COLUMN_NAME,
-                           ic.COLUMN_POSITION AS ORDINAL_POSITION,
-                           CASE WHEN i.UNIQUENESS = 'UNIQUE' THEN 1 ELSE 0 END AS IS_UNIQUE,
-                           0 AS IS_PARTIAL
-                    FROM ALL_IND_COLUMNS ic
-                    JOIN ALL_INDEXES i
-                      ON i.OWNER = ic.INDEX_OWNER
-                      AND i.INDEX_NAME = ic.INDEX_NAME
-                    WHERE 1=1""",
-                    "ic.TABLE_OWNER", schemaPattern, columnsByTable, indexesByTable, discovered);
-        }
-    }
 
     /**
      * Reads indexes using per-table {@link DatabaseMetaData#getIndexInfo} calls. Statistic rows, which some drivers
@@ -818,24 +815,19 @@ public final class DatabaseSchema {
     }
 
     /**
-     * Reads indexes with one query on a catalog of the database. The query selects {@code TABLE_NAME},
-     * {@code INDEX_NAME}, {@code COLUMN_NAME} ({@code NULL} for an expression), {@code ORDINAL_POSITION}, and
-     * {@code IS_UNIQUE} and {@code IS_PARTIAL} as {@code 0} or {@code 1}.
+     * Reads the indexes of the schema with one query, which takes the schema name as its only parameter and selects
+     * the columns {@link st.orm.core.template.SqlDialect#indexDiscoveryQuery()} lists.
      */
-    private static void readIndexesFromCatalog(
+    private static void readIndexesWithQuery(
             Connection connection,
             String query,
-            String schemaColumn,
-            @Nullable String schema,
+            String schema,
             SortedMap<String, List<DbColumn>> columnsByTable,
             SortedMap<String, List<DbIndex>> indexesByTable,
             Map<ConstraintKind, SortedSet<String>> discovered
     ) {
         try {
-            StringBuilder sql = new StringBuilder(query);
-            List<String> parameters = new ArrayList<>();
-            appendFilter(sql, true, schemaColumn, schema, parameters);
-            try (var statement = prepareSchemaQuery(connection, sql.toString(), parameters);
+            try (var statement = prepareSchemaQuery(connection, query, List.of(schema));
                  var resultSet = statement.executeQuery()) {
                 while (resultSet.next()) {
                     String tableName = resultSet.getString("TABLE_NAME");
@@ -878,7 +870,6 @@ public final class DatabaseSchema {
         return switch (strategy) {
             case INFORMATION_SCHEMA -> readSequencesFromInformationSchema(connection, catalog, schemaPattern, sequences);
             case INFORMATION_SCHEMA_TABLES -> readSequencesFromInformationSchemaTables(connection, catalog, schemaPattern, sequences);
-            case ALL_SEQUENCES -> readSequencesFromAllSequences(connection, schemaPattern, sequences);
             case NONE -> false;
         };
     }
@@ -944,26 +935,25 @@ public final class DatabaseSchema {
     }
 
     /**
-     * Attempts to read sequences from the ALL_SEQUENCES dictionary view.
+     * Reads sequences with a query that selects {@code SEQUENCE_NAME}.
+     *
+     * @return {@code true} if the sequences were read, {@code false} if the query failed, leaving them unknown.
      */
-    private static boolean readSequencesFromAllSequences(
+    private static boolean readSequences(
             Connection connection,
-            @Nullable String schemaPattern,
+            String sql,
+            List<String> parameters,
             SortedMap<String, Boolean> sequences
     ) {
-        try {
-            StringBuilder sql = new StringBuilder("SELECT SEQUENCE_NAME FROM ALL_SEQUENCES");
-            List<String> parameters = new ArrayList<>();
-            appendFilter(sql, false, "SEQUENCE_OWNER", schemaPattern, parameters);
-            try (var statement = prepareSchemaQuery(connection, sql.toString(), parameters);
-                 var resultSet = statement.executeQuery()) {
-                while (resultSet.next()) {
-                    sequences.put(resultSet.getString("SEQUENCE_NAME"), Boolean.TRUE);
-                }
+        try (var statement = prepareSchemaQuery(connection, sql, parameters);
+             var resultSet = statement.executeQuery()) {
+            while (resultSet.next()) {
+                sequences.put(resultSet.getString("SEQUENCE_NAME"), Boolean.TRUE);
             }
             return true;
-        } catch (SQLException ignored) {
-            // ALL_SEQUENCES not available; sequence validation will be skipped.
+        } catch (SQLException e) {
+            // The query is not available; sequence validation will be skipped.
+            LOGGER.debug("Failed to read sequences.", e);
             return false;
         }
     }

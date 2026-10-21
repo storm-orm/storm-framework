@@ -43,7 +43,6 @@ import st.orm.PersistenceException;
 import st.orm.UK;
 import st.orm.core.template.ORMTemplate;
 import st.orm.core.template.SqlDialect.ConstraintDiscoveryStrategy;
-import st.orm.core.template.SqlDialect.IndexDiscoveryStrategy;
 import st.orm.core.template.SqlDialect.SequenceDiscoveryStrategy;
 import st.orm.core.template.impl.DatabaseSchema.ConstraintKind;
 import st.orm.core.template.impl.DatabaseSchema.DbIndex;
@@ -70,9 +69,10 @@ class IndexDiscoveryTest {
         }
     }
 
-    private DatabaseSchema read(Connection connection, IndexDiscoveryStrategy strategy) throws SQLException {
+    private DatabaseSchema read(Connection connection, String indexQuery) throws SQLException {
         return DatabaseSchema.read(connection, connection.getCatalog(), connection.getSchema(),
-                SequenceDiscoveryStrategy.INFORMATION_SCHEMA, ConstraintDiscoveryStrategy.INFORMATION_SCHEMA, strategy);
+                new DatabaseSchema.Discovery(SequenceDiscoveryStrategy.INFORMATION_SCHEMA,
+                        ConstraintDiscoveryStrategy.INFORMATION_SCHEMA, null, null, null, indexQuery));
     }
 
     private static List<DbIndex> index(DatabaseSchema schema, String name) {
@@ -84,7 +84,7 @@ class IndexDiscoveryTest {
     @Test
     void indexesAreReadColumnByColumn() throws SQLException {
         try (var connection = DriverManager.getConnection(jdbcUrl)) {
-            var schema = read(connection, IndexDiscoveryStrategy.JDBC_METADATA);
+            var schema = read(connection, null);
             assertTrue(schema.isDiscovered("probe", ConstraintKind.INDEX));
             var composite = index(schema, "probe_name_age");
             assertEquals(2, composite.size(), composite.toString());
@@ -102,16 +102,42 @@ class IndexDiscoveryTest {
     }
 
     @Test
-    void aCatalogTheDatabaseLacksLeavesTheIndexesUnknown() throws SQLException {
-        for (var strategy : List.of(IndexDiscoveryStrategy.PG_INDEX, IndexDiscoveryStrategy.ALL_IND_COLUMNS,
-                IndexDiscoveryStrategy.INFORMATION_SCHEMA_STATISTICS)) {
-            try (var connection = DriverManager.getConnection(jdbcUrl)) {
-                var schema = read(connection, strategy);
-                assertFalse(schema.isDiscovered("probe", ConstraintKind.INDEX), strategy.name());
-                assertTrue(schema.getIndexes("probe").isEmpty(), strategy.name());
-                // The rest of the schema is read as usual.
-                assertTrue(schema.isDiscovered("probe", ConstraintKind.PRIMARY_KEY), strategy.name());
-            }
+    void aQueryTheDatabaseCannotAnswerLeavesTheIndexesUnknown() throws SQLException {
+        try (var connection = DriverManager.getConnection(jdbcUrl)) {
+            var schema = read(connection, "SELECT * FROM no_such_catalog WHERE schema_name = ?");
+            assertFalse(schema.isDiscovered("probe", ConstraintKind.INDEX));
+            assertTrue(schema.getIndexes("probe").isEmpty());
+            // The rest of the schema is read as usual.
+            assertTrue(schema.isDiscovered("probe", ConstraintKind.PRIMARY_KEY));
+        }
+    }
+
+    @Test
+    void aQueryReadsTheIndexesOfTheSchemaItNames() throws SQLException {
+        try (var connection = DriverManager.getConnection(jdbcUrl)) {
+            var schema = read(connection, """
+                    SELECT c.TABLE_NAME, c.INDEX_NAME, c.COLUMN_NAME, c.ORDINAL_POSITION,
+                           CASE WHEN i.INDEX_TYPE_NAME IN ('UNIQUE INDEX', 'PRIMARY KEY') THEN 1 ELSE 0 END AS IS_UNIQUE,
+                           0 AS IS_PARTIAL
+                    FROM INFORMATION_SCHEMA.INDEX_COLUMNS c
+                    JOIN INFORMATION_SCHEMA.INDEXES i
+                      ON i.INDEX_SCHEMA = c.INDEX_SCHEMA AND i.INDEX_NAME = c.INDEX_NAME
+                    WHERE c.TABLE_SCHEMA = ?""");
+            assertTrue(schema.isDiscovered("probe", ConstraintKind.INDEX));
+            assertEquals(2, index(schema, "probe_name_age").size());
+            assertTrue(index(schema, "probe_age").getFirst().unique());
+        }
+    }
+
+    @Test
+    void withoutASchemaNameTheIndexesAreReadPerTable() throws SQLException {
+        try (var connection = DriverManager.getConnection(jdbcUrl)) {
+            var schema = DatabaseSchema.read(connection, null, null,
+                    new DatabaseSchema.Discovery(SequenceDiscoveryStrategy.INFORMATION_SCHEMA,
+                            ConstraintDiscoveryStrategy.INFORMATION_SCHEMA, null, null, null,
+                            "SELECT * FROM no_such_catalog WHERE schema_name = ?"));
+            assertTrue(schema.isDiscovered("probe", ConstraintKind.INDEX));
+            assertEquals(2, index(schema, "probe_name_age").size());
         }
     }
 
@@ -120,7 +146,7 @@ class IndexDiscoveryTest {
         try (var connection = stub((method, args) -> {
             throw new SQLException("metadata call not supported");
         })) {
-            var schema = read(connection, IndexDiscoveryStrategy.JDBC_METADATA);
+            var schema = read(connection, null);
             assertFalse(schema.isDiscovered("probe", ConstraintKind.INDEX));
             assertTrue(schema.getIndexes("probe").isEmpty());
         }
@@ -133,7 +159,7 @@ class IndexDiscoveryTest {
         var partial = row(DatabaseMetaData.tableIndexOther, "probe_recent", "email", 1, true, "age > 18");
         var blank = row(DatabaseMetaData.tableIndexOther, "probe_full", "name", 1, true, " ");
         try (var connection = stub((method, args) -> resultSet(List.of(statistic, unnamed, partial, blank)))) {
-            var schema = read(connection, IndexDiscoveryStrategy.JDBC_METADATA);
+            var schema = read(connection, null);
             var indexes = schema.getIndexes("probe");
             assertEquals(2, indexes.size(), indexes.toString());
             assertTrue(index(schema, "probe_recent").getFirst().partial());
@@ -165,7 +191,7 @@ class IndexDiscoveryTest {
     void anExpressionIndexServesNoColumn() throws SQLException {
         var expression = row(DatabaseMetaData.tableIndexOther, "probe_email_lower", null, 1, false, null);
         try (var connection = stub((method, args) -> resultSet(List.of(expression)))) {
-            var catalog = IndexCatalog.of(Map.of("", read(connection, IndexDiscoveryStrategy.JDBC_METADATA)));
+            var catalog = IndexCatalog.of(Map.of("", read(connection, null)));
             var indexes = catalog.find("", "probe");
             assertTrue(indexes != null && indexes.leadingColumns().contains("id"), String.valueOf(indexes));
             assertFalse(indexes.leadsWith("email"));

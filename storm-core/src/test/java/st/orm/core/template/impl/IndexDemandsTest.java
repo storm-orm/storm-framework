@@ -157,10 +157,12 @@ public class IndexDemandsTest {
     @Test
     public void aTableWhoseIndexesWereNotReadIsUnknown() throws SQLException {
         try (var connection = dataSource.getConnection()) {
+            // A query the database cannot answer leaves the indexes unknown.
             var schema = DatabaseSchema.read(connection, connection.getCatalog(), connection.getSchema(),
-                    st.orm.core.template.SqlDialect.SequenceDiscoveryStrategy.INFORMATION_SCHEMA,
-                    st.orm.core.template.SqlDialect.ConstraintDiscoveryStrategy.INFORMATION_SCHEMA,
-                    st.orm.core.template.SqlDialect.IndexDiscoveryStrategy.PG_INDEX);
+                    new DatabaseSchema.Discovery(
+                            st.orm.core.template.SqlDialect.SequenceDiscoveryStrategy.INFORMATION_SCHEMA,
+                            st.orm.core.template.SqlDialect.ConstraintDiscoveryStrategy.INFORMATION_SCHEMA,
+                            null, null, null, "SELECT * FROM no_such_catalog WHERE schema_name = ?"));
             assertNull(IndexCatalog.of(Map.of("", schema)).find("", "customer"));
         }
     }

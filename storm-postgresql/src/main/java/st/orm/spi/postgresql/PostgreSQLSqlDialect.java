@@ -65,14 +65,27 @@ public class PostgreSQLSqlDialect extends DefaultSqlDialect {
 
     /**
      * PostgreSQL lists its indexes in the {@code pg_index} system catalog, so the indexes of a schema are read in one
-     * query.
+     * query. A position whose attribute number is {@code 0} holds an expression, and the columns past
+     * {@code indnkeyatts} are {@code INCLUDE} columns, which the index carries but is not keyed on.
      *
-     * @return {@link IndexDiscoveryStrategy#PG_INDEX}.
+     * @return the query on {@code pg_index}.
      * @since 1.15
      */
     @Override
-    public IndexDiscoveryStrategy indexDiscoveryStrategy() {
-        return IndexDiscoveryStrategy.PG_INDEX;
+    public String indexDiscoveryQuery() {
+        return """
+                SELECT t.relname AS TABLE_NAME, i.relname AS INDEX_NAME, a.attname AS COLUMN_NAME,
+                       k.ordinality AS ORDINAL_POSITION,
+                       CASE WHEN ix.indisunique THEN 1 ELSE 0 END AS IS_UNIQUE,
+                       CASE WHEN ix.indpred IS NULL THEN 0 ELSE 1 END AS IS_PARTIAL
+                FROM pg_catalog.pg_index ix
+                JOIN pg_catalog.pg_class t ON t.oid = ix.indrelid
+                JOIN pg_catalog.pg_class i ON i.oid = ix.indexrelid
+                JOIN pg_catalog.pg_namespace n ON n.oid = t.relnamespace
+                CROSS JOIN LATERAL unnest(ix.indkey::int2[]) WITH ORDINALITY AS k(attnum, ordinality)
+                LEFT JOIN pg_catalog.pg_attribute a ON a.attrelid = t.oid AND a.attnum = k.attnum AND k.attnum > 0
+                WHERE k.ordinality <= ix.indnkeyatts
+                  AND n.nspname = ?""";
     }
 
     /**

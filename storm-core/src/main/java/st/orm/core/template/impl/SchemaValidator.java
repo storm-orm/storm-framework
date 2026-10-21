@@ -486,8 +486,7 @@ public final class SchemaValidator {
             schemaPattern = entitySchema.isEmpty() ? defaultSchema : entitySchema;
         }
         DatabaseSchema databaseSchema = DatabaseSchema.read(connection, catalog, schemaPattern,
-                dialect.sequenceDiscoveryStrategy(), dialect.constraintDiscoveryStrategy(),
-                dialect.indexDiscoveryStrategy());
+                    DatabaseSchema.Discovery.of(dialect));
         schemaCache.put(schemaKey, databaseSchema);
         return databaseSchema;
     }
