@@ -30,7 +30,7 @@ The advice reaches you three ways.
 - **Named categories win.** `storm.advice.categories: correctness, design, performance`, in Spring Boot, Ktor or as a system property, sets them in any environment, development included.
 - **Accepted advice stays quiet.** Where an entity or a query is as intended, [accept the advice](#accepting-advice) there with `@AcceptAdvice`, and the advice log stops reporting it there.
 - **A deliberate choice is advised only when slow.** A page that reports its total is a choice of `page` over `slice`, so its [count](#page-count) is advised in the slow statement log alone.
-- **Advice that needs evidence is advised only when slow.** Whether an index is worth its cost depends on how many rows a table holds and how few a condition selects, which only a slow execution shows, so a [missing index](#missing-index) is advised in the slow statement log alone.
+- **Advice that needs evidence is advised only when slow.** Whether an index is worth its cost depends on how many rows a table holds and how few a condition selects, which only a slow execution shows, so a [missing index](#missing-index) and an [unindexed foreign key](#unindexed-foreign-key) are advised in the slow statement log alone.
 
 The level of `st.orm.sql.advice` decides how often a piece of advice is reported:
 
@@ -109,11 +109,11 @@ The rest only shows in real use. Whether a `Clinic` on every `Visit` is worth it
 
 Each piece of advice links to its section on this page. The links stay valid for as long as Storm gives the advice, so a log line written today still leads here after the rest of the documentation has moved on.
 
-Most advice rests on what the statement itself proves, whatever indexes exist. Advice on a [missing index](#missing-index) rests on the indexes the database reports, which Storm knows once the schema is [loaded](#loading-the-schema). A slow statement without advice is slow for a reason neither shows: its plan, its parameters, or the load on the database. Advice is decided when Storm builds the statement, and the index check when an execution is slow, so it costs an execution nothing while the advice log is off.
+Most advice rests on what the statement itself proves, whatever indexes exist. Advice on a [missing index](#missing-index) or an [unindexed foreign key](#unindexed-foreign-key) rests on the indexes and foreign keys the database reports, which Storm knows once the schema is [loaded](#loading-the-schema). A slow statement without advice is slow for a reason neither shows: its plan, its parameters, or the load on the database. Advice is decided when Storm builds the statement, and the index check when an execution is slow, so it costs an execution nothing while the advice log is off.
 
 ### Loading the schema
 
-Loading the schema is optional. Storm works the same without it; what it adds is knowledge of the database that Storm uses for advice and optimization, such as the indexes behind the [missing-index advice](#missing-index). The schema is read once and kept for the data source, and every template on that data source shares it.
+Loading the schema is optional. Storm works the same without it; what it adds is knowledge of the database that Storm uses for advice and optimization, such as the indexes behind the [missing-index advice](#missing-index) and the foreign keys behind the [unindexed-foreign-key advice](#unindexed-foreign-key). The schema is read once and kept for the data source, and every template on that data source shares it.
 
 - **Schema validation loads it.** Spring Boot and Ktor validate the schema at startup by default, and validation loads the schema as it reads it, so most applications have it loaded without doing anything.
 - **Load without validating.** `storm.validation.schema-mode: load` in Spring Boot, or `schemaValidation = "load"` in Ktor, loads the schema at startup without validating it. Elsewhere, call `orm.loadSchema()`.
@@ -183,6 +183,22 @@ Storm stays quiet where it cannot tell:
 - **An index of any kind counts for its column.** A full-text or other special index on a column is taken to serve it, whether or not it serves the comparison. An index on an expression, such as `lower(email)`, serves only a statement that compares the same expression, never the bare column, so it counts for no column.
 - **A table the loaded schema does not know**, such as one created after the load, is not advised.
 - **One served column is enough.** A statement whose condition an index serves on any one of its columns has a way to avoid reading the table in full, even when the index is not the best one.
+
+## An unindexed foreign key behind a delete {#unindexed-foreign-key}
+
+> deleting from owner checks the foreign key pet(owner_id) that references it, and no index on pet starts with owner_id, so the database reads pet in full for every row it deletes; an index on pet(owner_id) serves the check
+
+Category: performance, reported by the slow statement log only, and only once the schema is [loaded](#loading-the-schema).
+
+Deleting a row checks every foreign key that references its table: the database looks for rows that still point at it, and with `ON DELETE CASCADE` or `SET NULL` it finds them to change them. Without an index that starts with the referencing column, each check reads the referencing table in full. Deleting an owner then reads all of `pet`, although the statement never names `pet`, so neither the statement nor the [missing-index advice](#missing-index) points at it.
+
+When a delete is slow, Storm looks up the foreign keys the loaded schema lists as referencing the table it deletes from, and advises each one that no index of its own table starts with. A compound foreign key counts as served when an index starts with any of its columns. MySQL, MariaDB and H2 create an index for every foreign key themselves, so the loaded schema shows each one served and the advice does not appear there; PostgreSQL, Oracle, SQL Server and SQLite leave the index to the schema.
+
+Storm stays quiet where it cannot tell:
+
+- **A table the loaded schema does not know**, or whose foreign keys or indexes it could not read, is not advised.
+- **A joined inheritance hierarchy** deletes from several tables, which its type does not name one by one, so its deletes are not advised.
+- **A delete written as SQL text** names no entity, so Storm does not know the table it deletes from.
 
 ## The count behind a page {#page-count}
 

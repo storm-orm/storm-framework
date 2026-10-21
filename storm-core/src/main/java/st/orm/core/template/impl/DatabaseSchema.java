@@ -102,15 +102,19 @@ public final class DatabaseSchema {
     ) {}
 
     /**
-     * Represents a foreign key relationship discovered from the database metadata.
+     * Represents a column of a foreign key discovered from the database metadata. The columns of a compound foreign
+     * key share its constraint name.
      *
-     * @param fkTableName  the table containing the foreign key column.
-     * @param fkColumnName the foreign key column name.
-     * @param pkTableName  the referenced (primary key) table name.
-     * @param pkColumnName the referenced (primary key) column name.
+     * @param fkTableName    the table containing the foreign key column.
+     * @param constraintName the name of the foreign key constraint, or {@code null} when the database does not
+     *                       report it.
+     * @param fkColumnName   the foreign key column name.
+     * @param pkTableName    the referenced (primary key) table name.
+     * @param pkColumnName   the referenced (primary key) column name.
      */
     public record DbForeignKey(
             String fkTableName,
+            @Nullable String constraintName,
             String fkColumnName,
             String pkTableName,
             String pkColumnName
@@ -484,8 +488,9 @@ public final class DatabaseSchema {
                     String pkColumnName = importedKeys.getString("PKCOLUMN_NAME");
                     String fkTableName = importedKeys.getString("FKTABLE_NAME");
                     String fkColumnName = importedKeys.getString("FKCOLUMN_NAME");
+                    String constraintName = importedKeys.getString("FK_NAME");
                     foreignKeysByTable.computeIfAbsent(fkTableName, k -> new ArrayList<>())
-                            .add(new DbForeignKey(fkTableName, fkColumnName, pkTableName, pkColumnName));
+                            .add(new DbForeignKey(fkTableName, constraintName, fkColumnName, pkTableName, pkColumnName));
                 }
                 discovered(discovered, ConstraintKind.FOREIGN_KEY, List.of(tableName));
             } catch (SQLException e) {
@@ -616,7 +621,7 @@ public final class DatabaseSchema {
         // POSITION_IN_UNIQUE_CONSTRAINT.
         try {
             StringBuilder sql = new StringBuilder("""
-                    SELECT kcu.TABLE_NAME AS FK_TABLE, kcu.COLUMN_NAME AS FK_COLUMN,
+                    SELECT kcu.TABLE_NAME AS FK_TABLE, rc.CONSTRAINT_NAME AS FK_NAME, kcu.COLUMN_NAME AS FK_COLUMN,
                            kcu2.TABLE_NAME AS PK_TABLE, kcu2.COLUMN_NAME AS PK_COLUMN
                     FROM INFORMATION_SCHEMA.REFERENTIAL_CONSTRAINTS rc
                     JOIN INFORMATION_SCHEMA.KEY_COLUMN_USAGE kcu
@@ -637,11 +642,12 @@ public final class DatabaseSchema {
                     if (!columnsByTable.containsKey(fkTableName)) {
                         continue;
                     }
+                    String constraintName = resultSet.getString("FK_NAME");
                     String fkColumnName = resultSet.getString("FK_COLUMN");
                     String pkTableName = resultSet.getString("PK_TABLE");
                     String pkColumnName = resultSet.getString("PK_COLUMN");
                     foreignKeysByTable.computeIfAbsent(fkTableName, k -> new ArrayList<>())
-                            .add(new DbForeignKey(fkTableName, fkColumnName, pkTableName, pkColumnName));
+                            .add(new DbForeignKey(fkTableName, constraintName, fkColumnName, pkTableName, pkColumnName));
                 }
             }
             discovered(discovered, ConstraintKind.FOREIGN_KEY, columnsByTable.keySet());
@@ -673,7 +679,7 @@ public final class DatabaseSchema {
         // Foreign keys: use REFERENCED_TABLE_NAME and REFERENCED_COLUMN_NAME columns in KEY_COLUMN_USAGE.
         try {
             StringBuilder sql = new StringBuilder("""
-                    SELECT TABLE_NAME, COLUMN_NAME, REFERENCED_TABLE_NAME, REFERENCED_COLUMN_NAME
+                    SELECT TABLE_NAME, CONSTRAINT_NAME, COLUMN_NAME, REFERENCED_TABLE_NAME, REFERENCED_COLUMN_NAME
                     FROM INFORMATION_SCHEMA.KEY_COLUMN_USAGE
                     WHERE REFERENCED_TABLE_NAME IS NOT NULL""");
             List<String> parameters = new ArrayList<>();
@@ -685,11 +691,12 @@ public final class DatabaseSchema {
                     if (!columnsByTable.containsKey(fkTableName)) {
                         continue;
                     }
+                    String constraintName = resultSet.getString("CONSTRAINT_NAME");
                     String fkColumnName = resultSet.getString("COLUMN_NAME");
                     String pkTableName = resultSet.getString("REFERENCED_TABLE_NAME");
                     String pkColumnName = resultSet.getString("REFERENCED_COLUMN_NAME");
                     foreignKeysByTable.computeIfAbsent(fkTableName, k -> new ArrayList<>())
-                            .add(new DbForeignKey(fkTableName, fkColumnName, pkTableName, pkColumnName));
+                            .add(new DbForeignKey(fkTableName, constraintName, fkColumnName, pkTableName, pkColumnName));
                 }
             }
             discovered(discovered, ConstraintKind.FOREIGN_KEY, columnsByTable.keySet());
@@ -741,8 +748,9 @@ public final class DatabaseSchema {
     }
 
     /**
-     * Reads foreign keys with a query that selects {@code FK_TABLE}, {@code FK_COLUMN}, {@code PK_TABLE} and
-     * {@code PK_COLUMN}, one row per column, in key order. A query that fails leaves the foreign keys unknown.
+     * Reads foreign keys with a query that selects {@code FK_TABLE}, {@code FK_NAME}, {@code FK_COLUMN},
+     * {@code PK_TABLE} and {@code PK_COLUMN}, one row per column, in key order. A query that fails leaves the foreign
+     * keys unknown.
      */
     private static void readForeignKeys(
             Connection connection,
@@ -759,11 +767,12 @@ public final class DatabaseSchema {
                 if (!columnsByTable.containsKey(fkTableName)) {
                     continue;
                 }
+                String constraintName = resultSet.getString("FK_NAME");
                 String fkColumnName = resultSet.getString("FK_COLUMN");
                 String pkTableName = resultSet.getString("PK_TABLE");
                 String pkColumnName = resultSet.getString("PK_COLUMN");
                 foreignKeysByTable.computeIfAbsent(fkTableName, k -> new ArrayList<>())
-                        .add(new DbForeignKey(fkTableName, fkColumnName, pkTableName, pkColumnName));
+                        .add(new DbForeignKey(fkTableName, constraintName, fkColumnName, pkTableName, pkColumnName));
             }
             discovered(discovered, ConstraintKind.FOREIGN_KEY, columnsByTable.keySet());
         } catch (SQLException e) {

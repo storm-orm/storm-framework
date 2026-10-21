@@ -277,7 +277,7 @@ public class OracleSqlDialect extends DefaultSqlDialect {
     @Override
     public String foreignKeyDiscoveryQuery() {
         return """
-                SELECT fkc.TABLE_NAME AS FK_TABLE, fkc.COLUMN_NAME AS FK_COLUMN,
+                SELECT fkc.TABLE_NAME AS FK_TABLE, fk.CONSTRAINT_NAME AS FK_NAME, fkc.COLUMN_NAME AS FK_COLUMN,
                        pkc.TABLE_NAME AS PK_TABLE, pkc.COLUMN_NAME AS PK_COLUMN
                 FROM ALL_CONSTRAINTS fk
                 JOIN ALL_CONS_COLUMNS fkc

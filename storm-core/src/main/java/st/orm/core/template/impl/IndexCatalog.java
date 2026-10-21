@@ -15,7 +15,11 @@
  */
 package st.orm.core.template.impl;
 
+import java.util.ArrayList;
 import java.util.Collections;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.SortedMap;
 import java.util.SortedSet;
@@ -25,6 +29,7 @@ import java.util.WeakHashMap;
 import javax.sql.DataSource;
 import org.jspecify.annotations.Nullable;
 import st.orm.core.template.impl.DatabaseSchema.ConstraintKind;
+import st.orm.core.template.impl.DatabaseSchema.DbForeignKey;
 import st.orm.core.template.impl.DatabaseSchema.DbIndex;
 import st.orm.core.template.impl.DatabaseSchema.DbPrimaryKey;
 
@@ -33,7 +38,7 @@ import st.orm.core.template.impl.DatabaseSchema.DbPrimaryKey;
  *
  * <p>A catalog belongs to the database a data source connects to, not to a template: every template on the data
  * source, and the schema validation an integration runs on it, read and see the same database. It is published when
- * the schema is read, by {@code readSchema()} or by schema validation, and is replaced as a whole by the next read.
+ * the schema is read, by {@code loadSchema()} or by schema validation, and is replaced as a whole by the next read.
  * Nothing reads the database to answer a lookup; the slow statement log looks a table up only for a slow execution,
  * so a lookup is rare and the registry's lock is never contended on a hot path.</p>
  *
@@ -44,16 +49,20 @@ import st.orm.core.template.impl.DatabaseSchema.DbPrimaryKey;
 final class IndexCatalog {
 
     /**
-     * The indexes of one table, as far as the missing-index check needs them: the columns they start with, the
-     * primary key included. An index that starts with an expression, such as {@code lower(email)}, is left out: it
-     * serves only a statement that compares the same expression, never a comparison of the bare column. An index of
-     * another kind, such as a full-text index, counts for its column, whether or not it serves the comparison.
+     * The indexes of one table, as far as the index checks need them: the columns they start with, the primary key
+     * included, and the foreign keys of other tables that reference the table without an index to serve them. An
+     * index that starts with an expression, such as {@code lower(email)}, is left out: it serves only a statement that
+     * compares the same expression, never a comparison of the bare column. An index of another kind, such as a
+     * full-text index, counts for its column, whether or not it serves the comparison.
      *
      * @param leadingColumns the columns the table's indexes start with, its primary key included.
+     * @param unindexedReferences the foreign keys that reference the table and that no index of their own table
+     *                            starts with, which a delete from the table checks by reading their table in full.
      */
-    record TableIndexes(SortedSet<String> leadingColumns) {
+    record TableIndexes(SortedSet<String> leadingColumns, List<UnindexedReference> unindexedReferences) {
         TableIndexes {
             leadingColumns = Collections.unmodifiableSortedSet(leadingColumns);
+            unindexedReferences = List.copyOf(unindexedReferences);
         }
 
         /**
@@ -61,6 +70,18 @@ final class IndexCatalog {
          */
         boolean leadsWith(String column) {
             return leadingColumns.contains(column);
+        }
+    }
+
+    /**
+     * A foreign key that references a table, with no index of its own table starting with any of its columns.
+     *
+     * @param table the referencing table, in the schema of the table it references.
+     * @param columns the columns of the foreign key, in key order.
+     */
+    record UnindexedReference(String table, List<String> columns) {
+        UnindexedReference {
+            columns = List.copyOf(columns);
         }
     }
 
@@ -84,7 +105,7 @@ final class IndexCatalog {
     static IndexCatalog of(Map<String, DatabaseSchema> schemas) {
         SortedMap<String, SortedMap<String, TableIndexes>> tablesBySchema = new TreeMap<>(String.CASE_INSENSITIVE_ORDER);
         schemas.forEach((schemaName, schema) -> {
-            SortedMap<String, TableIndexes> tables = new TreeMap<>(String.CASE_INSENSITIVE_ORDER);
+            SortedMap<String, SortedSet<String>> leadingColumnsByTable = new TreeMap<>(String.CASE_INSENSITIVE_ORDER);
             for (String tableName : schema.tableNames()) {
                 if (!schema.isDiscovered(tableName, ConstraintKind.INDEX) || schema.isView(tableName)) {
                     continue;
@@ -102,11 +123,59 @@ final class IndexCatalog {
                         leadingColumns.add(primaryKey.columnName());
                     }
                 }
-                tables.put(tableName, new TableIndexes(leadingColumns));
+                leadingColumnsByTable.put(tableName, leadingColumns);
             }
+            var unindexedReferences = unindexedReferences(schema, leadingColumnsByTable);
+            SortedMap<String, TableIndexes> tables = new TreeMap<>(String.CASE_INSENSITIVE_ORDER);
+            leadingColumnsByTable.forEach((tableName, leadingColumns) -> tables.put(tableName,
+                    new TableIndexes(leadingColumns, unindexedReferences.getOrDefault(tableName, List.of()))));
             tablesBySchema.put(schemaName, tables);
         });
         return new IndexCatalog(tablesBySchema);
+    }
+
+    /**
+     * Returns the foreign keys no index serves, by the table they reference. A foreign key counts as served when an
+     * index of its table starts with any of its columns: the check then reads the rows of one value of that column
+     * rather than the table. A table whose indexes or foreign keys could not be read contributes none, so no delete is
+     * advised on what the read did not see.
+     *
+     * <p>The columns of a compound foreign key share its constraint name. A database that does not report the name
+     * leaves the columns of one table that reference one table as one key, which an index on any of them serves, so
+     * an unnamed key is never advised for a column another index covers.</p>
+     *
+     * @param schema the schema read.
+     * @param leadingColumnsByTable the columns each table's indexes start with, for the tables whose indexes were
+     *                              read.
+     * @return the foreign keys no index serves, by referenced table.
+     */
+    private static Map<String, List<UnindexedReference>> unindexedReferences(
+            DatabaseSchema schema,
+            SortedMap<String, SortedSet<String>> leadingColumnsByTable
+    ) {
+        SortedMap<String, List<UnindexedReference>> references = new TreeMap<>(String.CASE_INSENSITIVE_ORDER);
+        leadingColumnsByTable.forEach((tableName, leadingColumns) -> {
+            if (!schema.isDiscovered(tableName, ConstraintKind.FOREIGN_KEY)) {
+                return;
+            }
+            Map<String, List<DbForeignKey>> keys = new LinkedHashMap<>();
+            for (DbForeignKey foreignKey : schema.getForeignKeys(tableName)) {
+                String name = foreignKey.constraintName();
+                String key = name == null || name.isBlank()
+                        ? "\0" + foreignKey.pkTableName().toLowerCase(Locale.ROOT)
+                        : name;
+                keys.computeIfAbsent(key, ignore -> new ArrayList<>()).add(foreignKey);
+            }
+            for (List<DbForeignKey> columns : keys.values()) {
+                if (columns.stream().anyMatch(column -> leadingColumns.contains(column.fkColumnName()))) {
+                    continue;
+                }
+                references.computeIfAbsent(columns.getFirst().pkTableName(), ignore -> new ArrayList<>())
+                        .add(new UnindexedReference(tableName,
+                                columns.stream().map(DbForeignKey::fkColumnName).distinct().toList()));
+            }
+        });
+        return references;
     }
 
     /**
