@@ -231,28 +231,6 @@ public interface Sql {
     Sql shapeId(long shapeId);
 
     /**
-     * Returns advice about the statement, such as a search that reads every row, which the slow statement log reports
-     * when an execution of the statement is slow.
-     *
-     * @return the advice, empty for a statement without any.
-     * @since 1.15
-     */
-    default List<String> advisories() {
-        return List.of();
-    }
-
-    /**
-     * Returns a new instance of the SQL statement with the given advice.
-     *
-     * @param advisories advice about the statement.
-     * @return a new instance of the SQL statement with the given advice.
-     * @since 1.15
-     */
-    default Sql advisories(List<String> advisories) {
-        return this;
-    }
-
-    /**
      * Returns a warning message if the statement is deemed potentially unsafe, an empty optional otherwise.
      *
      * @since 1.2

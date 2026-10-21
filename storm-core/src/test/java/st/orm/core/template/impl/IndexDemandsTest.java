@@ -30,6 +30,8 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.jdbc.datasource.DriverManagerDataSource;
 import st.orm.Operator;
+import st.orm.core.template.SqlDialect.ConstraintDiscoveryStrategy;
+import st.orm.core.template.SqlDialect.SequenceDiscoveryStrategy;
 import st.orm.core.template.impl.IndexDemands.Kind;
 
 /**
@@ -160,8 +162,8 @@ public class IndexDemandsTest {
             // A query the database cannot answer leaves the indexes unknown.
             var schema = DatabaseSchema.read(connection, connection.getCatalog(), connection.getSchema(),
                     new DatabaseSchema.Discovery(
-                            st.orm.core.template.SqlDialect.SequenceDiscoveryStrategy.INFORMATION_SCHEMA,
-                            st.orm.core.template.SqlDialect.ConstraintDiscoveryStrategy.INFORMATION_SCHEMA,
+                            SequenceDiscoveryStrategy.INFORMATION_SCHEMA,
+                            ConstraintDiscoveryStrategy.INFORMATION_SCHEMA,
                             null, null, null, "SELECT * FROM no_such_catalog WHERE schema_name = ?"));
             assertNull(IndexCatalog.of(Map.of("", schema)).find("", "customer"));
         }

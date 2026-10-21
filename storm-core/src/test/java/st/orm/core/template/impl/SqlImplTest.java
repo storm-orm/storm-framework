@@ -247,7 +247,6 @@ public class SqlImplTest {
                 false,
                 Optional.empty(), StatementOrigin.DIRECT, 0L
         , List.of(), demands);
-        assertSame(demands, ((SqlImpl) sql.advisories(List.of("advice"))).indexDemands());
         assertSame(demands, ((SqlImpl) sql.shapeId(7L)).indexDemands());
         assertSame(demands, ((SqlImpl) sql.statement("SELECT 1")).indexDemands());
     }

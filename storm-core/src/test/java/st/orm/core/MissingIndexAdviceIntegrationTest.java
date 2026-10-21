@@ -17,6 +17,7 @@ package st.orm.core;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static st.orm.Operator.EQUALS;
 import static st.orm.Operator.GREATER_THAN;
@@ -46,6 +47,7 @@ import st.orm.Entity;
 import st.orm.FK;
 import st.orm.Metamodel;
 import st.orm.PK;
+import st.orm.PersistenceException;
 import st.orm.UK;
 import st.orm.core.model.polymorphic.JoinedAdoption;
 import st.orm.core.model.polymorphic.JoinedAnimal;
@@ -292,7 +294,7 @@ public class MissingIndexAdviceIntegrationTest {
     public void aTemplateWithoutADataSourceCannotLoadTheSchema() throws SQLException {
         try (var connection = dataSource.getConnection()) {
             var orm = ORMTemplate.of(connection);
-            var exception = org.junit.jupiter.api.Assertions.assertThrows(st.orm.PersistenceException.class,
+            var exception = assertThrows(PersistenceException.class,
                     orm::loadSchema);
             assertTrue(exception.getMessage().startsWith("Loading the schema requires a DataSource-backed template."),
                     exception.getMessage());
@@ -380,10 +382,10 @@ public class MissingIndexAdviceIntegrationTest {
     public void aSchemaThatCannotBeReadFailsTheLoad() {
         var unreachable = new DriverManagerDataSource("jdbc:h2:mem:missing_index_absent_" + UUID.randomUUID()
                 + ";IFEXISTS=TRUE");
-        var load = org.junit.jupiter.api.Assertions.assertThrows(st.orm.PersistenceException.class,
+        var load = assertThrows(PersistenceException.class,
                 () -> SchemaValidator.of(unreachable).load());
         assertEquals("Failed to load the database schema.", load.getMessage());
-        var validate = org.junit.jupiter.api.Assertions.assertThrows(st.orm.PersistenceException.class,
+        var validate = assertThrows(PersistenceException.class,
                 () -> SchemaValidator.of(unreachable).validate(List.of(Customer.class)));
         assertEquals("Failed to read database schema for validation.", validate.getMessage());
     }

@@ -9,6 +9,7 @@ import static st.orm.GenerationStrategy.SEQUENCE;
 
 import java.sql.SQLException;
 import java.time.LocalDate;
+import java.util.Comparator;
 import java.util.List;
 import javax.sql.DataSource;
 import org.jspecify.annotations.Nullable;
@@ -221,7 +222,7 @@ public abstract class AbstractSchemaValidatorConformanceTest {
                 var indexes = schema.getIndexes("index_probe");
                 var composite = indexes.stream()
                         .filter(index -> index.indexName().equalsIgnoreCase("index_probe_ab"))
-                        .sorted(java.util.Comparator.comparingInt(DbIndex::ordinalPosition))
+                        .sorted(Comparator.comparingInt(DbIndex::ordinalPosition))
                         .toList();
                 assertEquals(2, composite.size(), indexes::toString);
                 assertTrue(composite.get(0).columnName().equalsIgnoreCase("a"), indexes::toString);

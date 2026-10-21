@@ -82,18 +82,6 @@ record SqlImpl(
     }
 
     /**
-     * Returns a new instance of the SQL statement with the given advice.
-     *
-     * @param advisories advice about the statement.
-     * @return a new instance of the SQL statement with the given advice.
-     * @since 1.15
-     */
-    @Override
-    public Sql advisories(List<String> advisories) {
-        return new SqlImpl(operation, statement, parameters, bindVariables, generatedKeys, affectedType, dataType, fetchPaths, cursorColumns, versionAware, unsafeWarning, origin, shapeId, advisories, indexDemands);
-    }
-
-    /**
      * Returns a new instance of the SQL statement with the given shape identity.
      *
      * @param shapeId the shape identity.
