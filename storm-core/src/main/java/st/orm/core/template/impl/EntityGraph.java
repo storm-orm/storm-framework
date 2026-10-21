@@ -52,7 +52,7 @@ import st.orm.mapping.RecordType;
  * @param columns the columns a read selects beyond the entity's own.
  * @param graph the joined entities, such as {@code Visit(Pet(Owner(City)))}.
  * @param cuts the fields a {@code Ref} could cut, never an identifying foreign key or a target without foreign keys.
- * @since 1.15
+ * @since 1.16
  */
 record EntityGraph(Class<?> type, int ownColumns, int joins, int columns, String graph, List<Cut> cuts) {
 

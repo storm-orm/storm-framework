@@ -312,7 +312,7 @@ public interface EntityRepository<E extends Entity<ID>, ID> extends Repository {
      * of its columns rather than relying on dirty checking.</p>
      *
      * @return a new query builder for the entity type.
-     * @since 1.15
+     * @since 1.16
      */
     QueryBuilder<E, ?, ID> update();
 

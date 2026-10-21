@@ -38,7 +38,7 @@ import st.orm.Operator;
  * instance for the catalog it was decided against: a shape that is slow again is answered without a second look, and
  * a new catalog, published by a later schema read, is decided anew.</p>
  *
- * @since 1.15
+ * @since 1.16
  */
 final class IndexDemands {
 

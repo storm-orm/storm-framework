@@ -101,7 +101,7 @@ public final class Elements {
      *
      * @param fields the fields to read, in the order their values are wanted.
      * @param expressions the expressions to read after the fields, in the order their values are wanted.
-     * @since 1.15
+     * @since 1.16
      */
     public record Cursor(List<Metamodel<?, ?>> fields, List<TemplateString> expressions) implements Element {
         public Cursor {
@@ -167,7 +167,7 @@ public final class Elements {
      * Names the table an UPDATE writes where a {@link From} element renders that table, its alias and its joins, as
      * an UPDATE through other tables does on the databases that join into one. Renders nothing itself.
      *
-     * @since 1.15
+     * @since 1.16
      */
     public record UpdateTarget(Class<? extends Data> table) implements Element {
         public UpdateTarget {
@@ -454,7 +454,7 @@ public final class Elements {
      * @param foreignKey the foreign key field of the relation.
      * @param holdsKey {@code true} if {@code table} holds the foreign key, {@code false} if it is referenced by it.
      * @param scope where the table's alias resolves.
-     * @since 1.15
+     * @since 1.16
      */
     public record RelationKey(Class<? extends Data> table, RecordField foreignKey, boolean holdsKey, ResolveScope scope) implements Element {
         public RelationKey {
@@ -478,7 +478,7 @@ public final class Elements {
      * @param innerHoldsKey {@code true} if {@code inner} holds the foreign key, {@code false} if {@code outer} does.
      * @param outerForeignKey the foreign key field of {@code outer} that references the same table as
      *                        {@code foreignKey}, or {@code null} when {@code outer} is the table of the relation itself.
-     * @since 1.15
+     * @since 1.16
      */
     public record Correlation(Class<? extends Data> inner,
                               Class<? extends Data> outer,
@@ -504,7 +504,7 @@ public final class Elements {
      * reports it when an execution of the statement is slow.
      *
      * @param text the advice.
-     * @since 1.15
+     * @since 1.16
      */
     public record Advisory(String text) implements Element {
         public Advisory {
@@ -519,7 +519,7 @@ public final class Elements {
      *
      * @param field the column's path.
      * @param kind how the statement uses the column.
-     * @since 1.15
+     * @since 1.16
      */
     public record IndexDemand(Metamodel<?, ?> field, IndexDemands.Kind kind) implements Element {
         public IndexDemand {
@@ -532,7 +532,7 @@ public final class Elements {
      * Marks an ORDER BY key that ranks the rows by a condition, as {@code orderFirst} adds one. It renders nothing; the
      * query builder reads it to refuse what such a key cannot follow, a keyset scroll and a distinct query.
      *
-     * @since 1.15
+     * @since 1.16
      */
     public record OrderFirst() implements Element {}
 
@@ -541,7 +541,7 @@ public final class Elements {
      * potentially unsafe whatever WHERE clause it renders, since the form that matches its rows by primary key in a
      * subquery carries a WHERE clause of its own. The query refuses to run unless it is marked unsafe.
      *
-     * @since 1.15
+     * @since 1.16
      */
     public record Unconditional() implements Element {}
 

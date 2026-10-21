@@ -24,7 +24,7 @@ import st.orm.core.template.impl.Elements.IndexDemand;
  * A processor for an index demand element of a template: it renders nothing and records the demand on the
  * statement.
  *
- * @since 1.15
+ * @since 1.16
  */
 final class IndexDemandProcessor implements ElementProcessor<IndexDemand> {
 

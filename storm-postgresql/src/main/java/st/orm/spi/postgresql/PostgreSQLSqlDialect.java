@@ -56,7 +56,7 @@ public class PostgreSQLSqlDialect extends DefaultSqlDialect {
      * A trigram index ({@code pg_trgm}) serves a substring match of three characters or more; a shorter term has no
      * trigram to look up and reads every row.
      *
-     * @since 1.15
+     * @since 1.16
      */
     @Override
     protected int defaultMinimumSearchTermLength() {
@@ -69,7 +69,7 @@ public class PostgreSQLSqlDialect extends DefaultSqlDialect {
      * {@code indnkeyatts} are {@code INCLUDE} columns, which the index carries but is not keyed on.
      *
      * @return the query on {@code pg_index}.
-     * @since 1.15
+     * @since 1.16
      */
     @Override
     public String indexDiscoveryQuery() {

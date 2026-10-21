@@ -49,7 +49,7 @@ import org.jspecify.annotations.Nullable;
  *
  * @param name the function's name, a SQL identifier optionally qualified by a schema.
  * @param <E> the type of the column the function takes and returns.
- * @since 1.15
+ * @since 1.16
  */
 public record SqlFunction<E>(String name) {
 

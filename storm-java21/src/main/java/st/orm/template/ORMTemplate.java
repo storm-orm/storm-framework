@@ -202,7 +202,7 @@ public interface ORMTemplate extends QueryTemplate, RepositoryLookup {
      * {@link Connection} or {@code EntityManager} do not support loading the schema.</p>
      *
      * @throws st.orm.PersistenceException if the schema cannot be read or the template does not support loading it.
-     * @since 1.15
+     * @since 1.16
      */
     void loadSchema();
 
@@ -214,7 +214,7 @@ public interface ORMTemplate extends QueryTemplate, RepositoryLookup {
      * @param filter predicate to select which discovered types to load the schema of.
      * @throws st.orm.PersistenceException if the schema cannot be read or the template does not support loading it.
      * @see #loadSchema()
-     * @since 1.15
+     * @since 1.16
      */
     void loadSchema(Predicate<Class<? extends Data>> filter);
 

@@ -21,7 +21,7 @@ import st.orm.core.template.impl.Elements.Unconditional;
  * A processor for an unconditional element of a template: it renders nothing and flags the statement as potentially
  * unsafe.
  *
- * @since 1.15
+ * @since 1.16
  */
 final class UnconditionalProcessor implements ElementProcessor<Unconditional> {
 

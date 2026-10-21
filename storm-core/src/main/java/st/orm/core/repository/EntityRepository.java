@@ -314,7 +314,7 @@ public interface EntityRepository<E extends Entity<ID>, ID> extends Repository {
      * no entity, and the entities of this type cached in the current transaction are evicted once it runs.</p>
      *
      * @return a new query builder for the entity type.
-     * @since 1.15
+     * @since 1.16
      */
     QueryBuilder<E, ?, ID> update();
 

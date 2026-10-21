@@ -54,7 +54,7 @@ import st.orm.spi.QueryContext;
  * per shape holds at most {@link #MAX_REPORTED} entries and starts over when full, which may repeat a line but never
  * changes what a line says.</p>
  *
- * @since 1.15
+ * @since 1.16
  */
 public final class AdviceLog {
 

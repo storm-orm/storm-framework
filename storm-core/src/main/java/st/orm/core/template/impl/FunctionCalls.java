@@ -24,7 +24,7 @@ import st.orm.SqlFunction.Call;
  * Renders the {@link SqlFunction} calls a path may be wrapped in. Column resolution works on the column the calls are
  * applied to, and the rendered column, and the value it is compared against, are wrapped in the calls afterwards.
  *
- * @since 1.15
+ * @since 1.16
  */
 final class FunctionCalls {
 

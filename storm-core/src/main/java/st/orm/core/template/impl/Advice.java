@@ -27,7 +27,7 @@ import org.jspecify.annotations.Nullable;
  * work closes the performance log's summary. The page keeps an anchor for as long as Storm emits the advice, so the
  * link in a log line outlives any change to the rest of the documentation.
  *
- * @since 1.15
+ * @since 1.16
  */
 enum Advice {
 

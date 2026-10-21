@@ -34,7 +34,7 @@ import st.orm.mapping.RecordField;
  * Renders the columns by which a table takes part in a relation, for the {@code IN} that relates a query to the rows
  * of a semi-joined table.
  *
- * @since 1.15
+ * @since 1.16
  */
 final class RelationKeyProcessor implements ElementProcessor<RelationKey> {
 

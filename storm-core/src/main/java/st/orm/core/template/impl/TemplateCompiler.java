@@ -243,7 +243,7 @@ interface TemplateCompiler {
      * slow. Advice recorded twice is kept once.
      *
      * @param advisory the advice.
-     * @since 1.15
+     * @since 1.16
      */
     void addAdvisory(String advisory);
 
@@ -254,7 +254,7 @@ interface TemplateCompiler {
      * @param table the model of the table holding the column.
      * @param column the column name.
      * @param kind how the statement uses the column.
-     * @since 1.15
+     * @since 1.16
      */
     void demandIndex(Model<?, ?> table, String column, IndexDemands.Kind kind);
 
@@ -262,7 +262,7 @@ interface TemplateCompiler {
      * Flags the statement as potentially unsafe, as an UPDATE or DELETE without a condition, whatever WHERE clause it
      * renders.
      *
-     * @since 1.15
+     * @since 1.16
      */
     void markUnconditional();
 

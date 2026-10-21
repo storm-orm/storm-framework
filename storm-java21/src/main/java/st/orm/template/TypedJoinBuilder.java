@@ -66,7 +66,7 @@ public interface TypedJoinBuilder<T extends Data, R, ID> extends JoinBuilder<T, 
      * @param relation the relation to join on.
      * @param condition the condition on the joined rows.
      * @return the query builder.
-     * @since 1.15
+     * @since 1.16
      */
     QueryBuilder<Data, R, ID> on(Class<? extends Data> relation,
                                  Function<WhereBuilder<Data, R, ID>, PredicateBuilder<Data, ?, ?>> condition);

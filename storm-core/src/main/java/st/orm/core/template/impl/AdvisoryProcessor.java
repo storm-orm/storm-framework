@@ -20,7 +20,7 @@ import st.orm.core.template.impl.Elements.Advisory;
 /**
  * A processor for an advisory element of a template: it renders nothing and records the advice on the statement.
  *
- * @since 1.15
+ * @since 1.16
  */
 final class AdvisoryProcessor implements ElementProcessor<Advisory> {
 

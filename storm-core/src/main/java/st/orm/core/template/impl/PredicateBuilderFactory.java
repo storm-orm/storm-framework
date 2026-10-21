@@ -132,7 +132,7 @@ public interface PredicateBuilderFactory {
      * @param <R> the type of the result.
      * @param <ID> the type of the primary key.
      * @return the predicate.
-     * @since 1.15
+     * @since 1.16
      */
     static <T extends Data, R, ID> PredicateBuilder<T, R, ID> suggest(String input,
                                                                       List<? extends Metamodel<?, String>> paths) {

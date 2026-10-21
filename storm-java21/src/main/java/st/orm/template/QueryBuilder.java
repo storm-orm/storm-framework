@@ -215,7 +215,7 @@ public abstract class QueryBuilder<T extends Data, R, ID> {
      * @return the query builder.
      * @param <V> the type of the field.
      * @throws PersistenceException if the builder is not an UPDATE builder, or the field cannot be set.
-     * @since 1.15
+     * @since 1.16
      */
     public abstract <V> QueryBuilder<T, R, ID> set(Metamodel<? extends T, V> field, @Nullable V value);
 
@@ -228,7 +228,7 @@ public abstract class QueryBuilder<T extends Data, R, ID> {
      * @param <V> the type of the referenced record.
      * @throws PersistenceException if the builder is not an UPDATE builder, or the field cannot be set.
      * @see #set(Metamodel, Object)
-     * @since 1.15
+     * @since 1.16
      */
     public abstract <V extends Data> QueryBuilder<T, R, ID> set(Metamodel<? extends T, V> field, Ref<V> ref);
 
@@ -249,7 +249,7 @@ public abstract class QueryBuilder<T extends Data, R, ID> {
      * @return the query builder.
      * @throws PersistenceException if the builder is not an UPDATE builder, or the field cannot be set.
      * @see #set(Metamodel, Object)
-     * @since 1.15
+     * @since 1.16
      */
     public abstract QueryBuilder<T, R, ID> set(Metamodel<? extends T, ?> field, StringTemplate template);
 
@@ -261,7 +261,7 @@ public abstract class QueryBuilder<T extends Data, R, ID> {
      * @return the query builder.
      * @throws PersistenceException if the builder is not an UPDATE builder, or the field cannot be set.
      * @see #set(Metamodel, Object)
-     * @since 1.15
+     * @since 1.16
      */
     @SuppressWarnings("unchecked")
     public final QueryBuilder<T, R, ID> setNull(Metamodel<? extends T, ?> field) {
@@ -394,7 +394,7 @@ public abstract class QueryBuilder<T extends Data, R, ID> {
      *
      * @param relation the table to filter by.
      * @return the join builder.
-     * @since 1.15
+     * @since 1.16
      */
     public abstract TypedJoinBuilder<T, R, ID> semiJoin(Class<? extends Data> relation);
 
@@ -409,7 +409,7 @@ public abstract class QueryBuilder<T extends Data, R, ID> {
      *
      * @param relation the table to filter by.
      * @return the join builder.
-     * @since 1.15
+     * @since 1.16
      */
     public abstract TypedJoinBuilder<T, R, ID> antiJoin(Class<? extends Data> relation);
 
@@ -837,7 +837,7 @@ public abstract class QueryBuilder<T extends Data, R, ID> {
      *
      * @param predicate the predicate the rows put first match, built with a {@link WhereBuilder}.
      * @return the query builder.
-     * @since 1.15
+     * @since 1.16
      */
     public abstract QueryBuilder<T, R, ID> orderFirst(Function<WhereBuilder<T, R, ID>, PredicateBuilder<T, ?, ?>> predicate);
 

@@ -180,7 +180,7 @@ public interface QueryTemplate extends SubqueryTemplate {
      * @param fromType the table to update.
      * @return the query builder.
      * @param <T> the table type to update.
-     * @since 1.15
+     * @since 1.16
      */
     <T extends Data> QueryBuilder<T, ?, ?> updateFrom(Class<T> fromType);
 

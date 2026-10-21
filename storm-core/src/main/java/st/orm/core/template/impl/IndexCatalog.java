@@ -39,7 +39,7 @@ import st.orm.core.template.impl.DatabaseSchema.DbPrimaryKey;
  *
  * <p>Names are compared case-insensitively, as {@link DatabaseSchema} compares them.</p>
  *
- * @since 1.15
+ * @since 1.16
  */
 final class IndexCatalog {
 

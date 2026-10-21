@@ -89,7 +89,7 @@ public interface QueryBuilderProvider extends Provider {
      * @param modelSupplier a supplier that creates the model when needed.
      * @return the query builder.
      * @param <T> the table type to update.
-     * @since 1.15
+     * @since 1.16
      */
     <T extends Data, ID> QueryBuilder<T, ?, ID> updateFrom(QueryTemplate queryTemplate,
                                                            Class<T> fromType,

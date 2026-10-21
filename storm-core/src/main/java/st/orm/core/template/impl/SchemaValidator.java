@@ -170,7 +170,7 @@ public final class SchemaValidator {
      * {@link TypeDiscovery}, without validating them, and keeps it for the data source.
      *
      * @see #load(Iterable)
-     * @since 1.15
+     * @since 1.16
      */
     public void load() {
         load(TypeDiscovery.getDataTypes());
@@ -188,7 +188,7 @@ public final class SchemaValidator {
      *
      * @param types the types whose schemas to load.
      * @throws st.orm.PersistenceException if the schema cannot be read.
-     * @since 1.15
+     * @since 1.16
      */
     public void load(Iterable<Class<? extends Data>> types) {
         try (Connection connection = dataSource.getConnection()) {

@@ -194,7 +194,7 @@ public interface ORMTemplate :
      * [java.sql.Connection] or `EntityManager` do not support loading the schema.
      *
      * @throws st.orm.PersistenceException if the schema cannot be read or the template does not support loading it.
-     * @since 1.15
+     * @since 1.16
      */
     public fun loadSchema()
 
@@ -205,7 +205,7 @@ public interface ORMTemplate :
      *
      * @param filter predicate to select which discovered types to load the schema of.
      * @throws st.orm.PersistenceException if the schema cannot be read or the template does not support loading it.
-     * @since 1.15
+     * @since 1.16
      */
     public fun loadSchema(filter: (KClass<out Data>) -> Boolean)
 

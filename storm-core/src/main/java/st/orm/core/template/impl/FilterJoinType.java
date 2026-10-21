@@ -22,7 +22,7 @@ import st.orm.JoinType;
  * that have a matching related row, an anti-join the rows that have none. They never render as a join; the query
  * places their conditions in subqueries of its WHERE clause.
  *
- * @since 1.15
+ * @since 1.16
  */
 enum FilterJoinType implements JoinType {
     SEMI("semiJoin"),

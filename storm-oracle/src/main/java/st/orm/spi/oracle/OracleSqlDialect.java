@@ -225,7 +225,7 @@ public class OracleSqlDialect extends DefaultSqlDialect {
      * Oracle lists its sequences in the {@code ALL_SEQUENCES} dictionary view.
      *
      * @return the query on {@code ALL_SEQUENCES}.
-     * @since 1.15
+     * @since 1.16
      */
     @Override
     public String sequenceDiscoveryQuery() {
@@ -252,7 +252,7 @@ public class OracleSqlDialect extends DefaultSqlDialect {
      * views, with constraint types {@code P} and {@code U}.
      *
      * @return the query on {@code ALL_CONSTRAINTS}.
-     * @since 1.15
+     * @since 1.16
      */
     @Override
     public String keyDiscoveryQuery() {
@@ -272,7 +272,7 @@ public class OracleSqlDialect extends DefaultSqlDialect {
      * with constraint type {@code R}, each referencing the constraint of the key it points to.
      *
      * @return the query on {@code ALL_CONSTRAINTS}.
-     * @since 1.15
+     * @since 1.16
      */
     @Override
     public String foreignKeyDiscoveryQuery() {
@@ -301,7 +301,7 @@ public class OracleSqlDialect extends DefaultSqlDialect {
      * {@code SYS_NC...}, which stands for an expression.
      *
      * @return the query on {@code ALL_IND_COLUMNS}.
-     * @since 1.15
+     * @since 1.16
      */
     @Override
     public String indexDiscoveryQuery() {

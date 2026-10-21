@@ -758,7 +758,7 @@ abstract class QueryBuilderImpl<T extends Data, R, ID> extends QueryBuilder<T, R
      *
      * @param relation the relation to filter by.
      * @return the join builder.
-     * @since 1.15
+     * @since 1.16
      */
     @Override
     public TypedJoinBuilder<T, R, ID> semiJoin(Class<? extends Data> relation) {
@@ -771,7 +771,7 @@ abstract class QueryBuilderImpl<T extends Data, R, ID> extends QueryBuilder<T, R
      *
      * @param relation the relation to filter by.
      * @return the join builder.
-     * @since 1.15
+     * @since 1.16
      */
     @Override
     public TypedJoinBuilder<T, R, ID> antiJoin(Class<? extends Data> relation) {

@@ -180,7 +180,7 @@ public interface QueryTemplate : SubqueryTemplate {
      * @param fromType the table to update.
      * @return the query builder.
      * @param <T> the table type to update.
-     * @since 1.15
+     * @since 1.16
      */
     public fun <T : Data> updateFrom(fromType: KClass<T>): QueryBuilder<T, *, *>
 
@@ -218,7 +218,7 @@ public interface QueryTemplate : SubqueryTemplate {
  *
  * @param T the table type to select from.
  * @return the query builder.
- * @since 1.15
+ * @since 1.16
  */
 public inline fun <reified T : Data> QueryTemplate.selectFrom(): QueryBuilder<T, T, *> = selectFrom(T::class)
 
@@ -235,7 +235,7 @@ public inline fun <reified T : Data> QueryTemplate.selectFrom(): QueryBuilder<T,
  * @param T the table type to select from.
  * @param R the result type of the query.
  * @return the query builder.
- * @since 1.15
+ * @since 1.16
  */
 @JvmName("selectFromTyped")
 public inline fun <reified T : Data, reified R : Any> QueryTemplate.selectFrom(): QueryBuilder<T, R, *> = selectFrom(T::class, R::class)
