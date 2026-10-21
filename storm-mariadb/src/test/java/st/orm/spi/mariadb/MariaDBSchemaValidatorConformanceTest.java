@@ -17,4 +17,9 @@ public class MariaDBSchemaValidatorConformanceTest extends AbstractSchemaValidat
         }
         return ContainerDataSource.of(container.getJdbcUrl(), container.getUsername(), container.getPassword());
     }
+
+    @Override
+    protected boolean indexesForeignKeys() {
+        return true;
+    }
 }

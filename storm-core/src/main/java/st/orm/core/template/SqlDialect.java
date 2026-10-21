@@ -665,7 +665,8 @@ public interface SqlDialect {
      * them with the {@link #constraintDiscoveryStrategy()}.
      *
      * <p>The query takes the schema name as its only parameter and returns one row per foreign key column, in key
-     * order, with {@code FK_TABLE} and {@code FK_COLUMN}, the referencing table and column, and {@code PK_TABLE} and
+     * order, with {@code FK_TABLE} and {@code FK_COLUMN}, the referencing table and column, {@code FK_NAME}, the name
+     * of the foreign key constraint, which the columns of a compound key share, and {@code PK_TABLE} and
      * {@code PK_COLUMN}, the referenced ones. Without a schema name to bind, the strategy is used instead.</p>
      *
      * @return the query, or {@code null} to use the strategy.

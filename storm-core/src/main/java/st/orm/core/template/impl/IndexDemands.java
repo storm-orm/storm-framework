@@ -27,12 +27,13 @@ import st.orm.Operator;
 
 /**
  * The columns a statement asks an index for, per table: the columns it compares for equality, the columns it
- * compares by range, and the column it sorts a limited result by.
+ * compares by range, and the column it sorts a limited result by; and for a delete, the table it deletes from, whose
+ * referencing foreign keys the database checks for every row it deletes.
  *
  * <p>Demands are recorded while the statement compiles, from the parts of it Storm builds: a metamodel predicate, the
- * correlation of a semi-join or anti-join, and the ordering of a limited result. A raw template fragment is opaque and
- * demands nothing. A compiled statement is cached per shape, so the demands are recorded once per shape and every
- * execution of it carries the same instance.</p>
+ * correlation of a semi-join or anti-join, the ordering of a limited result, and the table of a delete. A raw template
+ * fragment is opaque and demands nothing. A compiled statement is cached per shape, so the demands are recorded once
+ * per shape and every execution of it carries the same instance.</p>
  *
  * <p>The check against an {@link IndexCatalog} runs only for a slow execution, and its outcome is kept on the
  * instance for the catalog it was decided against: a shape that is slow again is answered without a second look, and
@@ -87,16 +88,27 @@ final class IndexDemands {
     }
 
     /**
+     * A table a delete removes rows from.
+     *
+     * @param schema the table's schema as its model names it, {@code ""} for the default schema.
+     * @param table the table name.
+     */
+    private record DeleteTarget(String schema, String table) {
+    }
+
+    /**
      * The decision for one catalog.
      */
     private record Decision(IndexCatalog catalog, List<String> advice) {
     }
 
     private final List<TableDemands> tables;
+    private final @Nullable DeleteTarget deleted;
     private volatile @Nullable Decision decision;
 
-    private IndexDemands(List<TableDemands> tables) {
+    private IndexDemands(List<TableDemands> tables, @Nullable DeleteTarget deleted) {
         this.tables = tables;
+        this.deleted = deleted;
     }
 
     /**
@@ -104,6 +116,7 @@ final class IndexDemands {
      */
     static final class Builder {
         private final Map<String, TableDemands> tables = new LinkedHashMap<>();
+        private @Nullable DeleteTarget deleted;
 
         /**
          * Records that the statement uses the given column of the given table.
@@ -131,23 +144,34 @@ final class IndexDemands {
         }
 
         /**
+         * Records that the statement deletes rows from the given table.
+         *
+         * @param schema the table's schema as its model names it, {@code ""} for the default schema.
+         * @param table the table name.
+         */
+        void deleteFrom(String schema, String table) {
+            deleted = new DeleteTarget(requireNonNull(schema, "schema"), requireNonNull(table, "table"));
+        }
+
+        /**
          * Returns the demands, or {@code null} when the statement made none.
          */
         @Nullable IndexDemands build() {
-            if (tables.isEmpty()) {
+            if (tables.isEmpty() && deleted == null) {
                 return null;
             }
             return new IndexDemands(tables.values().stream()
                     .map(demands -> new TableDemands(demands.schema(), demands.table(), List.copyOf(demands.equality()),
                             List.copyOf(demands.range()), List.copyOf(demands.order())))
-                    .toList());
+                    .toList(), deleted);
         }
     }
 
     /**
-     * Returns the missing-index advice for the statement: one piece for each table none of whose indexes starts with
-     * a column the statement asks for. A table the catalog does not know gets none, since whether an index serves it
-     * cannot be decided.
+     * Returns the index advice for the statement: one piece for each table none of whose indexes starts with a column
+     * the statement asks for, and for a delete, one for each foreign key that references the table it deletes from
+     * without an index to serve the database's check of it. A table the catalog does not know gets none, since whether
+     * an index serves it cannot be decided.
      *
      * @param catalog the catalog of the database the statement ran on, or {@code null} when its schema was not read.
      * @return the advice, empty when every table is served or none can be decided.
@@ -169,7 +193,7 @@ final class IndexDemands {
             var asked = new ArrayList<String>(demands.equality());
             addAbsent(asked, demands.range());
             addAbsent(asked, demands.order());
-            String table = demands.schema().isEmpty() ? demands.table() : demands.schema() + "." + demands.table();
+            String table = qualified(demands.schema(), demands.table());
             boolean filters = !demands.equality().isEmpty() || !demands.range().isEmpty();
             boolean sorts = !demands.order().isEmpty();
             String cost = !filters
@@ -182,6 +206,17 @@ final class IndexDemands {
                     : "finds them directly where the condition selects few of them";
             advice.add(Advice.MISSING_INDEX.format(table, String.join(" or ", asked), cost,
                     "%s(%s)".formatted(table, String.join(", ", suggested(demands))), remedy));
+        }
+        if (deleted != null) {
+            var indexes = catalog.find(deleted.schema(), deleted.table());
+            if (indexes != null) {
+                for (var reference : indexes.unindexedReferences()) {
+                    String referencing = qualified(deleted.schema(), reference.table());
+                    advice.add(Advice.UNINDEXED_FOREIGN_KEY.format(qualified(deleted.schema(), deleted.table()),
+                            referencing, String.join(", ", reference.columns()),
+                            String.join(" or ", reference.columns())));
+                }
+            }
         }
         var result = List.copyOf(advice);
         // Benign race: two threads may decide the same catalog; both reach the same advice.
@@ -214,6 +249,13 @@ final class IndexDemands {
             }
         }
         return columns;
+    }
+
+    /**
+     * Returns the table name qualified by its schema, or the bare name in the default schema.
+     */
+    private static String qualified(String schema, String table) {
+        return schema.isEmpty() ? table : schema + "." + table;
     }
 
     private static void addAbsent(List<String> target, List<String> columns) {

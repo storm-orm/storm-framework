@@ -63,6 +63,12 @@
             <artifactId>junit-jupiter</artifactId>
             <scope>compile</scope>
         </dependency>
+        <!-- Captures the slow statement log's lines to assert the advice they carry. -->
+        <dependency>
+            <groupId>ch.qos.logback</groupId>
+            <artifactId>logback-classic</artifactId>
+            <scope>compile</scope>
+        </dependency>
         <dependency>
             <groupId>org.projectlombok</groupId>
             <artifactId>lombok</artifactId>

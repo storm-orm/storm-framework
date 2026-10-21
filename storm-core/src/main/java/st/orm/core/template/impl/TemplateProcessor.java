@@ -624,8 +624,33 @@ class TemplateProcessor {
         if (subquery && !sql.startsWith("\n") && sql.contains("\n")) {
             sql = "\n" + sql.indent(2);
         }
+        if (!subquery) {
+            demandDeleteCheck();
+        }
         freeze(sql);
         return sql;
+    }
+
+    /**
+     * Records the table a delete removes rows from: the database checks every foreign key that references it for
+     * each row it deletes, which the slow statement log checks against the database's indexes. A joined inheritance
+     * hierarchy deletes from several tables, which its type does not name one by one, so it is left out.
+     *
+     * @throws SqlTemplateException if the model of the table cannot be built.
+     */
+    private void demandDeleteCheck() throws SqlTemplateException {
+        if (operation != SqlOperation.DELETE) {
+            return;
+        }
+        var type = affectedType();
+        if (type == null || IndexDemandProcessor.inJoinedHierarchy(type)) {
+            return;
+        }
+        var model = modelBuilder.build(type, false);
+        if (indexDemandBuilder == null) {
+            indexDemandBuilder = new IndexDemands.Builder();
+        }
+        indexDemandBuilder.deleteFrom(model.schema(), model.name());
     }
 
     /**

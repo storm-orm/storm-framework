@@ -7,25 +7,34 @@ import static org.junit.jupiter.api.Assumptions.assumeTrue;
 import static st.orm.GenerationStrategy.NONE;
 import static st.orm.GenerationStrategy.SEQUENCE;
 
+import ch.qos.logback.classic.Level;
+import ch.qos.logback.classic.LoggerContext;
+import ch.qos.logback.classic.spi.ILoggingEvent;
+import ch.qos.logback.core.read.ListAppender;
 import java.sql.SQLException;
+import java.time.Duration;
 import java.time.LocalDate;
 import java.util.Comparator;
 import java.util.List;
+import java.util.function.Supplier;
 import javax.sql.DataSource;
 import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.slf4j.LoggerFactory;
 import st.orm.DbTable;
 import st.orm.Entity;
 import st.orm.PK;
 import st.orm.StormConfig;
 import st.orm.UK;
 import st.orm.core.spi.Providers;
+import st.orm.core.template.ORMTemplate;
 import st.orm.core.template.impl.DatabaseSchema;
 import st.orm.core.template.impl.DatabaseSchema.ConstraintKind;
 import st.orm.core.template.impl.DatabaseSchema.DbIndex;
 import st.orm.core.template.impl.SchemaValidationError.ErrorKind;
 import st.orm.core.template.impl.SchemaValidator;
+import st.orm.core.template.impl.SlowStatementLog;
 
 /**
  * The schema mismatches every dialect is expected to report.
@@ -55,6 +64,14 @@ public abstract class AbstractSchemaValidatorConformanceTest {
         return null;
     }
 
+    /**
+     * Whether the database creates an index for every foreign key it enforces, so that a delete never checks a
+     * referencing table without one.
+     */
+    protected boolean indexesForeignKeys() {
+        return false;
+    }
+
     /** Whether the dialect has sequences, and so reports {@code SEQUENCE_NOT_FOUND} at all. */
     protected boolean supportsSequences() {
         return true;
@@ -79,6 +96,10 @@ public abstract class AbstractSchemaValidatorConformanceTest {
             @Nullable String telephone,
             @Nullable Integer version
     ) implements Entity<Integer> {}
+
+    /** A table that {@code fk_probe_child.parent_id} references. */
+    @DbTable("fk_probe_parent")
+    public record FkProbeParent(@PK(generation = NONE) Integer id) implements Entity<Integer> {}
 
     /** A unique key on {@code c}, which a unique index enforces. */
     @DbTable("index_probe")
@@ -273,5 +294,63 @@ public abstract class AbstractSchemaValidatorConformanceTest {
                 statement.execute("DROP TABLE index_probe");
             }
         }
+    }
+
+    @Test
+    public void testASlowDeleteNamesTheIndexAReferencingForeignKeyLacks() throws SQLException {
+        try (var connection = dataSource.getConnection(); var statement = connection.createStatement()) {
+            statement.execute("CREATE TABLE fk_probe_parent (id INTEGER NOT NULL PRIMARY KEY)");
+            statement.execute("""
+                    CREATE TABLE fk_probe_child (id INTEGER NOT NULL PRIMARY KEY, parent_id INTEGER NOT NULL,
+                        CONSTRAINT fk_probe_child_parent FOREIGN KEY (parent_id) REFERENCES fk_probe_parent (id))""");
+            try {
+                statement.execute("INSERT INTO fk_probe_parent (id) VALUES (1)");
+                var orm = ORMTemplate.of(dataSource);
+                orm.loadSchema();
+                var advice = slowAdvice(() -> {
+                    orm.entity(FkProbeParent.class).removeById(1);
+                    return null;
+                });
+                if (indexesForeignKeys()) {
+                    assertEquals(List.of(), advice);
+                } else {
+                    assertEquals(1, advice.size(), advice::toString);
+                    assertTrue(advice.getFirst().toLowerCase().contains("checks the foreign key "
+                            + "fk_probe_child(parent_id) that references it"), advice.getFirst());
+                }
+            } finally {
+                statement.execute("DROP TABLE fk_probe_child");
+                statement.execute("DROP TABLE fk_probe_parent");
+            }
+        }
+    }
+
+    /** Returns the unindexed-foreign-key advice on the slow lines the action logs, every execution counting as slow. */
+    private static List<String> slowAdvice(Supplier<?> action) {
+        var context = (LoggerContext) LoggerFactory.getILoggerFactory();
+        var logger = context.getLogger("st.orm.sql.slow");
+        var appender = new ListAppender<ILoggingEvent>();
+        appender.setContext(context);
+        appender.start();
+        Level previousLevel = logger.getLevel();
+        Duration previousThreshold = SlowStatementLog.threshold();
+        logger.setLevel(Level.WARN);
+        logger.addAppender(appender);
+        // Captured events stay out of the build log.
+        logger.setAdditive(false);
+        SlowStatementLog.threshold(Duration.ofNanos(1));
+        try {
+            action.get();
+        } finally {
+            SlowStatementLog.threshold(previousThreshold);
+            logger.detachAppender(appender);
+            logger.setAdditive(true);
+            logger.setLevel(previousLevel);
+            appender.stop();
+        }
+        return appender.list.stream()
+                .flatMap(event -> event.getFormattedMessage().lines())
+                .filter(line -> line.contains("#unindexed-foreign-key"))
+                .toList();
     }
 }

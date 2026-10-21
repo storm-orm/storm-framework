@@ -21,11 +21,12 @@ import org.jspecify.annotations.Nullable;
  * The advice a statement can carry, each with the anchor of its section on the advice page and its category. The slow
  * statement log prints every piece of advice a slow statement carries. The advice log reports advice on correctness,
  * such as rows returned in no stated order, and on design, such as an entity whose read exceeds the design budget, by
- * default, and advice on performance once the application asks for its category; advice on a deliberate choice, such as a page that reports its total, holds only once the statement
- * is slow, so only the slow statement log reports it, as it reports advice that needs a slow execution as evidence,
- * such as an index the statement lacks. The advice on what repeated in one unit of
- * work closes the performance log's summary. The page keeps an anchor for as long as Storm emits the advice, so the
- * link in a log line outlives any change to the rest of the documentation.
+ * default, and advice on performance once the application asks for its category; advice on a deliberate choice, such as
+ * a page that reports its total, holds only once the statement is slow, so only the slow statement log reports it, as
+ * it reports advice that needs a slow execution as evidence, such as an index the statement lacks, or one the
+ * database's check of a foreign key lacks when the statement deletes. The advice on what repeated in one unit of work
+ * closes the performance log's summary. The page keeps an anchor for as long as Storm emits the advice, so the link in
+ * a log line outlives any change to the rest of the documentation.
  *
  * @since 1.16
  */
@@ -48,6 +49,16 @@ enum Advice {
      */
     MISSING_INDEX("missing-index", Category.PERFORMANCE, true,
             "no index on %1$s starts with %2$s, %3$s; an index on %4$s %5$s."),
+
+    /**
+     * A delete from a table that a foreign key references, with no index on the referencing table to serve the check
+     * the database makes for every row it deletes. The statement does not name the referencing table, so only the
+     * loaded schema shows the cost, and a slow execution that it matters.
+     */
+    UNINDEXED_FOREIGN_KEY("unindexed-foreign-key", Category.PERFORMANCE, true,
+            "deleting from %1$s checks the foreign key %2$s(%3$s) that references it, and no index on %2$s starts "
+                    + "with %4$s, so the database reads %2$s in full for every row it deletes; an index on %2$s(%3$s) "
+                    + "serves the check."),
 
     /** The count query behind a page, a deliberate choice of page over slice, so advised only when slow. */
     PAGE_COUNT("page-count", Category.PERFORMANCE, true,
