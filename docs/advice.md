@@ -3,7 +3,7 @@ import TabItem from '@theme/TabItem';
 
 # Statement Advice
 
-Advice is only worth reading when it is worth acting on, and only worth having when it does not slow the application down. Storm decides advice once per statement shape, when it builds the statement, and makes the checks that need evidence only for an execution that was already slow, so advice comes at no measurable cost. The advice it gives is:
+Statement advice spots the common pitfalls of data access and shows them where they occur, based on what the application actually does: the statements it runs and how long they take, the entities it reads, what a unit of work repeats, and the indexes the database reports. Advice is only worth reading when it is worth acting on, and only worth having when it does not slow the application down. Storm decides advice once per statement shape, when it builds the statement, and makes the checks that need evidence only for an execution that was already slow, so advice comes at no measurable cost. The advice it gives is:
 
 - **Relevant.** Advice rests on what Storm can prove: the shape of a statement, the entity model, the indexes the database reports, or what a unit of work did. Where the cost depends on data Storm cannot see, such as how many rows a table holds, the advice waits for a slow execution as evidence.
 - **Not repeated.** The advice log reports a piece of advice once by default, not at every execution, and design advice once per entity. Advice you have accepted stays quiet where you accepted it.
