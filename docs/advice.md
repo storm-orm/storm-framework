@@ -3,13 +3,21 @@ import TabItem from '@theme/TabItem';
 
 # Statement Advice
 
+Advice is only worth reading when it is worth acting on. Storm holds its advice to that standard:
+
+- **Relevant.** Advice rests on what Storm can prove: the shape of a statement, the entity model, the indexes the database reports, or what a unit of work did. Where the cost depends on data Storm cannot see, such as how many rows a table holds, the advice waits for a slow execution as evidence.
+- **Not repeated.** The advice log reports a piece of advice once by default, not at every execution, and design advice once per entity. Advice you have accepted stays quiet where you accepted it.
+- **Informative.** Every line says what the statement costs, what to use instead, and links to a section on this page that explains the trade-off.
+- **Quiet by default.** Only correctness advice is reported everywhere. The advice log reports design and performance advice while developing, where the code is still changing; in production it reaches you only on the line of a slow statement, once you set a slow threshold, unless you ask for more.
+- **Configurable.** The categories, how often advice is reported, the design budget and the slow thresholds are settings, and each piece of advice has a logger of its own to silence it in the advice log. The defaults suit most applications without changing any of them.
+
 Storm gives advice where a statement's own shape says it reads more than it needs to or returns rows in no stated order, and where the entity model makes reads cost more than the application needs. Each piece of advice has a category:
 
 - **Correctness.** A [limit or offset without an order](#unordered-limit) returns an arbitrary part of the result, however fast it runs.
 - **Performance.** A deep offset, a `distinct` over a join that repeats rows, or a search of short words alone costs more as the data grows, and on a small table costs nothing worth changing.
 - **Design.** Whether a foreign key is an inline entity or a `Ref` decides what every read of the entity joins. The schema is what it is; this choice is yours, and [Entity Design](entity-design.md) gives the reasoning.
 
-The advice reaches you two ways.
+The advice reaches you three ways.
 
 **The slow statement log.** A line in the [slow statement log](sql-logging.md#the-slow-statement-log) ends with every piece of advice its statement carries, every time it is slow.
 
