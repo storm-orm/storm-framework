@@ -27,9 +27,10 @@ import kotlin.time.Duration
  * log switchable through `application.conf` without a code change, mirroring the Spring starter's
  * `storm.sql-log.*` properties.
  *
- * [lineWidth], [slowThreshold], [slowLimit], [adviceCategories], [entityBudgetJoins] and [entityBudgetColumns] are `null` when neither the DSL nor the configuration sets them,
- * so installation leaves the JVM-wide settings (the `storm.sql_log.*` system properties, or another
- * application's configuration in the same JVM) untouched.
+ * [lineWidth], [slowThreshold], [slowLimit], [slowTransaction], [adviceCategories], [entityBudgetJoins] and
+ * [entityBudgetColumns] are `null` when neither the DSL nor the configuration sets them, so installation leaves the
+ * JVM-wide settings (the `storm.sql_log.*` system properties, or another application's configuration in the same
+ * JVM) untouched.
  */
 internal class SqlLogSettings(
     val enabled: Boolean,
@@ -38,6 +39,7 @@ internal class SqlLogSettings(
     val durationThreshold: Duration?,
     val slowThreshold: Duration?,
     val slowLimit: Int?,
+    val slowTransaction: Duration?,
     val adviceCategories: List<String>?,
     val entityBudgetJoins: Int?,
     val entityBudgetColumns: Int?,
@@ -60,6 +62,7 @@ internal fun resolveSqlLogSettings(application: Application, pluginConfig: Storm
         ?: durationProperty(application, "performance.threshold.duration"),
     slowThreshold = pluginConfig.sqlLogSlowThreshold ?: durationProperty(application, "slow.threshold"),
     slowLimit = pluginConfig.sqlLogSlowLimit ?: intProperty(application, "slow.limit"),
+    slowTransaction = pluginConfig.sqlLogSlowTransaction ?: durationProperty(application, "slow.transaction"),
     // Advice is a feature of its own, configured under `storm.advice` rather than `storm.sqlLog`.
     adviceCategories = pluginConfig.adviceCategories ?: listProperty(application, "categories", ADVICE),
     entityBudgetJoins = pluginConfig.adviceEntityBudgetJoins ?: intProperty(application, "entityBudget.joins", ADVICE),

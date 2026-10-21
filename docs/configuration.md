@@ -25,6 +25,7 @@ Storm can be configured through `StormConfig`, system properties, Spring Boot's 
 | `storm.sql_log.call_site_skip` | — | Comma-separated package prefixes or source file names skipped in SQL log call-site attribution |
 | `storm.sql_log.slow.threshold` | — | Database time above which a single statement execution is reported under `st.orm.sql.slow`, such as `200ms`. In the Spring and Ktor integrations, unset alongside an enabled performance log it takes that log's duration threshold (see [The Slow Statement Log](sql-logging.md#the-slow-statement-log)) |
 | `storm.sql_log.slow.limit` | `5` | Slow statement lines reported per shape per minute before the rest are suppressed and counted; `0` for no limit |
+| `storm.sql_log.slow.transaction` | — | Time a transaction may hold its connection beyond what its statements spent on it, such as `1s`; a transaction idle for longer is reported under `st.orm.sql.slow` with the call site that began it (see [A Transaction That Holds Its Connection](sql-logging.md#a-transaction-that-holds-its-connection)) |
 | `storm.advice.categories` | `correctness` (all three in development) | Categories of advice the advice log reports, comma-separated: `correctness`, `performance`, `design` |
 | `storm.advice.entity_budget.joins` | `10` | The most tables the [design budget](entity-design.md#the-budget) lets an entity's read join; at least 1 |
 | `storm.advice.entity_budget.columns` | `96` | The most columns the [design budget](entity-design.md#the-budget) lets an entity's read select beyond its own; at least 1 |

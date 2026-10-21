@@ -31,6 +31,7 @@ The advice reaches you three ways.
 - **Accepted advice stays quiet.** Where an entity or a query is as intended, [accept the advice](#accepting-advice) there with `@AcceptAdvice`, and the advice log stops reporting it there.
 - **A deliberate choice is advised only when slow.** A page that reports its total is a choice of `page` over `slice`, so its [count](#page-count) is advised in the slow statement log alone.
 - **Advice that needs evidence is advised only when slow.** Whether an index is worth its cost depends on how many rows a table holds and how few a condition selects, which only a slow execution shows, so a [missing index](#missing-index) and an [unindexed foreign key](#unindexed-foreign-key) are advised in the slow statement log alone.
+- **A transaction is measured against a threshold of its own.** A [transaction that holds its connection idle](#idle-transaction) is reported by the slow statement log once `storm.sql_log.slow.transaction` says how long a transaction may hold its connection beyond what its statements spent on it.
 
 The level of `st.orm.sql.advice` decides how often a piece of advice is reported:
 
@@ -199,6 +200,23 @@ Storm stays quiet where it cannot tell:
 - **A table the loaded schema does not know**, or whose foreign keys or indexes it could not read, is not advised.
 - **A joined inheritance hierarchy** deletes from several tables, which its type does not name one by one, so its deletes are not advised.
 - **A delete written as SQL text** names no entity, so Storm does not know the table it deletes from.
+
+## A transaction that holds its connection idle {#idle-transaction}
+
+> the transaction held its connection 2300 ms and its statements spent 120 ms of it; for 2180 ms between them it held the connection, and the row locks of its writes, while the application did other work; move that work before the transaction or after it commits
+
+Category: performance, reported by the slow statement log only, and only once `storm.sql_log.slow.transaction` (Spring Boot `storm.sql-log.slow.transaction`, Ktor `sqlLogSlowTransaction`) sets how long a transaction may hold its connection beyond what its statements spent on it.
+
+A transaction that calls another service, sends mail or renders a document between a write and its commit keeps its connection out of the pool for the whole of that work, and the row locks of its writes with it. Every statement in it is fast, so neither the statement log nor a slow statement line shows it; under load the pool runs dry and other transactions queue on the locks. Storm knows both halves of the time: when a transaction it runs or joins took its connection and when it returned it, and the time each statement spent on it. The difference is time the connection was held for nothing, and a transaction whose difference reaches the threshold is reported when it completes, with the call site that began it, how many statements it ran and whether they wrote. See [A Transaction That Holds Its Connection](sql-logging.md#a-transaction-that-holds-its-connection).
+
+Move the work out of the transaction: before it, where the work decides what to write, or after it commits, through an `onCommit` callback or a row the transaction writes and a worker acts on. Where the work has to stay inside, such as a batch job that holds its transaction by design, accept the advice on the method that runs the transaction with `@AcceptAdvice("idle-transaction")`, and the transaction is not reported there.
+
+What the measurement covers:
+
+- **Storm's own transactions** are measured from the moment they take their connection, at their first statement, to the moment they return it.
+- **A Spring-managed transaction** is measured from Storm's first statement in it to its completion, since Spring opened the connection before Storm saw the transaction; the line says `from its first statement`.
+- **A joined block** is part of the transaction it joined, which is reported once, on the frame that owns the connection. A block that opens a transaction of its own, `REQUIRES_NEW`, is measured on its own.
+- **The threshold is on the idle time**, not on the transaction's length: a transaction that spends its whole time in its statements is never reported, however long it runs.
 
 ## The count behind a page {#page-count}
 

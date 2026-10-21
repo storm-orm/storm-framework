@@ -77,6 +77,7 @@ public class AdvicePageTest {
             case MISSING_INDEX -> new Object[] {"owner", "last_name", "which the statement filters owner by",
                     "owner(last_name)", "finds them directly"};
             case UNINDEXED_FOREIGN_KEY -> new Object[] {"owner", "pet", "owner_id", "owner_id"};
+            case IDLE_TRANSACTION -> new Object[] {"2300 ms", "120 ms", "2180 ms", ""};
             default -> new Object[] {3, "Owner", 3};
         };
     }

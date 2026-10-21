@@ -94,9 +94,10 @@ public class StormSqlLogAutoConfiguration {
     }
 
     /**
-     * Applies the slow statement threshold, the categories of advice the advice log reports and the design budget. Statements execute while the application starts, migrations and
-     * schema validation among them, so the threshold is applied when this bean is defined, which a bean factory
-     * post-processor is before any singleton exists; the processor itself has nothing left to do.
+     * Applies the slow statement and transaction thresholds, the categories of advice the advice log reports and the
+     * design budget. Statements execute while the application starts, migrations and schema validation among them,
+     * so the thresholds are applied when this bean is defined, which a bean factory post-processor is before any
+     * singleton exists; the processor itself has nothing left to do.
      *
      * <p>Each setting is applied only when configured, so an application that configures neither keeps whatever
      * the {@code storm.sql_log.*} system properties put in effect.</p>
@@ -111,6 +112,10 @@ public class StormSqlLogAutoConfiguration {
         var limit = sqlLog.getSlow().getLimit();
         if (limit != null) {
             SlowStatementLog.limit(limit);
+        }
+        var transaction = sqlLog.getSlow().getTransaction();
+        if (transaction != null) {
+            SlowStatementLog.transactionThreshold(transaction);
         }
         var advice = bindAdvice(environment);
         var entityBudget = advice.getEntityBudget();

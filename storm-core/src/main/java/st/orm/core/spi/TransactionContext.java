@@ -18,6 +18,7 @@ package st.orm.core.spi;
 import java.util.Optional;
 import org.jspecify.annotations.Nullable;
 import st.orm.Entity;
+import st.orm.core.template.impl.HeldConnection;
 
 /**
  * @since 1.5
@@ -180,6 +181,20 @@ public interface TransactionContext {
      * @since 1.15
      */
     default @Nullable ConnectionGuard connectionGuard() {
+        return null;
+    }
+
+    /**
+     * Returns the connection the transaction holds, as the slow statement log measures it, or {@code null} when no
+     * transaction holds one or the log does not watch transactions.
+     *
+     * <p>The slow statement log credits each statement to it as the statement closes, and the context releases it
+     * when the connection goes back to the pool.</p>
+     *
+     * @return the held connection, or {@code null}.
+     * @since 1.16
+     */
+    default @Nullable HeldConnection heldConnection() {
         return null;
     }
 }

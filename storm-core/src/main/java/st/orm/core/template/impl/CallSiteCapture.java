@@ -127,9 +127,15 @@ public final class CallSiteCapture {
 
     private static String format(StackWalker.StackFrame frame) {
         String file = frame.getFileName();
-        return file != null
-                ? "%s:%d".formatted(file, frame.getLineNumber())
-                : "%s.%s".formatted(frame.getClassName(), frame.getMethodName());
+        if (file != null && !file.equals("<generated>")) {
+            return "%s:%d".formatted(file, frame.getLineNumber());
+        }
+        // A class generated at runtime, such as the proxy Spring puts around a transactional service, has no source
+        // file; it names the class it stands for.
+        String className = frame.getClassName();
+        int generated = className.indexOf("$$");
+        return "%s.%s".formatted(generated < 0 ? className : className.substring(0, generated),
+                frame.getMethodName());
     }
 
     /**

@@ -96,6 +96,8 @@ public class StormEndpoint {
      * @param slowStatement database time above which a single execution is reported, such as {@code 200ms} or
      *                      {@code PT0.2S}; {@code off} switches the slow log off.
      * @param slowStatementLimit slow lines a shape may report per minute, or zero for no limit.
+     * @param slowTransaction time a transaction may hold its connection beyond what its statements spent on it, such
+     *                        as {@code 1s}; {@code off} stops watching transactions.
      * @param statements statements above which a unit of work is reported; {@code off} removes the threshold.
      * @param duration duration above which a unit of work is reported, such as {@code 500ms}; {@code off} removes
      *                 the threshold. With neither threshold set, every unit of work that touches the database is
@@ -109,6 +111,7 @@ public class StormEndpoint {
     @WriteOperation
     public Map<String, Object> configure(@Nullable String slowStatement,
                                          @Nullable Integer slowStatementLimit,
+                                         @Nullable String slowTransaction,
                                          @Nullable String statements,
                                          @Nullable String duration,
                                          @Nullable Boolean callSites,
@@ -118,6 +121,9 @@ public class StormEndpoint {
         }
         if (slowStatementLimit != null) {
             SlowStatementLog.limit(slowStatementLimit);
+        }
+        if (slowTransaction != null) {
+            SlowStatementLog.transactionThreshold(parseDuration(slowTransaction, "slowTransaction"));
         }
         for (var boundary : boundaries) {
             var current = boundary.settings();
@@ -137,6 +143,8 @@ public class StormEndpoint {
         described.put("active", threshold != null);
         described.put("threshold", threshold == null ? null : threshold.toString());
         described.put("limit", SlowStatementLog.limit());
+        var transaction = SlowStatementLog.transactionThreshold();
+        described.put("transaction", transaction == null ? null : transaction.toString());
         return described;
     }
 

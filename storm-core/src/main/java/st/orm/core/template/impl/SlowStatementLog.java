@@ -33,11 +33,14 @@ import org.jspecify.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import st.orm.StormConfig;
+import st.orm.core.spi.TransactionScope;
+import st.orm.core.spi.TransactionTemplateProvider;
 import st.orm.core.template.SqlTemplate.Parameter;
 import st.orm.core.template.impl.StatementListener.Handle;
 import st.orm.spi.QueryContext;
 import st.orm.spi.QueryContext.ExecutionKind;
 import st.orm.spi.SqlCommenter;
+import st.orm.spi.SqlOperation;
 import st.orm.spi.StatementOrigin;
 
 /**
@@ -117,13 +120,55 @@ public final class SlowStatementLog {
     }
 
     /**
-     * Returns whether executions are measured against a threshold, which is what lets the execution path skip
-     * every other cost of the log while none is set.
+     * Time a transaction may hold its connection beyond what its statements spent on it, in nanoseconds; zero
+     * leaves transactions unwatched. Read once per transaction where it takes its connection, and once per execution
+     * where the statement threshold is read already.
+     */
+    private static volatile long transactionThresholdNanos;
+
+    /**
+     * Sets the time a transaction may hold its connection beyond what its statements spent on it; {@code null} or a
+     * non-positive duration leaves transactions unwatched.
+     *
+     * <p>Safe to call at any time, as {@link #threshold(Duration)} is: a transaction that takes its connection after
+     * the write is watched.</p>
+     *
+     * @param threshold the threshold, or {@code null} for none.
+     */
+    public static void transactionThreshold(@Nullable Duration threshold) {
+        transactionThresholdNanos = threshold == null || threshold.isNegative() || threshold.isZero()
+                ? 0
+                : threshold.toNanos();
+    }
+
+    /**
+     * Returns the time a transaction may hold its connection beyond what its statements spent on it, or {@code null}
+     * while transactions are unwatched.
+     *
+     * @return the threshold in effect, or {@code null} for none.
+     */
+    public static @Nullable Duration transactionThreshold() {
+        long nanos = transactionThresholdNanos;
+        return nanos == 0 ? null : Duration.ofNanos(nanos);
+    }
+
+    /**
+     * Returns whether transactions are measured against a threshold.
+     *
+     * @return {@code true} while a transaction threshold is configured.
+     */
+    static boolean watchesTransactions() {
+        return transactionThresholdNanos != 0;
+    }
+
+    /**
+     * Returns whether executions or transactions are measured against a threshold, which is what lets the execution
+     * path skip every other cost of the log while none is set.
      *
      * @return {@code true} while a threshold is configured.
      */
     public static boolean active() {
-        return thresholdNanos != 0;
+        return thresholdNanos != 0 || transactionThresholdNanos != 0;
     }
 
     /** The default rate limit, applied when neither the system property nor an integration sets one. */
@@ -306,10 +351,14 @@ public final class SlowStatementLog {
      */
     private static volatile ShapeStats untracked = new ShapeStats();
 
+    /** The reporting budget of the transaction lines, which have no shape; its means are never read. */
+    private static volatile ShapeStats transactions = new ShapeStats();
+
     /** Forgets every shape's baseline and reporting budget; for tests, which share the JVM and its shapes. */
     static void reset() {
         SHAPES.clear();
         untracked = new ShapeStats();
+        transactions = new ShapeStats();
     }
 
     /** Returns the stats of the shape, or {@code null} for an unknown shape or once the shape count is exhausted. */
@@ -340,6 +389,8 @@ public final class SlowStatementLog {
      *                     only for a slow execution; {@code null} when it asks for none.
      * @param dataSource the data source the statement runs on, whose published index catalog the demands are checked
      *                   against; {@code null} for a template without one.
+     * @param transactionTemplateProvider the provider whose transaction the statement runs in, if any, whose held
+     *                                    connection the statement is credited to.
      * @return the handle to mark and close with the execution.
      */
     static Handle onExecute(QueryContext context,
@@ -347,8 +398,10 @@ public final class SlowStatementLog {
                             @Nullable SqlCommenter sqlCommenter,
                             List<String> advisories,
                             @Nullable IndexDemands indexDemands,
-                            @Nullable DataSource dataSource) {
-        return new SlowHandle(context, parameters, sqlCommenter, advisories, indexDemands, dataSource);
+                            @Nullable DataSource dataSource,
+                            TransactionTemplateProvider transactionTemplateProvider) {
+        return new SlowHandle(context, parameters, sqlCommenter, advisories, indexDemands, dataSource,
+                transactionTemplateProvider);
     }
 
     /** One observed execution; carries state from the return of the statement to the close of the execution. */
@@ -359,7 +412,9 @@ public final class SlowStatementLog {
         private final List<String> advisories;
         private final @Nullable IndexDemands indexDemands;
         private final @Nullable DataSource dataSource;
+        private final TransactionTemplateProvider transactionTemplateProvider;
         private final long start = System.nanoTime();
+        private @Nullable HeldConnection held;
         private long executed;
         private long databaseNanos;
         private boolean slow;
@@ -374,19 +429,27 @@ public final class SlowStatementLog {
                    @Nullable SqlCommenter sqlCommenter,
                    List<String> advisories,
                    @Nullable IndexDemands indexDemands,
-                   @Nullable DataSource dataSource) {
+                   @Nullable DataSource dataSource,
+                   TransactionTemplateProvider transactionTemplateProvider) {
             this.context = context;
             this.parameters = parameters;
             this.sqlCommenter = sqlCommenter;
             this.advisories = advisories;
             this.indexDemands = indexDemands;
             this.dataSource = dataSource;
+            this.transactionTemplateProvider = transactionTemplateProvider;
         }
 
         @Override
         public void executed() {
             executed = System.nanoTime();
             databaseNanos = executed - start;
+            if (transactionThresholdNanos != 0) {
+                // The transaction the statement ran in, looked up without starting one: the statement has run, so
+                // a block that was to open a transaction has opened it by now. Credited when the statement closes.
+                var transactionContext = TransactionScope.peekContext(transactionTemplateProvider);
+                held = transactionContext == null ? null : transactionContext.heldConnection();
+            }
             long threshold = thresholdNanos;
             if (threshold == 0) {
                 return;
@@ -421,6 +484,10 @@ public final class SlowStatementLog {
 
         @Override
         public void close(long rows, boolean exact) {
+            if (held != null) {
+                // A SELECT reads; anything else, a call to a procedure included, may have written and taken locks.
+                held.statementClosed(System.nanoTime() - start, context.operation() != SqlOperation.SELECT);
+            }
             if (!slow) {
                 return;
             }
@@ -549,6 +616,71 @@ public final class SlowStatementLog {
         return rendered.toString();
     }
 
+    /**
+     * Decides, as a transaction returns its connection, whether it held the connection idle for longer than the
+     * threshold: the time it held the connection less the time its statements spent on it. A transaction that did
+     * is reported with the call site that began it, unless the method running it accepts the advice; the stack is
+     * walked for both only for a transaction that was idle too long.
+     *
+     * @param held the connection the transaction held.
+     * @param now the moment the connection is returned.
+     */
+    static void transactionCompleted(HeldConnection held, long now) {
+        long threshold = transactionThresholdNanos;
+        if (threshold == 0) {
+            return;
+        }
+        long heldNanos = now - held.takenNanos();
+        long idleNanos = heldNanos - held.busyNanos();
+        if (idleNanos < threshold || !LOGGER.isWarnEnabled()) {
+            return;
+        }
+        // The method that runs the transaction is still on the stack while the transaction completes.
+        if (AdviceAcceptance.accepts(Advice.IDLE_TRANSACTION, 0, null)) {
+            return;
+        }
+        var budget = transactions;
+        budget.record(now, idleNanos, 0);
+        int suppressed = budget.claim(linesPerMinute);
+        if (suppressed < 0) {
+            return;
+        }
+        LOGGER.warn(renderTransaction(heldNanos, held.busyNanos(), idleNanos, held.statements(), held.wrote(),
+                held.fromFirstStatement(), CallSiteCapture.callSite(), suppressed));
+    }
+
+    /**
+     * Renders a slow transaction line: the headline states how long the transaction held its connection, how much
+     * of it its statements spent, how many there were and whether they wrote, and the call site; the advice follows
+     * on a line of its own, as it does under a slow statement.
+     */
+    static String renderTransaction(long heldNanos,
+                                    long busyNanos,
+                                    long idleNanos,
+                                    int statements,
+                                    boolean wrote,
+                                    boolean fromFirstStatement,
+                                    @Nullable String callSite,
+                                    int suppressed) {
+        var rendered = new StringBuilder("SQL slow (transaction): held its connection ").append(millis(heldNanos));
+        if (fromFirstStatement) {
+            rendered.append(" from its first statement");
+        }
+        rendered.append(", ").append(millis(busyNanos)).append(" in its ")
+                .append(statements == 1 ? "statement" : statements + " statements")
+                .append(", ").append(wrote ? "wrote" : "read only");
+        if (callSite != null) {
+            rendered.append(", ").append(callSite);
+        }
+        if (suppressed > 0) {
+            rendered.append(System.lineSeparator()).append("\t+").append(suppressed).append(" suppressed");
+        }
+        rendered.append(System.lineSeparator()).append("\tadvice: ").append(Advice.IDLE_TRANSACTION.format(
+                millis(heldNanos), millis(busyNanos), millis(idleNanos),
+                wrote ? ", and the row locks of its writes," : ""));
+        return rendered.toString();
+    }
+
     private static void append(StringBuilder facts, String fact) {
         if (!facts.isEmpty()) {
             facts.append("  ");
@@ -600,5 +732,6 @@ public final class SlowStatementLog {
         var config = StormConfig.defaults();
         threshold(getDuration(config, StormConfig.SQL_LOG_SLOW_THRESHOLD, null));
         limit(getInt(config, StormConfig.SQL_LOG_SLOW_LIMIT, DEFAULT_LIMIT));
+        transactionThreshold(getDuration(config, StormConfig.SQL_LOG_SLOW_TRANSACTION, null));
     }
 }

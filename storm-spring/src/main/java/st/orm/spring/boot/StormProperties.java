@@ -473,6 +473,21 @@ public class StormProperties {
 
             /** Sets the slow statement lines reported per shape per minute. */
             public void setLimit(@Nullable Integer limit) { this.limit = limit; }
+
+            /**
+             * Time a transaction may hold its connection beyond what its statements spent on it, such as
+             * {@code 1s}: a transaction idle for longer is reported with the call site that began it, its
+             * statements and whether it wrote. Unset, transactions are not watched.
+             *
+             * @since 1.16
+             */
+            private @Nullable Duration transaction;
+
+            /** Returns the time a transaction may hold its connection beyond what its statements spent on it. */
+            public @Nullable Duration getTransaction() { return transaction; }
+
+            /** Sets the time a transaction may hold its connection beyond what its statements spent on it. */
+            public void setTransaction(@Nullable Duration transaction) { this.transaction = transaction; }
         }
     }
 

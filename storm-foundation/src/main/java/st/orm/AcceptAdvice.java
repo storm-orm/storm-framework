@@ -27,8 +27,9 @@ import java.lang.annotation.Target;
  *
  * <p>Advice on a statement is accepted when the entity the statement reads or writes accepts it, or when a method or
  * class on the statement's call path does: the service method that issues a query, or a repository interface or one
- * of its methods, including the methods a repository inherits. An entity's own design advice is accepted on the
- * entity. The slow statement log and the performance summary still show accepted advice, labelled
+ * of its methods, including the methods a repository inherits. Advice on a transaction is accepted on the method
+ * that runs it, through the proxy Spring puts around a transactional service as well. An entity's own design advice
+ * is accepted on the entity. The slow statement log and the performance summary still show accepted advice, labelled
  * {@code accepted:}.</p>
  *
  * <p>Without values, every piece of advice is accepted. With values, only the advice they name is accepted, by the

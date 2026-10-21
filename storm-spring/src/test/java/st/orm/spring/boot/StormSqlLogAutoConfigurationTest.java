@@ -248,6 +248,18 @@ public class StormSqlLogAutoConfigurationTest {
     }
 
     @Test
+    public void testTheSlowTransactionThresholdAppliesFromTheConfiguration() {
+        try {
+            contextRunner
+                    .withUserConfiguration(JobConfiguration.class)
+                    .withPropertyValues("storm.sql-log.slow.transaction=2s")
+                    .run(context -> assertEquals(Duration.ofSeconds(2), SlowStatementLog.transactionThreshold()));
+        } finally {
+            SlowStatementLog.transactionThreshold(null);
+        }
+    }
+
+    @Test
     public void testASlowExecutionIsReportedInsideARequest() {
         // Inside a request the summary and the slow line report side by side, each under its own logger.
         SlowStatementLog.threshold(null);
@@ -402,16 +414,19 @@ public class StormSqlLogAutoConfigurationTest {
                     .run(context -> {
                         var endpoint = context.getBean(StormEndpoint.class);
                         assertEquals(false, slowStatementOf(endpoint).get("active"));
-                        endpoint.configure("200ms", 3, null, null, null, null);
+                        endpoint.configure("200ms", 3, "2s", null, null, null, null);
                         assertEquals(Duration.ofMillis(200), SlowStatementLog.threshold());
                         assertEquals(3, SlowStatementLog.limit());
+                        assertEquals(Duration.ofSeconds(2), SlowStatementLog.transactionThreshold());
                         assertEquals(true, slowStatementOf(endpoint).get("active"));
-                        endpoint.configure("off", null, null, null, null, null);
+                        assertEquals("PT2S", slowStatementOf(endpoint).get("transaction"));
+                        endpoint.configure("off", null, "off", null, null, null, null);
                         assertFalse(SlowStatementLog.active());
                         assertEquals(3, SlowStatementLog.limit());
                     });
         } finally {
             SlowStatementLog.threshold(null);
+            SlowStatementLog.transactionThreshold(null);
             SlowStatementLog.limit(SlowStatementLog.DEFAULT_LIMIT);
         }
     }
@@ -430,7 +445,7 @@ public class StormSqlLogAutoConfigurationTest {
                     var postProcessor = context.getBean(StormPerformanceLogEntryPointPostProcessor.class);
                     assertEquals(Duration.ofMillis(500), filter.settings().durationThreshold());
                     assertEquals(Duration.ofMillis(500), postProcessor.settings().durationThreshold());
-                    endpoint.configure(null, null, "20", "50ms", true, 500);
+                    endpoint.configure(null, null, null, "20", "50ms", true, 500);
                     for (var boundary : List.of(filter.settings(), postProcessor.settings())) {
                         assertEquals(20, boundary.statementThreshold());
                         assertEquals(Duration.ofMillis(50), boundary.durationThreshold());
@@ -438,7 +453,7 @@ public class StormSqlLogAutoConfigurationTest {
                         assertEquals(500, boundary.limit());
                     }
                     // Dropping both thresholds returns the boundaries to reporting every unit of work at INFO.
-                    endpoint.configure(null, null, "off", "off", null, null);
+                    endpoint.configure(null, null, null, "off", "off", null, null);
                     assertFalse(filter.settings().thresholded());
                     assertFalse(postProcessor.settings().thresholded());
                 });

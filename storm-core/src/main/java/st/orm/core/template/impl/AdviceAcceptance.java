@@ -155,6 +155,12 @@ final class AdviceAcceptance {
             }
             return false;
         }
+        // A subclass generated at runtime, such as the proxy Spring puts around a transactional service, carries
+        // none of the annotations of the class it extends; it counts as that class.
+        if (type.getName().contains("$$")) {
+            var superclass = type.getSuperclass();
+            return superclass != null && accepts(advice, superclass, method);
+        }
         var name = type.getName();
         for (var skipped : SKIPPED) {
             if (name.startsWith(skipped)) {
