@@ -79,7 +79,7 @@ final class UpdateProcessor implements ElementProcessor<Update> {
      * Processes the {@link UpdateTarget} of an UPDATE whose table a FROM element renders: it marks the table the
      * statement writes, so the entity cache of that type is invalidated once it runs, and renders nothing.
      *
-     * @since 1.15
+     * @since 1.16
      */
     static final class TargetProcessor implements ElementProcessor<UpdateTarget> {
 

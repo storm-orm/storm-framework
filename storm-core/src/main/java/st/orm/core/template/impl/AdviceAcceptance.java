@@ -39,7 +39,7 @@ import st.orm.AcceptAdvice;
  * for advice the log would otherwise report; a statement without advice never gets here. The record of decisions
  * holds at most {@link AdviceLog#MAX_REPORTED} entries and starts over when full.</p>
  *
- * @since 1.15
+ * @since 1.16
  */
 final class AdviceAcceptance {
 

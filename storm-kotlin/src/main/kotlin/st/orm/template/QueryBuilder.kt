@@ -214,7 +214,7 @@ public abstract class QueryBuilder<T : Data, R : Any, ID : Any> {
      * @param value the value, or `null` to set the field's columns to `NULL`.
      * @return the query builder.
      * @throws PersistenceException if the builder is not an UPDATE builder, or the field cannot be set.
-     * @since 1.15
+     * @since 1.16
      */
     public abstract fun <V : Any> set(field: Metamodel<out T, V>, value: V?): QueryBuilder<T, R, ID>
 
@@ -226,7 +226,7 @@ public abstract class QueryBuilder<T : Data, R : Any, ID : Any> {
      * @return the query builder.
      * @throws PersistenceException if the builder is not an UPDATE builder, or the field cannot be set.
      * @see set
-     * @since 1.15
+     * @since 1.16
      */
     public abstract fun <V : Data> set(field: Metamodel<out T, V>, ref: Ref<V>): QueryBuilder<T, R, ID>
 
@@ -239,7 +239,7 @@ public abstract class QueryBuilder<T : Data, R : Any, ID : Any> {
      * @return the query builder.
      * @throws PersistenceException if the builder is not an UPDATE builder, or the field cannot be set.
      * @see set
-     * @since 1.15
+     * @since 1.16
      */
     public abstract fun set(field: Metamodel<out T, *>, template: TemplateString): QueryBuilder<T, R, ID>
 
@@ -259,7 +259,7 @@ public abstract class QueryBuilder<T : Data, R : Any, ID : Any> {
      * @param builder the SQL expression computing the value.
      * @return the query builder.
      * @throws PersistenceException if the builder is not an UPDATE builder, or the field cannot be set.
-     * @since 1.15
+     * @since 1.16
      */
     public fun set(field: Metamodel<out T, *>, builder: TemplateBuilder): QueryBuilder<T, R, ID> = set(field, builder.build())
 
@@ -419,7 +419,7 @@ public abstract class QueryBuilder<T : Data, R : Any, ID : Any> {
      *
      * @param relation the table to filter by.
      * @return the join builder.
-     * @since 1.15
+     * @since 1.16
      */
     public abstract fun semiJoin(relation: KClass<out Data>): TypedJoinBuilder<T, R, ID>
 
@@ -428,7 +428,7 @@ public abstract class QueryBuilder<T : Data, R : Any, ID : Any> {
      *
      * @param J the table to filter by.
      * @return the join builder.
-     * @since 1.15
+     * @since 1.16
      */
     public inline fun <reified J : Data> semiJoin(): TypedJoinBuilder<T, R, ID> = semiJoin(J::class)
 
@@ -450,7 +450,7 @@ public abstract class QueryBuilder<T : Data, R : Any, ID : Any> {
      *
      * @param relation the table to filter by.
      * @return the join builder.
-     * @since 1.15
+     * @since 1.16
      */
     public abstract fun antiJoin(relation: KClass<out Data>): TypedJoinBuilder<T, R, ID>
 
@@ -459,7 +459,7 @@ public abstract class QueryBuilder<T : Data, R : Any, ID : Any> {
      *
      * @param J the table to filter by.
      * @return the join builder.
-     * @since 1.15
+     * @since 1.16
      */
     public inline fun <reified J : Data> antiJoin(): TypedJoinBuilder<T, R, ID> = antiJoin(J::class)
 
@@ -1039,7 +1039,7 @@ public abstract class QueryBuilder<T : Data, R : Any, ID : Any> {
      *
      * @param predicate the predicate the rows put first match.
      * @return the query builder.
-     * @since 1.15
+     * @since 1.16
      */
     public abstract fun orderFirst(predicate: PredicateBuilder<out T, *, *>): QueryBuilder<T, R, ID>
 
@@ -1770,7 +1770,7 @@ public fun <T : Data> search(
  * @param input the search input, as a search box receives it.
  * @param path the first text column to search.
  * @param more further text columns to search.
- * @since 1.15
+ * @since 1.16
  */
 public fun <T : Data> suggest(
     input: String,
@@ -1795,7 +1795,7 @@ public fun <T : Data> suggest(
  * See [SqlFunction] for what the function must leave alone and where a call is refused.
  *
  * @param path the column to apply the function to.
- * @since 1.15
+ * @since 1.16
  */
 public operator fun <T : Data, E : Any> SqlFunction<E>.invoke(path: Navigable<T, E>): Metamodel<T, E> = apply(path.asMetamodel())
 

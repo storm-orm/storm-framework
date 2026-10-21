@@ -50,7 +50,7 @@ import java.lang.annotation.Target;
  * }
  * }</pre>
  *
- * @since 1.15
+ * @since 1.16
  */
 @Target({TYPE, METHOD})
 @Retention(RUNTIME)

@@ -26,7 +26,7 @@ import st.orm.core.template.TemplateString;
  * template, which is all a plain query needs; a query with a semi-join or anti-join places each term by the tables it
  * names, which takes the structure.
  *
- * @since 1.15
+ * @since 1.16
  */
 public sealed interface PredicateNode {
 

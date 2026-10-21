@@ -85,7 +85,7 @@ public interface SubqueryTemplate {
  *
  * @param T the table type to select from.
  * @return the subquery builder.
- * @since 1.15
+ * @since 1.16
  */
 public inline fun <reified T : Data> SubqueryTemplate.subquery(): QueryBuilder<T, *, *> = subquery(T::class)
 
@@ -95,7 +95,7 @@ public inline fun <reified T : Data> SubqueryTemplate.subquery(): QueryBuilder<T
  * @param T the table type to select from.
  * @param R the type to select.
  * @return the subquery builder.
- * @since 1.15
+ * @since 1.16
  */
 @JvmName("subqueryTyped")
 public inline fun <reified T : Data, reified R : Data> SubqueryTemplate.subquery(): QueryBuilder<T, *, *> = subquery(T::class, R::class)
@@ -106,7 +106,7 @@ public inline fun <reified T : Data, reified R : Data> SubqueryTemplate.subquery
  * @param T the table type to select from.
  * @param template the select clause template.
  * @return the subquery builder.
- * @since 1.15
+ * @since 1.16
  */
 public inline fun <reified T : Data> SubqueryTemplate.subquery(
     noinline template: TemplateBuilder,

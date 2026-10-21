@@ -291,7 +291,7 @@ public inline fun <reified T : Projection<ID>, ID : Any> RoutingContext.projecti
  * Returns the repository for entity type [type], with the primary key type inferred from the entity.
  *
  * @throws IllegalStateException if the Storm plugin is not installed.
- * @since 1.15
+ * @since 1.16
  */
 public fun <T, ID : Any> Application.entity(type: KClass<T>): EntityRepository<T, ID> where T : Entity<ID> = orm.entity(type)
 
@@ -301,7 +301,7 @@ public fun <T, ID : Any> Application.entity(type: KClass<T>): EntityRepository<T
  * Convenience extension for use in route handlers. See [Application.entity].
  *
  * @throws IllegalStateException if the Storm plugin is not installed.
- * @since 1.15
+ * @since 1.16
  */
 public fun <T, ID : Any> ApplicationCall.entity(type: KClass<T>): EntityRepository<T, ID> where T : Entity<ID> = application.entity(type)
 
@@ -311,7 +311,7 @@ public fun <T, ID : Any> ApplicationCall.entity(type: KClass<T>): EntityReposito
  * Convenience extension for use in route handlers. See [Application.entity].
  *
  * @throws IllegalStateException if the Storm plugin is not installed.
- * @since 1.15
+ * @since 1.16
  */
 public fun <T, ID : Any> RoutingContext.entity(type: KClass<T>): EntityRepository<T, ID> where T : Entity<ID> = call.application.entity(type)
 
@@ -319,7 +319,7 @@ public fun <T, ID : Any> RoutingContext.entity(type: KClass<T>): EntityRepositor
  * Returns the repository for projection type [type], with the primary key type inferred from the projection.
  *
  * @throws IllegalStateException if the Storm plugin is not installed.
- * @since 1.15
+ * @since 1.16
  */
 public fun <T, ID : Any> Application.projection(type: KClass<T>): ProjectionRepository<T, ID> where T : Projection<ID> = orm.projection(type)
 
@@ -329,7 +329,7 @@ public fun <T, ID : Any> Application.projection(type: KClass<T>): ProjectionRepo
  * Convenience extension for use in route handlers. See [Application.projection].
  *
  * @throws IllegalStateException if the Storm plugin is not installed.
- * @since 1.15
+ * @since 1.16
  */
 public fun <T, ID : Any> ApplicationCall.projection(type: KClass<T>): ProjectionRepository<T, ID> where T : Projection<ID> = application.projection(type)
 
@@ -339,6 +339,6 @@ public fun <T, ID : Any> ApplicationCall.projection(type: KClass<T>): Projection
  * Convenience extension for use in route handlers. See [Application.projection].
  *
  * @throws IllegalStateException if the Storm plugin is not installed.
- * @since 1.15
+ * @since 1.16
  */
 public fun <T, ID : Any> RoutingContext.projection(type: KClass<T>): ProjectionRepository<T, ID> where T : Projection<ID> = call.application.projection(type)

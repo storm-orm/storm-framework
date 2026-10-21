@@ -280,7 +280,7 @@ public abstract class WhereBuilder<T extends Data, R, ID> implements SubqueryTem
      * @param path  the first text column to search.
      * @param more  further text columns to search.
      * @return the predicate builder.
-     * @since 1.15
+     * @since 1.16
      */
     @SafeVarargs
     public final PredicateBuilder<T, R, ID> suggest(String input,
@@ -332,7 +332,7 @@ public abstract class WhereBuilder<T extends Data, R, ID> implements SubqueryTem
      * @param input the search input.
      * @param paths the text columns to search, at least one.
      * @return the predicate builder.
-     * @since 1.15
+     * @since 1.16
      */
     protected abstract PredicateBuilder<T, R, ID> suggestImpl(String input, List<Navigable<? extends T, String>> paths);
 }

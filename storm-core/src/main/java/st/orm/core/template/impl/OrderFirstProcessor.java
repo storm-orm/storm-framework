@@ -20,7 +20,7 @@ import st.orm.core.template.impl.Elements.OrderFirst;
 /**
  * A processor for the mark of an ORDER BY key that ranks the rows by a condition: it renders nothing.
  *
- * @since 1.15
+ * @since 1.16
  */
 final class OrderFirstProcessor implements ElementProcessor<OrderFirst> {
 

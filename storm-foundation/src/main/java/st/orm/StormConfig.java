@@ -108,7 +108,7 @@ public final class StormConfig {
      * {@code performance} and {@code design}. Defaults to {@code correctness}; the Spring Boot and Ktor
      * integrations add design and performance in development, as does the test extension.
      *
-     * @since 1.15
+     * @since 1.16
      */
     public static final String ADVICE_CATEGORIES = "storm.advice.categories";
 
@@ -116,7 +116,7 @@ public final class StormConfig {
      * The most tables the design budget lets an entity's read join, which design advice checks entities against.
      * Defaults to {@code 10}; at least {@code 1}.
      *
-     * @since 1.15
+     * @since 1.16
      */
     public static final String ADVICE_ENTITY_BUDGET_JOINS = "storm.advice.entity_budget.joins";
 
@@ -124,7 +124,7 @@ public final class StormConfig {
      * The most columns the design budget lets an entity's read select beyond its own, which design advice checks
      * entities against. Defaults to {@code 96}; at least {@code 1}.
      *
-     * @since 1.15
+     * @since 1.16
      */
     public static final String ADVICE_ENTITY_BUDGET_COLUMNS = "storm.advice.entity_budget.columns";
 

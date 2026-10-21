@@ -49,7 +49,7 @@ public class MySQLSqlDialect extends DefaultSqlDialect {
      * form, since MySQL refuses a subquery that reads the table being written.
      *
      * @return {@link WriteJoinSyntax#MULTI_TABLE}.
-     * @since 1.15
+     * @since 1.16
      */
     @Override
     public WriteJoinSyntax writeJoinSyntax() {
@@ -285,7 +285,7 @@ public class MySQLSqlDialect extends DefaultSqlDialect {
      * one query. The column of a functional key part is {@code NULL}.
      *
      * @return the query on {@code INFORMATION_SCHEMA.STATISTICS}.
-     * @since 1.15
+     * @since 1.16
      */
     @Override
     public String indexDiscoveryQuery() {

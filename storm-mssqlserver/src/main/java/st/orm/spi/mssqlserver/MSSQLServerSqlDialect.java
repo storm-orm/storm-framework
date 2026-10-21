@@ -49,7 +49,7 @@ public class MSSQLServerSqlDialect extends DefaultSqlDialect {
      * through other tables.
      *
      * @return {@link WriteJoinSyntax#FROM_CLAUSE}.
-     * @since 1.15
+     * @since 1.16
      */
     @Override
     public WriteJoinSyntax writeJoinSyntax() {

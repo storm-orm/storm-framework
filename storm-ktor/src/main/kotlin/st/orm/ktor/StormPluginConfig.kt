@@ -192,7 +192,7 @@ public class StormPluginConfig {
      * installation; when unset, the `storm.advice.categories` system property's setting, or its default
      * stays in effect: `correctness`, and all three in Ktor's development mode.
      *
-     * @since 1.15
+     * @since 1.16
      */
     public var adviceCategories: List<String>? = null
 
@@ -201,7 +201,7 @@ public class StormPluginConfig {
      * Configuration key `storm.advice.entityBudget.joins`. Applied JVM-wide at installation; when unset, the
      * `storm.advice.entity_budget.joins` system property's setting, or its default of 10, stays in effect.
      *
-     * @since 1.15
+     * @since 1.16
      */
     public var adviceEntityBudgetJoins: Int? = null
 
@@ -211,7 +211,7 @@ public class StormPluginConfig {
      * installation; when unset, the `storm.advice.entity_budget.columns` system property's setting, or its
      * default of 96, stays in effect.
      *
-     * @since 1.15
+     * @since 1.16
      */
     public var adviceEntityBudgetColumns: Int? = null
 

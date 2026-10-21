@@ -28,7 +28,7 @@ import st.orm.Entity;
  * template is created; an entity it does not list is checked when its model is first built. Whether a read within
  * the budget is too wide shows only in real use, so the slow statement log advises on it instead.</p>
  *
- * @since 1.15
+ * @since 1.16
  */
 final class DesignCheck {
 

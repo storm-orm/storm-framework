@@ -62,7 +62,7 @@ import st.orm.core.template.impl.Elements.Where;
  *
  * @param <T> the type of the table being updated.
  * @param <ID> the type of the primary key.
- * @since 1.15
+ * @since 1.16
  */
 public class UpdateBuilderImpl<T extends Data, ID> extends QueryBuilderImpl<T, Object, ID> {
 

@@ -927,7 +927,7 @@ public interface ProjectionRepository<P, ID : Any> : Repository where P : Projec
  *
  * @param R the result type of the query.
  * @return a query builder producing results of type [R].
- * @since 1.15
+ * @since 1.16
  */
 public inline fun <reified R : Any, P : Projection<ID>, ID : Any> ProjectionRepository<P, ID>.select(): QueryBuilder<P, R, ID> = select(R::class)
 
@@ -943,7 +943,7 @@ public inline fun <reified R : Any, P : Projection<ID>, ID : Any> ProjectionRepo
  *
  * @param R the type that is selected as ref.
  * @return a query builder producing refs of type [R].
- * @since 1.15
+ * @since 1.16
  */
 public inline fun <reified R : Data, P : Projection<ID>, ID : Any> ProjectionRepository<P, ID>.selectRef(): QueryBuilder<P, Ref<R>, ID> = selectRef(R::class)
 

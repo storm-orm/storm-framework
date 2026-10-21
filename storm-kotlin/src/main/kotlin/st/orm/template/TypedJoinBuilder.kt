@@ -81,7 +81,7 @@ public abstract class TypedJoinBuilder<T : Data, R : Any, ID : Any> : JoinBuilde
      * @param relation the relation to join on.
      * @param condition the condition on the joined rows.
      * @return the query builder.
-     * @since 1.15
+     * @since 1.16
      */
     public abstract fun on(
         relation: KClass<out Data>,
@@ -94,7 +94,7 @@ public abstract class TypedJoinBuilder<T : Data, R : Any, ID : Any> : JoinBuilde
      * @param O the relation to join on.
      * @param condition the condition on the joined rows.
      * @return the query builder.
-     * @since 1.15
+     * @since 1.16
      */
     @JvmName("onCondition")
     public inline fun <reified O : Data> on(

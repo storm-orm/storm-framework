@@ -126,7 +126,7 @@ public final class DatabaseSchema {
      * @param ordinalPosition the position of the column within the index (1-based).
      * @param unique          whether the index is unique.
      * @param partial         whether the index covers only the rows a condition selects.
-     * @since 1.15
+     * @since 1.16
      */
     public record DbIndex(
             String tableName,
@@ -170,7 +170,7 @@ public final class DatabaseSchema {
      *                      it, or {@code null} to use the strategy.
      * @param indexQuery the query that lists indexes, as {@link SqlDialect#indexDiscoveryQuery()} describes it, or
      *                   {@code null} to read them per table through JDBC metadata.
-     * @since 1.15
+     * @since 1.16
      */
     public record Discovery(
             SequenceDiscoveryStrategy sequences,
@@ -1060,7 +1060,7 @@ public final class DatabaseSchema {
      *
      * @param tableName the table name (case-insensitive).
      * @return the index columns, or an empty list if none found.
-     * @since 1.15
+     * @since 1.16
      */
     public List<DbIndex> getIndexes(String tableName) {
         List<DbIndex> indexes = indexesByTable.get(tableName);
@@ -1074,7 +1074,7 @@ public final class DatabaseSchema {
      * Returns the names of the tables and views in the schema.
      *
      * @return the table names, in case-insensitive order.
-     * @since 1.15
+     * @since 1.16
      */
     public SortedSet<String> tableNames() {
         SortedSet<String> tableNames = new TreeSet<>(String.CASE_INSENSITIVE_ORDER);

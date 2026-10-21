@@ -60,7 +60,7 @@ public class DefaultSqlDialect implements SqlDialect {
      * {@link StormConfig#SEARCH_MIN_TERM_LENGTH}, or else {@link #defaultMinimumSearchTermLength()}.
      *
      * @return the shortest term the substring index serves, or {@code 0} to treat every term alike.
-     * @since 1.15
+     * @since 1.16
      */
     @Override
     public final int minimumSearchTermLength() {
@@ -72,7 +72,7 @@ public class DefaultSqlDialect implements SqlDialect {
      * overrides.
      *
      * @return the shortest term the substring index serves, or {@code 0} to treat every term alike.
-     * @since 1.15
+     * @since 1.16
      */
     protected int defaultMinimumSearchTermLength() {
         return 0;

@@ -663,7 +663,7 @@ public inline fun <reified T> RepositoryLookup.delete(): QueryBuilder<T, *, *>
  * conditions select.
  *
  * @return A [QueryBuilder] for updating records of type [T].
- * @since 1.15
+ * @since 1.16
  */
 public inline fun <reified T> RepositoryLookup.update(): QueryBuilder<T, *, *>
         where T : Data, T : Entity<*> = erasedEntity(T::class).update()

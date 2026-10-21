@@ -238,7 +238,7 @@ public interface ORMTemplate extends QueryTemplate, RepositoryLookup {
      * {@link Connection} or {@code EntityManager} do not support loading the schema.</p>
      *
      * @throws PersistenceException if the schema cannot be read or the template does not support loading it.
-     * @since 1.15
+     * @since 1.16
      */
     default void loadSchema() {
         throw new PersistenceException("Loading the schema is not supported by this template.");
@@ -255,7 +255,7 @@ public interface ORMTemplate extends QueryTemplate, RepositoryLookup {
      * @param filter predicate to select which discovered types to load the schema of.
      * @throws PersistenceException if the schema cannot be read or the template does not support loading it.
      * @see #loadSchema()
-     * @since 1.15
+     * @since 1.16
      */
     default void loadSchema(Predicate<Class<? extends Data>> filter) {
         throw new PersistenceException("Loading the schema is not supported by this template.");

@@ -374,7 +374,7 @@ public interface EntityRepository<E, ID : Any> : Repository where E : Entity<ID>
      * ```
      *
      * @return a new query builder for the entity type.
-     * @since 1.15
+     * @since 1.16
      */
     public fun update(): QueryBuilder<E, *, ID>
 
@@ -389,7 +389,7 @@ public interface EntityRepository<E, ID : Any> : Repository where E : Entity<ID>
      * ```
      *
      * @see update
-     * @since 1.15
+     * @since 1.16
      */
     @Suppress("UNCHECKED_CAST")
     public fun update(block: SqlScope<E, Any, ID>.() -> Any?): QueryBuilder<Data, Any, ID> {
@@ -1927,7 +1927,7 @@ public interface EntityRepository<E, ID : Any> : Repository where E : Entity<ID>
  *
  * @param R the result type of the query.
  * @return a query builder producing results of type [R].
- * @since 1.15
+ * @since 1.16
  */
 public inline fun <reified R : Any, E : Entity<ID>, ID : Any> EntityRepository<E, ID>.select(): QueryBuilder<E, R, ID> = select(R::class)
 
@@ -1943,7 +1943,7 @@ public inline fun <reified R : Any, E : Entity<ID>, ID : Any> EntityRepository<E
  *
  * @param R the type that is selected as ref.
  * @return a query builder producing refs of type [R].
- * @since 1.15
+ * @since 1.16
  */
 public inline fun <reified R : Data, E : Entity<ID>, ID : Any> EntityRepository<E, ID>.selectRef(): QueryBuilder<E, Ref<R>, ID> = selectRef(R::class)
 

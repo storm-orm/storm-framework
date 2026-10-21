@@ -50,7 +50,7 @@ import st.orm.test.StormTest;
  * built on {@code LOWER(fold_accents(name))}, and a search through the {@code fold_accents} function names that
  * expression, on the column and on the input alike.
  *
- * @since 1.15
+ * @since 1.16
  */
 @Testcontainers
 @StormTest(rollback = false)

@@ -87,7 +87,7 @@ import st.orm.mapping.RecordField;
  * <p>A table filtered inside an anti-join's subquery decides which related rows exclude a row, so, like the anti-joined
  * table, it takes its condition on the join and not in the WHERE clause.</p>
  *
- * @since 1.15
+ * @since 1.16
  */
 final class FilterJoinPlacement {
 

@@ -61,7 +61,7 @@ public interface SqlDialect {
      * The forms an UPDATE or DELETE statement can take to reach the rows it writes through other tables, as the update
      * and delete builders do for a condition on a related table or an explicit join.
      *
-     * @since 1.15
+     * @since 1.16
      */
     enum WriteJoinSyntax {
         /**
@@ -90,7 +90,7 @@ public interface SqlDialect {
      * table being written, or that joins tables into an UPDATE and a DELETE of its own, returns that form.</p>
      *
      * @return the form an UPDATE or DELETE takes to reach its rows through other tables.
-     * @since 1.15
+     * @since 1.16
      */
     default WriteJoinSyntax writeJoinSyntax() {
         return WriteJoinSyntax.SUBQUERY;
@@ -444,7 +444,7 @@ public interface SqlDialect {
      * overrides the dialect's value.</p>
      *
      * @return the shortest term the substring index serves, or {@code 0} to treat every term alike.
-     * @since 1.15
+     * @since 1.16
      */
     default int minimumSearchTermLength() {
         return 0;
@@ -654,7 +654,7 @@ public interface SqlDialect {
      * used instead.</p>
      *
      * @return the query, or {@code null} to use the strategy.
-     * @since 1.15
+     * @since 1.16
      */
     default @Nullable String keyDiscoveryQuery() {
         return null;
@@ -669,7 +669,7 @@ public interface SqlDialect {
      * {@code PK_COLUMN}, the referenced ones. Without a schema name to bind, the strategy is used instead.</p>
      *
      * @return the query, or {@code null} to use the strategy.
-     * @since 1.15
+     * @since 1.16
      */
     default @Nullable String foreignKeyDiscoveryQuery() {
         return null;
@@ -683,7 +683,7 @@ public interface SqlDialect {
      * {@code SEQUENCE_NAME}. Without a schema name to bind, the strategy is used instead.</p>
      *
      * @return the query, or {@code null} to use the strategy.
-     * @since 1.15
+     * @since 1.16
      */
     default @Nullable String sequenceDiscoveryQuery() {
         return null;
@@ -711,7 +711,7 @@ public interface SqlDialect {
      * <p>Without a schema name to bind, the indexes are read per table instead.</p>
      *
      * @return the query, or {@code null} to read the indexes per table.
-     * @since 1.15
+     * @since 1.16
      */
     default @Nullable String indexDiscoveryQuery() {
         return null;
