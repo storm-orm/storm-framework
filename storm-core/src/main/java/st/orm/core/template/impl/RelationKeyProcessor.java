@@ -98,6 +98,13 @@ final class RelationKeyProcessor implements ElementProcessor<RelationKey> {
                 throw new SqlTemplateException("Mismatch in PK/FK column count between %s and %s: found %d and %d column(s). Ensure the foreign key definition matches the referenced primary key structure."
                         .formatted(correlation.inner().getSimpleName(), correlation.outer().getSimpleName(), innerColumns.size(), outerColumns.size()));
             }
+            // The subquery finds the related rows of each outer row by these columns, which an index on them serves.
+            if (!IndexDemandProcessor.inJoinedHierarchy(correlation.inner())) {
+                var innerTable = compiler.getModel(correlation.inner());
+                for (var column : innerColumns) {
+                    compiler.demandIndex(innerTable, column.name(), IndexDemands.Kind.EQUALITY);
+                }
+            }
             var condition = new StringBuilder();
             for (int i = 0; i < innerColumns.size(); i++) {
                 if (i > 0) {

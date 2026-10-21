@@ -16,6 +16,7 @@ import org.springframework.boot.test.autoconfigure.jdbc.JdbcTest;
 import org.springframework.test.context.ContextConfiguration;
 import org.springframework.test.context.junit.jupiter.SpringExtension;
 import st.orm.core.template.SqlDialect.ConstraintDiscoveryStrategy;
+import st.orm.core.template.SqlDialect.IndexDiscoveryStrategy;
 import st.orm.core.template.SqlDialect.SequenceDiscoveryStrategy;
 import st.orm.core.template.impl.DatabaseSchema;
 import st.orm.core.template.impl.DatabaseSchema.DbColumn;
@@ -263,7 +264,7 @@ public class DatabaseSchemaIntegrationTest {
             DatabaseSchema schema = DatabaseSchema.read(connection,
                     connection.getCatalog(), connection.getSchema(),
                     SequenceDiscoveryStrategy.INFORMATION_SCHEMA,
-                    ConstraintDiscoveryStrategy.JDBC_METADATA);
+                    ConstraintDiscoveryStrategy.JDBC_METADATA, IndexDiscoveryStrategy.JDBC_METADATA);
             assertTrue(schema.tableExists("city"));
             assertTrue(schema.tableExists("owner"));
 
@@ -357,7 +358,7 @@ public class DatabaseSchemaIntegrationTest {
         try (Connection connection = dataSource.getConnection()) {
             DatabaseSchema schema = DatabaseSchema.read(connection, null, null,
                     SequenceDiscoveryStrategy.INFORMATION_SCHEMA,
-                    ConstraintDiscoveryStrategy.INFORMATION_SCHEMA);
+                    ConstraintDiscoveryStrategy.INFORMATION_SCHEMA, IndexDiscoveryStrategy.JDBC_METADATA);
             // Should still discover tables even with null catalog/schema.
             assertTrue(schema.tableExists("city"));
         }

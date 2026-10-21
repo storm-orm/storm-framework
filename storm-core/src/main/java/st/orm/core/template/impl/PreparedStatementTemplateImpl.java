@@ -790,7 +790,9 @@ public final class PreparedStatementTemplateImpl implements PreparedStatementTem
                 sql.shapeId(),
                 sql.parameters(),
                 strategies.sqlCommenter(),
-                sql.advisories());
+                sql.advisories(),
+                sql instanceof SqlImpl impl ? impl.indexDemands() : null,
+                dataSource);
         return new QueryImpl(environment, unsafe -> {
             try {
                 return templateProcessor.process(sql, unsafe);

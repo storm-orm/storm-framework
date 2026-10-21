@@ -14,6 +14,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import st.orm.core.template.SqlDialect.ConstraintDiscoveryStrategy;
+import st.orm.core.template.SqlDialect.IndexDiscoveryStrategy;
 import st.orm.core.template.SqlDialect.SequenceDiscoveryStrategy;
 import st.orm.core.template.impl.DatabaseSchema.ConstraintKind;
 import st.orm.core.template.impl.DatabaseSchema.DbColumn;
@@ -73,7 +74,7 @@ class DatabaseSchemaTest {
             // have, so the foreign key query fails and the foreign keys stay unknown.
             DatabaseSchema schema = DatabaseSchema.read(connection, connection.getCatalog(), connection.getSchema(),
                     SequenceDiscoveryStrategy.INFORMATION_SCHEMA,
-                    ConstraintDiscoveryStrategy.INFORMATION_SCHEMA_REFERENCING);
+                    ConstraintDiscoveryStrategy.INFORMATION_SCHEMA_REFERENCING, IndexDiscoveryStrategy.JDBC_METADATA);
             assertFalse(schema.isDiscovered("child", ConstraintKind.FOREIGN_KEY));
             assertTrue(schema.getForeignKeys("child").isEmpty());
             // The keys come from a query H2 does understand, so they are known and were read.
@@ -117,7 +118,8 @@ class DatabaseSchemaTest {
 
     private DatabaseSchema readWithJdbcMetadata(Connection connection) throws SQLException {
         return DatabaseSchema.read(connection, connection.getCatalog(), connection.getSchema(),
-                SequenceDiscoveryStrategy.INFORMATION_SCHEMA, ConstraintDiscoveryStrategy.JDBC_METADATA);
+                SequenceDiscoveryStrategy.INFORMATION_SCHEMA, ConstraintDiscoveryStrategy.JDBC_METADATA,
+                IndexDiscoveryStrategy.JDBC_METADATA);
     }
 
     @Test
@@ -299,7 +301,7 @@ class DatabaseSchemaTest {
             DatabaseSchema schema = DatabaseSchema.read(connection,
                     connection.getCatalog(), connection.getSchema(),
                     SequenceDiscoveryStrategy.INFORMATION_SCHEMA,
-                    ConstraintDiscoveryStrategy.JDBC_METADATA);
+                    ConstraintDiscoveryStrategy.JDBC_METADATA, IndexDiscoveryStrategy.JDBC_METADATA);
 
             assertTrue(schema.tableExists("jdbc_test"));
             assertTrue(schema.getColumn("jdbc_test", "id").isPresent());
@@ -324,7 +326,7 @@ class DatabaseSchemaTest {
             DatabaseSchema schema = DatabaseSchema.read(connection,
                     connection.getCatalog(), connection.getSchema(),
                     SequenceDiscoveryStrategy.INFORMATION_SCHEMA,
-                    ConstraintDiscoveryStrategy.INFORMATION_SCHEMA);
+                    ConstraintDiscoveryStrategy.INFORMATION_SCHEMA, IndexDiscoveryStrategy.JDBC_METADATA);
 
             assertTrue(schema.tableExists("info_test"));
             List<DbPrimaryKey> primaryKeys = schema.getPrimaryKeys("info_test");
@@ -341,7 +343,7 @@ class DatabaseSchemaTest {
             DatabaseSchema schema = DatabaseSchema.read(connection,
                     connection.getCatalog(), connection.getSchema(),
                     SequenceDiscoveryStrategy.NONE,
-                    ConstraintDiscoveryStrategy.INFORMATION_SCHEMA);
+                    ConstraintDiscoveryStrategy.INFORMATION_SCHEMA, IndexDiscoveryStrategy.JDBC_METADATA);
 
             // With NONE strategy, sequences should not be discovered
             assertFalse(schema.sequencesDiscovered());
@@ -403,7 +405,7 @@ class DatabaseSchemaTest {
         try (Connection connection = getConnection()) {
             DatabaseSchema schema = DatabaseSchema.read(connection, null, null,
                     SequenceDiscoveryStrategy.INFORMATION_SCHEMA,
-                    ConstraintDiscoveryStrategy.INFORMATION_SCHEMA);
+                    ConstraintDiscoveryStrategy.INFORMATION_SCHEMA, IndexDiscoveryStrategy.JDBC_METADATA);
 
             assertTrue(schema.tableExists("null_ctx"));
         }

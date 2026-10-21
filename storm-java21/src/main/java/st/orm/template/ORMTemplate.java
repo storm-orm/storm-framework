@@ -184,6 +184,41 @@ public interface ORMTemplate extends QueryTemplate, RepositoryLookup {
     void validateSchemaOrThrow(Iterable<Class<? extends Data>> types);
 
     /**
+     * Loads the database schema of all discovered entity and projection types, without validating them, and keeps
+     * it for the data source.
+     *
+     * <p>Loading the schema is optional: Storm works the same without it. What it adds is knowledge of the database
+     * that Storm uses for advice and optimization. Every template on the data source shares the loaded schema; when
+     * an execution is slow, for example, the slow statement log names an index the statement lacks.</p>
+     *
+     * <p>Schema validation loads the schema as it validates, so an application that validates needs no separate
+     * load; this method is for an application that wants the schema known without validating it.</p>
+     *
+     * <p>Each call reads the schema anew and replaces what an earlier load or validation kept for the same schemas.
+     * Call it again after the schema changed while the application runs, such as after a migration that added an
+     * index, to make the change known.</p>
+     *
+     * <p>This method requires a DataSource-backed template. Templates created from a raw
+     * {@link Connection} or {@code EntityManager} do not support loading the schema.</p>
+     *
+     * @throws st.orm.PersistenceException if the schema cannot be read or the template does not support loading it.
+     * @since 1.15
+     */
+    void loadSchema();
+
+    /**
+     * Loads the database schema of the discovered types matching the filter, without validating them, and keeps it
+     * for the data source. This is useful when a single application connects to multiple datasources and only a
+     * subset of types is reachable from each connection.
+     *
+     * @param filter predicate to select which discovered types to load the schema of.
+     * @throws st.orm.PersistenceException if the schema cannot be read or the template does not support loading it.
+     * @see #loadSchema()
+     * @since 1.15
+     */
+    void loadSchema(Predicate<Class<? extends Data>> filter);
+
+    /**
      * Returns an {@link ORMTemplate} for use with JDBC.
      *
      * <p>This method creates an ORM repository template using the provided {@link DataSource}.

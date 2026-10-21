@@ -90,6 +90,16 @@ public final class ORMTemplateImpl extends QueryTemplateImpl implements ORMTempl
     }
 
     @Override
+    public void loadSchema() {
+        core.loadSchema();
+    }
+
+    @Override
+    public void loadSchema(Predicate<Class<? extends Data>> filter) {
+        core.loadSchema(filter);
+    }
+
+    @Override
     public WriteSet writeSet() {
         return core.writeSet();
     }

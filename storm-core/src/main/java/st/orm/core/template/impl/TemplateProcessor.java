@@ -187,6 +187,17 @@ class TemplateProcessor {
     private List<String> advisories = List.of();
 
     /**
+     * Compile-time only: the columns the statement asks an index for, collected while it compiles.
+     */
+    private IndexDemands.@Nullable Builder indexDemandBuilder;
+
+    /**
+     * The columns the statement asks an index for, fixed when compilation completes; {@code null} when it asks for
+     * none.
+     */
+    private @Nullable IndexDemands indexDemands;
+
+    /**
      * Compile-time only: whether the template marks the statement as an UPDATE or DELETE without a condition, which is
      * flagged as potentially unsafe whatever WHERE clause it renders.
      */
@@ -394,7 +405,23 @@ class TemplateProcessor {
             protected void setGeneratedKeys(List<String> keys) {
                 TemplateProcessor.this.setGeneratedKeys(keys);
             }
+
+            @Override
+            protected void demandIndex(Model<?, ?> table, String column, IndexDemands.Kind kind) {
+                // A subquery's demands are the statement's: the slow statement log reports on the statement.
+                TemplateProcessor.this.demandIndex(table, column, kind);
+            }
         };
+    }
+
+    /**
+     * Records that the statement uses the given column of the given table in a way an index can serve.
+     */
+    protected void demandIndex(Model<?, ?> table, String column, IndexDemands.Kind kind) {
+        if (indexDemandBuilder == null) {
+            indexDemandBuilder = new IndexDemands.Builder();
+        }
+        indexDemandBuilder.add(table.schema(), table.name(), column, kind);
     }
 
     /**
@@ -466,6 +493,10 @@ class TemplateProcessor {
     private void freeze(String sql) {
         checkState(false);
         this.sql = sql;
+        if (indexDemandBuilder != null) {
+            indexDemands = indexDemandBuilder.build();
+            indexDemandBuilder = null;
+        }
     }
 
     /**
@@ -672,7 +703,8 @@ class TemplateProcessor {
                 warning,
                 StatementOrigin.DIRECT,
                 shapeId,
-                advisories
+                advisories,
+                indexDemands
         );
     }
 
@@ -1018,6 +1050,11 @@ class TemplateProcessor {
         @Override
         public void markUnconditional() {
             unconditional = true;
+        }
+
+        @Override
+        public void demandIndex(Model<?, ?> table, String column, IndexDemands.Kind kind) {
+            TemplateProcessor.this.demandIndex(table, column, kind);
         }
 
         @Override

@@ -235,6 +235,20 @@ public class OracleSqlDialect extends DefaultSqlDialect {
     }
 
     /**
+     * Returns the strategy for discovering indexes in the database schema.
+     *
+     * <p>Oracle lists its indexes in the {@code ALL_INDEXES} and {@code ALL_IND_COLUMNS} dictionary views, so the
+     * indexes of a schema are read in one query.</p>
+     *
+     * @return {@link IndexDiscoveryStrategy#ALL_IND_COLUMNS}.
+     * @since 1.15
+     */
+    @Override
+    public IndexDiscoveryStrategy indexDiscoveryStrategy() {
+        return IndexDiscoveryStrategy.ALL_IND_COLUMNS;
+    }
+
+    /**
      * Returns the SQL statement for getting the next value of the given sequence.
      *
      * @param sequenceName the name of the sequence.

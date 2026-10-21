@@ -180,6 +180,25 @@ internal class StormPluginTest {
     }
 
     @Test
+    fun `schema load mode loads without validating`() {
+        val dataSource = createTestDataSource()
+        initializeSchema(dataSource)
+        try {
+            testApplication {
+                application {
+                    install(Storm) {
+                        this.dataSource = dataSource
+                        schemaValidation = "load"
+                    }
+                    orm shouldNotBe null
+                }
+            }
+        } finally {
+            dataSource.close()
+        }
+    }
+
+    @Test
     fun `schema validation fail mode does not throw on valid schema`() {
         val dataSource = createTestDataSource()
         initializeSchema(dataSource)
@@ -328,7 +347,7 @@ internal class StormPluginTest {
                     } catch (expected: IllegalStateException) {
                         expected.message shouldBe "Invalid schema validation mode 'invalid' for primary database " +
                             "(schemaValidation option or storm.validation.schemaMode). " +
-                            "Valid values are: none, warn, fail."
+                            "Valid values are: none, load, warn, fail."
                     }
                 }
             }

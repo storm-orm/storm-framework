@@ -35,6 +35,7 @@ import org.jspecify.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import st.orm.core.template.SqlDialect.ConstraintDiscoveryStrategy;
+import st.orm.core.template.SqlDialect.IndexDiscoveryStrategy;
 import st.orm.core.template.SqlDialect.SequenceDiscoveryStrategy;
 
 /**
@@ -116,6 +117,27 @@ public final class DatabaseSchema {
     ) {}
 
     /**
+     * Represents a column of an index discovered from the database metadata, unique or not.
+     *
+     * @param tableName       the table the index is on.
+     * @param indexName       the name of the index.
+     * @param columnName      the column at this position of the index, or {@code null} when the position holds an
+     *                        expression.
+     * @param ordinalPosition the position of the column within the index (1-based).
+     * @param unique          whether the index is unique.
+     * @param partial         whether the index covers only the rows a condition selects.
+     * @since 1.15
+     */
+    public record DbIndex(
+            String tableName,
+            String indexName,
+            @Nullable String columnName,
+            int ordinalPosition,
+            boolean unique,
+            boolean partial
+    ) {}
+
+    /**
      * A kind of constraint a schema read discovers.
      *
      * <p>The kinds are separate because a strategy can read one and fail on another: the JDBC metadata strategy
@@ -128,7 +150,9 @@ public final class DatabaseSchema {
         /** Unique keys. */
         UNIQUE_KEY,
         /** Foreign keys. */
-        FOREIGN_KEY
+        FOREIGN_KEY,
+        /** Indexes, unique and non-unique. */
+        INDEX
     }
 
     // Case-insensitive maps: table name -> columns/PKs/UKs/FKs.
@@ -136,6 +160,7 @@ public final class DatabaseSchema {
     private final SortedMap<String, List<DbPrimaryKey>> primaryKeysByTable;
     private final SortedMap<String, List<DbUniqueKey>> uniqueKeysByTable;
     private final SortedMap<String, List<DbForeignKey>> foreignKeysByTable;
+    private final SortedMap<String, List<DbIndex>> indexesByTable;
     private final SortedMap<String, Boolean> sequences;
     private final boolean sequencesDiscovered;
     private final Map<ConstraintKind, SortedSet<String>> discoveredByKind;
@@ -146,6 +171,7 @@ public final class DatabaseSchema {
             SortedMap<String, List<DbPrimaryKey>> primaryKeysByTable,
             SortedMap<String, List<DbUniqueKey>> uniqueKeysByTable,
             SortedMap<String, List<DbForeignKey>> foreignKeysByTable,
+            SortedMap<String, List<DbIndex>> indexesByTable,
             SortedMap<String, Boolean> sequences,
             boolean sequencesDiscovered,
             Map<ConstraintKind, SortedSet<String>> discoveredByKind,
@@ -155,6 +181,7 @@ public final class DatabaseSchema {
         this.primaryKeysByTable = primaryKeysByTable;
         this.uniqueKeysByTable = uniqueKeysByTable;
         this.foreignKeysByTable = foreignKeysByTable;
+        this.indexesByTable = indexesByTable;
         this.sequences = sequences;
         this.sequencesDiscovered = sequencesDiscovered;
         this.discoveredByKind = discoveredByKind;
@@ -201,7 +228,8 @@ public final class DatabaseSchema {
      */
     public static DatabaseSchema read(Connection connection) throws SQLException {
         return read(connection, connection.getCatalog(), connection.getSchema(),
-                SequenceDiscoveryStrategy.INFORMATION_SCHEMA, ConstraintDiscoveryStrategy.INFORMATION_SCHEMA);
+                SequenceDiscoveryStrategy.INFORMATION_SCHEMA, ConstraintDiscoveryStrategy.INFORMATION_SCHEMA,
+                IndexDiscoveryStrategy.JDBC_METADATA);
     }
 
     /**
@@ -212,6 +240,7 @@ public final class DatabaseSchema {
      * @param schemaPattern                 the schema pattern (may be null).
      * @param sequenceDiscoveryStrategy     the strategy for discovering sequences.
      * @param constraintDiscoveryStrategy   the strategy for discovering primary keys, unique keys, and foreign keys.
+     * @param indexDiscoveryStrategy        the strategy for discovering indexes.
      * @return the database schema.
      * @throws SQLException if a database access error occurs.
      */
@@ -220,7 +249,8 @@ public final class DatabaseSchema {
             @Nullable String catalog,
             @Nullable String schemaPattern,
             SequenceDiscoveryStrategy sequenceDiscoveryStrategy,
-            ConstraintDiscoveryStrategy constraintDiscoveryStrategy
+            ConstraintDiscoveryStrategy constraintDiscoveryStrategy,
+            IndexDiscoveryStrategy indexDiscoveryStrategy
     ) throws SQLException {
         DatabaseMetaData metadata = connection.getMetaData();
         // Normalize the schema pattern to match the database's identifier casing convention.
@@ -235,6 +265,7 @@ public final class DatabaseSchema {
         SortedMap<String, List<DbPrimaryKey>> primaryKeysByTable = new TreeMap<>(String.CASE_INSENSITIVE_ORDER);
         SortedMap<String, List<DbUniqueKey>> uniqueKeysByTable = new TreeMap<>(String.CASE_INSENSITIVE_ORDER);
         SortedMap<String, List<DbForeignKey>> foreignKeysByTable = new TreeMap<>(String.CASE_INSENSITIVE_ORDER);
+        SortedMap<String, List<DbIndex>> indexesByTable = new TreeMap<>(String.CASE_INSENSITIVE_ORDER);
         SortedMap<String, Boolean> sequences = new TreeMap<>(String.CASE_INSENSITIVE_ORDER);
         SortedSet<String> views = new TreeSet<>(String.CASE_INSENSITIVE_ORDER);
         // Discover tables and views.
@@ -279,10 +310,13 @@ public final class DatabaseSchema {
         readConstraints(connection, metadata, catalog, schemaPattern, columnsByTable,
                 primaryKeysByTable, uniqueKeysByTable, foreignKeysByTable, constraintDiscoveryStrategy,
                 discoveredByKind);
+        // Discover indexes using the dialect-provided strategy.
+        readIndexes(connection, metadata, catalog, schemaPattern, columnsByTable, indexesByTable,
+                indexDiscoveryStrategy, discoveredByKind);
         // Discover sequences using the dialect-provided strategy.
         boolean sequencesDiscovered = readSequences(connection, catalog, schemaPattern, sequences, sequenceDiscoveryStrategy);
-        return new DatabaseSchema(columnsByTable, primaryKeysByTable, uniqueKeysByTable, foreignKeysByTable, sequences,
-                sequencesDiscovered, discoveredByKind, views);
+        return new DatabaseSchema(columnsByTable, primaryKeysByTable, uniqueKeysByTable, foreignKeysByTable,
+                indexesByTable, sequences, sequencesDiscovered, discoveredByKind, views);
     }
 
     // ------------------------------------------------------------------------------------------------------------------
@@ -687,6 +721,144 @@ public final class DatabaseSchema {
     }
 
     // ------------------------------------------------------------------------------------------------------------------
+    // Index discovery strategies.
+    // ------------------------------------------------------------------------------------------------------------------
+
+    /**
+     * Dispatches index discovery to the appropriate strategy. A strategy that fails leaves the indexes unknown, which
+     * {@link #isDiscovered(String, ConstraintKind)} reports for {@link ConstraintKind#INDEX}.
+     */
+    private static void readIndexes(
+            Connection connection,
+            DatabaseMetaData metadata,
+            @Nullable String catalog,
+            @Nullable String schemaPattern,
+            SortedMap<String, List<DbColumn>> columnsByTable,
+            SortedMap<String, List<DbIndex>> indexesByTable,
+            IndexDiscoveryStrategy strategy,
+            Map<ConstraintKind, SortedSet<String>> discovered
+    ) {
+        switch (strategy) {
+            case JDBC_METADATA -> readIndexesFromJdbcMetadata(
+                    metadata, catalog, schemaPattern, columnsByTable, indexesByTable, discovered);
+            case INFORMATION_SCHEMA_STATISTICS -> readIndexesFromCatalog(connection, """
+                    SELECT TABLE_NAME, INDEX_NAME, COLUMN_NAME, SEQ_IN_INDEX AS ORDINAL_POSITION,
+                           CASE WHEN NON_UNIQUE = 0 THEN 1 ELSE 0 END AS IS_UNIQUE,
+                           0 AS IS_PARTIAL
+                    FROM INFORMATION_SCHEMA.STATISTICS
+                    WHERE 1=1""",
+                    // For databases that use catalogs as schemas, the catalog value is the database name, which maps
+                    // to TABLE_SCHEMA in INFORMATION_SCHEMA views.
+                    "TABLE_SCHEMA", schemaPattern != null ? schemaPattern : catalog,
+                    columnsByTable, indexesByTable, discovered);
+            case PG_INDEX -> readIndexesFromCatalog(connection, """
+                    SELECT t.relname AS TABLE_NAME, i.relname AS INDEX_NAME, a.attname AS COLUMN_NAME,
+                           k.ordinality AS ORDINAL_POSITION,
+                           CASE WHEN ix.indisunique THEN 1 ELSE 0 END AS IS_UNIQUE,
+                           CASE WHEN ix.indpred IS NULL THEN 0 ELSE 1 END AS IS_PARTIAL
+                    FROM pg_catalog.pg_index ix
+                    JOIN pg_catalog.pg_class t ON t.oid = ix.indrelid
+                    JOIN pg_catalog.pg_class i ON i.oid = ix.indexrelid
+                    JOIN pg_catalog.pg_namespace n ON n.oid = t.relnamespace
+                    CROSS JOIN LATERAL unnest(ix.indkey::int2[]) WITH ORDINALITY AS k(attnum, ordinality)
+                    LEFT JOIN pg_catalog.pg_attribute a ON a.attrelid = t.oid AND a.attnum = k.attnum AND k.attnum > 0
+                    WHERE k.ordinality <= ix.indnkeyatts""",
+                    "n.nspname", schemaPattern, columnsByTable, indexesByTable, discovered);
+            case ALL_IND_COLUMNS -> readIndexesFromCatalog(connection, """
+                    SELECT ic.TABLE_NAME, ic.INDEX_NAME,
+                           CASE WHEN ic.COLUMN_NAME LIKE 'SYS!_NC%' ESCAPE '!' THEN NULL ELSE ic.COLUMN_NAME END AS COLUMN_NAME,
+                           ic.COLUMN_POSITION AS ORDINAL_POSITION,
+                           CASE WHEN i.UNIQUENESS = 'UNIQUE' THEN 1 ELSE 0 END AS IS_UNIQUE,
+                           0 AS IS_PARTIAL
+                    FROM ALL_IND_COLUMNS ic
+                    JOIN ALL_INDEXES i
+                      ON i.OWNER = ic.INDEX_OWNER
+                      AND i.INDEX_NAME = ic.INDEX_NAME
+                    WHERE 1=1""",
+                    "ic.TABLE_OWNER", schemaPattern, columnsByTable, indexesByTable, discovered);
+        }
+    }
+
+    /**
+     * Reads indexes using per-table {@link DatabaseMetaData#getIndexInfo} calls. Statistic rows, which some drivers
+     * return alongside the indexes, are skipped. The call is approximate, so it never makes the database compute
+     * statistics to answer it.
+     */
+    private static void readIndexesFromJdbcMetadata(
+            DatabaseMetaData metadata,
+            @Nullable String catalog,
+            @Nullable String schemaPattern,
+            SortedMap<String, List<DbColumn>> columnsByTable,
+            SortedMap<String, List<DbIndex>> indexesByTable,
+            Map<ConstraintKind, SortedSet<String>> discovered
+    ) {
+        for (String tableName : new ArrayList<>(columnsByTable.keySet())) {
+            try (ResultSet indexInfo = metadata.getIndexInfo(catalog, schemaPattern, tableName, false, true)) {
+                while (indexInfo.next()) {
+                    // In result set order, as for the columns.
+                    boolean nonUnique = indexInfo.getBoolean("NON_UNIQUE");
+                    String indexName = indexInfo.getString("INDEX_NAME");
+                    short type = indexInfo.getShort("TYPE");
+                    int ordinalPosition = indexInfo.getShort("ORDINAL_POSITION");
+                    String columnName = indexInfo.getString("COLUMN_NAME");
+                    String filterCondition = indexInfo.getString("FILTER_CONDITION");
+                    if (type == DatabaseMetaData.tableIndexStatistic || indexName == null) {
+                        continue;
+                    }
+                    indexesByTable.computeIfAbsent(tableName, k -> new ArrayList<>())
+                            .add(new DbIndex(tableName, indexName, columnName, ordinalPosition, !nonUnique,
+                                    filterCondition != null && !filterCondition.isBlank()));
+                }
+                discovered(discovered, ConstraintKind.INDEX, List.of(tableName));
+            } catch (SQLException e) {
+                // Some databases/views may not support getIndexInfo; this table's indexes stay unknown.
+                LOGGER.debug("Failed to read indexes for table '{}'.", tableName, e);
+            }
+        }
+    }
+
+    /**
+     * Reads indexes with one query on a catalog of the database. The query selects {@code TABLE_NAME},
+     * {@code INDEX_NAME}, {@code COLUMN_NAME} ({@code NULL} for an expression), {@code ORDINAL_POSITION}, and
+     * {@code IS_UNIQUE} and {@code IS_PARTIAL} as {@code 0} or {@code 1}.
+     */
+    private static void readIndexesFromCatalog(
+            Connection connection,
+            String query,
+            String schemaColumn,
+            @Nullable String schema,
+            SortedMap<String, List<DbColumn>> columnsByTable,
+            SortedMap<String, List<DbIndex>> indexesByTable,
+            Map<ConstraintKind, SortedSet<String>> discovered
+    ) {
+        try {
+            StringBuilder sql = new StringBuilder(query);
+            List<String> parameters = new ArrayList<>();
+            appendFilter(sql, true, schemaColumn, schema, parameters);
+            try (var statement = prepareSchemaQuery(connection, sql.toString(), parameters);
+                 var resultSet = statement.executeQuery()) {
+                while (resultSet.next()) {
+                    String tableName = resultSet.getString("TABLE_NAME");
+                    if (!columnsByTable.containsKey(tableName)) {
+                        continue;
+                    }
+                    String indexName = resultSet.getString("INDEX_NAME");
+                    String columnName = resultSet.getString("COLUMN_NAME");
+                    int ordinalPosition = resultSet.getInt("ORDINAL_POSITION");
+                    boolean unique = resultSet.getInt("IS_UNIQUE") == 1;
+                    boolean partial = resultSet.getInt("IS_PARTIAL") == 1;
+                    indexesByTable.computeIfAbsent(tableName, k -> new ArrayList<>())
+                            .add(new DbIndex(tableName, indexName, columnName, ordinalPosition, unique, partial));
+                }
+            }
+            discovered(discovered, ConstraintKind.INDEX, columnsByTable.keySet());
+        } catch (SQLException e) {
+            // The catalog is not available; the indexes stay unknown.
+            LOGGER.debug("Failed to read indexes.", e);
+        }
+    }
+
+    // ------------------------------------------------------------------------------------------------------------------
     // Sequence discovery strategies.
     // ------------------------------------------------------------------------------------------------------------------
 
@@ -891,6 +1063,33 @@ public final class DatabaseSchema {
             return List.of();
         }
         return List.copyOf(foreignKeys);
+    }
+
+    /**
+     * Returns the index columns of the given table: one entry per column of every index, unique or not.
+     *
+     * @param tableName the table name (case-insensitive).
+     * @return the index columns, or an empty list if none found.
+     * @since 1.15
+     */
+    public List<DbIndex> getIndexes(String tableName) {
+        List<DbIndex> indexes = indexesByTable.get(tableName);
+        if (indexes == null) {
+            return List.of();
+        }
+        return List.copyOf(indexes);
+    }
+
+    /**
+     * Returns the names of the tables and views in the schema.
+     *
+     * @return the table names, in case-insensitive order.
+     * @since 1.15
+     */
+    public SortedSet<String> tableNames() {
+        SortedSet<String> tableNames = new TreeSet<>(String.CASE_INSENSITIVE_ORDER);
+        tableNames.addAll(columnsByTable.keySet());
+        return Collections.unmodifiableSortedSet(tableNames);
     }
 
     /**

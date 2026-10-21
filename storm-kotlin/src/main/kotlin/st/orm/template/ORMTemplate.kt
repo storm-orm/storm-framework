@@ -175,6 +175,40 @@ public interface ORMTemplate :
      */
     public fun validateSchemaOrThrow(vararg types: KClass<out Data>)
 
+    /**
+     * Loads the database schema of all discovered entity and projection types, without validating them, and keeps
+     * it for the data source.
+     *
+     * Loading the schema is optional: Storm works the same without it. What it adds is knowledge of the database
+     * that Storm uses for advice and optimization. Every template on the data source shares the loaded schema; when
+     * an execution is slow, for example, the slow statement log names an index the statement lacks.
+     *
+     * Schema validation loads the schema as it validates, so an application that validates needs no separate load;
+     * this function is for an application that wants the schema known without validating it.
+     *
+     * Each call reads the schema anew and replaces what an earlier load or validation kept for the same schemas. Call
+     * it again after the schema changed while the application runs, such as after a migration that added an index,
+     * to make the change known.
+     *
+     * This function requires a DataSource-backed template. Templates created from a raw
+     * [java.sql.Connection] or `EntityManager` do not support loading the schema.
+     *
+     * @throws st.orm.PersistenceException if the schema cannot be read or the template does not support loading it.
+     * @since 1.15
+     */
+    public fun loadSchema()
+
+    /**
+     * Loads the database schema of the discovered types matching the filter, without validating them, and keeps it
+     * for the data source. This is useful when a single application connects to multiple datasources and only a
+     * subset of types is reachable from each connection. See [loadSchema].
+     *
+     * @param filter predicate to select which discovered types to load the schema of.
+     * @throws st.orm.PersistenceException if the schema cannot be read or the template does not support loading it.
+     * @since 1.15
+     */
+    public fun loadSchema(filter: (KClass<out Data>) -> Boolean)
+
     public companion object {
         /**
          * Returns the template of the operation that fired the entity callback running on this thread.

@@ -232,6 +232,22 @@ class StormAutoConfigurationTest {
     }
 
     @Test
+    void schemaLoadModeLoadsWithoutValidating(CapturedOutput output) throws Exception {
+        try (var ignored = logValidationOutcome()) {
+            contextRunner
+                    .withPropertyValues(
+                            "spring.datasource.url=jdbc:h2:mem:schemaLoadTest;DB_CLOSE_DELAY=-1",
+                            "spring.datasource.driver-class-name=org.h2.Driver",
+                            "storm.validation.schema-mode=load"
+                    )
+                    .run(context -> {
+                        assertThat(context).hasSingleBean(ORMTemplate.class);
+                        assertThat(output).doesNotContain("Storm schema validation passed");
+                    });
+        }
+    }
+
+    @Test
     void schemaValidationNoneModeShouldNotPreventContextStartup() {
         contextRunner
                 .withPropertyValues(
@@ -316,7 +332,7 @@ class StormAutoConfigurationTest {
                             .isInstanceOf(InvalidConfigurationPropertyValueException.class)
                             .hasMessageContaining("storm.validation.schema-mode")
                             .hasMessageContaining("'fial'")
-                            .hasMessageContaining("Valid values are: none, warn, fail.");
+                            .hasMessageContaining("Valid values are: none, load, warn, fail.");
                 });
     }
 

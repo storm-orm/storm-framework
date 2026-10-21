@@ -44,8 +44,10 @@ import st.orm.core.template.QueryPlan;
 import st.orm.core.template.QueryTemplate;
 import st.orm.core.template.TemplateString;
 import st.orm.core.template.impl.Elements.Advisory;
+import st.orm.core.template.impl.Elements.Columns;
 import st.orm.core.template.impl.Elements.Cursor;
 import st.orm.core.template.impl.Elements.Fetch;
+import st.orm.core.template.impl.Elements.IndexDemand;
 import st.orm.core.template.impl.Elements.Select;
 import st.orm.core.template.impl.Elements.TableSource;
 import st.orm.core.template.impl.Elements.TableTarget;
@@ -393,6 +395,15 @@ public class SelectBuilderImpl<T extends Data, R, ID> extends QueryBuilderImpl<T
         } else if (offset != null) {
             template = TemplateString.combine(template, TemplateString.of("\n"), TemplateString.of(queryTemplate.dialect().offset(offset)));
         }
+        // A limited result read in the order of an index stops at the limit, where one in any other order sorts every
+        // matching row first. Only an order on the query's own table can be read that way, and only for rows that
+        // are not grouped or made distinct first, which reads every matching row whatever the order.
+        if (withOrderBy && limit != null && !distinct && groupBy.isEmpty()) {
+            var sortedBy = sortedBy(orderBy);
+            if (sortedBy != null && sortedBy.tableType() == fromType) {
+                template = TemplateString.combine(template, wrap(new IndexDemand(sortedBy, IndexDemands.Kind.ORDER)));
+            }
+        }
         // A limit of one asks for any matching row, which needs no order.
         if (withOrderBy && orderBy.isEmpty() && (offset != null || (limit != null && limit > 1))) {
             template = TemplateString.combine(template, wrap(new Advisory(Advice.UNORDERED_LIMIT.format())));
@@ -705,5 +716,22 @@ public class SelectBuilderImpl<T extends Data, R, ID> extends QueryBuilderImpl<T
             return super.optionalResultInternal();
         }
         return build().withoutFetchSize().getOptionalResult(selectType);
+    }
+
+    /**
+     * Returns the path the first key of the ordering sorts by, or {@code null} when that key is not a path, such as a
+     * raw template or an {@code orderFirst} ranking, and so names no column an index could serve.
+     */
+    private static @Nullable Metamodel<?, ?> sortedBy(List<TemplateString> orderBy) {
+        if (orderBy.isEmpty()) {
+            return null;
+        }
+        var values = orderBy.getFirst().values();
+        // The columns of an ordering key are ordering columns: the builder adds them in an ascending or descending
+        // clause.
+        if (!values.isEmpty() && values.getFirst() instanceof Columns columns) {
+            return columns.fields().getFirst();
+        }
+        return null;
     }
 }

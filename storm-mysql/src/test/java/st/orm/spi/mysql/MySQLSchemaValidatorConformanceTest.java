@@ -22,4 +22,9 @@ public class MySQLSchemaValidatorConformanceTest extends AbstractSchemaValidator
     protected boolean supportsSequences() {
         return false;
     }
+
+    @Override
+    protected String expressionIndexDdl() {
+        return "CREATE UNIQUE INDEX index_probe_lower ON index_probe ((lower(a)))";
+    }
 }

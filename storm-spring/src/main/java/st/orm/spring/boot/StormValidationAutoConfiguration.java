@@ -33,8 +33,9 @@ import st.orm.core.template.impl.SchemaValidator;
  * <p>Validation runs after all singleton beans have been fully initialized, guaranteeing that migration tools
  * like Flyway and Liquibase (or any bean-based migration mechanism) have completed their work before
  * validation occurs. The mode is read from {@code storm.validation.schema-mode}: {@code fail} (default),
- * {@code warn}, or {@code none}. Any other value fails startup, so a typo cannot silently disable
- * validation.</p>
+ * {@code warn}, {@code load}, or {@code none}. {@code load} loads the schema without validating it, which Storm
+ * uses for advice and optimization; validation loads it as well. Any other value fails startup, so a typo cannot
+ * silently disable validation.</p>
  *
  * @since 1.13
  */
@@ -56,12 +57,17 @@ public class StormValidationAutoConfiguration {
             if ("none".equalsIgnoreCase(schemaMode)) {
                 return;
             }
-            if (!"fail".equalsIgnoreCase(schemaMode) && !"warn".equalsIgnoreCase(schemaMode)) {
+            if (!"fail".equalsIgnoreCase(schemaMode) && !"warn".equalsIgnoreCase(schemaMode)
+                    && !"load".equalsIgnoreCase(schemaMode)) {
                 // A typo must fail startup rather than run the application with schema validation silently disabled.
                 throw new InvalidConfigurationPropertyValueException("storm.validation.schema-mode", configured,
-                        "Valid values are: none, warn, fail.");
+                        "Valid values are: none, load, warn, fail.");
             }
             SchemaValidator validator = SchemaValidator.of(dataSource);
+            if ("load".equalsIgnoreCase(schemaMode)) {
+                validator.load();
+                return;
+            }
             if ("fail".equalsIgnoreCase(schemaMode)) {
                 validator.validateOrThrow();
                 LOGGER.info("Storm schema validation passed (mode=fail).");

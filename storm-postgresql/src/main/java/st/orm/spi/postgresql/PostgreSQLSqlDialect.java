@@ -64,6 +64,18 @@ public class PostgreSQLSqlDialect extends DefaultSqlDialect {
     }
 
     /**
+     * PostgreSQL lists its indexes in the {@code pg_index} system catalog, so the indexes of a schema are read in one
+     * query.
+     *
+     * @return {@link IndexDiscoveryStrategy#PG_INDEX}.
+     * @since 1.15
+     */
+    @Override
+    public IndexDiscoveryStrategy indexDiscoveryStrategy() {
+        return IndexDiscoveryStrategy.PG_INDEX;
+    }
+
+    /**
      * PostgreSQL supports multi-value tuples in the IN clause.
      */
     @Override

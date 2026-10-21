@@ -7,6 +7,7 @@ import static org.junit.jupiter.api.Assumptions.assumeTrue;
 import static st.orm.GenerationStrategy.NONE;
 import static st.orm.GenerationStrategy.SEQUENCE;
 
+import java.sql.SQLException;
 import java.time.LocalDate;
 import java.util.List;
 import javax.sql.DataSource;
@@ -16,6 +17,12 @@ import org.junit.jupiter.api.Test;
 import st.orm.DbTable;
 import st.orm.Entity;
 import st.orm.PK;
+import st.orm.StormConfig;
+import st.orm.UK;
+import st.orm.core.spi.Providers;
+import st.orm.core.template.impl.DatabaseSchema;
+import st.orm.core.template.impl.DatabaseSchema.ConstraintKind;
+import st.orm.core.template.impl.DatabaseSchema.DbIndex;
 import st.orm.core.template.impl.SchemaValidationError.ErrorKind;
 import st.orm.core.template.impl.SchemaValidator;
 
@@ -37,6 +44,14 @@ public abstract class AbstractSchemaValidatorConformanceTest {
     @BeforeEach
     final void bindDataSource(DataSource dataSource) {
         this.dataSource = dataSource;
+    }
+
+    /**
+     * The statement that creates a unique index on an expression, {@code lower(a)}, on {@code index_probe}, named
+     * {@code index_probe_lower}; {@code null} for a database without expression indexes.
+     */
+    protected @Nullable String expressionIndexDdl() {
+        return null;
     }
 
     /** Whether the dialect has sequences, and so reports {@code SEQUENCE_NOT_FOUND} at all. */
@@ -62,6 +77,24 @@ public abstract class AbstractSchemaValidatorConformanceTest {
             Address address,
             @Nullable String telephone,
             @Nullable Integer version
+    ) implements Entity<Integer> {}
+
+    /** A unique key on {@code c}, which a unique index enforces. */
+    @DbTable("index_probe")
+    public record IndexProbeUniqueC(
+            @PK Integer id,
+            @Nullable String a,
+            @Nullable String b,
+            @UK @Nullable Integer c
+    ) implements Entity<Integer> {}
+
+    /** A unique key on {@code a}, which a unique index on {@code lower(a)} does not enforce. */
+    @DbTable("index_probe")
+    public record IndexProbeUniqueA(
+            @PK Integer id,
+            @UK @Nullable String a,
+            @Nullable String b,
+            @Nullable Integer c
     ) implements Entity<Integer> {}
 
     public record MissingTableEntity(
@@ -172,5 +205,74 @@ public abstract class AbstractSchemaValidatorConformanceTest {
         assertTrue(errors.stream().anyMatch(
                 error -> error.kind() == ErrorKind.SEQUENCE_NOT_FOUND
                         && error.message().contains("nonexistent_seq")));
+    }
+
+    @Test
+    public void testIndexesAreDiscovered() throws SQLException {
+        try (var connection = dataSource.getConnection(); var statement = connection.createStatement()) {
+            statement.execute("CREATE TABLE index_probe (id INTEGER NOT NULL PRIMARY KEY, a VARCHAR(50), b VARCHAR(50), c INTEGER)");
+            try {
+                statement.execute("CREATE INDEX index_probe_ab ON index_probe (a, b)");
+                statement.execute("CREATE UNIQUE INDEX index_probe_c ON index_probe (c)");
+                var dialect = Providers.getSqlDialect(connection, StormConfig.defaults());
+                var schema = DatabaseSchema.read(connection, connection.getCatalog(), connection.getSchema(),
+                        dialect.sequenceDiscoveryStrategy(), dialect.constraintDiscoveryStrategy(),
+                        dialect.indexDiscoveryStrategy());
+                assertTrue(schema.isDiscovered("index_probe", ConstraintKind.INDEX));
+                var indexes = schema.getIndexes("index_probe");
+                var composite = indexes.stream()
+                        .filter(index -> index.indexName().equalsIgnoreCase("index_probe_ab"))
+                        .sorted(java.util.Comparator.comparingInt(DbIndex::ordinalPosition))
+                        .toList();
+                assertEquals(2, composite.size(), indexes::toString);
+                assertTrue(composite.get(0).columnName().equalsIgnoreCase("a"), indexes::toString);
+                assertEquals(1, composite.get(0).ordinalPosition());
+                assertTrue(composite.get(1).columnName().equalsIgnoreCase("b"), indexes::toString);
+                assertEquals(2, composite.get(1).ordinalPosition());
+                assertFalse(composite.get(0).unique());
+                var unique = indexes.stream()
+                        .filter(index -> index.indexName().equalsIgnoreCase("index_probe_c"))
+                        .toList();
+                assertEquals(1, unique.size(), indexes::toString);
+                assertTrue(unique.getFirst().columnName().equalsIgnoreCase("c"), indexes::toString);
+                assertTrue(unique.getFirst().unique());
+                assertFalse(unique.getFirst().partial());
+                // A unique index makes the column unique as a unique constraint does.
+                var errors = SchemaValidator.of(dataSource).validate(List.of(IndexProbeUniqueC.class));
+                assertFalse(errors.stream().anyMatch(error -> error.kind() == ErrorKind.UNIQUE_KEY_MISSING),
+                        errors::toString);
+            } finally {
+                statement.execute("DROP TABLE index_probe");
+            }
+        }
+    }
+
+    @Test
+    public void testAnExpressionIndexHasNoColumn() throws SQLException {
+        var ddl = expressionIndexDdl();
+        assumeTrue(ddl != null);
+        try (var connection = dataSource.getConnection(); var statement = connection.createStatement()) {
+            statement.execute("CREATE TABLE index_probe (id INTEGER NOT NULL PRIMARY KEY, a VARCHAR(50), b VARCHAR(50), c INTEGER)");
+            try {
+                statement.execute(ddl);
+                // The load publishes the indexes for the data source, which reads the expression as unknown.
+                SchemaValidator.of(dataSource).load(List.of());
+                var dialect = Providers.getSqlDialect(connection, StormConfig.defaults());
+                var schema = DatabaseSchema.read(connection, connection.getCatalog(), connection.getSchema(),
+                        dialect.sequenceDiscoveryStrategy(), dialect.constraintDiscoveryStrategy(),
+                        dialect.indexDiscoveryStrategy());
+                var expression = schema.getIndexes("index_probe").stream()
+                        .filter(index -> index.indexName().equalsIgnoreCase("index_probe_lower"))
+                        .toList();
+                assertEquals(1, expression.size(), () -> schema.getIndexes("index_probe").toString());
+                assertEquals(null, expression.getFirst().columnName());
+                // A unique index on lower(a) does not make a itself unique.
+                var errors = SchemaValidator.of(dataSource).validate(List.of(IndexProbeUniqueA.class));
+                assertTrue(errors.stream().anyMatch(error -> error.kind() == ErrorKind.UNIQUE_KEY_MISSING),
+                        errors::toString);
+            } finally {
+                statement.execute("DROP TABLE index_probe");
+            }
+        }
     }
 }

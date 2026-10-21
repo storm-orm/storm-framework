@@ -101,8 +101,8 @@ public class StormDatabaseConfig internal constructor(internal val name: String)
     public var customize: (st.orm.template.ORMTemplate.Builder.() -> Unit)? = null
 
     /**
-     * Schema validation mode for this database: `"none"`, `"warn"`, or `"fail"`. Any other value aborts
-     * installation.
+     * Schema validation mode for this database: `"none"`, `"load"`, `"warn"`, or `"fail"`. Any other value aborts
+     * installation. `"load"` loads the schema without validating it, which Storm uses for advice and optimization.
      *
      * When not set, the mode is read from the HOCON configuration under
      * `storm.databases.<name>.validation.schemaMode` (or `schema_mode`), inheriting the primary database's mode

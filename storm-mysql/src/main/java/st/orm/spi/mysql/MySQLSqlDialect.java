@@ -281,6 +281,20 @@ public class MySQLSqlDialect extends DefaultSqlDialect {
     }
 
     /**
+     * Returns the strategy for discovering indexes in the database schema.
+     *
+     * <p>MySQL lists every index column in {@code INFORMATION_SCHEMA.STATISTICS}, so the indexes of a schema are
+     * read in one query.</p>
+     *
+     * @return {@link IndexDiscoveryStrategy#INFORMATION_SCHEMA_STATISTICS}.
+     * @since 1.15
+     */
+    @Override
+    public IndexDiscoveryStrategy indexDiscoveryStrategy() {
+        return IndexDiscoveryStrategy.INFORMATION_SCHEMA_STATISTICS;
+    }
+
+    /**
      * Returns {@code Integer.MIN_VALUE} to enable the MySQL Connector/J row-by-row streaming mode.
      *
      * <p>By default, the MySQL JDBC driver buffers the entire result set in memory during

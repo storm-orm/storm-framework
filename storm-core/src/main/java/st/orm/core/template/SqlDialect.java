@@ -650,6 +650,49 @@ public interface SqlDialect {
     }
 
     /**
+     * Strategy for discovering the indexes of the tables in the database schema, unique and non-unique.
+     *
+     * <p>Indexes are not part of the standard {@code INFORMATION_SCHEMA}, so every bulk strategy reads a catalog of
+     * its own. The {@link #JDBC_METADATA} fallback works with any JDBC driver, at one metadata query per table.</p>
+     *
+     * @since 1.15
+     */
+    enum IndexDiscoveryStrategy {
+        /**
+         * Per-table {@link java.sql.DatabaseMetaData#getIndexInfo} calls. Safe, portable fallback that works with any
+         * JDBC driver but issues one metadata query per table in the schema.
+         */
+        JDBC_METADATA,
+        /**
+         * A bulk query on the {@code INFORMATION_SCHEMA.STATISTICS} view, which lists one row per index column.
+         */
+        INFORMATION_SCHEMA_STATISTICS,
+        /**
+         * A bulk query on the {@code pg_index} system catalog, joined with {@code pg_class}, {@code pg_namespace},
+         * {@code pg_am} and {@code pg_attribute}.
+         */
+        PG_INDEX,
+        /**
+         * A bulk query on the {@code ALL_INDEXES} and {@code ALL_IND_COLUMNS} dictionary views.
+         */
+        ALL_IND_COLUMNS
+    }
+
+    /**
+     * Returns the strategy for discovering the indexes of the tables in the database schema.
+     *
+     * <p>The default strategy reads them per table through {@link java.sql.DatabaseMetaData#getIndexInfo}. Dialects
+     * whose database lists its indexes in a catalog override this method with a bulk strategy, which reads them in
+     * one query regardless of table count.</p>
+     *
+     * @return the index discovery strategy.
+     * @since 1.15
+     */
+    default IndexDiscoveryStrategy indexDiscoveryStrategy() {
+        return IndexDiscoveryStrategy.JDBC_METADATA;
+    }
+
+    /**
      * Returns the strategy for discovering sequences in the database schema.
      *
      * <p>The default strategy queries {@code INFORMATION_SCHEMA.SEQUENCES}. Database dialects that use a different
