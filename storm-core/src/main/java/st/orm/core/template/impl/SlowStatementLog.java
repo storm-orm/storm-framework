@@ -21,12 +21,14 @@ import static st.orm.core.spi.StormConfigHelper.getDuration;
 import static st.orm.core.spi.StormConfigHelper.getInt;
 
 import java.time.Duration;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.DoubleAdder;
 import java.util.concurrent.atomic.LongAdder;
+import javax.sql.DataSource;
 import org.jspecify.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -334,13 +336,19 @@ public final class SlowStatementLog {
      * @param sqlCommenter the commenter whose content the statement carried, or {@code null}; asked again on the
      *                     executing thread, in the span the statement was prepared in, only for a slow execution.
      * @param advisories advice about the statement, reported on a slow execution.
+     * @param indexDemands the columns the statement asks an index for, checked against the indexes of the database
+     *                     only for a slow execution; {@code null} when it asks for none.
+     * @param dataSource the data source the statement runs on, whose published index catalog the demands are checked
+     *                   against; {@code null} for a template without one.
      * @return the handle to mark and close with the execution.
      */
     static Handle onExecute(QueryContext context,
                             List<Parameter> parameters,
                             @Nullable SqlCommenter sqlCommenter,
-                            List<String> advisories) {
-        return new SlowHandle(context, parameters, sqlCommenter, advisories);
+                            List<String> advisories,
+                            @Nullable IndexDemands indexDemands,
+                            @Nullable DataSource dataSource) {
+        return new SlowHandle(context, parameters, sqlCommenter, advisories, indexDemands, dataSource);
     }
 
     /** One observed execution; carries state from the return of the statement to the close of the execution. */
@@ -349,6 +357,8 @@ public final class SlowStatementLog {
         private final List<Parameter> parameters;
         private final @Nullable SqlCommenter sqlCommenter;
         private final List<String> advisories;
+        private final @Nullable IndexDemands indexDemands;
+        private final @Nullable DataSource dataSource;
         private final long start = System.nanoTime();
         private long executed;
         private long databaseNanos;
@@ -362,11 +372,15 @@ public final class SlowStatementLog {
         SlowHandle(QueryContext context,
                    List<Parameter> parameters,
                    @Nullable SqlCommenter sqlCommenter,
-                   List<String> advisories) {
+                   List<String> advisories,
+                   @Nullable IndexDemands indexDemands,
+                   @Nullable DataSource dataSource) {
             this.context = context;
             this.parameters = parameters;
             this.sqlCommenter = sqlCommenter;
             this.advisories = advisories;
+            this.indexDemands = indexDemands;
+            this.dataSource = dataSource;
         }
 
         @Override
@@ -418,7 +432,25 @@ public final class SlowStatementLog {
                 statement = SqlLiterals.inline(statement, parameters);
             }
             LOGGER.warn(render(context, databaseNanos, consumeNanos, rows, exact, failure, callSite, statement,
-                    baseline, parameters.size(), comment, suppressed, advisories));
+                    baseline, parameters.size(), comment, suppressed, advisories()));
+        }
+
+        /**
+         * Returns the advice the statement carries, with the missing-index advice decided now that the execution is
+         * slow. The decision is kept on the statement's shape, so a shape that is slow again is not decided twice.
+         */
+        private List<String> advisories() {
+            if (indexDemands == null) {
+                return advisories;
+            }
+            var missing = indexDemands.advise(IndexCatalog.published(dataSource));
+            if (missing.isEmpty()) {
+                return advisories;
+            }
+            var all = new ArrayList<String>(advisories.size() + missing.size());
+            all.addAll(advisories);
+            all.addAll(missing);
+            return all;
         }
     }
 

@@ -198,6 +198,8 @@ The no-argument variants discover all entity and projection types on the classpa
 
 On success, a confirmation message is logged at INFO level. On failure, each error is logged at ERROR level, and `validateSchemaOrThrow()` throws a `PersistenceException` with a summary of all errors. Warnings are always logged at WARN level regardless of the outcome.
 
+Validation also loads the schema: Storm keeps what it read for the data source and uses it for advice and optimization, such as naming an index a slow statement lacks. To load the schema without validating it, call `orm.loadSchema()`. Loading is optional, and each call reads the schema anew. See [Loading the schema](advice.md#loading-the-schema).
+
 Templates created from a raw `Connection` or JPA `EntityManager` do not support schema validation, since they lack the `DataSource` needed to query database metadata.
 
 ### Strict Mode
@@ -321,7 +323,7 @@ When using the Spring Boot Starter, both record and schema validation can be con
 storm:
   validation:
     record-mode: fail   # or "warn" or "none" (default: fail)
-    schema-mode: fail   # or "warn" or "none" (default: fail)
+    schema-mode: fail   # or "warn", "load" or "none" (default: fail)
     strict: false       # treat schema warnings as errors (default: false)
 ```
 
@@ -331,14 +333,17 @@ The `schema-mode` values:
 |-------|----------|
 | `fail` | Mismatches cause startup to fail with a `PersistenceException` (default). |
 | `warn` | Mismatches are logged at WARN level; startup continues. |
-| `none` | Schema validation is skipped. |
+| `load` | The schema is loaded without being validated, which Storm uses for advice and optimization. See [Loading the schema](advice.md#loading-the-schema). |
+| `none` | Schema validation is skipped, and the schema is not loaded. |
+
+Validation loads the schema as it reads it, so `fail` and `warn` also give Storm the knowledge `load` gives it.
 
 ### Configuration Properties
 
 | Property | Default | Description |
 |----------|---------|-------------|
 | `storm.validation.record_mode` | `fail` | Record validation mode: `fail`, `warn`, or `none` |
-| `storm.validation.schema_mode` | `fail` | Schema validation mode: `none`, `warn`, or `fail` (Spring Boot and Ktor) |
+| `storm.validation.schema_mode` | `fail` | Schema validation mode: `none`, `load`, `warn`, or `fail` (Spring Boot and Ktor) |
 | `storm.validation.strict` | `false` | When `true`, schema validation warnings are treated as errors |
 
 Mode values are matched case-insensitively after trimming, and a blank value means the default. Any other value is a configuration error: Storm fails fast with an error naming the property, the given value, and the valid values, so a typo cannot silently change validation behavior.

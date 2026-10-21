@@ -519,9 +519,10 @@ private fun Application.runSchemaValidation(
             log.info("Storm schema validation passed for $description (mode=fail).")
         }
         "warn" -> template.validateSchema(filter).forEach { log.warn(it) }
+        "load" -> template.loadSchema(filter)
         else -> throw IllegalStateException(
             "Invalid schema validation mode '$configuredMode' for $description " +
-                "(schemaValidation option or $property). Valid values are: none, warn, fail.",
+                "(schemaValidation option or $property). Valid values are: none, load, warn, fail.",
         )
     }
 }

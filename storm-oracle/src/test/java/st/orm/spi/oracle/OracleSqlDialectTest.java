@@ -201,17 +201,21 @@ class OracleSqlDialectTest {
     }
 
     @Test
-    void sequenceDiscoveryStrategyShouldReturnAllSequences() {
+    void sequencesAreListedFromTheDictionary() {
         assertEquals(
-                st.orm.core.template.SqlDialect.SequenceDiscoveryStrategy.ALL_SEQUENCES,
+                st.orm.core.template.SqlDialect.SequenceDiscoveryStrategy.NONE,
                 dialect.sequenceDiscoveryStrategy());
+        assertTrue(dialect.sequenceDiscoveryQuery().contains("ALL_SEQUENCES"));
     }
 
     @Test
-    void constraintDiscoveryStrategyShouldReturnAllConstraints() {
+    void constraintsAndIndexesAreListedFromTheDictionary() {
         assertEquals(
-                st.orm.core.template.SqlDialect.ConstraintDiscoveryStrategy.ALL_CONSTRAINTS,
+                st.orm.core.template.SqlDialect.ConstraintDiscoveryStrategy.JDBC_METADATA,
                 dialect.constraintDiscoveryStrategy());
+        assertTrue(dialect.keyDiscoveryQuery().contains("ALL_CONSTRAINTS"));
+        assertTrue(dialect.foreignKeyDiscoveryQuery().contains("ALL_CONSTRAINTS"));
+        assertTrue(dialect.indexDiscoveryQuery().contains("ALL_IND_COLUMNS"));
     }
 
     @Test

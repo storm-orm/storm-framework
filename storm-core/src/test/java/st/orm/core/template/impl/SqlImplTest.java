@@ -3,6 +3,7 @@ package st.orm.core.template.impl;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -33,7 +34,7 @@ public class SqlImplTest {
                 List.of(),
                 false,
                 Optional.empty(), StatementOrigin.DIRECT, 0L
-        , List.of());
+        , List.of(), null);
     }
 
     @Test
@@ -125,7 +126,7 @@ public class SqlImplTest {
                 List.of(),
                 false,
                 Optional.of("existing warning"), StatementOrigin.DIRECT, 0L
-        , List.of());
+        , List.of(), null);
         Sql updated = sql.unsafeWarning(null);
         assertTrue(updated.unsafeWarning().isEmpty());
     }
@@ -145,7 +146,7 @@ public class SqlImplTest {
                 false,
                 Optional.empty(),
                 StatementOrigin.DIRECT, 0L
-        , List.of()));
+        , List.of(), null));
     }
 
     @Test
@@ -163,7 +164,7 @@ public class SqlImplTest {
                 false,
                 Optional.empty(),
                 StatementOrigin.DIRECT, 0L
-        , List.of()));
+        , List.of(), null));
     }
 
     @Test
@@ -181,7 +182,7 @@ public class SqlImplTest {
                     List.of(),
                     false,
                     Optional.empty(), StatementOrigin.DIRECT, 0L
-            , List.of());
+            , List.of(), null);
             assertEquals(operation, sql.operation());
         }
     }
@@ -204,7 +205,7 @@ public class SqlImplTest {
                 List.of(),
                 false,
                 Optional.empty(), StatementOrigin.DIRECT, 0L
-        , List.of());
+        , List.of(), null);
         mutableParameters.add(new SqlTemplate.PositionalParameter(2, "added later"));
         assertEquals(List.of(new SqlTemplate.PositionalParameter(1, "original")), sql.parameters());
     }
@@ -223,8 +224,30 @@ public class SqlImplTest {
                 List.of(),
                 false,
                 Optional.empty(), StatementOrigin.DIRECT, 0L
-        , List.of());
+        , List.of(), null);
         assertEquals(1, sql.generatedKeys().size());
         assertEquals("id", sql.generatedKeys().getFirst());
+    }
+
+    @Test
+    public void testIndexDemandsSurviveTheCopies() {
+        var builder = new IndexDemands.Builder();
+        builder.add("", "users", "email", IndexDemands.Kind.EQUALITY);
+        var demands = builder.build();
+        var sql = new SqlImpl(
+                SqlOperation.SELECT,
+                "SELECT * FROM users",
+                List.of(),
+                Optional.empty(),
+                List.of(),
+                Optional.empty(),
+                Optional.empty(),
+                List.of(),
+                List.of(),
+                false,
+                Optional.empty(), StatementOrigin.DIRECT, 0L
+        , List.of(), demands);
+        assertSame(demands, ((SqlImpl) sql.shapeId(7L)).indexDemands());
+        assertSame(demands, ((SqlImpl) sql.statement("SELECT 1")).indexDemands());
     }
 }

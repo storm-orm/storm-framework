@@ -83,7 +83,7 @@ public final class StormConfig {
     public static final String SEARCH_MIN_TERM_LENGTH = "storm.search.min_term_length";
     /** Record validation mode. Values: fail, warn, none. */
     public static final String VALIDATION_RECORD_MODE = "storm.validation.record_mode";
-    /** Schema validation mode. Values: none, warn, fail. */
+    /** Schema validation mode. Values: none, load, warn, fail; load loads the schema without validating it. */
     public static final String VALIDATION_SCHEMA_MODE = "storm.validation.schema_mode";
     /** Whether to treat schema validation warnings as errors. */
     public static final String VALIDATION_STRICT = "storm.validation.strict";

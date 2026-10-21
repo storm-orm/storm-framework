@@ -56,6 +56,7 @@ import st.orm.core.template.SqlDialect;
 import st.orm.core.template.impl.DatabaseSchema.ConstraintKind;
 import st.orm.core.template.impl.DatabaseSchema.DbColumn;
 import st.orm.core.template.impl.DatabaseSchema.DbForeignKey;
+import st.orm.core.template.impl.DatabaseSchema.DbIndex;
 import st.orm.core.template.impl.DatabaseSchema.DbUniqueKey;
 import st.orm.core.template.impl.SchemaValidationError.ErrorKind;
 import st.orm.core.template.impl.TypeCompatibility.Compatibility;
@@ -151,23 +152,130 @@ public final class SchemaValidator {
     public List<SchemaValidationError> validate(Iterable<Class<? extends Data>> types) {
         List<SchemaValidationError> errors = new ArrayList<>();
         try (Connection connection = dataSource.getConnection()) {
-            String defaultCatalog = connection.getCatalog();
-            String defaultSchema = connection.getSchema();
-            // The strategies a dialect reads constraints and sequences with are vendor-specific, so a dialect that
-            // does not match the database reads the schema with queries the database does not understand. Unless a
-            // dialect was supplied, it comes from the database on the other end of this connection.
-            SqlDialect dialect = sqlDialect != null
-                    ? sqlDialect
-                    : Providers.getSqlDialect(connection, StormConfig.defaults());
-            // Cache DatabaseSchema instances per schema name (case-insensitive) to avoid redundant metadata reads.
-            SortedMap<String, DatabaseSchema> schemaCache = new TreeMap<>(String.CASE_INSENSITIVE_ORDER);
+            var reads = new SchemaReads(connection);
             for (Class<? extends Data> type : types) {
-                validateType(type, connection, dialect, defaultCatalog, defaultSchema, schemaCache, errors);
+                validateType(type, reads, errors);
             }
+            // Validation has read the schema, so the slow statement log can check statements against its indexes
+            // without a read of its own.
+            reads.publish();
         } catch (SQLException e) {
             throw new st.orm.PersistenceException("Failed to read database schema for validation.", e);
         }
         return errors;
+    }
+
+    /**
+     * Loads the database schema for all entity and projection types discovered on the classpath via
+     * {@link TypeDiscovery}, without validating them, and keeps it for the data source.
+     *
+     * @see #load(Iterable)
+     * @since 1.15
+     */
+    public void load() {
+        load(TypeDiscovery.getDataTypes());
+    }
+
+    /**
+     * Loads the database schema the specified types map to, without validating them, and keeps it for the data
+     * source. The connection's default schema is always loaded, and each schema a type names besides it.
+     *
+     * <p>Loading the schema is optional. Every template on the data source shares what it loads and uses it for
+     * advice and optimization: the slow statement log, for example, checks a slow statement against the indexes the
+     * schema holds, and names an index the statement lacks. {@link #validate(Iterable)} loads the schema as it
+     * validates, so an application that validates needs no separate load. Each load reads the schema anew and
+     * replaces what an earlier load or validation kept for the same schemas.</p>
+     *
+     * @param types the types whose schemas to load.
+     * @throws st.orm.PersistenceException if the schema cannot be read.
+     * @since 1.15
+     */
+    public void load(Iterable<Class<? extends Data>> types) {
+        try (Connection connection = dataSource.getConnection()) {
+            var reads = new SchemaReads(connection);
+            reads.resolve("");
+            for (Class<? extends Data> type : types) {
+                var model = modelOf(type);
+                if (model != null) {
+                    reads.resolve(model.schema());
+                }
+            }
+            reads.publish();
+            LOGGER.debug("Loaded the database schema.");
+        } catch (SQLException e) {
+            throw new st.orm.PersistenceException("Failed to load the database schema.", e);
+        }
+    }
+
+    /**
+     * The schemas one validation or load reads, on one connection, each read once.
+     */
+    private final class SchemaReads {
+        private final Connection connection;
+        private final SqlDialect dialect;
+        private final @Nullable String defaultCatalog;
+        private final @Nullable String defaultSchema;
+        /** The schemas read, per schema name (case-insensitive), to avoid redundant metadata reads. */
+        private final SortedMap<String, DatabaseSchema> schemaCache = new TreeMap<>(String.CASE_INSENSITIVE_ORDER);
+        /** The schemas read, per schema as the models name it ({@code ""} for the default schema). */
+        private final SortedMap<String, DatabaseSchema> byModelSchema = new TreeMap<>(String.CASE_INSENSITIVE_ORDER);
+
+        SchemaReads(Connection connection) throws SQLException {
+            this.connection = connection;
+            this.defaultCatalog = connection.getCatalog();
+            this.defaultSchema = connection.getSchema();
+            // The strategies a dialect reads constraints and sequences with are vendor-specific, so a dialect that
+            // does not match the database reads the schema with queries the database does not understand. Unless a
+            // dialect was supplied, it comes from the database on the other end of this connection.
+            this.dialect = sqlDialect != null
+                    ? sqlDialect
+                    : Providers.getSqlDialect(connection, StormConfig.defaults());
+        }
+
+        /**
+         * Returns the schema a model names, reading it on first use.
+         */
+        DatabaseSchema resolve(String entitySchema) throws SQLException {
+            var schema = resolveSchema(connection, dialect, defaultCatalog, defaultSchema, entitySchema, schemaCache);
+            byModelSchema.put(entitySchema, schema);
+            return schema;
+        }
+
+        /**
+         * Publishes the indexes of the schemas read for the data source.
+         */
+        void publish() {
+            if (!byModelSchema.isEmpty()) {
+                IndexCatalog.publish(dataSource, IndexCatalog.of(byModelSchema));
+            }
+        }
+    }
+
+    /**
+     * Returns the model of a type whose table the schema holds, or {@code null} for a type that has none to check: an
+     * interface, a sealed type whose subtypes are checked instead, a type that cannot be modeled, or one annotated
+     * with {@link DbIgnore} or {@link ProjectionQuery}.
+     */
+    private @Nullable Model<?, ?> modelOf(Class<? extends Data> type) {
+        // Skip sealed interfaces: their permitted subclasses will be validated individually,
+        // and for single-table inheritance the sealed model's columns are the union of all subtypes.
+        if (type.isInterface() || (type.isSealed() && !type.isRecord())) {
+            return null;
+        }
+        boolean requirePrimaryKey = Entity.class.isAssignableFrom(type);
+        Model<?, ?> model;
+        try {
+            model = modelBuilder.build(type, requirePrimaryKey);
+        } catch (SqlTemplateException e) {
+            // Type cannot be modeled (e.g., invalid record structure). Skip; RecordValidation handles this.
+            return null;
+        }
+        // Skip types annotated with @DbIgnore or @ProjectionQuery.
+        if (model.recordType().isAnnotationPresent(DbIgnore.class)
+                || model.recordType().isAnnotationPresent(ProjectionQuery.class)) {
+            return null;
+        }
+        return model;
     }
 
     /**
@@ -378,7 +486,7 @@ public final class SchemaValidator {
             schemaPattern = entitySchema.isEmpty() ? defaultSchema : entitySchema;
         }
         DatabaseSchema databaseSchema = DatabaseSchema.read(connection, catalog, schemaPattern,
-                dialect.sequenceDiscoveryStrategy(), dialect.constraintDiscoveryStrategy());
+                    DatabaseSchema.Discovery.of(dialect));
         schemaCache.put(schemaKey, databaseSchema);
         return databaseSchema;
     }
@@ -388,36 +496,19 @@ public final class SchemaValidator {
      */
     private void validateType(
             Class<? extends Data> type,
-            Connection connection,
-            SqlDialect dialect,
-            @Nullable String defaultCatalog,
-            @Nullable String defaultSchema,
-            SortedMap<String, DatabaseSchema> schemaCache,
+            SchemaReads reads,
             List<SchemaValidationError> errors
     ) {
-        // Skip sealed interfaces: their permitted subclasses will be validated individually,
-        // and for single-table inheritance the sealed model's columns are the union of all subtypes.
-        if (type.isInterface() || (type.isSealed() && !type.isRecord())) {
+        Model<?, ?> model = modelOf(type);
+        if (model == null) {
             return;
         }
         boolean requirePrimaryKey = Entity.class.isAssignableFrom(type);
-        Model<?, ?> model;
-        try {
-            model = modelBuilder.build(type, requirePrimaryKey);
-        } catch (SqlTemplateException e) {
-            // Type cannot be modeled (e.g., invalid record structure). Skip; RecordValidation handles this.
-            return;
-        }
-        // Skip types annotated with @DbIgnore or @ProjectionQuery.
-        if (model.recordType().isAnnotationPresent(DbIgnore.class)
-                || model.recordType().isAnnotationPresent(ProjectionQuery.class)) {
-            return;
-        }
         String tableName = model.name();
         String entitySchema = model.schema();
         DatabaseSchema schema;
         try {
-            schema = resolveSchema(connection, dialect, defaultCatalog, defaultSchema, entitySchema, schemaCache);
+            schema = reads.resolve(entitySchema);
         } catch (SQLException e) {
             throw new st.orm.PersistenceException(
                     "Failed to read database schema '%s' for validation.".formatted(entitySchema), e);
@@ -565,6 +656,26 @@ public final class SchemaValidator {
             indexColumnsByName.computeIfAbsent(uk.indexName(), k -> new TreeSet<>(String.CASE_INSENSITIVE_ORDER))
                     .add(uk.columnName());
         }
+        // A unique index enforces uniqueness as a unique constraint does, and a database can have one without the
+        // other. An index on an expression, or on part of the rows, does not make the columns unique.
+        SortedSet<String> partialIndexes = new TreeSet<>(String.CASE_INSENSITIVE_ORDER);
+        SortedMap<String, SortedSet<String>> uniqueIndexes = new TreeMap<>(String.CASE_INSENSITIVE_ORDER);
+        for (DbIndex index : schema.getIndexes(tableName)) {
+            if (!index.unique()) {
+                continue;
+            }
+            if (index.partial() || index.columnName() == null) {
+                partialIndexes.add(index.indexName());
+                continue;
+            }
+            uniqueIndexes.computeIfAbsent(index.indexName(), k -> new TreeSet<>(String.CASE_INSENSITIVE_ORDER))
+                    .add(index.columnName());
+        }
+        uniqueIndexes.forEach((indexName, columns) -> {
+            if (!partialIndexes.contains(indexName)) {
+                indexColumnsByName.putIfAbsent(indexName, columns);
+            }
+        });
         // Forward check: @UK fields must have a matching database constraint.
         for (RecordField field : model.recordType().fields()) {
             if (field.isAnnotationPresent(DbIgnore.class)) continue;

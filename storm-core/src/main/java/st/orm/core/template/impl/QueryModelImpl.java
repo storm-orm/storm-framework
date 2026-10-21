@@ -250,7 +250,7 @@ final class QueryModelImpl implements QueryModel {
         try {
             return switch (expression) {
                 case TemplateExpression it -> compileTemplateExpression(it.template(), compiler);
-                case ObjectExpression it -> compileObjectExpression(getMetamodel(it), it.operator(), it.object(), compiler);
+                case ObjectExpression it -> compileObjectExpression(getMetamodel(it), it.operator(), it.object(), it.indexable(), compiler);
             };
         } catch (SqlTemplateException e) {
             throw new UncheckedSqlTemplateException(e);
@@ -375,6 +375,7 @@ final class QueryModelImpl implements QueryModel {
     private String compileObjectExpression(Metamodel<?, ?> metamodel,
                                            Operator operator,
                                            Object object,
+                                           boolean indexable,
                                            TemplateCompiler compiler) throws SqlTemplateException {
         // A SqlFunction call compares the column it is applied to, with the call around the column and around each
         // value, so the database computes both sides alike.
@@ -436,6 +437,12 @@ final class QueryModelImpl implements QueryModel {
                         .formatted(path, metamodel.fieldPath()));
             }
             column = FunctionCalls.render(path, column);
+        } else if (indexable) {
+            // A comparison on the bare column is one an index on it can serve; one on a function call is not.
+            var kind = IndexDemands.kindOf(operator);
+            if (kind != null) {
+                IndexDemandProcessor.demand(model.getColumns(metamodel), kind, compiler);
+            }
         }
         try {
             return ColumnComparison.render(operator, column, placeholders, multiValues, compiler::mapParameter, compiler.dialect());

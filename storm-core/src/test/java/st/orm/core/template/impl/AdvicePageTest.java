@@ -74,6 +74,8 @@ public class AdvicePageTest {
         return switch (advice) {
             case ENTITY_BUDGET, WIDE_ENTITY_READ -> new Object[] {"Visit", 12, 140, "a Ref for Clinic.organization", 10, 96};
             case REPEATED_WRITE -> new Object[] {"INSERT", "Owner", 10};
+            case MISSING_INDEX -> new Object[] {"owner", "last_name", "which the statement filters owner by",
+                    "owner(last_name)", "finds them directly"};
             default -> new Object[] {3, "Owner", 3};
         };
     }

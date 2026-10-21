@@ -110,9 +110,7 @@ public class SemiJoinIntegrationTest {
     }
 
     private List<String> advisories(Supplier<?> query) {
-        var advisories = new ArrayList<String>();
-        observe(sql -> advisories.addAll(sql.advisories()), query::get);
-        return advisories;
+        return AdviceCapture.advisories(query);
     }
 
     @SafeVarargs

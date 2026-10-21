@@ -1,5 +1,9 @@
 package st.orm.template
 
+import ch.qos.logback.classic.Level
+import ch.qos.logback.classic.LoggerContext
+import ch.qos.logback.classic.spi.ILoggingEvent
+import ch.qos.logback.core.read.ListAppender
 import io.kotest.matchers.collections.shouldHaveSize
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.shouldNotBe
@@ -11,6 +15,7 @@ import kotlinx.coroutines.runBlocking
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.assertThrows
 import org.junit.jupiter.api.extension.ExtendWith
+import org.slf4j.LoggerFactory
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.test.context.ContextConfiguration
 import org.springframework.test.context.jdbc.Sql
@@ -28,9 +33,11 @@ import st.orm.Ref
 import st.orm.Scrollable
 import st.orm.TypedMetamodel
 import st.orm.Window
+import st.orm.core.template.impl.SlowStatementLog
 import st.orm.repository.entity
 import st.orm.template.model.*
 import st.orm.test.SqlCapture
+import java.time.Duration
 import java.util.stream.Stream
 import kotlin.reflect.KClass
 
@@ -2688,13 +2695,34 @@ internal open class QueryBuilderTest(
     fun `count behind a page carries advice for the slow statement log`() {
         val repo = orm.entity(City::class)
         val idPath = metamodel<City, Int>(repo.model, "id")
-        val advisories = mutableListOf<String>()
-        st.orm.core.template.SqlInterceptor.observe(
-            { sql -> advisories.addAll(sql.advisories()) },
-            Runnable {
-                repo.select().page(Pageable.ofSize(3).sortBy(idPath))
-            },
-        )
+        // The slow statement log reports every piece of advice a slow statement carries; every execution is slow
+        // while the page is read.
+        val context = LoggerFactory.getILoggerFactory() as LoggerContext
+        val logger = context.getLogger("st.orm.sql.slow")
+        val appender = ListAppender<ILoggingEvent>()
+        appender.context = context
+        appender.start()
+        val previousLevel = logger.level
+        val previousThreshold = SlowStatementLog.threshold()
+        val previousLimit = SlowStatementLog.limit()
+        logger.level = Level.WARN
+        logger.addAppender(appender)
+        logger.isAdditive = false
+        SlowStatementLog.threshold(Duration.ofNanos(1))
+        SlowStatementLog.limit(0)
+        try {
+            repo.select().page(Pageable.ofSize(3).sortBy(idPath))
+        } finally {
+            SlowStatementLog.limit(previousLimit)
+            SlowStatementLog.threshold(previousThreshold)
+            logger.detachAppender(appender)
+            logger.isAdditive = true
+            logger.level = previousLevel
+            appender.stop()
+        }
+        val advisories = appender.list
+            .flatMap { it.formattedMessage.lines() }
+            .filter { it.startsWith("\tadvice: ") && !it.contains("#missing-index") }
         advisories shouldHaveSize 1
         advisories.first() shouldContain "slice"
     }

@@ -31,7 +31,7 @@ Enable it in Spring Boot:
 ```yaml
 storm:
   validation:
-    schema-mode: fail   # or "warn" or "none"
+    schema-mode: fail   # or "warn", "load" or "none"
 ```
 
 Or call it programmatically:

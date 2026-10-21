@@ -193,13 +193,27 @@ public final class Elements {
      * A value comparison: the path compared against the object using the operator. The object may be a value, a
      * collection of values, a record, a reference, or a primary key; a multi-column path expands component-wise.
      * When the metamodel is {@code null}, the object is matched against the table's primary key.
+     *
+     * <p>{@code indexable} is {@code false} for a comparison that does not select rows, such as the condition an
+     * {@code orderFirst} ranks the rows by: an index on its column spares no read, so the comparison asks for none.</p>
      */
-    public record ObjectExpression(@Nullable Metamodel<?, ?> metamodel, Operator operator, Object object) implements Expression {
+    public record ObjectExpression(@Nullable Metamodel<?, ?> metamodel, Operator operator, Object object,
+                                   boolean indexable) implements Expression {
+        public ObjectExpression(@Nullable Metamodel<?, ?> metamodel, Operator operator, Object object) {
+            this(metamodel, operator, object, true);
+        }
         public ObjectExpression(Operator operator, Object object) {
             this(null, operator, object);
         }
         public ObjectExpression(Object object) {
             this(null, EQUALS, object);
+        }
+
+        /**
+         * Returns this comparison as one that does not select rows, and so asks no index for its column.
+         */
+        public ObjectExpression ranking() {
+            return indexable ? new ObjectExpression(metamodel, operator, object, false) : this;
         }
         public ObjectExpression {
             requireNonNull(object, "object");
@@ -495,6 +509,22 @@ public final class Elements {
     public record Advisory(String text) implements Element {
         public Advisory {
             requireNonNull(text, "text");
+        }
+    }
+
+    /**
+     * Records that the statement uses a column in a way an index can serve, which renders nothing. The query builder
+     * adds one where the use is not a predicate it compiles, such as the ordering of a limited result; the slow
+     * statement log checks it against the database's indexes when an execution of the statement is slow.
+     *
+     * @param field the column's path.
+     * @param kind how the statement uses the column.
+     * @since 1.15
+     */
+    public record IndexDemand(Metamodel<?, ?> field, IndexDemands.Kind kind) implements Element {
+        public IndexDemand {
+            requireNonNull(field, "field");
+            requireNonNull(kind, "kind");
         }
     }
 

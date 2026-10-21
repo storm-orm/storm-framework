@@ -110,7 +110,7 @@ install(Storm) {
         Flyway.configure().dataSource(dataSource).load().migrate()
     }
 
-    // Schema validation: "none", "warn", or "fail".
+    // Schema validation: "none", "load", "warn", or "fail".
     // When omitted, read from storm.validation.schemaMode in the application config; defaults to "fail".
     schemaValidation = "warn"
 
@@ -133,7 +133,7 @@ install(Storm) {
 | `dataSource` | Created from HOCON | The JDBC DataSource to use. When omitted, a HikariCP pool is created from `storm.datasource.*` in `application.conf`. |
 | `config` | Read from HOCON | A `StormConfig` with ORM properties. When omitted, properties are read from `storm.*` in `application.conf`. |
 | `migration(...)` | None | A hook that runs after the DataSource is available and before schema validation. The place for Flyway or Liquibase migrations, guaranteeing validation sees the migrated schema. |
-| `schemaValidation` | From config, else `"fail"` | Validates entity definitions against the database schema during installation. `"fail"` (the default) blocks startup on mismatches; `"warn"` logs them; `"none"` opts out. When not set, the mode is read from `storm.validation.schemaMode` in the application configuration. |
+| `schemaValidation` | From config, else `"fail"` | Validates entity definitions against the database schema during installation. `"fail"` (the default) blocks startup on mismatches; `"warn"` logs them; `"load"` loads the schema without validating it, which Storm uses for [advice and optimization](advice.md#loading-the-schema); `"none"` opts out. When not set, the mode is read from `storm.validation.schemaMode` in the application configuration. |
 | `entityCallback(...)` | None | Registers an [entity lifecycle callback](entity-lifecycle.md#ktor-plugin) on the write path: insert, update, upsert and remove. Repeat the call to register several. A callback the entity declares with [`@EntityCallbacks`](entity-lifecycle.md#on-the-entity) applies without an entry here. |
 | `customize` | None | Composition applied to each database's template builder after the plugin has wired the integration, such as a template decorator. A database block inherits it unless it sets its own. |
 | `autoRegisterRepositories` | `true` | Registers all repository interfaces from the compile-time type index during installation, so `repository<T>()` works without further setup. |
@@ -527,7 +527,7 @@ storm {
     ansiEscaping = false
     validation {
         recordMode = "fail"              # "none", "warn", or "fail"
-        schemaMode = "warn"              # "none", "warn", or "fail"
+        schemaMode = "warn"              # "none", "load", "warn", or "fail"
         strict = false
     }
 }

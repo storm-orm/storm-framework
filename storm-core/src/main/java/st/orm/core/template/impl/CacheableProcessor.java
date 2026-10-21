@@ -73,15 +73,16 @@ final class CacheableProcessor implements ElementProcessor<Cacheable> {
     ) throws SqlTemplateException {
         return switch(cacheable.expression()) {
             case TemplateExpression it -> keyGenerator.apply(it.template());
-            case ObjectExpression(var metamodel, var operator, var object) -> {
+            case ObjectExpression(var metamodel, var operator, var object, var indexable) -> {
                 var objectShape = getObjectShape(object, ignoreArity);
                 if (objectShape == null) {
                     yield null;
                 }
+                // Whether the comparison asks for an index is part of what it compiles to.
                 if (metamodel == null) {
-                    yield List.of(operator, objectShape);
+                    yield List.of(operator, objectShape, indexable);
                 }
-                yield List.of(metamodel, operator, objectShape);
+                yield List.of(metamodel, operator, objectShape, indexable);
             }
         };
     }

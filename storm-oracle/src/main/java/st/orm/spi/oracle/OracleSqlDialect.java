@@ -210,28 +210,112 @@ public class OracleSqlDialect extends DefaultSqlDialect {
     /**
      * Returns the strategy for discovering sequences in the database schema.
      *
-     * <p>Oracle uses the {@code ALL_SEQUENCES} dictionary view instead of {@code INFORMATION_SCHEMA.SEQUENCES}.</p>
+     * <p>Oracle does not support {@code INFORMATION_SCHEMA}; its sequences are listed by
+     * {@link #sequenceDiscoveryQuery()}. Without a schema to list them for, they are not discovered.</p>
      *
-     * @return {@link SequenceDiscoveryStrategy#ALL_SEQUENCES}.
+     * @return {@link SequenceDiscoveryStrategy#NONE}.
      * @since 1.9
      */
     @Override
     public SequenceDiscoveryStrategy sequenceDiscoveryStrategy() {
-        return SequenceDiscoveryStrategy.ALL_SEQUENCES;
+        return SequenceDiscoveryStrategy.NONE;
+    }
+
+    /**
+     * Oracle lists its sequences in the {@code ALL_SEQUENCES} dictionary view.
+     *
+     * @return the query on {@code ALL_SEQUENCES}.
+     * @since 1.15
+     */
+    @Override
+    public String sequenceDiscoveryQuery() {
+        return "SELECT SEQUENCE_NAME FROM ALL_SEQUENCES WHERE SEQUENCE_OWNER = ?";
     }
 
     /**
      * Returns the strategy for discovering constraints in the database schema.
      *
-     * <p>Oracle does not support {@code INFORMATION_SCHEMA}. Constraints are discovered using the
-     * {@code ALL_CONSTRAINTS} and {@code ALL_CONS_COLUMNS} dictionary views.</p>
+     * <p>Oracle does not support {@code INFORMATION_SCHEMA}; its constraints are listed by
+     * {@link #keyDiscoveryQuery()} and {@link #foreignKeyDiscoveryQuery()}. Without a schema to list them for, they
+     * are read per table through JDBC metadata.</p>
      *
-     * @return {@link ConstraintDiscoveryStrategy#ALL_CONSTRAINTS}.
+     * @return {@link ConstraintDiscoveryStrategy#JDBC_METADATA}.
      * @since 1.9
      */
     @Override
     public ConstraintDiscoveryStrategy constraintDiscoveryStrategy() {
-        return ConstraintDiscoveryStrategy.ALL_CONSTRAINTS;
+        return ConstraintDiscoveryStrategy.JDBC_METADATA;
+    }
+
+    /**
+     * Oracle lists its primary and unique keys in the {@code ALL_CONSTRAINTS} and {@code ALL_CONS_COLUMNS} dictionary
+     * views, with constraint types {@code P} and {@code U}.
+     *
+     * @return the query on {@code ALL_CONSTRAINTS}.
+     * @since 1.15
+     */
+    @Override
+    public String keyDiscoveryQuery() {
+        return """
+                SELECT CASE ac.CONSTRAINT_TYPE WHEN 'P' THEN 'PRIMARY KEY' ELSE 'UNIQUE' END AS CONSTRAINT_TYPE,
+                       ac.CONSTRAINT_NAME, acc.TABLE_NAME, acc.COLUMN_NAME, acc.POSITION AS ORDINAL_POSITION
+                FROM ALL_CONSTRAINTS ac
+                JOIN ALL_CONS_COLUMNS acc
+                  ON ac.OWNER = acc.OWNER
+                  AND ac.CONSTRAINT_NAME = acc.CONSTRAINT_NAME
+                WHERE ac.CONSTRAINT_TYPE IN ('P', 'U')
+                  AND ac.OWNER = ?""";
+    }
+
+    /**
+     * Oracle lists its foreign keys in the {@code ALL_CONSTRAINTS} and {@code ALL_CONS_COLUMNS} dictionary views,
+     * with constraint type {@code R}, each referencing the constraint of the key it points to.
+     *
+     * @return the query on {@code ALL_CONSTRAINTS}.
+     * @since 1.15
+     */
+    @Override
+    public String foreignKeyDiscoveryQuery() {
+        return """
+                SELECT fkc.TABLE_NAME AS FK_TABLE, fkc.COLUMN_NAME AS FK_COLUMN,
+                       pkc.TABLE_NAME AS PK_TABLE, pkc.COLUMN_NAME AS PK_COLUMN
+                FROM ALL_CONSTRAINTS fk
+                JOIN ALL_CONS_COLUMNS fkc
+                  ON fk.OWNER = fkc.OWNER
+                  AND fk.CONSTRAINT_NAME = fkc.CONSTRAINT_NAME
+                JOIN ALL_CONSTRAINTS pk
+                  ON fk.R_OWNER = pk.OWNER
+                  AND fk.R_CONSTRAINT_NAME = pk.CONSTRAINT_NAME
+                JOIN ALL_CONS_COLUMNS pkc
+                  ON pk.OWNER = pkc.OWNER
+                  AND pk.CONSTRAINT_NAME = pkc.CONSTRAINT_NAME
+                  AND fkc.POSITION = pkc.POSITION
+                WHERE fk.CONSTRAINT_TYPE = 'R'
+                  AND fk.OWNER = ?
+                ORDER BY fkc.TABLE_NAME, fk.CONSTRAINT_NAME, fkc.POSITION""";
+    }
+
+    /**
+     * Oracle lists its indexes in the {@code ALL_INDEXES} and {@code ALL_IND_COLUMNS} dictionary views, so the
+     * indexes of a schema are read in one query. A function-based index keys on a hidden virtual column, named
+     * {@code SYS_NC...}, which stands for an expression.
+     *
+     * @return the query on {@code ALL_IND_COLUMNS}.
+     * @since 1.15
+     */
+    @Override
+    public String indexDiscoveryQuery() {
+        return """
+                SELECT ic.TABLE_NAME, ic.INDEX_NAME,
+                       CASE WHEN ic.COLUMN_NAME LIKE 'SYS!_NC%' ESCAPE '!' THEN NULL ELSE ic.COLUMN_NAME END AS COLUMN_NAME,
+                       ic.COLUMN_POSITION AS ORDINAL_POSITION,
+                       CASE WHEN i.UNIQUENESS = 'UNIQUE' THEN 1 ELSE 0 END AS IS_UNIQUE,
+                       0 AS IS_PARTIAL
+                FROM ALL_IND_COLUMNS ic
+                JOIN ALL_INDEXES i
+                  ON i.OWNER = ic.INDEX_OWNER
+                  AND i.INDEX_NAME = ic.INDEX_NAME
+                WHERE ic.TABLE_OWNER = ?""";
     }
 
     /**

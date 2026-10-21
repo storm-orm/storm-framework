@@ -18,7 +18,7 @@ Storm can be configured through `StormConfig`, system properties, Spring Boot's 
 | `storm.template_cache.size` | `2048` | Maximum number of compiled templates to cache |
 | `storm.search.min_term_length` | dialect | Shortest word, in characters, that the database's substring index serves: `search` tests a shorter word only on the rows its longer words found, and `suggest` ignores it. `3` on PostgreSQL, whose trigram index needs three characters; `0`, every word alike, elsewhere (see [Indexing a Search](search.md#indexing-a-search)) |
 | `storm.validation.record_mode` | `fail` | Record validation mode: `fail`, `warn`, or `none` |
-| `storm.validation.schema_mode` | `fail` | Schema validation mode: `none`, `warn`, or `fail` (Spring Boot and Ktor) |
+| `storm.validation.schema_mode` | `fail` | Schema validation mode: `none`, `load`, `warn`, or `fail` (Spring Boot and Ktor) |
 | `storm.validation.strict` | `false` | Treat schema validation warnings as errors |
 | `storm.validation.interpolation_mode` | `warn` | Interpolation safety mode: `warn`, `fail`, or `none` (see [Interpolation Safety](#interpolation-safety)) |
 | `storm.sql_log.performance.line_width` | `200` | Display width performance log summary rows aim for; at least 80 |
@@ -649,9 +649,12 @@ Controls whether schema validation runs at startup (Spring Boot and Ktor; for pr
 
 | Value | Behavior |
 |-------|----------|
-| `none` | Schema validation is skipped. |
+| `none` | Schema validation is skipped, and the schema is not loaded. |
+| `load` | The schema is loaded without being validated, which Storm uses for advice and optimization. See [Loading the schema](advice.md#loading-the-schema). |
 | `warn` | Mismatches are logged at WARN level; startup continues. |
 | `fail` | Mismatches cause startup to fail with a `PersistenceException` (default). |
+
+`warn` and `fail` load the schema as they validate it, so `load` is for an application that wants the schema known without validating it.
 
 Validation runs after all singleton beans are initialized, so migrations executed by beans such as Flyway or Liquibase complete first. The Ktor plugin behaves the same way; run migrations in its `migration { }` hook.
 

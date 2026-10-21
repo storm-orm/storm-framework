@@ -378,7 +378,7 @@ internal class StormAutoConfigurationTest {
                 val failure = context.startupFailure.shouldBeInstanceOf<InvalidConfigurationPropertyValueException>()
                 failure.message shouldContain "storm.validation.schema-mode"
                 failure.message shouldContain "'fial'"
-                failure.message shouldContain "Valid values are: none, warn, fail."
+                failure.message shouldContain "Valid values are: none, load, warn, fail."
             }
     }
 

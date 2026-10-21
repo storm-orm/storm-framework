@@ -88,6 +88,10 @@ internal class ORMTemplateImpl(private val core: st.orm.core.template.ORMTemplat
 
     override fun validateSchemaOrThrow(vararg types: KClass<out Data>) = core.validateSchemaOrThrow(types.map { it.java })
 
+    override fun loadSchema() = core.loadSchema()
+
+    override fun loadSchema(filter: (KClass<out Data>) -> Boolean) = core.loadSchema { filter(it.kotlin) }
+
     override fun writeSet(): WriteSet = core.writeSet()
 
     /**

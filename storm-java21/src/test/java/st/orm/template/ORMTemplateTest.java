@@ -1486,6 +1486,14 @@ public class ORMTemplateTest {
         assertDoesNotThrow(() -> orm.validateSchemaOrThrow());
     }
 
+    // ORMTemplate - loadSchema
+
+    @Test
+    public void testLoadSchema() {
+        assertDoesNotThrow(() -> orm.loadSchema());
+        assertDoesNotThrow(() -> orm.loadSchema(type -> type == City.class));
+    }
+
     // ORMTemplate factory overloads with StormConfig
 
     @Test

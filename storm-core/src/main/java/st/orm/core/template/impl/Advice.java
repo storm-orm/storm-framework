@@ -22,7 +22,8 @@ import org.jspecify.annotations.Nullable;
  * statement log prints every piece of advice a slow statement carries. The advice log reports advice on correctness,
  * such as rows returned in no stated order, and on design, such as an entity whose read exceeds the design budget, by
  * default, and advice on performance once the application asks for its category; advice on a deliberate choice, such as a page that reports its total, holds only once the statement
- * is slow, so only the slow statement log reports it. The advice on what repeated in one unit of
+ * is slow, so only the slow statement log reports it, as it reports advice that needs a slow execution as evidence,
+ * such as an index the statement lacks. The advice on what repeated in one unit of
  * work closes the performance log's summary. The page keeps an anchor for as long as Storm emits the advice, so the
  * link in a log line outlives any change to the rest of the documentation.
  *
@@ -40,6 +41,13 @@ enum Advice {
     DISTINCT_OVER_JOIN("distinct-over-join", Category.PERFORMANCE, false,
             "DISTINCT removes the rows the join to %1$s repeats, one per related row; semiJoin(%1$s) filters by it "
                     + "without repeating rows, so the query needs no DISTINCT."),
+
+    /**
+     * A table none of whose indexes starts with a column the statement filters or sorts it by. Without row counts an
+     * index cannot be judged worth its cost in advance, so the advice waits for a slow execution to say it is.
+     */
+    MISSING_INDEX("missing-index", Category.PERFORMANCE, true,
+            "no index on %1$s starts with %2$s, %3$s; an index on %4$s %5$s."),
 
     /** The count query behind a page, a deliberate choice of page over slice, so advised only when slow. */
     PAGE_COUNT("page-count", Category.PERFORMANCE, true,

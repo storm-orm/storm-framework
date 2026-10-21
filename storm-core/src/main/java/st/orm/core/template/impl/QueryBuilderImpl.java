@@ -633,7 +633,27 @@ abstract class QueryBuilderImpl<T extends Data, R, ID> extends QueryBuilder<T, R
     public QueryBuilder<T, R, ID> orderFirst(PredicateBuilder<? extends T, ?, ?> predicate) {
         requireNonNull(predicate, "predicate");
         return orderBy(TemplateString.combine(wrap(new OrderFirst()), TemplateString.of("CASE WHEN "),
-                ((PredicateBuilderImpl<?, ?, ?>) predicate).asTemplate(), TemplateString.of(" THEN 0 ELSE 1 END")));
+                ranking(((PredicateBuilderImpl<?, ?, ?>) predicate).asTemplate()), TemplateString.of(" THEN 0 ELSE 1 END")));
+    }
+
+    /**
+     * Returns the condition with its comparisons marked as ranking the rows rather than selecting them, so they ask no
+     * index for their columns.
+     */
+    private static TemplateString ranking(TemplateString condition) {
+        var values = condition.values();
+        var ranked = new ArrayList<Object>(values.size());
+        boolean changed = false;
+        for (var value : values) {
+            // A predicate carries its comparisons as object expressions; the rest of its values render as they are.
+            if (value instanceof ObjectExpression expression) {
+                ranked.add(expression.ranking());
+                changed = true;
+            } else {
+                ranked.add(value);
+            }
+        }
+        return changed ? TemplateString.of(condition.fragments(), ranked) : condition;
     }
 
     @Override

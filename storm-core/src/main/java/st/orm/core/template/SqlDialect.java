@@ -610,8 +610,6 @@ public interface SqlDialect {
         INFORMATION_SCHEMA,
         /** Use {@code INFORMATION_SCHEMA.TABLES} rows with {@code TABLE_TYPE = 'SEQUENCE'}. */
         INFORMATION_SCHEMA_TABLES,
-        /** Use {@code ALL_SEQUENCES} dictionary view. */
-        ALL_SEQUENCES,
         /** Sequences are not discoverable; skip sequence validation. */
         NONE
     }
@@ -642,11 +640,81 @@ public interface SqlDialect {
          * Bulk queries using {@code INFORMATION_SCHEMA} views with {@code REFERENCED_TABLE_NAME} and
          * {@code REFERENCED_COLUMN_NAME} columns in {@code KEY_COLUMN_USAGE} for foreign key discovery.
          */
-        INFORMATION_SCHEMA_REFERENCING,
-        /**
-         * Bulk queries using {@code ALL_CONSTRAINTS} and {@code ALL_CONS_COLUMNS} dictionary views.
-         */
-        ALL_CONSTRAINTS
+        INFORMATION_SCHEMA_REFERENCING
+    }
+
+    /**
+     * Returns a query that lists the primary and unique keys of one schema in a single statement, or {@code null} to
+     * discover them with the {@link #constraintDiscoveryStrategy()}. A dialect whose database lists its constraints in
+     * a catalog of its own, rather than in the standard {@code INFORMATION_SCHEMA}, supplies the query here.
+     *
+     * <p>The query takes the schema name as its only parameter and returns one row per key column, with
+     * {@code CONSTRAINT_TYPE} ({@code PRIMARY KEY} or {@code UNIQUE}), {@code CONSTRAINT_NAME}, {@code TABLE_NAME},
+     * {@code COLUMN_NAME} and {@code ORDINAL_POSITION} (starting at 1). Without a schema name to bind, the strategy is
+     * used instead.</p>
+     *
+     * @return the query, or {@code null} to use the strategy.
+     * @since 1.15
+     */
+    default @Nullable String keyDiscoveryQuery() {
+        return null;
+    }
+
+    /**
+     * Returns a query that lists the foreign keys of one schema in a single statement, or {@code null} to discover
+     * them with the {@link #constraintDiscoveryStrategy()}.
+     *
+     * <p>The query takes the schema name as its only parameter and returns one row per foreign key column, in key
+     * order, with {@code FK_TABLE} and {@code FK_COLUMN}, the referencing table and column, and {@code PK_TABLE} and
+     * {@code PK_COLUMN}, the referenced ones. Without a schema name to bind, the strategy is used instead.</p>
+     *
+     * @return the query, or {@code null} to use the strategy.
+     * @since 1.15
+     */
+    default @Nullable String foreignKeyDiscoveryQuery() {
+        return null;
+    }
+
+    /**
+     * Returns a query that lists the sequences of one schema, or {@code null} to discover them with the
+     * {@link #sequenceDiscoveryStrategy()}.
+     *
+     * <p>The query takes the schema name as its only parameter and returns one row per sequence, with
+     * {@code SEQUENCE_NAME}. Without a schema name to bind, the strategy is used instead.</p>
+     *
+     * @return the query, or {@code null} to use the strategy.
+     * @since 1.15
+     */
+    default @Nullable String sequenceDiscoveryQuery() {
+        return null;
+    }
+
+    /**
+     * Returns a query that lists the indexes of one schema, unique and non-unique, in a single statement, or
+     * {@code null} to read them per table through {@link java.sql.DatabaseMetaData#getIndexInfo}, which works with any
+     * JDBC driver at one metadata query per table.
+     *
+     * <p>Indexes are not part of the standard {@code INFORMATION_SCHEMA}, so a dialect whose database lists its
+     * indexes in a catalog of its own supplies the query here. The query takes the schema name as its only parameter
+     * and returns one row per index column, with these columns:</p>
+     * <ul>
+     *   <li>{@code TABLE_NAME}: the table the index is on.</li>
+     *   <li>{@code INDEX_NAME}: the index.</li>
+     *   <li>{@code COLUMN_NAME}: the column, or {@code NULL} when the position holds an expression.</li>
+     *   <li>{@code ORDINAL_POSITION}: the position of the column within the index, starting at 1. Only the columns an
+     *       index is keyed on are listed, not columns it merely carries along.</li>
+     *   <li>{@code IS_UNIQUE}: {@code 1} for a unique index, {@code 0} otherwise.</li>
+     *   <li>{@code IS_PARTIAL}: {@code 1} for an index that covers only the rows a condition selects, {@code 0}
+     *       otherwise.</li>
+     * </ul>
+     *
+     * <p>Without a schema name to bind, the indexes are read per table instead.</p>
+     *
+     * @return the query, or {@code null} to read the indexes per table.
+     * @since 1.15
+     */
+    default @Nullable String indexDiscoveryQuery() {
+        return null;
     }
 
     /**

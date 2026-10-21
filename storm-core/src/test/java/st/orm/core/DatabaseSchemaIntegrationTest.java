@@ -260,10 +260,8 @@ public class DatabaseSchemaIntegrationTest {
     @Test
     public void testReadWithJdbcMetadataStrategy() throws SQLException {
         try (Connection connection = dataSource.getConnection()) {
-            DatabaseSchema schema = DatabaseSchema.read(connection,
-                    connection.getCatalog(), connection.getSchema(),
-                    SequenceDiscoveryStrategy.INFORMATION_SCHEMA,
-                    ConstraintDiscoveryStrategy.JDBC_METADATA);
+            DatabaseSchema schema = DatabaseSchema.read(connection, connection.getCatalog(), connection.getSchema(),
+                    DatabaseSchema.Discovery.of(SequenceDiscoveryStrategy.INFORMATION_SCHEMA, ConstraintDiscoveryStrategy.JDBC_METADATA));
             assertTrue(schema.tableExists("city"));
             assertTrue(schema.tableExists("owner"));
 
@@ -356,8 +354,7 @@ public class DatabaseSchemaIntegrationTest {
     public void testReadWithNullCatalogAndSchema() throws SQLException {
         try (Connection connection = dataSource.getConnection()) {
             DatabaseSchema schema = DatabaseSchema.read(connection, null, null,
-                    SequenceDiscoveryStrategy.INFORMATION_SCHEMA,
-                    ConstraintDiscoveryStrategy.INFORMATION_SCHEMA);
+                    DatabaseSchema.Discovery.of(SequenceDiscoveryStrategy.INFORMATION_SCHEMA, ConstraintDiscoveryStrategy.INFORMATION_SCHEMA));
             // Should still discover tables even with null catalog/schema.
             assertTrue(schema.tableExists("city"));
         }

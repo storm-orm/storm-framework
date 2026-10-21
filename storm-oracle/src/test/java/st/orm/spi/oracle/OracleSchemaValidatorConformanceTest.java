@@ -30,4 +30,9 @@ public class OracleSchemaValidatorConformanceTest extends AbstractSchemaValidato
             container = null;
         }
     }
+
+    @Override
+    protected String expressionIndexDdl() {
+        return "CREATE UNIQUE INDEX index_probe_lower ON index_probe (LOWER(a))";
+    }
 }

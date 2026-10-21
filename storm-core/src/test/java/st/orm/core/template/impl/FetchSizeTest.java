@@ -88,7 +88,9 @@ public class FetchSizeTest {
                 0L,
                 java.util.List.of(),
                 null,
-                java.util.List.of());
+                java.util.List.of(),
+                null,
+                null);
         return new QueryImpl(
                 environment,
                 unsafe -> {

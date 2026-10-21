@@ -49,6 +49,7 @@ import st.orm.core.spi.ORMReflection;
 import st.orm.core.spi.Provider;
 import st.orm.core.spi.Providers;
 import st.orm.core.spi.QueryFactory;
+import st.orm.core.spi.TypeDiscovery;
 import st.orm.core.template.ORMTemplate;
 
 public final class ORMTemplateImpl extends QueryTemplateImpl implements ORMTemplate {
@@ -158,16 +159,30 @@ public final class ORMTemplateImpl extends QueryTemplateImpl implements ORMTempl
         }
     }
 
+    @Override
+    public void loadSchema() {
+        createSchemaValidator("Loading the schema").load();
+    }
+
+    @Override
+    public void loadSchema(Predicate<Class<? extends Data>> filter) {
+        createSchemaValidator("Loading the schema").load(TypeDiscovery.getDataTypes().stream().filter(filter).toList());
+    }
+
     private boolean isStrictSchemaValidation() {
         return getBoolean(config, VALIDATION_STRICT, false);
     }
 
     private SchemaValidator createSchemaValidator() {
+        return createSchemaValidator("Schema validation");
+    }
+
+    private SchemaValidator createSchemaValidator(String operation) {
         DataSource dataSource = queryFactory.dataSource();
         if (dataSource == null) {
             throw new PersistenceException(
-                    "Schema validation requires a DataSource-backed template. "
-                    + "Templates created from a Connection or EntityManager do not support schema validation.");
+                    "%s requires a DataSource-backed template. Templates created from a Connection or EntityManager do not support it."
+                            .formatted(operation));
         }
         // Without an explicit provider filter, the dialect comes from the database this template is bound to. The
         // schema is read with vendor-specific queries, so a dialect picked without consulting the database reads it

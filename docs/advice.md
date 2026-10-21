@@ -3,13 +3,21 @@ import TabItem from '@theme/TabItem';
 
 # Statement Advice
 
+Statement advice spots the common pitfalls of data access and shows them where they occur, based on what the application actually does: the statements it runs and how long they take, the entities it reads, what a unit of work repeats, and the indexes the database reports. Advice is only worth reading when it is worth acting on, and only worth having when it does not slow the application down. Storm decides advice once per statement shape, when it builds the statement, and makes the checks that need evidence only for an execution that was already slow, so advice comes at no measurable cost. The advice it gives is:
+
+- **Relevant.** Advice rests on what Storm can prove: the shape of a statement, the entity model, the indexes the database reports, or what a unit of work did. Where the cost depends on data Storm cannot see, such as how many rows a table holds, the advice waits for a slow execution as evidence.
+- **Not repeated.** The advice log reports a piece of advice once by default, not at every execution, and design advice once per entity. Advice you have accepted stays quiet where you accepted it.
+- **Informative.** Every line says what the statement costs, what to use instead, and links to a section on this page that explains the trade-off.
+- **Quiet by default.** Only correctness advice is reported everywhere. The advice log reports design and performance advice while developing, where the code is still changing; in production it reaches you only on the line of a slow statement, once you set a slow threshold, unless you ask for more.
+- **Configurable.** The categories, how often advice is reported, the design budget and the slow thresholds are settings, and each piece of advice has a logger of its own to silence it in the advice log. The defaults suit most applications without changing any of them.
+
 Storm gives advice where a statement's own shape says it reads more than it needs to or returns rows in no stated order, and where the entity model makes reads cost more than the application needs. Each piece of advice has a category:
 
 - **Correctness.** A [limit or offset without an order](#unordered-limit) returns an arbitrary part of the result, however fast it runs.
 - **Performance.** A deep offset, a `distinct` over a join that repeats rows, or a search of short words alone costs more as the data grows, and on a small table costs nothing worth changing.
 - **Design.** Whether a foreign key is an inline entity or a `Ref` decides what every read of the entity joins. The schema is what it is; this choice is yours, and [Entity Design](entity-design.md) gives the reasoning.
 
-The advice reaches you two ways.
+The advice reaches you three ways.
 
 **The slow statement log.** A line in the [slow statement log](sql-logging.md#the-slow-statement-log) ends with every piece of advice its statement carries, every time it is slow.
 
@@ -22,6 +30,7 @@ The advice reaches you two ways.
 - **Named categories win.** `storm.advice.categories: correctness, design, performance`, in Spring Boot, Ktor or as a system property, sets them in any environment, development included.
 - **Accepted advice stays quiet.** Where an entity or a query is as intended, [accept the advice](#accepting-advice) there with `@AcceptAdvice`, and the advice log stops reporting it there.
 - **A deliberate choice is advised only when slow.** A page that reports its total is a choice of `page` over `slice`, so its [count](#page-count) is advised in the slow statement log alone.
+- **Advice that needs evidence is advised only when slow.** Whether an index is worth its cost depends on how many rows a table holds and how few a condition selects, which only a slow execution shows, so a [missing index](#missing-index) is advised in the slow statement log alone.
 
 The level of `st.orm.sql.advice` decides how often a piece of advice is reported:
 
@@ -100,7 +109,16 @@ The rest only shows in real use. Whether a `Clinic` on every `Visit` is worth it
 
 Each piece of advice links to its section on this page. The links stay valid for as long as Storm gives the advice, so a log line written today still leads here after the rest of the documentation has moved on.
 
-Storm does not know which indexes the database has. It advises only on what the statement itself proves, whatever indexes exist, so advice never guesses at a missing index, and a slow statement without advice is slow for a reason the statement does not show: its plan, its parameters, or the load on the database. Advice is decided when Storm builds the statement, so it costs an execution nothing while the advice log is off.
+Most advice rests on what the statement itself proves, whatever indexes exist. Advice on a [missing index](#missing-index) rests on the indexes the database reports, which Storm knows once the schema is [loaded](#loading-the-schema). A slow statement without advice is slow for a reason neither shows: its plan, its parameters, or the load on the database. Advice is decided when Storm builds the statement, and the index check when an execution is slow, so it costs an execution nothing while the advice log is off.
+
+### Loading the schema
+
+Loading the schema is optional. Storm works the same without it; what it adds is knowledge of the database that Storm uses for advice and optimization, such as the indexes behind the [missing-index advice](#missing-index). The schema is read once and kept for the data source, and every template on that data source shares it.
+
+- **Schema validation loads it.** Spring Boot and Ktor validate the schema at startup by default, and validation loads the schema as it reads it, so most applications have it loaded without doing anything.
+- **Load without validating.** `storm.validation.schema-mode: load` in Spring Boot, or `schemaValidation = "load"` in Ktor, loads the schema at startup without validating it. Elsewhere, call `orm.loadSchema()`.
+- **Each load reads anew.** A load or validation replaces what an earlier one kept for the same schemas. After a migration that changed the schema while the application runs, such as one that added an index, call `loadSchema()` again to make the change known.
+- **Nothing is read while statements run.** The loaded schema is a snapshot; a table created after the load is unknown to it, and Storm gives no advice on a table it does not know.
 
 ## A search of short words alone {#unindexed-search}
 
@@ -148,6 +166,23 @@ List<Owner> owners = orm.entity(Owner.class)
 </Tabs>
 
 The advice is given for a `distinct` select of the query's own table over an inner join. A left join keeps the rows without a related row, which a semi-join would drop, so it gets no advice. A query that orders or selects by the joined table's columns keeps its join, since a semi-joined table adds no columns. See [Filtering by Related Rows](queries.md#filtering-by-related-rows).
+
+## A missing index {#missing-index}
+
+> no index on customer starts with last_name, which the statement filters customer by, so the database reads the table in full to find the matching rows; an index on customer(last_name) finds them directly where the condition selects few of them
+
+Category: performance, reported by the slow statement log only, and only once the schema is [loaded](#loading-the-schema).
+
+Storm knows which columns a statement filters and sorts by, where it builds the condition: a `where` on a field, the foreign key a [semi-join or anti-join](queries.md#filtering-by-related-rows) correlates on, and the order of a result it limits. When an execution is slow, it checks those columns against the indexes the database reported when the schema was loaded. A table none of whose indexes starts with any of them is read in full, and the advice names an index that would serve the statement: the columns compared for equality first, then a column compared by range, or the column a limited result is sorted by. For a limited result sorted by a column no index starts with, the database sorts every row before it returns the first ones; an index on the column reads the rows in order and stops at the limit.
+
+Without row counts an index cannot be judged worth its cost in advance: a small table is read in full faster than through an index, and a condition on a column with few distinct values, such as a status, selects too many rows for one to help. A slow execution is the evidence that the read costs too much, so the advice waits for it. Check the statement's plan before adding the index.
+
+Storm stays quiet where it cannot tell:
+
+- **A part of the statement it does not build**, such as a raw template fragment, names no columns to check.
+- **An index of any kind counts for its column.** A full-text or other special index on a column is taken to serve it, whether or not it serves the comparison. An index on an expression, such as `lower(email)`, serves only a statement that compares the same expression, never the bare column, so it counts for no column.
+- **A table the loaded schema does not know**, such as one created after the load, is not advised.
+- **One served column is enough.** A statement whose condition an index serves on any one of its columns has a way to avoid reading the table in full, even when the index is not the best one.
 
 ## The count behind a page {#page-count}
 

@@ -228,7 +228,9 @@ public class StormProperties {
          *
          * <p>When set to {@code "fail"}, schema validation runs at startup and blocks if mismatches are found.
          * When set to {@code "warn"}, mismatches are logged at WARN level but startup continues.
-         * When set to {@code "none"}, schema validation is skipped entirely.</p>
+         * When set to {@code "load"}, the schema is loaded without being validated, which Storm uses for advice
+         * and optimization; {@code "fail"} and {@code "warn"} load it as well.
+         * When set to {@code "none"}, the schema is neither validated nor loaded.</p>
          *
          * <p>Defaults to {@code "fail"} when not set. Validation runs after all singleton beans are initialized,
          * so migrations executed by beans such as Flyway or Liquibase complete first.</p>

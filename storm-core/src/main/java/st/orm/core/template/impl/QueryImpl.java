@@ -49,6 +49,7 @@ import java.util.function.Function;
 import java.util.function.Supplier;
 import java.util.stream.Stream;
 import java.util.stream.StreamSupport;
+import javax.sql.DataSource;
 import org.jspecify.annotations.Nullable;
 import st.orm.Data;
 import st.orm.Entity;
@@ -91,7 +92,9 @@ class QueryImpl implements Query, KeyedQuery {
                        long shapeId,
                        List<Parameter> parameters,
                        @Nullable SqlCommenter sqlCommenter,
-                       List<String> advisories) {
+                       List<String> advisories,
+                       @Nullable IndexDemands indexDemands,
+                       @Nullable DataSource dataSource) {
 
         /**
          * Returns the references to resolve while mapping rows into the given type.
@@ -263,7 +266,8 @@ class QueryImpl implements Query, KeyedQuery {
             var handles = listen(operators, context, environment.parameters());
             if (slowLog) {
                 // The slow log listens the way a scope does, at the same point, for every execution.
-                var slow = SlowStatementLog.onExecute(context, environment.parameters(), environment.sqlCommenter(), environment.advisories());
+                var slow = SlowStatementLog.onExecute(context, environment.parameters(), environment.sqlCommenter(),
+                        environment.advisories(), environment.indexDemands(), environment.dataSource());
                 if (handles == null) {
                     handles = new StatementListener.Handle[] {slow};
                 } else {

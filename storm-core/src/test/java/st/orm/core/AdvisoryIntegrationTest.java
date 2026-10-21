@@ -17,9 +17,7 @@ package st.orm.core;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
-import static st.orm.core.template.SqlInterceptor.observe;
 
-import java.util.ArrayList;
 import java.util.List;
 import java.util.function.Supplier;
 import javax.sql.DataSource;
@@ -57,9 +55,7 @@ public class AdvisoryIntegrationTest {
 
     /** Runs the query and returns the advice of every statement it executed, in order. */
     private static List<String> advisories(Supplier<?> query) {
-        var advisories = new ArrayList<String>();
-        observe(sql -> advisories.addAll(sql.advisories()), query::get);
-        return advisories;
+        return AdviceCapture.advisories(query);
     }
 
     @Test

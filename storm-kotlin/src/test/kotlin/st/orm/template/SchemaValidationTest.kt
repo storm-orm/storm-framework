@@ -76,6 +76,14 @@ internal open class SchemaValidationTest(
         errors.shouldBeEmpty()
     }
 
+    // loadSchema tests
+
+    @Test
+    fun `loadSchema loads without validating`() {
+        orm.loadSchema()
+        orm.loadSchema { it == NonExistentEntity::class }
+    }
+
     // validateSchema(types) tests with invalid types
 
     // Entity mapped to a table that does not exist in the database.

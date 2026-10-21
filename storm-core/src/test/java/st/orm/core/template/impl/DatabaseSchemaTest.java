@@ -72,8 +72,7 @@ class DatabaseSchemaTest {
             // INFORMATION_SCHEMA_REFERENCING reads KEY_COLUMN_USAGE.REFERENCED_TABLE_NAME, a column H2 does not
             // have, so the foreign key query fails and the foreign keys stay unknown.
             DatabaseSchema schema = DatabaseSchema.read(connection, connection.getCatalog(), connection.getSchema(),
-                    SequenceDiscoveryStrategy.INFORMATION_SCHEMA,
-                    ConstraintDiscoveryStrategy.INFORMATION_SCHEMA_REFERENCING);
+                    DatabaseSchema.Discovery.of(SequenceDiscoveryStrategy.INFORMATION_SCHEMA, ConstraintDiscoveryStrategy.INFORMATION_SCHEMA_REFERENCING));
             assertFalse(schema.isDiscovered("child", ConstraintKind.FOREIGN_KEY));
             assertTrue(schema.getForeignKeys("child").isEmpty());
             // The keys come from a query H2 does understand, so they are known and were read.
@@ -117,7 +116,7 @@ class DatabaseSchemaTest {
 
     private DatabaseSchema readWithJdbcMetadata(Connection connection) throws SQLException {
         return DatabaseSchema.read(connection, connection.getCatalog(), connection.getSchema(),
-                SequenceDiscoveryStrategy.INFORMATION_SCHEMA, ConstraintDiscoveryStrategy.JDBC_METADATA);
+                    DatabaseSchema.Discovery.of(SequenceDiscoveryStrategy.INFORMATION_SCHEMA, ConstraintDiscoveryStrategy.JDBC_METADATA));
     }
 
     @Test
@@ -296,10 +295,8 @@ class DatabaseSchemaTest {
         execute("CREATE UNIQUE INDEX idx_name ON jdbc_test(name)");
 
         try (Connection connection = getConnection()) {
-            DatabaseSchema schema = DatabaseSchema.read(connection,
-                    connection.getCatalog(), connection.getSchema(),
-                    SequenceDiscoveryStrategy.INFORMATION_SCHEMA,
-                    ConstraintDiscoveryStrategy.JDBC_METADATA);
+            DatabaseSchema schema = DatabaseSchema.read(connection, connection.getCatalog(), connection.getSchema(),
+                    DatabaseSchema.Discovery.of(SequenceDiscoveryStrategy.INFORMATION_SCHEMA, ConstraintDiscoveryStrategy.JDBC_METADATA));
 
             assertTrue(schema.tableExists("jdbc_test"));
             assertTrue(schema.getColumn("jdbc_test", "id").isPresent());
@@ -321,10 +318,8 @@ class DatabaseSchemaTest {
         execute("CREATE TABLE info_ref (id INTEGER AUTO_INCREMENT, test_id INTEGER, PRIMARY KEY (id), FOREIGN KEY (test_id) REFERENCES info_test(id))");
 
         try (Connection connection = getConnection()) {
-            DatabaseSchema schema = DatabaseSchema.read(connection,
-                    connection.getCatalog(), connection.getSchema(),
-                    SequenceDiscoveryStrategy.INFORMATION_SCHEMA,
-                    ConstraintDiscoveryStrategy.INFORMATION_SCHEMA);
+            DatabaseSchema schema = DatabaseSchema.read(connection, connection.getCatalog(), connection.getSchema(),
+                    DatabaseSchema.Discovery.of(SequenceDiscoveryStrategy.INFORMATION_SCHEMA, ConstraintDiscoveryStrategy.INFORMATION_SCHEMA));
 
             assertTrue(schema.tableExists("info_test"));
             List<DbPrimaryKey> primaryKeys = schema.getPrimaryKeys("info_test");
@@ -338,10 +333,8 @@ class DatabaseSchemaTest {
         execute("CREATE SEQUENCE my_seq START WITH 1");
 
         try (Connection connection = getConnection()) {
-            DatabaseSchema schema = DatabaseSchema.read(connection,
-                    connection.getCatalog(), connection.getSchema(),
-                    SequenceDiscoveryStrategy.NONE,
-                    ConstraintDiscoveryStrategy.INFORMATION_SCHEMA);
+            DatabaseSchema schema = DatabaseSchema.read(connection, connection.getCatalog(), connection.getSchema(),
+                    DatabaseSchema.Discovery.of(SequenceDiscoveryStrategy.NONE, ConstraintDiscoveryStrategy.INFORMATION_SCHEMA));
 
             // With NONE strategy, sequences should not be discovered
             assertFalse(schema.sequencesDiscovered());
@@ -402,8 +395,7 @@ class DatabaseSchemaTest {
 
         try (Connection connection = getConnection()) {
             DatabaseSchema schema = DatabaseSchema.read(connection, null, null,
-                    SequenceDiscoveryStrategy.INFORMATION_SCHEMA,
-                    ConstraintDiscoveryStrategy.INFORMATION_SCHEMA);
+                    DatabaseSchema.Discovery.of(SequenceDiscoveryStrategy.INFORMATION_SCHEMA, ConstraintDiscoveryStrategy.INFORMATION_SCHEMA));
 
             assertTrue(schema.tableExists("null_ctx"));
         }

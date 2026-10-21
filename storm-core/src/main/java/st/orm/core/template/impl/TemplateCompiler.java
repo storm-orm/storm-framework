@@ -248,6 +248,17 @@ interface TemplateCompiler {
     void addAdvisory(String advisory);
 
     /**
+     * Records that the statement uses the given column of the given table in a way an index can serve, which the
+     * slow statement log checks against the database's indexes when an execution is slow.
+     *
+     * @param table the model of the table holding the column.
+     * @param column the column name.
+     * @param kind how the statement uses the column.
+     * @since 1.15
+     */
+    void demandIndex(Model<?, ?> table, String column, IndexDemands.Kind kind);
+
+    /**
      * Flags the statement as potentially unsafe, as an UPDATE or DELETE without a condition, whatever WHERE clause it
      * renders.
      *
