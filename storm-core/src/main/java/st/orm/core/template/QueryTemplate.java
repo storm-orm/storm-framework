@@ -21,6 +21,9 @@ import st.orm.BindVars;
 import st.orm.Data;
 import st.orm.PersistenceException;
 import st.orm.Ref;
+import st.orm.core.spi.Providers;
+import st.orm.core.spi.TransactionTemplateProvider;
+import st.orm.spi.ExceptionMapper;
 
 /**
  * The query template is used to construct queries.
@@ -48,8 +51,8 @@ public interface QueryTemplate extends SubqueryTemplate {
      * @return the transaction template provider.
      * @since 1.13
      */
-    default st.orm.core.spi.TransactionTemplateProvider transactionTemplateProvider() {
-        return st.orm.core.spi.Providers.getTransactionTemplateProvider();
+    default TransactionTemplateProvider transactionTemplateProvider() {
+        return Providers.getTransactionTemplateProvider();
     }
 
     /**
@@ -63,8 +66,8 @@ public interface QueryTemplate extends SubqueryTemplate {
      * @return the exception mapper.
      * @since 1.16
      */
-    default st.orm.spi.ExceptionMapper exceptionMapper() {
-        return st.orm.spi.ExceptionMapper.defaultMapper();
+    default ExceptionMapper exceptionMapper() {
+        return ExceptionMapper.defaultMapper();
     }
 
     /**
