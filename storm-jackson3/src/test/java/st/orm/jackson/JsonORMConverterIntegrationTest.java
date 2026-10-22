@@ -336,6 +336,17 @@ public class JsonORMConverterIntegrationTest {
     }
 
     @Test
+    public void jsonWithFailOnMissingTrueShouldRejectMissingProperties() {
+        var orm = of(dataSource);
+        var query = orm.query("""
+                SELECT id,
+                       '{"address":"test"}' AS address,
+                       telephone
+                FROM owner WHERE id = 1""");
+        assertThrows(PersistenceException.class, () -> query.getSingleResult(OwnerWithFailOnMissing.class));
+    }
+
+    @Test
     public void jsonWithFailOnMissingTrueShouldCreateMapperWithStrictMode() {
         // Exercises the @Json(failOnMissing = true) branch in JsonORMConverterImpl constructor,
         // which skips calling builder.disable(FAIL_ON_MISSING_CREATOR_PROPERTIES).
@@ -408,6 +419,116 @@ public class JsonORMConverterIntegrationTest {
         // The custom deserializer should parse it back.
         assertEquals("123 Main St", inserted.address().address());
         assertEquals("Springfield", inserted.address().city());
+        // A later read from the database uses the custom deserializer as well.
+        var fetched = repository.getById(inserted.id());
+        assertEquals("123 Main St", fetched.address().address());
+        assertEquals("Springfield", fetched.address().city());
+        // The raw column value proves the serializer engaged; a bypassed pair would round trip plain JSON.
+        var row = orm.query("SELECT address, telephone FROM owner WHERE id = " + inserted.id())
+                .getSingleResult(RawOwnerRow.class);
+        assertEquals("\"123 Main St | Springfield\"", row.address());
+    }
+
+    @Builder(toBuilder = true)
+    @DbTable("owner")
+    public record OwnerWithCustomDeserializerOnly(
+            @PK Integer id,
+            String firstName,
+            String lastName,
+            @Json
+            @tools.jackson.databind.annotation.JsonDeserialize(using = AddressDeserializer.class)
+            Address address,
+            @Nullable String telephone
+    ) implements Entity<Integer> {
+    }
+
+    @Test
+    public void customDeserializerAloneShouldBeUsedForJsonField() {
+        // The mapper is keyed on the deserializer and the field's type when only a deserializer is present.
+        var orm = of(dataSource);
+        orm.query("INSERT INTO owner (first_name, last_name, address, telephone) "
+                + "VALUES ('Deser', 'Only', '\"1 Way | Town\"', '555')").executeUpdate();
+        var owner = orm.query("SELECT id, first_name, last_name, address, telephone FROM owner WHERE first_name = 'Deser'")
+                .getSingleResult(OwnerWithCustomDeserializerOnly.class);
+        assertEquals(new Address("1 Way", "Town"), owner.address());
+    }
+
+    // Custom serializer and deserializer without a constructor the converter can call.
+
+    public static class UnconstructibleSerializer extends tools.jackson.databind.ser.std.StdSerializer<Address> {
+        public UnconstructibleSerializer(String unused) {
+            super(Address.class);
+        }
+
+        @Override
+        public void serialize(Address value, tools.jackson.core.JsonGenerator gen,
+                              tools.jackson.databind.SerializationContext ctxt)
+                throws tools.jackson.core.JacksonException {
+            gen.writeString(value.address());
+        }
+    }
+
+    public static class UnconstructibleDeserializer extends tools.jackson.databind.deser.std.StdDeserializer<Address> {
+        public UnconstructibleDeserializer(String unused) {
+            super(Address.class);
+        }
+
+        @Override
+        public Address deserialize(tools.jackson.core.JsonParser parser,
+                                   tools.jackson.databind.DeserializationContext ctxt)
+                throws tools.jackson.core.JacksonException {
+            return new Address(parser.getText(), "");
+        }
+    }
+
+    @DbTable("owner")
+    public record OwnerWithUnconstructibleSerializer(
+            @PK Integer id,
+            @Json
+            @tools.jackson.databind.annotation.JsonSerialize(using = UnconstructibleSerializer.class)
+            Address address
+    ) implements Entity<Integer> {
+    }
+
+    @DbTable("owner")
+    public record OwnerWithUnconstructibleDeserializer(
+            @PK Integer id,
+            @Json
+            @tools.jackson.databind.annotation.JsonDeserialize(using = UnconstructibleDeserializer.class)
+            Address address
+    ) implements Entity<Integer> {
+    }
+
+    @Test
+    public void aSerializerWithoutANoArgConstructorIsRefusedWhenTheFieldIsFirstUsed() {
+        var orm = of(dataSource);
+        var serializer = assertThrows(RuntimeException.class,
+                () -> orm.query("SELECT id, address FROM owner WHERE id = 1")
+                        .getSingleResult(OwnerWithUnconstructibleSerializer.class));
+        assertTrue(rootMessage(serializer).contains("custom serializer"), rootMessage(serializer));
+        var deserializer = assertThrows(RuntimeException.class,
+                () -> orm.query("SELECT id, address FROM owner WHERE id = 1")
+                        .getSingleResult(OwnerWithUnconstructibleDeserializer.class));
+        assertTrue(rootMessage(deserializer).contains("custom deserializer"), rootMessage(deserializer));
+    }
+
+    private static String rootMessage(Throwable thrown) {
+        var messages = new StringBuilder();
+        for (Throwable cause = thrown; cause != null; cause = cause.getCause()) {
+            messages.append(cause.getMessage()).append('\n');
+        }
+        return messages.toString();
+    }
+
+    @Test
+    public void jsonWithFailOnUnknownTrueShouldRejectExtraProperties() {
+        var orm = of(dataSource);
+        var query = orm.query("""
+                SELECT id,
+                       '{"address":"test","city":"test","extraField":"unexpected"}' AS address,
+                       telephone
+                FROM owner WHERE id = 1""");
+        assertThrows(PersistenceException.class, () -> query.getSingleResult(OwnerWithFailOnUnknown.class));
     }
 
     @Test

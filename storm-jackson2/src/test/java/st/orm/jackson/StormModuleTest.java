@@ -1,13 +1,14 @@
 package st.orm.jackson;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-import com.fasterxml.jackson.databind.JsonMappingException;
-import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.DatabindException;
+import com.fasterxml.jackson.databind.json.JsonMapper;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -22,9 +23,13 @@ import st.orm.core.spi.RefFactory;
 import st.orm.jackson.model.VetSpecialty;
 import st.orm.jackson.model.VetSpecialtyPK;
 
-public class StormModuleTest {
-
-    // Test entities and projections.
+/**
+ * The JSON forms of a {@code Ref}, written and read through {@link StormModule}: a loaded entity as
+ * {@code {"@entity": ...}}, a loaded projection as {@code {"@id": ..., "@projection": ...}}, an unloaded ref as its
+ * id, a compound key as a plain object, inside containers and with {@code null}, for keys of every type and for a
+ * data type without a key, whose id is read by its JSON form.
+ */
+class StormModuleTest {
 
     public record SimpleEntity(@PK Integer id, String name) implements Entity<Integer> {}
 
@@ -32,851 +37,422 @@ public class StormModuleTest {
 
     public record LongIdEntity(@PK Long id, String name) implements Entity<Long> {}
 
+    public record DoubleIdEntity(@PK Double id, String name) implements Entity<Double> {}
+
     public record SimpleProjection(@PK Integer id, String label) implements Projection<Integer> {}
 
-    // A Data record without @PK annotation - triggers null pkType fallback paths.
-    public record NoPkData(String value) implements Data {}
+    /** A data type without a key: the id of its refs is read by its JSON form. */
+    public record NoPkData(Integer id, String value) implements Data {}
 
-    // Wrapper records with Ref fields.
+    /** A projection without a key: the id of the loaded form is read by its JSON form. */
+    public record NoPkProjection(String label) implements Projection<Void> {}
 
-    public record EntityRefHolder(Ref<SimpleEntity> entity) {}
+    public record EntityHolder(@Nullable Ref<SimpleEntity> entity) {}
 
-    public record StringIdRefHolder(Ref<StringIdEntity> entity) {}
+    public record StringIdHolder(Ref<StringIdEntity> entity) {}
 
-    public record LongIdRefHolder(Ref<LongIdEntity> entity) {}
+    public record LongIdHolder(Ref<LongIdEntity> entity) {}
 
-    public record ProjectionRefHolder(@Nullable Ref<SimpleProjection> projection) {}
+    public record DoubleIdHolder(Ref<DoubleIdEntity> entity) {}
 
-    public record NullableRefHolder(@Nullable Ref<SimpleEntity> entity) {}
+    public record ProjectionHolder(@Nullable Ref<SimpleProjection> projection) {}
 
-    public record RefListHolder(List<Ref<SimpleEntity>> entities) {}
+    public record CompoundPkHolder(@Nullable Ref<VetSpecialty> entity) {}
 
-    public record RefSetHolder(Set<Ref<SimpleEntity>> entities) {}
+    public record NoPkHolder(@Nullable Ref<NoPkData> data) {}
 
-    public record RefMapHolder(Map<String, Ref<SimpleEntity>> entities) {}
+    public record NoPkProjectionHolder(@Nullable Ref<NoPkProjection> projection) {}
 
-    public record NoPkRefHolder(@Nullable Ref<NoPkData> data) {}
+    public record EntityListHolder(List<Ref<SimpleEntity>> entities) {}
 
-    public record NoPkRefListHolder(List<Ref<NoPkData>> data) {}
+    public record EntitySetHolder(Set<Ref<SimpleEntity>> entities) {}
 
-    public record CompoundPkRefHolder(Ref<VetSpecialty> entity) {}
+    public record EntityMapHolder(Map<String, Ref<SimpleEntity>> entities) {}
 
-    // Tests for constructor variations.
+    public record ProjectionListHolder(List<Ref<SimpleProjection>> projections) {}
+
+    public record NoPkListHolder(List<Ref<NoPkData>> data) {}
+
+    public record MultiTypeHolder(@Nullable Ref<SimpleEntity> entity, @Nullable Ref<SimpleProjection> projection) {}
+
+    private static JsonMapper mapper() {
+        return mapper(new StormModule());
+    }
+
+    private static JsonMapper mapper(StormModule module) {
+        return JsonMapper.builder().addModule(module).build();
+    }
+
+    /** A ref factory that counts the refs it creates, standing in for the attached factory of a template. */
+    private static final class CountingRefFactory implements RefFactory {
+        int created;
+
+        @SuppressWarnings({"unchecked", "rawtypes"})
+        @Override
+        public <T extends Data, ID> Ref<T> create(Class<T> type, ID id) {
+            created++;
+            return (Ref<T>) Ref.of((Class) type, id);
+        }
+
+        @SuppressWarnings({"unchecked", "rawtypes"})
+        @Override
+        public <T extends Data, ID> Ref<T> create(T record, ID id) {
+            return (Ref<T>) Ref.of((Class) record.getClass(), id);
+        }
+    }
+
+    // Writing.
 
     @Test
-    public void constructorWithNullRefFactoryShouldCreateModuleWithDetachedRefs() throws Exception {
-        ObjectMapper mapper = new ObjectMapper();
-        mapper.registerModule(new StormModule((RefFactory) null));
+    void anUnloadedRefWritesAsItsId() throws Exception {
+        assertEquals("{\"entity\":42}", mapper().writeValueAsString(new EntityHolder(Ref.of(SimpleEntity.class, 42))));
+        assertEquals("{\"entity\":\"abc-123\"}",
+                mapper().writeValueAsString(new StringIdHolder(Ref.of(StringIdEntity.class, "abc-123"))));
+        assertEquals("{\"entity\":9999999999}",
+                mapper().writeValueAsString(new LongIdHolder(Ref.of(LongIdEntity.class, 9999999999L))));
+        assertEquals("{\"entity\":3.14}",
+                mapper().writeValueAsString(new DoubleIdHolder(Ref.of(DoubleIdEntity.class, 3.14))));
+    }
 
-        String json = "{\"entity\":1}";
-        EntityRefHolder holder = mapper.readValue(json, EntityRefHolder.class);
+    @Test
+    void aLoadedEntityRefWritesAsTheEntityWrapper() throws Exception {
+        var holder = new EntityHolder(Ref.of(new SimpleEntity(7, "Test")));
+        assertEquals("{\"entity\":{\"@entity\":{\"id\":7,\"name\":\"Test\"}}}", mapper().writeValueAsString(holder));
+    }
+
+    @Test
+    void aLoadedProjectionRefWritesAsTheProjectionWrapperWithItsId() throws Exception {
+        var holder = new ProjectionHolder(Ref.of(new SimpleProjection(3, "Label"), 3));
+        assertEquals("{\"projection\":{\"@id\":3,\"@projection\":{\"id\":3,\"label\":\"Label\"}}}",
+                mapper().writeValueAsString(holder));
+    }
+
+    @Test
+    void anUnloadedCompoundKeyRefWritesAsTheKeyObject() throws Exception {
+        var holder = new CompoundPkHolder(Ref.of(VetSpecialty.class, new VetSpecialtyPK(1, 2)));
+        assertEquals("{\"entity\":{\"vetId\":1,\"specialtyId\":2}}", mapper().writeValueAsString(holder));
+    }
+
+    @Test
+    void aNullRefWritesAsNull() throws Exception {
+        assertEquals("{\"entity\":null}", mapper().writeValueAsString(new EntityHolder(null)));
+        assertEquals("{\"projection\":null}", mapper().writeValueAsString(new ProjectionHolder(null)));
+    }
+
+    @Test
+    void aRefOfADataTypeWithoutAKeyWritesItsIdAsIs() throws Exception {
+        // Without a key type to find a serializer for, the id serializes as the value it is.
+        assertTrue(mapper().writeValueAsString(new NoPkHolder(Ref.of(NoPkData.class, 42))).contains("42"));
+        assertTrue(mapper().writeValueAsString(new NoPkHolder(Ref.of(NoPkData.class, "text-id"))).contains("text-id"));
+    }
+
+    @Test
+    void aRefWritesOutsideAPropertyToo() throws Exception {
+        // Serialized directly, the serializer has no property to resolve the key type from.
+        var json = mapper().writeValueAsString(Ref.of(SimpleEntity.class, 42));
+        assertTrue(json.contains("42"), json);
+    }
+
+    @Test
+    void aFieldThatIsNotARefIsLeftToJackson() throws Exception {
+        record NonRefHolder(String value) {}
+        assertEquals("{\"value\":\"test\"}", mapper().writeValueAsString(new NonRefHolder("test")));
+    }
+
+    // Reading.
+
+    @Test
+    void anIdReadsAsAnUnloadedRef() throws Exception {
+        var entity = mapper().readValue("{\"entity\":42}", EntityHolder.class).entity();
+        assertNotNull(entity);
+        assertEquals(42, entity.id());
+        assertNull(entity.getOrNull());
+        assertEquals("abc", mapper().readValue("{\"entity\":\"abc\"}", StringIdHolder.class).entity().id());
+        assertEquals(9999999999L, mapper().readValue("{\"entity\":9999999999}", LongIdHolder.class).entity().id());
+        assertEquals(3.14, mapper().readValue("{\"entity\":3.14}", DoubleIdHolder.class).entity().id());
+    }
+
+    @Test
+    void anEntityWrapperReadsAsALoadedRef() throws Exception {
+        var holder = mapper().readValue("{\"entity\":{\"@entity\":{\"id\":7,\"name\":\"Test\"}}}", EntityHolder.class);
         assertNotNull(holder.entity());
-        assertEquals(1, holder.entity().id());
+        assertTrue(holder.entity().isLoaded());
+        var entity = holder.entity().fetch();
+        assertInstanceOf(SimpleEntity.class, entity);
+        assertEquals(7, entity.id());
+        assertEquals("Test", entity.name());
     }
 
     @Test
-    public void constructorWithRefFactoryShouldUseFactoryForDeserialization() throws Exception {
-        RefFactory factory = new RefFactory() {
-            @Override
-            public <T extends Data, ID> Ref<T> create(Class<T> type, ID pk) {
-                return Ref.of(type, pk);
-            }
-
-            @Override
-            public <T extends Data, ID> Ref<T> create(T record, ID pk) {
-                return Ref.of(type(record), pk);
-            }
-
-            @SuppressWarnings("unchecked")
-            private <T extends Data> Class<T> type(T record) {
-                return (Class<T>) record.getClass();
-            }
-        };
-        ObjectMapper mapper = new ObjectMapper();
-        mapper.registerModule(new StormModule(factory));
-
-        String json = "{\"entity\":42}";
-        EntityRefHolder holder = mapper.readValue(json, EntityRefHolder.class);
-        assertNotNull(holder.entity());
-        assertEquals(42, holder.entity().id());
-    }
-
-    @Test
-    public void constructorWithSupplierShouldUseSuppliedFactory() throws Exception {
-        RefFactory factory = new RefFactory() {
-            @Override
-            public <T extends Data, ID> Ref<T> create(Class<T> type, ID pk) {
-                return Ref.of(type, pk);
-            }
-
-            @Override
-            public <T extends Data, ID> Ref<T> create(T record, ID pk) {
-                return Ref.of(type(record), pk);
-            }
-
-            @SuppressWarnings("unchecked")
-            private <T extends Data> Class<T> type(T record) {
-                return (Class<T>) record.getClass();
-            }
-        };
-        ObjectMapper mapper = new ObjectMapper();
-        mapper.registerModule(new StormModule(() -> factory));
-
-        String json = "{\"entity\":7}";
-        EntityRefHolder holder = mapper.readValue(json, EntityRefHolder.class);
-        assertNotNull(holder.entity());
-        assertEquals(7, holder.entity().id());
-    }
-
-    @Test
-    public void constructorWithNullSupplierResultShouldCreateDetachedRef() throws Exception {
-        ObjectMapper mapper = new ObjectMapper();
-        mapper.registerModule(new StormModule(() -> null));
-
-        String json = "{\"entity\":7}";
-        EntityRefHolder holder = mapper.readValue(json, EntityRefHolder.class);
-        assertNotNull(holder.entity());
-        assertEquals(7, holder.entity().id());
-    }
-
-    // Tests for Ref serialization.
-
-    @Test
-    public void unloadedRefShouldSerializeAsRawId() throws Exception {
-        ObjectMapper mapper = new ObjectMapper();
-        mapper.registerModule(new StormModule());
-
-        Ref<SimpleEntity> ref = Ref.of(SimpleEntity.class, 42);
-        EntityRefHolder holder = new EntityRefHolder(ref);
-        String json = mapper.writeValueAsString(holder);
-        assertEquals("{\"entity\":42}", json);
-    }
-
-    @Test
-    public void loadedEntityRefShouldSerializeWithEntityWrapper() throws Exception {
-        ObjectMapper mapper = new ObjectMapper();
-        mapper.registerModule(new StormModule());
-
-        SimpleEntity entity = new SimpleEntity(1, "Alice");
-        Ref<SimpleEntity> ref = Ref.of(entity);
-        EntityRefHolder holder = new EntityRefHolder(ref);
-        String json = mapper.writeValueAsString(holder);
-        assertEquals("{\"entity\":{\"@entity\":{\"id\":1,\"name\":\"Alice\"}}}", json);
-    }
-
-    @Test
-    public void loadedProjectionRefShouldSerializeWithProjectionWrapperAndId() throws Exception {
-        ObjectMapper mapper = new ObjectMapper();
-        mapper.registerModule(new StormModule());
-
-        SimpleProjection projection = new SimpleProjection(5, "Test");
-        Ref<SimpleProjection> ref = Ref.of(projection, 5);
-        ProjectionRefHolder holder = new ProjectionRefHolder(ref);
-        String json = mapper.writeValueAsString(holder);
-        assertEquals("{\"projection\":{\"@id\":5,\"@projection\":{\"id\":5,\"label\":\"Test\"}}}", json);
-    }
-
-    @Test
-    public void unloadedRefWithStringIdShouldSerializeAsStringValue() throws Exception {
-        ObjectMapper mapper = new ObjectMapper();
-        mapper.registerModule(new StormModule());
-
-        Ref<StringIdEntity> ref = Ref.of(StringIdEntity.class, "abc-123");
-        StringIdRefHolder holder = new StringIdRefHolder(ref);
-        String json = mapper.writeValueAsString(holder);
-        assertEquals("{\"entity\":\"abc-123\"}", json);
-    }
-
-    @Test
-    public void unloadedRefWithLongIdShouldSerializeAsLongValue() throws Exception {
-        ObjectMapper mapper = new ObjectMapper();
-        mapper.registerModule(new StormModule());
-
-        Ref<LongIdEntity> ref = Ref.of(LongIdEntity.class, 9999999999L);
-        LongIdRefHolder holder = new LongIdRefHolder(ref);
-        String json = mapper.writeValueAsString(holder);
-        assertEquals("{\"entity\":9999999999}", json);
-    }
-
-    // Tests for Ref deserialization.
-
-    @Test
-    public void rawIntegerIdShouldDeserializeToUnloadedRef() throws Exception {
-        ObjectMapper mapper = new ObjectMapper();
-        mapper.registerModule(new StormModule());
-
-        String json = "{\"entity\":42}";
-        EntityRefHolder holder = mapper.readValue(json, EntityRefHolder.class);
-        assertNotNull(holder.entity());
-        assertEquals(42, holder.entity().id());
-        assertNull(holder.entity().getOrNull());
-    }
-
-    @Test
-    public void rawStringIdShouldDeserializeToUnloadedRef() throws Exception {
-        ObjectMapper mapper = new ObjectMapper();
-        mapper.registerModule(new StormModule());
-
-        String json = "{\"entity\":\"abc-123\"}";
-        StringIdRefHolder holder = mapper.readValue(json, StringIdRefHolder.class);
-        assertNotNull(holder.entity());
-        assertEquals("abc-123", holder.entity().id());
-    }
-
-    @Test
-    public void rawLongIdShouldDeserializeToUnloadedRef() throws Exception {
-        ObjectMapper mapper = new ObjectMapper();
-        mapper.registerModule(new StormModule());
-
-        String json = "{\"entity\":9999999999}";
-        LongIdRefHolder holder = mapper.readValue(json, LongIdRefHolder.class);
-        assertNotNull(holder.entity());
-        assertEquals(9999999999L, holder.entity().id());
-    }
-
-    @Test
-    public void entityObjectShouldDeserializeToLoadedRef() throws Exception {
-        ObjectMapper mapper = new ObjectMapper();
-        mapper.registerModule(new StormModule());
-
-        String json = "{\"entity\":{\"@entity\":{\"id\":1,\"name\":\"Alice\"}}}";
-        EntityRefHolder holder = mapper.readValue(json, EntityRefHolder.class);
-        assertNotNull(holder.entity());
-        assertEquals(1, holder.entity().id());
-        SimpleEntity loadedEntity = holder.entity().getOrNull();
-        assertNotNull(loadedEntity);
-        assertEquals("Alice", loadedEntity.name());
-    }
-
-    @Test
-    public void projectionObjectShouldDeserializeToLoadedRef() throws Exception {
-        ObjectMapper mapper = new ObjectMapper();
-        mapper.registerModule(new StormModule());
-
-        String json = "{\"projection\":{\"@id\":5,\"@projection\":{\"id\":5,\"label\":\"Test\"}}}";
-        ProjectionRefHolder holder = mapper.readValue(json, ProjectionRefHolder.class);
+    void aProjectionWrapperReadsAsALoadedRef() throws Exception {
+        var json = "{\"projection\":{\"@id\":3,\"@projection\":{\"id\":3,\"label\":\"Label\"}}}";
+        var holder = mapper().readValue(json, ProjectionHolder.class);
         assertNotNull(holder.projection());
-        assertEquals(5, holder.projection().id());
-        SimpleProjection loadedProjection = holder.projection().getOrNull();
-        assertNotNull(loadedProjection);
-        assertEquals("Test", loadedProjection.label());
+        assertTrue(holder.projection().isLoaded());
+        var projection = holder.projection().fetch();
+        assertInstanceOf(SimpleProjection.class, projection);
+        assertEquals(3, projection.id());
+        assertEquals("Label", projection.label());
     }
 
     @Test
-    public void nullRefShouldDeserializeToNull() throws Exception {
-        ObjectMapper mapper = new ObjectMapper();
-        mapper.registerModule(new StormModule());
-
-        String json = "{\"entity\":null}";
-        NullableRefHolder holder = mapper.readValue(json, NullableRefHolder.class);
-        assertNull(holder.entity());
+    void aProjectionWrapperHoldingAnEntityReadsAsALoadedEntityRef() throws Exception {
+        var json = "{\"entity\":{\"@id\":1,\"@projection\":{\"id\":1,\"name\":\"Via Projection Path\"}}}";
+        var holder = mapper().readValue(json, EntityHolder.class);
+        assertNotNull(holder.entity());
+        assertEquals(1, holder.entity().id());
+        var loaded = holder.entity().getOrNull();
+        assertNotNull(loaded);
+        assertEquals("Via Projection Path", loaded.name());
     }
 
     @Test
-    public void refListWithNullElementsShouldDeserializeCorrectly() throws Exception {
-        ObjectMapper mapper = new ObjectMapper();
-        mapper.registerModule(new StormModule());
-
-        String json = "{\"entities\":[null,1,2]}";
-        RefListHolder holder = mapper.readValue(json, RefListHolder.class);
-        assertEquals(3, holder.entities().size());
-        assertNull(holder.entities().get(0));
-        assertEquals(1, holder.entities().get(1).id());
-        assertEquals(2, holder.entities().get(2).id());
+    void aProjectionWrapperHoldingPlainDataReadsAsARefOfItsId() throws Exception {
+        // Neither entity nor projection: the id of the wrapper is the ref's id.
+        var json = "{\"data\":{\"@id\":42,\"@projection\":{\"id\":42,\"value\":\"test\"}}}";
+        var holder = mapper().readValue(json, NoPkHolder.class);
+        assertNotNull(holder.data());
+        assertEquals(42, ((Number) holder.data().id()).intValue());
     }
 
     @Test
-    public void refObjectWithoutEntityOrProjectionFieldShouldThrowException() {
-        ObjectMapper mapper = new ObjectMapper();
-        mapper.registerModule(new StormModule());
-
-        String json = "{\"entity\":{\"unknown\":\"field\"}}";
-        assertThrows(JsonMappingException.class, () ->
-                mapper.readValue(json, EntityRefHolder.class));
-    }
-
-    @Test
-    public void projectionObjectWithoutIdFieldShouldThrowException() {
-        ObjectMapper mapper = new ObjectMapper();
-        mapper.registerModule(new StormModule());
-
-        String json = "{\"projection\":{\"@projection\":{\"id\":5,\"label\":\"Test\"}}}";
-        assertThrows(JsonMappingException.class, () ->
-                mapper.readValue(json, ProjectionRefHolder.class));
-    }
-
-    @Test
-    public void entityRefSerializationShouldRoundTrip() throws Exception {
-        ObjectMapper mapper = new ObjectMapper();
-        mapper.registerModule(new StormModule());
-
-        // Unloaded ref round-trip.
-        Ref<SimpleEntity> unloadedRef = Ref.of(SimpleEntity.class, 42);
-        EntityRefHolder unloadedHolder = new EntityRefHolder(unloadedRef);
-        String unloadedJson = mapper.writeValueAsString(unloadedHolder);
-        EntityRefHolder deserializedUnloaded = mapper.readValue(unloadedJson, EntityRefHolder.class);
-        assertEquals(unloadedHolder, deserializedUnloaded);
-
-        // Loaded ref round-trip.
-        SimpleEntity entity = new SimpleEntity(1, "Alice");
-        Ref<SimpleEntity> loadedRef = Ref.of(entity);
-        EntityRefHolder loadedHolder = new EntityRefHolder(loadedRef);
-        String loadedJson = mapper.writeValueAsString(loadedHolder);
-        EntityRefHolder deserializedLoaded = mapper.readValue(loadedJson, EntityRefHolder.class);
-        assertEquals(loadedHolder, deserializedLoaded);
-    }
-
-    @Test
-    public void projectionRefSerializationShouldRoundTrip() throws Exception {
-        ObjectMapper mapper = new ObjectMapper();
-        mapper.registerModule(new StormModule());
-
-        // Unloaded projection ref round-trip.
-        Ref<SimpleProjection> unloadedRef = Ref.of(SimpleProjection.class, 5);
-        ProjectionRefHolder unloadedHolder = new ProjectionRefHolder(unloadedRef);
-        String unloadedJson = mapper.writeValueAsString(unloadedHolder);
-        ProjectionRefHolder deserializedUnloaded = mapper.readValue(unloadedJson, ProjectionRefHolder.class);
-        assertEquals(unloadedHolder, deserializedUnloaded);
-
-        // Loaded projection ref round-trip.
-        SimpleProjection projection = new SimpleProjection(5, "Test");
-        Ref<SimpleProjection> loadedRef = Ref.of(projection, 5);
-        ProjectionRefHolder loadedHolder = new ProjectionRefHolder(loadedRef);
-        String loadedJson = mapper.writeValueAsString(loadedHolder);
-        ProjectionRefHolder deserializedLoaded = mapper.readValue(loadedJson, ProjectionRefHolder.class);
-        assertEquals(loadedHolder, deserializedLoaded);
-    }
-
-    @Test
-    public void unloadedCompoundPkRefShouldSerializeAsPkObject() throws Exception {
-        ObjectMapper mapper = new ObjectMapper();
-        mapper.registerModule(new StormModule());
-
-        Ref<VetSpecialty> ref = Ref.of(VetSpecialty.class, new VetSpecialtyPK(1, 2));
-        String json = mapper.writeValueAsString(new CompoundPkRefHolder(ref));
-        assertEquals("{\"entity\":{\"vetId\":1,\"specialtyId\":2}}", json);
-    }
-
-    @Test
-    public void compoundPkObjectShouldDeserializeToUnloadedRef() throws Exception {
-        ObjectMapper mapper = new ObjectMapper();
-        mapper.registerModule(new StormModule());
-
-        String json = "{\"entity\":{\"vetId\":1,\"specialtyId\":2}}";
-        CompoundPkRefHolder holder = mapper.readValue(json, CompoundPkRefHolder.class);
+    void aCompoundKeyObjectReadsAsAnUnloadedRef() throws Exception {
+        var holder = mapper().readValue("{\"entity\":{\"vetId\":1,\"specialtyId\":2}}", CompoundPkHolder.class);
         assertNotNull(holder.entity());
         assertEquals(new VetSpecialtyPK(1, 2), holder.entity().id());
     }
 
     @Test
-    public void compoundPkRefSerializationShouldRoundTrip() throws Exception {
-        ObjectMapper mapper = new ObjectMapper();
-        mapper.registerModule(new StormModule());
-
-        Ref<VetSpecialty> ref = Ref.of(VetSpecialty.class, new VetSpecialtyPK(3, 4));
-        CompoundPkRefHolder holder = new CompoundPkRefHolder(ref);
-        String json = mapper.writeValueAsString(holder);
-        CompoundPkRefHolder deserialized = mapper.readValue(json, CompoundPkRefHolder.class);
-        assertEquals(holder, deserialized);
+    void nullReadsAsNoRef() throws Exception {
+        assertNull(mapper().readValue("{\"entity\":null}", EntityHolder.class).entity());
+        assertNull(mapper().readValue("{\"projection\":null}", ProjectionHolder.class).projection());
     }
 
     @Test
-    public void stringIdRefShouldRoundTrip() throws Exception {
-        ObjectMapper mapper = new ObjectMapper();
-        mapper.registerModule(new StormModule());
+    void aWrapperHoldingNullReadsAsNoRef() throws Exception {
+        assertNull(mapper().readValue("{\"entity\":{\"@entity\":null}}", EntityHolder.class).entity());
+        assertNull(mapper().readValue("{\"projection\":{\"@id\":3,\"@projection\":null}}", ProjectionHolder.class)
+                .projection());
+    }
 
-        Ref<StringIdEntity> ref = Ref.of(StringIdEntity.class, "my-id");
-        StringIdRefHolder holder = new StringIdRefHolder(ref);
-        String json = mapper.writeValueAsString(holder);
-        StringIdRefHolder deserialized = mapper.readValue(json, StringIdRefHolder.class);
-        assertEquals(holder, deserialized);
+    // Round trips.
+
+    @Test
+    void anEntityRefRoundTripsLoadedAndUnloaded() throws Exception {
+        var unloaded = new EntityHolder(Ref.of(SimpleEntity.class, 42));
+        assertEquals(unloaded, mapper().readValue(mapper().writeValueAsString(unloaded), EntityHolder.class));
+        var entity = new SimpleEntity(5, "RoundTrip");
+        var loaded = new EntityHolder(Ref.of(entity));
+        var restored = mapper().readValue(mapper().writeValueAsString(loaded), EntityHolder.class);
+        assertEquals(loaded, restored);
+        assertTrue(restored.entity().isLoaded());
+        assertEquals(entity, restored.entity().fetch());
     }
 
     @Test
-    public void loadedStringIdEntityRefShouldRoundTrip() throws Exception {
-        ObjectMapper mapper = new ObjectMapper();
-        mapper.registerModule(new StormModule());
-
-        StringIdEntity entity = new StringIdEntity("abc", "Test");
-        Ref<StringIdEntity> ref = Ref.of(entity);
-        StringIdRefHolder holder = new StringIdRefHolder(ref);
-        String json = mapper.writeValueAsString(holder);
-        StringIdRefHolder deserialized = mapper.readValue(json, StringIdRefHolder.class);
-        assertEquals(holder, deserialized);
+    void aProjectionRefRoundTripsLoadedAndUnloaded() throws Exception {
+        var unloaded = new ProjectionHolder(Ref.of(SimpleProjection.class, 5));
+        assertEquals(unloaded, mapper().readValue(mapper().writeValueAsString(unloaded), ProjectionHolder.class));
+        var projection = new SimpleProjection(10, "Proj");
+        var loaded = new ProjectionHolder(Ref.of(projection, 10));
+        var restored = mapper().readValue(mapper().writeValueAsString(loaded), ProjectionHolder.class);
+        assertEquals(loaded, restored);
+        assertTrue(restored.projection().isLoaded());
+        assertEquals(projection, restored.projection().fetch());
     }
 
     @Test
-    public void loadedLongIdEntityRefShouldRoundTrip() throws Exception {
-        ObjectMapper mapper = new ObjectMapper();
-        mapper.registerModule(new StormModule());
-
-        LongIdEntity entity = new LongIdEntity(999L, "Test");
-        Ref<LongIdEntity> ref = Ref.of(entity);
-        LongIdRefHolder holder = new LongIdRefHolder(ref);
-        String json = mapper.writeValueAsString(holder);
-        LongIdRefHolder deserialized = mapper.readValue(json, LongIdRefHolder.class);
-        assertEquals(holder, deserialized);
-    }
-
-    // Tests for fallback deserialization paths (when pkType is null).
-
-    @Test
-    public void noPkDataWithSmallIntegerIdShouldDeserializeViaFallback() throws Exception {
-        ObjectMapper mapper = new ObjectMapper();
-        mapper.registerModule(new StormModule());
-
-        // NoPkData has no @PK field, so pkType will be null, triggering the fallback integer path.
-        String json = "{\"data\":42}";
-        NoPkRefHolder holder = mapper.readValue(json, NoPkRefHolder.class);
-        assertNotNull(holder.data());
-        assertEquals(42, ((Number) holder.data().id()).intValue());
+    void aCompoundKeyRefRoundTrips() throws Exception {
+        var holder = new CompoundPkHolder(Ref.of(VetSpecialty.class, new VetSpecialtyPK(3, 4)));
+        assertEquals(holder, mapper().readValue(mapper().writeValueAsString(holder), CompoundPkHolder.class));
     }
 
     @Test
-    public void noPkDataWithLargeIntegerIdShouldDeserializeAsLongViaFallback() throws Exception {
-        ObjectMapper mapper = new ObjectMapper();
-        mapper.registerModule(new StormModule());
-
-        // Large number exceeding int range triggers the long branch in fallback.
-        String json = "{\"data\":9999999999}";
-        NoPkRefHolder holder = mapper.readValue(json, NoPkRefHolder.class);
-        assertNotNull(holder.data());
-        assertEquals(9999999999L, holder.data().id());
+    void refsOfEveryKeyTypeRoundTrip() throws Exception {
+        var string = new StringIdHolder(Ref.of(StringIdEntity.class, "my-id"));
+        assertEquals(string, mapper().readValue(mapper().writeValueAsString(string), StringIdHolder.class));
+        var loadedString = new StringIdHolder(Ref.of(new StringIdEntity("abc", "Test")));
+        assertEquals(loadedString, mapper().readValue(mapper().writeValueAsString(loadedString), StringIdHolder.class));
+        var loadedLong = new LongIdHolder(Ref.of(new LongIdEntity(999L, "Test")));
+        assertEquals(loadedLong, mapper().readValue(mapper().writeValueAsString(loadedLong), LongIdHolder.class));
+        var loadedDouble = new DoubleIdHolder(Ref.of(new DoubleIdEntity(2.71, "Euler")));
+        var json = mapper().writeValueAsString(loadedDouble);
+        assertTrue(json.contains("@entity"), json);
+        assertEquals(loadedDouble, mapper().readValue(json, DoubleIdHolder.class));
     }
 
-    @Test
-    public void noPkDataWithFloatIdShouldDeserializeAsDoubleViaFallback() throws Exception {
-        ObjectMapper mapper = new ObjectMapper();
-        mapper.registerModule(new StormModule());
-
-        // Float value triggers VALUE_NUMBER_FLOAT branch in fallback.
-        String json = "{\"data\":3.14}";
-        NoPkRefHolder holder = mapper.readValue(json, NoPkRefHolder.class);
-        assertNotNull(holder.data());
-        assertEquals(3.14, holder.data().id());
-    }
+    // Containers.
 
     @Test
-    public void noPkDataWithStringIdShouldDeserializeAsStringViaFallback() throws Exception {
-        ObjectMapper mapper = new ObjectMapper();
-        mapper.registerModule(new StormModule());
-
-        // String value triggers VALUE_STRING branch in fallback.
-        String json = "{\"data\":\"my-id\"}";
-        NoPkRefHolder holder = mapper.readValue(json, NoPkRefHolder.class);
-        assertNotNull(holder.data());
-        assertEquals("my-id", holder.data().id());
-    }
-
-    // Tests for deserializeIdFromNode fallback paths (projection deserialization).
-
-    public record NoPkProjection(String label) implements Projection<Void> {}
-
-    public record NoPkProjectionRefHolder(@Nullable Ref<NoPkProjection> projection) {}
-
-    @Test
-    public void noPkProjectionWithIntIdNodeShouldDeserializeViaNodeFallback() throws Exception {
-        ObjectMapper mapper = new ObjectMapper();
-        mapper.registerModule(new StormModule());
-
-        // Projection path with @id node and no @PK on target - exercises deserializeIdFromNode int fallback.
-        String json = "{\"projection\":{\"@id\":42,\"@projection\":{\"label\":\"Test\"}}}";
-        NoPkProjectionRefHolder holder = mapper.readValue(json, NoPkProjectionRefHolder.class);
-        assertNotNull(holder.projection());
-        assertEquals(42, holder.projection().id());
-    }
-
-    @Test
-    public void noPkProjectionWithLongIdNodeShouldDeserializeViaNodeFallback() throws Exception {
-        ObjectMapper mapper = new ObjectMapper();
-        mapper.registerModule(new StormModule());
-
-        // Long value in node triggers isLong fallback.
-        String json = "{\"projection\":{\"@id\":9999999999,\"@projection\":{\"label\":\"Test\"}}}";
-        NoPkProjectionRefHolder holder = mapper.readValue(json, NoPkProjectionRefHolder.class);
-        assertNotNull(holder.projection());
-        assertEquals(9999999999L, holder.projection().id());
-    }
-
-    @Test
-    public void noPkProjectionWithDoubleIdNodeShouldDeserializeViaNodeFallback() throws Exception {
-        ObjectMapper mapper = new ObjectMapper();
-        mapper.registerModule(new StormModule());
-
-        // Double value in node triggers isDouble fallback.
-        String json = "{\"projection\":{\"@id\":3.14,\"@projection\":{\"label\":\"Test\"}}}";
-        NoPkProjectionRefHolder holder = mapper.readValue(json, NoPkProjectionRefHolder.class);
-        assertNotNull(holder.projection());
-        assertEquals(3.14, holder.projection().id());
-    }
-
-    @Test
-    public void noPkProjectionWithStringIdNodeShouldDeserializeViaNodeFallback() throws Exception {
-        ObjectMapper mapper = new ObjectMapper();
-        mapper.registerModule(new StormModule());
-
-        // String value in node triggers isTextual fallback.
-        String json = "{\"projection\":{\"@id\":\"abc\",\"@projection\":{\"label\":\"Test\"}}}";
-        NoPkProjectionRefHolder holder = mapper.readValue(json, NoPkProjectionRefHolder.class);
-        assertNotNull(holder.projection());
-        assertEquals("abc", holder.projection().id());
-    }
-
-    @Test
-    public void noPkProjectionWithObjectIdNodeShouldDeserializeViaObjectFallback() throws Exception {
-        ObjectMapper mapper = new ObjectMapper();
-        mapper.registerModule(new StormModule());
-
-        // Object value in node triggers the final Object fallback.
-        String json = "{\"projection\":{\"@id\":{\"key\":\"val\"},\"@projection\":{\"label\":\"Test\"}}}";
-        NoPkProjectionRefHolder holder = mapper.readValue(json, NoPkProjectionRefHolder.class);
-        assertNotNull(holder.projection());
-        assertNotNull(holder.projection().id());
-    }
-
-    // Tests for Ref in collections (Set, Map).
-
-    @Test
-    public void refInSetShouldDeserializeCorrectly() throws Exception {
-        ObjectMapper mapper = new ObjectMapper();
-        mapper.registerModule(new StormModule());
-
-        String json = "{\"entities\":[1,2,3]}";
-        RefSetHolder holder = mapper.readValue(json, RefSetHolder.class);
+    void refsInAListReadWithNullElements() throws Exception {
+        var holder = mapper().readValue("{\"entities\":[42, null, 7]}", EntityListHolder.class);
         assertEquals(3, holder.entities().size());
+        assertEquals(42, holder.entities().get(0).id());
+        assertNull(holder.entities().get(1));
+        assertEquals(7, holder.entities().get(2).id());
+        assertEquals(0, mapper().readValue("{\"entities\":[]}", EntityListHolder.class).entities().size());
     }
 
     @Test
-    public void refInMapValueShouldDeserializeCorrectly() throws Exception {
-        ObjectMapper mapper = new ObjectMapper();
-        mapper.registerModule(new StormModule());
-
-        String json = "{\"entities\":{\"a\":1,\"b\":2}}";
-        RefMapHolder holder = mapper.readValue(json, RefMapHolder.class);
-        assertEquals(2, holder.entities().size());
-        assertEquals(1, holder.entities().get("a").id());
-        assertEquals(2, holder.entities().get("b").id());
-    }
-
-    // Tests for error paths.
-
-    @Test
-    public void booleanTokenShouldThrowExceptionDuringRefDeserialization() {
-        ObjectMapper mapper = new ObjectMapper();
-        mapper.registerModule(new StormModule());
-
-        // Boolean token is not a valid Ref value, should trigger the default case in deserialize.
-        String json = "{\"entity\":true}";
-        assertThrows(JsonMappingException.class, () ->
-                mapper.readValue(json, EntityRefHolder.class));
+    void refsInAListReadLoadedAndUnloadedAlike() throws Exception {
+        var json = "{\"entities\":[null,1,{\"@entity\":{\"id\":2,\"name\":\"Bob\"}}]}";
+        var holder = mapper().readValue(json, EntityListHolder.class);
+        assertEquals(3, holder.entities().size());
+        assertNull(holder.entities().get(0));
+        assertEquals(1, holder.entities().get(1).id());
+        assertNull(holder.entities().get(1).getOrNull());
+        assertEquals(2, holder.entities().get(2).id());
+        assertNotNull(holder.entities().get(2).getOrNull());
     }
 
     @Test
-    public void arrayTokenShouldThrowExceptionDuringRefDeserialization() {
-        ObjectMapper mapper = new ObjectMapper();
-        mapper.registerModule(new StormModule());
-
-        // Array token is not a valid Ref value.
-        String json = "{\"entity\":[1,2,3]}";
-        assertThrows(JsonMappingException.class, () ->
-                mapper.readValue(json, EntityRefHolder.class));
-    }
-
-    // Tests for list deserialization with NoPk data (fallback path in list context).
-
-    @Test
-    public void noPkRefListWithMixedIdTypesShouldDeserializeViaFallback() throws Exception {
-        ObjectMapper mapper = new ObjectMapper();
-        mapper.registerModule(new StormModule());
-
-        String json = "{\"data\":[1,\"two\",3]}";
-        NoPkRefListHolder holder = mapper.readValue(json, NoPkRefListHolder.class);
-        assertEquals(3, holder.data().size());
-        assertEquals(1, ((Number) holder.data().get(0).id()).intValue());
-        assertEquals("two", holder.data().get(1).id());
-        assertEquals(3, ((Number) holder.data().get(2).id()).intValue());
-    }
-
-    // Test for serialization of loaded Data ref (not Entity, not Projection)
-    // when Data type is used as loaded ref via @entity path.
-
-    @Test
-    public void unloadedNoPkRefShouldSerializeAsRawId() throws Exception {
-        ObjectMapper mapper = new ObjectMapper();
-        mapper.registerModule(new StormModule());
-
-        Ref<NoPkData> ref = Ref.of(NoPkData.class, 42);
-        NoPkRefHolder holder = new NoPkRefHolder(ref);
-        String json = mapper.writeValueAsString(holder);
-        // With no pkType, falls through to defaultSerializeValue.
-        assertTrue(json.contains("42"));
-    }
-
-    // Tests for the resolveRefTargetType edge cases.
-
-    @Test
-    public void refSetSerializationShouldRoundTrip() throws Exception {
-        ObjectMapper mapper = new ObjectMapper();
-        mapper.registerModule(new StormModule());
-
-        Set<Ref<SimpleEntity>> refs = Set.of(
-                Ref.of(SimpleEntity.class, 1),
-                Ref.of(SimpleEntity.class, 2));
-        RefSetHolder holder = new RefSetHolder(refs);
-        String json = mapper.writeValueAsString(holder);
-        assertNotNull(json);
-        // Verify it deserializes back.
-        RefSetHolder deserialized = mapper.readValue(json, RefSetHolder.class);
-        assertEquals(2, deserialized.entities().size());
-    }
-
-    @Test
-    public void refMapSerializationShouldWork() throws Exception {
-        ObjectMapper mapper = new ObjectMapper();
-        mapper.registerModule(new StormModule());
-
-        Map<String, Ref<SimpleEntity>> refs = Map.of(
-                "a", Ref.of(SimpleEntity.class, 1),
-                "b", Ref.of(SimpleEntity.class, 2));
-        RefMapHolder holder = new RefMapHolder(refs);
-        String json = mapper.writeValueAsString(holder);
-        assertNotNull(json);
-    }
-
-    // Tests for createLoadedRefWithId - Entity via @projection path.
-
-    @Test
-    public void projectionPathWithEntityDataShouldCreateEntityRef() throws Exception {
-        ObjectMapper mapper = new ObjectMapper();
-        mapper.registerModule(new StormModule());
-
-        // When @projection contains an Entity, createLoadedRefWithId should take the Entity branch.
-        // Use EntityRefHolder but with @projection format instead of @entity format.
-        String json = "{\"entity\":{\"@id\":1,\"@projection\":{\"id\":1,\"name\":\"Alice\"}}}";
-        EntityRefHolder holder = mapper.readValue(json, EntityRefHolder.class);
-        assertNotNull(holder.entity());
-        assertEquals(1, holder.entity().id());
-        // Since SimpleEntity is an Entity, it should take the Entity branch in createLoadedRefWithId.
-        assertNotNull(holder.entity().getOrNull());
-    }
-
-    // Tests for createLoadedRefWithId - Data that is not Entity or Projection, with id.
-
-    public record DataRefHolder(@Nullable Ref<NoPkData> data) {}
-
-    @Test
-    public void projectionPathWithPlainDataAndIdShouldCreateUnloadedRef() throws Exception {
-        ObjectMapper mapper = new ObjectMapper();
-        mapper.registerModule(new StormModule());
-
-        // NoPkData is Data but not Entity or Projection.
-        // @projection with @id should take the fallback "if (id != null) return Ref.of(targetClass, id)" path.
-        String json = "{\"data\":{\"@id\":42,\"@projection\":{\"value\":\"test\"}}}";
-        DataRefHolder holder = mapper.readValue(json, DataRefHolder.class);
-        assertNotNull(holder.data());
-        assertEquals(42, ((Number) holder.data().id()).intValue());
-    }
-
-    // Test for createLoadedRef with non-Entity in @entity path.
-
-    @Test
-    public void entityPathWithNonEntityDataShouldThrowException() {
-        ObjectMapper mapper = new ObjectMapper();
-        mapper.registerModule(new StormModule());
-
-        // NoPkData is Data but not Entity. Using @entity with non-Entity data should throw.
-        String json = "{\"data\":{\"@entity\":{\"value\":\"test\"}}}";
-        assertThrows(JsonMappingException.class, () ->
-                mapper.readValue(json, DataRefHolder.class));
-    }
-
-    // Test for resolvePkType returning NO_PK.
-
-    @Test
-    public void noPkDataSerializerShouldHandleMissingPkTypeGracefully() throws Exception {
-        ObjectMapper mapper = new ObjectMapper();
-        mapper.registerModule(new StormModule());
-
-        // NoPkData has no @PK, so serializeId falls through to defaultSerializeValue.
-        Ref<NoPkData> ref = Ref.of(NoPkData.class, "text-id");
-        DataRefHolder holder = new DataRefHolder(ref);
-        String json = mapper.writeValueAsString(holder);
-        assertTrue(json.contains("text-id"));
-    }
-
-    // Test for null nullable projection ref in holder.
-
-    @Test
-    public void nullProjectionRefShouldSerializeToNull() throws Exception {
-        ObjectMapper mapper = new ObjectMapper();
-        mapper.registerModule(new StormModule());
-
-        ProjectionRefHolder holder = new ProjectionRefHolder(null);
-        String json = mapper.writeValueAsString(holder);
-        assertEquals("{\"projection\":null}", json);
-    }
-
-    @Test
-    public void nullProjectionRefShouldDeserializeFromNull() throws Exception {
-        ObjectMapper mapper = new ObjectMapper();
-        mapper.registerModule(new StormModule());
-
-        String json = "{\"projection\":null}";
-        ProjectionRefHolder holder = mapper.readValue(json, ProjectionRefHolder.class);
-        assertNull(holder.projection());
-    }
-
-    // Test for deserializeId default token case.
-
-    @Test
-    public void noPkDataWithBooleanShouldThrowExceptionViaFallbackPath() {
-        ObjectMapper mapper = new ObjectMapper();
-        mapper.registerModule(new StormModule());
-
-        // Boolean values trigger the default case in the main deserialize switch (not NUMBER_INT/FLOAT/STRING).
-        String json = "{\"data\":true}";
-        assertThrows(JsonMappingException.class, () ->
-                mapper.readValue(json, NoPkRefHolder.class));
-    }
-
-    // Test for createRefFromId with null id.
-
-    @Test
-    public void noPkRefWithNullIdInListShouldReturnNullRef() throws Exception {
-        ObjectMapper mapper = new ObjectMapper();
-        mapper.registerModule(new StormModule());
-
-        // Test null handling within list deserialization for NoPkData refs.
-        String json = "{\"data\":[null, 1]}";
-        NoPkRefListHolder holder = mapper.readValue(json, NoPkRefListHolder.class);
-        assertEquals(2, holder.data().size());
-        assertNull(holder.data().get(0));
-        assertNotNull(holder.data().get(1));
-    }
-
-    // Test for Ref field with Double PK type.
-
-    public record DoubleIdEntity(@PK Double id, String name) implements Entity<Double> {}
-
-    public record DoubleIdRefHolder(Ref<DoubleIdEntity> entity) {}
-
-    @Test
-    public void doubleIdRefShouldRoundTrip() throws Exception {
-        ObjectMapper mapper = new ObjectMapper();
-        mapper.registerModule(new StormModule());
-
-        Ref<DoubleIdEntity> ref = Ref.of(DoubleIdEntity.class, 3.14);
-        DoubleIdRefHolder holder = new DoubleIdRefHolder(ref);
-        String json = mapper.writeValueAsString(holder);
-        assertEquals("{\"entity\":3.14}", json);
-        DoubleIdRefHolder deserialized = mapper.readValue(json, DoubleIdRefHolder.class);
-        assertEquals(3.14, deserialized.entity().id());
-    }
-
-    @Test
-    public void loadedDoubleIdEntityRefShouldRoundTrip() throws Exception {
-        ObjectMapper mapper = new ObjectMapper();
-        mapper.registerModule(new StormModule());
-
-        DoubleIdEntity entity = new DoubleIdEntity(2.71, "Euler");
-        Ref<DoubleIdEntity> ref = Ref.of(entity);
-        DoubleIdRefHolder holder = new DoubleIdRefHolder(ref);
-        String json = mapper.writeValueAsString(holder);
-        assertTrue(json.contains("@entity"));
-        DoubleIdRefHolder deserialized = mapper.readValue(json, DoubleIdRefHolder.class);
-        assertEquals(2.71, deserialized.entity().id());
-    }
-
-    // Test for deserializing raw Ref without type information should throw.
-
-    @SuppressWarnings("rawtypes")
-    @Test
-    public void rawRefWithoutTypeInfoShouldThrowOnDeserialization() {
-        ObjectMapper mapper = new ObjectMapper();
-        mapper.registerModule(new StormModule());
-
-        // Deserializing a raw Ref (no generic type info) should throw because targetType is null.
-        String json = "42";
-        assertThrows(JsonMappingException.class, () ->
-                mapper.readValue(json, Ref.class));
-    }
-
-    @Test
-    public void serializerShouldHandleDirectRefSerializationWithoutProperty() throws Exception {
-        // Serializing a raw Ref directly (not as a field of another object) means
-        // createContextual may be called with null property.
-        ObjectMapper mapper = new ObjectMapper();
-        mapper.registerModule(new StormModule());
-
-        Ref<SimpleEntity> ref = Ref.of(SimpleEntity.class, 42);
-        String json = mapper.writeValueAsString(ref);
-        // Without property context, the serializer uses default serialize path.
-        assertNotNull(json);
-        assertTrue(json.contains("42"));
-    }
-
-    @Test
-    public void nonRefFieldShouldNotAffectSerialization() throws Exception {
-        // This record has a non-Ref field. The StormModule should not interfere with it.
-        record NonRefHolder(String value) {}
-
-        ObjectMapper mapper = new ObjectMapper();
-        mapper.registerModule(new StormModule());
-
-        NonRefHolder holder = new NonRefHolder("test");
-        String json = mapper.writeValueAsString(holder);
-        assertEquals("{\"value\":\"test\"}", json);
-    }
-
-    @Test
-    public void noPkDataWithProjectionFormatAndNullIdShouldThrow() {
-        ObjectMapper mapper = new ObjectMapper();
-        mapper.registerModule(new StormModule());
-
-        // @projection with @id:null for NoPkData type.
-        // This should trigger the "cannot be null" path or a different error.
-        String json = "{\"data\":{\"@id\":null,\"@projection\":{\"value\":\"test\"}}}";
-        // With a null @id, Jackson may still parse it as null, then createLoadedRefWithId
-        // checks if data is null (no), then Entity (no), then Projection (no),
-        // then id != null (false since null), then throw (line 376).
-        assertThrows(JsonMappingException.class, () ->
-                mapper.readValue(json, NoPkRefHolder.class));
-    }
-
-    public record ProjectionRefListHolder(List<Ref<SimpleProjection>> projections) {}
-
-    @Test
-    public void loadedProjectionRefInListShouldSerializeAndDeserialize() throws Exception {
-        ObjectMapper mapper = new ObjectMapper();
-        mapper.registerModule(new StormModule());
-
-        List<Ref<SimpleProjection>> refs = List.of(
+    void refsInAListRoundTrip() throws Exception {
+        var entities = new EntityListHolder(List.of(
+                Ref.of(new SimpleEntity(1, "Alice")),
+                Ref.of(SimpleEntity.class, 2),
+                Ref.of(new SimpleEntity(3, "Charlie"))));
+        var restored = mapper().readValue(mapper().writeValueAsString(entities), EntityListHolder.class);
+        assertEquals(3, restored.entities().size());
+        assertNotNull(restored.entities().get(0).getOrNull());
+        assertNull(restored.entities().get(1).getOrNull());
+        assertNotNull(restored.entities().get(2).getOrNull());
+        var projections = new ProjectionListHolder(List.of(
                 Ref.of(new SimpleProjection(1, "First"), 1),
-                Ref.of(SimpleProjection.class, 2));
-        ProjectionRefListHolder holder = new ProjectionRefListHolder(refs);
-        String json = mapper.writeValueAsString(holder);
-        assertNotNull(json);
-
-        ProjectionRefListHolder deserialized = mapper.readValue(json, ProjectionRefListHolder.class);
-        assertEquals(2, deserialized.projections().size());
-        assertNotNull(deserialized.projections().get(0).getOrNull());
-        assertNull(deserialized.projections().get(1).getOrNull());
+                Ref.of(SimpleProjection.class, 2)));
+        var restoredProjections = mapper().readValue(mapper().writeValueAsString(projections), ProjectionListHolder.class);
+        assertEquals(2, restoredProjections.projections().size());
+        assertNotNull(restoredProjections.projections().get(0).getOrNull());
+        assertNull(restoredProjections.projections().get(1).getOrNull());
     }
 
-    public record MultiTypeHolder(
-            @Nullable Ref<SimpleEntity> entity,
-            @Nullable Ref<SimpleProjection> projection) {}
+    @Test
+    void refsInASetAndAMapValueRoundTrip() throws Exception {
+        var set = new EntitySetHolder(Set.of(Ref.of(SimpleEntity.class, 1), Ref.of(SimpleEntity.class, 2)));
+        assertEquals(set, mapper().readValue(mapper().writeValueAsString(set), EntitySetHolder.class));
+        assertEquals(3, mapper().readValue("{\"entities\":[1,2,3]}", EntitySetHolder.class).entities().size());
+        var map = new EntityMapHolder(Map.of("a", Ref.of(SimpleEntity.class, 1), "b", Ref.of(SimpleEntity.class, 2)));
+        assertEquals(map, mapper().readValue(mapper().writeValueAsString(map), EntityMapHolder.class));
+        var read = mapper().readValue("{\"entities\":{\"a\":1,\"b\":2}}", EntityMapHolder.class);
+        assertEquals(1, read.entities().get("a").id());
+        assertEquals(2, read.entities().get("b").id());
+    }
 
     @Test
-    public void multipleRefTypesInSameHolderShouldDeserializeCorrectly() throws Exception {
-        ObjectMapper mapper = new ObjectMapper();
-        mapper.registerModule(new StormModule());
-
-        String json = "{\"entity\":42,\"projection\":7}";
-        MultiTypeHolder holder = mapper.readValue(json, MultiTypeHolder.class);
+    void refsOfDifferentTypesInOneHolderReadEachByTheirOwnType() throws Exception {
+        var holder = mapper().readValue("{\"entity\":42,\"projection\":7}", MultiTypeHolder.class);
         assertNotNull(holder.entity());
         assertEquals(42, holder.entity().id());
         assertNotNull(holder.projection());
         assertEquals(7, holder.projection().id());
+    }
+
+    // The ref factory.
+
+    @Test
+    void anIdReadsThroughTheRefFactoryWhenThereIsOne() throws Exception {
+        var factory = new CountingRefFactory();
+        var holder = mapper(new StormModule(factory)).readValue("{\"entities\":[1,2,3]}", EntityListHolder.class);
+        assertEquals(3, holder.entities().size());
+        assertEquals(3, factory.created);
+        var supplied = new CountingRefFactory();
+        assertEquals(99, mapper(new StormModule(() -> supplied)).readValue("{\"entity\":99}", EntityHolder.class).entity().id());
+        assertEquals(1, supplied.created);
+    }
+
+    @Test
+    void withoutARefFactoryAnIdReadsAsADetachedRef() throws Exception {
+        for (var module : List.of(new StormModule(), new StormModule((RefFactory) null), new StormModule(() -> null))) {
+            var entity = mapper(module).readValue("{\"entity\":7}", EntityHolder.class).entity();
+            assertNotNull(entity);
+            assertEquals(7, entity.id());
+            assertNull(entity.getOrNull());
+        }
+    }
+
+    // A data type without a key: the id is read by its JSON form.
+
+    @Test
+    void anIdOfADataTypeWithoutAKeyReadsByItsJsonForm() throws Exception {
+        assertEquals(42, ((Number) mapper().readValue("{\"data\":42}", NoPkHolder.class).data().id()).intValue());
+        assertEquals("abc", mapper().readValue("{\"data\":\"abc\"}", NoPkHolder.class).data().id());
+        assertEquals(3.14, mapper().readValue("{\"data\":3.14}", NoPkHolder.class).data().id());
+        long large = (long) Integer.MAX_VALUE + 1L;
+        assertEquals(large, mapper().readValue("{\"data\":" + large + "}", NoPkHolder.class).data().id());
+        long negative = (long) Integer.MIN_VALUE - 1L;
+        assertEquals(negative, mapper().readValue("{\"data\":" + negative + "}", NoPkHolder.class).data().id());
+    }
+
+    @Test
+    void idsOfADataTypeWithoutAKeyReadInAList() throws Exception {
+        var holder = mapper().readValue("{\"data\":[1,\"two\",3,null]}", NoPkListHolder.class);
+        assertEquals(4, holder.data().size());
+        assertEquals(1, ((Number) holder.data().get(0).id()).intValue());
+        assertEquals("two", holder.data().get(1).id());
+        assertEquals(3, ((Number) holder.data().get(2).id()).intValue());
+        assertNull(holder.data().get(3));
+    }
+
+    @Test
+    void theIdOfAProjectionWrapperWithoutAKeyTypeReadsByItsJsonForm() throws Exception {
+        assertEquals(42, projectionId("42"));
+        assertEquals(9999999999L, projectionId("9999999999"));
+        assertEquals(3.14, projectionId("3.14"));
+        assertEquals("abc", projectionId("\"abc\""));
+        assertEquals(Map.of("key", "val"), projectionId("{\"key\":\"val\"}"));
+    }
+
+    private static Object projectionId(String idJson) throws Exception {
+        var json = "{\"projection\":{\"@id\":" + idJson + ",\"@projection\":{\"label\":\"Test\"}}}";
+        var holder = mapper().readValue(json, NoPkProjectionHolder.class);
+        assertNotNull(holder.projection());
+        assertTrue(holder.projection().isLoaded());
+        return holder.projection().id();
+    }
+
+    @Test
+    void aProjectionWrapperOfATypeWithoutAKeyReadsItsIdByItsJsonForm() throws Exception {
+        var json = "{\"data\":{\"@id\":3000000000,\"@projection\":{\"id\":5,\"value\":\"test\"}}}";
+        assertEquals(3000000000L, ((Number) mapper().readValue(json, NoPkHolder.class).data().id()).longValue());
+        json = "{\"data\":{\"@id\":\"uuid-value\",\"@projection\":{\"id\":5,\"value\":\"test\"}}}";
+        assertEquals("uuid-value", mapper().readValue(json, NoPkHolder.class).data().id());
+    }
+
+    // Refusals.
+
+    @Test
+    void anObjectWithoutAWrapperFieldOrACompoundKeyIsRefused() {
+        assertThrows(DatabindException.class,
+                () -> mapper().readValue("{\"entity\":{\"unknown\":1}}", EntityHolder.class));
+        // A type without a key has no compound key an object could be.
+        assertThrows(DatabindException.class,
+                () -> mapper().readValue("{\"data\":{\"unknown\":1}}", NoPkHolder.class));
+    }
+
+    @Test
+    void aProjectionWrapperWithoutAnIdIsRefused() {
+        assertThrows(DatabindException.class, () -> mapper().readValue(
+                "{\"projection\":{\"@projection\":{\"id\":5,\"label\":\"Test\"}}}", ProjectionHolder.class));
+        // A null id is no id either, when the value is neither entity nor projection.
+        assertThrows(DatabindException.class, () -> mapper().readValue(
+                "{\"data\":{\"@id\":null,\"@projection\":{\"id\":5,\"value\":\"test\"}}}", NoPkHolder.class));
+    }
+
+    @Test
+    void anEntityWrapperHoldingSomethingElseThanAnEntityIsRefused() {
+        assertThrows(DatabindException.class, () -> mapper().readValue(
+                "{\"data\":{\"@entity\":{\"id\":42,\"value\":\"test\"}}}", NoPkHolder.class));
+    }
+
+    @Test
+    void aTokenThatIsNotAnIdOrAnObjectIsRefused() {
+        assertThrows(DatabindException.class, () -> mapper().readValue("{\"entity\":true}", EntityHolder.class));
+        assertThrows(DatabindException.class, () -> mapper().readValue("{\"entity\":[1,2,3]}", EntityHolder.class));
+        assertThrows(DatabindException.class, () -> mapper().readValue("{\"data\":true}", NoPkHolder.class));
+    }
+
+    @SuppressWarnings("rawtypes")
+    @Test
+    void aRawRefWithoutATargetTypeIsRefused() {
+        assertThrows(DatabindException.class, () -> mapper().readValue("42", Ref.class));
     }
 }

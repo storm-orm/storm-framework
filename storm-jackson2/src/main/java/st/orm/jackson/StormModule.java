@@ -15,12 +15,26 @@
  */
 package st.orm.jackson;
 
-import static st.orm.core.spi.Providers.getORMReflection;
+import static st.orm.core.template.impl.RefJsonSupport.ENTITY_FIELD;
+import static st.orm.core.template.impl.RefJsonSupport.ID_FIELD;
+import static st.orm.core.template.impl.RefJsonSupport.PROJECTION_FIELD;
+import static st.orm.core.template.impl.RefJsonSupport.integralId;
+import static st.orm.core.template.impl.RefJsonSupport.isCompoundKey;
+import static st.orm.core.template.impl.RefJsonSupport.loadedRef;
+import static st.orm.core.template.impl.RefJsonSupport.pkType;
+import static st.orm.core.template.impl.RefJsonSupport.refOf;
 
 import com.fasterxml.jackson.core.JsonGenerator;
 import com.fasterxml.jackson.core.JsonParser;
 import com.fasterxml.jackson.core.JsonToken;
-import com.fasterxml.jackson.databind.*;
+import com.fasterxml.jackson.databind.BeanProperty;
+import com.fasterxml.jackson.databind.DeserializationContext;
+import com.fasterxml.jackson.databind.JavaType;
+import com.fasterxml.jackson.databind.JsonDeserializer;
+import com.fasterxml.jackson.databind.JsonMappingException;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.JsonSerializer;
+import com.fasterxml.jackson.databind.SerializerProvider;
 import com.fasterxml.jackson.databind.deser.ContextualDeserializer;
 import com.fasterxml.jackson.databind.deser.std.StdDeserializer;
 import com.fasterxml.jackson.databind.module.SimpleModule;
@@ -28,18 +42,12 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.fasterxml.jackson.databind.ser.ContextualSerializer;
 import com.fasterxml.jackson.databind.ser.std.StdSerializer;
 import java.io.IOException;
-import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Supplier;
 import org.jspecify.annotations.Nullable;
 import st.orm.Data;
 import st.orm.Entity;
-import st.orm.PK;
-import st.orm.Projection;
 import st.orm.Ref;
-import st.orm.core.spi.ORMReflection;
 import st.orm.core.spi.RefFactory;
-import st.orm.mapping.RecordField;
 
 /**
  * Jackson module for serializing and deserializing Storm ORM Data types.
@@ -65,16 +73,6 @@ import st.orm.mapping.RecordField;
  * <p>Also supports nullable Ref values inside collections, e.g. {@code List<Ref<Foo>>} containing {@code null}.
  */
 public class StormModule extends SimpleModule {
-
-    private static final String ID_FIELD = "@id";
-    private static final String ENTITY_FIELD = "@entity";
-    private static final String PROJECTION_FIELD = "@projection";
-
-    private static final ORMReflection REFLECTION = getORMReflection();
-
-    // ConcurrentHashMap does NOT allow computeIfAbsent mapping functions to return null.
-    private static final Class<?> NO_PK = Void.class;
-    private static final Map<Class<?>, Class<?>> PK_CACHE = new ConcurrentHashMap<>();
 
     /**
      * Creates a StormModule without a RefFactory.
@@ -133,34 +131,7 @@ public class StormModule extends SimpleModule {
     }
 
     /**
-     * Resolves the primary key type for the given target class.
-     *
-     * @param target the entity/data class
-     * @return the PK field type, or null if not found
-     */
-    @Nullable
-    private static Class<?> resolvePkType(Class<?> target) {
-        Class<?> cached = PK_CACHE.computeIfAbsent(target, ignore -> {
-            var type = REFLECTION.getRecordType(target).fields().stream()
-                    .filter(field -> field.isAnnotationPresent(PK.class))
-                    .findFirst()
-                    .map(RecordField::type)
-                    .orElse(null);
-            return type == null ? NO_PK : type;
-        });
-        return cached == NO_PK ? null : cached;
-    }
-
-    /**
-     * Serializer for Ref instances.
-     *
-     * <p>Serialization formats:
-     * <ul>
-     *   <li>Entity (loaded): {@code {"@entity": {...}}}</li>
-     *   <li>Projection (loaded): {@code {"@id": ..., "@projection": {...}}}</li>
-     *   <li>Unloaded: raw id value (e.g., {@code 42} or {@code "abc"}), or the PK record as a plain object for
-     *       compound PKs (e.g., {@code {"vetId":1,"specialtyId":2}})</li>
-     * </ul>
+     * Serializer for Ref instances; the forms are those of {@link st.orm.core.template.impl.RefJsonSupport}.
      */
     private static class RefSerializer extends StdSerializer<Ref<?>> implements ContextualSerializer {
 
@@ -173,61 +144,50 @@ public class StormModule extends SimpleModule {
         }
 
         @Override
-        public JsonSerializer<?> createContextual(SerializerProvider prov, @Nullable BeanProperty property) {
+        public JsonSerializer<?> createContextual(SerializerProvider ctxt, @Nullable BeanProperty property) {
             JavaType base = property != null ? property.getType() : null;
             JavaType refTargetType = resolveRefTargetType(base);
             if (refTargetType == null) {
                 return this;
             }
-            Class<?> targetClass = refTargetType.getRawClass();
-            Class<?> resolvedPkType = resolvePkType(targetClass);
-            return new RefSerializer(resolvedPkType);
+            return new RefSerializer(pkType(refTargetType.getRawClass()));
         }
 
         @Override
-        public void serialize(Ref<?> ref, JsonGenerator gen, SerializerProvider provider) throws IOException {
+        public void serialize(Ref<?> ref, JsonGenerator gen, SerializerProvider ctxt) throws IOException {
             Object loaded = ref.getOrNull();
             if (loaded != null) {
                 // Loaded - serialize as object with @entity or @projection
                 gen.writeStartObject();
                 if (loaded instanceof Entity<?>) {
                     gen.writeFieldName(ENTITY_FIELD);
-                    provider.defaultSerializeValue(loaded, gen);
+                    ctxt.defaultSerializeValue(loaded, gen);
                 } else {
                     // Projection or other Data - include id since it can't be extracted
                     gen.writeFieldName(ID_FIELD);
-                    serializeId(ref.id(), gen, provider);
+                    serializeId(ref.id(), gen, ctxt);
                     gen.writeFieldName(PROJECTION_FIELD);
-                    provider.defaultSerializeValue(loaded, gen);
+                    ctxt.defaultSerializeValue(loaded, gen);
                 }
                 gen.writeEndObject();
             } else {
                 // Unloaded - serialize as raw id value
-                serializeId(ref.id(), gen, provider);
+                serializeId(ref.id(), gen, ctxt);
             }
         }
 
-        private void serializeId(Object id, JsonGenerator gen, SerializerProvider provider) throws IOException {
+        private void serializeId(Object id, JsonGenerator gen, SerializerProvider ctxt) throws IOException {
             if (id != null && pkType != null) {
-                JsonSerializer<Object> serializer = provider.findValueSerializer(pkType);
-                serializer.serialize(id, gen, provider);
+                JsonSerializer<Object> serializer = ctxt.findValueSerializer(pkType);
+                serializer.serialize(id, gen, ctxt);
             } else {
-                provider.defaultSerializeValue(id, gen);
+                ctxt.defaultSerializeValue(id, gen);
             }
         }
     }
 
     /**
-     * Deserializer for Ref instances.
-     *
-     * <p>Handles four input formats:
-     * <ul>
-     *   <li>{@code {"@entity": {...}}} - Entity, uses {@code Ref.of()}</li>
-     *   <li>{@code {"@id": ..., "@projection": {...}}} - Projection with id, uses {@code Ref.of()}</li>
-     *   <li>Raw id value (e.g., {@code 42}) - uses RefFactory if available, otherwise {@code Ref.of()}</li>
-     *   <li>Plain object without {@code @entity}/{@code @projection} (e.g., {@code {"vetId":1,"specialtyId":2}}) -
-     *       compound PK, uses RefFactory if available, otherwise {@code Ref.of()}</li>
-     * </ul>
+     * Deserializer for Ref instances; the forms are those of {@link st.orm.core.template.impl.RefJsonSupport}.
      *
      * <p>Also supports {@code null} values (e.g. nullable elements in {@code List<Ref<T>>}).
      */
@@ -257,7 +217,7 @@ public class StormModule extends SimpleModule {
             JavaType refTargetType = resolveRefTargetType(base);
             Class<?> resolvedPkType = null;
             if (refTargetType != null) {
-                resolvedPkType = resolvePkType(refTargetType.getRawClass());
+                resolvedPkType = pkType(refTargetType.getRawClass());
             }
             return new RefDeserializer(refFactorySupplier, refTargetType, resolvedPkType);
         }
@@ -280,10 +240,8 @@ public class StormModule extends SimpleModule {
             Class<Data> targetClass = (Class<Data>) targetType.getRawClass();
             return switch (parser.currentToken()) {
                 case START_OBJECT -> deserializeObject(parser, context, targetClass);
-                case VALUE_NUMBER_INT, VALUE_NUMBER_FLOAT, VALUE_STRING -> {
-                    Object id = deserializeId(parser, context);
-                    yield createRefFromId(targetClass, id);
-                }
+                case VALUE_NUMBER_INT, VALUE_NUMBER_FLOAT, VALUE_STRING ->
+                        refOf(targetClass, deserializeId(parser, context), refFactorySupplier);
                 default -> throw JsonMappingException.from(
                         parser,
                         "Unexpected token " + parser.currentToken() + " when deserializing Ref"
@@ -294,25 +252,28 @@ public class StormModule extends SimpleModule {
         private Ref<?> deserializeObject(JsonParser parser, DeserializationContext ctx, Class<Data> targetClass)
                 throws IOException {
             ObjectNode node = parser.readValueAsTree();
-            if (node.has(ENTITY_FIELD)) {
-                JsonNode entityNode = node.get(ENTITY_FIELD);
-                Data entity = ctx.readTreeAsValue(entityNode, targetType);
-                return createLoadedRef(parser, entity);
-            } else if (node.has(PROJECTION_FIELD)) {
-                if (!node.has(ID_FIELD)) {
-                    throw JsonMappingException.from(parser, "@projection requires @id field");
+            try {
+                if (node.has(ENTITY_FIELD)) {
+                    JsonNode entityNode = node.get(ENTITY_FIELD);
+                    Data entity = entityNode.isNull() ? null : ctx.readTreeAsValue(entityNode, targetType);
+                    return loadedRef(entity);
+                } else if (node.has(PROJECTION_FIELD)) {
+                    if (!node.has(ID_FIELD)) {
+                        throw JsonMappingException.from(parser, "@projection requires @id field");
+                    }
+                    Object id = deserializeIdFromNode(node.get(ID_FIELD), ctx);
+                    JsonNode projectionNode = node.get(PROJECTION_FIELD);
+                    Data projection = projectionNode.isNull() ? null : ctx.readTreeAsValue(projectionNode, targetType);
+                    return loadedRef(targetClass, projection, id);
+                } else if (pkType != null && isCompoundKey(pkType)) {
+                    // A plain object is the inline record of a compound PK; unloaded refs serialize compound PKs
+                    // this way.
+                    return refOf(targetClass, deserializeIdFromNode(node, ctx), refFactorySupplier);
+                } else {
+                    throw JsonMappingException.from(parser, "Ref object must contain @entity or @projection field");
                 }
-                Object id = deserializeIdFromNode(node.get(ID_FIELD), ctx);
-                JsonNode projectionNode = node.get(PROJECTION_FIELD);
-                Data projection = ctx.readTreeAsValue(projectionNode, targetType);
-                return createLoadedRefWithId(parser, targetClass, projection, id);
-            } else if (pkType != null && REFLECTION.findRecordType(pkType).isPresent()) {
-                // A plain object is the inline record of a compound PK; unloaded refs serialize compound PKs
-                // this way.
-                Object id = deserializeIdFromNode(node, ctx);
-                return createRefFromId(targetClass, id);
-            } else {
-                throw JsonMappingException.from(parser, "Ref object must contain @entity or @projection field");
+            } catch (IllegalArgumentException e) {
+                throw JsonMappingException.from(parser, e.getMessage());
             }
         }
 
@@ -340,59 +301,12 @@ public class StormModule extends SimpleModule {
             }
             // Fallback for unknown PK type.
             return switch (parser.currentToken()) {
-                case VALUE_NUMBER_INT -> {
-                    long value = parser.getLongValue();
-                    yield (value >= Integer.MIN_VALUE && value <= Integer.MAX_VALUE)
-                            ? (int) value
-                            : value;
-                }
+                case VALUE_NUMBER_INT -> integralId(parser.getLongValue());
                 case VALUE_NUMBER_FLOAT -> parser.getDoubleValue();
                 case VALUE_STRING -> parser.getText();
                 default -> throw JsonMappingException.from(parser,
                         "Cannot deserialize id from %s.".formatted(parser.currentToken()));
             };
-        }
-
-        @SuppressWarnings({"rawtypes"})
-        private Ref<?> createLoadedRef(JsonParser parser, Data entity)
-                throws JsonMappingException {
-            if (entity == null) {
-                return null;
-            }
-            if (entity instanceof Entity<?> e) {
-                return Ref.of((Entity) e);
-            }
-            throw JsonMappingException.from(parser, "@entity must deserialize to an Entity");
-        }
-
-        @SuppressWarnings({"rawtypes", "unchecked"})
-        private Ref<?> createLoadedRefWithId(JsonParser parser, Class<Data> targetClass, Data data, Object id)
-                throws JsonMappingException {
-            if (data == null) {
-                return null;
-            }
-            if (data instanceof Entity<?> e) {
-                return Ref.of((Entity) e);
-            }
-            if (data instanceof Projection<?> p) {
-                return Ref.of((Projection) p, id);
-            }
-            if (id != null) {
-                return Ref.of(targetClass, id);
-            }
-            // Should not happen for @projection, since @id is required.
-            throw JsonMappingException.from(parser, "@projection requires a non-null @id");
-        }
-
-        private <T extends Data> Ref<T> createRefFromId(Class<T> targetClass, Object id) {
-            if (id == null) {
-                return null;
-            }
-            RefFactory refFactory = refFactorySupplier != null ? refFactorySupplier.get() : null;
-            if (refFactory != null) {
-                return refFactory.create(targetClass, id);
-            }
-            return Ref.of(targetClass, id);
         }
     }
 }

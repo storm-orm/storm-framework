@@ -210,6 +210,17 @@ internal class RefSerializerTest {
     }
 
     @Test
+    fun `deserialize entity wrapper with null payload throws`() {
+        // A null payload is no entity for a target that is not nullable.
+        shouldThrow<SerializationException> {
+            jsonMapper.decodeFromString<EntityRefHolder>("""{"ref":{"@entity":null}}""")
+        }
+        shouldThrow<SerializationException> {
+            jsonMapper.decodeFromString<ProjectionRefHolder>("""{"ref":{"@id":1,"@projection":null}}""")
+        }
+    }
+
+    @Test
     fun `deserialize projection with null id throws`() {
         val ex = shouldThrow<SerializationException> {
             jsonMapper.decodeFromString<ProjectionRefHolder>(

@@ -71,6 +71,47 @@
                     </argLine>
                 </configuration>
             </plugin>
+            <plugin>
+                <!-- Kotlin test sources only: the interop suite runs the converter with storm-kotlin's reflection
+                     provider active, the configuration every Kotlin application has. The Java test sources are
+                     listed so kotlinc resolves classes shared with the Java suite, such as IntegrationConfig. -->
+                <groupId>org.jetbrains.kotlin</groupId>
+                <artifactId>kotlin-maven-plugin</artifactId>
+                <version>${kotlin.version}</version>
+                <configuration>
+                    <jvmTarget>21</jvmTarget>
+                </configuration>
+                <executions>
+                    <execution>
+                        <id>test-compile</id>
+                        <phase>process-test-sources</phase>
+                        <goals><goal>test-compile</goal></goals>
+                        <configuration>
+                            <sourceDirs>
+                                <sourceDir>${project.basedir}/src/test/java</sourceDir>
+                                <sourceDir>${project.basedir}/src/test/kotlin</sourceDir>
+                            </sourceDirs>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+            <plugin>
+                <groupId>org.codehaus.mojo</groupId>
+                <artifactId>build-helper-maven-plugin</artifactId>
+                <version>3.6.0</version>
+                <executions>
+                    <execution>
+                        <id>add-kotlin-test</id>
+                        <phase>generate-test-sources</phase>
+                        <goals><goal>add-test-source</goal></goals>
+                        <configuration>
+                            <sources>
+                                <source>src/test/kotlin</source>
+                            </sources>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
         </plugins>
     </build>
     <dependencies>
@@ -111,6 +152,21 @@
             <groupId>st.orm</groupId>
             <artifactId>storm-test</artifactId>
             <version>${project.version}</version>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <!-- Activates the Kotlin reflection provider for the interop test suite. -->
+            <groupId>st.orm</groupId>
+            <artifactId>storm-kotlin</artifactId>
+            <version>${project.version}</version>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <!-- Kotlin applications carry this module; findAndAddModules picks it up, giving Jackson the
+                 creators of Kotlin data classes. -->
+            <groupId>tools.jackson.module</groupId>
+            <artifactId>jackson-module-kotlin</artifactId>
+            <version>3.0.4</version>
             <scope>test</scope>
         </dependency>
         <dependency>

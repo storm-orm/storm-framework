@@ -25,12 +25,10 @@ import kotlinx.serialization.serializer
 import st.orm.Data
 import st.orm.Json
 import st.orm.Ref
-import st.orm.SqlTemplateException
-import st.orm.core.spi.*
+import st.orm.core.template.impl.JsonConverterSupport
 import st.orm.mapping.RecordField
 import st.orm.serialization.RefSerializer
 import st.orm.serialization.StormSerializersModule
-import st.orm.spi.*
 import java.util.concurrent.ConcurrentHashMap
 import kotlin.reflect.KClass
 import kotlin.reflect.KType
@@ -38,20 +36,17 @@ import kotlin.reflect.full.createInstance
 import kotlinx.serialization.json.Json as JsonMapper
 
 internal class JsonORMConverterImpl(
-    private val field: RecordField,
+    field: RecordField,
     kType: KType,
     json: Json,
-) : ORMConverter {
+) : JsonConverterSupport(field) {
 
     companion object {
-        private val REFLECTION: ORMReflection = Providers.getORMReflection()
-
         // The mapper depends only on the Json flags, so the cache holds at most one entry per flag combination.
         private val JSON_CACHE = ConcurrentHashMap<Json, JsonMapper>()
-        private val REF_FACTORY = ThreadLocal<RefFactory?>()
 
         private fun buildJson(json: Json): JsonMapper = JsonMapper {
-            serializersModule = StormSerializersModule { REF_FACTORY.get() }
+            serializersModule = StormSerializersModule { currentRefFactory() }
             ignoreUnknownKeys = !json.failOnUnknown
             coerceInputValues = !json.failOnMissing
             explicitNulls = true
@@ -144,7 +139,7 @@ internal class JsonORMConverterImpl(
                     // Lazy - only called when serializing/deserializing loaded refs.
                     json.serializersModule.serializer(targetType) as KSerializer<Data>
                 },
-                refFactoryProvider = { REF_FACTORY.get() },
+                refFactoryProvider = { currentRefFactory() },
             ) as KSerializer<Any?>
         }
     }
@@ -165,35 +160,7 @@ internal class JsonORMConverterImpl(
         }
     }
 
-    override fun getParameterCount(): Int = 1
-    override fun getParameterTypes(): List<Class<*>> = listOf(String::class.java)
+    override fun write(value: Any): String = json.encodeToString(serializer, value)
 
-    override fun getColumns(nameResolver: ORMConverter.NameResolver): List<Name> = listOf(nameResolver.getName(field))
-
-    override fun toDatabase(record: Any?): List<Any?> = try {
-        val v = if (record == null) null else REFLECTION.invoke(field, record)
-        listOf(v?.let { JsonString(this@JsonORMConverterImpl.json.encodeToString(serializer, it)) })
-    } catch (t: Throwable) {
-        throw SqlTemplateException(t)
-    }
-
-    override fun fromDatabase(values: Array<Any?>, refFactory: RefFactory): Any? {
-        val raw = values[0] as? String? ?: return null
-        // A custom serializer may issue a query, nesting another fromDatabase call on this thread. The previous
-        // factory is therefore restored rather than removed, so the remaining fields of the outer value still
-        // deserialize with the outer factory and produce attached refs.
-        val outerRefFactory = REF_FACTORY.get()
-        REF_FACTORY.set(refFactory)
-        return try {
-            this@JsonORMConverterImpl.json.decodeFromString(serializer, raw)
-        } catch (e: SerializationException) {
-            throw SqlTemplateException(e)
-        } finally {
-            if (outerRefFactory == null) {
-                REF_FACTORY.remove()
-            } else {
-                REF_FACTORY.set(outerRefFactory)
-            }
-        }
-    }
+    override fun read(json: String): Any? = this.json.decodeFromString(serializer, json)
 }

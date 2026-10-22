@@ -3,6 +3,7 @@ package st.orm.jackson;
 import static java.util.Optional.ofNullable;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static st.orm.core.template.ORMTemplate.of;
+import static tools.jackson.databind.cfg.DateTimeFeature.WRITE_DATES_AS_TIMESTAMPS;
 
 import java.time.LocalDate;
 import javax.sql.DataSource;
@@ -79,11 +80,11 @@ public class JsonIntegrationTest {
     @Test
     public void entityWithFkRelationshipsShouldSerializeNestedEntitiesInline() throws Exception {
         // Pet id=1 is "Leo", a cat owned by Betty Davis. The entity graph includes FK-joined
-        // PetType and Owner entities. When serialized with Jackson (JavaTimeModule is built into Jackson 3),
+        // PetType and Owner entities. When serialized with Jackson, dates as ISO strings,
         // all nested entities should appear inline with their full field values, and the result should round-trip.
         var orm = of(dataSource);
         var pet = orm.entity(Pet.class).getById(1);
-        var mapper = JsonMapper.builder().findAndAddModules().build();
+        var mapper = JsonMapper.builder().findAndAddModules().disable(WRITE_DATES_AS_TIMESTAMPS).build();
         var json = mapper.writeValueAsString(pet);
         assertEquals("""
                 {"id":1,"name":"Leo","birthDate":"2020-09-07","petType":{"id":1,"name":"cat"},"owner":{"id":1,"firstName":"Betty","lastName":"Davis","address":{"address":"638 Cardinal Ave.","city":"Sun Prairie"},"telephone":"6085551749"}}""", json);
@@ -109,6 +110,7 @@ public class JsonIntegrationTest {
         var pet = orm.entity(PetWithRefOwner.class).getById(1);
         var mapper = JsonMapper.builder()
                 .findAndAddModules()
+                .disable(WRITE_DATES_AS_TIMESTAMPS)
                 .addModule(new StormModule())
                 .build();
         var json = mapper.writeValueAsString(pet);
@@ -128,6 +130,7 @@ public class JsonIntegrationTest {
         var owner = ofNullable(pet.owner()).map(Ref::fetch).orElseThrow();
         var mapper = JsonMapper.builder()
                 .findAndAddModules()
+                .disable(WRITE_DATES_AS_TIMESTAMPS)
                 .addModule(new StormModule())
                 .build();
         var json = mapper.writeValueAsString(pet);
@@ -165,6 +168,7 @@ public class JsonIntegrationTest {
         var pet = orm.entity(PetWithProjectionRefOwner.class).getById(1);
         var mapper = JsonMapper.builder()
                 .findAndAddModules()
+                .disable(WRITE_DATES_AS_TIMESTAMPS)
                 .addModule(new StormModule())
                 .build();
         var json = mapper.writeValueAsString(pet);
@@ -184,6 +188,7 @@ public class JsonIntegrationTest {
         var owner = ofNullable(pet.owner()).map(Ref::fetch).orElseThrow();
         var mapper = JsonMapper.builder()
                 .findAndAddModules()
+                .disable(WRITE_DATES_AS_TIMESTAMPS)
                 .addModule(new StormModule())
                 .build();
         var json = mapper.writeValueAsString(pet);
