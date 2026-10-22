@@ -219,6 +219,17 @@ owners.update {
 
 Don't create a second, partial entity mapping a table that already has one just to write a few of its columns: rows the transaction did not read take the `update()` builder, and an entity it did read takes `update(entity)`, with `@DynamicUpdate(FIELD)` on the entity (/storm-entity-kotlin) to write only the changed columns.
 
+A change computed from a column's current value, such as a counter, a stock level or a balance, is an `update()` with the computation in `set`, never a read, a change in application code and `update(entity)`:
+
+```kotlin
+products.update {
+    set(Product_.stock) { "${Product_.stock} - 1" }
+    where(Product_.id eq productId)
+}.executeUpdate()
+```
+
+One statement that reads nothing first cannot lose a concurrent writer's change and never needs a retry, where the read-and-write-back loses one of two concurrent changes, and `@Version` would only turn the loss into an exception to retry. `@Version` is for the other shape of lost update, a record edited across two requests (/storm-entity-kotlin).
+
 ## CRUD Operations
 
 ```kotlin
@@ -459,8 +470,11 @@ entity. Under `INSTANCE`, substituting a different instance with the same id mar
 dirty and costs a redundant write of the same value. `Ref<T>` fields compare by the id the ref
 carries.
 
-Dirty checking decides what to write; it does not detect concurrent writers. Lost-update protection
-is `@Version` (optimistic locking), unchanged by any of the above.
+Dirty checking decides what to write; it does not detect concurrent writers. `FIELD` narrows what
+a stale write overwrites but does not prevent it. Lost-update protection is `@Version` (optimistic
+locking) for a record edited across two requests, and a computation in the database (the `update()`
+builder, above) for a change made from a column's current value; neither changes with any of the
+above.
 
 Bulk mutations bypass dirty checking, and Storm invalidates observed state so later comparisons
 stay truthful: a mutation with a known entity type (`update()` and `delete()` builders, template

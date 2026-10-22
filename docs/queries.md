@@ -1264,7 +1264,7 @@ What `set` takes:
 - **A value** typed by the field. A nullable field takes `null` (Java: `setNull(field)`); a field that is not nullable refuses it.
 - **A foreign key** takes the referenced entity or a `Ref` to it, and writes its key.
 - **An inline record** takes a record of its type and writes each of its columns; a field inside it, such as `Owner_.address.city`, writes its own.
-- **An expression**, a template computing the value of a single column from the row.
+- **An expression**, a template computing the value of a single column from the row. A change computed from the column's current value, such as a stock level, a balance or a counter, belongs here: one statement that reads nothing first cannot lose a concurrent writer's change, where a read, a change in code and `update(entity)` can. See [Choosing the Remedy for a Lost Update](entities.md#lost-updates).
 
 `set` refuses, with a message naming the field: the primary key and each part of a compound key, a field declared `@Persist(updatable = false)`, the `@Version` field, a path into a related table such as `Owner_.address.city.name`, and a field set twice. An UPDATE without any `set` is refused when it runs.
 
