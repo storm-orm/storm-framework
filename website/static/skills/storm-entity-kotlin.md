@@ -154,7 +154,7 @@ Generation rules:
 
 11. Enums: stored by name (string) by default. `@DbEnum(ORDINAL)` for integer storage (import `st.orm.EnumType.ORDINAL` — the `EnumType` constants are `NAME` and `ORDINAL`).
 
-12. Optimistic locking: `@Version val version: Int`.
+12. Optimistic locking: `@Version val version: Int` on an entity users edit through a form or a full-object update, read in one request and written back in another. The version travels to the client with the record and comes back with the edit, so a stale write fails with `OptimisticLockException` instead of overwriting the other edit. Never add `@Version` to an entity no one edits concurrently, such as reference data or rows a single process owns. A change computed from a column's current value, such as a counter, a stock level or a balance, is not a case for `@Version`: it is an `update()` builder statement with the computation in `set` (see the repository skill).
 
 12b. Database-managed columns: annotate columns the database computes or maintains (e.g. `DEFAULT CURRENT_TIMESTAMP`, `ON UPDATE` timestamps, computed values) with `@Persist(insertable = false, updatable = false)` and give the field a default value so entity construction doesn't require it. Storm then never writes the column and always reads it back:
    ```kotlin

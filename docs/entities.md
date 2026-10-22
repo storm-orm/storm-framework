@@ -589,6 +589,66 @@ record Visit(@PK Integer id,
 </TabItem>
 </Tabs>
 
+### Choosing the Remedy for a Lost Update {#lost-updates}
+
+A lost update needs no bug in any single statement: two writers read the same row, and the one that writes last overwrites the other's change without notice. A whole-entity update overwrites the columns the writer never touched as well. Two shapes cause nearly all of them, and each has its own remedy.
+
+**A change computed from the old value**, such as a stock level, a balance or a counter, read and written back in one transaction. Compute the change in the database instead, in one statement that reads nothing first: the [`update()` builder](queries.md#updating-rows-by-condition) with the computation in `set`. It cannot lose a concurrent change and never needs a retry. `@Version` would turn every conflict on a hot row into an exception to retry.
+
+<Tabs groupId="language">
+<TabItem value="kotlin" label="Kotlin" default>
+
+```kotlin
+// Not: read the product, subtract one in code, update(product).
+products.update {
+    set(Product_.stock) { "${Product_.stock} - 1" }
+    where(Product_.id eq productId)
+}.executeUpdate()
+```
+
+</TabItem>
+<TabItem value="java" label="Java">
+
+```java
+// Not: read the product, subtract one in code, update(product).
+products.update()
+    .set(Product_.stock, RAW."\{Product_.stock} - 1")
+    .where(Product_.id, EQUALS, productId)
+    .executeUpdate();
+```
+
+</TabItem>
+</Tabs>
+
+**An edited record**, read in one request and written back in another, such as an edit form or an endpoint that takes the full object. No transaction spans the two, so no isolation level and no lock helps. `@Version` does: the version travels to the client with the record and comes back with the edit, so the later of two writes fails with an `OptimisticLockException` instead of overwriting the earlier one. See [Error Handling](error-handling.md) for how to respond to it.
+
+<Tabs groupId="language">
+<TabItem value="kotlin" label="Kotlin" default>
+
+```kotlin
+// GET: the version leaves with the record.
+val owner = owners.getById(ownerId)
+
+// PUT: the version comes back with the edit, and a stale one fails.
+owners.update(owner.copy(lastName = form.lastName, version = form.version))
+```
+
+</TabItem>
+<TabItem value="java" label="Java">
+
+```java
+// GET: the version leaves with the record.
+Owner owner = owners.getById(ownerId);
+
+// PUT: the version comes back with the edit, and a stale one fails.
+owners.update(new Owner(owner.id(), owner.firstName(), form.lastName(), form.version()));
+```
+
+</TabItem>
+</Tabs>
+
+[Dirty checking](dirty-checking.md) and `@DynamicUpdate(FIELD)` narrow what a stale write overwrites, to the columns the writer changed, but do not prevent it. An entity no one edits concurrently, such as reference data or rows a single process owns, needs no `@Version`.
+
 ---
 
 ## Non-Updatable Fields

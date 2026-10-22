@@ -569,6 +569,8 @@ orm update user.copy(name = "New Name")
 // Throws OptimisticLockException if version changed since read
 ```
 
+`FIELD` mode narrows what a stale write overwrites, to the columns the writer changed, but does not prevent it. Which remedy a lost update takes depends on its shape: `@Version` for a record edited across two requests, a computation in the database for a change made from a column's current value. See [Choosing the Remedy for a Lost Update](entities.md#lost-updates).
+
 ### 2. Raw SQL Mutations Clear All Observed State
 
 Storm tracks which entity types are affected by each mutation so it can selectively invalidate observed state. For template-based updates (using `orm update entity`), Storm knows the entity type and only clears observed state of that type. However, when you execute raw SQL mutations without entity type information, Storm cannot determine which entities may have been affected. Rather than risk stale comparisons that could silently skip a necessary UPDATE, Storm clears all observed state in the current transaction:
@@ -672,19 +674,20 @@ data class AuditEntry(       // Keep ENTITY mode
 ) : Entity<Int>
 ```
 
-### 4. Always Use @Version for Concurrency Control
+### 4. Use @Version Where Records Are Edited Concurrently
 
 Dirty checking answers "what changed?" but not "did someone else change this?"
 
 ```kotlin
-data class Account(
+data class Owner(
     @PK val id: Int = 0,
-    @Version val version: Int = 0,  // Always include for concurrent access
-    val balance: BigDecimal
+    val firstName: String,
+    val lastName: String,
+    @Version val version: Int = 0  // Edited through a form: the version travels to the client and back
 ) : Entity<Int>
 ```
 
-Without `@Version`, concurrent updates can silently overwrite each other (lost update problem).
+Without `@Version`, two edits of the same record silently overwrite each other. A change computed from a column's current value, such as a balance or a stock level, takes the other remedy, a computation in the database; an entity no one edits concurrently needs neither. See [Choosing the Remedy for a Lost Update](entities.md#lost-updates).
 
 ### 5. Match Mode to Workload
 
