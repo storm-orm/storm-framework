@@ -5,7 +5,7 @@ import TabItem from '@theme/TabItem';
 
 Statement advice spots the common pitfalls of data access and shows them where they occur, based on what the application actually does: the statements it runs and how long they take, the entities it reads, what a unit of work repeats, and the indexes the database reports. Advice is only worth reading when it is worth acting on, and only worth having when it does not slow the application down. Storm decides advice once per statement shape, when it builds the statement, and makes the checks that need evidence only for an execution that was already slow, so advice comes at no measurable cost. The advice it gives is:
 
-- **Relevant.** Advice rests on what Storm can prove: the shape of a statement, the entity model, the indexes the database reports, or what a unit of work did. Where the cost depends on data Storm cannot see, such as how many rows a table holds, the advice waits for a slow execution as evidence.
+- **Relevant.** Advice rests on evidence Storm has: the shape of a statement, the entity model, the indexes the database reports, or what a unit of work did. Where the cost depends on data Storm cannot see, such as how many rows a table holds, the advice waits for a slow execution as evidence.
 - **Not repeated.** The advice log reports a piece of advice once by default, not at every execution, and design advice once per entity. Advice you have accepted stays quiet where you accepted it.
 - **Informative.** Every line says what the statement costs, what to use instead, and links to a section on this page that explains the trade-off.
 - **Quiet by default.** Only correctness advice is reported everywhere. The advice log reports design and performance advice while developing, where the code is still changing; in production it reaches you only on the line of a slow statement, once you set a slow threshold, unless you ask for more.
@@ -106,11 +106,11 @@ To accept a piece of advice everywhere, set its logger to `OFF`, such as `st.orm
 
 Some of the design is knowable from the model alone. An entity whose read [exceeds the design budget](#entity-budget) does so however the application uses it: its graph has run away, and every read pays for it. In development, Storm checks every entity against the budget, once, and the advice log reports the ones past it.
 
-The rest only shows in real use. Whether a `Clinic` on every `Visit` is worth its width depends on how the application reads visits, which no check of the model can know. Real use answers it both ways: a read that is [slow and wide](#wide-entity-read) says what a `Ref` would save, and a `Ref` that every unit of work [fetches anyway](#repeated-fetch) says it should be an inline entity. A wide graph that reads fast is never advised, and an entity within the budget is never advised in advance.
+The rest only shows in real use. Whether a `Clinic` on every `Visit` is worth its width depends on how the application reads visits, which no check of the model can tell. Real use answers it both ways: a read that is [slow and wide](#wide-entity-read) says what a `Ref` would save, and a `Ref` that every unit of work [fetches anyway](#repeated-fetch) says it should be an inline entity. A wide graph that reads fast is never advised, and an entity within the budget is never advised in advance.
 
 Each piece of advice links to its section on this page. The links stay valid for as long as Storm gives the advice, so a log line written today still leads here after the rest of the documentation has moved on.
 
-Most advice rests on what the statement itself proves, whatever indexes exist. Advice on a [missing index](#missing-index) or an [unindexed foreign key](#unindexed-foreign-key) rests on the indexes and foreign keys the database reports, which Storm knows once the schema is [loaded](#loading-the-schema). A slow statement without advice is slow for a reason neither shows: its plan, its parameters, or the load on the database. Advice is decided when Storm builds the statement, and the index check when an execution is slow, so it costs an execution nothing while the advice log is off.
+Most advice rests on the statement itself, whatever indexes exist. Advice on a [missing index](#missing-index) or an [unindexed foreign key](#unindexed-foreign-key) rests on the indexes and foreign keys the database reports, read when the schema is [loaded](#loading-the-schema). A slow statement without advice is slow for a reason neither shows: its plan, its parameters, or the load on the database. Advice is decided when Storm builds the statement, and the index check when an execution is slow, so it costs an execution nothing while the advice log is off.
 
 ### Loading the schema
 
@@ -119,7 +119,7 @@ Loading the schema is optional. Storm works the same without it; what it adds is
 - **Schema validation loads it.** Spring Boot and Ktor validate the schema at startup by default, and validation loads the schema as it reads it, so most applications have it loaded without doing anything.
 - **Load without validating.** `storm.validation.schema-mode: load` in Spring Boot, or `schemaValidation = "load"` in Ktor, loads the schema at startup without validating it. Elsewhere, call `orm.loadSchema()`.
 - **Each load reads anew.** A load or validation replaces what an earlier one kept for the same schemas. After a migration that changed the schema while the application runs, such as one that added an index, call `loadSchema()` again to make the change known.
-- **Nothing is read while statements run.** The loaded schema is a snapshot; a table created after the load is unknown to it, and Storm gives no advice on a table it does not know.
+- **Nothing is read while statements run.** The loaded schema is a snapshot; a table created after the load is not in it, and a table that is not in the loaded schema gets no advice.
 
 ## A search of short words alone {#unindexed-search}
 
@@ -174,7 +174,7 @@ The advice is given for a `distinct` select of the query's own table over an inn
 
 Category: performance, reported by the slow statement log only, and only once the schema is [loaded](#loading-the-schema).
 
-Storm knows which columns a statement filters and sorts by, where it builds the condition: a `where` on a field, the foreign key a [semi-join or anti-join](queries.md#filtering-by-related-rows) correlates on, and the order of a result it limits. When an execution is slow, it checks those columns against the indexes the database reported when the schema was loaded. A table none of whose indexes starts with any of them is read in full, and the advice names an index that would serve the statement: the columns compared for equality first, then a column compared by range, or the column a limited result is sorted by. For a limited result sorted by a column no index starts with, the database sorts every row before it returns the first ones; an index on the column reads the rows in order and stops at the limit.
+Storm records which columns a statement filters and sorts by, where it builds the condition: a `where` on a field, the foreign key a [semi-join or anti-join](queries.md#filtering-by-related-rows) correlates on, and the order of a result it limits. When an execution is slow, it checks those columns against the indexes the database reported when the schema was loaded. A table none of whose indexes starts with any of them is read in full, and the advice names an index that would serve the statement: the columns compared for equality first, then a column compared by range, or the column a limited result is sorted by. For a limited result sorted by a column no index starts with, the database sorts every row before it returns the first ones; an index on the column reads the rows in order and stops at the limit.
 
 Without row counts an index cannot be judged worth its cost in advance: a small table is read in full faster than through an index, and a condition on a column with few distinct values, such as a status, selects too many rows for one to help. A slow execution is the evidence that the read costs too much, so the advice waits for it. Check the statement's plan before adding the index.
 
@@ -182,7 +182,7 @@ Storm stays quiet where it cannot tell:
 
 - **A part of the statement it does not build**, such as a raw template fragment, names no columns to check.
 - **An index of any kind counts for its column.** A full-text or other special index on a column is taken to serve it, whether or not it serves the comparison. An index on an expression, such as `lower(email)`, serves only a statement that compares the same expression, never the bare column, so it counts for no column.
-- **A table the loaded schema does not know**, such as one created after the load, is not advised.
+- **A table the loaded schema does not hold**, such as one created after the load, is not advised.
 - **One served column is enough.** A statement whose condition an index serves on any one of its columns has a way to avoid reading the table in full, even when the index is not the best one.
 
 ## An unindexed foreign key behind a delete {#unindexed-foreign-key}
@@ -197,9 +197,9 @@ When a delete is slow, Storm looks up the foreign keys the loaded schema lists a
 
 Storm stays quiet where it cannot tell:
 
-- **A table the loaded schema does not know**, or whose foreign keys or indexes it could not read, is not advised.
+- **A table the loaded schema does not hold**, or whose foreign keys or indexes it could not read, is not advised.
 - **A joined inheritance hierarchy** deletes from several tables, which its type does not name one by one, so its deletes are not advised.
-- **A delete written as SQL text** names no entity, so Storm does not know the table it deletes from.
+- **A delete written as SQL text** names no entity, so the table it deletes from is not resolved.
 
 ## A transaction that holds its connection idle {#idle-transaction}
 
@@ -207,7 +207,7 @@ Storm stays quiet where it cannot tell:
 
 Category: performance, reported by the slow statement log only, against a threshold of its own: a transaction may hold its connection for one second beyond what its statements spent on it, and `storm.sql_log.slow.transaction` (Spring Boot `storm.sql-log.slow.transaction`, Ktor `sqlLogSlowTransaction`) retunes that, with `0` stopping the watch.
 
-A transaction that calls another service, sends mail or renders a document between a write and its commit keeps its connection out of the pool for the whole of that work, and the row locks of its writes with it. Every statement in it is fast, so neither the statement log nor a slow statement line shows it; under load the pool runs dry and other transactions queue on the locks. Storm knows both halves of the time: when a transaction it runs or joins took its connection and when it returned it, and the time each statement spent on it. The difference is time the connection was held for nothing, and a transaction whose difference reaches the threshold is reported when it completes, with the call site that began it, how many statements it ran and whether they wrote. See [A Transaction That Holds Its Connection](sql-logging.md#a-transaction-that-holds-its-connection).
+A transaction that calls another service, sends mail or renders a document between a write and its commit keeps its connection out of the pool for the whole of that work, and the row locks of its writes with it. Every statement in it is fast, so neither the statement log nor a slow statement line shows it; under load the pool runs dry and other transactions queue on the locks. Storm times both halves: when a transaction it runs or joins takes its connection and when it returns it, and what each statement spent on it. The difference is time the connection was held for nothing, and a transaction whose difference reaches the threshold is reported when it completes, with the call site that began it, how many statements it ran and whether they wrote. See [A Transaction That Holds Its Connection](sql-logging.md#a-transaction-that-holds-its-connection).
 
 Move the work out of the transaction: before it, where the work decides what to write, or after it commits, through an `onCommit` callback or a row the transaction writes and a worker acts on. Where the work has to stay inside, such as a batch job that holds its transaction by design, accept the advice on the method that runs the transaction with `@AcceptAdvice("idle-transaction")`, and the transaction is not reported there.
 
