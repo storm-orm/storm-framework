@@ -890,4 +890,51 @@ public interface SqlDialect {
         return 32_767;
     }
 
+    /**
+     * Returns the maximum number of elements an {@code IN} list may hold.
+     *
+     * <p>A padded {@code IN} list never exceeds it. The default is no limit beyond {@link #maxBindParameters()}; a
+     * database that limits the list itself, as Oracle does at 1,000 elements, overrides it.</p>
+     *
+     * @return the maximum number of elements per list.
+     * @since 1.16
+     */
+    default int maxInListElements() {
+        return Integer.MAX_VALUE;
+    }
+
+    /**
+     * Returns the name of the array element type the dialect binds values of the given Java type as, when an
+     * {@code IN} list binds as one array parameter, or {@code null} when the dialect binds no array of the type.
+     *
+     * <p>A dialect that binds arrays names the type {@link java.sql.Connection#createArrayOf(String, Object[])}
+     * takes for the values, such as {@code int4} for an {@link Integer}. An enum value is offered as a
+     * {@link String}, its name. The default binds no arrays, so every {@code IN} list renders with a placeholder per
+     * value.</p>
+     *
+     * @param type the Java type of the values; never a primitive.
+     * @return the element type name, or {@code null}.
+     * @since 1.16
+     */
+    default @Nullable String arrayElementType(Class<?> type) {
+        return null;
+    }
+
+    /**
+     * Renders the membership of a column's value in an array parameter: {@code column = ANY(?)}, or
+     * {@code column <> ALL(?)} for the negation. Called only where {@link #arrayElementType(Class)} named a type for
+     * the values.
+     *
+     * @param column the column.
+     * @param placeholder the placeholder of the array parameter.
+     * @param negated whether the list is a {@code NOT IN} list.
+     * @return the rendered comparison.
+     * @since 1.16
+     */
+    default String arrayMembership(String column, String placeholder, boolean negated) {
+        return negated
+                ? "%s <> ALL(%s)".formatted(column, placeholder)
+                : "%s = ANY(%s)".formatted(column, placeholder);
+    }
+
 }

@@ -326,6 +326,14 @@ public interface SqlTemplate extends TemplateDecorator {
     SqlTemplate withConfig(StormConfig config);
 
     /**
+     * Returns the configuration the template renders its statements with.
+     *
+     * @return the configuration.
+     * @since 1.16
+     */
+    StormConfig config();
+
+    /**
      * Processes the specified {@code template} and returns the resulting SQL and parameters.
      *
      * @param template the string template to process.

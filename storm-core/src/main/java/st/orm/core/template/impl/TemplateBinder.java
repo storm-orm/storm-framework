@@ -107,6 +107,15 @@ interface TemplateBinder {
     void bindParameter(String name, @Nullable Object value);
 
     /**
+     * Notes that an {@code IN} list rendered with a placeholder per value, in the default mode, so the statement's
+     * shape is one the database sees as a statement per length.
+     *
+     * @param length the number of values the list rendered with.
+     * @since 1.16
+     */
+    void inListRendered(int length);
+
+    /**
      * Binds a nested template using attached binding semantics.
      *
      * <p>Attached binding consumes bind hints because the nested template contributed hints during compilation.</p>

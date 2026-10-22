@@ -342,4 +342,16 @@ public class OracleSqlDialect extends DefaultSqlDialect {
     public String optimizerHint(List<String> hints) {
         return "/*+ %s */".formatted(String.join(" ", hints));
     }
+
+    /**
+     * Oracle refuses an {@code IN} list of more than 1,000 elements ({@code ORA-01795}) before version 23, so a
+     * padded list stays within it.
+     *
+     * @return {@code 1000}.
+     * @since 1.16
+     */
+    @Override
+    public int maxInListElements() {
+        return 1_000;
+    }
 }

@@ -74,6 +74,7 @@ final class QueryModelImpl implements QueryModel {
     private static final ORMReflection REFLECTION = Providers.getORMReflection();
 
     private final SqlTemplate template;
+    private final InListShape.Mode inListMode;
     private final ModelBuilder modelBuilder;
     private final AliasedTable table;
     private final TableMapper tableMapper;
@@ -98,6 +99,7 @@ final class QueryModelImpl implements QueryModel {
             TableMapper tableMapper,
             AliasMapper aliasMapper) throws SqlTemplateException {
         this.template = template;
+        this.inListMode = InListShape.Mode.of(template.config());
         this.modelBuilder = modelBuilder;
         this.table = table;
         this.tableMapper = tableMapper;
@@ -387,19 +389,24 @@ final class QueryModelImpl implements QueryModel {
         // navigated from. Keep it so the column resolves against the joined occurrence rather than the root one.
         String crossingPath = crossesReference(metamodel) ? metamodel.path() : null;
         List<SequencedMap<String, Object>> multiValues = new ArrayList<>();
-        List<String> placeholders = new ArrayList<>();
+        List<Object> values = new ArrayList<>();
         String column = null;
         for (var o : getObjectIterable(object)) {
             //noinspection DuplicatedCode
             SequencedMap<String, Object> valueMap = new LinkedHashMap<>();
-            var derivedObject = switch (o) {
-                case Ref<?> ref -> ref.id();
-                case Data data -> data;
-                case Object it -> it;
-            };
-            //noinspection unchecked
-            model.forEachValue((Metamodel<Data, ?>) metamodel, derivedObject,
-                    (k, v) -> valueMap.put(toFullyQualifiedColumn(k, crossingPath), v));
+            if (o == null) {
+                // A NULL among the values of a list binds as NULL, which matches no row, as it does in SQL.
+                valueMap.put(toFullyQualifiedColumn(model.getSingleColumn(metamodel), crossingPath), null);
+            } else {
+                var derivedObject = switch (o) {
+                    case Ref<?> ref -> ref.id();
+                    case Data data -> data;
+                    case Object it -> it;
+                };
+                //noinspection unchecked
+                model.forEachValue((Metamodel<Data, ?>) metamodel, derivedObject,
+                        (k, v) -> valueMap.put(toFullyQualifiedColumn(k, crossingPath), v));
+            }
             if (compiler.isVersionAware()) {
                 if (o instanceof Data data) {
                     var versionColumn = model.declaredColumns().stream()
@@ -418,7 +425,7 @@ final class QueryModelImpl implements QueryModel {
                 if (column != null && !column.equals(k)) {
                     throw new SqlTemplateException("Multiple columns specified by WHERE clause argument: %s and %s.".formatted(column, k));
                 }
-                placeholders.add(FunctionCalls.render(path, compiler.mapParameter(TextMatch.bindValue(operator, entry.getValue(), metamodel, compiler.dialect()))));
+                values.add(TextMatch.bindValue(operator, entry.getValue(), metamodel, compiler.dialect()));
                 column = k;
             } else {
                 TextMatch.requireSingleColumn(operator, metamodel);
@@ -445,6 +452,25 @@ final class QueryModelImpl implements QueryModel {
             }
         }
         try {
+            // An IN list keeps one shape whatever its length: bound as one array, or padded to a power of two. A
+            // template that inlines its parameters renders the values as literals and keeps every one of them.
+            if (InListShape.applies(operator) && !template.inlineParameters()) {
+                if (!multiValues.isEmpty()) {
+                    multiValues = InListShape.padRows(inListMode, multiValues, multiValues.getFirst().size(),
+                            compiler.dialect());
+                } else {
+                    var shape = InListShape.shape(inListMode, values, path != metamodel, compiler.dialect());
+                    if (shape.array() != null) {
+                        return compiler.dialect().arrayMembership(column, compiler.mapParameter(shape.array()),
+                                operator == Operator.NOT_IN);
+                    }
+                    values = shape.values();
+                }
+            }
+            List<String> placeholders = new ArrayList<>(values.size());
+            for (var value : values) {
+                placeholders.add(FunctionCalls.render(path, compiler.mapParameter(value)));
+            }
             return ColumnComparison.render(operator, column, placeholders, multiValues, compiler::mapParameter, compiler.dialect());
         } catch (IllegalArgumentException e) {
             throw new SqlTemplateException(e);
@@ -509,19 +535,25 @@ final class QueryModelImpl implements QueryModel {
                                       Operator operator,
                                       Object object,
                                       TemplateBinder binder) throws SqlTemplateException {
-        metamodel = FunctionCalls.column(metamodel);
+        Metamodel<?, ?> path = metamodel;
+        metamodel = FunctionCalls.column(path);
         var model = getModel(metamodel);
         List<SequencedMap<String, Object>> multiValues = null;
+        List<Object> singleValues = new ArrayList<>();
         var values = new ObjectExpressionValues();
         for (var o : getObjectIterable(object)) {
-            var derivedObject = switch (o) {
-                case Ref<?> ref -> ref.id();
-                case Data data -> data;
-                case Object it -> it;
-            };
             values.reset();
-            //noinspection unchecked
-            model.forEachValue((Metamodel<Data, ?>) metamodel, derivedObject, values);
+            if (o == null) {
+                values.accept(model.getSingleColumn(metamodel), null);
+            } else {
+                var derivedObject = switch (o) {
+                    case Ref<?> ref -> ref.id();
+                    case Data data -> data;
+                    case Object it -> it;
+                };
+                //noinspection unchecked
+                model.forEachValue((Metamodel<Data, ?>) metamodel, derivedObject, values);
+            }
             if (binder.isVersionAware()) {
                 if (o instanceof Data data) {
                     model.forEachValue(List.of(versionColumn(model)), data, values);
@@ -530,7 +562,7 @@ final class QueryModelImpl implements QueryModel {
                 }
             }
             if ((multiValues == null || multiValues.isEmpty()) && values.size == 1) {
-                binder.bindParameter(TextMatch.bindValue(operator, values.firstValue, metamodel, template.dialect()));
+                singleValues.add(TextMatch.bindValue(operator, values.firstValue, metamodel, template.dialect()));
             } else {
                 TextMatch.requireSingleColumn(operator, metamodel);
                 if (multiValues == null) {
@@ -539,8 +571,33 @@ final class QueryModelImpl implements QueryModel {
                 multiValues.add(values.toMap());
             }
         }
+        // The list is shaped as it was compiled, so the bound values match the placeholders.
+        boolean shaped = InListShape.applies(operator) && !template.inlineParameters();
         if (multiValues != null && !multiValues.isEmpty()) {
+            if (shaped) {
+                if (inListMode == InListShape.Mode.AUTO) {
+                    binder.inListRendered(multiValues.size());
+                }
+                multiValues = InListShape.padRows(inListMode, multiValues, multiValues.getFirst().size(),
+                        template.dialect());
+            }
             bindMultiValues(operator, multiValues, binder);
+            return;
+        }
+        if (shaped) {
+            var shape = InListShape.shape(inListMode, singleValues, path != metamodel, template.dialect());
+            if (shape.array() != null) {
+                binder.bindParameter(shape.array());
+                return;
+            }
+            if (inListMode == InListShape.Mode.AUTO) {
+                // The default mode left the list as placeholders: a statement per length to the database.
+                binder.inListRendered(singleValues.size());
+            }
+            singleValues = shape.values();
+        }
+        for (var value : singleValues) {
+            binder.bindParameter(value);
         }
     }
 

@@ -68,6 +68,17 @@ public final class StormConfig {
     public static final String UPDATE_MAX_SHAPES = "storm.update.max_shapes";
     /** Cache retention mode. Values: default, light. */
     public static final String ENTITY_CACHE_RETENTION = "storm.entity_cache.retention";
+    /**
+     * How an {@code IN} list renders. Values: {@code auto}, one array parameter where the dialect binds one, so the
+     * statement does not change with the length of the list, and one placeholder per value elsewhere;
+     * {@code padded}, one placeholder per value on every dialect, padded to the next power of two by repeating the
+     * last value, for a database whose plan cache fills with the lengths; {@code exact}, one placeholder per value
+     * everywhere. Defaults to {@code auto}.
+     *
+     * @since 1.16
+     */
+    @SqlShaping
+    public static final String IN_LIST = "storm.in_list";
     /** Maximum number of compiled templates to cache. */
     public static final String TEMPLATE_CACHE_SIZE = "storm.template_cache.size";
     /** Whether to use ANSI escaping for identifiers. */

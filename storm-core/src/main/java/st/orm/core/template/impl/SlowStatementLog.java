@@ -175,6 +175,16 @@ public final class SlowStatementLog {
     }
 
     /**
+     * Returns whether executions are measured against a threshold, which is what decides whether a slow line can
+     * report what an execution carries.
+     *
+     * @return {@code true} while a statement threshold is configured.
+     */
+    static boolean timesStatements() {
+        return thresholdNanos != 0;
+    }
+
+    /**
      * Returns whether executions or transactions are measured against a threshold.
      *
      * @return {@code true} while a threshold is configured.
@@ -635,6 +645,11 @@ public final class SlowStatementLog {
                 if (parameterCount >= 2 * Math.max(1, typical) || 2 * parameterCount <= typical) {
                     facts.append(" (typically ").append(typical).append(')');
                 }
+            }
+            // A shape whose IN list has rendered in more than one length says in how many, as of this line.
+            int lengths = InListShapes.lengths(shapeId);
+            if (lengths > 1) {
+                append(facts, "lengths: " + lengths);
             }
         }
         if (comment != null) {

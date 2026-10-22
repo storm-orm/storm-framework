@@ -20,6 +20,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import org.jspecify.annotations.Nullable;
+import st.orm.core.template.SqlArray;
 import st.orm.core.template.SqlTemplate.NamedParameter;
 import st.orm.core.template.SqlTemplate.Parameter;
 import st.orm.core.template.SqlTemplate.PositionalParameter;
@@ -58,6 +59,8 @@ final class SqlLiterals {
             case java.sql.Time t -> "'%s'".formatted(t);
             case java.sql.Timestamp t -> "'%s'".formatted(t);
             case Enum<?> e -> "'%s'".formatted(e.name().replace("\\", "\\\\").replace("'", "''"));
+            // An array literal, {1,2,3}, which the database reads as the array the parameter bound.
+            case SqlArray a -> "'%s'".formatted(a.toString().replace("'", "''"));
             default -> {
                 String str = dbValue.toString().replace("\\", "\\\\").replace("'", "''");
                 yield "'%s'".formatted(str);

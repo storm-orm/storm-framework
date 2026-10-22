@@ -350,6 +350,11 @@ public final class SqlTemplateImpl implements SqlTemplate {
     }
 
     @Override
+    public StormConfig config() {
+        return config;
+    }
+
+    @Override
     public SqlTemplate withConfig(StormConfig config) {
         if (config == this.config) {
             return this;
