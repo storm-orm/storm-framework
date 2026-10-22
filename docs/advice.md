@@ -226,7 +226,7 @@ Category: performance, reported by the slow statement log only: choosing `page` 
 
 `page` reports the total number of matching rows, and finding it takes a count query that visits every one of them, however small the page. On a large or expensive result the count costs more than the page itself.
 
-A list that shows "next" rather than "page 3 of 120" needs no total. `slice` reads the same page with one row beyond it, which says whether a next page exists, and runs no count. Where the total is needed but changes slowly, `page(pageable, totalCount)` takes a total counted once and kept. A page that is not full already knows its total, so its count never runs. See [Slices](pagination-and-scrolling.md#slices).
+A list that shows "next" rather than "page 3 of 120" needs no total. `slice` reads the same page with one row beyond it, which says whether a next page exists, and runs no count. Where the total is needed but changes slowly, `page(pageable, totalCount)` takes a total counted once and kept. A page that is not full is its own total, so its count never runs. See [Slices](pagination-and-scrolling.md#slices).
 
 ## A limit or offset without an order {#unordered-limit}
 
