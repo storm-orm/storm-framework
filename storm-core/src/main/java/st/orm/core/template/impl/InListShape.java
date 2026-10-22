@@ -29,13 +29,14 @@ import st.orm.core.template.SqlDialect;
  *
  * <p>An {@code IN} list with one placeholder per value is a different statement to the database for every length,
  * each parsed and planned on its own and each taking a slot in the statement caches of the database and the driver.
- * The list renders as one array parameter where the dialect binds one, {@code column = ANY(?)}, one statement for
- * every length, which also binds fewer parameters than a list of placeholders. Elsewhere it keeps a placeholder per
- * value, or, in the padded mode, is padded to the next power of two by repeating its last value, which changes no
- * result, since membership of a set is not changed by a repeated member, for {@code IN}, {@code NOT IN} and a list
- * holding {@code NULL} alike: lengths 1 to 1,000 render as 11 statements instead of 1,000, at the cost of the
- * parameters the padding binds. A list of one or two values is a power of two already. A padded list never exceeds
- * what the dialect allows in a list or a statement; where the next power of two would, the list keeps its length.</p>
+ * By default the list renders as one array parameter where the dialect binds one, {@code column = ANY(?)}, one
+ * statement for every length, which also binds fewer parameters than a list of placeholders, and keeps a placeholder
+ * per value elsewhere. The padded mode renders a placeholder per value on every dialect and pads the list to the next
+ * power of two by repeating its last value, which changes no result, since membership of a set is not changed by a
+ * repeated member, for {@code IN}, {@code NOT IN} and a list holding {@code NULL} alike: lengths 1 to 1,000 render
+ * as 11 statements instead of 1,000, at the cost of the parameters the padding binds. A list of one or two values is
+ * a power of two already. A padded list never exceeds what the dialect allows in a list or a statement; where the
+ * next power of two would, the list keeps its length. The exact mode renders a placeholder per value everywhere.</p>
  *
  * <p>The compilation of a statement and its binding shape a list the same way, as both go through here with the
  * same values, so the placeholders and the bound values agree.</p>
@@ -53,7 +54,7 @@ final class InListShape {
         /** An array parameter where the dialect binds one, one placeholder per value elsewhere. */
         AUTO,
 
-        /** An array parameter where the dialect binds one, padding to a power of two elsewhere. */
+        /** One placeholder per value, padded to a power of two, on every dialect. */
         PADDED,
 
         /** One placeholder per value. */
@@ -113,16 +114,19 @@ final class InListShape {
      * @return the shape.
      */
     static Shape shape(Mode mode, List<Object> values, boolean functionApplied, SqlDialect dialect) {
-        if (mode == Mode.EXACT) {
-            return new Shape(values, null);
-        }
-        if (!functionApplied && !values.isEmpty()) {
-            var array = SqlArray.of(values, dialect);
-            if (array != null) {
-                return new Shape(List.of(), array);
+        return switch (mode) {
+            case EXACT -> new Shape(values, null);
+            case PADDED -> new Shape(pad(values, limit(dialect, 1)), null);
+            case AUTO -> {
+                if (!functionApplied && !values.isEmpty()) {
+                    var array = SqlArray.of(values, dialect);
+                    if (array != null) {
+                        yield new Shape(List.of(), array);
+                    }
+                }
+                yield new Shape(values, null);
             }
-        }
-        return new Shape(mode == Mode.PADDED ? pad(values, limit(dialect, 1)) : values, null);
+        };
     }
 
     /**

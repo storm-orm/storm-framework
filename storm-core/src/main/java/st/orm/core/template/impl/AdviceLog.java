@@ -336,6 +336,7 @@ public final class AdviceLog {
         REPORTED_DESIGN.clear();
         REPORTED_ONCE.clear();
         REPORTED.clear();
+        InListShapes.reset();
         AdviceAcceptance.reset();
     }
 }

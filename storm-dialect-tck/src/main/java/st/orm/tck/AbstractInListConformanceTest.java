@@ -46,9 +46,9 @@ import st.orm.core.template.ORMTemplate;
  * in, for every length, with a {@code NULL} among its values, and over a compound key, on every database.
  *
  * <p>The shape is the concern of {@code storm.in_list}: {@code auto} binds the list as one array parameter where
- * the dialect does and pads it to a power of two elsewhere, {@code padded} pads it everywhere, and {@code exact}
- * renders one placeholder per value. Each mode runs through the same rows, so a shape that changed a result would
- * fail against the exact one.</p>
+ * the dialect does and renders a placeholder per value elsewhere, {@code padded} pads a list of placeholders to a
+ * power of two everywhere, and {@code exact} renders one placeholder per value everywhere. Each mode runs through
+ * the same rows, so a shape that changed a result would fail against the exact one.</p>
  *
  * <p>The suite creates and drops its own tables, so a dialect module runs it with {@code rollback = false}.</p>
  */

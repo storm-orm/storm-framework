@@ -248,6 +248,16 @@ An offset tells the database to skip rows, and it skips them by reading them: pa
 
 `scroll` continues from the last row read instead: it compares the sort fields and the key with that row's values, which an index on them serves, so every window costs what the first one does. It needs a unique key to continue from; a query without one reads deep pages through an offset, and the advice then says what each of them costs. See [Scrolling](pagination-and-scrolling.md#scrolling).
 
+## An IN list of many lengths {#in-list-shapes}
+
+> the statement runs with varying lengths of its IN list, and each length is a statement of its own to the database and its plan cache; storm.in_list=padded pads a list to the next power of two by repeating its last value, which changes no result and renders every length as one of a few statements
+
+Category: performance. Logger: `st.orm.sql.advice.in-list-shapes`. Reported by the advice log in development, and carried on a slow statement line wherever the slow statement log runs.
+
+An `IN` list with a placeholder per value, the default shape on every database but PostgreSQL, is one statement to Storm whatever its length and a different statement to the database for each: a lookup of a varying number of keys is parsed, planned and cached once per length, and a plan cache such as Oracle's shared pool or SQL Server's fills with the variants. Storm records the lengths a statement shape renders with, while either log would show them, and the shape carries the advice once it has run in eight of them, enough to show that the length follows the input rather than a fixed set. In development the advice log reports it; in production, where the churn shows as a slow execution, the slow line carries it, and its facts say in how many lengths the shape has run so far, `parameters: 8  lengths: 12`.
+
+`storm.in_list=padded` pads every list to the next power of two by repeating its last value, so lengths 1 to 1,000 render as 11 statements, and changes no result; see [IN Lists](queries.md#in-lists). It is a setting of the template, so it applies to every list the template renders. On PostgreSQL a list on a plain column binds as one array and is never reported; the advice there points at a list compared through a function, which renders placeholders, and `padded` pads that one at the cost of the array for the rest. A statement that runs in many lengths by design, and on a database whose plan cache has room for them, accepts the advice with `@AcceptAdvice("in-list-shapes")`.
+
 ## An entity past the design budget {#entity-budget}
 
 > every read of Visit joins 12 tables and selects 140 columns beyond its own, past the design budget of 10 joins and 96 columns; a Ref for Clinic.organization removes 4 joins and 52 columns

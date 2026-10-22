@@ -71,9 +71,9 @@ public final class StormConfig {
     /**
      * How an {@code IN} list renders. Values: {@code auto}, one array parameter where the dialect binds one, so the
      * statement does not change with the length of the list, and one placeholder per value elsewhere;
-     * {@code padded}, the array where the dialect binds one and elsewhere a list padded to the next power of two by
-     * repeating its last value, for a database whose plan cache fills with the lengths; {@code exact}, one placeholder
-     * per value everywhere. Defaults to {@code auto}.
+     * {@code padded}, one placeholder per value on every dialect, padded to the next power of two by repeating the
+     * last value, for a database whose plan cache fills with the lengths; {@code exact}, one placeholder per value
+     * everywhere. Defaults to {@code auto}.
      *
      * @since 1.16
      */

@@ -636,6 +636,11 @@ public final class SlowStatementLog {
                     facts.append(" (typically ").append(typical).append(')');
                 }
             }
+            // A shape whose IN list has rendered in more than one length says in how many, as of this line.
+            int lengths = InListShapes.lengths(shapeId);
+            if (lengths > 1) {
+                append(facts, "lengths: " + lengths);
+            }
         }
         if (comment != null) {
             append(facts, "comment: " + comment);

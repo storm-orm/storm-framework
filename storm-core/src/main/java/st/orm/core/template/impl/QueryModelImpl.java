@@ -575,6 +575,9 @@ final class QueryModelImpl implements QueryModel {
         boolean shaped = InListShape.applies(operator) && !template.inlineParameters();
         if (multiValues != null && !multiValues.isEmpty()) {
             if (shaped) {
+                if (inListMode == InListShape.Mode.AUTO) {
+                    binder.inListRendered(multiValues.size());
+                }
                 multiValues = InListShape.padRows(inListMode, multiValues, multiValues.getFirst().size(),
                         template.dialect());
             }
@@ -586,6 +589,10 @@ final class QueryModelImpl implements QueryModel {
             if (shape.array() != null) {
                 binder.bindParameter(shape.array());
                 return;
+            }
+            if (inListMode == InListShape.Mode.AUTO) {
+                // The default mode left the list as placeholders: a statement per length to the database.
+                binder.inListRendered(singleValues.size());
             }
             singleValues = shape.values();
         }

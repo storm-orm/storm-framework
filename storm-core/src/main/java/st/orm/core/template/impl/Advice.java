@@ -85,6 +85,16 @@ enum Advice {
             "the database reads and discards the %d rows the offset skips before it returns the first; scroll "
                     + "continues from the last row read, at the same cost for every window."),
 
+    /**
+     * An {@code IN} list rendered with a placeholder per value in {@link #IN_LIST_LENGTHS} distinct lengths, each a
+     * statement of its own to the database, where padding would render them as a few.
+     */
+    IN_LIST_SHAPES("in-list-shapes", Category.PERFORMANCE, false,
+            "the statement runs with varying lengths of its IN list, and each length is a statement of its own to "
+                    + "the database and its plan cache; storm.in_list=padded pads a list to the next power of two by "
+                    + "repeating its last value, which changes no result and renders every length as one of a few "
+                    + "statements."),
+
     /** References of one type fetched one statement at a time, in one unit of work. */
     REPEATED_FETCH("repeated-fetch", Category.DESIGN, false,
             "%1$d statements each fetched one %2$s; an inline foreign key joins it into every read of the rows, or "
@@ -116,6 +126,12 @@ enum Advice {
 
     /** The offset from which a statement carries {@link #DEEP_OFFSET}. */
     static final int DEEP_OFFSET_ROWS = 1_000;
+
+    /**
+     * The distinct lengths of an {@code IN} list from which a statement shape carries {@link #IN_LIST_SHAPES}: enough
+     * to show that the length follows the input rather than a fixed set.
+     */
+    static final int IN_LIST_LENGTHS = 8;
 
     /** The page that documents every piece of advice, one section per anchor. */
     static final String PAGE = "https://orm.st/docs/advice";

@@ -246,10 +246,11 @@ public class PostgreSQLInListTest {
     }
 
     @Test
-    void thePaddedModeKeepsTheArrayAndTheExactModeRendersPlaceholders() {
+    void thePaddedAndExactModesRenderPlaceholdersInsteadOfTheArray() {
         var sql = new AtomicReference<Sql>();
         assertEquals(new TreeSet<>(List.of(1, 2, 3)), select(template("padded"), ID, IN, List.of(1, 2, 3), sql));
-        assertTrue(sql.get().statement().contains("WHERE i.id = ANY(?)"), sql.get().statement());
+        assertTrue(sql.get().statement().contains("WHERE i.id IN (?, ?, ?, ?)"), sql.get().statement());
+        assertEquals(4, sql.get().parameters().size());
         assertEquals(new TreeSet<>(List.of(1, 2, 3)), select(template("exact"), ID, IN, List.of(1, 2, 3), sql));
         assertTrue(sql.get().statement().contains("WHERE i.id IN (?, ?, ?)"), sql.get().statement());
     }

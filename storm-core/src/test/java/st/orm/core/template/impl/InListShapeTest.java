@@ -36,8 +36,9 @@ import st.orm.core.template.SqlDialect;
 import st.orm.core.template.impl.InListShape.Mode;
 
 /**
- * An IN list is padded to the next power of two by repeating its last value, within the dialect's limits, or bound
- * as one array where the dialect binds one; an exact mode keeps every length.
+ * An IN list binds as one array where the dialect binds one and keeps a placeholder per value elsewhere; the padded
+ * mode pads it to the next power of two by repeating its last value, within the dialect's limits, on every dialect,
+ * and the exact mode keeps every length everywhere.
  */
 class InListShapeTest {
 
@@ -102,9 +103,16 @@ class InListShapeTest {
         assertNull(InListShape.shape(Mode.AUTO, List.of(1, 2, 3), false, NO_ARRAYS).array());
         assertEquals(List.of(1, 2, 3), InListShape.shape(Mode.AUTO, List.of(1, 2, 3), false, NO_ARRAYS).values());
         assertEquals(List.of(1, 2, 3, 3), InListShape.shape(Mode.PADDED, List.of(1, 2, 3), false, NO_ARRAYS).values());
-        // The padded mode keeps the array where the dialect binds one.
-        assertNotNull(InListShape.shape(Mode.PADDED, List.of(1, 2, 3), false, ARRAYS).array());
-        assertEquals(List.of(1, 2, 3), InListShape.shape(Mode.EXACT, List.of(1, 2, 3), false, ARRAYS).values());
+    }
+
+    @Test
+    void thePaddedAndExactModesRenderPlaceholdersWhereTheDialectBindsAnArray() {
+        var padded = InListShape.shape(Mode.PADDED, List.of(1, 2, 3), false, ARRAYS);
+        assertNull(padded.array());
+        assertEquals(List.of(1, 2, 3, 3), padded.values());
+        var exact = InListShape.shape(Mode.EXACT, List.of(1, 2, 3), false, ARRAYS);
+        assertNull(exact.array());
+        assertEquals(List.of(1, 2, 3), exact.values());
     }
 
     @Test
