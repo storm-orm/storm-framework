@@ -16,6 +16,7 @@
 package st.orm.core.template.impl;
 
 import static java.lang.StackWalker.Option.RETAIN_CLASS_REFERENCE;
+import static java.util.Objects.requireNonNullElse;
 
 import java.lang.reflect.Method;
 import java.lang.reflect.Proxy;
@@ -158,8 +159,7 @@ final class AdviceAcceptance {
         // A subclass generated at runtime, such as the proxy Spring puts around a transactional service, carries
         // none of the annotations of the class it extends; it counts as that class.
         if (type.getName().contains("$$")) {
-            var superclass = type.getSuperclass();
-            return superclass != null && accepts(advice, superclass, method);
+            return accepts(advice, requireNonNullElse(type.getSuperclass(), Object.class), method);
         }
         var name = type.getName();
         for (var skipped : SKIPPED) {

@@ -20,6 +20,7 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static st.orm.TransactionIsolation.SERIALIZABLE;
 import static st.orm.TransactionPropagation.REQUIRED;
 import static st.orm.TransactionPropagation.REQUIRES_NEW;
 
@@ -163,6 +164,77 @@ class IdleTransactionLogTest {
     }
 
     @Test
+    void aTransactionWithAnIsolationLevelRestoresItWhenItReturnsItsConnection() {
+        var lines = capture(() -> transaction(new TransactionOptions(REQUIRED, SERIALIZABLE, null, null), () -> {
+            read();
+            otherWork();
+        }));
+        assertEquals(1, lines.size(), lines.toString());
+    }
+
+    @Test
+    void switchedOffWhileATransactionRunsItIsNotReported() {
+        var lines = capture(() -> transaction(REQUIRED_OPTIONS, () -> {
+            read();
+            otherWork();
+            SlowStatementLog.transactionThreshold(null);
+        }));
+        assertEquals(List.of(), lines);
+    }
+
+    @Test
+    void nothingIsRenderedWhileTheLoggerIsBelowWarn() {
+        var context = (LoggerContext) LoggerFactory.getILoggerFactory();
+        var logger = context.getLogger("st.orm.sql.slow");
+        Level previous = logger.getLevel();
+        logger.setLevel(Level.ERROR);
+        try {
+            var appender = new ListAppender<ILoggingEvent>();
+            appender.setContext(context);
+            appender.start();
+            logger.addAppender(appender);
+            try {
+                transaction(REQUIRED_OPTIONS, () -> {
+                    read();
+                    otherWork();
+                });
+            } finally {
+                logger.detachAppender(appender);
+                appender.stop();
+            }
+            assertEquals(List.of(), appender.list);
+        } finally {
+            logger.setLevel(previous);
+        }
+    }
+
+    @Test
+    void aStatementIsTimedOnItsOwnWhileTransactionsAreUnwatched() {
+        SlowStatementLog.transactionThreshold(null);
+        SlowStatementLog.threshold(Duration.ofNanos(1));
+        try {
+            var lines = capture(() -> transaction(REQUIRED_OPTIONS, this::read));
+            assertEquals(1, lines.size(), lines.toString());
+            assertTrue(lines.getFirst().startsWith("SQL slow (SELECT): "), lines.getFirst());
+        } finally {
+            SlowStatementLog.threshold(null);
+        }
+    }
+
+    @Test
+    void theLineNamesEveryPartItCanCarry() {
+        var line = SlowStatementLog.renderTransaction(2_300_000_000L, 120_000_000L, 2_180_000_000L, 1, true, true,
+                null, 3);
+        assertEquals("SQL slow (transaction): held its connection 2300 ms from its first statement, 120 ms in its "
+                + "statement, wrote" + System.lineSeparator()
+                + "	+3 suppressed" + System.lineSeparator()
+                + "	advice: the transaction held its connection 2300 ms and its statements spent 120 ms of it; for "
+                + "2180 ms between them it held the connection, and the row locks of its writes, while the "
+                + "application did other work; move that work before the transaction or after it commits. See "
+                + "https://orm.st/docs/advice#idle-transaction", line);
+    }
+
+    @Test
     void aTransactionThatWroteNamesTheRowLocksItHeld() {
         var lines = capture(() -> transaction(REQUIRED_OPTIONS, () -> {
             write();
@@ -264,8 +336,11 @@ class IdleTransactionLogTest {
         assertTrue(SlowStatementLog.active());
         assertNotNull(HeldConnection.take(false));
         assertEquals(Duration.ofSeconds(1), SlowStatementLog.transactionThreshold());
-        // Zero, the value a configuration sets to switch the watch off, stops it as null does.
+        // Zero, the value a configuration sets to switch the watch off, stops it as null does, and so does a
+        // negative duration.
         SlowStatementLog.transactionThreshold(Duration.ZERO);
+        assertNull(SlowStatementLog.transactionThreshold());
+        SlowStatementLog.transactionThreshold(Duration.ofMillis(-1));
         assertNull(SlowStatementLog.transactionThreshold());
     }
 

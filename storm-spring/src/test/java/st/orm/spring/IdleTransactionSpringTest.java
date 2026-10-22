@@ -16,6 +16,8 @@
 package st.orm.spring;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static st.orm.TransactionPropagation.REQUIRED;
 
@@ -23,6 +25,7 @@ import ch.qos.logback.classic.Level;
 import ch.qos.logback.classic.LoggerContext;
 import ch.qos.logback.classic.spi.ILoggingEvent;
 import ch.qos.logback.core.read.ListAppender;
+import clinic.VisitService;
 import java.sql.SQLException;
 import java.time.Duration;
 import java.util.List;
@@ -42,6 +45,7 @@ import st.orm.TransactionOptions;
 import st.orm.core.spi.TransactionRunner;
 import st.orm.core.template.ORMTemplate;
 import st.orm.core.template.impl.SlowStatementLog;
+import st.orm.spring.impl.SpringTransactionContext;
 
 /**
  * A Spring-managed transaction that holds its connection idle for longer than the threshold is reported when it
@@ -73,6 +77,7 @@ class IdleTransactionSpringTest {
 
     private ORMTemplate orm;
     private TransactionTemplate transactionTemplate;
+    private VisitService visits;
     private OrderService orders;
 
     @BeforeEach
@@ -96,6 +101,9 @@ class IdleTransactionSpringTest {
         var proxyFactory = new ProxyFactory(new OrderService(orm));
         proxyFactory.addAdvice(new TransactionInterceptor(transactionManager, new MatchAlwaysTransactionAttributeSource()));
         orders = (OrderService) proxyFactory.getProxy();
+        var visitProxyFactory = new ProxyFactory(new VisitService(orm));
+        visitProxyFactory.addAdvice(new TransactionInterceptor(transactionManager, new MatchAlwaysTransactionAttributeSource()));
+        visits = (VisitService) visitProxyFactory.getProxy();
         // The lines share one budget across the JVM's tests; none is to be held back here.
         SlowStatementLog.limit(0);
         SlowStatementLog.transactionThreshold(Duration.ofMillis(50));
@@ -151,6 +159,37 @@ class IdleTransactionSpringTest {
     }
 
     @Test
+    void theCallSiteNamesTheClassTheGeneratedProxyStandsFor() {
+        var lines = capture(visits::closeVisit);
+        assertEquals(1, lines.size(), lines.toString());
+        // The proxy's frame is the first application frame, and the generated class has no source file.
+        assertTrue(lines.getFirst().contains(", clinic.VisitService.closeVisit" + System.lineSeparator()),
+                lines.getFirst());
+    }
+
+    @Test
+    void nothingIsHeldWhileTransactionsAreUnwatched() {
+        SlowStatementLog.transactionThreshold(null);
+        var lines = capture(() -> transactionTemplate.executeWithoutResult(status -> {
+            orm.query("SELECT COUNT(*) FROM idle_order").getSingleResult(Long.class);
+            otherWork();
+        }));
+        assertEquals(List.of(), lines);
+    }
+
+    @Test
+    void holdingNeedsTheWatchAndAnActiveSynchronization() {
+        // Outside a transaction no synchronization is active to report the completion.
+        assertNull(SpringTransactionContext.holdSpringTransaction());
+        SlowStatementLog.transactionThreshold(null);
+        transactionTemplate.executeWithoutResult(status ->
+                assertNull(SpringTransactionContext.holdSpringTransaction()));
+        SlowStatementLog.transactionThreshold(Duration.ofMillis(50));
+        transactionTemplate.executeWithoutResult(status ->
+                assertNotNull(SpringTransactionContext.holdSpringTransaction()));
+    }
+
+    @Test
     void acceptedOnTheServiceMethodBehindTheProxyItIsNotReported() {
         assertEquals(List.of(), capture(orders::nightlyReport));
     }
@@ -160,9 +199,12 @@ class IdleTransactionSpringTest {
         var lines = capture(() -> transactionTemplate.executeWithoutResult(status -> {
             orm.query("SELECT COUNT(*) FROM idle_order").getSingleResult(Long.class);
             otherWork();
+            // A second statement is credited to the hold the first one took.
+            orm.query("SELECT COUNT(*) FROM idle_order").getSingleResult(Long.class);
         }));
         assertEquals(1, lines.size(), lines.toString());
         assertTrue(lines.getFirst().contains(" from its first statement, "), lines.getFirst());
+        assertTrue(lines.getFirst().contains(" ms in its 2 statements, "), lines.getFirst());
     }
 
     @Test
