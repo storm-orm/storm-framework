@@ -74,6 +74,17 @@ class QueryTemplateImpl implements QueryTemplate {
     }
 
     /**
+     * Returns the exception mapper used by this template.
+     *
+     * @return the exception mapper.
+     * @since 1.16
+     */
+    @Override
+    public st.orm.spi.ExceptionMapper exceptionMapper() {
+        return queryFactory.exceptionMapper();
+    }
+
+    /**
      * Create a new bind variables instance that can be used to add bind variables to a batch.
      *
      * @return a new bind variables instance.

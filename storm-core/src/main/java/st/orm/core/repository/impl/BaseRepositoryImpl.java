@@ -23,6 +23,7 @@ import static st.orm.Operator.EQUALS;
 import static st.orm.core.spi.Providers.selectFrom;
 import static st.orm.core.spi.Providers.selectRefFrom;
 import static st.orm.core.template.TemplateString.wrap;
+import static st.orm.core.template.impl.ExceptionHelper.getExceptionTransformer;
 
 import java.util.Iterator;
 import java.util.List;
@@ -48,6 +49,7 @@ import st.orm.core.template.QueryPlan;
 import st.orm.core.template.TemplateString;
 import st.orm.core.template.Templates;
 import st.orm.core.template.impl.SqlInterceptorManager;
+import st.orm.spi.SqlOperation;
 
 /**
  * Base implementation for all repositories.
@@ -75,6 +77,21 @@ abstract class BaseRepositoryImpl<E extends Data, ID> implements Repository {
      * same path.
      */
     private volatile boolean plansSupported = true;
+
+    /**
+     * Maps a failure the repository detects after a statement ran, such as an optimistic lock conflict or a
+     * generated key that is missing or not unique, to the exception thrown to the caller. The failure passes
+     * through the template's exception mapper like a failure the database reported, with the operation and the
+     * repository's type as context, so a caller sees one exception family whichever side detected it.
+     *
+     * @param operation the operation the failure belongs to.
+     * @param failure the failure Storm detected.
+     * @return the exception to throw.
+     * @since 1.16
+     */
+    protected RuntimeException failure(SqlOperation operation, RuntimeException failure) {
+        return getExceptionTransformer(ormTemplate, operation, model.type()).apply(failure);
+    }
 
     public BaseRepositoryImpl(ORMTemplate ormTemplate, Model<E, ID> model) {
         this.ormTemplate = requireNonNull(ormTemplate);

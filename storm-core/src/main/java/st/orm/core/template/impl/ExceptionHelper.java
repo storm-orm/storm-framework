@@ -24,6 +24,7 @@ import st.orm.SqlTemplateException;
 import st.orm.core.spi.TransactionContext;
 import st.orm.core.spi.TransactionScope;
 import st.orm.core.spi.TransactionTemplateProvider;
+import st.orm.core.template.QueryTemplate;
 import st.orm.core.template.Sql;
 import st.orm.spi.ExceptionContext;
 import st.orm.spi.ExceptionMapper;
@@ -57,15 +58,49 @@ public final class ExceptionHelper {
             @Nullable Sql sql,
             ExceptionMapper exceptionMapper,
             TransactionTemplateProvider transactionTemplateProvider) {
+        return getExceptionTransformer(
+                sql != null ? sql.operation() : SqlOperation.UNDEFINED,
+                sql != null ? sql.affectedType().orElse(null) : null,
+                sql,
+                exceptionMapper,
+                transactionTemplateProvider);
+    }
+
+    /**
+     * Returns a transformer that maps the failures Storm's own logic detects after a statement ran, such as an
+     * optimistic lock conflict or a single result that is missing or not unique, to the exception thrown to the
+     * caller via the template's exception mapper. The statement itself is not known at the point of detection, so
+     * the mapper receives the operation and the data type as context, without statement text.
+     *
+     * @param template the template whose exception mapper and transaction template provider apply.
+     * @param operation the operation the failure belongs to.
+     * @param dataType the data type the failure belongs to, or {@code null} when it has none.
+     * @return the exception transformer.
+     * @since 1.16
+     */
+    public static Function<Throwable, RuntimeException> getExceptionTransformer(
+            QueryTemplate template,
+            SqlOperation operation,
+            @Nullable Class<? extends Data> dataType) {
+        return getExceptionTransformer(operation, dataType, null, template.exceptionMapper(),
+                template.transactionTemplateProvider());
+    }
+
+    private static Function<Throwable, RuntimeException> getExceptionTransformer(
+            SqlOperation operation,
+            @Nullable Class<? extends Data> dataType,
+            @Nullable Sql sql,
+            ExceptionMapper exceptionMapper,
+            TransactionTemplateProvider transactionTemplateProvider) {
         return e -> {
             String transactionDescription = currentTransactionDescription(transactionTemplateProvider);
             if (sql != null) {
                 e.addSuppressed(new SqlTemplateException(buildSqlDetail(sql, transactionDescription)));
             }
             var context = new ExceptionContextImpl(
-                    sql != null ? sql.operation() : SqlOperation.UNDEFINED,
+                    operation,
                     sql != null ? sql.statement() : null,
-                    sql != null ? sql.affectedType().orElse(null) : null,
+                    dataType,
                     transactionDescription);
             try {
                 var mapped = exceptionMapper.map(e, context);

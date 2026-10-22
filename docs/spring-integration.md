@@ -639,12 +639,14 @@ try {
 }
 ```
 
-Failures without a `SQLException` cause keep Storm's own semantics: `PersistenceException` and its subtypes, such as optimistic locking and result cardinality failures, pass through unchanged. The boundary is the database: what the database reports is translated, what Storm's own logic detects stays a Storm exception in every composition. Retry setups that should also retry optimistic lock failures list both types:
+The failures Storm's own logic detects translate as Spring's JPA integration translates their counterparts, so a retry setup or a catch block written for Spring's types sees them: an `OptimisticLockException` surfaces as `OptimisticLockingFailureException`, with the Storm exception and the entity it carries as the cause; a `NoResultException` from `getById` or `getSingleResult` as `EmptyResultDataAccessException`; a `NonUniqueResultException` as `IncorrectResultSizeDataAccessException`. Any other `PersistenceException` without a `SQLException` cause, such as a model constraint Storm refuses, passes through unchanged. A retry setup that should retry optimistic lock failures as well as transient ones names the Spring types alone:
 
 ```kotlin
-@Retryable(retryFor = [TransientDataAccessException::class, OptimisticLockException::class])
+@Retryable(retryFor = [TransientDataAccessException::class, OptimisticLockingFailureException::class])
 fun updateStudy(study: Study) = transactionBlocking { studyRepository.update(study) }
 ```
+
+A custom `ExceptionMapper` receives these failures too, with the operation and, for a write, the entity type as its context, so a mapper of your own translates them the same way.
 
 Translation applies to the templates composed with it: the starter's auto-configured template, the templates an `OrmTemplateFactory` creates, and templates created with `SpringOrmTemplate.of` (Java) or `springOrmTemplate` (Kotlin). Disable it with `storm.exception-translation.enabled=false`, define your own `ExceptionMapper` bean, or compose the template yourself with the builder and leave the mapper out.
 

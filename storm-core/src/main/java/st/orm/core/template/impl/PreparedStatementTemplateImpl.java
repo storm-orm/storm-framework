@@ -647,6 +647,17 @@ public final class PreparedStatementTemplateImpl implements PreparedStatementTem
     }
 
     /**
+     * Returns the exception mapper configured on this template.
+     *
+     * @return the exception mapper.
+     * @since 1.16
+     */
+    @Override
+    public ExceptionMapper exceptionMapper() {
+        return strategies.exceptionMapper();
+    }
+
+    /**
      * Get the SQL template used by this factory.
      *
      * <p>Query factory implementations must ensure that the SQL Template returned by this method is processed by any

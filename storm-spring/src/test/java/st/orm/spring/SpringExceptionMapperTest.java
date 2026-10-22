@@ -15,6 +15,7 @@
  */
 package st.orm.spring;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -27,10 +28,17 @@ import org.springframework.boot.jdbc.DataSourceBuilder;
 import org.springframework.core.io.ClassPathResource;
 import org.springframework.dao.DataAccessException;
 import org.springframework.dao.DuplicateKeyException;
+import org.springframework.dao.EmptyResultDataAccessException;
+import org.springframework.dao.IncorrectResultSizeDataAccessException;
+import org.springframework.dao.OptimisticLockingFailureException;
 import org.springframework.jdbc.datasource.DataSourceTransactionManager;
 import org.springframework.jdbc.datasource.init.ResourceDatabasePopulator;
+import st.orm.NoResultException;
+import st.orm.NonUniqueResultException;
+import st.orm.OptimisticLockException;
 import st.orm.PersistenceException;
 import st.orm.spi.ExceptionContext;
+import st.orm.spring.model.Owner;
 import st.orm.spring.model.PetType;
 import st.orm.template.ORMTemplate;
 
@@ -93,6 +101,40 @@ class SpringExceptionMapperTest {
         PersistenceException storm = new PersistenceException("model constraint violated");
         assertSame(storm, mapper.map(storm, emptyContext()));
         assertInstanceOf(PersistenceException.class, mapper.map(new IllegalStateException("no sql"), emptyContext()));
+    }
+
+    @Test
+    void stormDetectedFailuresTranslateAsSpringsJpaIntegrationTranslatesTheirCounterparts() {
+        SpringExceptionMapper mapper = new SpringExceptionMapper(dataSource);
+        var conflict = new OptimisticLockException("stale");
+        var translatedConflict = assertInstanceOf(OptimisticLockingFailureException.class,
+                mapper.map(conflict, emptyContext()));
+        assertSame(conflict, translatedConflict.getCause());
+        var missing = new NoResultException("none");
+        var translatedMissing = assertInstanceOf(EmptyResultDataAccessException.class,
+                mapper.map(missing, emptyContext()));
+        assertSame(missing, translatedMissing.getCause());
+        assertEquals(1, translatedMissing.getExpectedSize());
+        var ambiguous = new NonUniqueResultException("two");
+        var translatedAmbiguous = assertInstanceOf(IncorrectResultSizeDataAccessException.class,
+                mapper.map(ambiguous, emptyContext()));
+        assertSame(ambiguous, translatedAmbiguous.getCause());
+        assertEquals(1, translatedAmbiguous.getExpectedSize());
+    }
+
+    @Test
+    void aStaleUpdateThroughTheComposedTemplateFailsWithSpringsOptimisticLockingFailure() {
+        ORMTemplate orm = SpringOrmTemplate.of(dataSource, () -> List.of(new DataSourceTransactionManager(dataSource)));
+        var owners = orm.entity(Owner.class);
+        Owner owner = owners.getById(1);
+        Owner renamed = new Owner(owner.id(), "Renamed", owner.lastName(), owner.address(), owner.telephone(),
+                owner.version());
+        owners.update(renamed);
+        // The same instance carries the version the first update moved past.
+        var failure = assertThrows(OptimisticLockingFailureException.class, () -> owners.update(renamed));
+        var conflict = assertInstanceOf(OptimisticLockException.class, failure.getCause());
+        assertSame(renamed, conflict.getEntity());
+        assertThrows(EmptyResultDataAccessException.class, () -> owners.getById(-1));
     }
 
     @Test

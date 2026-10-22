@@ -53,6 +53,21 @@ public interface QueryTemplate extends SubqueryTemplate {
     }
 
     /**
+     * Returns the exception mapper used by this template.
+     *
+     * <p>Every failure a statement of this template raises passes through the mapper, the failures Storm's own
+     * logic detects included: an optimistic lock conflict, a single result that is missing or not unique. The
+     * default implementation returns the default mapper; templates that carry instance-scoped integration
+     * strategies return their configured mapper.</p>
+     *
+     * @return the exception mapper.
+     * @since 1.16
+     */
+    default st.orm.spi.ExceptionMapper exceptionMapper() {
+        return st.orm.spi.ExceptionMapper.defaultMapper();
+    }
+
+    /**
      * Create a new bind variables instance that can be used to add bind variables to a batch.
      *
      * @return a new bind variables instance.

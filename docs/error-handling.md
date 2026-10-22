@@ -148,6 +148,8 @@ try {
 </TabItem>
 </Tabs>
 
+With the Spring Boot starter, exception translation turns this into Spring's `OptimisticLockingFailureException`, and a missing or non-unique single result into `EmptyResultDataAccessException` or `IncorrectResultSizeDataAccessException`, with the Storm exception as the cause. See [Exception Translation](spring-integration.md#exception-translation).
+
 The exception includes a reference to the entity that caused the conflict, accessible via `getEntity()`.
 
 ### Constraint Violations
