@@ -24,6 +24,7 @@ import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
@@ -98,7 +99,7 @@ class InListShapeTest {
         var shape = InListShape.shape(Mode.AUTO, List.of(1, 2, 3), false, ARRAYS);
         assertNotNull(shape.array());
         assertEquals("int4", shape.array().elementType());
-        assertArrayEquals(new Object[] {1, 2, 3}, shape.array().elements());
+        assertEquals(List.of(1, 2, 3), shape.array().elements());
         assertEquals(List.of(), shape.values());
     }
 
@@ -134,7 +135,7 @@ class InListShapeTest {
         assertNull(SqlArray.of(Arrays.asList(null, null), ARRAYS));
         var withNull = SqlArray.of(Arrays.asList(1, null, 3), ARRAYS);
         assertNotNull(withNull);
-        assertArrayEquals(new Object[] {1, null, 3}, withNull.elements());
+        assertEquals(Arrays.asList(1, null, 3), withNull.elements());
     }
 
     @Test
@@ -147,24 +148,21 @@ class InListShapeTest {
         };
         var array = SqlArray.of(List.of(Color.RED, Color.GREEN), dialect);
         assertNotNull(array);
-        assertArrayEquals(new Object[] {"RED", "GREEN"}, array.elements());
+        assertEquals(List.of("RED", "GREEN"), array.elements());
         assertEquals("{\"RED\",\"GREEN\"}", array.toString());
-        assertEquals("{1,NULL,3}", new SqlArray("int4", new Object[] {1, null, 3}).toString());
+        assertEquals("{1,NULL,3}", new SqlArray("int4", Arrays.asList(1, null, 3)).toString());
     }
 
     @Test
-    void anArrayIsEqualByItsTypeAndElementsAndKeepsThemToItself() {
-        var elements = new Object[] {1, null, 3};
+    void anArrayKeepsItsElementsAsGivenAndToItself() {
+        var elements = new ArrayList<@Nullable Object>(Arrays.asList(1, null, 3));
         var array = new SqlArray("int4", elements);
-        elements[0] = 9;
-        assertArrayEquals(new Object[] {1, null, 3}, array.elements());
-        array.elements()[0] = 9;
-        assertArrayEquals(new Object[] {1, null, 3}, array.elements());
-        assertEquals(array, new SqlArray("int4", new Object[] {1, null, 3}));
-        assertEquals(array.hashCode(), new SqlArray("int4", new Object[] {1, null, 3}).hashCode());
-        assertNotEquals(array, new SqlArray("int8", new Object[] {1, null, 3}));
-        assertNotEquals(array, new SqlArray("int4", new Object[] {1, 2, 3}));
-        assertNotEquals(array, "int4");
+        elements.set(0, 9);
+        assertEquals(Arrays.asList(1, null, 3), array.elements());
+        assertThrows(UnsupportedOperationException.class, () -> array.elements().set(0, 9));
+        assertArrayEquals(new Object[] {1, null, 3}, array.toArray());
+        assertEquals(array, new SqlArray("int4", Arrays.asList(1, null, 3)));
+        assertNotEquals(array, new SqlArray("int8", Arrays.asList(1, null, 3)));
     }
 
     @Test
@@ -175,7 +173,7 @@ class InListShapeTest {
 
     @Test
     void anArrayInlinesAsAQuotedLiteral() {
-        var array = new SqlArray("text", new Object[] {"it's", null});
+        var array = new SqlArray("text", Arrays.asList("it's", null));
         var inlined = SqlLiterals.inline("WHERE c.name = ANY(?)",
                 List.of(new SqlTemplate.PositionalParameter(1, array)));
         assertEquals("WHERE c.name = ANY('{\"it''s\",NULL}')", inlined);

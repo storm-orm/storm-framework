@@ -30,9 +30,10 @@ import org.jspecify.annotations.Nullable;
  * lengths its statements carry the advice from then on. The advice names the pattern and the setting; the count of
  * lengths is a measurement, which a slow line of the shape reports as a fact, live.</p>
  *
- * <p>Recorded while the advice log reports the advice, which is development, and while the slow statement log is
- * active, so that a slow execution in production carries the advice on its line once its shape has run in enough
- * lengths; a deployment with neither pays one test per list. The lengths of a shape are kept as bits, set without
+ * <p>Recorded while the advice log reports the advice, which is development, and while a statement threshold is
+ * set, so that a slow execution in production carries the advice on its line once its shape has run in enough
+ * lengths; a deployment with neither pays one test per list. The transaction watch, on by default, records
+ * nothing here: a transaction line names no statement. The lengths of a shape are kept as bits, set without
  * a lock, and lengths beyond their range share the last bit; the shapes are bounded as the advice log's own records
  * are.</p>
  *

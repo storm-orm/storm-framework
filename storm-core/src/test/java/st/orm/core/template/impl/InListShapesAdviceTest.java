@@ -185,6 +185,8 @@ class InListShapesAdviceTest {
     @Test
     void nothingIsRecordedWhileNeitherLogWouldShowIt() {
         AdviceLog.categories(List.of("correctness"));
+        // The transaction watch is on by default and names no statement, so it records no lengths either.
+        assertTrue(SlowStatementLog.active());
         var orm = ORMTemplate.of(dataSource);
         assertEquals(List.of(), capture(() -> lookUpInEveryLengthTo(orm, 20)));
         // The lengths that ran while nothing would report them were not recorded, so one more draws nothing.

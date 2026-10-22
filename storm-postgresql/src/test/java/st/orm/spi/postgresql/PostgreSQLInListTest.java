@@ -173,7 +173,7 @@ public class PostgreSQLInListTest {
             statements.add(sql.get().statement());
             var array = array(sql.get());
             assertEquals("int4", array.elementType());
-            assertEquals(length, array.elements().length);
+            assertEquals(length, array.elements().size());
         }
         assertEquals(1, statements.size(), statements.toString());
         assertTrue(statements.getFirst().contains("WHERE i.id = ANY(?)"), statements.getFirst());
@@ -205,14 +205,14 @@ public class PostgreSQLInListTest {
         assertEquals(new TreeSet<>(List.of(1, 2, 4, 5)), select(orm, KIND, IN, List.of(Kind.B, Kind.C, Kind.C), sql));
         var kinds = array(sql.get());
         assertEquals("text", kinds.elementType());
-        assertEquals(List.of("B", "C", "C"), Arrays.asList(kinds.elements()));
+        assertEquals(List.of("B", "C", "C"), kinds.elements());
     }
 
     @Test
     void aListHoldingNullBindsAsAnArrayAndMatchesTheRest() {
         var sql = new AtomicReference<Sql>();
         assertEquals(new TreeSet<>(List.of(1, 3)), select(orm, ID, IN, Arrays.asList(1, null, 3), sql));
-        assertEquals(3, array(sql.get()).elements().length);
+        assertEquals(3, array(sql.get()).elements().size());
         // NOT IN over a list holding NULL is unknown for every row, as it is with placeholders.
         assertEquals(new TreeSet<>(), select(orm, ID, NOT_IN, Arrays.asList(1, null, 3), sql));
     }
@@ -222,7 +222,7 @@ public class PostgreSQLInListTest {
         var sql = new AtomicReference<Sql>();
         var ids = IntStream.rangeClosed(1, 5_000).boxed().toList();
         assertEquals(new TreeSet<>(List.of(1, 2, 3, 4, 5, 6)), select(orm, ID, IN, ids, sql));
-        assertEquals(5_000, array(sql.get()).elements().length);
+        assertEquals(5_000, array(sql.get()).elements().size());
     }
 
     @Test

@@ -15,9 +15,10 @@
  */
 package st.orm.core.template;
 
+import static java.util.Collections.unmodifiableList;
 import static java.util.Objects.requireNonNull;
 
-import java.util.Arrays;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.StringJoiner;
 import org.jspecify.annotations.Nullable;
@@ -28,14 +29,15 @@ import org.jspecify.annotations.Nullable;
  * through {@link java.sql.Connection#createArrayOf(String, Object[])}.
  *
  * @param elementType the name of the array's element type, as the dialect's database spells it.
- * @param elements the elements, in the order of the list; an element may be {@code null}.
+ * @param elements the elements, in the order of the list; an element may be {@code null}. Kept as given, in an
+ *                 unmodifiable list.
  * @since 1.16
  */
-public record SqlArray(String elementType, @Nullable Object[] elements) {
+public record SqlArray(String elementType, List<@Nullable Object> elements) {
 
     public SqlArray {
         requireNonNull(elementType, "elementType");
-        elements = elements.clone();
+        elements = unmodifiableList(new ArrayList<>(elements));
     }
 
     /**
@@ -67,28 +69,20 @@ public record SqlArray(String elementType, @Nullable Object[] elements) {
         if (elementType == null) {
             return null;
         }
-        var elements = new Object[values.size()];
-        for (int i = 0; i < elements.length; i++) {
-            elements[i] = values.get(i) instanceof Enum<?> e ? e.name() : values.get(i);
+        var elements = new ArrayList<@Nullable Object>(values.size());
+        for (var value : values) {
+            elements.add(value instanceof Enum<?> e ? e.name() : value);
         }
         return new SqlArray(elementType, elements);
     }
 
-    @Override
-    public Object[] elements() {
-        return elements.clone();
-    }
-
-    @Override
-    public boolean equals(Object other) {
-        return other instanceof SqlArray that
-                && elementType.equals(that.elementType)
-                && Arrays.equals(elements, that.elements);
-    }
-
-    @Override
-    public int hashCode() {
-        return 31 * elementType.hashCode() + Arrays.hashCode(elements);
+    /**
+     * Returns the elements as the array {@link java.sql.Connection#createArrayOf(String, Object[])} takes.
+     *
+     * @return a new array of the elements.
+     */
+    public @Nullable Object[] toArray() {
+        return elements.toArray();
     }
 
     /**

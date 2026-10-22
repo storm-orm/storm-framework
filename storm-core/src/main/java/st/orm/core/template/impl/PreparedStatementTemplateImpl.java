@@ -613,7 +613,7 @@ public final class PreparedStatementTemplateImpl implements PreparedStatementTem
                         case UUID u            -> dialect.setParameter(preparedStatement, idx, u);
                         case Enum<?> e         -> preparedStatement.setString(idx, e.name());   // Enum handled by ORM layer.
                         case SqlArray a        -> preparedStatement.setArray(idx,
-                                preparedStatement.getConnection().createArrayOf(a.elementType(), a.elements()));
+                                preparedStatement.getConnection().createArrayOf(a.elementType(), a.toArray()));
                         // java.time using vendor-safe approach.
                         case LocalDate ld      -> preparedStatement.setDate(idx, java.sql.Date.valueOf(ld));
                         case LocalTime lt      -> preparedStatement.setTime(idx, java.sql.Time.valueOf(lt));

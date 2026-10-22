@@ -175,6 +175,16 @@ public final class SlowStatementLog {
     }
 
     /**
+     * Returns whether executions are measured against a threshold, which is what decides whether a slow line can
+     * report what an execution carries.
+     *
+     * @return {@code true} while a statement threshold is configured.
+     */
+    static boolean timesStatements() {
+        return thresholdNanos != 0;
+    }
+
+    /**
      * Returns whether executions or transactions are measured against a threshold.
      *
      * @return {@code true} while a threshold is configured.
