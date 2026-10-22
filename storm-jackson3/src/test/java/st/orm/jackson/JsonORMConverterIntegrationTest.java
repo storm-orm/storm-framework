@@ -336,6 +336,17 @@ public class JsonORMConverterIntegrationTest {
     }
 
     @Test
+    public void jsonWithFailOnMissingTrueShouldRejectMissingProperties() {
+        var orm = of(dataSource);
+        var query = orm.query("""
+                SELECT id,
+                       '{"address":"test"}' AS address,
+                       telephone
+                FROM owner WHERE id = 1""");
+        assertThrows(PersistenceException.class, () -> query.getSingleResult(OwnerWithFailOnMissing.class));
+    }
+
+    @Test
     public void jsonWithFailOnMissingTrueShouldCreateMapperWithStrictMode() {
         // Exercises the @Json(failOnMissing = true) branch in JsonORMConverterImpl constructor,
         // which skips calling builder.disable(FAIL_ON_MISSING_CREATOR_PROPERTIES).
@@ -408,6 +419,25 @@ public class JsonORMConverterIntegrationTest {
         // The custom deserializer should parse it back.
         assertEquals("123 Main St", inserted.address().address());
         assertEquals("Springfield", inserted.address().city());
+        // A later read from the database uses the custom deserializer as well.
+        var fetched = repository.getById(inserted.id());
+        assertEquals("123 Main St", fetched.address().address());
+        assertEquals("Springfield", fetched.address().city());
+        // The raw column value proves the serializer engaged; a bypassed pair would round trip plain JSON.
+        var row = orm.query("SELECT address, telephone FROM owner WHERE id = " + inserted.id())
+                .getSingleResult(RawOwnerRow.class);
+        assertEquals("\"123 Main St | Springfield\"", row.address());
+    }
+
+    @Test
+    public void jsonWithFailOnUnknownTrueShouldRejectExtraProperties() {
+        var orm = of(dataSource);
+        var query = orm.query("""
+                SELECT id,
+                       '{"address":"test","city":"test","extraField":"unexpected"}' AS address,
+                       telephone
+                FROM owner WHERE id = 1""");
+        assertThrows(PersistenceException.class, () -> query.getSingleResult(OwnerWithFailOnUnknown.class));
     }
 
     @Test

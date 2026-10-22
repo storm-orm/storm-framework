@@ -12,6 +12,8 @@ for the CLI, to [npm](https://www.npmjs.com/package/@storm-orm/cli)
 
 ## [Unreleased]
 
+- Fixed `@Json(failOnUnknown = true)` on Jackson 3, where an unknown property in the JSON was accepted rather than refused: Jackson 3 turns that check off by default, and the converter only ever turned it off. Both converters now set `failOnUnknown` and `failOnMissing` explicitly (#409). The Jackson 2, Jackson 3 and kotlinx.serialization modules share their library-independent code through storm-core, and the two Jackson modules run the same test suite.
+
 - The failures Storm's own logic detects after a statement ran pass through the template's `ExceptionMapper` (#240): an optimistic lock conflict, a single result that is missing or not unique, a write that affected no row. With the Spring Boot starter they translate as Spring's JPA integration translates their counterparts, `OptimisticLockException` to `OptimisticLockingFailureException`, `NoResultException` to `EmptyResultDataAccessException` and `NonUniqueResultException` to `IncorrectResultSizeDataAccessException`, each with the Storm exception as its cause, so a retry setup keyed on `OptimisticLockingFailureException` sees Storm's conflicts. The default mapper keeps them Storm-typed. The `OptimisticLockException` of a single update now carries the entity. `QueryTemplate.exceptionMapper()` and `QueryFactory.exceptionMapper()` return the configured mapper.
 - Upgrade note: a Spring catch block or retry rule that names `OptimisticLockException`, `NoResultException` or `NonUniqueResultException` with the starter's exception translation on now sees the Spring type instead; name the Spring type, or read the Storm exception from the cause.
 

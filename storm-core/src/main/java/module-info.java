@@ -28,6 +28,7 @@ module storm.core {
             storm.mysql,
             storm.oracle,
             storm.postgresql,
+            storm.serialization,
             storm.spring,
             storm.sqlite,
             storm.test;

@@ -73,6 +73,7 @@ public class JsonORMConverterTest {
 
     @Test
     public void failOnUnknownTrueShouldStillWorkWithValidJson() {
+        // Standard address JSON has no unknown properties, so this should succeed.
         var orm = of(dataSource);
         var owner = orm.entity(OwnerWithFailOnUnknown.class).getById(1);
         assertNotNull(owner.address());
@@ -81,6 +82,7 @@ public class JsonORMConverterTest {
 
     @Test
     public void failOnMissingTrueShouldStillWorkWithCompleteJson() {
+        // Standard address JSON has all required properties, so this should succeed.
         var orm = of(dataSource);
         var owner = orm.entity(OwnerWithFailOnMissing.class).getById(1);
         assertNotNull(owner.address());
@@ -89,6 +91,7 @@ public class JsonORMConverterTest {
 
     @Test
     public void failOnUnknownAndFailOnMissingBothTrueShouldWork() {
+        // Both options enabled should work with valid complete JSON.
         var orm = of(dataSource);
         var owner = orm.entity(OwnerWithBothFailOptions.class).getById(1);
         assertNotNull(owner.address());
@@ -97,6 +100,7 @@ public class JsonORMConverterTest {
 
     @Test
     public void insertOwnerShouldSerializeJsonAddressToDatabase() {
+        // Tests the toDatabase path with a non-null JSON field.
         var orm = of(dataSource);
         var repository = orm.entity(Owner.class);
         var address = new Address("271 University Ave", "Palo Alto");
@@ -114,6 +118,7 @@ public class JsonORMConverterTest {
 
     @Test
     public void toDatabaseWithNullJsonFieldShouldProduceNull() {
+        // Tests the toDatabase path when the JSON field is null (nullable address).
         var orm = of(dataSource);
         var repository = orm.entity(OwnerWithNullableAddress.class);
         var owner = OwnerWithNullableAddress.builder()
@@ -128,6 +133,7 @@ public class JsonORMConverterTest {
 
     @Test
     public void fromDatabaseWithNullJsonValueShouldReturnNullForNullableField() {
+        // Fetch an owner whose address was set to null.
         var orm = of(dataSource);
         var repository = orm.entity(OwnerWithNullableAddress.class);
         var owner = OwnerWithNullableAddress.builder()
@@ -142,6 +148,7 @@ public class JsonORMConverterTest {
 
     @Test
     public void fromDatabaseWithInvalidJsonShouldThrowException() {
+        // Query that produces invalid JSON for the address column.
         var orm = of(dataSource);
         var query = orm.query("SELECT id, first_name, last_name, 'not-valid-json' AS address, telephone FROM owner WHERE id = 1");
         assertThrows(PersistenceException.class,
@@ -149,7 +156,21 @@ public class JsonORMConverterTest {
     }
 
     @Test
+    public void failOnUnknownShouldRejectJsonWithExtraProperties() {
+        // Use raw query to inject JSON with an extra property.
+        var orm = of(dataSource);
+        var query = orm.query("""
+                SELECT id, first_name, last_name,
+                       '{"address":"test","city":"test","extraField":"unexpected"}' AS address,
+                       telephone
+                FROM owner WHERE id = 1""");
+        assertThrows(PersistenceException.class,
+                () -> query.getSingleResult(OwnerWithFailOnUnknown.class));
+    }
+
+    @Test
     public void selectAllOwnersWithFailOnUnknownShouldReturnAll() {
+        // All 10 standard owners have valid address JSON with no unknown properties.
         var orm = of(dataSource);
         var owners = orm.entity(OwnerWithFailOnUnknown.class).select().getResultList();
         assertEquals(10, owners.size());
@@ -157,6 +178,7 @@ public class JsonORMConverterTest {
 
     @Test
     public void selectAllOwnersWithFailOnMissingShouldReturnAll() {
+        // All 10 standard owners have complete address JSON.
         var orm = of(dataSource);
         var owners = orm.entity(OwnerWithFailOnMissing.class).select().getResultList();
         assertEquals(10, owners.size());
@@ -164,6 +186,7 @@ public class JsonORMConverterTest {
 
     @Test
     public void updateOwnerJsonFieldShouldPersistChanges() {
+        // Tests the toDatabase path during an update.
         var orm = of(dataSource);
         var repository = orm.entity(Owner.class);
         var owner = repository.getById(1);
@@ -176,6 +199,7 @@ public class JsonORMConverterTest {
 
     @Test
     public void updateOwnerNullableAddressToNullAndBackShouldRoundTrip() {
+        // Insert with address, update to null, read back (null), update back to address, read back.
         var orm = of(dataSource);
         var repository = orm.entity(OwnerWithNullableAddress.class);
         var address = new Address("test", "city");
@@ -202,6 +226,7 @@ public class JsonORMConverterTest {
 
     @Test
     public void selectNullableAddressWithNullValueShouldReturnNull() {
+        // Directly query for a row with NULL address via raw SQL to exercise fromDatabase null path.
         var orm = of(dataSource);
         var repository = orm.entity(OwnerWithNullableAddress.class);
         var owner = OwnerWithNullableAddress.builder()
@@ -212,6 +237,7 @@ public class JsonORMConverterTest {
                 .build();
         repository.insert(owner);
 
+        // Use select to get all including the new null-address owner.
         var allOwners = repository.select().getResultList();
         long nullAddressCount = allOwners.stream().filter(o -> o.address() == null).count();
         assertTrue(nullAddressCount >= 1);

@@ -25,10 +25,12 @@ import kotlinx.serialization.json.*
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.modules.SerializersModule
 import st.orm.*
-import st.orm.core.spi.ORMReflection
-import st.orm.core.spi.Providers
 import st.orm.core.spi.RefFactory
-import java.util.concurrent.ConcurrentHashMap
+import st.orm.core.template.impl.RefJsonSupport
+import st.orm.core.template.impl.RefJsonSupport.ENTITY_FIELD
+import st.orm.core.template.impl.RefJsonSupport.ID_FIELD
+import st.orm.core.template.impl.RefJsonSupport.PROJECTION_FIELD
+import java.util.function.Supplier
 import kotlin.reflect.KClass
 import kotlin.reflect.full.starProjectedType
 
@@ -170,56 +172,49 @@ public class RefSerializer<T : Data>(
     }
 
     @Suppress("UNCHECKED_CAST")
-    private fun deserializeObject(json: Json, obj: JsonObject): Ref<T> = when {
-        obj.containsKey(ENTITY_FIELD) -> {
-            val payload = obj[ENTITY_FIELD]
-                ?: throw SerializationException("$ENTITY_FIELD field is null")
-            val entity = json.decodeFromJsonElement(targetSerializer, payload)
-            if (entity !is Entity<*>) {
-                throw SerializationException("$ENTITY_FIELD must decode to an Entity")
+    private fun deserializeObject(json: Json, obj: JsonObject): Ref<T> = try {
+        when {
+            obj.containsKey(ENTITY_FIELD) -> {
+                val payload = obj[ENTITY_FIELD]
+                    ?: throw SerializationException("$ENTITY_FIELD field is null")
+                val entity = json.decodeFromJsonElement(targetSerializer, payload)
+                RefJsonSupport.loadedRef(entity) as Ref<T>
             }
-            Ref.of(entity as Entity<Any?>) as Ref<T>
-        }
-        obj.containsKey(PROJECTION_FIELD) -> {
-            val idElement = obj[ID_FIELD]
-                ?: throw SerializationException("$PROJECTION_FIELD requires $ID_FIELD field")
-            // For @projection, @id must be present and non-null.
-            val id = decodeId(json, idElement, targetClass)
-                ?: throw SerializationException("$PROJECTION_FIELD requires non-null $ID_FIELD")
-            val payload = obj[PROJECTION_FIELD]
-                ?: throw SerializationException("$PROJECTION_FIELD field is null")
-            val data = json.decodeFromJsonElement(targetSerializer, payload)
-            createLoadedRef(data, id)
-        }
-        else -> {
-            val pkType = PkTypeResolver.resolve(targetClass)
-            if (pkType == null || !PkTypeResolver.isRecord(pkType)) {
-                throw SerializationException(
-                    "Ref object must contain $ENTITY_FIELD or $PROJECTION_FIELD",
-                )
+            obj.containsKey(PROJECTION_FIELD) -> {
+                val idElement = obj[ID_FIELD]
+                    ?: throw SerializationException("$PROJECTION_FIELD requires $ID_FIELD field")
+                // For @projection, @id must be present and non-null.
+                val id = decodeId(json, idElement, targetClass)
+                    ?: throw SerializationException("$PROJECTION_FIELD requires non-null $ID_FIELD")
+                val payload = obj[PROJECTION_FIELD]
+                    ?: throw SerializationException("$PROJECTION_FIELD field is null")
+                val data = json.decodeFromJsonElement(targetSerializer, payload)
+                RefJsonSupport.loadedRef(targetClass, data, id) as Ref<T>
             }
-            // A plain object is the inline record of a compound PK; unloaded refs serialize compound PKs this way.
-            val id = checkNotNull(decodeId(json, obj, targetClass))
-            createRef(targetClass as Class<Data>, id) as Ref<T>
+            else -> {
+                val pkType = RefJsonSupport.pkType(targetClass)
+                if (pkType == null || !RefJsonSupport.isCompoundKey(pkType)) {
+                    throw SerializationException(
+                        "Ref object must contain $ENTITY_FIELD or $PROJECTION_FIELD",
+                    )
+                }
+                // A plain object is the inline record of a compound PK; unloaded refs serialize compound PKs this way.
+                val id = checkNotNull(decodeId(json, obj, targetClass))
+                createRef(targetClass as Class<Data>, id) as Ref<T>
+            }
         }
-    }
-
-    @Suppress("UNCHECKED_CAST")
-    private fun createLoadedRef(data: T, id: Any): Ref<T> = when (data) {
-        is Entity<*> -> Ref.of(data as Entity<Any?>) as Ref<T>
-        is Projection<*> -> Ref.of(data as Projection<Any?>, id) as Ref<T>
-        else -> Ref.of(targetClass as Class<Data>, id) as Ref<T>
+    } catch (e: IllegalArgumentException) {
+        throw SerializationException(e.message, e)
     }
 
     private fun <D : Data> createRef(targetClass: Class<D>, id: Any?): Ref<D>? {
-        if (id == null) return null
-        val factory = refFactoryProvider?.invoke()
-        return factory?.create(targetClass, id) ?: Ref.of(targetClass, id)
+        val refFactory = refFactoryProvider?.let { provider -> Supplier { provider() } }
+        return RefJsonSupport.refOf(targetClass, id, refFactory)
     }
 
     private fun encodeId(json: Json, targetClass: Class<*>?, id: Any?): JsonElement {
         if (id == null || targetClass == null) return JsonNull
-        val pkType = PkTypeResolver.resolve(targetClass)
+        val pkType = RefJsonSupport.pkType(targetClass)
         if (pkType != null) {
             val serializer = json.serializerOrNull(pkType)
             if (serializer != null) {
@@ -243,7 +238,7 @@ public class RefSerializer<T : Data>(
 
     private fun decodeId(json: Json, element: JsonElement, targetClass: Class<*>): Any? {
         if (element is JsonNull) return null
-        val pkType = PkTypeResolver.resolve(targetClass)
+        val pkType = RefJsonSupport.pkType(targetClass)
         if (pkType != null) {
             val serializer = json.serializerOrNull(pkType)
                 ?: throw SerializationException(
@@ -266,39 +261,6 @@ public class RefSerializer<T : Data>(
             else -> throw SerializationException("Cannot decode Ref id from element: $element")
         }
     }
-
-    private companion object {
-        const val ID_FIELD = "@id"
-        const val ENTITY_FIELD = "@entity"
-        const val PROJECTION_FIELD = "@projection"
-    }
-}
-
-/**
- * Cache for PK type resolution to avoid repeated reflection.
- */
-private object PkTypeResolver {
-    private val reflection: ORMReflection = Providers.getORMReflection()
-
-    // Java ConcurrentHashMap.computeIfAbsent cannot return null. Use a sentinel.
-    private val NO_PK: Class<*> = Void::class.java
-    private val cache = ConcurrentHashMap<Class<*>, Class<*>>() // values never null due to sentinel
-
-    fun resolve(target: Class<*>): Class<*>? {
-        val cached = cache.computeIfAbsent(target) {
-            reflection.getRecordType(target).fields()
-                .firstOrNull { f -> f.isAnnotationPresent(PK::class.java) }
-                ?.type()
-                ?: NO_PK
-        }
-        return if (cached == NO_PK) null else cached
-    }
-
-    /**
-     * Returns whether the given PK type is itself a record type (Java record or Kotlin data class), i.e. a
-     * compound PK.
-     */
-    fun isRecord(type: Class<*>): Boolean = reflection.findRecordType(type).isPresent
 }
 
 /**

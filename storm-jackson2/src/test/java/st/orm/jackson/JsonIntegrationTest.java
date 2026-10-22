@@ -1,11 +1,11 @@
 package st.orm.jackson;
 
+import static com.fasterxml.jackson.databind.SerializationFeature.WRITE_DATES_AS_TIMESTAMPS;
 import static java.util.Optional.ofNullable;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static st.orm.core.template.ORMTemplate.of;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
+import com.fasterxml.jackson.databind.json.JsonMapper;
 import java.time.LocalDate;
 import javax.sql.DataSource;
 import org.jspecify.annotations.Nullable;
@@ -43,10 +43,10 @@ public class JsonIntegrationTest {
         // to JSON using Jackson, the entity should produce valid JSON and deserialize back to an equal object.
         var orm = of(dataSource);
         var owner = orm.entity(Owner.class).getById(1);
-        ObjectMapper objectMapper = new ObjectMapper();
-        var json = objectMapper.writeValueAsString(owner);
+        var mapper = JsonMapper.builder().build();
+        var json = mapper.writeValueAsString(owner);
         assertEquals("{\"id\":1,\"firstName\":\"Betty\",\"lastName\":\"Davis\",\"address\":{\"address\":\"638 Cardinal Ave.\",\"city\":\"Sun Prairie\"},\"telephone\":\"6085551749\"}", json);
-        var fromJson = objectMapper.readValue(json, Owner.class);
+        var fromJson = mapper.readValue(json, Owner.class);
         assertEquals(owner, fromJson);
     }
 
@@ -69,27 +69,26 @@ public class JsonIntegrationTest {
         var orm = of(dataSource);
         var query = orm.query("SELECT id, JSON_OBJECT('firstName' VALUE first_name, 'lastName' VALUE last_name) AS person, address, telephone FROM owner LIMIT 1");
         var owner = query.getSingleResult(OwnerWithJsonPerson.class);
-        ObjectMapper objectMapper = new ObjectMapper();
-        var json = objectMapper.writeValueAsString(owner);
+        var mapper = JsonMapper.builder().build();
+        var json = mapper.writeValueAsString(owner);
         assertEquals("""
                 {"id":1,"person":{"firstName":"Betty","lastName":"Davis"},"address":{"address":"638 Cardinal Ave.","city":"Sun Prairie"},"telephone":"6085551749"}""", json);
-        var fromJson = objectMapper.readValue(json, OwnerWithJsonPerson.class);
+        var fromJson = mapper.readValue(json, OwnerWithJsonPerson.class);
         assertEquals(owner, fromJson);
     }
 
     @Test
     public void entityWithFkRelationshipsShouldSerializeNestedEntitiesInline() throws Exception {
         // Pet id=1 is "Leo", a cat owned by Betty Davis. The entity graph includes FK-joined
-        // PetType and Owner entities. When serialized with Jackson + JavaTimeModule, all nested
-        // entities should appear inline with their full field values, and the result should round-trip.
+        // PetType and Owner entities. When serialized with Jackson, dates as ISO strings,
+        // all nested entities should appear inline with their full field values, and the result should round-trip.
         var orm = of(dataSource);
         var pet = orm.entity(Pet.class).getById(1);
-        ObjectMapper objectMapper = new ObjectMapper();
-        objectMapper.registerModule(new JavaTimeModule());
-        var json = objectMapper.writeValueAsString(pet);
+        var mapper = JsonMapper.builder().findAndAddModules().disable(WRITE_DATES_AS_TIMESTAMPS).build();
+        var json = mapper.writeValueAsString(pet);
         assertEquals("""
-                {"id":1,"name":"Leo","birthDate":[2020,9,7],"petType":{"id":1,"name":"cat"},"owner":{"id":1,"firstName":"Betty","lastName":"Davis","address":{"address":"638 Cardinal Ave.","city":"Sun Prairie"},"telephone":"6085551749"}}""", json);
-        var fromJson = objectMapper.readValue(json, Pet.class);
+                {"id":1,"name":"Leo","birthDate":"2020-09-07","petType":{"id":1,"name":"cat"},"owner":{"id":1,"firstName":"Betty","lastName":"Davis","address":{"address":"638 Cardinal Ave.","city":"Sun Prairie"},"telephone":"6085551749"}}""", json);
+        var fromJson = mapper.readValue(json, Pet.class);
         assertEquals(pet, fromJson);
     }
 
@@ -109,13 +108,15 @@ public class JsonIntegrationTest {
         // StormModule must be registered to enable Ref serialization support.
         var orm = of(dataSource);
         var pet = orm.entity(PetWithRefOwner.class).getById(1);
-        ObjectMapper objectMapper = new ObjectMapper();
-        objectMapper.registerModule(new JavaTimeModule());
-        objectMapper.registerModule(new StormModule());
-        var json = objectMapper.writeValueAsString(pet);
+        var mapper = JsonMapper.builder()
+                .findAndAddModules()
+                .disable(WRITE_DATES_AS_TIMESTAMPS)
+                .addModule(new StormModule())
+                .build();
+        var json = mapper.writeValueAsString(pet);
         assertEquals("""
-                {"id":1,"name":"Leo","birthDate":[2020,9,7],"petType":{"id":1,"name":"cat"},"owner":1}""", json);
-        var fromJson = objectMapper.readValue(json, PetWithRefOwner.class);
+                {"id":1,"name":"Leo","birthDate":"2020-09-07","petType":{"id":1,"name":"cat"},"owner":1}""", json);
+        var fromJson = mapper.readValue(json, PetWithRefOwner.class);
         assertEquals(pet, fromJson);
     }
 
@@ -127,13 +128,15 @@ public class JsonIntegrationTest {
         var orm = of(dataSource);
         var pet = orm.entity(PetWithRefOwner.class).getById(1);
         var owner = ofNullable(pet.owner()).map(Ref::fetch).orElseThrow();
-        ObjectMapper objectMapper = new ObjectMapper();
-        objectMapper.registerModule(new JavaTimeModule());
-        objectMapper.registerModule(new StormModule());
-        var json = objectMapper.writeValueAsString(pet);
+        var mapper = JsonMapper.builder()
+                .findAndAddModules()
+                .disable(WRITE_DATES_AS_TIMESTAMPS)
+                .addModule(new StormModule())
+                .build();
+        var json = mapper.writeValueAsString(pet);
         assertEquals("""
-                {"id":1,"name":"Leo","birthDate":[2020,9,7],"petType":{"id":1,"name":"cat"},"owner":{"@entity":{"id":1,"firstName":"Betty","lastName":"Davis","address":{"address":"638 Cardinal Ave.","city":"Sun Prairie"},"telephone":"6085551749"}}}""", json);
-        var fromJson = objectMapper.readValue(json, PetWithRefOwner.class);
+                {"id":1,"name":"Leo","birthDate":"2020-09-07","petType":{"id":1,"name":"cat"},"owner":{"@entity":{"id":1,"firstName":"Betty","lastName":"Davis","address":{"address":"638 Cardinal Ave.","city":"Sun Prairie"},"telephone":"6085551749"}}}""", json);
+        var fromJson = mapper.readValue(json, PetWithRefOwner.class);
         assertEquals(pet, fromJson);
         assertEquals(owner, ofNullable(fromJson.owner()).map(Ref::fetch).orElseThrow());
     }
@@ -163,13 +166,15 @@ public class JsonIntegrationTest {
         // to just the primary key value, same as entity Refs.
         var orm = of(dataSource);
         var pet = orm.entity(PetWithProjectionRefOwner.class).getById(1);
-        ObjectMapper objectMapper = new ObjectMapper();
-        objectMapper.registerModule(new JavaTimeModule());
-        objectMapper.registerModule(new StormModule());
-        var json = objectMapper.writeValueAsString(pet);
+        var mapper = JsonMapper.builder()
+                .findAndAddModules()
+                .disable(WRITE_DATES_AS_TIMESTAMPS)
+                .addModule(new StormModule())
+                .build();
+        var json = mapper.writeValueAsString(pet);
         assertEquals("""
-                {"id":1,"name":"Leo","birthDate":[2020,9,7],"petType":{"id":1,"name":"cat"},"owner":1}""", json);
-        var fromJson = objectMapper.readValue(json, PetWithProjectionRefOwner.class);
+                {"id":1,"name":"Leo","birthDate":"2020-09-07","petType":{"id":1,"name":"cat"},"owner":1}""", json);
+        var fromJson = mapper.readValue(json, PetWithProjectionRefOwner.class);
         assertEquals(pet, fromJson);
     }
 
@@ -181,13 +186,15 @@ public class JsonIntegrationTest {
         var orm = of(dataSource);
         var pet = orm.entity(PetWithProjectionRefOwner.class).getById(1);
         var owner = ofNullable(pet.owner()).map(Ref::fetch).orElseThrow();
-        ObjectMapper objectMapper = new ObjectMapper();
-        objectMapper.registerModule(new JavaTimeModule());
-        objectMapper.registerModule(new StormModule());
-        var json = objectMapper.writeValueAsString(pet);
+        var mapper = JsonMapper.builder()
+                .findAndAddModules()
+                .disable(WRITE_DATES_AS_TIMESTAMPS)
+                .addModule(new StormModule())
+                .build();
+        var json = mapper.writeValueAsString(pet);
         assertEquals("""
-                {"id":1,"name":"Leo","birthDate":[2020,9,7],"petType":{"id":1,"name":"cat"},"owner":{"@id":1,"@projection":{"id":1,"firstName":"Betty","lastName":"Davis","address":{"address":"638 Cardinal Ave.","city":"Sun Prairie"},"telephone":"6085551749"}}}""", json);
-        var fromJson = objectMapper.readValue(json, PetWithProjectionRefOwner.class);
+                {"id":1,"name":"Leo","birthDate":"2020-09-07","petType":{"id":1,"name":"cat"},"owner":{"@id":1,"@projection":{"id":1,"firstName":"Betty","lastName":"Davis","address":{"address":"638 Cardinal Ave.","city":"Sun Prairie"},"telephone":"6085551749"}}}""", json);
+        var fromJson = mapper.readValue(json, PetWithProjectionRefOwner.class);
         assertEquals(pet, fromJson);
         assertEquals(owner, ofNullable(fromJson.owner()).map(Ref::fetch).orElseThrow());
     }
