@@ -383,4 +383,9 @@ class OracleSqlDialectTest {
         assertTrue(dialect.applyOptimizerHintAfterKeyword());
         assertEquals("/*+ FIRST_ROWS(1) QB_NAME(storm) */", dialect.optimizerHint(List.of("FIRST_ROWS(1)", "QB_NAME(storm)")));
     }
+
+    @Test
+    public void testAPaddedInListStaysWithinTheThousandElementsOracleAllows() {
+        assertEquals(1_000, dialect.maxInListElements());
+    }
 }

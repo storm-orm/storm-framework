@@ -15,6 +15,7 @@
  */
 package st.orm.core.template.impl;
 
+import java.util.Arrays;
 import java.util.Collection;
 import java.util.List;
 import java.util.function.Function;
@@ -104,28 +105,41 @@ final class CacheableProcessor implements ElementProcessor<Cacheable> {
                     yield ignoreArity ? List.of(ARITY_ERASED, CONSTANT_SHAPE) : List.of(0, CONSTANT_SHAPE);
                 }
                 if (ignoreArity) {
-                    yield List.of(ARITY_ERASED, getTypeShape(c.iterator().next()));
+                    yield List.of(ARITY_ERASED, getElementShape(c));
                 }
                 if (c.size() > MAX_ARITY) {
                     yield null;
                 }
-                yield List.of(c.size(), getTypeShape(c.iterator().next()));
+                yield List.of(c.size(), getElementShape(c));
             }
             case Object[] a -> {
                 if (a.length == 0) {
                     yield ignoreArity ? List.of(ARITY_ERASED, CONSTANT_SHAPE) : List.of(0, CONSTANT_SHAPE);
                 }
                 if (ignoreArity) {
-                    yield List.of(ARITY_ERASED, getTypeShape(a[0]));
+                    yield List.of(ARITY_ERASED, getElementShape(Arrays.asList(a)));
                 }
                 if (a.length > MAX_ARITY) {
                     yield null;
                 }
-                yield List.of(a.length, getTypeShape(a[0]));
+                yield List.of(a.length, getElementShape(Arrays.asList(a)));
             }
             case Iterable<?> ignore -> null;    // We cannot get the size of an iterable.
             default -> getTypeShape(object);
         };
+    }
+
+    /**
+     * Returns the shape of a collection's elements, from its first non-null element; a NULL among the values of a
+     * list binds as NULL, and a list of nothing else is a constant.
+     */
+    private static Class<?> getElementShape(Collection<?> elements) throws SqlTemplateException {
+        for (var element : elements) {
+            if (element != null) {
+                return getTypeShape(element);
+            }
+        }
+        return CONSTANT_SHAPE;
     }
 
     /** Marker taking the place of a collection's size in a shape key, so every arity shares the key. */

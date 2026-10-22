@@ -21,12 +21,14 @@ import static st.orm.Operator.GREATER_THAN_OR_EQUAL;
 import static st.orm.Operator.LESS_THAN;
 import static st.orm.Operator.LESS_THAN_OR_EQUAL;
 
+import java.math.BigDecimal;
 import java.sql.PreparedStatement;
 import java.sql.SQLException;
 import java.sql.Types;
 import java.util.Locale;
 import java.util.Set;
 import java.util.UUID;
+import org.jspecify.annotations.Nullable;
 import st.orm.Operator;
 import st.orm.StormConfig;
 import st.orm.core.spi.DefaultSqlDialect;
@@ -344,5 +346,47 @@ public class PostgreSQLSqlDialect extends DefaultSqlDialect {
     @Override
     public int maxBindParameters() {
         return 65_535;
+    }
+
+    /**
+     * PostgreSQL binds an {@code IN} list as one array parameter, {@code column = ANY(?)}, so a statement keeps one
+     * shape whatever the length of the list and a long list needs no placeholder per value. The numbers, text,
+     * booleans, decimals and UUIDs an entity's keys and columns hold bind as arrays; a value of another type falls
+     * back to a padded list.
+     *
+     * @param type the Java type of the values.
+     * @return the element type name, or {@code null} for a type the dialect does not bind as an array.
+     * @since 1.16
+     */
+    @Override
+    public @Nullable String arrayElementType(Class<?> type) {
+        if (type == Integer.class) {
+            return "int4";
+        }
+        if (type == Long.class) {
+            return "int8";
+        }
+        if (type == Short.class) {
+            return "int2";
+        }
+        if (type == String.class) {
+            return "text";
+        }
+        if (type == UUID.class) {
+            return "uuid";
+        }
+        if (type == Boolean.class) {
+            return "bool";
+        }
+        if (type == BigDecimal.class) {
+            return "numeric";
+        }
+        if (type == Double.class) {
+            return "float8";
+        }
+        if (type == Float.class) {
+            return "float4";
+        }
+        return null;
     }
 }

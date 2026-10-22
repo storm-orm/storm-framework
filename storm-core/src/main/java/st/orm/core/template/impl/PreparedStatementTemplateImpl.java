@@ -69,6 +69,7 @@ import st.orm.core.template.PreparedStatementTemplate;
 import st.orm.core.template.Query;
 import st.orm.core.template.QueryPlan;
 import st.orm.core.template.Sql;
+import st.orm.core.template.SqlArray;
 import st.orm.core.template.SqlDialect;
 import st.orm.core.template.SqlTemplate;
 import st.orm.core.template.SqlTemplate.BatchListener;
@@ -611,6 +612,8 @@ public final class PreparedStatementTemplateImpl implements PreparedStatementTem
                         case Timestamp ts      -> dialect.setParameter(preparedStatement, idx, ts, calendarSupplier.get());
                         case UUID u            -> dialect.setParameter(preparedStatement, idx, u);
                         case Enum<?> e         -> preparedStatement.setString(idx, e.name());   // Enum handled by ORM layer.
+                        case SqlArray a        -> preparedStatement.setArray(idx,
+                                preparedStatement.getConnection().createArrayOf(a.elementType(), a.elements()));
                         // java.time using vendor-safe approach.
                         case LocalDate ld      -> preparedStatement.setDate(idx, java.sql.Date.valueOf(ld));
                         case LocalTime lt      -> preparedStatement.setTime(idx, java.sql.Time.valueOf(lt));

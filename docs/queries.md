@@ -285,6 +285,12 @@ List<User> found = orm.entity(User.class)
 </TabItem>
 </Tabs>
 
+### IN Lists {#in-lists}
+
+An `IN` list, from `inList` and `IN`, `findAllById` or `whereId`, binds as one array parameter on PostgreSQL, `id = ANY(?)`: one statement for every length of the list, so the database parses, plans and caches one statement for a lookup that takes a varying number of keys rather than one per length, and a long list binds one parameter rather than one per value, which is also faster. Measured on a lookup of 1 to 200 ids in turn, the array form ran 13% faster than a placeholder per value. Elsewhere the list renders a placeholder per value. A list compared through a [SQL function](search.md#ignoring-accents) renders placeholders on every database, since the function is applied to each value.
+
+`storm.in_list` selects the shape, as a system property or in the `StormConfig` a template is built with: `auto`, the default; `padded`, which pads a list of placeholders to the next power of two by repeating its last value, so lengths 1 to 1,000 render as 11 statements instead of 1,000, for a database whose plan cache fills with the lengths, such as Oracle's shared pool or SQL Server's plan cache; `exact`, one placeholder per value everywhere, for a query whose plan turns out worse under the array. Padding changes no result, since membership of a set is not changed by a repeated member, for `IN`, `NOT IN` and a list holding `NULL` alike; it binds the repeated values, which cost more than they saved on PostgreSQL, where the array form takes its place. A padded list never exceeds what the database allows in a list or a statement; where the next power of two would, the list keeps its length. A template that inlines its parameters renders every value as a literal and is not shaped.
+
 ### Composing Multiple Filters
 
 Multiple `where()` calls on the same query builder are combined with AND. This lets you build up filters incrementally, which is useful when conditions are added conditionally in application code.
