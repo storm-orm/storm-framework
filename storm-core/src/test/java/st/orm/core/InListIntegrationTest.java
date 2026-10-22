@@ -23,6 +23,7 @@ import static st.orm.Operator.IN;
 import static st.orm.Operator.NOT_IN;
 
 import java.sql.SQLException;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 import java.util.TreeSet;
@@ -98,6 +99,28 @@ public class InListIntegrationTest {
 
     private static List<Object> values(Sql sql) {
         return sql.parameters().stream().map(parameter -> (Object) parameter.dbValue()).toList();
+    }
+
+    @Test
+    public void aListOfNothingButNullMatchesNoRow() {
+        var orm = ORMTemplate.of(dataSource);
+        var sql = observe(() -> orm.entity(Customer.class).select()
+                .where(ID, IN, Arrays.asList(null, null)).getResultList());
+        assertTrue(sql.statement().contains("WHERE c.id IN (?, ?)"), sql.statement());
+        assertEquals(Arrays.asList(null, null), values(sql));
+        assertEquals(List.of(), orm.entity(Customer.class).select()
+                .where(ID, IN, Arrays.asList(null, null)).getResultList());
+    }
+
+    @Test
+    public void anInlinedListRendersEveryValueAsALiteral() {
+        var orm = template("padded");
+        var captured = new AtomicReference<Sql>();
+        SqlInterceptor.observe(sqlTemplate -> sqlTemplate.withInlineParameters(true), captured::set,
+                () -> orm.entity(Customer.class).select().where(ID, IN, List.of(1, 2, 3)).getResultList());
+        var sql = captured.get();
+        assertTrue(sql.statement().contains("WHERE c.id IN (1, 2, 3)"), sql.statement());
+        assertEquals(List.of(), sql.parameters());
     }
 
     @Test

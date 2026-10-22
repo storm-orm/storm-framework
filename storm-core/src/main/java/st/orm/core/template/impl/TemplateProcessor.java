@@ -253,9 +253,6 @@ class TemplateProcessor {
      */
     private volatile long shapeId = Long.MIN_VALUE;
 
-    /** The advisories with {@link Advice#IN_LIST_SHAPES} appended, built once the shape carries it. */
-    private volatile @Nullable List<String> inListAdvisories;
-
     /**
      * Compiler implementation used during compilation of elements and nested templates.
      */
@@ -720,21 +717,15 @@ class TemplateProcessor {
         var advisories = this.advisories;
         // A list that renders a placeholder per value is a statement per length to the database; the lengths are
         // recorded while the advice log reports what they add up to, or while the slow statement log would show
-        // them on a slow line, and a shape that has run in enough of them carries the advice from then on. The list
-        // with the advice is built once per processor, since the advice of a shape does not change once it carries
-        // one.
+        // them on a slow line, and a shape that has run in enough of them carries the advice from then on. A list
+        // of more than two values compiles anew for each execution, so the advice is appended per binding.
         if (session.inListLength > 0
                 && (AdviceLog.reports(Advice.IN_LIST_SHAPES) || SlowStatementLog.active())) {
             var advisory = InListShapes.observe(shapeId, session.inListLength);
             if (advisory != null) {
-                var withAdvisory = inListAdvisories;
-                if (withAdvisory == null) {
-                    var copy = new ArrayList<>(advisories);
-                    copy.add(advisory);
-                    withAdvisory = List.copyOf(copy);
-                    inListAdvisories = withAdvisory;
-                }
-                advisories = withAdvisory;
+                var copy = new ArrayList<>(advisories);
+                copy.add(advisory);
+                advisories = List.copyOf(copy);
             }
         }
         return new SqlImpl(

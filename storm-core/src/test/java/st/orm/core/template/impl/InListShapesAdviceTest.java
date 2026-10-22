@@ -122,7 +122,11 @@ class InListShapesAdviceTest {
     void aStatementRunInEightLengthsIsReportedOnce() {
         AdviceLog.categories(List.of("performance"));
         var orm = ORMTemplate.of(dataSource);
-        var lines = capture(() -> lookUpInEveryLengthTo(orm, 20));
+        var lines = capture(() -> {
+            lookUpInEveryLengthTo(orm, 20);
+            // A length that ran before runs through the same compiled statement, which carries the advice already.
+            lookUpInEveryLengthTo(orm, 20);
+        });
         assertEquals(1, lines.size(), lines.toString());
         var line = lines.getFirst();
         assertTrue(line.startsWith("SQL advice (SELECT Customer)"), line);

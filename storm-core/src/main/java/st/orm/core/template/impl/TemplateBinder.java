@@ -113,8 +113,7 @@ interface TemplateBinder {
      * @param length the number of values the list rendered with.
      * @since 1.16
      */
-    default void inListRendered(int length) {
-    }
+    void inListRendered(int length);
 
     /**
      * Binds a nested template using attached binding semantics.

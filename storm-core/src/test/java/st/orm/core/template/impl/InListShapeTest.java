@@ -17,6 +17,7 @@ package st.orm.core.template.impl;
 
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
@@ -33,6 +34,7 @@ import st.orm.StormConfig;
 import st.orm.core.spi.DefaultSqlDialect;
 import st.orm.core.template.SqlArray;
 import st.orm.core.template.SqlDialect;
+import st.orm.core.template.SqlTemplate;
 import st.orm.core.template.impl.InListShape.Mode;
 
 /**
@@ -75,6 +77,8 @@ class InListShapeTest {
     @Test
     void theModeComesFromTheConfiguration() {
         assertEquals(Mode.AUTO, Mode.of(StormConfig.defaults()));
+        assertEquals(Mode.AUTO, Mode.of(StormConfig.of(Map.of(StormConfig.IN_LIST, " "))));
+        assertEquals(Mode.AUTO, Mode.of(StormConfig.of(Map.of(StormConfig.IN_LIST, "auto"))));
         assertEquals(Mode.PADDED, Mode.of(StormConfig.of(Map.of(StormConfig.IN_LIST, "padded"))));
         assertEquals(Mode.EXACT, Mode.of(StormConfig.of(Map.of(StormConfig.IN_LIST, " Exact "))));
         var invalid = assertThrows(IllegalArgumentException.class,
@@ -146,6 +150,35 @@ class InListShapeTest {
         assertArrayEquals(new Object[] {"RED", "GREEN"}, array.elements());
         assertEquals("{\"RED\",\"GREEN\"}", array.toString());
         assertEquals("{1,NULL,3}", new SqlArray("int4", new Object[] {1, null, 3}).toString());
+    }
+
+    @Test
+    void anArrayIsEqualByItsTypeAndElementsAndKeepsThemToItself() {
+        var elements = new Object[] {1, null, 3};
+        var array = new SqlArray("int4", elements);
+        elements[0] = 9;
+        assertArrayEquals(new Object[] {1, null, 3}, array.elements());
+        array.elements()[0] = 9;
+        assertArrayEquals(new Object[] {1, null, 3}, array.elements());
+        assertEquals(array, new SqlArray("int4", new Object[] {1, null, 3}));
+        assertEquals(array.hashCode(), new SqlArray("int4", new Object[] {1, null, 3}).hashCode());
+        assertNotEquals(array, new SqlArray("int8", new Object[] {1, null, 3}));
+        assertNotEquals(array, new SqlArray("int4", new Object[] {1, 2, 3}));
+        assertNotEquals(array, "int4");
+    }
+
+    @Test
+    void theDefaultMembershipComparesAgainstAnyOrAll() {
+        assertEquals("c.id = ANY(?)", NO_ARRAYS.arrayMembership("c.id", "?", false));
+        assertEquals("c.id <> ALL(?)", NO_ARRAYS.arrayMembership("c.id", "?", true));
+    }
+
+    @Test
+    void anArrayInlinesAsAQuotedLiteral() {
+        var array = new SqlArray("text", new Object[] {"it's", null});
+        var inlined = SqlLiterals.inline("WHERE c.name = ANY(?)",
+                List.of(new SqlTemplate.PositionalParameter(1, array)));
+        assertEquals("WHERE c.name = ANY('{\"it''s\",NULL}')", inlined);
     }
 
     @Test

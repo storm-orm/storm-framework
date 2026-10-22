@@ -93,6 +93,18 @@ class InListShapesTest {
     }
 
     @Test
+    void theShapesAreBoundedAsTheAdviceLogsRecordsAre() {
+        for (long shapeId = 1; shapeId <= AdviceLog.MAX_REPORTED; shapeId++) {
+            InListShapes.observe(shapeId, 3);
+        }
+        assertEquals(1, InListShapes.lengths(1));
+        // The next shape finds the records full and starts them afresh.
+        InListShapes.observe(AdviceLog.MAX_REPORTED + 1L, 3);
+        assertEquals(0, InListShapes.lengths(1));
+        assertEquals(1, InListShapes.lengths(AdviceLog.MAX_REPORTED + 1L));
+    }
+
+    @Test
     void theThresholdIsEight() {
         assertEquals(8, Advice.IN_LIST_LENGTHS);
     }

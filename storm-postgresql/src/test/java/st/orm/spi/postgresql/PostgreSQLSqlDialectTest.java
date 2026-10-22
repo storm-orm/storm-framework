@@ -3,6 +3,7 @@ package st.orm.spi.postgresql;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -22,6 +23,21 @@ import st.orm.core.template.SqlDialect;
 class PostgreSQLSqlDialectTest {
 
     private final PostgreSQLSqlDialect dialect = new PostgreSQLSqlDialect();
+
+    @Test
+    void anInListBindsAsAnArrayOfTheElementTypeTheDatabaseSpells() {
+        assertEquals("int2", dialect.arrayElementType(Short.class));
+        assertEquals("int4", dialect.arrayElementType(Integer.class));
+        assertEquals("int8", dialect.arrayElementType(Long.class));
+        assertEquals("text", dialect.arrayElementType(String.class));
+        assertEquals("uuid", dialect.arrayElementType(java.util.UUID.class));
+        assertEquals("bool", dialect.arrayElementType(Boolean.class));
+        assertEquals("numeric", dialect.arrayElementType(java.math.BigDecimal.class));
+        assertEquals("float8", dialect.arrayElementType(Double.class));
+        assertEquals("float4", dialect.arrayElementType(Float.class));
+        assertNull(dialect.arrayElementType(java.time.LocalDate.class));
+        assertNull(dialect.arrayElementType(Object.class));
+    }
 
     // Search: a trigram index serves words of three characters or more
 
