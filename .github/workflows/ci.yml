@@ -79,6 +79,46 @@ jobs:
           flags: unittests
           fail_ci_if_error: true
 
+  # Known-vulnerability gate over the dependency graph Storm ships (compile and runtime scope): OWASP
+  # Dependency-Check against the NVD, failing on a High or Critical advisory. Test and provided scope are the
+  # application's own dependencies and stay out of it. The NVD API key is a repository secret; Dependabot runs and
+  # forks receive no secrets, so the scan is skipped there and reported as such.
+  dependency-check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    env:
+      NVD_API_KEY: ${{ secrets.NVD_API_KEY }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      - name: Set up JDK 21
+        if: env.NVD_API_KEY != ''
+        uses: actions/setup-java@v6
+        with:
+          distribution: 'temurin'
+          java-version: '21'
+          # The Maven cache holds the NVD data the plugin keeps under ~/.m2 as well, so a run only pulls the
+          # advisories published since the last one.
+          cache: 'maven'
+
+      - name: Scan the shipped dependency graph
+        if: env.NVD_API_KEY != ''
+        run: mvn -B -DskipTests -Dmaven.javadoc.skip=true -Dspotless.check.skip=true install org.owasp:dependency-check-maven:aggregate
+
+      - name: Upload the Dependency-Check report
+        if: env.NVD_API_KEY != '' && always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: dependency-check-report
+          path: target/dependency-check-report.*
+          if-no-files-found: ignore
+          retention-days: 30
+
+      - name: Report a skipped scan
+        if: env.NVD_API_KEY == ''
+        run: echo "::notice::Dependency-Check skipped - no NVD_API_KEY available to this run."
+
   # The CLI ships to users via npx but is plain JavaScript with no compile step,
   # so at minimum its syntax must be checked before merge.
   cli-check:
