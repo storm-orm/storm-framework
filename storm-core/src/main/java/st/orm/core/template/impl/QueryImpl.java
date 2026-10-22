@@ -252,7 +252,7 @@ class QueryImpl implements Query, KeyedQuery {
             }
             var queryObserver = environment.queryObserver();
             var operators = SqlInterceptorManager.localOperators();
-            boolean slowLog = SlowStatementLog.active();
+            boolean slowLog = SlowStatementLog.observes(environment.transactionTemplateProvider());
             if (queryObserver == QueryObserver.NOOP && operators == null && !slowLog) {
                 // Fast path: skip context creation when nothing is observing.
                 return Observation.NOOP;
@@ -267,7 +267,8 @@ class QueryImpl implements Query, KeyedQuery {
             if (slowLog) {
                 // The slow log listens the way a scope does, at the same point, for every execution.
                 var slow = SlowStatementLog.onExecute(context, environment.parameters(), environment.sqlCommenter(),
-                        environment.advisories(), environment.indexDemands(), environment.dataSource());
+                        environment.advisories(), environment.indexDemands(), environment.dataSource(),
+                        environment.transactionTemplateProvider());
                 if (handles == null) {
                     handles = new StatementListener.Handle[] {slow};
                 } else {

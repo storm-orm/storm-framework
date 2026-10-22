@@ -18,7 +18,9 @@ import st.orm.core.template.impl.SlowStatementLog
 import st.orm.ktor.model.PetRepository
 import java.io.ByteArrayOutputStream
 import java.io.PrintStream
+import kotlin.time.Duration
 import kotlin.time.Duration.Companion.nanoseconds
+import kotlin.time.Duration.Companion.seconds
 
 /**
  * Verifies the per-call SQL log end to end: the summary reports through the `st.orm.sql.perf` logger, which the
@@ -132,6 +134,20 @@ internal class StormSqlLogTest {
             output shouldContain "SQL slow (SELECT Pet)"
         } finally {
             SlowStatementLog.threshold(null)
+        }
+    }
+
+    @Test
+    fun `the slow transaction threshold applies from the configuration file and the plugin configuration`() {
+        try {
+            requestPets("storm.sqlLog.slow.transaction" to "2s")
+            SlowStatementLog.transactionThreshold() shouldBe java.time.Duration.ofSeconds(2)
+            requestPets { sqlLogSlowTransaction = 3.seconds }
+            SlowStatementLog.transactionThreshold() shouldBe java.time.Duration.ofSeconds(3)
+            requestPets { sqlLogSlowTransaction = Duration.ZERO }
+            SlowStatementLog.transactionThreshold() shouldBe null
+        } finally {
+            SlowStatementLog.transactionThreshold(SlowStatementLog.DEFAULT_TRANSACTION_THRESHOLD)
         }
     }
 

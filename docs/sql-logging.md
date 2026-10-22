@@ -327,6 +327,50 @@ The values themselves render while the logger is at `TRACE`, inlined into the st
 
 Under a degraded database every statement is slow. Lines are rate-limited per shape, five per minute by default, and the first line of a shape after suppressed ones carries `+37 suppressed`, so the log names every shape that suffers without drowning in any of them. `storm.sql-log.slow.limit` (Spring), `sqlLogSlowLimit` / `storm.sqlLog.slow.limit` (Ktor) or the `storm.sql_log.slow.limit` system property sets the lines per shape per minute; `0` lifts the limit. A statement with no shape of its own, and every shape past the four thousand tracked, counts against one budget shared between them: those lines carry no `typically`, but the limit holds for them too.
 
+### A Transaction That Holds Its Connection
+
+A transaction whose statements are all fast can still hold its connection, and the row locks of its writes, for seconds: a call to another service, a mail sent or a document rendered between a write and the commit. No statement line shows it, since no statement is slow. A second threshold sets how long a transaction may hold its connection beyond what its statements spent on it; a transaction idle for longer is reported under `st.orm.sql.slow` at `WARN` when it completes, with the call site that began it. The threshold is one second by default: what is slow for a statement depends on the database, so the statement threshold has no default, but a connection held for a second while the application does other work is wrong on any database. Retune it where a transaction holds its connection by design, or set it to `0` to stop watching transactions.
+
+<Tabs groupId="framework">
+<TabItem value="spring" label="Spring Boot" default>
+
+```yaml
+storm:
+  sql-log:
+    slow:
+      transaction: 2s
+```
+
+</TabItem>
+<TabItem value="ktor" label="Ktor">
+
+```kotlin
+install(Storm) {
+    sqlLogSlowTransaction = 2.seconds
+}
+```
+
+Or from `application.conf`, under `storm.sqlLog.slow.transaction`.
+
+</TabItem>
+<TabItem value="jvm" label="Plain JVM">
+
+```
+-Dstorm.sql_log.slow.transaction=2s
+```
+
+</TabItem>
+</Tabs>
+
+```
+SQL slow (transaction): held its connection 2300 ms, 120 ms in its 3 statements, wrote, OrderService.java:42
+	advice: the transaction held its connection 2300 ms and its statements spent 120 ms of it; for 2180 ms between them it held the connection, and the row locks of its writes, while the application did other work; move that work before the transaction or after it commits. See https://orm.st/docs/advice#idle-transaction
+```
+
+The time is measured from the moment the transaction takes its connection to the moment it returns it, against the time its statements spent on it, from preparation to close, so a statement whose rows are read slowly counts as time in the statement. A Spring-managed transaction is measured from Storm's first statement in it, since Spring opened the connection before Storm saw the transaction, and its line says `from its first statement`. A joined block is part of the transaction it joined, reported once; a `REQUIRES_NEW` block is measured on its own. The lines share one rate limit, as the lines of a shape do.
+
+A measurement against a threshold rather than a check of the code, so it runs in production: two clock reads per transaction and an addition per statement in one, and nothing for a statement outside a transaction, which stays on the path it takes while no slow log runs at all. Switched off, a transaction costs one volatile read. `@AcceptAdvice("idle-transaction")` on the method that runs the transaction accepts the advice there, for a transaction that holds its connection by design. See [Statement Advice](advice.md#idle-transaction).
+
 ### Retuning A Running Application
 
 What a slow threshold should be is a question a degraded deployment answers better than a configuration file written months earlier, and that is the deployment a restart costs the most. Every setting the log reports with is read per unit of work, so it can be replaced while the application runs.
@@ -349,7 +393,7 @@ GET  /actuator/storm
 POST /actuator/storm   {"slowStatement": "200ms", "duration": "1s", "callSites": true}
 ```
 
-`slowStatement` and `slowStatementLimit` set the slow statement log; `statements`, `duration`, `callSites` and `limit` set every performance boundary. What the request leaves out stays as it is, and `off` removes a threshold rather than setting one. It changes a running process only: nothing is written back to the configuration, and a restart returns to it.
+`slowStatement`, `slowStatementLimit` and `slowTransaction` set the slow statement log; `statements`, `duration`, `callSites` and `limit` set every performance boundary. What the request leaves out stays as it is, and `off` removes a threshold rather than setting one. It changes a running process only: nothing is written back to the configuration, and a restart returns to it.
 
 Since the endpoint reads and changes what a deployment reports, it belongs behind the same authorization as the other write endpoints.
 

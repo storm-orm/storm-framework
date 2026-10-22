@@ -187,6 +187,18 @@ public class StormPluginConfig {
     public var sqlLogSlowLimit: Int? = null
 
     /**
+     * Time a transaction may hold its connection beyond what its statements spent on it, such as `2.seconds`: a
+     * transaction idle for longer is reported under the `st.orm.sql.slow` logger with the call site that began it,
+     * its statements and whether it wrote. Applied JVM-wide at installation. Configuration key
+     * `storm.sqlLog.slow.transaction`, as a duration such as `2s`; when unset, the `storm.sql_log.slow.transaction`
+     * system property's setting, or its default of one second, stays in effect. `Duration.ZERO` stops watching
+     * transactions.
+     *
+     * @since 1.16
+     */
+    public var sqlLogSlowTransaction: Duration? = null
+
+    /**
      * Categories of advice the advice log (`st.orm.sql.advice`) reports: `correctness`, `performance` and `design`.
      * Configuration key `storm.advice.categories`, a list or comma-separated string. Applied JVM-wide at
      * installation; when unset, the `storm.advice.categories` system property's setting, or its default

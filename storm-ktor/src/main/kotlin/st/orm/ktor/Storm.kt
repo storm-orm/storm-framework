@@ -342,6 +342,7 @@ public val Storm: ApplicationPlugin<StormPluginConfig> = createApplicationPlugin
         ?: if (sqlLogSettings.enabled) sqlLogSettings.durationThreshold else null
     slowThreshold?.let { SlowStatementLog.threshold(it.toJavaDuration()) }
     sqlLogSettings.slowLimit?.let { SlowStatementLog.limit(it) }
+    sqlLogSettings.slowTransaction?.let { SlowStatementLog.transactionThreshold(it.toJavaDuration()) }
     if (sqlLogSettings.enabled) {
         val limit = sqlLogSettings.limit
         val callSites = sqlLogSettings.callSites

@@ -60,6 +60,15 @@ enum Advice {
                     + "with %4$s, so the database reads %2$s in full for every row it deletes; an index on %2$s(%3$s) "
                     + "serves the check."),
 
+    /**
+     * A transaction that held its connection, and after a write its row locks, while the application did other work
+     * between its statements. Every statement may be fast, so only the time the connection was held shows it.
+     */
+    IDLE_TRANSACTION("idle-transaction", Category.PERFORMANCE, true,
+            "the transaction held its connection %1$s and its statements spent %2$s of it; for %3$s between them it "
+                    + "held the connection%4$s while the application did other work; move that work before the "
+                    + "transaction or after it commits."),
+
     /** The count query behind a page, a deliberate choice of page over slice, so advised only when slow. */
     PAGE_COUNT("page-count", Category.PERFORMANCE, true,
             "page counts every matching row to report the total; slice reads the same page without the count, and "

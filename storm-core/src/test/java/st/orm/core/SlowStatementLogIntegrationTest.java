@@ -111,12 +111,19 @@ public class SlowStatementLogIntegrationTest {
 
     @Test
     public void testWithoutAThresholdTheLogIsInactive() {
-        SlowStatementLog.threshold(null);
-        assertFalse(SlowStatementLog.active());
-        SlowStatementLog.threshold(Duration.ZERO);
-        assertFalse(SlowStatementLog.active());
-        SlowStatementLog.threshold(Duration.ofMillis(200));
-        assertTrue(SlowStatementLog.active());
+        // Transactions are watched by default, which keeps the log active on its own; the statement side is tested
+        // with the transaction side switched off.
+        SlowStatementLog.transactionThreshold(null);
+        try {
+            SlowStatementLog.threshold(null);
+            assertFalse(SlowStatementLog.active());
+            SlowStatementLog.threshold(Duration.ZERO);
+            assertFalse(SlowStatementLog.active());
+            SlowStatementLog.threshold(Duration.ofMillis(200));
+            assertTrue(SlowStatementLog.active());
+        } finally {
+            SlowStatementLog.transactionThreshold(SlowStatementLog.DEFAULT_TRANSACTION_THRESHOLD);
+        }
     }
 
     @Test

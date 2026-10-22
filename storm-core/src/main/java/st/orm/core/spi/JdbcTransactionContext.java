@@ -42,6 +42,7 @@ import st.orm.PersistenceException;
 import st.orm.TransactionPropagation;
 import st.orm.TransactionTimedOutException;
 import st.orm.UnexpectedRollbackException;
+import st.orm.core.template.impl.HeldConnection;
 
 /**
  * A JDBC transaction context implementation that provides lightweight transaction management based on JDBC.
@@ -128,6 +129,9 @@ public final class JdbcTransactionContext implements TransactionContext {
         boolean rollbackOnly;
         boolean rollbackInherited;
         @Nullable Long deadlineNanos;
+        // The connection this frame holds for the slow statement log, taken with the connection when the log
+        // watches transactions and released with it.
+        @Nullable HeldConnection heldConnection;
         Map<Class<?>, EntityCache<?, ?>> entityCacheMap = new HashMap<>();
 
         TransactionState(TransactionPropagation propagation,
@@ -280,6 +284,12 @@ public final class JdbcTransactionContext implements TransactionContext {
     public Connection getConnection(DataSource dataSource, boolean manualCommitConnections) {
         useDataSource(dataSource, manualCommitConnections);
         return currentState().connection;
+    }
+
+    @Override
+    public @Nullable HeldConnection heldConnection() {
+        var state = lastOrNull();
+        return state == null ? null : stack.get(state.ownerIndex).heldConnection;
     }
 
     @Override
@@ -713,18 +723,24 @@ public final class JdbcTransactionContext implements TransactionContext {
     }
 
     private void close(Connection connection, TransactionState state) throws SQLException {
-        if (state.originalIsolationLevel != null) {
-            connection.setTransactionIsolation(state.originalIsolationLevel);
+        try {
+            if (state.originalIsolationLevel != null) {
+                connection.setTransactionIsolation(state.originalIsolationLevel);
+            }
+            if (state.originalReadOnly != null) {
+                connection.setReadOnly(state.originalReadOnly);
+            }
+            // Restore auto-commit only when this frame changed it, so the pool gets the connection back in its
+            // arrived state: auto-commit for regular pools, manual-commit for declared pools.
+            if (state.originalAutoCommit != null) {
+                connection.setAutoCommit(state.originalAutoCommit);
+            }
+            connection.close();
+        } finally {
+            if (state.heldConnection != null) {
+                state.heldConnection.released();
+            }
         }
-        if (state.originalReadOnly != null) {
-            connection.setReadOnly(state.originalReadOnly);
-        }
-        // Restore auto-commit only when this frame changed it, so the pool gets the connection back in its
-        // arrived state: auto-commit for regular pools, manual-commit for declared pools.
-        if (state.originalAutoCommit != null) {
-            connection.setAutoCommit(state.originalAutoCommit);
-        }
-        connection.close();
     }
 
     private TransactionState popState() {
@@ -794,6 +810,7 @@ public final class JdbcTransactionContext implements TransactionContext {
             if (state.deadlineNanos == null && state.timeoutSeconds != null) {
                 state.deadlineNanos = deadlineFromNow(state.timeoutSeconds);
             }
+            state.heldConnection = HeldConnection.take(false);
             state.connection = connection;
         } finally {
             state.bindLock.unlock();
