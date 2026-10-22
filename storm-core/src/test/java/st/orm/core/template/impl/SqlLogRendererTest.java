@@ -22,9 +22,14 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import java.util.ArrayList;
 import java.util.List;
 import org.junit.jupiter.api.Test;
+import st.orm.AcceptAdvice;
 import st.orm.Data;
+import st.orm.Entity;
+import st.orm.FK;
+import st.orm.PK;
 import st.orm.core.model.City;
 import st.orm.core.model.Owner;
+import st.orm.core.model.Pet;
 import st.orm.core.template.SqlLog.Statement;
 import st.orm.core.template.SqlLog.StatementLine;
 import st.orm.core.template.SqlLog.Summary;
@@ -199,9 +204,61 @@ public class SqlLogRendererTest {
         var statements = new ArrayList<Statement>();
         for (int i = 0; i < executions; i++) {
             statements.add(new Statement(operation, type, origin, "SQL " + type.getSimpleName(), i, i + 1, i + 1,
-                    type.getName().hashCode(), null, rows, exactRows));
+                    type.getName().hashCode(), null, rows, exactRows, true));
         }
         return new Summary("call", statements, executions, 0, executions);
+    }
+
+    /** A unit of work that wrote one row of each type in turn, each write in a transaction or on its own. */
+    @SafeVarargs
+    private static Summary writes(boolean transactional, Class<? extends Data>... types) {
+        var statements = new ArrayList<Statement>();
+        for (int i = 0; i < types.length; i++) {
+            statements.add(new Statement(SqlOperation.INSERT, types[i], StatementOrigin.DIRECT,
+                    "INSERT " + types[i].getSimpleName(), i, i + 1, i + 1, types[i].getName().hashCode(), null, 1,
+                    true, transactional));
+        }
+        return new Summary("call", statements, types.length, 0, types.length);
+    }
+
+    /** A line of an audit trail, written after the row it describes by design. */
+    @AcceptAdvice("writes-without-transaction")
+    public record OwnerAudit(@PK Integer id, @FK Owner owner, String change) implements Entity<Integer> {}
+
+    @Test
+    public void relatedWritesOutsideATransactionCarryAdvice() {
+        var advisories = SqlLogRenderer.advisories(writes(false, Owner.class, Pet.class));
+        assertEquals(1, advisories.size(), advisories.toString());
+        assertEquals("the unit of work wrote Owner and then Pet, which references Owner, each in a transaction of "
+                + "its own; when a later write fails, the earlier ones stay; run them in one transaction. See "
+                + "https://orm.st/docs/advice#writes-without-transaction", advisories.getFirst());
+        // The reference through an inline record counts: an owner's address references its city.
+        assertEquals(1, SqlLogRenderer.advisories(writes(false, City.class, Owner.class)).size());
+        // One piece of advice per pair of types, however many rows.
+        assertEquals(1, SqlLogRenderer.advisories(writes(false, Owner.class, Pet.class, Pet.class, Owner.class, Pet.class)).size());
+    }
+
+    @Test
+    public void relatedWritesDrawNoAdviceInATransactionOrApartOrInTheOtherOrder() {
+        assertEquals(List.of(), SqlLogRenderer.advisories(writes(true, Owner.class, Pet.class)));
+        assertEquals(List.of(), SqlLogRenderer.advisories(writes(false, Pet.class, City.class)));
+        assertEquals(List.of(), SqlLogRenderer.advisories(writes(false, Pet.class, Owner.class)));
+        assertEquals(List.of(), SqlLogRenderer.advisories(writes(false, Pet.class)));
+        // The write in a transaction is not the one the untransacted write follows.
+        var mixed = new ArrayList<>(writes(true, Owner.class).statements());
+        mixed.addAll(writes(false, Pet.class).statements());
+        assertEquals(List.of(), SqlLogRenderer.advisories(new Summary("call", mixed, 2, 0, 2)));
+    }
+
+    @Test
+    public void relatedWritesAcceptedOnTheTypeWrittenSecondDrawNoAdvice() {
+        assertEquals(List.of(), SqlLogRenderer.advisories(writes(false, Owner.class, OwnerAudit.class)));
+    }
+
+    @Test
+    @AcceptAdvice("writes-without-transaction")
+    public void relatedWritesAcceptedOnTheMethodRunningTheUnitOfWorkDrawNoAdvice() {
+        assertEquals(List.of(), SqlLogRenderer.advisories(writes(false, Owner.class, Pet.class)));
     }
 
     @Test

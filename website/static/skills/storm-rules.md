@@ -51,6 +51,10 @@ This is the default to apply. The developer can choose otherwise; where they say
 - **Write a subset of columns through the same entity.** Rows the transaction did not read take the update builder, which sets the named columns on the rows its conditions select: `pets.update { set(Pet_.owner, newOwner); where(Pet_.owner eq previousOwner) }` in Kotlin, `pets.update().set(Pet_.owner, newOwner).where(Pet_.owner, EQUALS, previousOwner)` in Java. An entity the transaction read takes `update(entity)`, and `@DynamicUpdate(FIELD)` on the entity writes only the columns that changed. Neither needs a partial entity.
 - **Other projections keep their purpose.** A projection over a database view or a `@ProjectionQuery`, and a plain data class or record for an aggregation or computed result, are not tables, so this rule does not apply to them.
 
+### Related Writes
+
+- **Writes that depend on each other run in one transaction.** A write to an entity whose foreign key references an entity the same unit of work just wrote (an owner and then its pet) goes in a `transaction { }` / `transaction(tx -> ...)` with that earlier write; outside one, each commits on its own and a failure leaves the earlier row behind. The performance log reports the pattern as `writes-without-transaction` advice.
+
 ### Writing by Condition
 
 - **`remove` and `update(entity)` take what you hold; `delete()` and `update()` builders take a condition.** `remove(entity)`, `removeById`, `removeByRef` and `update(entity)` act on entities, ids or refs the code already has. `delete()` and the `update()` builder find their rows by a condition and return a `QueryBuilder`, ending in `executeUpdate()`; there is no `delete(entity)`.

@@ -791,6 +791,8 @@ val userRepository = orm.repository<UserRepository>()
 
 ## Transactions
 
+**Related writes go in one transaction.** A write to an entity whose foreign key references an entity the same unit of work just wrote, such as an owner and then its pet, runs inside `transaction { }` with that earlier write, so a failure rolls back what came before it; outside a transaction each write commits on its own and the owner stays without its pet. The performance log reports the pattern as `writes-without-transaction` advice; where the second write stands on its own by design (an audit record, an outbox row), `@AcceptAdvice("writes-without-transaction")` on that entity accepts it.
+
 **Respect an existing stance first.** When the codebase has already settled on a convention — declarative `@Transactional` throughout, no coroutines at all, or fully suspend — Storm code should follow that convention rather than introduce a competing style. The preference below applies when the project has not taken a clear stance (new code, greenfield modules).
 
 Prefer Storm's programmatic transactions over declarative `@Transactional` — in every environment, including Spring Boot. The boundary is explicit code, so there are no AOP proxy pitfalls (self-invocation and non-public methods silently skip `@Transactional`), it is coroutine-native, and the `Transaction` receiver exposes `setRollbackOnly()`, `onCommit { }`, and `onRollback { }` as typed API. In Spring Boot, suspend mode requires disabling Storm's Spring transaction integration (see below); Storm then manages transactions directly on the DataSource. Declarative `@Transactional` remains fully supported for teams standardized on it — in that mode, use `transactionBlocking { }` instead of suspend mode.

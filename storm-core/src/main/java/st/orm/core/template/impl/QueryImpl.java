@@ -243,22 +243,29 @@ class QueryImpl implements Query, KeyedQuery {
      */
     private Observation observe(ExecutionKind kind) {
         try {
+            var queryObserver = environment.queryObserver();
+            var operators = SqlInterceptorManager.localOperators();
+            // Whether the statement runs in a transaction: what the slow log needs to decide whether to observe it,
+            // and what the context says to whoever records it. Asked only while something could observe, so a
+            // statement with every log off pays the volatile reads alone; unasked, it counts as transactional.
+            boolean observable = queryObserver != QueryObserver.NOOP || operators != null
+                    || SlowStatementLog.active();
+            boolean transactional = !observable
+                    || TransactionScope.inTransaction(environment.transactionTemplateProvider());
             var advisories = environment.advisories();
             if (!advisories.isEmpty() && AdviceLog.enabled(advisories)) {
                 // Advice is decided when the statement is built; a statement without any costs this test alone.
                 AdviceLog.onExecute(new QueryContextImpl(environment.operation(), environment.dataType(), kind,
-                        environment.statementText(), environment.origin(), environment.shapeId()),
+                        environment.statementText(), environment.origin(), environment.shapeId(), transactional),
                         environment.statementText(), advisories);
             }
-            var queryObserver = environment.queryObserver();
-            var operators = SqlInterceptorManager.localOperators();
-            boolean slowLog = SlowStatementLog.observes(environment.transactionTemplateProvider());
+            boolean slowLog = SlowStatementLog.observes(transactional);
             if (queryObserver == QueryObserver.NOOP && operators == null && !slowLog) {
                 // Fast path: skip context creation when nothing is observing.
                 return Observation.NOOP;
             }
             var context = new QueryContextImpl(environment.operation(), environment.dataType(), kind,
-                    environment.statementText(), environment.origin(), environment.shapeId());
+                    environment.statementText(), environment.origin(), environment.shapeId(), transactional);
             var observation = queryObserver == QueryObserver.NOOP
                     ? Observation.NOOP
                     : queryObserver.onExecute(context);
@@ -1281,7 +1288,8 @@ class QueryImpl implements Query, KeyedQuery {
                                     ExecutionKind kind,
                                     @Nullable String statementText,
                                     StatementOrigin origin,
-                                    long shapeId) implements QueryContext {
+                                    long shapeId,
+                                    boolean transactional) implements QueryContext {
         @Override
         public Optional<Class<? extends Data>> dataType() {
             return ofNullable(type);

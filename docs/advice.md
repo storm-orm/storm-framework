@@ -306,6 +306,18 @@ A unit of work that runs the same SELECT ten or more times, each returning at mo
 
 Read them in one query: `findAllById(ids)`, or a `where` with `IN` over the keys, returns all of them in one statement. A read of several rows each time, such as scrolling window after window, gets no advice.
 
+## Related writes that each commit on their own {#writes-without-transaction}
+
+> the unit of work wrote Owner and then Pet, which references Owner, each in a transaction of its own; when a later write fails, the earlier ones stay; run them in one transaction
+
+Category: correctness, reported by the [performance log](sql-logging.md#the-performance-log) summary of the unit of work.
+
+Two writes outside a transaction each commit on their own: when the second fails, the first stays. Often that is deliberate, such as a batch job that commits as it goes, an outbox row, or an audit record that must survive a failure, so advice on every unit of work with several writes would be noise. One shape is almost never deliberate: a write to a table that references a table an earlier write of the same unit of work wrote, such as an owner and then its pet. If the pet fails, the database keeps an owner without it.
+
+Each recorded statement keeps whether it ran in a transaction, and the summary walks its writes once: a write outside any transaction to an entity whose foreign key references an entity an earlier write outside any transaction wrote is advised, once per pair of types. The check is by type, from the model's foreign keys, not by row, so two writes to related types that touch unrelated rows are advised as well. Writes Storm does not run, such as through another library, are not seen.
+
+Run the writes in one transaction, `transaction { }` in Kotlin or `transaction(tx -> ...)` in Java, so that a failure rolls back what came before it. Where the second write stands on its own by design, such as an audit record that must survive the failure of what it describes, accept the advice on that entity with `@AcceptAdvice("writes-without-transaction")`, or on the method or class that runs the unit of work.
+
 ## The same single-row write, again and again {#repeated-write}
 
 > the same INSERT of Owner ran 10 times, one row each

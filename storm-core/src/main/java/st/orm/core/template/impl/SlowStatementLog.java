@@ -199,22 +199,13 @@ public final class SlowStatementLog {
      * transaction is credited with. An execution outside any transaction while no statement threshold is set is
      * what lets the execution path skip every other cost of the log, which is the common case with the defaults.
      *
-     * <p>A block that opens its transaction at its first statement has not opened it yet when this is asked, so the
-     * question is whether the thread is in a transaction block or a transaction of the provider, not whether a
-     * connection is held already.</p>
-     *
-     * @param transactionTemplateProvider the provider whose transaction the execution would run in.
+     * @param inTransaction whether the thread is in a transaction block or a transaction of the provider, as
+     *                      {@link TransactionScope#inTransaction} answers it; a block that opens its transaction at
+     *                      its first statement counts, since that statement is what opens it.
      * @return {@code true} when the execution is to be observed.
      */
-    static boolean observes(TransactionTemplateProvider transactionTemplateProvider) {
-        if (thresholdNanos != 0) {
-            return true;
-        }
-        if (transactionThresholdNanos == 0) {
-            return false;
-        }
-        return TransactionScope.current() != null
-                || transactionTemplateProvider.getTransactionTemplate().currentContext().isPresent();
+    static boolean observes(boolean inTransaction) {
+        return thresholdNanos != 0 || (transactionThresholdNanos != 0 && inTransaction);
     }
 
     /** The default rate limit, applied when neither the system property nor an integration sets one. */

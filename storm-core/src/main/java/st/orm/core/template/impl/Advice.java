@@ -119,7 +119,15 @@ enum Advice {
     /** The same single-row write repeated without a batch, in one unit of work. */
     REPEATED_WRITE("repeated-write", Category.PERFORMANCE, false,
             "the same %1$s of %2$s ran %3$d times, one row each; the overloads that take a list send the rows as "
-                    + "one batch.");
+                    + "one batch."),
+
+    /**
+     * A write outside any transaction to a type that references a type an earlier write outside any transaction
+     * wrote, in one unit of work: each committed on its own, so the first stays when the second fails.
+     */
+    WRITES_WITHOUT_TRANSACTION("writes-without-transaction", Category.CORRECTNESS, false,
+            "the unit of work wrote %1$s and then %2$s, which references %1$s, each in a transaction of its own; "
+                    + "when a later write fails, the earlier ones stay; run them in one transaction.");
 
     /** The executions in one unit of work from which a repeated statement or fetch carries advice. */
     static final int REPEAT_THRESHOLD = 10;

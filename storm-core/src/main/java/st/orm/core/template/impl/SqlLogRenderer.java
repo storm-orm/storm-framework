@@ -21,8 +21,10 @@ import static st.orm.core.spi.StormConfigHelper.getInt;
 
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import st.orm.StormConfig;
 import st.orm.core.template.SqlLog.StatementLine;
 import st.orm.core.template.SqlLog.Summary;
@@ -83,6 +85,12 @@ public final class SqlLogRenderer {
         return rendered.toString();
     }
 
+    /** Returns whether the operation writes rows. */
+    private static boolean writes(SqlOperation operation) {
+        return operation == SqlOperation.INSERT || operation == SqlOperation.UPDATE
+                || operation == SqlOperation.DELETE;
+    }
+
     /** A statement that repeated in the unit of work, under construction. */
     private static final class Repeat {
         final SqlOperation operation;
@@ -99,12 +107,15 @@ public final class SqlLogRenderer {
     /**
      * Returns the advice on what the unit of work repeated, over its recorded statements: references of one type
      * fetched one statement at a time, and the same single-row read or unbatched single-row write run again and
-     * again. Each counts from {@link Advice#REPEAT_THRESHOLD} executions; a statement without a type is not advised
-     * on, since the advice names it.
+     * again, each from {@link Advice#REPEAT_THRESHOLD} executions; and on related writes that each committed on
+     * their own, a write outside any transaction to a type that references a type an earlier write outside any
+     * transaction wrote. A statement without a type is not advised on, since the advice names it.
      */
     static List<String> advisories(Summary summary) {
         Map<String, Integer> fetches = new LinkedHashMap<>();
         Map<Object, Repeat> repeats = new LinkedHashMap<>();
+        Set<Class<?>> writtenOutside = new LinkedHashSet<>();
+        Set<String> relatedWrites = new LinkedHashSet<>();
         for (var statement : summary.statements()) {
             var dataType = statement.dataType();
             if (dataType == null) {
@@ -114,6 +125,16 @@ public final class SqlLogRenderer {
             if (statement.origin() == StatementOrigin.FETCH) {
                 fetches.merge(type, 1, Integer::sum);
                 continue;
+            }
+            if (!statement.transactional() && writes(statement.operation())) {
+                for (var target : ForeignKeyTargets.of(dataType)) {
+                    // Accepted on the type written second, or on the method or class running the unit of work.
+                    if (writtenOutside.contains(target)
+                            && !AdviceAcceptance.accepts(Advice.WRITES_WITHOUT_TRANSACTION, 0, dataType)) {
+                        relatedWrites.add(target.getSimpleName() + "\u0000" + type);
+                    }
+                }
+                writtenOutside.add(dataType);
             }
             // Grouped as the summary's rows are: by shape, by text for a statement without one.
             Object key = statement.shapeId() != 0 ? statement.shapeId() : statement.statement();
@@ -138,6 +159,11 @@ public final class SqlLogRenderer {
                         repeat.type, repeat.executions));
                 default -> { }
             }
+        }
+        for (var related : relatedWrites) {
+            int separator = related.indexOf('\u0000');
+            advisories.add(Advice.WRITES_WITHOUT_TRANSACTION.format(related.substring(0, separator),
+                    related.substring(separator + 1)));
         }
         return advisories;
     }
