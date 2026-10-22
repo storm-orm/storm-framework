@@ -104,9 +104,9 @@ public final class StormConfig {
      */
     public static final String SQL_LOG_SLOW_LIMIT = "storm.sql_log.slow.limit";
     /**
-     * Time a transaction may hold its connection beyond what its statements spent on it, such as {@code 1s}; a
+     * Time a transaction may hold its connection beyond what its statements spent on it, such as {@code 2s}; a
      * transaction idle for longer is reported under the {@code st.orm.sql.slow} logger, with the call site that
-     * began it. Unset means transactions are not watched.
+     * began it. Defaults to {@code 1s}; {@code 0} stops watching transactions.
      *
      * @since 1.16
      */

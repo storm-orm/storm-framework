@@ -17,6 +17,7 @@ package st.orm.core.template.impl;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static st.orm.TransactionPropagation.REQUIRED;
@@ -81,7 +82,7 @@ class IdleTransactionLogTest {
 
     @AfterEach
     void unwatch() {
-        SlowStatementLog.transactionThreshold(null);
+        SlowStatementLog.transactionThreshold(SlowStatementLog.DEFAULT_TRANSACTION_THRESHOLD);
         SlowStatementLog.limit(SlowStatementLog.DEFAULT_LIMIT);
         SlowStatementLogTestSupport.reset();
     }
@@ -242,7 +243,7 @@ class IdleTransactionLogTest {
     }
 
     @Test
-    void withoutAThresholdNoConnectionIsHeld() {
+    void switchedOffNoConnectionIsHeld() {
         SlowStatementLog.transactionThreshold(null);
         assertFalse(SlowStatementLog.active());
         assertNull(HeldConnection.take(false));
@@ -254,5 +255,32 @@ class IdleTransactionLogTest {
         SlowStatementLog.transactionThreshold(Duration.ofMillis(5));
         assertTrue(SlowStatementLog.active());
         assertEquals(Duration.ofMillis(5), SlowStatementLog.transactionThreshold());
+    }
+
+    @Test
+    void transactionsAreWatchedByDefaultAtOneSecond() {
+        assertEquals(Duration.ofSeconds(1), SlowStatementLog.DEFAULT_TRANSACTION_THRESHOLD);
+        SlowStatementLog.transactionThreshold(SlowStatementLog.DEFAULT_TRANSACTION_THRESHOLD);
+        assertTrue(SlowStatementLog.active());
+        assertNotNull(HeldConnection.take(false));
+        assertEquals(Duration.ofSeconds(1), SlowStatementLog.transactionThreshold());
+        // Zero, the value a configuration sets to switch the watch off, stops it as null does.
+        SlowStatementLog.transactionThreshold(Duration.ZERO);
+        assertNull(SlowStatementLog.transactionThreshold());
+    }
+
+    @Test
+    void aStatementOutsideATransactionIsNotObservedWhileOnlyTransactionsAreWatched() {
+        var provider = new JdbcTransactionTemplateProviderImpl();
+        assertFalse(SlowStatementLog.observes(provider));
+        transaction(REQUIRED_OPTIONS, () -> {
+            // The block has not opened its transaction yet; its first statement is still to be credited.
+            assertTrue(SlowStatementLog.observes(provider));
+            read();
+            assertTrue(SlowStatementLog.observes(provider));
+        });
+        assertFalse(SlowStatementLog.observes(provider));
+        SlowStatementLog.transactionThreshold(null);
+        transaction(REQUIRED_OPTIONS, () -> assertFalse(SlowStatementLog.observes(provider)));
     }
 }

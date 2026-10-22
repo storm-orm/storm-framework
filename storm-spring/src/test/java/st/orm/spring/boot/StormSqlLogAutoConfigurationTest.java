@@ -17,6 +17,7 @@ package st.orm.spring.boot;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import ch.qos.logback.classic.Level;
@@ -254,8 +255,12 @@ public class StormSqlLogAutoConfigurationTest {
                     .withUserConfiguration(JobConfiguration.class)
                     .withPropertyValues("storm.sql-log.slow.transaction=2s")
                     .run(context -> assertEquals(Duration.ofSeconds(2), SlowStatementLog.transactionThreshold()));
+            contextRunner
+                    .withUserConfiguration(JobConfiguration.class)
+                    .withPropertyValues("storm.sql-log.slow.transaction=0")
+                    .run(context -> assertNull(SlowStatementLog.transactionThreshold()));
         } finally {
-            SlowStatementLog.transactionThreshold(null);
+            SlowStatementLog.transactionThreshold(SlowStatementLog.DEFAULT_TRANSACTION_THRESHOLD);
         }
     }
 
@@ -340,7 +345,7 @@ public class StormSqlLogAutoConfigurationTest {
         contextRunner
                 .withUserConfiguration(JobConfiguration.class)
                 .withPropertyValues("storm.sql-log.performance.enabled=true")
-                .run(context -> assertFalse(SlowStatementLog.active()));
+                .run(context -> assertNull(SlowStatementLog.threshold()));
     }
 
     @Test
@@ -381,7 +386,7 @@ public class StormSqlLogAutoConfigurationTest {
         contextRunner
                 .withUserConfiguration(JobConfiguration.class)
                 .withPropertyValues("storm.sql-log.performance.threshold.duration=500ms")
-                .run(context -> assertFalse(SlowStatementLog.active()));
+                .run(context -> assertNull(SlowStatementLog.threshold()));
     }
 
     @Test
@@ -395,7 +400,7 @@ public class StormSqlLogAutoConfigurationTest {
                     .withUserConfiguration(JobConfiguration.class)
                     .withPropertyValues("storm.sql-log.slow.limit=2")
                     .run(context -> {
-                        assertFalse(SlowStatementLog.active());
+                        assertNull(SlowStatementLog.threshold());
                         assertEquals(2, SlowStatementLog.limit());
                     });
         } finally {
@@ -414,6 +419,7 @@ public class StormSqlLogAutoConfigurationTest {
                     .run(context -> {
                         var endpoint = context.getBean(StormEndpoint.class);
                         assertEquals(false, slowStatementOf(endpoint).get("active"));
+                        assertEquals("PT1S", slowStatementOf(endpoint).get("transaction"));
                         endpoint.configure("200ms", 3, "2s", null, null, null, null);
                         assertEquals(Duration.ofMillis(200), SlowStatementLog.threshold());
                         assertEquals(3, SlowStatementLog.limit());
@@ -426,7 +432,7 @@ public class StormSqlLogAutoConfigurationTest {
                     });
         } finally {
             SlowStatementLog.threshold(null);
-            SlowStatementLog.transactionThreshold(null);
+            SlowStatementLog.transactionThreshold(SlowStatementLog.DEFAULT_TRANSACTION_THRESHOLD);
             SlowStatementLog.limit(SlowStatementLog.DEFAULT_LIMIT);
         }
     }

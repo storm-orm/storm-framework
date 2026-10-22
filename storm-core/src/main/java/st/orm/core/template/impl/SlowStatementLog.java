@@ -62,9 +62,16 @@ import st.orm.spi.StatementOrigin;
  *
  * <p>Enabled by a threshold: the {@code storm.sql_log.slow.threshold} system property on a plain JVM, or the
  * corresponding keys of the Spring and Ktor integrations, which apply their configuration through
- * {@link #threshold(Duration)}. Without a threshold nothing is measured; a statement reads one volatile field and
- * moves on. Lines report at {@code WARN}, so raising {@code st.orm.sql} to {@code DEBUG} for per-statement
- * logging duplicates nothing here.</p>
+ * {@link #threshold(Duration)}. Without a threshold no statement is measured; a statement outside a transaction
+ * reads one volatile field and moves on. Lines report at {@code WARN}, so raising {@code st.orm.sql} to
+ * {@code DEBUG} for per-statement logging duplicates nothing here.</p>
+ *
+ * <p>Transactions are watched by default: a transaction that holds its connection idle, beyond what its statements
+ * spent on it, for longer than {@link #DEFAULT_TRANSACTION_THRESHOLD} is reported when it completes, with the
+ * call site that began it. What is slow for a statement depends on the database and the workload, which is why the
+ * statement threshold has no default; a connection held for a second while the application does other work is
+ * wrong on any database, so the transaction threshold has one. {@code storm.sql_log.slow.transaction} retunes it,
+ * and zero switches it off.</p>
  *
  * <p>The threshold is a live setting rather than a startup one: {@link #threshold(Duration)} and
  * {@link #limit(int)} take effect on the next execution, so an application that exposes them can switch the log
@@ -120,11 +127,17 @@ public final class SlowStatementLog {
     }
 
     /**
+     * The time a transaction may hold its connection beyond what its statements spent on it, applied when neither
+     * the system property nor an integration sets one: one second.
+     */
+    public static final Duration DEFAULT_TRANSACTION_THRESHOLD = Duration.ofSeconds(1);
+
+    /**
      * Time a transaction may hold its connection beyond what its statements spent on it, in nanoseconds; zero
      * leaves transactions unwatched. Read once per transaction where it takes its connection, and once per execution
      * where the statement threshold is read already.
      */
-    private static volatile long transactionThresholdNanos;
+    private static volatile long transactionThresholdNanos = DEFAULT_TRANSACTION_THRESHOLD.toNanos();
 
     /**
      * Sets the time a transaction may hold its connection beyond what its statements spent on it; {@code null} or a
@@ -133,7 +146,7 @@ public final class SlowStatementLog {
      * <p>Safe to call at any time, as {@link #threshold(Duration)} is: a transaction that takes its connection after
      * the write is watched.</p>
      *
-     * @param threshold the threshold, or {@code null} for none.
+     * @param threshold the threshold, or {@code null} to stop watching transactions.
      */
     public static void transactionThreshold(@Nullable Duration threshold) {
         transactionThresholdNanos = threshold == null || threshold.isNegative() || threshold.isZero()
@@ -162,13 +175,36 @@ public final class SlowStatementLog {
     }
 
     /**
-     * Returns whether executions or transactions are measured against a threshold, which is what lets the execution
-     * path skip every other cost of the log while none is set.
+     * Returns whether executions or transactions are measured against a threshold.
      *
      * @return {@code true} while a threshold is configured.
      */
     public static boolean active() {
         return thresholdNanos != 0 || transactionThresholdNanos != 0;
+    }
+
+    /**
+     * Returns whether an execution about to run is to be observed: every execution while a statement threshold is
+     * set, and, while transactions are watched, an execution on a thread that is in a transaction, whose time the
+     * transaction is credited with. An execution outside any transaction while no statement threshold is set is
+     * what lets the execution path skip every other cost of the log, which is the common case with the defaults.
+     *
+     * <p>A block that opens its transaction at its first statement has not opened it yet when this is asked, so the
+     * question is whether the thread is in a transaction block or a transaction of the provider, not whether a
+     * connection is held already.</p>
+     *
+     * @param transactionTemplateProvider the provider whose transaction the execution would run in.
+     * @return {@code true} when the execution is to be observed.
+     */
+    static boolean observes(TransactionTemplateProvider transactionTemplateProvider) {
+        if (thresholdNanos != 0) {
+            return true;
+        }
+        if (transactionThresholdNanos == 0) {
+            return false;
+        }
+        return TransactionScope.current() != null
+                || transactionTemplateProvider.getTransactionTemplate().currentContext().isPresent();
     }
 
     /** The default rate limit, applied when neither the system property nor an integration sets one. */
@@ -732,6 +768,6 @@ public final class SlowStatementLog {
         var config = StormConfig.defaults();
         threshold(getDuration(config, StormConfig.SQL_LOG_SLOW_THRESHOLD, null));
         limit(getInt(config, StormConfig.SQL_LOG_SLOW_LIMIT, DEFAULT_LIMIT));
-        transactionThreshold(getDuration(config, StormConfig.SQL_LOG_SLOW_TRANSACTION, null));
+        transactionThreshold(getDuration(config, StormConfig.SQL_LOG_SLOW_TRANSACTION, DEFAULT_TRANSACTION_THRESHOLD));
     }
 }

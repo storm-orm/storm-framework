@@ -252,7 +252,7 @@ class QueryImpl implements Query, KeyedQuery {
             }
             var queryObserver = environment.queryObserver();
             var operators = SqlInterceptorManager.localOperators();
-            boolean slowLog = SlowStatementLog.active();
+            boolean slowLog = SlowStatementLog.observes(environment.transactionTemplateProvider());
             if (queryObserver == QueryObserver.NOOP && operators == null && !slowLog) {
                 // Fast path: skip context creation when nothing is observing.
                 return Observation.NOOP;

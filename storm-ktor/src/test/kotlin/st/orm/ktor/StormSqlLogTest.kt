@@ -18,6 +18,7 @@ import st.orm.core.template.impl.SlowStatementLog
 import st.orm.ktor.model.PetRepository
 import java.io.ByteArrayOutputStream
 import java.io.PrintStream
+import kotlin.time.Duration
 import kotlin.time.Duration.Companion.nanoseconds
 import kotlin.time.Duration.Companion.seconds
 
@@ -143,8 +144,10 @@ internal class StormSqlLogTest {
             SlowStatementLog.transactionThreshold() shouldBe java.time.Duration.ofSeconds(2)
             requestPets { sqlLogSlowTransaction = 3.seconds }
             SlowStatementLog.transactionThreshold() shouldBe java.time.Duration.ofSeconds(3)
+            requestPets { sqlLogSlowTransaction = Duration.ZERO }
+            SlowStatementLog.transactionThreshold() shouldBe null
         } finally {
-            SlowStatementLog.transactionThreshold(null)
+            SlowStatementLog.transactionThreshold(SlowStatementLog.DEFAULT_TRANSACTION_THRESHOLD)
         }
     }
 

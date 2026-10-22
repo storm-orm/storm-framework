@@ -329,7 +329,7 @@ Under a degraded database every statement is slow. Lines are rate-limited per sh
 
 ### A Transaction That Holds Its Connection
 
-A transaction whose statements are all fast can still hold its connection, and the row locks of its writes, for seconds: a call to another service, a mail sent or a document rendered between a write and the commit. No statement line shows it, since no statement is slow. A second threshold sets how long a transaction may hold its connection beyond what its statements spent on it; a transaction idle for longer is reported under `st.orm.sql.slow` at `WARN` when it completes, with the call site that began it.
+A transaction whose statements are all fast can still hold its connection, and the row locks of its writes, for seconds: a call to another service, a mail sent or a document rendered between a write and the commit. No statement line shows it, since no statement is slow. A second threshold sets how long a transaction may hold its connection beyond what its statements spent on it; a transaction idle for longer is reported under `st.orm.sql.slow` at `WARN` when it completes, with the call site that began it. The threshold is one second by default: what is slow for a statement depends on the database, so the statement threshold has no default, but a connection held for a second while the application does other work is wrong on any database. Retune it where a transaction holds its connection by design, or set it to `0` to stop watching transactions.
 
 <Tabs groupId="framework">
 <TabItem value="spring" label="Spring Boot" default>
@@ -338,7 +338,7 @@ A transaction whose statements are all fast can still hold its connection, and t
 storm:
   sql-log:
     slow:
-      transaction: 1s
+      transaction: 2s
 ```
 
 </TabItem>
@@ -346,7 +346,7 @@ storm:
 
 ```kotlin
 install(Storm) {
-    sqlLogSlowTransaction = 1.seconds
+    sqlLogSlowTransaction = 2.seconds
 }
 ```
 
@@ -356,7 +356,7 @@ Or from `application.conf`, under `storm.sqlLog.slow.transaction`.
 <TabItem value="jvm" label="Plain JVM">
 
 ```
--Dstorm.sql_log.slow.transaction=1s
+-Dstorm.sql_log.slow.transaction=2s
 ```
 
 </TabItem>
@@ -369,7 +369,7 @@ SQL slow (transaction): held its connection 2300 ms, 120 ms in its 3 statements,
 
 The time is measured from the moment the transaction takes its connection to the moment it returns it, against the time its statements spent on it, from preparation to close, so a statement whose rows are read slowly counts as time in the statement. A Spring-managed transaction is measured from Storm's first statement in it, since Spring opened the connection before Storm saw the transaction, and its line says `from its first statement`. A joined block is part of the transaction it joined, reported once; a `REQUIRES_NEW` block is measured on its own. The lines share one rate limit, as the lines of a shape do.
 
-Off until the threshold is set, and a measurement against it rather than a check of the code, so it can run in production: while it is off a transaction costs one volatile read, and while it is on, two clock reads per transaction and an addition per statement. `@AcceptAdvice("idle-transaction")` on the method that runs the transaction accepts the advice there, for a transaction that holds its connection by design. See [Statement Advice](advice.md#idle-transaction).
+A measurement against a threshold rather than a check of the code, so it runs in production: two clock reads per transaction and an addition per statement in one, and nothing for a statement outside a transaction, which stays on the path it takes while no slow log runs at all. Switched off, a transaction costs one volatile read. `@AcceptAdvice("idle-transaction")` on the method that runs the transaction accepts the advice there, for a transaction that holds its connection by design. See [Statement Advice](advice.md#idle-transaction).
 
 ### Retuning A Running Application
 

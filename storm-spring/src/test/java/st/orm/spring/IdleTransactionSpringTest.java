@@ -103,7 +103,7 @@ class IdleTransactionSpringTest {
 
     @AfterEach
     void unwatch() {
-        SlowStatementLog.transactionThreshold(null);
+        SlowStatementLog.transactionThreshold(SlowStatementLog.DEFAULT_TRANSACTION_THRESHOLD);
         SlowStatementLog.limit(SlowStatementLog.DEFAULT_LIMIT);
     }
 

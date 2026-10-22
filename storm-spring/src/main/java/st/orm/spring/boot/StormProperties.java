@@ -476,8 +476,9 @@ public class StormProperties {
 
             /**
              * Time a transaction may hold its connection beyond what its statements spent on it, such as
-             * {@code 1s}: a transaction idle for longer is reported with the call site that began it, its
-             * statements and whether it wrote. Unset, transactions are not watched.
+             * {@code 2s}: a transaction idle for longer is reported with the call site that began it, its
+             * statements and whether it wrote. Unset, the default of one second applies; {@code 0} stops watching
+             * transactions.
              *
              * @since 1.16
              */
