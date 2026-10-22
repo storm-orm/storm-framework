@@ -429,6 +429,97 @@ public class JsonORMConverterIntegrationTest {
         assertEquals("\"123 Main St | Springfield\"", row.address());
     }
 
+    @Builder(toBuilder = true)
+    @DbTable("owner")
+    public record OwnerWithCustomDeserializerOnly(
+            @PK Integer id,
+            String firstName,
+            String lastName,
+            @Json
+            @com.fasterxml.jackson.databind.annotation.JsonDeserialize(using = AddressDeserializer.class)
+            Address address,
+            @Nullable String telephone
+    ) implements Entity<Integer> {
+    }
+
+    @Test
+    public void customDeserializerAloneShouldBeUsedForJsonField() {
+        // The mapper is keyed on the deserializer and the field's type when only a deserializer is present.
+        var orm = of(dataSource);
+        orm.query("INSERT INTO owner (first_name, last_name, address, telephone) "
+                + "VALUES ('Deser', 'Only', '\"1 Way | Town\"', '555')").executeUpdate();
+        var owner = orm.query("SELECT id, first_name, last_name, address, telephone FROM owner WHERE first_name = 'Deser'")
+                .getSingleResult(OwnerWithCustomDeserializerOnly.class);
+        assertEquals(new Address("1 Way", "Town"), owner.address());
+    }
+
+    // Custom serializer and deserializer without a constructor the converter can call.
+
+    public static class UnconstructibleSerializer extends com.fasterxml.jackson.databind.ser.std.StdSerializer<Address> {
+        public UnconstructibleSerializer(String unused) {
+            super(Address.class);
+        }
+
+        @Override
+        public void serialize(Address value, com.fasterxml.jackson.core.JsonGenerator gen,
+                              com.fasterxml.jackson.databind.SerializerProvider ctxt)
+                throws java.io.IOException {
+            gen.writeString(value.address());
+        }
+    }
+
+    public static class UnconstructibleDeserializer extends com.fasterxml.jackson.databind.deser.std.StdDeserializer<Address> {
+        public UnconstructibleDeserializer(String unused) {
+            super(Address.class);
+        }
+
+        @Override
+        public Address deserialize(com.fasterxml.jackson.core.JsonParser parser,
+                                   com.fasterxml.jackson.databind.DeserializationContext ctxt)
+                throws java.io.IOException {
+            return new Address(parser.getText(), "");
+        }
+    }
+
+    @DbTable("owner")
+    public record OwnerWithUnconstructibleSerializer(
+            @PK Integer id,
+            @Json
+            @com.fasterxml.jackson.databind.annotation.JsonSerialize(using = UnconstructibleSerializer.class)
+            Address address
+    ) implements Entity<Integer> {
+    }
+
+    @DbTable("owner")
+    public record OwnerWithUnconstructibleDeserializer(
+            @PK Integer id,
+            @Json
+            @com.fasterxml.jackson.databind.annotation.JsonDeserialize(using = UnconstructibleDeserializer.class)
+            Address address
+    ) implements Entity<Integer> {
+    }
+
+    @Test
+    public void aSerializerWithoutANoArgConstructorIsRefusedWhenTheFieldIsFirstUsed() {
+        var orm = of(dataSource);
+        var serializer = assertThrows(RuntimeException.class,
+                () -> orm.query("SELECT id, address FROM owner WHERE id = 1")
+                        .getSingleResult(OwnerWithUnconstructibleSerializer.class));
+        assertTrue(rootMessage(serializer).contains("custom serializer"), rootMessage(serializer));
+        var deserializer = assertThrows(RuntimeException.class,
+                () -> orm.query("SELECT id, address FROM owner WHERE id = 1")
+                        .getSingleResult(OwnerWithUnconstructibleDeserializer.class));
+        assertTrue(rootMessage(deserializer).contains("custom deserializer"), rootMessage(deserializer));
+    }
+
+    private static String rootMessage(Throwable thrown) {
+        var messages = new StringBuilder();
+        for (Throwable cause = thrown; cause != null; cause = cause.getCause()) {
+            messages.append(cause.getMessage()).append('\n');
+        }
+        return messages.toString();
+    }
+
     @Test
     public void jsonWithFailOnUnknownTrueShouldRejectExtraProperties() {
         var orm = of(dataSource);

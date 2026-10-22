@@ -255,7 +255,7 @@ public class StormModule extends SimpleModule {
             try {
                 if (node.has(ENTITY_FIELD)) {
                     JsonNode entityNode = node.get(ENTITY_FIELD);
-                    Data entity = ctx.readTreeAsValue(entityNode, targetType);
+                    Data entity = entityNode.isNull() ? null : ctx.readTreeAsValue(entityNode, targetType);
                     return loadedRef(entity);
                 } else if (node.has(PROJECTION_FIELD)) {
                     if (!node.has(ID_FIELD)) {
@@ -263,7 +263,7 @@ public class StormModule extends SimpleModule {
                     }
                     Object id = deserializeIdFromNode(node.get(ID_FIELD), ctx);
                     JsonNode projectionNode = node.get(PROJECTION_FIELD);
-                    Data projection = ctx.readTreeAsValue(projectionNode, targetType);
+                    Data projection = projectionNode.isNull() ? null : ctx.readTreeAsValue(projectionNode, targetType);
                     return loadedRef(targetClass, projection, id);
                 } else if (pkType != null && isCompoundKey(pkType)) {
                     // A plain object is the inline record of a compound PK; unloaded refs serialize compound PKs

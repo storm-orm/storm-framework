@@ -172,12 +172,10 @@ public class RefSerializer<T : Data>(
     }
 
     @Suppress("UNCHECKED_CAST")
-    private fun deserializeObject(json: Json, obj: JsonObject): Ref<T> = try {
+    private fun deserializeObject(json: Json, obj: JsonObject): Ref<T>? = try {
         when {
             obj.containsKey(ENTITY_FIELD) -> {
-                val payload = obj[ENTITY_FIELD]
-                    ?: throw SerializationException("$ENTITY_FIELD field is null")
-                val entity = json.decodeFromJsonElement(targetSerializer, payload)
+                val entity = json.decodeFromJsonElement(targetSerializer, obj.getValue(ENTITY_FIELD))
                 RefJsonSupport.loadedRef(entity) as Ref<T>
             }
             obj.containsKey(PROJECTION_FIELD) -> {
@@ -186,9 +184,7 @@ public class RefSerializer<T : Data>(
                 // For @projection, @id must be present and non-null.
                 val id = decodeId(json, idElement, targetClass)
                     ?: throw SerializationException("$PROJECTION_FIELD requires non-null $ID_FIELD")
-                val payload = obj[PROJECTION_FIELD]
-                    ?: throw SerializationException("$PROJECTION_FIELD field is null")
-                val data = json.decodeFromJsonElement(targetSerializer, payload)
+                val data = json.decodeFromJsonElement(targetSerializer, obj.getValue(PROJECTION_FIELD))
                 RefJsonSupport.loadedRef(targetClass, data, id) as Ref<T>
             }
             else -> {
@@ -199,8 +195,7 @@ public class RefSerializer<T : Data>(
                     )
                 }
                 // A plain object is the inline record of a compound PK; unloaded refs serialize compound PKs this way.
-                val id = checkNotNull(decodeId(json, obj, targetClass))
-                createRef(targetClass as Class<Data>, id) as Ref<T>
+                createRef(targetClass as Class<Data>, decodeId(json, obj, targetClass)) as Ref<T>?
             }
         }
     } catch (e: IllegalArgumentException) {

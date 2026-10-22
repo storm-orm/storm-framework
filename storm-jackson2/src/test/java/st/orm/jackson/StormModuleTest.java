@@ -228,6 +228,13 @@ class StormModuleTest {
         assertNull(mapper().readValue("{\"projection\":null}", ProjectionHolder.class).projection());
     }
 
+    @Test
+    void aWrapperHoldingNullReadsAsNoRef() throws Exception {
+        assertNull(mapper().readValue("{\"entity\":{\"@entity\":null}}", EntityHolder.class).entity());
+        assertNull(mapper().readValue("{\"projection\":{\"@id\":3,\"@projection\":null}}", ProjectionHolder.class)
+                .projection());
+    }
+
     // Round trips.
 
     @Test
@@ -416,6 +423,9 @@ class StormModuleTest {
     void anObjectWithoutAWrapperFieldOrACompoundKeyIsRefused() {
         assertThrows(DatabindException.class,
                 () -> mapper().readValue("{\"entity\":{\"unknown\":1}}", EntityHolder.class));
+        // A type without a key has no compound key an object could be.
+        assertThrows(DatabindException.class,
+                () -> mapper().readValue("{\"data\":{\"unknown\":1}}", NoPkHolder.class));
     }
 
     @Test

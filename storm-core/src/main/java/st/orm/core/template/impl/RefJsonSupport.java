@@ -97,7 +97,11 @@ public final class RefJsonSupport {
      * @return the id as an {@code Integer} or a {@code Long}.
      */
     public static Object integralId(long value) {
-        return value >= Integer.MIN_VALUE && value <= Integer.MAX_VALUE ? (int) value : value;
+        // Two returns rather than one conditional, which would promote both branches to long.
+        if (value >= Integer.MIN_VALUE && value <= Integer.MAX_VALUE) {
+            return (int) value;
+        }
+        return value;
     }
 
     /**
@@ -112,7 +116,7 @@ public final class RefJsonSupport {
      */
     public static <T extends Data> @Nullable Ref<T> refOf(Class<T> targetClass,
                                                            @Nullable Object id,
-                                                           @Nullable Supplier<RefFactory> refFactorySupplier) {
+                                                           @Nullable Supplier<@Nullable RefFactory> refFactorySupplier) {
         if (id == null) {
             return null;
         }

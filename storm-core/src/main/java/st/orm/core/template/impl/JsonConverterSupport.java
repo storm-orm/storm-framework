@@ -221,7 +221,10 @@ public abstract class JsonConverterSupport implements ORMConverter {
 
     private static void collectSealedTypes(Type type, Set<Class<?>> sealedTypes) {
         if (type instanceof Class<?> clazz) {
-            if (clazz.isSealed()) {
+            if (clazz.isArray()) {
+                // An array of a plain class is a class itself; its element type is where a sealed type can be.
+                collectSealedTypes(clazz.getComponentType(), sealedTypes);
+            } else if (clazz.isSealed()) {
                 sealedTypes.add(clazz);
             }
         } else if (type instanceof ParameterizedType parameterizedType) {
