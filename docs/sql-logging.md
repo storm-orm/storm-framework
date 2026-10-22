@@ -123,7 +123,7 @@ The headline separates three durations:
 
 Summed database time exceeds elapsed time whenever statements run concurrently, which is why both appear. The concurrency clause is omitted when nothing overlapped. And `214 ms in database` against `678 ms total` says most of that call was spent somewhere other than the database. Consuming a streamed read counts on the `total` side of that comparison, not the database side: a stream held open while the application works through it is the application's time.
 
-A summary closes with advice where the unit of work repeated what it could have done once: ten or more fetches of one type, or the same single-row read or write run ten or more times.
+A summary closes with advice where the unit of work repeated what it could have done once: ten or more fetches of one type, or the same single-row read or write run ten or more times. It also says where related writes each committed on their own: a write outside any transaction to an entity that references an entity an earlier untransacted write wrote, such as an owner and then its pet, which leaves the owner behind when the pet fails.
 
 ```
 SQL (GET /owners): 31 statements, 24 fetches, 41 ms in database, 96 ms total

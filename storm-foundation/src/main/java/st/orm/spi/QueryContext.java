@@ -86,6 +86,21 @@ public interface QueryContext {
     OptionalInt batchSize();
 
     /**
+     * Returns whether the execution runs inside a transaction: a transaction block, or a transaction of the
+     * template's provider, on the executing thread. A block that opens its transaction at its first statement counts
+     * from that statement.
+     *
+     * <p>An implementation that does not know says the execution is transactional, so that no advice on writes
+     * outside a transaction rests on a guess.</p>
+     *
+     * @return {@code true} when the execution runs in a transaction.
+     * @since 1.16
+     */
+    default boolean transactional() {
+        return true;
+    }
+
+    /**
      * Returns the SQL statement being executed, with all parameters replaced by placeholders.
      *
      * <p><strong>Note:</strong> this value is high-cardinality; use it for trace attributes only, never as a metric

@@ -78,6 +78,7 @@ public class AdvicePageTest {
                     "owner(last_name)", "finds them directly"};
             case UNINDEXED_FOREIGN_KEY -> new Object[] {"owner", "pet", "owner_id", "owner_id"};
             case IDLE_TRANSACTION -> new Object[] {"2300 ms", "120 ms", "2180 ms", ""};
+            case WRITES_WITHOUT_TRANSACTION -> new Object[] {"Owner", "Pet"};
             default -> new Object[] {3, "Owner", 3};
         };
     }

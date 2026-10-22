@@ -124,6 +124,7 @@ public final class SqlLog {
      * @param callSite the application frame the execution came from, or {@code null} when not recorded.
      * @param rows the rows the execution produced or affected; a lower bound when not exact.
      * @param exactRows whether that count is exact.
+     * @param transactional whether the execution ran in a transaction.
      */
     public record Statement(SqlOperation operation,
                             Class<? extends Data> dataType,
@@ -135,7 +136,8 @@ public final class SqlLog {
                             long shapeId,
                             @Nullable String callSite,
                             long rows,
-                            boolean exactRows) {
+                            boolean exactRows,
+                            boolean transactional) {
 
         /** Returns the time the execution spent in the database: from prepare to the statement's return. */
         public long durationNanos() {
@@ -653,6 +655,7 @@ public final class SqlLog {
             private final String text;
             private final long shapeId;
             private final @Nullable String callSite;
+            private final boolean transactional;
             private long executed;
             private volatile @Nullable Statement statement;
 
@@ -664,6 +667,7 @@ public final class SqlLog {
                 this.text = context.statement().orElse("");
                 this.shapeId = context.shapeId();
                 this.callSite = callSite;
+                this.transactional = context.transactional();
             }
 
             @Override
@@ -671,14 +675,14 @@ public final class SqlLog {
                 executed = System.nanoTime();
                 // Rows are not known yet; the count is a lower bound until the close reports it.
                 statement = new Statement(operation, dataType, origin, text, start, executed, executed, shapeId,
-                        callSite, 0, false);
+                        callSite, 0, false, transactional);
                 recorder.statements.add(this);
             }
 
             @Override
             public void close(long rows, boolean exact) {
                 statement = new Statement(operation, dataType, origin, text, start, executed, System.nanoTime(),
-                        shapeId, callSite, rows, exact);
+                        shapeId, callSite, rows, exact, transactional);
             }
         }
 

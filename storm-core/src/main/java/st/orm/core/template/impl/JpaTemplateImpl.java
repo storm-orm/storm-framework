@@ -397,8 +397,9 @@ public final class JpaTemplateImpl implements JpaTemplate, QueryFactory {
                 Class<? extends Data> dataType = resultClass != null && Data.class.isAssignableFrom(resultClass)
                         ? (Class<? extends Data>) resultClass
                         : null;
+                // A JPA statement runs in the entity manager's transaction.
                 var context = new QueryImpl.QueryContextImpl(sql.operation(), dataType, kind, sql.statement(),
-                        sql.origin(), sql.shapeId());
+                        sql.origin(), sql.shapeId(), true);
                 var handles = QueryImpl.listen(operators, context, sql.parameters());
                 if (handles == null) {
                     return null;

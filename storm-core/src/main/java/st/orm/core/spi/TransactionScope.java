@@ -143,6 +143,18 @@ public final class TransactionScope {
      * @param provider the transaction template provider of the executing template.
      * @return the active transaction context, or {@code null} when none is active for this provider.
      */
+    /**
+     * Returns whether the calling thread is in a transaction: a transaction block, opened or still to open at its
+     * first statement, or a transaction of the provider.
+     *
+     * @param provider the provider whose transaction counts.
+     * @return {@code true} when a statement on this thread would run in a transaction.
+     * @since 1.16
+     */
+    public static boolean inTransaction(TransactionTemplateProvider provider) {
+        return CURRENT.get() != null || provider.getTransactionTemplate().currentContext().isPresent();
+    }
+
     public static @Nullable TransactionContext peekContext(TransactionTemplateProvider provider) {
         var scope = CURRENT.get();
         if (scope != null) {

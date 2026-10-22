@@ -42,6 +42,7 @@ import st.orm.TransactionOptions;
 import st.orm.core.spi.JdbcConnectionProviderImpl;
 import st.orm.core.spi.JdbcTransactionTemplateProviderImpl;
 import st.orm.core.spi.TransactionRunner;
+import st.orm.core.spi.TransactionScope;
 import st.orm.core.template.ORMTemplate;
 import st.orm.core.template.TemplateString;
 
@@ -347,15 +348,23 @@ class IdleTransactionLogTest {
     @Test
     void aStatementOutsideATransactionIsNotObservedWhileOnlyTransactionsAreWatched() {
         var provider = new JdbcTransactionTemplateProviderImpl();
-        assertFalse(SlowStatementLog.observes(provider));
+        assertFalse(TransactionScope.inTransaction(provider));
+        assertFalse(SlowStatementLog.observes(false));
         transaction(REQUIRED_OPTIONS, () -> {
             // The block has not opened its transaction yet; its first statement is still to be credited.
-            assertTrue(SlowStatementLog.observes(provider));
+            assertTrue(TransactionScope.inTransaction(provider));
             read();
-            assertTrue(SlowStatementLog.observes(provider));
+            assertTrue(TransactionScope.inTransaction(provider));
         });
-        assertFalse(SlowStatementLog.observes(provider));
+        assertFalse(TransactionScope.inTransaction(provider));
+        assertTrue(SlowStatementLog.observes(true));
         SlowStatementLog.transactionThreshold(null);
-        transaction(REQUIRED_OPTIONS, () -> assertFalse(SlowStatementLog.observes(provider)));
+        assertFalse(SlowStatementLog.observes(true));
+        SlowStatementLog.threshold(Duration.ofNanos(1));
+        try {
+            assertTrue(SlowStatementLog.observes(false));
+        } finally {
+            SlowStatementLog.threshold(null);
+        }
     }
 }

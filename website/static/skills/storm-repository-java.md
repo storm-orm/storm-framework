@@ -645,6 +645,8 @@ UserRepository userRepository = orm.repository(UserRepository.class);
 
 ## Transactions
 
+**Related writes go in one transaction.** A write to an entity whose foreign key references an entity the same unit of work just wrote, such as an owner and then its pet, runs inside `transaction(tx -> ...)` with that earlier write, so a failure rolls back what came before it; outside a transaction each write commits on its own and the owner stays without its pet. The performance log reports the pattern as `writes-without-transaction` advice; where the second write stands on its own by design (an audit record, an outbox row), `@AcceptAdvice("writes-without-transaction")` on that entity accepts it.
+
 Since 1.13, the Java API has a full programmatic transaction API: `Transactions.transaction(...)` with the same semantics as Kotlin's `transaction { }` blocks — all seven propagation modes, isolation, timeout, read-only, rollback-only, and commit/rollback callbacks. The block is value-returning (void blocks `return null`), checked exceptions propagate to the caller unchanged, and the transaction binds to the first `ORMTemplate` that executes inside it:
 ```java
 import static st.orm.template.Transactions.transaction;
