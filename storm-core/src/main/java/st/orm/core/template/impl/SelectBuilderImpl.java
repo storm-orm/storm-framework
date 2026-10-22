@@ -21,6 +21,7 @@ import static st.orm.SelectMode.PK;
 import static st.orm.core.template.TemplateString.wrap;
 import static st.orm.core.template.Templates.from;
 import static st.orm.core.template.Templates.select;
+import static st.orm.core.template.impl.ExceptionHelper.getExceptionTransformer;
 import static st.orm.core.template.impl.RecordReflection.findRecordFields;
 import static st.orm.core.template.impl.RecordReflection.getFkFields;
 
@@ -34,6 +35,8 @@ import st.orm.Data;
 import st.orm.DefaultJoinType;
 import st.orm.Metamodel;
 import st.orm.Navigable;
+import st.orm.NoResultException;
+import st.orm.NonUniqueResultException;
 import st.orm.PersistenceException;
 import st.orm.Ref;
 import st.orm.SqlTemplateException;
@@ -52,6 +55,7 @@ import st.orm.core.template.impl.Elements.Select;
 import st.orm.core.template.impl.Elements.TableSource;
 import st.orm.core.template.impl.Elements.TableTarget;
 import st.orm.core.template.impl.Elements.Where;
+import st.orm.spi.SqlOperation;
 
 /**
  * A query builder for SELECT queries.
@@ -704,7 +708,7 @@ public class SelectBuilderImpl<T extends Data, R, ID> extends QueryBuilderImpl<T
     protected R singleResultInternal() {
         if (refType != null) {
             // Ref results are produced through getRefStream, which the single-row query path does not cover.
-            return super.singleResultInternal();
+            return singleRef(true).orElseThrow();
         }
         return build().withoutFetchSize().getSingleResult(selectType);
     }
@@ -713,9 +717,35 @@ public class SelectBuilderImpl<T extends Data, R, ID> extends QueryBuilderImpl<T
     protected Optional<R> optionalResultInternal() {
         if (refType != null) {
             // Ref results are produced through getRefStream, which the single-row query path does not cover.
-            return super.optionalResultInternal();
+            return singleRef(false);
         }
         return build().withoutFetchSize().getOptionalResult(selectType);
+    }
+
+    /**
+     * Reads the single ref of the materialized result, reading a second only to enforce uniqueness. A missing or
+     * non-unique result is a failure Storm detects after the statement ran, and passes through the template's
+     * exception mapper like a failure the database reported.
+     *
+     * @param required whether a missing ref is a failure rather than an empty result.
+     */
+    private Optional<R> singleRef(boolean required) {
+        // A select affects no type, as the context of a failure the database reported for a select names none.
+        var failure = getExceptionTransformer(queryTemplate, SqlOperation.SELECT, null);
+        try (var stream = getMaterializedResultStream()) {
+            var iterator = stream.iterator();
+            if (!iterator.hasNext()) {
+                if (required) {
+                    throw failure.apply(new NoResultException("Expected single result, but found none."));
+                }
+                return Optional.empty();
+            }
+            R result = iterator.next();
+            if (iterator.hasNext()) {
+                throw failure.apply(new NonUniqueResultException("Expected single result, but found more than one."));
+            }
+            return Optional.of(result);
+        }
     }
 
     /**

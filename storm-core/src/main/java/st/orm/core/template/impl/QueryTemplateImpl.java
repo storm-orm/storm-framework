@@ -26,6 +26,7 @@ import st.orm.core.spi.Providers;
 import st.orm.core.spi.QueryFactory;
 import st.orm.core.spi.RefFactory;
 import st.orm.core.spi.RefFactoryImpl;
+import st.orm.core.spi.TransactionTemplateProvider;
 import st.orm.core.template.Model;
 import st.orm.core.template.PreparedQuery;
 import st.orm.core.template.Query;
@@ -34,6 +35,7 @@ import st.orm.core.template.QueryPlan;
 import st.orm.core.template.QueryTemplate;
 import st.orm.core.template.SqlDialect;
 import st.orm.core.template.TemplateString;
+import st.orm.spi.ExceptionMapper;
 
 class QueryTemplateImpl implements QueryTemplate {
     protected final QueryFactory queryFactory;
@@ -69,8 +71,19 @@ class QueryTemplateImpl implements QueryTemplate {
      * @since 1.13
      */
     @Override
-    public st.orm.core.spi.TransactionTemplateProvider transactionTemplateProvider() {
+    public TransactionTemplateProvider transactionTemplateProvider() {
         return queryFactory.transactionTemplateProvider();
+    }
+
+    /**
+     * Returns the exception mapper used by this template.
+     *
+     * @return the exception mapper.
+     * @since 1.16
+     */
+    @Override
+    public ExceptionMapper exceptionMapper() {
+        return queryFactory.exceptionMapper();
     }
 
     /**

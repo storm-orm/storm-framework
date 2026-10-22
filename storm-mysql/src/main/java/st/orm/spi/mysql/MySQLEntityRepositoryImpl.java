@@ -21,6 +21,7 @@ import static st.orm.GenerationStrategy.SEQUENCE;
 import static st.orm.core.template.SqlInterceptor.intercept;
 import static st.orm.core.template.TemplateString.raw;
 import static st.orm.core.template.impl.StringTemplates.flatten;
+import static st.orm.spi.SqlOperation.INSERT;
 
 import java.math.BigInteger;
 import java.sql.Timestamp;
@@ -155,8 +156,8 @@ public class MySQLEntityRepositoryImpl<E extends Entity<ID>, ID>
                     try (var stream = query.getGeneratedKeys(model.primaryKeyType())) {
                         return stream
                                 .reduce((ignore1, ignore2) -> {
-                                    throw new NonUniqueResultException("Expected single result, but found more than one.");
-                                }).orElseThrow(() -> new NoResultException("Expected single result, but found none."));
+                                    throw failure(INSERT, new NonUniqueResultException("Expected single result, but found more than one."));
+                                }).orElseThrow(() -> failure(INSERT, new NoResultException("Expected single result, but found none.")));
                     }
                 }
                 return entity.id();

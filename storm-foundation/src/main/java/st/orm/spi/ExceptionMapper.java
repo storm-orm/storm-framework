@@ -28,6 +28,11 @@ import st.orm.PersistenceException;
  * (as a suppressed exception on the cause) before invoking the mapper, so the mapper only decides the exception
  * type that is thrown.</p>
  *
+ * <p>The failures Storm's own logic detects after a statement ran pass through the mapper as well: an optimistic
+ * lock conflict, a single result that is missing or not unique, a write that affected no row. Their context names
+ * the operation and, for a write, the entity type, but no statement. A mapper that translates to a platform
+ * hierarchy translates them too, so a caller sees one exception family whichever side detected the failure.</p>
+ *
  * @see ExceptionContext
  * @since 1.13
  */

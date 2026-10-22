@@ -23,6 +23,7 @@ import st.orm.core.template.Query;
 import st.orm.core.template.QueryPlan;
 import st.orm.core.template.SqlTemplate;
 import st.orm.core.template.TemplateString;
+import st.orm.spi.ExceptionMapper;
 
 /**
  * Factory for creating queries.
@@ -97,5 +98,18 @@ public interface QueryFactory {
      */
     default TransactionTemplateProvider transactionTemplateProvider() {
         return Providers.getTransactionTemplateProvider();
+    }
+
+    /**
+     * Returns the exception mapper used by this factory.
+     *
+     * <p>The default implementation returns the default mapper; implementations that carry instance-scoped
+     * integration strategies return their configured mapper.</p>
+     *
+     * @return the exception mapper.
+     * @since 1.16
+     */
+    default ExceptionMapper exceptionMapper() {
+        return ExceptionMapper.defaultMapper();
     }
 }

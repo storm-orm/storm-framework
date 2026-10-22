@@ -786,9 +786,10 @@ class QueryImpl implements Query, KeyedQuery {
 
     @Override
     public Object[] getSingleResult() {
-        return streamOnlyFetchSize && defaultFetchSize != 0
-                ? withoutFetchSize().getSingleResult()
-                : Query.super.getSingleResult();
+        if (streamOnlyFetchSize && defaultFetchSize != 0) {
+            return withoutFetchSize().getSingleResult();
+        }
+        return singleResult(readSingleRow(getResultStream()));
     }
 
     @Override
@@ -797,21 +798,15 @@ class QueryImpl implements Query, KeyedQuery {
             return withoutFetchSize().getSingleResult(type);
         }
         // Read the single row directly instead of building the full stream pipeline (see readSingleRow).
-        SingleRow<T> row = readSingleRow(type);
-        if (!row.present()) {
-            throw new NoResultException("Expected single result, but found none.");
-        }
-        if (row.value() == null) {
-            throw new PersistenceException("Expected single result, but found null. Wrap the field in COALESCE() to provide a non-null default.");
-        }
-        return row.value();
+        return singleResult(readSingleRow(type));
     }
 
     @Override
     public Optional<Object[]> getOptionalResult() {
-        return streamOnlyFetchSize && defaultFetchSize != 0
-                ? withoutFetchSize().getOptionalResult()
-                : Query.super.getOptionalResult();
+        if (streamOnlyFetchSize && defaultFetchSize != 0) {
+            return withoutFetchSize().getOptionalResult();
+        }
+        return optionalResult(readSingleRow(getResultStream()));
     }
 
     @Override
@@ -820,14 +815,56 @@ class QueryImpl implements Query, KeyedQuery {
             return withoutFetchSize().getOptionalResult(type);
         }
         // Read the single row directly instead of building the full stream pipeline (see readSingleRow).
-        SingleRow<T> row = readSingleRow(type);
+        return optionalResult(readSingleRow(type));
+    }
+
+    /**
+     * Returns the value of the single row, or throws the mapped failure when the row is missing or its value is
+     * {@code null}. A failure Storm detects after the statement ran passes through the template's exception mapper
+     * like a failure the database reported, so a caller sees one exception family whichever side detected it.
+     */
+    private <T> T singleResult(SingleRow<T> row) {
+        if (!row.present()) {
+            throw exceptionTransformer.apply(new NoResultException("Expected single result, but found none."));
+        }
+        if (row.value() == null) {
+            throw exceptionTransformer.apply(new PersistenceException("Expected single result, but found null. Wrap the field in COALESCE() to provide a non-null default."));
+        }
+        return row.value();
+    }
+
+    /**
+     * Returns the value of the single row, empty when the row is missing, or throws the mapped failure when its
+     * value is {@code null}.
+     */
+    private <T> Optional<T> optionalResult(SingleRow<T> row) {
         if (!row.present()) {
             return Optional.empty();
         }
         if (row.value() == null) {
-            throw new PersistenceException("Result is null. Wrap the field in COALESCE() to provide a non-null default.");
+            throw exceptionTransformer.apply(new PersistenceException("Result is null. Wrap the field in COALESCE() to provide a non-null default."));
         }
         return Optional.of(row.value());
+    }
+
+    /**
+     * Reads at most one row from the stream, reading a second only to enforce uniqueness, and closes the stream.
+     *
+     * @throws NonUniqueResultException mapped through the template's exception mapper, if the stream holds more
+     *                                  than one row.
+     */
+    private <T> SingleRow<T> readSingleRow(Stream<T> stream) {
+        try (stream) {
+            var iterator = stream.iterator();
+            if (!iterator.hasNext()) {
+                return new SingleRow<>(false, null);
+            }
+            T value = iterator.next();
+            if (iterator.hasNext()) {
+                throw exceptionTransformer.apply(new NonUniqueResultException("Expected single result, but found more than one."));
+            }
+            return new SingleRow<>(true, value);
+        }
     }
 
     @Override

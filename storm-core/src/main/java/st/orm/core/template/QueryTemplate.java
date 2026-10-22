@@ -21,6 +21,9 @@ import st.orm.BindVars;
 import st.orm.Data;
 import st.orm.PersistenceException;
 import st.orm.Ref;
+import st.orm.core.spi.Providers;
+import st.orm.core.spi.TransactionTemplateProvider;
+import st.orm.spi.ExceptionMapper;
 
 /**
  * The query template is used to construct queries.
@@ -48,8 +51,23 @@ public interface QueryTemplate extends SubqueryTemplate {
      * @return the transaction template provider.
      * @since 1.13
      */
-    default st.orm.core.spi.TransactionTemplateProvider transactionTemplateProvider() {
-        return st.orm.core.spi.Providers.getTransactionTemplateProvider();
+    default TransactionTemplateProvider transactionTemplateProvider() {
+        return Providers.getTransactionTemplateProvider();
+    }
+
+    /**
+     * Returns the exception mapper used by this template.
+     *
+     * <p>Every failure a statement of this template raises passes through the mapper, the failures Storm's own
+     * logic detects included: an optimistic lock conflict, a single result that is missing or not unique. The
+     * default implementation returns the default mapper; templates that carry instance-scoped integration
+     * strategies return their configured mapper.</p>
+     *
+     * @return the exception mapper.
+     * @since 1.16
+     */
+    default ExceptionMapper exceptionMapper() {
+        return ExceptionMapper.defaultMapper();
     }
 
     /**
