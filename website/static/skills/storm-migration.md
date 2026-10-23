@@ -17,40 +17,43 @@ Storm naming conventions for DDL:
 Override with @DbTable or @DbColumn.
 
 PK generation mapping:
-| Storm | PostgreSQL | MySQL | Oracle |
-|---|---|---|---|
-| IDENTITY | SERIAL | AUTO_INCREMENT | GENERATED ALWAYS AS IDENTITY |
-| SEQUENCE | CREATE SEQUENCE | N/A | CREATE SEQUENCE |
-| NONE | No generation | No generation | No generation |
+- `IDENTITY`: the database's identity or auto-increment column.
+- `SEQUENCE`: a database sequence (`CREATE SEQUENCE`), on databases that have sequences.
+- `NONE`: no generation.
 
-JSON column types per dialect:
-| Database | Column Type |
-|----------|-------------|
-| PostgreSQL | `JSONB` |
-| MySQL | `JSON` |
-| MariaDB | `JSON` |
-| Oracle | `JSON` |
-| MS SQL Server | `NVARCHAR(MAX)` |
-| H2 | `CLOB` |
-
-Tips:
-- FK constraints matching @FK annotations
-- UNIQUE constraints for @UK fields
-- Indexes on FK columns and frequent queries. Where a slow statement's line in `st.orm.sql.slow` carries `missing-index` advice, it names a table no index serves for the columns the statement filters or sorts by, and the index that would: check the statement's plan on the target database, then add that index in a new migration. Never add one for advice that has not appeared; on a small table or an unselective column, reading the table is right. Where a slow delete carries `unindexed-foreign-key` advice, it names a foreign key of another table that references the deleted table and that no index starts with, so the database reads that table in full for every deleted row: add the index it names in a new migration. PostgreSQL, Oracle, SQL Server and SQLite never create this index themselves.
-- Columns a query matches with `search` or an ignore-case text operator (`containsIgnoreCase`, `CONTAINS_IGNORE_CASE`, ...): Storm compares `LOWER(column) LIKE LOWER('%word%')`, which a B-tree index cannot serve. Create the target database's substring index (a trigram or n-gram index) over exactly `LOWER(column)`, one per searched column, also on related tables the search reaches. On a table that already holds data, refresh its statistics in the same migration, or the planner may keep reading every row; verify with the database's query plan, for the parameterized statement, that the index is used. Where the search must ignore accents and the column's collation does not, wrap the database's accent function in one marked immutable (on PostgreSQL, `CREATE FUNCTION fold_accents(text) RETURNS text LANGUAGE sql IMMUTABLE PARALLEL SAFE STRICT RETURN public.unaccent('public.unaccent'::regdictionary, $1)`) and create the substring index over `LOWER(fold_accents(column))`; the query names the same function through `SqlFunction`. Do not add a generated column holding the folded text
-- NOT NULL matching entity nullability
+Column types:
+- **`@Json` fields: use the database's JSON column type, or a text type holding JSON where it has none.**
 - Enums as strings: VARCHAR. Ordinal: INTEGER.
-- @Version: INTEGER or TIMESTAMP
-- `@Json` fields: use the correct JSON column type for the target database (see table above)
-- **H2 NUMERIC/DECIMAL precision:** Always specify precision and scale for NUMERIC/DECIMAL columns (e.g., `NUMERIC(4, 1)`, not `NUMERIC`). H2 defaults to scale 0, which silently truncates decimals — values like 8.7 become 9. This affects `@StormTest` with H2 and is difficult to diagnose.
-- **Target-database DDL:** A migration written for the target database (`JSONB`, `SERIAL`, `AUTO_INCREMENT`, `IDENTITY(1,1)`, sequences) may not run on H2 at all. Verify it on the target database instead: `@StormTest(database = POSTGRESQL, scripts = [...])` (or `MYSQL`, `MARIADB`, `MSSQL_SERVER`, `ORACLE`) runs the same test in a Testcontainers-managed container of that database, which also removes the H2 precision caveat. Requires the database's Testcontainers module and driver in test scope and Docker (see /storm-setup).
+- `@Version`: INTEGER or TIMESTAMP.
+
+Constraints:
+- FK constraints matching `@FK` annotations.
+- UNIQUE constraints for `@UK` fields.
+- NOT NULL matching entity nullability.
+
+Indexes:
+- **Index FK columns and the columns frequent queries use.**
+- **Add the index a `missing-index` advice names, after checking the plan.** Such advice on a slow statement's line in `st.orm.sql.slow` names a table no index serves for the columns the statement filters or sorts by, and the index that would. Check the statement's plan on the target database, then add that index in a new migration.
+- **Never add an index for advice that has not appeared.** On a small table or an unselective column, reading the table is right.
+- **Add the index an `unindexed-foreign-key` advice names.** Such advice on a slow delete names a foreign key of another table that references the deleted table and that no index starts with, so the database reads that table in full for every deleted row. Add the index in a new migration. Several databases never create this index themselves.
+
+Searched columns:
+- **Give each column a query matches with `search` or an ignore-case text operator (`containsIgnoreCase`, `CONTAINS_IGNORE_CASE`, ...) a substring index over exactly `LOWER(column)`.** Storm compares `LOWER(column) LIKE LOWER('%word%')`, which a B-tree index cannot serve. Use the target database's substring index (a trigram or n-gram index), one per searched column, also on related tables the search reaches.
+- **On a table that already holds data, refresh its statistics in the same migration.** Otherwise the planner may keep reading every row. Verify with the database's query plan, for the parameterized statement, that the index is used.
+- **Where the search must ignore accents and the column's collation does not, wrap the database's accent-removing function in a function the database accepts in an index** (marked immutable where it requires that) and create the substring index over `LOWER(fold_accents(column))`. The query names the same function through `SqlFunction`. The statement per database is in the search documentation under Ignoring Accents.
+- **Store the folded text in a generated column only where the recheck of the function on every candidate row dominates.** Then index `LOWER(title_folded)` and declare the column as a query column naming the function, `@QueryColumn(field = "titleFolded", type = String::class, function = "fold_accents")`, so no row carries it and a compared value is folded by the database (see /storm-entity).
+
+Testing on the in-memory database:
+- **Always give NUMERIC and DECIMAL columns a precision and scale** (`NUMERIC(4, 1)`, not `NUMERIC`). The in-memory database `@StormTest` provides by default defaults NUMERIC to scale 0, which silently truncates decimals: 8.7 becomes 9. This is difficult to diagnose.
+- **Verify a migration that uses target-database DDL on the project's database.** DDL only the target database accepts (its JSON type, its identity or sequence syntax) does not run on the in-memory test database. `@StormTest(database = ..., scripts = [...])`, with the constant for the project's database, runs the same test in a Testcontainers-managed container of that database, which also removes the precision caveat. It requires the database's Testcontainers module and driver in test scope, and Docker (see /storm-setup).
 
 After writing a migration, rebuild the project for metamodel regeneration.
 
-After generating or updating entities and migrations, offer to write a temporary `@StormTest` to verify that the entities and migration are consistent:
+After generating or updating entities and migrations, offer to write a temporary `@StormTest` that verifies the entities and migration are consistent:
 ```kotlin
 // Leading "/" resolves scripts from the classpath root (src/test/resources/).
-// Add database = POSTGRESQL (or the project's database) to run the migration as written instead of on H2.
+// Add database = ... (the constant for the project's database) to run the migration as written
+// instead of on the in-memory test database.
 @StormTest(scripts = ["/V1__create_users.sql"])
 class MigrationVerificationTest {
     @Test
