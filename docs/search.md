@@ -324,7 +324,6 @@ The search then compares `LOWER(m.title_folded) LIKE LOWER(?)`, the expression t
 <TabItem value="kotlin" label="Kotlin" default>
 
 ```kotlin
-@DbTable("movie")
 @QueryColumn(field = "titleFolded", type = String::class)
 data class Movie(...) : Entity<Int>
 
@@ -341,7 +340,6 @@ orm.entity(Movie::class)
 <TabItem value="java" label="Java">
 
 ```java
-@DbTable("movie")
 @QueryColumn(field = "titleFolded", type = String.class)
 record Movie(...) implements Entity<Integer> {}
 

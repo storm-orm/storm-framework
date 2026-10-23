@@ -88,7 +88,6 @@ public abstract class AbstractSchemaValidatorConformanceTest {
     }
 
     /** {@code generated_probe} with its generated column declared as a query column. */
-    @DbTable("generated_probe")
     @QueryColumn(field = "nameFolded", type = String.class)
     public record GeneratedProbe(@PK Integer id, String name) implements Entity<Integer> {}
 

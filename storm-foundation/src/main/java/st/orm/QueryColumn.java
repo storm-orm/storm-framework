@@ -30,7 +30,6 @@ import java.lang.annotation.Target;
  * value to give it.
  *
  * <pre>{@code
- * @DbTable("movie")
  * @QueryColumn(field = "titleFolded", type = String.class)
  * record Movie(@PK Integer id, String title, Integer year) implements Entity<Integer> {}
  *

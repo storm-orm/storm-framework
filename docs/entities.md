@@ -699,7 +699,6 @@ A query column is a column a query names but the entity does not carry. `@QueryC
 <TabItem value="kotlin" label="Kotlin" default>
 
 ```kotlin
-@DbTable("movie")
 @QueryColumn(field = "titleFolded", type = String::class)
 data class Movie(
     @PK val id: Int = 0,
@@ -722,7 +721,6 @@ orm.entity(Movie::class)
 <TabItem value="java" label="Java">
 
 ```java
-@DbTable("movie")
 @QueryColumn(field = "titleFolded", type = String.class)
 record Movie(@PK Integer id, String title, Integer year) implements Entity<Integer> {}
 ```
