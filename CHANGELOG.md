@@ -12,6 +12,7 @@ for the CLI, to [npm](https://www.npmjs.com/package/@storm-orm/cli)
 
 ## [Unreleased]
 
+- A keyset scroll continues when its key names the referenced key through one of two foreign keys to the same table, such as `Recommendation_.movie.id` beside a `seedMovie` (#748). The next window's predicate resolved the path as ambiguous, while the first window's ORDER BY did not.
 - Fixed `@Json(failOnUnknown = true)` on Jackson 3 and `failOnMissing = true` on Jackson 2 and 3, which accepted JSON they should refuse (#409). Sealed `@Json` arrays register their subtypes, and `{"@entity": null}` reads as no ref on Jackson 2.
 
 - Optimistic lock conflicts, single-result failures and writes that affect no row pass through the template's `ExceptionMapper` (#240). The Spring Boot starter translates them to Spring's exceptions, and `QueryTemplate.exceptionMapper()` returns the mapper.

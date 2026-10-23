@@ -472,9 +472,13 @@ public final class ModelImpl<E extends Data, ID> implements Model<E, ID> {
             throw new SqlTemplateException("Column not found for metamodel: %s.".formatted(metamodel));
         }
         if (columns.size() > 1) {
-            // Get fully qualified matches.
+            // Get fully qualified matches. A foreign key column is registered under the key it carries as well, so
+            // a path naming that key ("movie.id") matches the column through its secondary metamodel: two foreign
+            // keys to one table then resolve to their own column instead of being ambiguous.
             var matches = columns.stream()
-                    .filter(column -> column.metamodel().fieldPath().equals(metamodel.fieldPath()))
+                    .filter(column -> column.metamodel().fieldPath().equals(metamodel.fieldPath())
+                            || (column.secondaryMetamodel() != null
+                                && column.secondaryMetamodel().fieldPath().equals(metamodel.fieldPath())))
                     .toList();
             if (!matches.isEmpty()) {
                 return matches;

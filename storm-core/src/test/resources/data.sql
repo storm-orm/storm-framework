@@ -19,6 +19,7 @@ drop table if exists cross_package_holder CASCADE;
 drop table if exists cross_package_owner CASCADE;
 drop table if exists user_score CASCADE;
 drop table if exists app_user CASCADE;
+drop table if exists pet_pair CASCADE;
 drop table if exists country CASCADE;
 drop table if exists country_city CASCADE;
 
@@ -71,6 +72,10 @@ create table app_user (id integer auto_increment, name varchar(255) not null, co
 alter table app_user add constraint app_user_country_fk foreign key (country_id) references country (id);
 create table user_score (id integer auto_increment, user_id integer not null, score_date date not null, score double not null, primary key (id));
 alter table user_score add constraint user_score_user_fk foreign key (user_id) references app_user (id);
+-- Two foreign keys to one table, both as entities: a path through either must resolve to its own column.
+create table pet_pair (id integer auto_increment, first_id integer not null, second_id integer not null, primary key (id));
+alter table pet_pair add constraint pet_pair_first_fk foreign key (first_id) references pet (id);
+alter table pet_pair add constraint pet_pair_second_fk foreign key (second_id) references pet (id);
 
 create view owner_view as select * from owner;
 create view visit_view as select visit_date, description, pet_id, "timestamp" from visit;
@@ -148,6 +153,11 @@ INSERT INTO visit (visit_date, description, pet_id) VALUES ('2023-01-13', 'spaye
 INSERT INTO pet_extension (pet_id, notes) VALUES (1, 'Good cat');
 INSERT INTO pet_extension (pet_id, notes) VALUES (3, 'Friendly dog');
 INSERT INTO pet_extension (pet_id, notes) VALUES (7, 'Indoor cat');
+
+-- Pairs of pets, keyed on the first pet when scrolled: 3 pairs, first pets 1, 3 and 5.
+INSERT INTO pet_pair (first_id, second_id) VALUES (1, 2);
+INSERT INTO pet_pair (first_id, second_id) VALUES (3, 4);
+INSERT INTO pet_pair (first_id, second_id) VALUES (5, 6);
 
 -- Polymorphic tables for sealed type hierarchy tests.
 
