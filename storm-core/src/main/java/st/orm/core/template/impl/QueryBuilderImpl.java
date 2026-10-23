@@ -246,7 +246,9 @@ abstract class QueryBuilderImpl<T extends Data, R, ID> extends QueryBuilder<T, R
             return wb.where(TemplateString.combine(ranks.get(index), TemplateString.of(" " + symbol + " "), wrap(value)));
         }
         int field = index - ranks.size();
-        return wb.where((Metamodel<T, Object>) orders.get(field).field(), operator, new Object[] {values.get(field)});
+        // The value was read from a row, so it is in the column's form already and is compared as it is, without the
+        // function a query column names for the values a caller supplies.
+        return new PredicateBuilderImpl<>(wrap(new ObjectExpression(orders.get(field).field(), operator, new Object[] {values.get(field)}, true, true)));
     }
 
     /**

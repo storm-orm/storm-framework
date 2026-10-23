@@ -24,7 +24,7 @@ import st.orm.Version
  * Simple domain object representing an owner.
  *
  */
-@QueryColumn(field = "lastNameFolded", type = String::class)
+@QueryColumn(field = "lastNameFolded", type = String::class, function = "lower")
 internal data class Owner(
     @PK val id: Int = 0,
     override val firstName: String,

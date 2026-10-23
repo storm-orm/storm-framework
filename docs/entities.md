@@ -699,7 +699,7 @@ A query column is a column a query names but the entity does not carry. `@QueryC
 <TabItem value="kotlin" label="Kotlin" default>
 
 ```kotlin
-@QueryColumn(field = "titleFolded", type = String::class)
+@QueryColumn(field = "titleFolded", type = String::class, function = "fold_accents")
 data class Movie(
     @PK val id: Int = 0,
     val title: String,
@@ -721,7 +721,7 @@ orm.entity(Movie::class)
 <TabItem value="java" label="Java">
 
 ```java
-@QueryColumn(field = "titleFolded", type = String.class)
+@QueryColumn(field = "titleFolded", type = String.class, function = "fold_accents")
 record Movie(@PK Integer id, String title, Integer year) implements Entity<Integer> {}
 ```
 
@@ -748,6 +748,7 @@ CREATE INDEX idx_movie_title_folded ON movie USING gin (LOWER(title_folded) gin_
 - A query column is never selected, inserted or updated. A record holds no value for it: `Metamodel.getValue` throws, and `update().set` refuses it.
 - A column is carried by a field or named by a query column, not both. A query column whose column a field maps is refused when the model is built, as is one named after a record component.
 - It is reached through paths like any other field: a query column declared on `Movie` is `Credit_.movie.titleFolded` from a query on credits. Projections of the same table declare their own.
+- A query column that stores a function's result names it: `function = "fold_accents"`. A value the column is compared with passes through the function, on the value side only, `title_folded = fold_accents(?)`, so the column is read as stored and the database computes the value in the same statement. It applies to the comparison operators, `IN`, `BETWEEN`, the text operators, `search`, `suggest` and `orderFirst`; a pattern passes through it too, so the function must leave the wildcards and the escape character as they are. A keyset position holds the stored value and is compared as it is.
 - `where`, `orderBy`, `orderFirst`, `search` and `suggest`, a `SqlFunction`, a keyset sort and a template placeholder take it. A keyset sort refuses a nullable query column, as it refuses a nullable field; `nullable = true` declares one.
 - Schema validation checks that the column exists with a compatible type. On an entity every insert leaves it out, so the database must fill it: a `NOT NULL` query column that is not generated, not an identity column and has no default is reported as an [unmapped column](validation.md) is.
 

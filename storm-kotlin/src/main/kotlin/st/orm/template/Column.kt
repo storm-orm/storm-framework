@@ -118,6 +118,15 @@ public interface Column {
     public val ref: Boolean
 
     /**
+     * The SQL function whose result a query column stores, which a value compared with the column passes through on
+     * the value side: `title_folded = fold_accents(?)`. Null for a column compared with a value as it is, which every
+     * column a field maps is.
+     *
+     * @since 1.16
+     */
+    public val function: String?
+
+    /**
      * Gets the metamodel of the column.
      *
      * @return the metamodel of the column.

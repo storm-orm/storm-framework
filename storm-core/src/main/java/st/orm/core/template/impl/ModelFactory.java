@@ -57,6 +57,7 @@ import st.orm.PK;
 import st.orm.Persist;
 import st.orm.QueryColumn;
 import st.orm.Ref;
+import st.orm.SqlFunction;
 import st.orm.SqlTemplateException;
 import st.orm.Version;
 import st.orm.core.spi.Name;
@@ -175,7 +176,7 @@ final class ModelFactory {
                             ci.columnName(), ci.index(), ci.type(), ci.persistedType(), true,
                             GenerationStrategy.NONE, "",
                             ci.foreignKey(), ci.foreignKeyGeneration(), ci.keyIndex(), ci.nullable(),
-                            ci.insertable(), ci.updatable(), ci.version(), ci.ref(),
+                            ci.insertable(), ci.updatable(), ci.version(), ci.ref(), ci.function(),
                             ci.metamodel(), ci.secondaryMetamodel()
                     ));
                 } else {
@@ -192,7 +193,7 @@ final class ModelFactory {
                                 ci.columnName(), ci.index(), ci.type(), ci.persistedType(), false,
                                 ci.generation(), ci.sequence(),
                                 ci.foreignKey(), ci.foreignKeyGeneration(), ci.keyIndex(), ci.nullable(),
-                                false, false, ci.version(), ci.ref(),
+                                false, false, ci.version(), ci.ref(), ci.function(),
                                 ci.metamodel(), ci.secondaryMetamodel()
                         ));
                     } else {
@@ -258,6 +259,7 @@ final class ModelFactory {
                 discriminator,   // updatable only when discriminator exists (supports type changes)
                 false,  // not version
                 false,  // not ref
+                "",
                 (Metamodel<Data, ?>) rootMetamodel,
                 null
         ));
@@ -350,6 +352,7 @@ final class ModelFactory {
                     !extensionColumn && !isPk,              // updatable
                     field.isAnnotationPresent(Version.class),
                     false,  // not ref
+                    "",
                     columnMetamodel,
                     sealedFieldMetamodel
             ));
@@ -568,6 +571,13 @@ final class ModelFactory {
                 ColumnName columnName = queryColumn.column().isEmpty()
                         ? new ColumnName(ctx.builder().columnNameResolver().resolveColumnName(field))
                         : new ColumnName(queryColumn.column());
+                if (!queryColumn.function().isEmpty()) {
+                    try {
+                        SqlFunction.of(queryColumn.function());
+                    } catch (IllegalArgumentException e) {
+                        throw new SqlTemplateException("Query column '%s' of %s names function '%s', which is not a SQL identifier.".formatted(fieldName, type.getSimpleName(), queryColumn.function()), e);
+                    }
+                }
                 String mappedBy = fieldColumns.get(columnName.name().toLowerCase(ROOT));
                 if (mappedBy != null) {
                     throw new SqlTemplateException("Query column '%s' of %s names column '%s', which field '%s' maps; a query column is a column the record does not carry.".formatted(fieldName, type.getSimpleName(), columnName.name(), mappedBy));
@@ -591,6 +601,7 @@ final class ModelFactory {
                         false,
                         false,
                         false,
+                        queryColumn.function(),
                         metamodel,
                         null
                 ));
@@ -659,6 +670,7 @@ final class ModelFactory {
                     spec.updatable(),
                     spec.version(),
                     spec.ref(),
+                    "",
                     metamodel,
                     secondaryMetamodel
             ));

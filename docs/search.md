@@ -318,21 +318,19 @@ ALTER TABLE movie ADD COLUMN title_folded VARCHAR GENERATED ALWAYS AS (fold_acce
 CREATE INDEX idx_movie_title_folded ON movie USING gin (LOWER(title_folded) gin_trgm_ops);
 ```
 
-The search then compares `LOWER(m.title_folded) LIKE LOWER(?)`, the expression the index holds, and the recheck reads the stored column. The input must be folded by the same function, in the database, before the search; applying `foldAccents` to the query column instead would fold both sides again and bring the recheck back.
+The query column names the function that computed it. A value compared with the column passes through that function, on the value side only, so the search compares `LOWER(m.title_folded) LIKE LOWER(fold_accents(?))`: the column as stored, which is the expression the index holds, and the input folded by the database in the same statement. The recheck reads the stored column, and a caller passes the input as it is. Applying `foldAccents` to the query column instead would fold both sides again and bring the recheck back.
 
 <Tabs groupId="language">
 <TabItem value="kotlin" label="Kotlin" default>
 
 ```kotlin
-@QueryColumn(field = "titleFolded", type = String::class)
+@QueryColumn(field = "titleFolded", type = String::class, function = "fold_accents")
 data class Movie(...) : Entity<Int>
-
-val folded = orm.query { "SELECT fold_accents($input)" }.singleResult<String>()
 
 orm.entity(Movie::class)
     .select()
-    .where(search(folded, Movie_.titleFolded))
-    .orderFirst(Movie_.titleFolded eqIgnoreCase folded)
+    .where(search(input, Movie_.titleFolded))
+    .orderFirst(Movie_.titleFolded eqIgnoreCase input)
     .resultList
 ```
 
@@ -340,15 +338,13 @@ orm.entity(Movie::class)
 <TabItem value="java" label="Java">
 
 ```java
-@QueryColumn(field = "titleFolded", type = String.class)
+@QueryColumn(field = "titleFolded", type = String.class, function = "fold_accents")
 record Movie(...) implements Entity<Integer> {}
-
-String folded = orm.query(RAW."SELECT fold_accents(\{input})").getSingleResult(String.class);
 
 orm.entity(Movie.class)
     .select()
-    .where(it -> it.search(folded, Movie_.titleFolded))
-    .orderFirst(it -> it.where(Movie_.titleFolded, EQUALS_IGNORE_CASE, folded))
+    .where(it -> it.search(input, Movie_.titleFolded))
+    .orderFirst(it -> it.where(Movie_.titleFolded, EQUALS_IGNORE_CASE, input))
     .getResultList();
 ```
 

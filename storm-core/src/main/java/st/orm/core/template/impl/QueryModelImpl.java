@@ -252,7 +252,7 @@ final class QueryModelImpl implements QueryModel {
         try {
             return switch (expression) {
                 case TemplateExpression it -> compileTemplateExpression(it.template(), compiler);
-                case ObjectExpression it -> compileObjectExpression(getMetamodel(it), it.operator(), it.object(), it.indexable(), compiler);
+                case ObjectExpression it -> compileObjectExpression(getMetamodel(it), it.operator(), it.object(), it.indexable(), it.fromRow(), compiler);
             };
         } catch (SqlTemplateException e) {
             throw new UncheckedSqlTemplateException(e);
@@ -273,7 +273,7 @@ final class QueryModelImpl implements QueryModel {
         try {
             switch (expression) {
                 case TemplateExpression it -> bindTemplateExpression(it.template(), binder);
-                case ObjectExpression it -> bindObjectExpression(getMetamodel(it), it.operator(), it.object(), binder);
+                case ObjectExpression it -> bindObjectExpression(getMetamodel(it), it.operator(), it.object(), it.fromRow(), binder);
             }
         } catch (SqlTemplateException e) {
             throw new UncheckedSqlTemplateException(e);
@@ -378,6 +378,7 @@ final class QueryModelImpl implements QueryModel {
                                            Operator operator,
                                            Object object,
                                            boolean indexable,
+                                           boolean fromRow,
                                            TemplateCompiler compiler) throws SqlTemplateException {
         // A SqlFunction call compares the column it is applied to, with the call around the column and around each
         // value, so the database computes both sides alike.
@@ -385,6 +386,9 @@ final class QueryModelImpl implements QueryModel {
         metamodel = FunctionCalls.column(path);
         //noinspection DuplicatedCode
         Model<Data, ?> model = getModel(metamodel);
+        // A query column that names a function takes each value a caller supplies through it, on the value side
+        // only; a value read from a row is in the column's form already.
+        String valueFunction = fromRow ? "" : valueFunction(model, metamodel);
         // A predicate column is looked up in the referenced table's model, which drops the path the reference was
         // navigated from. Keep it so the column resolves against the joined occurrence rather than the root one.
         String crossingPath = crossesReference(metamodel) ? metamodel.path() : null;
@@ -459,7 +463,7 @@ final class QueryModelImpl implements QueryModel {
                     multiValues = InListShape.padRows(inListMode, multiValues, multiValues.getFirst().size(),
                             compiler.dialect());
                 } else {
-                    var shape = InListShape.shape(inListMode, values, path != metamodel, compiler.dialect());
+                    var shape = InListShape.shape(inListMode, values, path != metamodel || !valueFunction.isEmpty(), compiler.dialect());
                     if (shape.array() != null) {
                         return compiler.dialect().arrayMembership(column, compiler.mapParameter(shape.array()),
                                 operator == Operator.NOT_IN);
@@ -469,7 +473,7 @@ final class QueryModelImpl implements QueryModel {
             }
             List<String> placeholders = new ArrayList<>(values.size());
             for (var value : values) {
-                placeholders.add(FunctionCalls.render(path, compiler.mapParameter(value)));
+                placeholders.add(FunctionCalls.render(path, applyFunction(valueFunction, compiler.mapParameter(value))));
             }
             return ColumnComparison.render(operator, column, placeholders, multiValues, compiler::mapParameter, compiler.dialect());
         } catch (IllegalArgumentException e) {
@@ -531,13 +535,31 @@ final class QueryModelImpl implements QueryModel {
         }
     }
 
+    /**
+     * Returns the function a value compared with the path passes through: the function a query column names, when
+     * the path resolves to that one column, or an empty string.
+     */
+    private static String valueFunction(Model<Data, ?> model, Metamodel<?, ?> metamodel) throws SqlTemplateException {
+        var columns = model.getColumns(metamodel);
+        return columns.size() == 1 ? columns.getFirst().function() : "";
+    }
+
+    /**
+     * Wraps the rendered value in the function, or returns it as it is when there is none.
+     */
+    private static String applyFunction(String function, String sql) {
+        return function.isEmpty() ? sql : function + "(" + sql + ")";
+    }
+
     private void bindObjectExpression(Metamodel<?, ?> metamodel,
                                       Operator operator,
                                       Object object,
+                                      boolean fromRow,
                                       TemplateBinder binder) throws SqlTemplateException {
         Metamodel<?, ?> path = metamodel;
         metamodel = FunctionCalls.column(path);
         var model = getModel(metamodel);
+        boolean valueFunction = !fromRow && !valueFunction(model, metamodel).isEmpty();
         List<SequencedMap<String, Object>> multiValues = null;
         List<Object> singleValues = new ArrayList<>();
         var values = new ObjectExpressionValues();
@@ -585,7 +607,7 @@ final class QueryModelImpl implements QueryModel {
             return;
         }
         if (shaped) {
-            var shape = InListShape.shape(inListMode, singleValues, path != metamodel, template.dialect());
+            var shape = InListShape.shape(inListMode, singleValues, path != metamodel || valueFunction, template.dialect());
             if (shape.array() != null) {
                 binder.bindParameter(shape.array());
                 return;

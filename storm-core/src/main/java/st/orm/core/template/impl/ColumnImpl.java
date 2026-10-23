@@ -39,6 +39,8 @@ import st.orm.core.template.SqlDialect;
  * @param updatable whether the column is updatable.
  * @param version whether the column is a version column.
  * @param ref whether the column is a lazily fetched record.
+ * @param function the SQL function whose result a query column stores, which a value compared with the column
+ *                 passes through; empty for a column compared with a value as it is.
  * @param metamodel the metamodel for the column.
  * @param secondaryMetamodel the secondary metamodel for the column: the referenced primary key metamodel for
  *                           foreign keys, or the component's own metamodel for compound key components.
@@ -59,6 +61,7 @@ public record ColumnImpl(
         boolean updatable,
         boolean version,
         boolean ref,
+        String function,
         Metamodel<Data, ?> metamodel,
         Metamodel<Data, ?> secondaryMetamodel
 ) implements Column {
