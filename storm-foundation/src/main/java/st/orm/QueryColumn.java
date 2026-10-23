@@ -47,8 +47,8 @@ import java.lang.annotation.Target;
  *
  * <p>The column follows from the field name through the column name resolver, as a component's does;
  * {@link #column()} names it where the resolver does not. Schema validation checks that the column exists with a
- * compatible type, and on an entity that the database fills it, since every insert leaves it out: it must be
- * generated, an identity column, have a default, or allow null.</p>
+ * compatible type. On an entity every insert leaves it out, so the database must fill it: a NOT NULL query column
+ * that is not generated, not an identity column and has no default is reported as an unmapped column is.</p>
  *
  * @since 1.16
  */
@@ -79,10 +79,4 @@ public @interface QueryColumn {
      * keyset sort field, as a nullable field is.
      */
     boolean nullable() default false;
-
-    /**
-     * Whether schema validation checks the column. {@code false} skips it, as {@link DbIgnore} skips a record
-     * component: for a column the database fills in a way its metadata does not show, such as a trigger.
-     */
-    boolean validate() default true;
 }

@@ -74,14 +74,13 @@ Schema validation compares your entity and projection definitions against the ac
 | Entity primary key columns match the database primary key | `PRIMARY_KEY_MISMATCH` | Error |
 | `@FK` constraint references the correct target table | `FOREIGN_KEY_MISMATCH` | Error |
 | Sequences referenced by `@PK(generation = SEQUENCE)` exist | `SEQUENCE_NOT_FOUND` | Error |
-| A [query column](entities.md#query-columns) of an entity is filled by the database: generated, an identity column, with a default, or nullable | `QUERY_COLUMN_NOT_FILLED` | Error |
 | | | |
 | Numeric cross-category conversions (e.g., `Integer` mapped to `DECIMAL`) | `TYPE_NARROWING` | Warning |
 | Non-nullable entity field mapped to a nullable database column | `NULLABILITY_MISMATCH` | Warning |
 | Entity declares `@PK` but the database has no primary key constraint | `PRIMARY_KEY_MISSING` | Warning |
 | `@UK` field has a matching unique constraint in the database | `UNIQUE_KEY_MISSING` | Warning |
 | `@FK` field has a matching foreign key constraint in the database | `FOREIGN_KEY_MISSING` | Warning |
-| A `NOT NULL` column without a default that no field or query column maps, and that the database does not generate | `UNMAPPED_COLUMN` | Warning |
+| A `NOT NULL` column without a default that no field maps, and that the database does not generate; a [query column](entities.md#query-columns) of an entity counts, since every insert leaves it out | `UNMAPPED_COLUMN` | Warning |
 
 **Errors** indicate definitive mismatches that will cause runtime failures, such as missing tables or columns.
 

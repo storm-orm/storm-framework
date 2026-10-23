@@ -15,7 +15,6 @@
  */
 package st.orm.core.template.impl;
 
-import static st.orm.core.template.impl.RecordReflection.findQueryColumn;
 import static st.orm.core.template.impl.RecordReflection.isPolymorphicData;
 
 import java.lang.reflect.ParameterizedType;
@@ -45,7 +44,6 @@ import st.orm.FK;
 import st.orm.GenerationStrategy;
 import st.orm.PK;
 import st.orm.ProjectionQuery;
-import st.orm.QueryColumn;
 import st.orm.Ref;
 import st.orm.SqlTemplateException;
 import st.orm.StormConfig;
@@ -537,26 +535,10 @@ public final class SchemaValidator {
             }
             validateColumn(type, column, schema, tableName, qualifiedTableName, errors);
         }
-        // A query column is checked as a declared column is, and on an entity for being filled by the database,
-        // since every insert leaves it out.
-        boolean entity = Entity.class.isAssignableFrom(type);
+        // A query column is checked as a declared column is. It stays out of the mapped set: every insert leaves it
+        // out, so the unmapped column check (step 9) covers it as it covers a column no field maps.
         for (Column column : model.queryColumns()) {
-            mappedColumns.add(column.name());
-            QueryColumn declaration = findQueryColumn(type, column.metamodel().field()).orElse(null);
-            if (declaration != null && !declaration.validate()) {
-                continue;
-            }
-            DbColumn dbColumn = validateColumn(type, column, schema, tableName, qualifiedTableName, errors);
-            if (dbColumn != null && entity && !dbColumn.nullable() && !dbColumn.hasDefault()
-                    && !dbColumn.autoIncrement() && !dbColumn.generated()) {
-                errors.add(new SchemaValidationError(type, ErrorKind.QUERY_COLUMN_NOT_FILLED,
-                        ("Query column '%s' in table '%s' is NOT NULL and the database does not fill it: the column is "
-                        + "not generated, is not an identity column and has no default. Every insert of entity '%s' "
-                        + "leaves it out and fails. Give the column a generation expression or a default, or declare "
-                        + "the query column with validate = false where the database fills it in a way its metadata "
-                        + "does not show.")
-                                .formatted(column.name(), qualifiedTableName, type.getSimpleName())));
-            }
+            validateColumn(type, column, schema, tableName, qualifiedTableName, errors);
         }
         // 5. Primary key match. Skipped when this table's primary key could not be read: an empty result would
         // otherwise read as "the table has no primary key".

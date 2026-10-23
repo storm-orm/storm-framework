@@ -302,9 +302,9 @@ public abstract class AbstractSchemaValidatorConformanceTest {
                 // database fills it, so neither a query column nor an unmapped column over it fails an insert.
                 assertTrue(column.generated() || column.hasDefault(), column::toString);
                 var errors = SchemaValidator.of(dataSource).validate(List.of(GeneratedProbe.class, GeneratedProbeUnmapped.class));
-                assertFalse(errors.stream().anyMatch(error -> error.kind() == ErrorKind.QUERY_COLUMN_NOT_FILLED
-                        || error.kind() == ErrorKind.UNMAPPED_COLUMN || error.kind() == ErrorKind.COLUMN_NOT_FOUND
-                        || error.kind() == ErrorKind.TYPE_INCOMPATIBLE), errors::toString);
+                assertFalse(errors.stream().anyMatch(error -> error.kind() == ErrorKind.UNMAPPED_COLUMN
+                        || error.kind() == ErrorKind.COLUMN_NOT_FOUND || error.kind() == ErrorKind.TYPE_INCOMPATIBLE),
+                        errors::toString);
             } finally {
                 statement.execute("DROP TABLE generated_probe");
             }

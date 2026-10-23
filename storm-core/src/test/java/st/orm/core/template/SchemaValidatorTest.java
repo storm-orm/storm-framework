@@ -245,9 +245,6 @@ class SchemaValidatorTest {
     @QueryColumn(field = "nameFolded", type = String.class)
     public record QueryColumnEntity(@PK Integer id, String name) implements Entity<Integer> {}
 
-    @QueryColumn(field = "nameFolded", type = String.class, validate = false)
-    public record UnvalidatedQueryColumnEntity(@PK Integer id, String name) implements Entity<Integer> {}
-
     @QueryColumn(field = "nameFolded", type = String.class, nullable = true)
     public record NullableQueryColumnEntity(@PK Integer id, String name) implements Entity<Integer> {}
 
@@ -844,29 +841,21 @@ class SchemaValidatorTest {
     }
 
     @Test
-    void testQueryColumnTheDatabaseDoesNotFillIsAnError() throws SQLException {
+    void testQueryColumnTheDatabaseDoesNotFillIsUnmapped() throws SQLException {
         execute("CREATE TABLE query_column_entity (id INTEGER AUTO_INCREMENT, name VARCHAR(255) NOT NULL, name_folded VARCHAR(255) NOT NULL, PRIMARY KEY (id))");
 
         List<SchemaValidationError> errors = SchemaValidator.of(dataSource).validate(List.of(QueryColumnEntity.class));
 
+        // Every insert leaves the query column out, so the column is unmapped for the insert, as a column no field
+        // maps is, and reported the same way.
         assertEquals(1, errors.size(), errors.toString());
-        assertEquals(ErrorKind.QUERY_COLUMN_NOT_FILLED, errors.getFirst().kind());
-        assertFalse(errors.getFirst().kind().warning());
-        assertTrue(errors.getFirst().message().contains("name_folded"), errors.getFirst().message());
-        assertTrue(errors.getFirst().message().contains("validate = false"), errors.getFirst().message());
+        assertEquals(ErrorKind.UNMAPPED_COLUMN, errors.getFirst().kind());
+        assertTrue(errors.getFirst().kind().warning());
+        assertTrue(errors.getFirst().message().toLowerCase().contains("name_folded"), errors.getFirst().message());
     }
 
     @Test
-    void testQueryColumnDeclaredUnvalidatedIsSkipped() throws SQLException {
-        execute("CREATE TABLE unvalidated_query_column_entity (id INTEGER AUTO_INCREMENT, name VARCHAR(255) NOT NULL, name_folded VARCHAR(255) NOT NULL, PRIMARY KEY (id))");
-
-        List<SchemaValidationError> errors = SchemaValidator.of(dataSource).validate(List.of(UnvalidatedQueryColumnEntity.class));
-
-        assertTrue(errors.isEmpty(), "Expected no errors but got: " + errors);
-    }
-
-    @Test
-    void testQueryColumnOfAProjectionIsNotCheckedForFilling() throws SQLException {
+    void testQueryColumnOfAProjectionIsNotReportedAsUnmapped() throws SQLException {
         execute("CREATE TABLE query_column_projection (id INTEGER AUTO_INCREMENT, name VARCHAR(255) NOT NULL, name_folded VARCHAR(255) NOT NULL, PRIMARY KEY (id))");
 
         List<SchemaValidationError> errors = SchemaValidator.of(dataSource).validate(List.of(QueryColumnProjection.class));
