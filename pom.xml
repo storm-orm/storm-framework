@@ -265,26 +265,18 @@
                     </executions>
                 </plugin>
                 <plugin>
-                    <!-- The known-vulnerability gate CI runs over the dependency graph Storm ships: compile and
-                         runtime scope. Test and provided scope (Spring Boot, Jackson, the drivers) are the
-                         application's own dependencies and stay out of the gate. Invoked explicitly, never bound
-                         to a phase: mvn org.owasp:dependency-check-maven:aggregate, with the NVD API key in
-                         NVD_API_KEY. -->
-                    <groupId>org.owasp</groupId>
-                    <artifactId>dependency-check-maven</artifactId>
-                    <version>13.0.0</version>
+                    <!-- The software bill of materials of the dependency graph Storm ships, which the
+                         known-vulnerability gate in CI scans: compile and runtime scope. Test and provided scope
+                         (Spring Boot, Jackson, the drivers) are the application's own dependencies and stay out
+                         of it. Invoked explicitly, never bound to a phase:
+                         mvn package org.cyclonedx:cyclonedx-maven-plugin:makeAggregateBom. -->
+                    <groupId>org.cyclonedx</groupId>
+                    <artifactId>cyclonedx-maven-plugin</artifactId>
+                    <version>2.9.1</version>
                     <configuration>
-                        <!-- CVSS 7 is the floor of High. -->
-                        <failBuildOnCVSS>7</failBuildOnCVSS>
-                        <skipTestScope>true</skipTestScope>
-                        <skipProvidedScope>true</skipProvidedScope>
-                        <nvdApiKeyEnvironmentVariable>NVD_API_KEY</nvdApiKeyEnvironmentVariable>
-                        <formats>
-                            <format>HTML</format>
-                            <format>JSON</format>
-                        </formats>
-                        <!-- The .NET analyzer needs the dotnet tool and only warns without it. -->
-                        <assemblyAnalyzerEnabled>false</assemblyAnalyzerEnabled>
+                        <includeTestScope>false</includeTestScope>
+                        <includeProvidedScope>false</includeProvidedScope>
+                        <outputFormat>json</outputFormat>
                     </configuration>
                 </plugin>
             </plugins>
