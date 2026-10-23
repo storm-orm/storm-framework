@@ -211,36 +211,37 @@ public final class MetamodelFactory {
             return false;
         }
         Class<? extends Data> fieldResolutionClass = fieldResolutionClass(metamodel.root());
-        QueryColumn queryColumn = findQueryColumnAtPath(fieldResolutionClass, path);
-        if (queryColumn != null) {
-            // A query column has no record field; its declaration states its nullability.
-            return queryColumn.nullable();
-        }
+        RecordField field;
         try {
-            RecordField field = getRecordField(fieldResolutionClass, path);
-            boolean nullsDistinct = getNullsDistinct(field);
-            boolean inline = !Ref.class.isAssignableFrom(field.type())
-                    && getORMConverter(field).isEmpty()
-                    && isRecord(field.type())
-                    && !Data.class.isAssignableFrom(field.type());
-            if (inline) {
-                // Mirrors SimpleKeyMetamodel: an inline record is nullable when its unique constraint treats NULLs
-                // as distinct and any of its constituent fields is nullable.
-                boolean fieldIsUnique = field.isAnnotationPresent(UK.class) || field.isAnnotationPresent(PK.class);
-                if (!fieldIsUnique || !nullsDistinct) {
-                    return false;
-                }
-                for (var leaf : metamodel.flatten()) {
-                    if (leaf instanceof Metamodel.Key<?, ?> leafKey && leafKey.isNullable()) {
-                        return true;
-                    }
-                }
-                return false;
-            }
-            return field.nullable() && nullsDistinct;
+            field = getRecordField(fieldResolutionClass, path);
         } catch (SqlTemplateException e) {
+            // No record field at the path: a query column has none, and its declaration states its nullability.
+            QueryColumn queryColumn = findQueryColumnAtPath(fieldResolutionClass, path);
+            if (queryColumn != null) {
+                return queryColumn.nullable();
+            }
             throw new PersistenceException("Failed to resolve nullability for metamodel field at path '%s' on type %s.".formatted(path, metamodel.root().getName()), e);
         }
+        boolean nullsDistinct = getNullsDistinct(field);
+        boolean inline = !Ref.class.isAssignableFrom(field.type())
+                && getORMConverter(field).isEmpty()
+                && isRecord(field.type())
+                && !Data.class.isAssignableFrom(field.type());
+        if (inline) {
+            // Mirrors SimpleKeyMetamodel: an inline record is nullable when its unique constraint treats NULLs
+            // as distinct and any of its constituent fields is nullable.
+            boolean fieldIsUnique = field.isAnnotationPresent(UK.class) || field.isAnnotationPresent(PK.class);
+            if (!fieldIsUnique || !nullsDistinct) {
+                return false;
+            }
+            for (var leaf : metamodel.flatten()) {
+                if (leaf instanceof Metamodel.Key<?, ?> leafKey && leafKey.isNullable()) {
+                    return true;
+                }
+            }
+            return false;
+        }
+        return field.nullable() && nullsDistinct;
     }
 
     /**

@@ -835,8 +835,20 @@ final class RecordReflection {
      * @return the query columns, empty for a type that declares none.
      */
     static List<QueryColumn> getQueryColumns(Class<?> type) {
-        return List.of(type.getAnnotationsByType(QueryColumn.class));
+        return QUERY_COLUMN_CACHE.get(type);
     }
+
+    /**
+     * Query columns per declaring type, in declaration order. Reading a repeatable annotation assembles the list on
+     * every call, and a query's nullability check reads it per sort field; {@link ClassValue} ties each entry to the
+     * lifetime of the declaring class, so the cache never pins the class or its class loader.
+     */
+    private static final ClassValue<List<QueryColumn>> QUERY_COLUMN_CACHE = new ClassValue<>() {
+        @Override
+        protected List<QueryColumn> computeValue(Class<?> type) {
+            return List.of(type.getAnnotationsByType(QueryColumn.class));
+        }
+    };
 
     /**
      * Returns the query column of the type with the given field name, if the type declares one.
@@ -846,7 +858,12 @@ final class RecordReflection {
      * @return the query column, or empty when the type declares none by that name.
      */
     static Optional<QueryColumn> findQueryColumn(Class<?> type, String field) {
-        return getQueryColumns(type).stream().filter(queryColumn -> queryColumn.field().equals(field)).findFirst();
+        for (QueryColumn queryColumn : getQueryColumns(type)) {
+            if (queryColumn.field().equals(field)) {
+                return Optional.of(queryColumn);
+            }
+        }
+        return Optional.empty();
     }
 
     /**

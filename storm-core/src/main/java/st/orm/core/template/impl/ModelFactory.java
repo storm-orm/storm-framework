@@ -536,6 +536,10 @@ final class ModelFactory {
                                            Metamodel<?, ?> parentMetamodel,
                                            Class<? extends Data> type,
                                            boolean parentNullable) {
+        List<QueryColumn> queryColumns = getQueryColumns(type);
+        if (queryColumns.isEmpty()) {
+            return;
+        }
         try {
             var componentNames = getRecordType(type).fields().stream().map(RecordField::name).collect(toSet());
             // The columns the fields of this table map, as emitted: a query column cannot name one of them.
@@ -545,7 +549,7 @@ final class ModelFactory {
                     .collect(toMap(column -> column.name().toLowerCase(ROOT), column -> column.metamodel().field(), (first, second) -> first));
             var declared = new HashSet<String>();
             var declaredColumns = new HashSet<String>();
-            for (QueryColumn queryColumn : getQueryColumns(type)) {
+            for (QueryColumn queryColumn : queryColumns) {
                 String fieldName = queryColumn.field();
                 if (fieldName.isEmpty()) {
                     throw new SqlTemplateException("A query column of %s names no field.".formatted(type.getSimpleName()));
