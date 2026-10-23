@@ -191,4 +191,17 @@ public class QueryColumnIntegrationTest {
         }
         assertTrue(messages.stream().anyMatch(message -> message.contains("record component")), messages.toString());
     }
+
+    @QueryColumn(field = "nameCopy", type = String.class, column = "name")
+    public record ColumnNamedQueryColumn(@PK Integer id, String name) implements Entity<Integer> {}
+
+    @Test
+    public void queryColumnNamingAMappedColumnIsRefused() {
+        var exception = assertThrows(PersistenceException.class, () -> orm().entity(ColumnNamedQueryColumn.class).model());
+        var messages = new ArrayList<String>();
+        for (Throwable cause = exception; cause != null; cause = cause.getCause()) {
+            messages.add(String.valueOf(cause.getMessage()));
+        }
+        assertTrue(messages.stream().anyMatch(message -> message.contains("which field 'name' maps")), messages.toString());
+    }
 }

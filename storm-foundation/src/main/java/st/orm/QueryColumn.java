@@ -45,7 +45,9 @@ import java.lang.annotation.Target;
  * {@link Metamodel#getValue(Data)} throws, and an {@code update} cannot set it.</p>
  *
  * <p>The column follows from the field name through the column name resolver, as a component's does;
- * {@link #column()} names it where the resolver does not. Schema validation checks that the column exists with a
+ * {@link #column()} names it where the resolver does not. A column is carried by a field or named by a query column,
+ * not both: a declaration whose column a field maps is refused when the model is built, as is one named after a
+ * record component. Schema validation checks that the column exists with a
  * compatible type. On an entity every insert leaves it out, so the database must fill it: a NOT NULL query column
  * that is not generated, not an identity column and has no default is reported as an unmapped column is.</p>
  *

@@ -746,6 +746,7 @@ CREATE INDEX idx_movie_title_folded ON movie USING gin (LOWER(title_folded) gin_
 ```
 
 - A query column is never selected, inserted or updated. A record holds no value for it: `Metamodel.getValue` throws, and `update().set` refuses it.
+- A column is carried by a field or named by a query column, not both. A query column whose column a field maps is refused when the model is built, as is one named after a record component.
 - It is reached through paths like any other field: a query column declared on `Movie` is `Credit_.movie.titleFolded` from a query on credits. Projections of the same table declare their own.
 - `where`, `orderBy`, `orderFirst`, `search` and `suggest`, a `SqlFunction`, a keyset sort and a template placeholder take it. A keyset sort refuses a nullable query column, as it refuses a nullable field; `nullable = true` declares one.
 - Schema validation checks that the column exists with a compatible type. On an entity every insert leaves it out, so the database must fill it: a `NOT NULL` query column that is not generated, not an identity column and has no default is reported as an [unmapped column](validation.md) is.

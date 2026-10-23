@@ -16,6 +16,8 @@
 package st.orm.core.template.impl;
 
 import static java.util.Collections.nCopies;
+import static java.util.Locale.ROOT;
+import static java.util.stream.Collectors.toMap;
 import static java.util.stream.Collectors.toSet;
 import static st.orm.core.spi.Providers.getORMConverter;
 import static st.orm.core.template.impl.RecordReflection.detectSealedPattern;
@@ -536,7 +538,13 @@ final class ModelFactory {
                                            boolean parentNullable) {
         try {
             var componentNames = getRecordType(type).fields().stream().map(RecordField::name).collect(toSet());
+            // The columns the fields of this table map, as emitted: a query column cannot name one of them.
+            var tablePath = parentMetamodel.fieldPath();
+            var fieldColumns = ctx.columns().stream()
+                    .filter(column -> column.metamodel().table().fieldPath().equals(tablePath))
+                    .collect(toMap(column -> column.name().toLowerCase(ROOT), column -> column.metamodel().field(), (first, second) -> first));
             var declared = new HashSet<String>();
+            var declaredColumns = new HashSet<String>();
             for (QueryColumn queryColumn : getQueryColumns(type)) {
                 String fieldName = queryColumn.field();
                 if (fieldName.isEmpty()) {
@@ -556,6 +564,13 @@ final class ModelFactory {
                 ColumnName columnName = queryColumn.column().isEmpty()
                         ? new ColumnName(ctx.builder().columnNameResolver().resolveColumnName(field))
                         : new ColumnName(queryColumn.column());
+                String mappedBy = fieldColumns.get(columnName.name().toLowerCase(ROOT));
+                if (mappedBy != null) {
+                    throw new SqlTemplateException("Query column '%s' of %s names column '%s', which field '%s' maps; a query column is a column the record does not carry.".formatted(fieldName, type.getSimpleName(), columnName.name(), mappedBy));
+                }
+                if (!declaredColumns.add(columnName.name().toLowerCase(ROOT))) {
+                    throw new SqlTemplateException("Query column '%s' of %s names column '%s', which another query column of %s names as well.".formatted(fieldName, type.getSimpleName(), columnName.name(), type.getSimpleName()));
+                }
                 ctx.queryColumns().add(new ColumnImpl(
                         columnName,
                         0,
