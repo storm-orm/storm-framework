@@ -15,4 +15,9 @@ public class SQLiteSchemaValidatorConformanceTest extends AbstractSchemaValidato
     protected String expressionIndexDdl() {
         return "CREATE UNIQUE INDEX index_probe_lower ON index_probe (lower(a))";
     }
+
+    @Override
+    protected String generatedColumnProbeDdl() {
+        return "CREATE TABLE generated_probe (id INTEGER NOT NULL PRIMARY KEY, name TEXT NOT NULL, name_folded TEXT GENERATED ALWAYS AS (LOWER(name)) STORED NOT NULL)";
+    }
 }

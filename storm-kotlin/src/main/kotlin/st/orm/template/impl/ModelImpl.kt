@@ -24,6 +24,7 @@ internal class ModelImpl<E : Data, ID : Any>(
     internal val core: st.orm.core.template.Model<E, ID>,
     override val columns: List<Column> = core.columns().map(::ColumnImpl),
     override val declaredColumns: List<Column> = core.declaredColumns().map(::ColumnImpl),
+    override val queryColumns: List<Column> = core.queryColumns().map(::ColumnImpl),
 ) : Model<E, ID> {
 
     override val schema: String get() = core.schema()

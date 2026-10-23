@@ -1332,4 +1332,19 @@ public class QueryBuilderTest {
         assertThrows(NonUniqueResultException.class, () ->
                 orm.entity(City.class).select().getOptionalResult());
     }
+
+    @Test
+    public void testQueryColumnIsNamedByAQueryAndCarriedByNoRow() {
+        // data.sql: owner.last_name_folded is generated from the last name; Owner declares it as a query column.
+        List<Owner> owners = orm.entity(Owner.class).select().where(Owner_.lastNameFolded, EQUALS, "davis").getResultList();
+        assertEquals(List.of("Betty", "Harold"), owners.stream().map(Owner::firstName).sorted().toList());
+        assertEquals("owner", Pet_.owner.lastNameFolded.path());
+        assertEquals("lastNameFolded", Pet_.owner.lastNameFolded.field());
+        List<Pet> pets = orm.entity(Pet.class).select().where(Pet_.owner.lastNameFolded, EQUALS, "davis").getResultList();
+        assertEquals(List.of("Iggy", "Leo"), pets.stream().map(Pet::name).sorted().toList());
+        var model = orm.entity(Owner.class).model();
+        assertEquals(List.of("last_name_folded"), model.queryColumns().stream().map(Column::name).toList());
+        assertTrue(model.columns().stream().noneMatch(column -> column.name().equals("last_name_folded")));
+        assertThrows(UnsupportedOperationException.class, () -> Owner_.lastNameFolded.getValue(owners.getFirst()));
+    }
 }

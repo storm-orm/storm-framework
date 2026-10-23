@@ -19,6 +19,7 @@ import java.sql.Connection;
 import java.sql.DatabaseMetaData;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
+import java.sql.ResultSetMetaData;
 import java.sql.SQLException;
 import java.util.ArrayList;
 import java.util.Collection;
@@ -48,6 +49,18 @@ import st.orm.core.template.SqlDialect.SequenceDiscoveryStrategy;
  */
 public final class DatabaseSchema {
 
+    /**
+     * Returns whether the result set has a column with the given label.
+     */
+    private static boolean hasColumn(ResultSetMetaData resultSetMetaData, String label) throws SQLException {
+        for (int i = 1; i <= resultSetMetaData.getColumnCount(); i++) {
+            if (label.equalsIgnoreCase(resultSetMetaData.getColumnLabel(i))) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     private static final Logger LOGGER = LoggerFactory.getLogger("st.orm.validation");
 
     /**
@@ -61,6 +74,8 @@ public final class DatabaseSchema {
      * @param nullable      whether the column allows NULL values.
      * @param autoIncrement whether the column is auto-incremented.
      * @param hasDefault    whether the column has a default value defined.
+     * @param generated     whether the database computes the column from an expression, as the driver reports it;
+     *                      a driver that does not report it reads as {@code false}.
      */
     public record DbColumn(
             String tableName,
@@ -70,7 +85,8 @@ public final class DatabaseSchema {
             int columnSize,
             boolean nullable,
             boolean autoIncrement,
-            boolean hasDefault
+            boolean hasDefault,
+            boolean generated
     ) {}
 
     /**
@@ -329,6 +345,8 @@ public final class DatabaseSchema {
         }
         // Discover columns for all tables.
         try (ResultSet columns = metadata.getColumns(catalog, schemaPattern, "%", "%")) {
+            // IS_GENERATEDCOLUMN is the last column JDBC specifies, and not every driver returns it.
+            boolean reportsGenerated = hasColumn(columns.getMetaData(), "IS_GENERATEDCOLUMN");
             while (columns.next()) {
                 String tableName = columns.getString("TABLE_NAME");
                 // Only include columns for tables we discovered.
@@ -347,9 +365,10 @@ public final class DatabaseSchema {
                 boolean nullable = !"NO".equalsIgnoreCase(nullableStr);
                 String autoIncrementStr = columns.getString("IS_AUTOINCREMENT");
                 boolean autoIncrement = "YES".equalsIgnoreCase(autoIncrementStr);
+                boolean generated = reportsGenerated && "YES".equalsIgnoreCase(columns.getString("IS_GENERATEDCOLUMN"));
 
                 columnsByTable.computeIfAbsent(tableName, k -> new ArrayList<>())
-                        .add(new DbColumn(tableName, columnName, dataType, typeName, columnSize, nullable, autoIncrement, hasDefault));
+                        .add(new DbColumn(tableName, columnName, dataType, typeName, columnSize, nullable, autoIncrement, hasDefault, generated));
             }
         }
         // A database that names its schemas as catalogs has no schema pattern; its catalog is the schema the

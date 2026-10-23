@@ -51,6 +51,7 @@ import st.orm.PK;
 import st.orm.PersistenceException;
 import st.orm.Polymorphic;
 import st.orm.ProjectionQuery;
+import st.orm.QueryColumn;
 import st.orm.Ref;
 import st.orm.SqlTemplateException;
 import st.orm.Version;
@@ -825,6 +826,59 @@ final class RecordReflection {
     }
 
     private static final List<Class<? extends Annotation>> COLUMN_ANNOTATIONS = List.of(PK.class, FK.class, DbColumn.class);
+
+    /**
+     * Returns the query columns a type declares, in declaration order: the columns a query names but the type does
+     * not carry. A repeated {@code @QueryColumn} and the {@code @QueryColumns} container read alike.
+     *
+     * @param type the entity or projection type.
+     * @return the query columns, empty for a type that declares none.
+     */
+    static List<QueryColumn> getQueryColumns(Class<?> type) {
+        return QUERY_COLUMN_CACHE.get(type);
+    }
+
+    /**
+     * Query columns per declaring type, in declaration order. Reading a repeatable annotation assembles the list on
+     * every call, and a query's nullability check reads it per sort field; {@link ClassValue} ties each entry to the
+     * lifetime of the declaring class, so the cache never pins the class or its class loader.
+     */
+    private static final ClassValue<List<QueryColumn>> QUERY_COLUMN_CACHE = new ClassValue<>() {
+        @Override
+        protected List<QueryColumn> computeValue(Class<?> type) {
+            return List.of(type.getAnnotationsByType(QueryColumn.class));
+        }
+    };
+
+    /**
+     * Returns the query column of the type with the given field name, if the type declares one.
+     *
+     * @param type the entity or projection type.
+     * @param field the metamodel field name.
+     * @return the query column, or empty when the type declares none by that name.
+     */
+    static Optional<QueryColumn> findQueryColumn(Class<?> type, String field) {
+        for (QueryColumn queryColumn : getQueryColumns(type)) {
+            if (queryColumn.field().equals(field)) {
+                return Optional.of(queryColumn);
+            }
+        }
+        return Optional.empty();
+    }
+
+    /**
+     * Returns a record field standing in for a query column, which has no component. It carries the field name, the
+     * declared type and nullability, and the declaration as its only annotation, which is what a column name resolver
+     * reads. It has no accessor, since a record holds no value for the column.
+     *
+     * @param declaringType the type that declares the query column.
+     * @param queryColumn the declaration.
+     * @return the record field.
+     */
+    static RecordField getQueryColumnField(Class<?> declaringType, QueryColumn queryColumn) {
+        return new RecordField(declaringType, queryColumn.field(), queryColumn.type(), queryColumn.type(),
+                queryColumn.nullable(), false, null, List.of(queryColumn));
+    }
 
     /**
      * Returns the column name for the specified record field taking the column name resolver into account,

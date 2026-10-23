@@ -382,6 +382,162 @@ class MetamodelProcessorTest {
     }
 
     @Test
+    void generatesThrowingFieldsForRepeatedQueryColumns() throws Exception {
+        Compilation compilation = compile("Movie.java", """
+                import st.orm.Entity;
+                import st.orm.FK;
+                import st.orm.PK;
+                import st.orm.QueryColumn;
+                import st.orm.Ref;
+
+                @QueryColumn(field = "titleFolded", type = String.class)
+                @QueryColumn(field = "releaseYear", type = int.class)
+                public record Movie(@PK Integer id, String title) implements Entity<Integer> {}
+
+                record Credit(@PK Integer id, @FK Ref<Movie> movie) implements Entity<Integer> {}
+                """);
+        assertTrue(compilation.success(), compilation.errors());
+        String movieInterface = compilation.generatedSource("Movie_.java");
+        assertTrue(movieInterface.contains("""
+                    /** Represents the {@code titleFolded} query column of {@link Movie}. */
+                    AbstractMetamodel<Movie, java.lang.String, java.lang.String> titleFolded = \
+                MovieMetamodel.<Movie>instance().titleFolded;"""),
+                "expected the query column in the metamodel interface:\n" + movieInterface);
+        assertTrue(movieInterface.contains("AbstractMetamodel<Movie, java.lang.Integer, java.lang.Integer> releaseYear"),
+                "a primitive query column type renders boxed:\n" + movieInterface);
+        assertTrue(movieInterface.indexOf(" title ") < movieInterface.indexOf("titleFolded")
+                        && movieInterface.indexOf("titleFolded") < movieInterface.indexOf("releaseYear"),
+                "query columns follow the components in declaration order:\n" + movieInterface);
+        String movieMetamodel = compilation.generatedSource("MovieMetamodel.java");
+        assertTrue(movieMetamodel.contains(
+                        "public final AbstractMetamodel<T, java.lang.String, java.lang.String> titleFolded;"),
+                "expected the query column field in the metamodel class:\n" + movieMetamodel);
+        assertTrue(movieMetamodel.contains("""
+                        this.titleFolded = new AbstractMetamodel<T, java.lang.String, java.lang.String>(\
+                java.lang.String.class, subPath, fieldBase + "titleFolded", false, this) {
+                            @Override public java.lang.@org.jspecify.annotations.Nullable String getValue(T record) { \
+                throw new UnsupportedOperationException("Movie.titleFolded is a query column; a record holds no value for it."); }
+                            @Override public boolean isIdentical(T a, T b) { \
+                throw new UnsupportedOperationException("Movie.titleFolded is a query column; a record holds no value for it."); }
+                            @Override public boolean isSame(T a, T b) { \
+                throw new UnsupportedOperationException("Movie.titleFolded is a query column; a record holds no value for it."); }
+                        };"""),
+                "a record holds no value for a query column, so its value methods throw:\n" + movieMetamodel);
+        String movieNullableMetamodel = compilation.generatedSource("MovieNullableMetamodel.java");
+        assertTrue(movieNullableMetamodel.contains(
+                        "public final AbstractMetamodel<T, java.lang.Integer, java.lang.Integer> releaseYear;"),
+                "the nullable-chain variant carries the query columns too:\n" + movieNullableMetamodel);
+        String movieRefMetamodel = compilation.generatedSource("MovieRefMetamodel.java");
+        assertTrue(movieRefMetamodel.contains("""
+                        this.titleFolded = new st.orm.AbstractNavigableMetamodel<T, java.lang.String>(\
+                java.lang.String.class, subPath, fieldBase + "titleFolded", false, this) {};"""),
+                "a query column is reachable beyond a reference:\n" + movieRefMetamodel);
+        assertTrue(Files.exists(compilation.classes().resolve("Movie_.class"))
+                        && Files.exists(compilation.classes().resolve("MovieNullableMetamodel.class"))
+                        && Files.exists(compilation.classes().resolve("MovieRefMetamodel.class")),
+                "expected the generated metamodels to compile");
+    }
+
+    @Test
+    void generatesQueryColumnsFromTheContainer() throws Exception {
+        Compilation compilation = compile("Movie.java", """
+                import st.orm.Entity;
+                import st.orm.PK;
+                import st.orm.QueryColumn;
+                import st.orm.QueryColumns;
+
+                @QueryColumns({
+                        @QueryColumn(field = "titleFolded", type = String.class),
+                        @QueryColumn(field = "releaseYear", type = int.class)
+                })
+                public record Movie(@PK Integer id, String title) implements Entity<Integer> {}
+                """);
+        assertTrue(compilation.success(), compilation.errors());
+        String movieInterface = compilation.generatedSource("Movie_.java");
+        assertTrue(movieInterface.contains("AbstractMetamodel<Movie, java.lang.String, java.lang.String> titleFolded"),
+                "expected the first contained query column in the interface:\n" + movieInterface);
+        assertTrue(movieInterface.contains("AbstractMetamodel<Movie, java.lang.Integer, java.lang.Integer> releaseYear"),
+                "expected the second contained query column in the interface:\n" + movieInterface);
+        String movieMetamodel = compilation.generatedSource("MovieMetamodel.java");
+        assertTrue(movieMetamodel.contains(
+                        "throw new UnsupportedOperationException(\"Movie.releaseYear is a query column; a record holds no value for it.\");"),
+                "expected throwing value methods for the contained query columns:\n" + movieMetamodel);
+        assertTrue(Files.exists(compilation.classes().resolve("MovieMetamodel.class")),
+                "expected the generated metamodel to compile");
+    }
+
+    @Test
+    void rendersANullableQueryColumnAsANullableComponent() throws Exception {
+        Compilation compilation = compile("Movie.java", """
+                import org.jspecify.annotations.Nullable;
+                import st.orm.Entity;
+                import st.orm.PK;
+                import st.orm.QueryColumn;
+
+                @QueryColumn(field = "titleFolded", type = String.class, nullable = true)
+                public record Movie(@PK Integer id, @Nullable String title) implements Entity<Integer> {}
+                """);
+        assertTrue(compilation.success(), compilation.errors());
+        String movieInterface = compilation.generatedSource("Movie_.java");
+        // A component's value type carries no nullability annotation; a query column's follows it.
+        assertTrue(movieInterface.contains("AbstractMetamodel<Movie, java.lang.String, java.lang.String> title "),
+                "a nullable component carries a plain value type:\n" + movieInterface);
+        assertTrue(movieInterface.contains("AbstractMetamodel<Movie, java.lang.String, java.lang.String> titleFolded"),
+                "a nullable query column carries the value type a nullable component carries:\n" + movieInterface);
+        String movieMetamodel = compilation.generatedSource("MovieMetamodel.java");
+        assertTrue(movieMetamodel.contains("public final AbstractMetamodel<T, java.lang.String, java.lang.String> titleFolded;"),
+                "a nullable query column carries the value type a nullable component carries:\n" + movieMetamodel);
+        assertTrue(Files.exists(compilation.classes().resolve("Movie_.class")),
+                "expected the generated metamodels to compile");
+    }
+
+    @Test
+    void rejectsADuplicateQueryColumnField() throws Exception {
+        Compilation compilation = compile("Movie.java", """
+                import st.orm.Entity;
+                import st.orm.PK;
+                import st.orm.QueryColumn;
+
+                @QueryColumn(field = "titleFolded", type = String.class)
+                @QueryColumn(field = "titleFolded", type = String.class)
+                public record Movie(@PK Integer id, String title) implements Entity<Integer> {}
+                """);
+        assertFalse(compilation.success(), "a query column field declared twice must fail compilation");
+        assertTrue(compilation.errors().contains("Query column field 'titleFolded' is declared more than once on Movie."),
+                compilation.errors());
+    }
+
+    @Test
+    void rejectsAQueryColumnFieldNamedLikeAComponent() throws Exception {
+        Compilation compilation = compile("Movie.java", """
+                import st.orm.Entity;
+                import st.orm.PK;
+                import st.orm.QueryColumn;
+
+                @QueryColumn(field = "title", type = String.class)
+                public record Movie(@PK Integer id, String title) implements Entity<Integer> {}
+                """);
+        assertFalse(compilation.success(), "a query column named like a component must fail compilation");
+        assertTrue(compilation.errors().contains("Query column field 'title' on Movie has the name of a record component."),
+                compilation.errors());
+    }
+
+    @Test
+    void rejectsAnEmptyQueryColumnField() throws Exception {
+        Compilation compilation = compile("Movie.java", """
+                import st.orm.Entity;
+                import st.orm.PK;
+                import st.orm.QueryColumn;
+
+                @QueryColumn(field = "", type = String.class)
+                public record Movie(@PK Integer id, String title) implements Entity<Integer> {}
+                """);
+        assertFalse(compilation.success(), "a query column with an empty field must fail compilation");
+        assertTrue(compilation.errors().contains("Query column on Movie declares an empty field."),
+                compilation.errors());
+    }
+
+    @Test
     void ignoresPlainRecordWithoutAnnotation() throws Exception {
         Compilation compilation = compile("CityStats.java", """
                 public record CityStats(String name, int inhabitants) {}

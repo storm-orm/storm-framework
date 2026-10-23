@@ -88,6 +88,17 @@ public interface Model<E : Data, ID : Any> {
     public val declaredColumns: List<Column>
 
     /**
+     * Returns the query columns declared on this model: the columns a query names but the record does not carry,
+     * declared with [st.orm.QueryColumn]. They are not among [columns] or [declaredColumns], so a select, insert or
+     * update never names them. A query column has no record field: its [Column.index] is `0`, and it is neither
+     * insertable nor updatable.
+     *
+     * @return the query columns declared on this model, in declaration order.
+     * @since 1.16
+     */
+    public val queryColumns: List<Column>
+
+    /**
      *
      * This method is used to check if the primary key of the entity is a default value. This is useful when
      * determining if the entity is new or has been persisted before.

@@ -34,7 +34,8 @@ import kotlin.reflect.KClass
  */
 public interface Column {
     /**
-     * Gets the 1-based index of the column.
+     * Gets the 1-based index of the column among the model's columns, or `0` for a query column, which has no
+     * position among them.
      *
      * @return the column index.
      */

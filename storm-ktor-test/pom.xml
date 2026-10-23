@@ -249,6 +249,20 @@
             <artifactId>ktor-server-test-host-jvm</artifactId>
             <version>${ktor.version}</version>
         </dependency>
+        <!-- ktor-server-test-host carries the Apache HTTP client, whose httpcore5 5.3 line has open High
+             advisories (CVE-2026-54399, CVE-2026-54428). The 5.4 line fixes them and keeps the 5.3 API. Declared
+             here, the version also wins in the application's test classpath, where a managed version would not
+             reach. -->
+        <dependency>
+            <groupId>org.apache.httpcomponents.core5</groupId>
+            <artifactId>httpcore5</artifactId>
+            <version>5.4.4</version>
+        </dependency>
+        <dependency>
+            <groupId>org.apache.httpcomponents.core5</groupId>
+            <artifactId>httpcore5-h2</artifactId>
+            <version>5.4.4</version>
+        </dependency>
         <dependency>
             <groupId>com.h2database</groupId>
             <artifactId>h2</artifactId>

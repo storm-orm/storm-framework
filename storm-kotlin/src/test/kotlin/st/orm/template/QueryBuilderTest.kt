@@ -4,6 +4,7 @@ import ch.qos.logback.classic.Level
 import ch.qos.logback.classic.LoggerContext
 import ch.qos.logback.classic.spi.ILoggingEvent
 import ch.qos.logback.core.read.ListAppender
+import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.matchers.collections.shouldHaveSize
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.shouldNotBe
@@ -2274,6 +2275,24 @@ internal open class QueryBuilderTest(
         firstNames("The Davis leo") shouldBe listOf("Betty")
         firstNames("the davis") shouldBe emptyList()
         firstNames("") shouldBe emptyList()
+    }
+
+    @Test
+    fun `query column is named by a query and carried by no row`() {
+        // data.sql: owner.last_name_folded is generated from the last name; Owner declares it as a query column.
+        val lastNameFolded: Metamodel<Owner, String> = Metamodel.of(Owner::class.java, "lastNameFolded")
+        val owners = orm.entity(Owner::class).select().where(lastNameFolded eq "davis").resultList
+        owners.map { it.firstName }.sorted() shouldBe listOf("Betty", "Harold")
+        val ownerLastNameFolded: Metamodel<Pet, String> = Metamodel.of(Pet::class.java, "owner.lastNameFolded")
+        ownerLastNameFolded.path() shouldBe "owner"
+        ownerLastNameFolded.field() shouldBe "lastNameFolded"
+        orm.entity(Pet::class).select()
+            .where(ownerLastNameFolded eq "davis")
+            .resultList.map { it.name }.sorted() shouldBe listOf("Iggy", "Leo")
+        val model = orm.entity(Owner::class).model
+        model.queryColumns.map { it.name } shouldBe listOf("last_name_folded")
+        model.columns.none { it.name == "last_name_folded" } shouldBe true
+        shouldThrow<UnsupportedOperationException> { lastNameFolded.getValue(owners.first()) }
     }
 
     @Test

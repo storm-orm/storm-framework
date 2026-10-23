@@ -308,3 +308,51 @@ The search compares `LOWER(fold_accents(m.title)) LIKE LOWER(fold_accents(?))`, 
 - Name the function exactly as the index does. A different function, or the same one applied in another order, is another expression, and the plan falls back to reading every row.
 - The database folds the input too, with its own rules. PostgreSQL's `unaccent` maps `ø` to `o` and `æ` to `ae`, which removing combining marks in the application would leave alone; folding both sides in the database keeps the column and the input in step.
 - The function receives the search pattern, wildcards included, and an accent function leaves them alone, as a function compared through a text operator must.
+
+### Storing the Folded Text
+
+The expression index is enough for most catalogs. The index finds the candidate rows, and the database then rechecks each candidate by computing `fold_accents` from the title; on a column where a common word matches many thousands of rows per keystroke, that recheck is where the time goes. Where a search stays slow for that reason, and only then, store the folded title instead of computing it per search: a generated column holds `fold_accents(title)`, the index is built on that column, and the entity declares it as a [query column](entities.md#query-columns), a column the search names and no row carries.
+
+```sql
+ALTER TABLE movie ADD COLUMN title_folded VARCHAR GENERATED ALWAYS AS (fold_accents(title)) STORED NOT NULL;
+CREATE INDEX idx_movie_title_folded ON movie USING gin (LOWER(title_folded) gin_trgm_ops);
+```
+
+The search then compares `LOWER(m.title_folded) LIKE LOWER(?)`, the expression the index holds, and the recheck reads the stored column. The input must be folded by the same function, in the database, before the search; applying `foldAccents` to the query column instead would fold both sides again and bring the recheck back.
+
+<Tabs groupId="language">
+<TabItem value="kotlin" label="Kotlin" default>
+
+```kotlin
+@QueryColumn(field = "titleFolded", type = String::class)
+data class Movie(...) : Entity<Int>
+
+val folded = orm.query { "SELECT fold_accents($input)" }.singleResult<String>()
+
+orm.entity(Movie::class)
+    .select()
+    .where(search(folded, Movie_.titleFolded))
+    .orderFirst(Movie_.titleFolded eqIgnoreCase folded)
+    .resultList
+```
+
+</TabItem>
+<TabItem value="java" label="Java">
+
+```java
+@QueryColumn(field = "titleFolded", type = String.class)
+record Movie(...) implements Entity<Integer> {}
+
+String folded = orm.query(RAW."SELECT fold_accents(\{input})").getSingleResult(String.class);
+
+orm.entity(Movie.class)
+    .select()
+    .where(it -> it.search(folded, Movie_.titleFolded))
+    .orderFirst(it -> it.where(Movie_.titleFolded, EQUALS_IGNORE_CASE, folded))
+    .getResultList();
+```
+
+</TabItem>
+</Tabs>
+
+The entity keeps one field for the title, which the query selects with its accents for display; the folded column stays out of every SELECT and INSERT, and the writes pay for the folding once per row.

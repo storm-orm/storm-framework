@@ -18,4 +18,9 @@ public class MSSQLServerSchemaValidatorConformanceTest extends AbstractSchemaVal
         }
         return ContainerDataSource.of(container.getJdbcUrl(), container.getUsername(), container.getPassword());
     }
+
+    @Override
+    protected String generatedColumnProbeDdl() {
+        return "CREATE TABLE generated_probe (id INTEGER NOT NULL PRIMARY KEY, name VARCHAR(50) NOT NULL, name_folded AS (LOWER(name)) PERSISTED NOT NULL)";
+    }
 }

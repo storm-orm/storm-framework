@@ -80,6 +80,7 @@ Schema validation compares your entity and projection definitions against the ac
 | Entity declares `@PK` but the database has no primary key constraint | `PRIMARY_KEY_MISSING` | Warning |
 | `@UK` field has a matching unique constraint in the database | `UNIQUE_KEY_MISSING` | Warning |
 | `@FK` field has a matching foreign key constraint in the database | `FOREIGN_KEY_MISSING` | Warning |
+| A `NOT NULL` column without a default that no field maps, and that the database does not generate; a [query column](entities.md#query-columns) of an entity counts, since every insert leaves it out | `UNMAPPED_COLUMN` | Warning |
 
 **Errors** indicate definitive mismatches that will cause runtime failures, such as missing tables or columns.
 

@@ -113,6 +113,7 @@ public final class ModelImpl<E extends Data, ID> implements Model<E, ID> {
     private final List<Column> columns;
     private final RecordField primaryKeyField;
     private final List<Column> declaredColumns;
+    private final List<Column> queryColumns;
     private final Map<Class<? extends Data>, List<Metamodel<E, ?>>> mappedMetamodels;
     private final Metamodel<E, ID> primaryKeyMetamodel;
     private final Map<Metamodel<?, ?>, List<Column>> columnMap;
@@ -162,8 +163,9 @@ public final class ModelImpl<E extends Data, ID> implements Model<E, ID> {
     public ModelImpl(RecordType recordType,
                      TableName tableName,
                      List<RecordField> fields,
-                     List<Column> columns) throws SqlTemplateException {
-        this(recordType, null, tableName, fields, columns);
+                     List<Column> columns,
+                     List<Column> queryColumns) throws SqlTemplateException {
+        this(recordType, null, tableName, fields, columns, queryColumns);
     }
 
     /**
@@ -178,19 +180,24 @@ public final class ModelImpl<E extends Data, ID> implements Model<E, ID> {
      * @param tableName the table name.
      * @param fields the record fields aligned with columns.
      * @param columns the column metadata.
+     * @param queryColumns the columns a query names but the record does not carry, those of the type and those
+     *                     reached through its expanded relations; they are resolved by metamodel and take no position
+     *                     among {@code columns}.
      */
     public ModelImpl(RecordType recordType,
                      @Nullable Class<E> typeOverride,
                      TableName tableName,
                      List<RecordField> fields,
-                     List<Column> columns) throws SqlTemplateException {
+                     List<Column> columns,
+                     List<Column> queryColumns) throws SqlTemplateException {
         assert fields.size() == columns.size() : "Columns and fields must have the same size";
         this.recordType = requireNonNull(recordType, "recordType");
         this.typeOverride = typeOverride;
         this.tableName = requireNonNull(tableName, "tableName");
         this.fields = copyOf(fields);
         this.columns = copyOf(columns);
-        this.columnMap = initColumnMap(this.columns);
+        this.queryColumns = initDeclaredColumns(queryColumns);
+        this.columnMap = initColumnMap(this.columns, queryColumns);
         this.discriminatorColumnIndex = initDiscriminatorColumnIndex(typeOverride);
         this.polymorphicFkDiscriminatorColumns = initPolymorphicFkDiscriminatorColumns(this.fields, this.columns);
         this.converters = initConverters(this.fields, this.columns);
@@ -202,13 +209,16 @@ public final class ModelImpl<E extends Data, ID> implements Model<E, ID> {
         this.mappedMetamodels = initMappedMetamodels(this.fields, this.columns);
     }
 
-    private static Map<Metamodel<?, ?>, List<Column>> initColumnMap(List<Column> columns) {
+    private static Map<Metamodel<?, ?>, List<Column>> initColumnMap(List<Column> columns, List<Column> queryColumns) {
         var map = new HashMap<Metamodel<?, ?>, List<Column>>();
         for (var column : columns) {
             map.computeIfAbsent(column.metamodel().canonical(), ignore -> new ArrayList<>()).add(column);
             if (column.secondaryMetamodel() != null) {
                 map.computeIfAbsent(column.secondaryMetamodel().canonical(), ignore -> new ArrayList<>()).add(column);
             }
+        }
+        for (var column : queryColumns) {
+            map.computeIfAbsent(column.metamodel().canonical(), ignore -> new ArrayList<>()).add(column);
         }
         map.replaceAll((k, v) -> List.copyOf(v));
         return Map.copyOf(map);
@@ -849,5 +859,10 @@ public final class ModelImpl<E extends Data, ID> implements Model<E, ID> {
     @Override
     public List<Column> declaredColumns() {
         return declaredColumns;
+    }
+
+    @Override
+    public List<Column> queryColumns() {
+        return queryColumns;
     }
 }

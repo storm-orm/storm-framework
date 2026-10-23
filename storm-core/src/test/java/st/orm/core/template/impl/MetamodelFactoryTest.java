@@ -4,6 +4,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.util.List;
@@ -13,6 +14,8 @@ import st.orm.FK;
 import st.orm.Inline;
 import st.orm.Metamodel;
 import st.orm.PK;
+import st.orm.PersistenceException;
+import st.orm.QueryColumn;
 import st.orm.Ref;
 
 /**
@@ -29,6 +32,12 @@ class MetamodelFactoryTest {
     ) implements Entity<Integer> {}
 
     public record InlineAddress(String street, String zipCode) {}
+
+    @QueryColumn(field = "nameFolded", type = String.class)
+    public record EntityWithQueryColumn(
+            @PK Integer id,
+            String name
+    ) implements Entity<Integer> {}
 
     public record EntityWithInline(
             @PK Integer id,
@@ -315,5 +324,39 @@ class MetamodelFactoryTest {
         EntityWithFk entityA = new EntityWithFk(1, new ReferencedEntity(10, "a"));
         EntityWithFk entityB = new EntityWithFk(2, new ReferencedEntity(20, "a"));
         assertFalse(model.isSame(entityA, entityB));
+    }
+
+    // Query columns
+
+    @Test
+    void testQueryColumnResolvesWithoutAGeneratedMetamodel() {
+        Metamodel<EntityWithQueryColumn, String> metamodel = MetamodelFactory.of(EntityWithQueryColumn.class, "nameFolded");
+
+        assertEquals(EntityWithQueryColumn.class, metamodel.root());
+        assertEquals(EntityWithQueryColumn.class, metamodel.table().fieldType());
+        assertEquals("", metamodel.path());
+        assertEquals("nameFolded", metamodel.field());
+        assertEquals(String.class, metamodel.fieldType());
+        assertTrue(metamodel.isColumn());
+        assertFalse(MetamodelFactory.isNullable(metamodel));
+    }
+
+    @Test
+    void testQueryColumnHoldsNoValue() {
+        Metamodel<EntityWithQueryColumn, String> metamodel = MetamodelFactory.of(EntityWithQueryColumn.class, "nameFolded");
+        var a = new EntityWithQueryColumn(1, "a");
+        var b = new EntityWithQueryColumn(2, "b");
+
+        var exception = assertThrows(UnsupportedOperationException.class, () -> metamodel.getValue(a));
+        assertTrue(exception.getMessage().contains("query column"), exception.getMessage());
+        assertThrows(UnsupportedOperationException.class, () -> metamodel.isSame(a, b));
+        assertThrows(UnsupportedOperationException.class, () -> metamodel.isIdentical(a, b));
+    }
+
+    @Test
+    void testQueryColumnBehindAnUnknownPathIsRefused() {
+        var exception = assertThrows(PersistenceException.class,
+                () -> MetamodelFactory.of(EntityWithQueryColumn.class, "unknown.nameFolded"));
+        assertTrue(exception.getMessage().contains("unknown.nameFolded"), exception.getMessage());
     }
 }

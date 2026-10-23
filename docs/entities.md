@@ -689,6 +689,72 @@ record Pet(@PK Integer id,
 
 ---
 
+## Query Columns
+
+A query can only name a column that a field maps, and every field is selected, inserted and updated. Some columns exist only to be queried: a generated column that stores a derived form of another column, which a search matches and an index is built on, but which no caller reads and the database computes. Mapped as a field it sits in every SELECT, needs `@Persist(insertable = false, updatable = false)`, and makes every caller that constructs the entity supply a value the database overwrites. The same holds for a `tsvector` column for full-text search, a normalized or hashed copy of a column, a computed sort key, and a large column a query filters on but should not load.
+
+A query column is a column a query names but the entity does not carry. `@QueryColumn` on the entity or projection declares it with the name of its metamodel field and the type of its values. The processors generate the field as they generate one for a record component, and the column follows from the field name through the column name resolver; a `column` attribute names it where the resolver does not.
+
+<Tabs groupId="language">
+<TabItem value="kotlin" label="Kotlin" default>
+
+```kotlin
+@QueryColumn(field = "titleFolded", type = String::class)
+data class Movie(
+    @PK val id: Int = 0,
+    val title: String,
+    val year: Int
+) : Entity<Int>
+```
+
+The annotation repeats for each query column. `Movie_.titleFolded` is a `Metamodel<Movie, String>` and goes wherever a column does:
+
+```kotlin
+orm.entity(Movie::class)
+    .select()
+    .where(search(input, Movie_.titleFolded))
+    .orderBy(Movie_.titleFolded)
+    .resultList
+```
+
+</TabItem>
+<TabItem value="java" label="Java">
+
+```java
+@QueryColumn(field = "titleFolded", type = String.class)
+record Movie(@PK Integer id, String title, Integer year) implements Entity<Integer> {}
+```
+
+The annotation repeats for each query column. `Movie_.titleFolded` is a `Metamodel<Movie, String>` and goes wherever a column does:
+
+```java
+orm.entity(Movie.class)
+    .select()
+    .where(it -> it.search(input, Movie_.titleFolded))
+    .orderBy(Movie_.titleFolded)
+    .getResultList();
+```
+
+</TabItem>
+</Tabs>
+
+The migration creates the column, here generated from the title by the accent-folding function of [Storing the Folded Text](search.md#storing-the-folded-text), and the index on it:
+
+```sql
+ALTER TABLE movie ADD COLUMN title_folded VARCHAR GENERATED ALWAYS AS (fold_accents(title)) STORED NOT NULL;
+CREATE INDEX idx_movie_title_folded ON movie USING gin (LOWER(title_folded) gin_trgm_ops);
+```
+
+- A query column is never selected, inserted or updated. A record holds no value for it: `Metamodel.getValue` throws, and `update().set` refuses it.
+- A column is carried by a field or named by a query column, not both. A query column whose column a field maps is refused when the model is built, as is one named after a record component.
+- It is reached through paths like any other field: a query column declared on `Movie` is `Credit_.movie.titleFolded` from a query on credits. Projections of the same table declare their own.
+- `where`, `orderBy`, `orderFirst`, `search` and `suggest`, a `SqlFunction`, a keyset sort and a template placeholder take it. A keyset sort refuses a nullable query column, as it refuses a nullable field; `nullable = true` declares one.
+- Schema validation checks that the column exists with a compatible type. On an entity every insert leaves it out, so the database must fill it: a `NOT NULL` query column that is not generated, not an identity column and has no default is reported as an [unmapped column](validation.md) is.
+
+Where a caller reads the value, map the column as a field with `@Persist(insertable = false, updatable = false)` instead: a query column is for a column no row needs to carry.
+
+---
+
 ## Modifying Entities
 
 Since Storm entities are immutable, updating a field means creating a new instance with the changed value. Kotlin data classes have a built-in `copy()` method for this. Java records do not provide an equivalent, but Lombok's `@Builder(toBuilder = true)` annotation generates a builder that copies all fields from an existing instance:

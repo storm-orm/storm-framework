@@ -304,6 +304,197 @@ class MetamodelProcessorTest {
     }
 
     @Test
+    fun `repeated query columns generate throwing fields`() {
+        val compilation = compile(
+            """
+            package com.example
+
+            import st.orm.Entity
+            import st.orm.FK
+            import st.orm.PK
+            import st.orm.QueryColumn
+            import st.orm.Ref
+
+            @QueryColumn(field = "titleFolded", type = String::class)
+            @QueryColumn(field = "releaseYear", type = Int::class)
+            data class Movie(@PK val id: Int = 0, val title: String) : Entity<Int>
+
+            data class Credit(@PK val id: Int = 0, @FK val movie: Ref<Movie>) : Entity<Int>
+            """.trimIndent(),
+        )
+        val movieInterface = compilation.generatedSource("Movie_.kt")
+        assertTrue(
+            "        /** Represents the titleFolded query column of Movie. */\n" +
+                "        val titleFolded: AbstractMetamodel<Movie, String, String> = MovieMetamodel.instance<Movie>().titleFolded"
+                in movieInterface,
+        ) { "expected the query column in the metamodel interface:\n$movieInterface" }
+        assertTrue("val releaseYear: AbstractMetamodel<Movie, Int, Int>" in movieInterface) {
+            "expected the second query column in the metamodel interface:\n$movieInterface"
+        }
+        assertTrue(movieInterface.indexOf("val title:") < movieInterface.indexOf("val titleFolded:")) {
+            "query columns follow the components:\n$movieInterface"
+        }
+        assertTrue(movieInterface.indexOf("val titleFolded:") < movieInterface.indexOf("val releaseYear:")) {
+            "query columns keep their declaration order:\n$movieInterface"
+        }
+        val movieMetamodel = compilation.generatedSource("MovieMetamodel.kt")
+        assertTrue("    val titleFolded: AbstractMetamodel<T, String, String>\n" in movieMetamodel) {
+            "expected the query column field in the metamodel class:\n$movieMetamodel"
+        }
+        val failure = "throw UnsupportedOperationException(\"Movie.titleFolded is a query column; a record holds no value for it.\")"
+        assertTrue(
+            "        this.titleFolded = object : AbstractMetamodel<T, String, String>(" +
+                "String::class.java, subPath, fieldBase + \"titleFolded\", false, this) {\n" +
+                "            override fun getValue(record: T): String = $failure\n\n" +
+                "            override fun isIdentical(a: T, b: T): Boolean = $failure\n\n" +
+                "            override fun isSame(a: T, b: T): Boolean = $failure\n" +
+                "        }"
+                in movieMetamodel,
+        ) { "a record holds no value for a query column, so its value methods throw:\n$movieMetamodel" }
+        assertTrue("object : AbstractMetamodel<T, Int, Int>(Int::class.javaObjectType, subPath, fieldBase + \"releaseYear\"" in movieMetamodel) {
+            "a primitive query column type renders as its object type:\n$movieMetamodel"
+        }
+        val movieNullableMetamodel = compilation.generatedSource("MovieNullableMetamodel.kt")
+        assertTrue("val titleFolded: AbstractMetamodel<T, String, String?>" in movieNullableMetamodel) {
+            "the nullable-chain variant reads every value as nullable, as for a component:\n$movieNullableMetamodel"
+        }
+        val movieRefMetamodel = compilation.generatedSource("MovieRefMetamodel.kt")
+        assertTrue(
+            "this.titleFolded = object : st.orm.AbstractNavigableMetamodel<T, String>(" +
+                "String::class.java, subPath, fieldBase + \"titleFolded\", false, this) {}"
+                in movieRefMetamodel,
+        ) { "a query column is reachable beyond a reference:\n$movieRefMetamodel" }
+    }
+
+    @Test
+    fun `query columns in the container generate fields`() {
+        val compilation = compile(
+            """
+            package com.example
+
+            import st.orm.Entity
+            import st.orm.PK
+            import st.orm.QueryColumn
+            import st.orm.QueryColumns
+
+            @QueryColumns(
+                QueryColumn(field = "titleFolded", type = String::class),
+                QueryColumn(field = "releaseYear", type = Int::class),
+            )
+            data class Movie(@PK val id: Int = 0, val title: String) : Entity<Int>
+            """.trimIndent(),
+        )
+        val movieInterface = compilation.generatedSource("Movie_.kt")
+        assertTrue("val titleFolded: AbstractMetamodel<Movie, String, String>" in movieInterface) {
+            "expected the first contained query column in the interface:\n$movieInterface"
+        }
+        assertTrue("val releaseYear: AbstractMetamodel<Movie, Int, Int>" in movieInterface) {
+            "expected the second contained query column in the interface:\n$movieInterface"
+        }
+        val movieMetamodel = compilation.generatedSource("MovieMetamodel.kt")
+        assertTrue("UnsupportedOperationException(\"Movie.releaseYear is a query column; a record holds no value for it.\")" in movieMetamodel) {
+            "expected throwing value methods for the contained query columns:\n$movieMetamodel"
+        }
+    }
+
+    @Test
+    fun `a nullable query column renders a nullable value type`() {
+        val compilation = compile(
+            """
+            package com.example
+
+            import st.orm.Entity
+            import st.orm.PK
+            import st.orm.QueryColumn
+
+            @QueryColumn(field = "titleFolded", type = String::class, nullable = true)
+            data class Movie(@PK val id: Int = 0, val title: String) : Entity<Int>
+            """.trimIndent(),
+        )
+        val movieInterface = compilation.generatedSource("Movie_.kt")
+        assertTrue("val titleFolded: AbstractMetamodel<Movie, String, String?>" in movieInterface) {
+            "a nullable query column carries a nullable value type:\n$movieInterface"
+        }
+        val movieMetamodel = compilation.generatedSource("MovieMetamodel.kt")
+        assertTrue("override fun getValue(record: T): String? = throw" in movieMetamodel) {
+            "a nullable query column carries a nullable value type:\n$movieMetamodel"
+        }
+    }
+
+    @Test
+    fun `a keyword-named query column is escaped`() {
+        val compilation = compile(
+            """
+            package com.example
+
+            import st.orm.Entity
+            import st.orm.PK
+            import st.orm.QueryColumn
+
+            @QueryColumn(field = "object", type = String::class)
+            data class Movie(@PK val id: Int = 0, val title: String) : Entity<Int>
+            """.trimIndent(),
+        )
+        val movieMetamodel = compilation.generatedSource("MovieMetamodel.kt")
+        assertTrue("this.`object` = object : AbstractMetamodel<T, String, String>" in movieMetamodel) {
+            "expected the keyword-named query column backticked:\n$movieMetamodel"
+        }
+        assertTrue("fieldBase + \"object\"" in movieMetamodel) { "the field string literal keeps the raw name:\n$movieMetamodel" }
+    }
+
+    @Test
+    fun `a duplicate query column field fails compilation`() {
+        val messages = compileExpectingError(
+            """
+            package com.example
+
+            import st.orm.Entity
+            import st.orm.PK
+            import st.orm.QueryColumn
+
+            @QueryColumn(field = "titleFolded", type = String::class)
+            @QueryColumn(field = "titleFolded", type = String::class)
+            data class Movie(@PK val id: Int = 0, val title: String) : Entity<Int>
+            """.trimIndent(),
+        )
+        assertTrue("Query column field 'titleFolded' is declared more than once on Movie." in messages) { messages }
+    }
+
+    @Test
+    fun `a query column field named like a component fails compilation`() {
+        val messages = compileExpectingError(
+            """
+            package com.example
+
+            import st.orm.Entity
+            import st.orm.PK
+            import st.orm.QueryColumn
+
+            @QueryColumn(field = "title", type = String::class)
+            data class Movie(@PK val id: Int = 0, val title: String) : Entity<Int>
+            """.trimIndent(),
+        )
+        assertTrue("Query column field 'title' on Movie has the name of a component." in messages) { messages }
+    }
+
+    @Test
+    fun `an empty query column field fails compilation`() {
+        val messages = compileExpectingError(
+            """
+            package com.example
+
+            import st.orm.Entity
+            import st.orm.PK
+            import st.orm.QueryColumn
+
+            @QueryColumn(field = "", type = String::class)
+            data class Movie(@PK val id: Int = 0, val title: String) : Entity<Int>
+            """.trimIndent(),
+        )
+        assertTrue("Query column on Movie declares an empty field." in messages) { messages }
+    }
+
+    @Test
     fun `ignores plain data class without annotation`() {
         val compilation = compile(
             """
