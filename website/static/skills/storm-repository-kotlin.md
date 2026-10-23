@@ -4,7 +4,8 @@ description: Write Storm repositories in Kotlin, covering EntityRepository, cust
 ---
 
 Help the user write a Storm repository using Kotlin.
-**Important:** Storm can run on top of JPA, but when generating repository code, always use Storm's own `EntityRepository` API with JDBC `DataSource` — not `EntityManager`, `@PersistenceContext`, or Spring Data JPA repositories.
+
+**Use Storm's own `EntityRepository` API with a JDBC `DataSource`.** Storm can run on top of JPA, but generated repository code never uses `EntityManager`, `@PersistenceContext`, or Spring Data JPA repositories.
 
 ## Key Imports
 
@@ -32,29 +33,31 @@ import org.junit.jupiter.api.Assertions.*        // assertEquals, assertTrue, as
 
 Ask: which entity, what custom queries?
 
-**Repository rule:** All database queries must live in repository interfaces, not inline in services or other classes. Services orchestrate by calling repository methods — they never build queries directly. When a skill or tool generates a query, always place it in the appropriate repository interface.
+**Repository rule: every database query lives in a repository interface.** Services orchestrate by calling repository methods and never build queries directly. When a skill or tool generates a query, place it in the appropriate repository interface.
 
-**Layering rule:** Follow the codebase's existing convention first — if handlers already use repositories directly, or a service layer is consistently in place, match that style rather than introduce a competing one. Absent a clear stance (new code, greenfield), promote the layered architecture: controller → service → repository, where controllers never inject repositories — all data access flows through services, which own the transaction boundaries and return view-model types. Whatever the stance, do not mix styles: layer-skipping controllers undermine the service layer's cross-cutting concerns (transactions, caching, authorization).
+**Layering rule: follow the codebase's existing convention first.** If handlers already use repositories directly, or a service layer is consistently in place, match that style rather than introduce a competing one.
 
-**Result types:** Custom query result types (aggregation DTOs, computed shapes) are plain data classes — they do NOT implement `Data`, which is reserved for table-backed types. Define them top-level in the repository file whose queries return them (not in the model package), and document each one as a query result shape:
+Absent a clear stance (new code, greenfield), promote controller → service → repository: controllers never inject repositories, and services own the transaction boundaries and return view-model types. Never mix styles: layer-skipping controllers undermine the service layer's cross-cutting concerns (transactions, caching, authorization).
+
+**Result types are plain data classes, never `Data`.** Custom query result types (aggregation DTOs, computed shapes) do NOT implement `Data`, which is reserved for table-backed types. Define them top-level in the repository file whose queries return them, not in the model package, and document each one as a query result shape:
 
 ```kotlin
 /**
  * Query result shape: user count per city. Not backed by a database table
- * or view, so it is a plain data class — deliberately not a Data type.
+ * or view, so it is a plain data class, deliberately not a Data type.
  */
 data class CityUserCount(val city: City, val userCount: Long)
 ```
 
-Detect the project's framework from its build file (pom.xml or build.gradle.kts): look for `storm-kotlin-spring-boot-starter` or `spring-boot-starter` (Spring Boot), `storm-ktor` or `ktor-server-core` (Ktor), or neither (standalone). Use the detected framework to suggest the appropriate repository registration pattern below.
+**Detect the framework from the build file** (pom.xml or build.gradle.kts). `storm-kotlin-spring-boot-starter` or `spring-boot-starter` means Spring Boot; `storm-ktor` or `ktor-server-core` means Ktor; neither means standalone. Suggest the matching repository registration pattern below.
 
-**DI preference:** In Spring Boot or Ktor projects, always prefer constructor-injected repositories over `orm.entity(User::class)` or `orm.repository<UserRepository>()` lookups. Repository lookup via `orm` is for standalone (non-DI) use and tests only. In DI environments, repositories are beans/components — inject them.
+**In Spring Boot or Ktor, inject repositories.** Prefer constructor-injected repositories over `orm.entity(User::class)` or `orm.repository<UserRepository>()` lookups. Lookup via `orm` is for standalone (non-DI) use and tests only; in DI environments, repositories are beans or components.
 
 ## Getting a Repository
 
 ### Spring Boot (preferred in DI environments)
 
-Inject repositories via constructor injection. The Spring Boot Starter (or a `RepositoryBeanFactoryPostProcessor`) auto-registers repository interfaces as beans:
+Inject repositories through the constructor. The Spring Boot Starter (or a `RepositoryBeanFactoryPostProcessor`) registers repository interfaces as beans:
 
 ```kotlin
 @Service
@@ -71,7 +74,7 @@ class CityService(private val cities: EntityRepository<City, Int>) {
 
 ### Ktor
 
-Repositories from the compile-time index are registered automatically when the `Storm` plugin is installed; access them with a bare `repository<T>()` in route handlers:
+Installing the `Storm` plugin registers the repositories from the compile-time index. Access them with a bare `repository<T>()` in route handlers:
 
 ```kotlin
 get("/users/{email}") {
@@ -92,13 +95,13 @@ val users = orm.entity(User::class)          // EntityRepository<User, Int>: the
 val userRepository = orm.repository<UserRepository>()  // import st.orm.repository.repository
 ```
 
-Prefer the reified form unless it needs `_` placeholders; then use the class literal. A join and its `on` use the same form. Repositories are looked up by class, `orm.entity(User::class)`, which infers the ID type, and a different result type is selected by class, `users.select(City::class)`.
+**Prefer the reified form unless it needs `_` placeholders; then use the class literal.** A join and its `on` use the same form. Repositories are looked up by class, `orm.entity(User::class)`, which infers the ID type, and a different result type is selected by class, `users.select(City::class)`.
 
 ```kotlin
-// ⚠️ Repository interfaces MUST import the predicate operators — they are Kotlin extension functions:
-// import st.orm.template.eq   (and neq, like, greater, less, etc.) — or simply import st.orm.template.*
+// ⚠️ Repository interfaces MUST import the predicate operators: they are Kotlin extension functions.
+// import st.orm.template.eq   (and neq, like, greater, less, etc.), or simply import st.orm.template.*
 // Without the import, `eq` etc. will not resolve in the interface file.
-// (`and`/`or` are member functions on PredicateBuilder — they need no import.)
+// (`and`/`or` are member functions on PredicateBuilder: they need no import.)
 
 interface UserRepository : EntityRepository<User, Int> {
     fun findByEmail(email: String): User? = find(User_.email eq email)
@@ -109,22 +112,26 @@ interface UserRepository : EntityRepository<User, Int> {
 ```
 
 Key rules:
-1. ALL query methods have EXPLICIT BODIES. Storm does NOT derive queries from method names.
+1. **ALL query methods have EXPLICIT BODIES.** Storm does NOT derive queries from method names.
 2. Inherited CRUD: insert, update, remove, removeById, removeByRef, removeAll, findById, findBy(Key), count, existsById, page, scroll, windows.
 3. Descriptive variable names: `val users = orm.entity(User::class)`, not `val repo`.
-4. QueryBuilder is IMMUTABLE. Always chain or capture the return value (or use the `select { }` DSL which handles this automatically).
-5. Streaming: `select().resultFlow` returns a `Flow` with automatic resource cleanup; while rows remain to be emitted it is one open statement and its connection is consume-only (a query, `Ref.fetch()` or write from the collector inside `transaction { }` throws, on every database). A loop that reads or writes per row uses `windows(size)` (`Flow<Window<E>>`): one closed statement per window, write per window with `update(window.content().map { ... })`.
+4. **QueryBuilder is IMMUTABLE.** Always chain or capture the return value, or use the `select { }` DSL, which handles this automatically.
+5. **Stream with `select().resultFlow`**, a `Flow` with automatic resource cleanup. A collector that queries or writes per row uses `windows(size)` instead (see Flows and the Connection).
 6. DELETE/UPDATE without WHERE throws. Use `unsafe()` for intentional bulk ops.
-7. Pagination: `page(0, 20)` for offset-based. `scroll(Scrollable.of(User_.id, 20))` for keyset on large tables (see Keyset Scrolling section).
-8. **Prefer entity/metamodel-based methods over templates.** For joins, use `innerJoin<Entity, OnEntity>()` in the block DSL, or `.innerJoin<Entity>().on<OnEntity>()` in the chained API. Only fall back to template lambdas when QueryBuilder cannot express the query.
-   **Template joins are a code smell.** If you need a template-based ON clause (`.innerJoin<T>().on { "..." }`) or a full `orm.query { }` to express a join that follows a database FK constraint, the entity model is missing an `@FK` annotation. Fix the entity first — add `@FK` (with `Ref<T>` for PK fields, full entity for non-PK fields) — then the join becomes `.innerJoin<Entity>().on<OnEntity>()`, pure code with no templates. Template joins are only justified when there is genuinely no FK constraint in the database. Projections join like entities: `.on<ProjectionType>()` resolves the foreign key by matching the referenced entity's table against the projection's table. When multiple foreign keys reference that table the join is ambiguous — Storm fails with an error naming the candidate fields; disambiguate with a template ON clause.
-9. **Use `Ref`, never a raw id, to refer to a row**: map keys, set members, identity lookups, and every reference passed between services as a parameter or return value are `Ref<Entity>` (via `.ref()`, or `refById<T>(id)` where an id enters the program). A `Ref` is type-safe where an id is not, and its `equals`/`hashCode` are on the type and primary key. When a projection already returns `Ref<T>`, use it directly without calling `.ref()` again.
-10. **Prefer typed parameters over raw IDs — full entities by default.** Repository method signatures take the full entity for FK parameters when callers naturally hold one (the common case): predicates like `eq` and `inList` accept entities directly, so no `.ref()` conversion is needed at the call sites. `Ref<Entity>` parameters remain fine — use them for identity-only flows, where callers hold refs (e.g. from `Ref<T>` fields) or only an id, converted at the system boundary with `refById<T>(id)` (import `st.orm.template.refById`). Never accept raw IDs like `String` or `Int` — they are untyped and lose the entity association.
-11. **Typed ID from `Ref`:** Use `ref.entityId()` (import `st.orm.template.entityId`) to extract a type-safe ID. Avoid `ref.id()` — it returns `Any` and requires an unsafe cast.
+7. Pagination: `page(0, 20)` for offset-based. `scroll(Scrollable.of(User_.id, 20))` for keyset on large tables (see Pagination and Scrolling).
+8. **Prefer entity/metamodel-based methods over templates.** For joins, use `innerJoin<Entity, OnEntity>()` in the block DSL, or `.innerJoin<Entity>().on<OnEntity>()` in the chained API. Fall back to template lambdas only when QueryBuilder cannot express the query.
+   - **Template joins are a code smell.** A template ON clause (`.innerJoin<T>().on { "..." }`) or a full `orm.query { }` for a join that follows a database FK constraint means the entity is missing an `@FK` annotation. Fix the entity first: add `@FK` (`Ref<T>` for PK fields, the full entity for non-PK fields), and the join becomes `.innerJoin<Entity>().on<OnEntity>()`, pure code with no templates. Template joins are justified only when the database genuinely has no FK constraint.
+   - **Projections join like entities.** `.on<ProjectionType>()` resolves the foreign key by matching the referenced entity's table against the projection's table. When multiple foreign keys reference that table, the join is ambiguous: Storm fails with an error naming the candidate fields. Disambiguate with a template ON clause.
+9. **Use `Ref`, never a raw id, to refer to a row.** Map keys, set members, identity lookups, and every reference passed between services as a parameter or return value are `Ref<Entity>`: `.ref()`, or `refById<T>(id)` where an id enters the program. A `Ref` is type-safe where an id is not, and its `equals`/`hashCode` are on the type and primary key. When a projection already returns `Ref<T>`, use it directly without calling `.ref()` again.
+10. **Prefer typed parameters over raw IDs, full entities by default.**
+   - Take the full entity for FK parameters when callers naturally hold one (the common case): predicates like `eq` and `inList` accept entities directly, so call sites need no `.ref()` conversion.
+   - Take `Ref<Entity>` for identity-only flows, where callers hold refs (e.g. from `Ref<T>` fields) or only an id, converted at the system boundary with `refById<T>(id)` (import `st.orm.template.refById`).
+   - Never accept raw IDs like `String` or `Int`: they are untyped and lose the entity association.
+11. **Typed ID from `Ref`:** use `ref.entityId()` (import `st.orm.template.entityId`) to extract a type-safe ID. Avoid `ref.id()`: it returns `Any` and requires an unsafe cast.
 
 ## API Design: Prefer the Simplest Approach
 
-Four levels, from simplest to most powerful — always prefer the simplest that works:
+Four levels, from simplest to most powerful. Always prefer the simplest that works:
 
 | Level | Approach | Best for |
 |-------|----------|----------|
@@ -133,7 +140,7 @@ Four levels, from simplest to most powerful — always prefer the simplest that 
 | 3 | Block DSL (`select { }`, `update { }`, `delete { }`) | Complex queries with multiple joins and conditions |
 | 4 | SQL Templates (/storm-sql-kotlin) | CTEs, window functions, database-specific features |
 
-**Level 1 — Convenience methods** execute immediately and return results directly:
+**Level 1: convenience methods** execute immediately and return results directly:
 - **Read:** `findById()`, `findByRef()`, `findAll()`, `findAllRef()`, `findAll(predicate)`, `findAllById()`, `findAllByRef()`, `findBy(key, value)`, `findAllBy(field, value)`, `findRefBy(...)`, `findAllRefBy(...)`
 - **Read (throw):** `getById()`, `getByRef()`, `getBy(key, value)`
 - **Exists/Count:** `count()`, `count(predicate)`, `exists()`, `exists(predicate)`, `existsById()`, `existsByRef()`, `countBy(field, value)`
@@ -141,7 +148,7 @@ Four levels, from simplest to most powerful — always prefer the simplest that 
 - **Remove:** `remove(entity)`, `removeById(id)`, `removeByRef(ref)`, `removeAll()`, `removeAll(predicate)`, `removeAllBy(field, value)`, `remove(Iterable)`, `removeByRef(Iterable)`, `remove(Flow)`, `removeByRef(Flow)`
 - **Pagination:** `page()`, `pageRef()`, `scroll()`, `windows()`
 
-**Level 2 — Builder with predicate** returns `QueryBuilder` for chaining ordering, pagination, or joins:
+**Level 2: builder with predicate** returns `QueryBuilder` for chaining ordering, pagination, or joins:
 ```kotlin
 users.select(User_.city eq city)
     .orderBy(User_.name)
@@ -151,7 +158,7 @@ users.delete(User_.postalCode.isNull())
     .executeUpdate()
 ```
 
-Alternatively, use `select()` chained with `.where()` — equivalent, just a style preference:
+`select()` chained with `.where()` is equivalent, a style preference:
 ```kotlin
 users.select()
     .where(User_.city eq city)
@@ -159,7 +166,7 @@ users.select()
     .resultList
 ```
 
-**Level 3 — Block DSL** for complex queries with multiple joins and conditions:
+**Level 3: block DSL** for complex queries with multiple joins and conditions:
 ```kotlin
 users.select {
     where(User_.email like "%@example.com")
@@ -173,26 +180,26 @@ users.delete {
 
 Terminal operations: `.resultList`, `.singleResult`, `.optionalResult`, `.resultFlow`, `.resultStream`, `.windows(size)`, `.resultCount`, `.page()`, `.scroll()`, `.executeUpdate()`
 
-The `find`/`get` distinction: `find` returns nullable (no result = null), `get` throws `NoResultException`.
+**`find` returns nullable, `get` throws.** No result gives `null` from `find` and a `NoResultException` from `get`.
 
-The `delete`/`remove` distinction: `remove` operates on entities or ids you already have (immediate execution). `delete` builds a query to find and delete rows by criteria (returns `QueryBuilder`):
+**`remove` acts on what you hold, `delete` builds a query.** `remove` operates on entities or ids you already have and executes immediately. `delete` builds a query that deletes rows by criteria and returns `QueryBuilder`:
 ```kotlin
-// remove — you have the entity/id, execute immediately
+// remove: you have the entity/id, execute immediately
 users.remove(user)
 users.removeById(42)
 users.removeAll()
 
-// remove — with predicate (convenience, executes immediately)
+// remove: with predicate (convenience, executes immediately)
 val removed: Int = users.removeAll(User_.postalCode.isNull())
 
-// delete — build a query with filtering (returns QueryBuilder)
+// delete: build a query with filtering (returns QueryBuilder)
 users.delete(User_.postalCode.isNull()).executeUpdate()
 users.delete { where(User_.score less 10) }.executeUpdate()
 ```
 
 > ⚠️ There is **no** `delete(entity)` or `delete(id)` overload (unlike JPA / Spring Data `CrudRepository`). Every `delete(...)` returns a `QueryBuilder`, so a bare `users.delete(entity)` treats the entity as a predicate argument and does **not** compile as an immediate delete. To delete an entity or id you already hold, use `remove(entity)` / `removeById(id)` / `removeByRef(ref)`.
 
-The same split holds for updates. `update(entity)` writes an entity you hold. The `update()` builder sets columns on the rows its conditions select, in one statement, without reading them; `set` names each column through the metamodel, so the table's own entity serves the write:
+**The same split holds for updates.** `update(entity)` writes an entity you hold. The `update()` builder sets columns on the rows its conditions select, in one statement, without reading them. `set` names each column through the metamodel, so the table's own entity serves the write:
 ```kotlin
 // update(entity): you read the entity in this transaction, write it back
 users.update(user.copy(name = "Alice Johnson"))
@@ -215,11 +222,15 @@ owners.update {
 }.executeUpdate()
 ```
 
-`set` takes a value typed by the field, `null` for a nullable field, the entity or a `Ref` for a foreign key, a record for an inline record (each of its columns), or a template lambda computing one column. It refuses, naming the field: the primary key, `@Persist(updatable = false)` fields, the `@Version` field, a path into a related table (`Owner_.address.city.name`), and a field set twice. The builder requires a WHERE clause (or a semi-join/anti-join) unless `unsafe()` is called, increments the `@Version` column, fires **no** entity callbacks (there is no entity), and evicts the entities of its type from the transaction's entity cache. Conditions through a path, an explicit join, `semiJoin` or `antiJoin` work on every database. Both builders refuse a Joined Table entity (sealed type or subtype), whose rows span two tables.
+- **`set` takes** a value typed by the field, `null` for a nullable field, the entity or a `Ref` for a foreign key, a record for an inline record (each of its columns), or a template lambda computing one column.
+- **`set` refuses**, naming the field: the primary key, `@Persist(updatable = false)` fields, the `@Version` field, a path into a related table (`Owner_.address.city.name`), and a field set twice.
+- **The builder** requires a WHERE clause (or a semi-join/anti-join) unless `unsafe()` is called. It increments the `@Version` column, fires **no** entity callbacks (there is no entity), and evicts the entities of its type from the transaction's entity cache.
+- **Conditions** through a path, an explicit join, `semiJoin` or `antiJoin` work on every database.
+- **Both builders refuse a Joined Table entity** (sealed type or subtype), whose rows span two tables.
 
-Don't create a second, partial entity mapping a table that already has one just to write a few of its columns: rows the transaction did not read take the `update()` builder, and an entity it did read takes `update(entity)`, with `@DynamicUpdate(FIELD)` on the entity (/storm-entity-kotlin) to write only the changed columns.
+**Never create a second, partial entity for a table that already has one** just to write a few of its columns. Rows the transaction did not read take the `update()` builder. An entity it did read takes `update(entity)`, with `@DynamicUpdate(FIELD)` on the entity (/storm-entity-kotlin) to write only the changed columns.
 
-A change computed from a column's current value, such as a counter, a stock level or a balance, is an `update()` with the computation in `set`, never a read, a change in application code and `update(entity)`:
+**Compute a change from a column's current value in `set`.** A counter, a stock level or a balance is an `update()` with the computation in `set`, never a read, a change in application code and `update(entity)`:
 
 ```kotlin
 products.update {
@@ -228,7 +239,7 @@ products.update {
 }.executeUpdate()
 ```
 
-One statement that reads nothing first cannot lose a concurrent writer's change and never needs a retry, where the read-and-write-back loses one of two concurrent changes, and `@Version` would only turn the loss into an exception to retry. `@Version` is for the other shape of lost update, a record edited across two requests (/storm-entity-kotlin).
+One statement that reads nothing first cannot lose a concurrent writer's change and never needs a retry. A read-and-write-back loses one of two concurrent changes, and `@Version` would only turn the loss into an exception to retry. `@Version` is for the other shape of lost update, a record edited across two requests (/storm-entity-kotlin).
 
 ## CRUD Operations
 
@@ -246,7 +257,7 @@ val fetched: User = users.getById(user.id)                    // throws NoResult
 val found: User? = users.findByRef(userRef)                   // by Ref
 val fetched: User = users.getByRef(userRef)                   // throws if not found
 
-// Update (infix, entities are immutable — use copy())
+// Update (infix; entities are immutable, use copy())
 orm update user.copy(name = "Alice Johnson")
 val updated: User = users.updateAndFetch(user.copy(name = "Alice Johnson"))
 
@@ -265,7 +276,7 @@ users.removeByRef(userRef)
 `ORMTemplate` (via `RepositoryLookup`) provides reified extension functions for quick access without creating a repository first:
 
 ```kotlin
-// Read shortcuts (reified — type inferred from predicate)
+// Read shortcuts (reified: type inferred from predicate)
 val alice: User? = orm.find(User_.name eq "Alice")
 val all: List<User> = orm.findAll(User_.city eq city)
 val all: List<User> = orm.findAll<User>()
@@ -316,7 +327,7 @@ users.removeByRef(listOf(ref1, ref2, ref3))
 val entities: List<User> = users.findAllByRef(listOf(ref1, ref2))
 ```
 
-**Document what a query resolves.** When a repository query names references with `fetch(...)`, say so in its doc: name the references it resolves, then that `getOrThrow()` returns them without querying. Callers cannot see the plan from the signature, so without it they fall back to `fetch()`, which quietly reverts the query to one statement per row.
+**Document what a query resolves.** When a repository query names references with `fetch(...)`, its doc names the references it resolves and says `getOrThrow()` returns them without querying. Callers cannot see the plan from the signature. Without the note they fall back to `fetch()`, which quietly reverts the query to one statement per row.
 
 ```kotlin
 /** Users in a country. The city is resolved, so `getOrThrow()` returns it without querying. */
@@ -331,13 +342,11 @@ val users = userRepository.findByCountry(country)   // city resolved
 users.forEach { render(it.city.getOrThrow()) }
 ```
 
-**The convenience reads resolve nothing.** `findById`, `findAllById`, `getById`, `findAll`, and the predicate and `Ref` lookups carry no fetch plan, so every `Ref` on the rows they return comes back unloaded and `getOrThrow()` on one of them throws. A read whose caller reads a reference needs a query that names it.
-
-
+**The convenience reads resolve nothing.** `findById`, `findAllById`, `getById`, `findAll`, and the predicate and `Ref` lookups carry no fetch plan. Every `Ref` on the rows they return comes back unloaded, and `getOrThrow()` on one of them throws. A read whose caller reads a reference needs a query that names it.
 
 ## Predicate-Based Queries
 
-Use predicate lambdas for quick lookups without building a full QueryBuilder chain:
+Use predicates for quick lookups without building a full QueryBuilder chain:
 
 ```kotlin
 // Single result (nullable)
@@ -349,10 +358,10 @@ val alice: User = users.get(User_.email eq "alice@example.com")
 // List of results
 val exampleUsers: List<User> = users.findAll(User_.email like "%@example.com")
 
-// Compare by entity — use the FK field directly, don't extract the ID
+// Compare by entity: use the FK field directly, don't extract the ID
 val cityUsers: List<User> = users.findAll(User_.city eq city)
 
-// Repository methods take typed parameters — the full entity by default:
+// Repository methods take typed parameters, the full entity by default:
 // ✅ fun findByCity(city: City): List<User> = findAll(User_.city eq city)
 // ✅ fun findByCity(city: Ref<City>): List<User> = findAll(User_.city eq city)  // for identity-only flows
 // ❌ fun findByCity(cityId: Int): List<User> = ...  // untyped, loses entity association
@@ -360,7 +369,7 @@ val cityUsers: List<User> = users.findAll(User_.city eq city)
 // For the Ref variant, callers holding only an id convert at the boundary:
 // val users = userRepository.findByCity(refById<City>(cityId))
 
-// Ref variants (return Ref<User> instead of User — lightweight, only loads PK)
+// Ref variants (return Ref<User> instead of User: lightweight, only loads PK)
 val ref: Ref<User>? = users.findRef(User_.email eq "alice@example.com")
 val refs: List<Ref<User>> = users.findAllRef(User_.email like "%@example.com")
 
@@ -374,7 +383,7 @@ val hasExampleUsers: Boolean = users.exists(User_.email like "%@example.com")
 val removed: Int = users.removeAll(User_.postalCode.isNull())
 ```
 
-These accept a `PredicateBuilder` built with infix operators. Use parentheses — not braces — for predicates. Braces are reserved for the block DSL (see below).
+**Pass predicates in parentheses, never braces.** These methods accept a `PredicateBuilder` built with infix operators; braces are reserved for the block DSL (see Block-Based Query DSL).
 
 ## Field-Based Lookups
 
@@ -418,83 +427,52 @@ val upserted: List<User> = users.upsertAndFetch(listOf(user1, user2))
 
 ## Dirty Checking and Update Suppression
 
-Inside a transaction, Storm observes entity state as it reads and compares against that observed
-state when `update()` is called. The observed state lives in the transaction context, never on the
-entity, and is discarded at commit. For an entity read in the same transaction:
+**Inside a transaction, Storm drops updates that change nothing.** Storm observes entity state as it reads and compares against it when `update()` is called. The observed state lives in the transaction context, never on the entity, and is discarded at commit. For an entity read in the same transaction:
 
-- **Nothing changed → no SQL at all.** `orm update user` with an unmodified instance executes no
-  statement. Read-modify-write code can pass entities back unconditionally and let Storm drop the
-  no-ops.
-- **Anything changed → full-row UPDATE** (default `ENTITY` mode): one stable SQL shape per entity,
-  which keeps JDBC batching effective.
+- **Nothing changed: no SQL at all.** `orm update user` with an unmodified instance executes no statement, so read-modify-write code can pass entities back unconditionally.
+- **Anything changed: full-row UPDATE** (default `ENTITY` mode). One stable SQL shape per entity keeps JDBC batching effective.
 
-Suppression needs the observed state to be available: it applies inside a transaction, to entities
-read in that same transaction, through entity-repository updates. In every other case — outside a
-transaction, an entity constructed rather than read, observed state no longer available — Storm
-falls back to a full-row UPDATE. The fallback costs a redundant write, never a wrong one: treat the
-skipped UPDATE as an optimization, not a guarantee. Joined-inheritance entities
-(`@Polymorphic(JOINED)` hierarchies) are the exception: their multi-table updates always write and
-are not dirty-checked.
+**Treat the skipped UPDATE as an optimization, not a guarantee.** Suppression applies inside a transaction, to entities read in that same transaction, through entity-repository updates. Outside a transaction, for an entity constructed rather than read, or once the observed state is gone, Storm falls back to a full-row UPDATE: a redundant write, never a wrong one. Joined-inheritance entities (`@Polymorphic(JOINED)` hierarchies) are the exception: their multi-table updates always write and are not dirty-checked.
 
-**Delete-and-reinsert and dirty checking are mutually exclusive.** Inserts are never dirty-checked,
-and freshly constructed rows carry no observed state, so a write path that clears rows and
-re-inserts the desired set writes every row every time. The dirty-checking-native shape for "make
-the table match this desired state" keeps the instances that were read: update the full set and let
-Storm suppress the unchanged rows, reserving `insert`/`remove` (or a write set) for actual
-additions and removals. Batch updates apply this per entity — clean entities are dropped from the
-batch and only dirty ones are written.
+**Delete-and-reinsert and dirty checking are mutually exclusive.** Inserts are never dirty-checked, and freshly constructed rows carry no observed state, so clearing rows and re-inserting the desired set writes every row every time.
 
-What a dirty entity writes is the update mode — `@DynamicUpdate` on the entity
-(/storm-entity-kotlin) or `storm.update.default_mode` globally:
+**To make a table match a desired state, update the instances that were read.** Update the full set and let Storm suppress the unchanged rows. Reserve `insert`/`remove` (or a write set) for actual additions and removals. Batch updates apply this per entity: clean entities are dropped from the batch and only dirty ones are written.
+
+**The update mode decides what a dirty entity writes.** Set it with `@DynamicUpdate` on the entity (/storm-entity-kotlin) or `storm.update.default_mode` globally:
 
 - `ENTITY` (default): any change writes the full row; no change writes nothing.
-- `FIELD`: only the changed columns are written (plus the `@Version` column when present). Narrower
-  writes, but every distinct combination of changed columns is its own SQL shape: batches split per
-  shape, and after `storm.update.max_shapes` distinct shapes (default 5) Storm falls back to
-  full-row updates to preserve batching.
-- `OFF`: no comparison; always write all columns. Predictable unconditional writes for batch/ETL
-  paths.
+- `FIELD`: only the changed columns are written (plus the `@Version` column when present). Every distinct combination of changed columns is its own SQL shape, so batches split per shape. After `storm.update.max_shapes` distinct shapes (default 5) Storm falls back to full-row updates to preserve batching.
+- `OFF`: no comparison; always write all columns. Predictable unconditional writes for batch/ETL paths.
 
-How a field is compared is a separate axis — `@DynamicUpdate(dirtyCheck = ...)` per entity or
-`storm.update.dirty_check` globally. `INSTANCE` (default) marks a field dirty when its reference
-changed; `copy()` reuses the references of untouched fields, so unchanged fields compare clean at
-pointer cost. `VALUE` compares with `equals()` and differs only when code rebuilds equal values in
-new instances, e.g. mapping the same data back from a form or DTO.
+**The dirty check decides how a field compares.** Set it with `@DynamicUpdate(dirtyCheck = ...)` per entity or `storm.update.dirty_check` globally:
 
-**Foreign keys compare by id, not by content.** The dirty check follows the column. Under `VALUE`,
-an `@FK` field compares the referenced entity's primary key only (the generated metamodel emits
-`a.city.id == b.city.id`): a referenced `City` whose own fields changed does not make the
-referencing `User` dirty, because the `city_id` column is unchanged — and updating the `User` would
-not write the `City`'s fields anyway. To persist changes inside a referenced entity, update that
-entity. Under `INSTANCE`, substituting a different instance with the same id marks the FK column
-dirty and costs a redundant write of the same value. `Ref<T>` fields compare by the id the ref
-carries.
+- `INSTANCE` (default): a field is dirty when its reference changed. `copy()` reuses the references of untouched fields, so unchanged fields compare clean at pointer cost.
+- `VALUE`: compares with `equals()`. It differs only when code rebuilds equal values in new instances, e.g. mapping the same data back from a form or DTO.
 
-Dirty checking decides what to write; it does not detect concurrent writers. `FIELD` narrows what
-a stale write overwrites but does not prevent it. Lost-update protection is `@Version` (optimistic
-locking) for a record edited across two requests, and a computation in the database (the `update()`
-builder, above) for a change made from a column's current value; neither changes with any of the
-above.
+**Foreign keys compare by id, not by content.** The dirty check follows the column.
 
-Bulk mutations bypass dirty checking, and Storm invalidates observed state so later comparisons
-stay truthful: a mutation with a known entity type (`update()` and `delete()` builders, template
-mutations naming the type) clears the observed state of that type; a raw SQL mutation clears all
-observed state in the transaction. Updates after such a mutation fall back to full-row writes. An
-entity read before an `update()` builder ran still holds its old values, so its full-row write puts
-them back over the columns the builder set; a versioned one fails its optimistic lock check instead,
-since the builder incremented the version. Re-read the rows the builder touched before writing them
-as entities.
+- Under `VALUE`, an `@FK` field compares only the referenced entity's primary key (the generated metamodel emits `a.city.id == b.city.id`). A referenced `City` whose own fields changed does not make the referencing `User` dirty, because the `city_id` column is unchanged, and updating the `User` would not write the `City`'s fields anyway. To persist changes inside a referenced entity, update that entity.
+- Under `INSTANCE`, substituting a different instance with the same id marks the FK column dirty and costs a redundant write of the same value.
+- `Ref<T>` fields compare by the id the ref carries.
+
+**Dirty checking decides what to write; it does not detect concurrent writers.** `FIELD` narrows what a stale write overwrites but does not prevent it. Lost-update protection is `@Version` (optimistic locking) for a record edited across two requests, and a computation in the database (the `update()` builder, above) for a change made from a column's current value. No setting in this section changes either.
+
+**Bulk mutations bypass dirty checking**, and Storm invalidates observed state so later comparisons stay truthful:
+
+- A mutation with a known entity type (`update()` and `delete()` builders, template mutations naming the type) clears the observed state of that type.
+- A raw SQL mutation clears all observed state in the transaction.
+- Updates after such a mutation fall back to full-row writes.
+
+**Re-read the rows an `update()` builder touched before writing them as entities.** An entity read before the builder ran still holds its old values, so its full-row write puts them back over the columns the builder set. A versioned one fails its optimistic lock check instead, since the builder incremented the version.
 
 ## Entity Lifecycle Callbacks
 
-`EntityCallback<E>` hooks the write path, so an audit field or a check lives in one place instead of in every
-service method. `beforeInsert` / `beforeUpdate` / `beforeUpsert` return the entity to persist (`copy()` it);
-`afterInsert` / `afterUpdate` / `afterUpsert` / `afterRemove` observe what the calling method reports;
-`beforeRemove` and `afterRemove` fire only where the operation carries an entity (`remove(entity)` and its batch
-forms, never `removeById`, `removeAll` or a `delete()` builder), and `beforeUpdate` / `afterUpdate` never fire for
-the `update()` builder, which carries no entity: an audit column it should stamp is `set` in the builder. The type
-parameter selects the entity type, and
-`EntityCallback<Entity<*>>` fires for every type.
+**Use `EntityCallback<E>` to hook the write path**, so an audit field or a check lives in one place instead of in every service method. The type parameter selects the entity type, and `EntityCallback<Entity<*>>` fires for every type.
+
+- `beforeInsert` / `beforeUpdate` / `beforeUpsert` return the entity to persist (`copy()` it).
+- `afterInsert` / `afterUpdate` / `afterUpsert` / `afterRemove` observe what the calling method reports.
+- `beforeRemove` and `afterRemove` fire only where the operation carries an entity: `remove(entity)` and its batch forms, never `removeById`, `removeAll` or a `delete()` builder.
+- `beforeUpdate` / `afterUpdate` never fire for the `update()` builder, which carries no entity: an audit column it should stamp is `set` in the builder.
 
 ```kotlin
 class PostAuditCallback : EntityCallback<Post> {
@@ -502,34 +480,24 @@ class PostAuditCallback : EntityCallback<Post> {
 }
 ```
 
-**Prefer declaring the callback on the entity** with `@EntityCallbacks`. Storm creates it through its no-argument
-constructor and applies it wherever the entity is written, in Spring Boot, Ktor and standalone alike, with nothing
-registered anywhere. This is the form to generate for audit fields, normalization and checks:
+**Prefer declaring the callback on the entity** with `@EntityCallbacks`. Storm creates it through its no-argument constructor and applies it wherever the entity is written, in Spring Boot, Ktor and standalone alike, with nothing registered anywhere. Generate this form for audit fields, normalization and checks:
 
 ```kotlin
 @EntityCallbacks(PostAuditCallback::class)
 data class Post(@PK val id: Int = 0, val title: String, val createdAt: Instant) : Entity<Int>
 ```
 
-Declared callbacks fire before registered ones, in the order listed. A callback whose type parameter does not cover
-the annotated entity, or that Storm cannot create, fails when the repository is created.
+Declared callbacks fire before registered ones, in the order listed. A callback whose type parameter does not cover the annotated entity, or that Storm cannot create, fails when the repository is created.
 
-**Register an instance instead** when the callback takes collaborators, when it spans entity types
-(`EntityCallback<Entity<*>>`), or when it must apply to some templates and not others. Registering an instance of a
-declared type replaces the declared one, so it never fires twice:
+**Register an instance instead** when the callback takes collaborators, spans entity types (`EntityCallback<Entity<*>>`), or must apply to some templates and not others. Registering an instance of a declared type replaces the declared one, so it never fires twice:
 
-- **Spring Boot:** declare it as a bean (`@Component` or `@Bean`); the starter wires every `EntityCallback` bean
-  into the auto-configured `ORMTemplate`. This is where constructor injection is available.
-- **Ktor:** `install(Storm) { entityCallback(PostAuditCallback()) }`. Declared inside a `database("name") { }`
-  block it applies to that database in addition to the plugin-level callbacks.
-- **Standalone:** `dataSource.orm.withEntityCallback(PostAuditCallback())`. The template is immutable, so create
-  repositories from the returned one.
+- **Spring Boot:** declare it as a bean (`@Component` or `@Bean`). The starter wires every `EntityCallback` bean into the auto-configured `ORMTemplate`, and constructor injection is available here.
+- **Ktor:** `install(Storm) { entityCallback(PostAuditCallback()) }`. Declared inside a `database("name") { }` block, it applies to that database in addition to the plugin-level callbacks.
+- **Standalone:** `dataSource.orm.withEntityCallback(PostAuditCallback())`. The template is immutable, so create repositories from the returned one.
 
-Callbacks run inline on the writing thread and its connection, inside whatever transaction the caller opened, and
-never fire recursively. A callback that performs database work of its own reaches the template through
-`ORMTemplate.current()`, never a captured or injected one. An "after" callback runs before the commit, so an
-effect that cannot be taken back (publishing an event, invalidating a cache) is registered as a commit callback
-instead; a callback is not a suspend context, so it joins with `transactionBlocking { }`:
+**Callbacks run inline** on the writing thread and its connection, inside whatever transaction the caller opened, and never fire recursively. A callback that performs database work of its own reaches the template through `ORMTemplate.current()`, never a captured or injected one.
+
+**Register an irreversible effect as a commit callback.** An "after" callback runs before the commit, so an effect that cannot be taken back (publishing an event, invalidating a cache) goes in a commit callback. A callback is not a suspend context, so it joins with `transactionBlocking { }`:
 
 ```kotlin
 class PostPublishingCallback(private val events: Events) : EntityCallback<Post> {
@@ -541,17 +509,15 @@ class PostPublishingCallback(private val events: Events) : EntityCallback<Post> 
 }
 ```
 
-Override the `List<E>` form of an "after" callback whenever the callback writes or registers work: Storm delivers
-every write through it (a single write as a list of one), so a batch costs a fixed number of statements and one
-commit callback rather than one per row.
+**Override the `List<E>` form of an "after" callback** whenever the callback writes or registers work. Storm delivers every write through it (a single write as a list of one), so a batch costs a fixed number of statements and one commit callback rather than one per row.
 
 ## Write Sets (Mixed-Type Graphs)
 
-Apply one write operation to entities of multiple types. Storm orders the writes by foreign-key
-dependencies, batches per type per dependency level, and propagates generated keys. For insert and
-upsert, unsaved entities held in the passed entities' foreign-key fields are discovered and
-inserted automatically (insert discovery). Children link to a new parent by holding the same
-instance; two equal but distinct unsaved instances describe two rows.
+**Use a write set to apply one write operation to entities of multiple types.** Storm orders the writes by foreign-key dependencies, batches per type per dependency level, and propagates generated keys.
+
+- For insert and upsert, unsaved entities held in the passed entities' foreign-key fields are discovered and inserted automatically (insert discovery).
+- Children link to a new parent by holding the same instance; two equal but distinct unsaved instances describe two rows.
+- An entity is unsaved when its primary key is the default value on an auto-generated key.
 
 ```kotlin
 val owner = Owner(firstName = "Alice", lastName = "Bond", address = address)   // unsaved
@@ -568,7 +534,7 @@ val fetched: Visit = orm.writeSet().insertAndFetch(visit)
 val ids: List<Long> = orm.writeSet().insertAndFetchIds(visits)
 val two: List<Long> = orm.writeSet().insertAndFetchIds(wolfie, visit)   // vararg extension; one shared id type
 
-// Scoped block; each verb executes immediately, wrap in a transaction for atomicity
+// Scoped block; each verb executes immediately
 transaction {
     orm.writeSet {
         insert(newPets)
@@ -578,13 +544,11 @@ transaction {
 }
 ```
 
-An entity is unsaved when its primary key is the default value on an auto-generated key. Also
-available on repositories: `users.writeSet()` (delegates to the template; not scoped to the
-repository's type).
+Wrap write sets in a transaction when atomicity across the calls is required. Repositories offer `users.writeSet()` too; it delegates to the template and is not scoped to the repository's type.
 
 ## Flow-Based Streaming
 
-Use Kotlin `Flow` for memory-efficient processing of large datasets:
+**Use Kotlin `Flow` for memory-efficient processing of large datasets:**
 
 ```kotlin
 // Stream all entities lazily (builder method + terminal)
@@ -621,11 +585,13 @@ val insertedFlow: Flow<User> = users.insertAndFetch(userFlow)
 val idFlow: Flow<Int> = users.insertAndFetchIds(userFlow, batchSize = 500)
 ```
 
-Flow operations are lazy — entities are retrieved/processed as consumed. Use `batchSize`/`chunkSize` to control how many items are sent to the database per batch. Default batch size is used when omitted.
+Flow operations are lazy: entities are retrieved and processed as consumed. `batchSize`/`chunkSize` control how many items go to the database per batch; the default batch size applies when omitted.
 
 ## Flows and the Connection
 
-A `resultFlow` is cold: building it runs nothing, the query runs when the flow is collected, and each collection runs it again. Several flows may therefore be built up front and collected one after the other, and a flow that is never collected holds no connection. Once collected, a `resultFlow` is one open statement. While it still has rows to emit, the connection it reads from is consume-only, on every database. Inside `transaction { }` every statement shares the transaction's connection, so these all throw `PersistenceException` from the collector:
+**A `resultFlow` is cold.** Building it runs nothing; the query runs when the flow is collected, and each collection runs it again. Several flows may therefore be built up front and collected one after the other, and a flow that is never collected holds no connection.
+
+**Never issue a statement from a `resultFlow` collector inside `transaction { }`.** Once collected, a `resultFlow` is one open statement. While it still has rows to emit, the connection it reads from is consume-only, on every database. Inside `transaction { }` every statement shares the transaction's connection, so these all throw `PersistenceException` from the collector:
 
 ```kotlin
 transaction {
@@ -638,9 +604,9 @@ transaction {
 }
 ```
 
-The last line is the trap that passes small tests: the flow completes and closes when its last row is emitted, so a batch that executes after the flow has been read to its end is allowed, and a batch that executes while rows remain is refused. Whether that happens depends on batch size versus row count, so never feed a `resultFlow` of the current transaction into `insert`, `update`, `upsert`, `remove`, `removeByRef`, `insertAndFetch` or `countById`. Feed them an in-memory flow, or iterate in windows.
+**Never feed a `resultFlow` of the current transaction into a batch write.** The last line above is the trap that passes small tests. The flow completes and closes when its last row is emitted, so a batch that executes after the flow has been read to its end is allowed, and a batch that executes while rows remain is refused. The outcome depends on batch size versus row count. This applies to `insert`, `update`, `upsert`, `remove`, `removeByRef`, `insertAndFetch` and `countById`. Feed them an in-memory flow, or iterate in windows.
 
-`windows(size)` is the shape for a loop that needs the database. Each window is fetched by one statement that has closed before the window is emitted, so the collector may query, fetch refs and write, and one batched write per window costs one statement rather than one per row:
+**Use `windows(size)` for a loop that needs the database.** Each window is fetched by one statement that has closed before the window is emitted, so the collector may query, fetch refs and write. One batched write per window costs one statement rather than one per row:
 
 ```kotlin
 // One transaction for the whole walk:
@@ -662,9 +628,13 @@ users.windows(Scrollable.of(User_.id, 1000).from(storedCursor)).collect { window
 }
 ```
 
-Rules for `windows`: the key is the primary key (or the `Scrollable`'s key), which must be a non-null single column; no `orderBy()` on the query; the result type must be the entity (`selectRef()` and custom select types are refused). Each window is its own statement and sees the committed state at that moment.
+Rules for `windows`:
+- The key is the primary key (or the `Scrollable`'s key), which must be a non-null single column.
+- No `orderBy()` on the query.
+- The result type must be the entity; `selectRef()` and custom select types are refused.
+- Each window is its own statement and sees the committed state at that moment.
 
-`windows(size).rows()` reads the windows as one `Flow<R>`, for a loop that handles one row at a time. Each row comes from a window whose statement has already closed, so the connection is free at every row, memory stays bounded by the window size, and the rows arrive in key order. It is the one-token switch for a `resultFlow` loop the guard refuses; where the loop writes, the per-window form above batches better:
+**`windows(size).rows()` reads the windows as one `Flow<R>`**, for a loop that handles one row at a time. Each row comes from a window whose statement has already closed, so the connection is free at every row, memory stays bounded by the window size, and the rows arrive in key order. It is the one-token switch for a `resultFlow` loop the guard refuses. Where the loop writes, the per-window form above batches better:
 
 ```kotlin
 transaction {
@@ -674,7 +644,7 @@ transaction {
 }
 ```
 
-What stays fine with `resultFlow`: consuming it (`collect`, `toList()`, `count()`, `map`, `filter`), stopping early (`first()`, `take(n)` cancel the flow and close the statement), and, once it has completed, any statement. A `Ref` the loop needs is loaded by naming it in the fetch plan (`select().fetch(...)`) instead of calling `fetch()` per row. Outside `transaction { }` a collected flow holds a pooled connection of its own for as long as it is collected.
+**What stays fine with `resultFlow`:** consuming it (`collect`, `toList()`, `count()`, `map`, `filter`), stopping early (`first()`, `take(n)` cancel the flow and close the statement), and, once it has completed, any statement. Load a `Ref` the loop needs by naming it in the fetch plan (`select().fetch(...)`) instead of calling `fetch()` per row. Outside `transaction { }` a collected flow holds a pooled connection of its own for as long as it is collected.
 
 ## Count, Exists, Remove
 
@@ -700,21 +670,21 @@ Pick the read by what the caller needs to know:
 
 ```kotlin
 // Offset-based pagination (executes count + select)
-// Page numbers are 0-based — page 0 is the first page.
+// Page numbers are 0-based: page 0 is the first page.
 // When accepting 1-based page numbers from a URL (e.g., ?page=1), pass page - 1.
 val page: Page<User> = users.page(0, 20)
 val page: Page<User> = users.page(Pageable.ofSize(20).sortBy(User_.name))
 val nextPage = users.page(page.next())
 
-// Page API — Page is a Java record; ALL accessors are methods, call with ()
-// page.content()       — List<User> of results for this page
-// page.totalPages()    — total number of pages
-// page.totalCount()    — total number of elements across all pages
-// page.pageNumber()    — current page number (0-based)
-// page.pageSize()      — page size
-// page.hasNext()       — whether a next page exists
-// page.hasPrevious()   — whether a previous page exists
-// page.next()  — Pageable for the next page
+// Page API: Page is a Java record; ALL accessors are methods, call with ()
+// page.content()       : List<User> of results for this page
+// page.totalPages()    : total number of pages
+// page.totalCount()    : total number of elements across all pages
+// page.pageNumber()    : current page number (0-based)
+// page.pageSize()      : page size
+// page.hasNext()       : whether a next page exists
+// page.hasPrevious()   : whether a previous page exists
+// page.next()          : Pageable for the next page
 
 // Slice: page without the count query; same Pageable, hasNext from one extra row
 val pageable = Pageable.ofSize(20).sortBy(User_.name)
@@ -722,9 +692,9 @@ val slice: Slice<User> = users.slice(pageable)
 val more = users.slice(pageable.next())               // the request navigates
 val refSlice: Slice<Ref<User>> = users.sliceRef(0, 20)
 
-// Keyset scrolling (better for large tables — no COUNT, cursor-based)
+// Keyset scrolling (better for large tables: no COUNT, cursor-based)
 // Scrollable<T> takes a single type parameter (the entity type)
-// ⚠️ Scrollable manages ORDER BY internally — do NOT add orderBy() when using scroll(Scrollable)
+// ⚠️ Scrollable manages ORDER BY internally: do NOT add orderBy() when using scroll(Scrollable)
 // ⚠️ The key must be a non-nullable unique key (e.g. @PK or @UK). A compound (inline record)
 //    key is read from the mapped record and needs the entity as the result type.
 val window = users.scroll(Scrollable.of(User_.id, 20))
@@ -747,18 +717,16 @@ val window = users.scroll(if (cursor != null) request.from(cursor) else request)
 
 // Window<R> is a Slice: iterate it directly (for (user in window)), every window is in sort order.
 // Window is a Java record; the accessors are methods, call with ()
-// window.content() — List<User> of results
-// window.hasNext() / window.hasPrevious() — rows exist after / before the window
-// window.nextCursor() / window.previousCursor() — opaque cursors for REST APIs (see above)
-// window.next() / window.previous() — typed Scrollable<T> for the adjacent window, same order
+// window.content(): List<User> of results
+// window.hasNext() / window.hasPrevious(): rows exist after / before the window
+// window.nextCursor() / window.previousCursor(): opaque cursors for REST APIs (see above)
+// window.next() / window.previous(): typed Scrollable<T> for the adjacent window, same order
 ```
 
 ## Framework-Specific Repository Registration
 
-Detect the project's framework from its build file and dependencies, then suggest the appropriate pattern:
-
 ### Spring Boot
-With `storm-kotlin-spring-boot-starter`, repository interfaces are auto-discovered and registered as beans — no configuration needed; just inject them. Only when using plain `storm-kotlin-spring` (no starter) do you switch scanning on with `@EnableStormRepositories(basePackages = [...])`, or define `RepositoryBeanFactoryPostProcessor(basePackages = ..., ormTemplateBeanName = ..., repositoryPrefix = ...)` beans when multiple repository sets bind to different templates.
+**With `storm-kotlin-spring-boot-starter`, repository interfaces are discovered and registered as beans automatically:** no configuration, just inject them. Only with plain `storm-kotlin-spring` (no starter) do you switch scanning on with `@EnableStormRepositories(basePackages = [...])`, or define `RepositoryBeanFactoryPostProcessor(basePackages = ..., ormTemplateBeanName = ..., repositoryPrefix = ...)` beans when multiple repository sets bind to different templates.
 ```kotlin
 @Service
 class UserService(private val userRepository: UserRepository) {
@@ -767,7 +735,7 @@ class UserService(private val userRepository: UserRepository) {
 ```
 
 ### Ktor
-Repositories auto-register at `install(Storm)` from the compile-time index (narrow with `repositories("com.myapp")` in the plugin config, or disable with `autoRegisterRepositories = false`); access them in routes with a bare `repository<T>()`:
+**Repositories register at `install(Storm)` from the compile-time index.** Narrow the scan with `repositories("com.myapp")` in the plugin config, or disable it with `autoRegisterRepositories = false`. Access repositories in routes with a bare `repository<T>()`:
 ```kotlin
 fun Application.module() {
     install(Storm)
@@ -780,7 +748,7 @@ fun Application.module() {
 }
 ```
 
-When the app has a service layer, use Ktor's built-in dependency injection: the plugin registers every repository under its own interface type, so services declare repositories as constructor parameters and are provided in the dependency container:
+**With a service layer, use Ktor's built-in dependency injection.** The plugin registers every repository under its own interface type, so services declare repositories as constructor parameters and are provided in the dependency container:
 ```kotlin
 class UserService(private val userRepository: UserRepository) { ... }
 
@@ -805,21 +773,42 @@ val userRepository = orm.repository<UserRepository>()
 
 ## Transactions
 
-**Related writes go in one transaction.** A write to an entity whose foreign key references an entity the same unit of work just wrote, such as an owner and then its pet, runs inside `transaction { }` with that earlier write, so a failure rolls back what came before it; outside a transaction each write commits on its own and the owner stays without its pet. The performance log reports the pattern as `writes-without-transaction` advice; where the second write stands on its own by design (an audit record, an outbox row), `@AcceptAdvice("writes-without-transaction")` on that entity accepts it.
+**Related writes go in one transaction.** A write to an entity whose foreign key references an entity the same unit of work just wrote, such as an owner and then its pet, runs inside `transaction { }` with that earlier write, so a failure rolls back what came before it. Outside a transaction each write commits on its own, and the owner stays without its pet.
 
-**Respect an existing stance first.** When the codebase has already settled on a convention — declarative `@Transactional` throughout, no coroutines at all, or fully suspend — Storm code should follow that convention rather than introduce a competing style. The preference below applies when the project has not taken a clear stance (new code, greenfield modules).
+The performance log reports the pattern as `writes-without-transaction` advice. Where the second write stands on its own by design (an audit record, an outbox row), `@AcceptAdvice("writes-without-transaction")` on that entity accepts it.
 
-Prefer Storm's programmatic transactions over declarative `@Transactional` — in every environment, including Spring Boot. The boundary is explicit code, so there are no AOP proxy pitfalls (self-invocation and non-public methods silently skip `@Transactional`), it is coroutine-native, and the `Transaction` receiver exposes `setRollbackOnly()`, `onCommit { }`, and `onRollback { }` as typed API. In Spring Boot, suspend mode requires disabling Storm's Spring transaction integration (see below); Storm then manages transactions directly on the DataSource. Declarative `@Transactional` remains fully supported for teams standardized on it — in that mode, use `transactionBlocking { }` instead of suspend mode.
+**Respect an existing stance first.** When the codebase has settled on a convention (declarative `@Transactional` throughout, no coroutines at all, or fully suspend), Storm code follows it rather than introduce a competing style. The preference below applies when the project has no clear stance (new code, greenfield modules).
 
-Use the top-level suspend function `transaction { }` (import `st.orm.template.transaction`). Two placement rules apply, and they are separate concerns. **Transactions open at the service level** — the method that represents one business operation — never in controllers or route handlers, which handle HTTP and delegate. Controllers that only read directly from repositories do not open transactions. (In minimal route-based apps without a service layer, the route handler doubles as the operation boundary.) **`suspend` propagates toward the start of the call stack** — services and any intermediate functions that open a `transaction { }` are `suspend`; never use `runBlocking` merely to wrap a `transaction { }` deeper in the stack — the bridge to blocking code, if one is needed at all, belongs at the entry point. `transaction { }` is NOT a method on `ORMTemplate` — never write `orm.transaction { }` or `call.orm.transaction { }`. The lambda receiver is a `Transaction` — it does NOT provide `entity(...)`; use repositories or `orm` captured from the enclosing scope. Optional parameters: `propagation`, `isolation`, `timeoutSeconds`, and `readOnly` (e.g. `transaction(readOnly = true) { }` around multi-query reads for a consistent snapshot on one connection).
+**Prefer Storm's programmatic transactions over declarative `@Transactional`**, in every environment, including Spring Boot:
 
-**`runBlocking` belongs at entry points only.** When a non-suspend framework callback starts the call chain (a Spring MVC handler, an `ApplicationRunner`, a `@Scheduled` method, a message listener, a test), bridge with `runBlocking { }` at that entry point and keep everything below it suspend; never bury `runBlocking` inside services or repositories. In coroutine-native servers (Ktor, WebFlux) the handler itself is suspend and no bridge is needed. For Spring MVC, prefer non-suspend handlers with `runBlocking` over suspend handlers: MVC is a blocking servlet stack — with virtual threads the blocking bridge is cheap, whereas suspend MVC handlers require `kotlinx-coroutines-reactor` and route responses through async dispatch machinery that buys nothing there. `transactionBlocking { }` exists for code that is genuinely outside any coroutine context.
+- The boundary is explicit code, so there are no AOP proxy pitfalls (self-invocation and non-public methods silently skip `@Transactional`).
+- It is coroutine-native.
+- The `Transaction` receiver exposes `setRollbackOnly()`, `onCommit { }`, and `onRollback { }` as typed API.
+
+In Spring Boot, suspend mode requires disabling Storm's Spring transaction integration (see below); Storm then manages transactions directly on the DataSource. Declarative `@Transactional` remains fully supported for teams standardized on it. In that mode, use `transactionBlocking { }` instead of suspend mode.
+
+**Use the top-level suspend function `transaction { }`** (import `st.orm.template.transaction`):
+
+- It is NOT a method on `ORMTemplate`: never write `orm.transaction { }` or `call.orm.transaction { }`.
+- The lambda receiver is a `Transaction`, which does NOT provide `entity(...)`. Use repositories or `orm` captured from the enclosing scope.
+- Optional parameters: `propagation`, `isolation`, `timeoutSeconds`, and `readOnly` (e.g. `transaction(readOnly = true) { }` around multi-query reads for a consistent snapshot on one connection).
+
+Two placement rules apply, and they are separate concerns:
+
+- **Transactions open at the service level**, in the method that represents one business operation, never in controllers or route handlers, which handle HTTP and delegate. Controllers that only read directly from repositories do not open transactions. In minimal route-based apps without a service layer, the route handler doubles as the operation boundary.
+- **`suspend` propagates toward the start of the call stack.** Services and any intermediate functions that open a `transaction { }` are `suspend`. Never use `runBlocking` merely to wrap a `transaction { }` deeper in the stack; the bridge to blocking code, if one is needed at all, belongs at the entry point.
+
+**`runBlocking` belongs at entry points only.** When a non-suspend framework callback starts the call chain (a Spring MVC handler, an `ApplicationRunner`, a `@Scheduled` method, a message listener, a test), bridge with `runBlocking { }` at that entry point and keep everything below it suspend. Never bury `runBlocking` inside services or repositories.
+
+- In coroutine-native servers (Ktor, WebFlux) the handler itself is suspend and no bridge is needed.
+- For Spring MVC, prefer non-suspend handlers with `runBlocking` over suspend handlers. MVC is a blocking servlet stack: with virtual threads the blocking bridge is cheap, whereas suspend MVC handlers require `kotlinx-coroutines-reactor` and route responses through async dispatch machinery that buys nothing there.
+- `transactionBlocking { }` exists for code that is genuinely outside any coroutine context.
 
 **A transaction does one thing at a time.** Its single connection serves one caller, so never run statements of one transaction concurrently with `launch` or `async`: Storm refuses a statement issued while another coroutine still holds the connection (`Concurrent access on ...`). `withContext(Dispatchers.IO)` is fine, because it suspends the caller until it returns. Await each unit before starting the next, or give parallel work its own transactions.
 
 ### Spring Boot
 
-Suspend mode is incompatible with Spring-managed Storm transactions (Spring's transaction context is thread-bound, coroutines are not) — Storm fails fast with "Suspend mode is not supported when spring-managed transactions are enabled". When using suspend `transaction { }`, exclude the integration; keep it (the default) when using `@Transactional` or `transactionBlocking { }` that must join Spring-managed transactions:
+**Exclude Storm's Spring transaction integration when using suspend `transaction { }`.** Spring's transaction context is thread-bound and coroutines are not, so Storm fails fast with "Suspend mode is not supported when spring-managed transactions are enabled". Keep the integration (the default) when using `@Transactional` or `transactionBlocking { }` that must join Spring-managed transactions:
 
 ```yaml
 spring:
@@ -865,9 +854,9 @@ Transaction options are also available globally via `withTransactionOptions { }`
 
 ## Block-Based Query DSL
 
-**Prefer the chained API for linear queries.** A straight filter/order/limit pipeline reads best as a chain — `select(predicate).orderBy(...).limit(...).resultList`, or `select().where { template }...` when the condition needs a template. Reach for the `select { }` block only when you truly need the block structure: conditional predicates or joins (`if`/`when` inside the block), or queries with many clauses where the scoped layout helps.
+**Prefer the chained API for linear queries.** A straight filter/order/limit pipeline reads best as a chain: `select(predicate).orderBy(...).limit(...).resultList`, or `select().where { template }...` when the condition needs a template. Use the `select { }` block only when you need its structure: conditional predicates or joins (`if`/`when` inside the block), or queries with many clauses where the scoped layout helps.
 
-Repository methods can use the `select { }` / `delete { }` DSL for building queries. Both are **builder methods** that return `QueryBuilder` -- they never execute immediately. Inside the block, use scope methods like `where()`, `orderBy()`, `limit()` to construct the query. Then call a terminal operation to execute:
+**`select { }` and `delete { }` are builder methods that return `QueryBuilder`**; they never execute immediately. Inside the block, scope methods like `where()`, `orderBy()` and `limit()` construct the query. Then call a terminal operation to execute:
 
 ```kotlin
 interface UserRepository : EntityRepository<User, Int> {
@@ -882,26 +871,28 @@ interface UserRepository : EntityRepository<User, Int> {
 }
 ```
 
-Both `select { }` and `delete { }` return a `QueryBuilder`, so you pick the terminal: `.resultList`, `.singleResult`, `.optionalResult`, `.scroll(scrollable)`, `.page(0, 20)`, `.resultFlow`, `.resultCount` (for select), or `.executeUpdate()` (for delete). **Do NOT combine `orderBy()` with `.scroll(Scrollable)`** — see Keyset Scrolling section above.
+Pick the terminal: `.resultList`, `.singleResult`, `.optionalResult`, `.scroll(scrollable)`, `.page(0, 20)`, `.resultFlow`, `.resultCount` (for select), or `.executeUpdate()` (for delete). **Do NOT combine `orderBy()` with `.scroll(Scrollable)`** (see Pagination and Scrolling).
 
-**Result types and the block DSL:** There is **no** `select(ResultType::class) { block }` form. The block DSL always returns the root entity type. (In `select(ResultType::class) { ... }` the trailing lambda is a SQL template for the SELECT clause, not a block DSL.) To select a different result type, use the chained API:
+**There is no `select(ResultType::class) { block }` form.** The block DSL always returns the root entity type; in `select(ResultType::class) { ... }` the trailing lambda is a SQL template for the SELECT clause, not a block DSL. To select a different result type, use the chained API:
 ```kotlin
-// ❌ Not valid — no block DSL overload for result type
+// ❌ Not valid: no block DSL overload for result type
 fun findSummaries(): List<UserSummary> = select(UserSummary::class) {
     where(User_.email like "%@example.com")
 }.resultList
 
-// ✅ Use chained API — note: joins use .innerJoin<A>().on<B>(), not the two-type-arg form
+// ✅ Use chained API. Note: joins use .innerJoin<A>().on<B>(), not the two-type-arg form
 fun findSummaries(): List<UserSummary> = select(UserSummary::class)
     .where(User_.email like "%@example.com")
     .resultList
 ```
 
-**What `select(ResultType::class)` is for:** It selects a different result type from the query. This works for joined entity types (e.g., `select(City::class)` from a `User` query) and custom SELECT with a template string (`select(Summary::class) { template }` — the result type is explicit). It does **not** work for column subsets of the root entity — `select(UserSummary::class)` where `UserSummary` has a subset of `User` fields will fail with "Cannot find alias for column." For column subsets, use a `Projection<T>` with `ProjectionRepository`.
+**What `select(ResultType::class)` is for:** selecting a different result type from the query.
+- It works for joined entity types (e.g., `select(City::class)` from a `User` query) and for a custom SELECT with a template string (`select(Summary::class) { template }`, where the result type is explicit).
+- It does **not** work for column subsets of the root entity: `select(UserSummary::class)` where `UserSummary` has a subset of `User` fields fails with "Cannot find alias for column." For column subsets, use a `Projection<T>` with `ProjectionRepository`.
 
-**Cross-entity pitfall:** Selecting a different entity type from the wrong root repository can fail with "Cannot find alias for column" when both entities have columns with the same name (e.g., `id`). Put the query on the target entity's repository instead.
+**Cross-entity pitfall:** selecting a different entity type from the wrong root repository can fail with "Cannot find alias for column" when both entities have columns with the same name (e.g., `id`). Put the query on the target entity's repository instead.
 
-**Conditional logic inside the block:** The block is a regular Kotlin lambda — use `if`, `when`, and loops to compose queries dynamically. This keeps shared parts (ordering, pagination, terminals) in one place:
+**Conditional logic inside the block:** the block is a regular Kotlin lambda, so `if`, `when` and loops compose queries dynamically. Shared parts (ordering, pagination, terminals) stay in one place:
 ```kotlin
 interface UserRepository : EntityRepository<User, Int> {
     fun findByCity(city: Ref<City>?, page: Int, size: Int): Page<User> =
@@ -935,7 +926,7 @@ users.select(User_.email like "%@example.com").resultList
 users.delete(User_.postalCode.isNull()).executeUpdate()
 ```
 
-Standalone usage via `ORMTemplate` — note there is **no** `orm.select<T> { block }` reified form; get the entity repository first:
+**There is no `orm.select<T> { block }` reified form.** For standalone use via `ORMTemplate`, get the entity repository first:
 ```kotlin
 val users = orm.entity(User::class).select {
     where(User_.name eq "Alice")
@@ -946,9 +937,9 @@ val users = orm.entity(User::class).select {
 
 ## Verification
 
-After writing repository methods, write a test using `@StormTest` and `SqlCapture` to verify that schema, generated SQL, and intent are aligned.
+**After writing repository methods, write a `@StormTest` with `SqlCapture`** to verify that schema, generated SQL, and intent are aligned.
 
-Tell the user what you are doing and why: explain that `SqlCapture` records every SQL statement Storm generates. The goal is not to test Storm itself, but to verify that the repository method produces the query the user intended — correct tables joined, correct columns filtered, correct ordering, correct number of statements. This is Storm's verify-then-trust pattern.
+**Tell the user what you are doing and why.** `SqlCapture` records every SQL statement Storm generates. The goal is not to test Storm itself, but to verify that the repository method produces the intended query: correct tables joined, correct columns filtered, correct ordering, correct number of statements. This is Storm's verify-then-trust pattern.
 
 ```kotlin
 // Leading "/" resolves scripts from the classpath root (src/test/resources/).
@@ -958,7 +949,7 @@ class UserRepositoryTest {
     @Test
     fun findByCity(orm: ORMTemplate, capture: SqlCapture) {
         val userRepository = orm.repository<UserRepository>()
-        val city = orm.entity(City::class).getById(1)   // getById is ID-based — use the two-type-arg form
+        val city = orm.entity(City::class).getById(1)
         val users = capture.execute { userRepository.findByCity(city) }
         // Verify intent: single query, filtered by city, returns expected data.
         assertEquals(1, capture.count(Operation.SELECT))
@@ -968,13 +959,19 @@ class UserRepositoryTest {
 }
 ```
 
-Keep the verification loop on H2: it answers in milliseconds and needs no Docker, which is what makes verify-and-fix iterations cheap. Escalate to the target database only when H2 cannot run the SQL involved (dialect-specific functions, JSON operators, upsert or sequence syntax the target database defines differently), when the user asks for it, or as a final pass before finishing a larger piece of work: adding `database = POSTGRESQL` (or `MYSQL`, `MARIADB`, `MSSQL_SERVER`, `ORACLE`, from `st.orm.test.TestDatabase`) to `@StormTest` runs the same test in a Testcontainers-managed container of that database, at the cost of a container start per test run and a Docker requirement. Nothing else in the test changes; the class needs the database's Testcontainers module and JDBC driver in test scope (see /storm-setup).
+**Keep the verification loop on the in-memory database `@StormTest` provides by default.** It answers in milliseconds and needs no Docker, which keeps verify-and-fix iterations cheap. Escalate to the database the project deploys on only:
 
-Run the test. Show the user the captured SQL and explain how it aligns with the intended behavior. If a query produces unexpected SQL or the right approach is unclear, ask the user for feedback before changing the query.
+- when the in-memory database cannot run the SQL involved (dialect-specific functions, JSON operators, upsert or sequence syntax the target database defines differently);
+- when the user asks for it;
+- as a final pass before finishing a larger piece of work.
 
-**SQL visibility outside tests:** raise the `st.orm.sql` logger to `DEBUG` to log every executed statement at runtime, or to `TRACE` to render parameter values into it — useful for debugging without a test harness.
+To escalate, add `database = ...` to `@StormTest`, using the constant for the project's database from `st.orm.test.TestDatabase`. The same test then runs in a Testcontainers-managed container of that database, at the cost of a container start per test run and a Docker requirement. Nothing else in the test changes. The class needs the database's Testcontainers module and JDBC driver in test scope (see /storm-setup).
 
-**Finding what a call costs:** statement logging answers what ran; the SQL log summary answers what a unit of work cost. Raise `st.orm.sql.perf` to `INFO` and each web controller request, scheduled task or listener invocation reports one line: how many statements it took, the summed database time against how long the call took, and a row per distinct statement ranked by total time. Read it for the usual wins:
+**Run the test and show the user the captured SQL**, explaining how it aligns with the intended behavior. If a query produces unexpected SQL or the right approach is unclear, ask the user for feedback before changing the query.
+
+**SQL visibility outside tests:** raise the `st.orm.sql` logger to `DEBUG` to log every executed statement at runtime, or to `TRACE` to render parameter values into it. This helps debugging without a test harness.
+
+**Finding what a call costs:** statement logging answers what ran; the SQL log summary answers what a unit of work cost. Raise `st.orm.sql.perf` to `INFO`, and each web controller request, scheduled task or listener invocation reports one line: how many statements it took, the summed database time against how long the call took, and a row per distinct statement ranked by total time. Read it for the usual wins:
 
 - A row with a high execution multiplier (`7x`) is one statement issued once per record. Storm hides no query, so the repetition is a loop in application code: batch it with `findAllById`, an `inList` predicate, or `resultGroupedBy` instead of a query per parent.
 - A row marked `fetch` is a reference resolved on demand. Naming it in the query's fetch plan (`select().fetch(path)`) folds the load into the parent statement, and `getOrThrow()` then reads it without querying.
@@ -982,8 +979,23 @@ Run the test. Show the user the captured SQL and explain how it aligns with the 
 - Database time far below total time says the bottleneck is not the database, so stop optimizing queries.
 - `n from cache` counts reads the transaction's entity cache served without a statement, which is work already avoided rather than work to do.
 
-Set `storm.sql-log.performance.call-sites: true` to name the application frame behind each row. In production, configure a statement or duration threshold under `storm.sql-log.performance.threshold` so only calls that exceed one report, at `WARN`; summaries carry no parameter values at any level, so they are safe to leave enabled there. `storm.sql-log.slow.threshold: 200ms` adds the other half, one line per execution that exceeds it under `st.orm.sql.slow`, naming the statement a summary can only total. A transaction that held its connection idle for more than a second between its statements, such as one that calls another service or sends mail before it commits, is reported by default under `st.orm.sql.slow` with the call site that began it (`storm.sql-log.slow.transaction` retunes the second): move that work before the transaction or after it commits (an `onCommit` callback), never widen the pool to make room for it. The advice log, `st.orm.sql.advice`, says what to change about a statement, fast or slow, each line linking to its section of https://orm.st/docs/advice: advice on correctness, such as a `limit` without an ORDER BY, reports at `INFO`, once per piece of advice, everywhere; in development (Spring Boot DevTools on the classpath, Ktor development mode, every `@StormTest`) advice on design and performance reports too, and a development profile without such a mode sets `storm.advice.categories: correctness, design, performance`; `DEBUG` reports once per statement shape. Treat advice lines as feedback on the code just written, and design advice from real use (`repeated-fetch`, `wide-entity-read`) as evidence from realistic runs, not a reason to redesign entities ahead of time. Fix what it reports rather than silencing it. Where a statement looks intended, suggest `@AcceptAdvice("<anchor>")` on the method that issues it (a repository's own method, or the service method that builds the query), or on the entity or repository; add it only when the user confirms, and treat an existing `@AcceptAdvice` as the user's settled decision.
+**Summary and slow-statement settings:**
 
-**Test isolation:** `SqlCapture` accumulates SQL across the entire test method. When writing multiple verification tests in one class, use `capture.clear()` between logical operations, or put each verification in its own `@Test` method. To avoid order-dependent failures, make assertions idempotent (don't assume specific row counts from prior inserts in other test methods) or use `@TestMethodOrder(MethodOrderer.OrderAnnotation::class)` with `@Order` if test ordering matters.
+- `storm.sql-log.performance.call-sites: true` names the application frame behind each row.
+- In production, configure a statement or duration threshold under `storm.sql-log.performance.threshold`, so only calls that exceed one report, at `WARN`. Summaries carry no parameter values at any level, so they are safe to leave enabled there.
+- `storm.sql-log.slow.threshold: 200ms` adds one line per execution that exceeds it under `st.orm.sql.slow`, naming the statement a summary can only total.
+- A transaction that held its connection idle for more than a second between its statements, such as one that calls another service or sends mail before it commits, is reported by default under `st.orm.sql.slow` with the call site that began it. `storm.sql-log.slow.transaction` retunes the second. Move that work before the transaction or after it commits (an `onCommit` callback); never widen the pool to make room for it.
 
-The test can be temporary — verify and remove, or keep as a regression test. Ask the user which they prefer.
+**The advice log, `st.orm.sql.advice`, says what to change about a statement**, fast or slow. Each line links to its section of https://orm.st/docs/advice.
+
+- Advice on correctness, such as a `limit` without an ORDER BY, reports at `INFO`, once per piece of advice, everywhere.
+- In development (Spring Boot DevTools on the classpath, Ktor development mode, every `@StormTest`), advice on design and performance reports too. A development profile without such a mode sets `storm.advice.categories: correctness, design, performance`.
+- `DEBUG` reports once per statement shape.
+
+**Fix what the advice reports rather than silencing it.** Treat advice lines as feedback on the code just written. Treat design advice from real use (`repeated-fetch`, `wide-entity-read`) as evidence from realistic runs, not a reason to redesign entities ahead of time.
+
+**Suggest `@AcceptAdvice` only where a statement looks intended.** Put `@AcceptAdvice("<anchor>")` on the method that issues it (a repository's own method, or the service method that builds the query), or on the entity or repository. Add it only when the user confirms, and treat an existing `@AcceptAdvice` as the user's settled decision.
+
+**Test isolation:** `SqlCapture` accumulates SQL across the entire test method. With multiple verification tests in one class, call `capture.clear()` between logical operations, or put each verification in its own `@Test` method. To avoid order-dependent failures, make assertions idempotent (don't assume specific row counts from prior inserts in other test methods), or use `@TestMethodOrder(MethodOrderer.OrderAnnotation::class)` with `@Order` if test ordering matters.
+
+**The test can be temporary:** verify and remove it, or keep it as a regression test. Ask the user which they prefer.

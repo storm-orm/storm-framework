@@ -9,7 +9,7 @@ This project has a Storm Schema MCP server configured. Use the following tools t
 
 ### select_data parameters
 
-All parameters except `table` are optional. Pass arrays and objects as native JSON types — never as stringified JSON.
+All parameters except `table` are optional. **Pass arrays and objects as native JSON types, never as stringified JSON.**
 
 | Parameter | Type | Description |
 |-----------|------|-------------|
@@ -38,12 +38,14 @@ Use these tools when:
 
 ### Schema vs. data access
 
-The `list_tables` and `describe_table` tools return structural metadata only — no data is exposed.
+The `list_tables` and `describe_table` tools return structural metadata only; no data is exposed.
 
-The `select_data` tool is only available when the developer has explicitly enabled data access for this connection. If the tool is not listed in `tools/list`, data access is disabled — do not attempt to call it. When available, `select_data` accepts a structured request (table, columns, where, orderBy, offset, limit) and returns individual rows formatted as a markdown table. It does not accept raw SQL. Results default to 50 rows (max 500), and cell values longer than 200 characters are truncated.
+**Call `select_data` only when it is listed in `tools/list`.** The developer enables data access per connection; when the tool is absent, data access is disabled.
+- It accepts a structured request (table, columns, where, orderBy, offset, limit), not raw SQL.
+- It returns individual rows formatted as a markdown table, 50 rows by default (max 500), with cell values longer than 200 characters truncated.
 
-Use `select_data` when sample data would inform a decision — for example, to determine whether a `VARCHAR` column contains enum-like values, whether a `TEXT` column stores JSON, or what value ranges a numeric column holds. Do not query data speculatively or in bulk; use it when a specific question about the data would change the entity design.
+**Use `select_data` only when a specific question about the data would change the entity design.** For example: whether a `VARCHAR` column contains enum-like values, whether a `TEXT` column stores JSON, or what value ranges a numeric column holds. Do not query data speculatively or in bulk.
 
-When presenting `select_data` results to the user, always show the actual data rows as a table — column names as headers, one row per record. Do not summarize, describe, or narrate the data in prose. The user asked to see the data, so show it. The response already contains a markdown table — present it directly. Never transpose the data (columns as rows), and never replace the table with a written description of what the data contains.
+**Show `select_data` results as the table they come in.** Column names are headers, one row per record; present the returned markdown table directly. Do not summarize, describe, or narrate the data in prose: the user asked to see the data. Never transpose the data (columns as rows).
 
-Some tables may be excluded from data queries by the developer. If `select_data` returns an error about an excluded table, the table's schema is still available through `describe_table` — only data access is restricted.
+**An excluded table still has its schema.** The developer may exclude some tables from data queries. If `select_data` returns an error about an excluded table, `describe_table` still provides its schema; only data access is restricted.

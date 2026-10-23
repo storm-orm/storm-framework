@@ -8,13 +8,13 @@ This is about serializing entities for API responses (Jackson), not about JSON d
 
 Ask: whether entities have `Ref<T>` fields.
 
-Detect the project's framework from its build file (pom.xml or build.gradle.kts): look for `storm-spring-boot-starter` or `spring-boot-starter` (Spring Boot) or neither (standalone). Adapt setup examples to the detected framework.
+**Detect the project's framework from its build file** (pom.xml or build.gradle.kts): `storm-spring-boot-starter` or `spring-boot-starter` means Spring Boot, neither means standalone. Adapt setup examples to the detected framework.
 
 ## When You Need the Storm Module
 
-Entities without `Ref` fields serialize with plain Jackson. No Storm module needed.
+**Entities without `Ref` fields serialize with plain Jackson.** No Storm module is needed.
 
-Entities with `Ref<T>` fields require the Storm serialization module, because `Ref` can be unloaded (only the FK ID) or loaded (full entity/projection). Jackson cannot handle this distinction without help.
+**Entities with `Ref<T>` fields require the Storm serialization module.** A `Ref` can be unloaded (only the FK ID) or loaded (full entity/projection), and Jackson cannot handle this distinction without help.
 
 ## Setup
 
@@ -50,9 +50,9 @@ The format is fully round-trippable.
 
 ## Rules
 
-- Refs deserialized from JSON are **detached** by default: they carry the ID but have no database connection. Calling `fetch()` on a deserialized ref throws `PersistenceException`. Pass the ref itself to `findByRef`, `getByRef` or `findAllByRef`, which read it by its id; never unwrap it into an id to query. (Supplying a `RefFactory` to `StormModule` yields attached, fetchable refs instead.)
+- **Refs deserialized from JSON are detached by default.** They carry the ID but have no database connection, so calling `fetch()` on one throws `PersistenceException`. Pass the ref itself to `findByRef`, `getByRef` or `findAllByRef`, which read it by its id; never unwrap it into an id to query. Supplying a `RefFactory` to `StormModule` yields attached, fetchable refs instead.
 - Entities without `Ref` fields need no Storm module registration.
 - Both Jackson modules (`storm-jackson2`, `storm-jackson3`) provide the same `StormModule` API.
 - Jackson supports `java.time` natively via the `jackson-datatype-jsr310` module (included by Spring Boot).
-- kotlinx.serialization is Kotlin-only; Java projects use Jackson. For Kotlin projects, see /storm-serialization-kotlin (which prefers kotlinx.serialization).
-- **Caching with Spring's cache annotations:** back the cache with serialized values (e.g. Redis with a Jackson-based serializer and `StormModule` registered) rather than object references — Storm's immutable records round-trip losslessly, which is what makes them safe to cache.
+- kotlinx.serialization is Kotlin-only; Java projects use Jackson. For Kotlin projects, see /storm-serialization-kotlin, which prefers kotlinx.serialization.
+- **Caching with Spring's cache annotations: back the cache with serialized values, not object references.** For example, Redis with a Jackson-based serializer and `StormModule` registered. Storm's immutable records round-trip losslessly, which is what makes them safe to cache.

@@ -13,27 +13,27 @@ Compare Storm entities against the live database schema.
    - Entities without tables
    - Column type mismatches (incompatible types are errors; narrowing like Long mapped to INTEGER is a warning)
    - Missing columns (entity field has no matching DB column)
-   - Extra columns that are NOT NULL without a default value and not generated (these would cause INSERT failures). A column declared with `@QueryColumn` on an entity counts, since every insert leaves it out: it must be generated, an identity column, have a default or be nullable
-   - FK/`@FK` mismatches (FK referencing wrong table is an error; missing FK constraint is a warning)
+   - Extra columns that are NOT NULL without a default value and not generated, since these cause INSERT failures. A column declared with `@QueryColumn` on an entity counts, since every insert leaves it out: it must be generated, an identity column, have a default or be nullable
+   - FK/`@FK` mismatches (FK referencing the wrong table is an error; a missing FK constraint is a warning)
    - Nullability differences (entity non-null but DB nullable is a warning)
-   - Missing unique constraints for @UK fields (use `uniqueConstraints` array from `describe_table`)
-   - Do NOT validate or report on FK cascade rules (onDelete/onUpdate) — Storm does not model cascade behavior
-   - Primary key issues: mismatch between entity and DB PK columns is an error; missing PK constraint is a warning
+   - Missing unique constraints for @UK fields (use the `uniqueConstraints` array from `describe_table`)
+   - Do NOT validate or report on FK cascade rules (onDelete/onUpdate): Storm does not model cascade behavior
+   - Primary key issues: a mismatch between entity and DB PK columns is an error; a missing PK constraint is a warning
    - Missing sequences for @PK(generation = SEQUENCE) fields
 
 Respect suppression annotations:
 - Skip types annotated with `@DbIgnore` or `@ProjectionQuery`
 - Skip fields annotated with `@DbIgnore`
-- If a type carries both `Data` and `@DbIgnore` and is only used as a query result shape (an aggregation DTO), suggest rewriting it as a plain data class/record without the `Data` marker — that removes it from validation scope altogether instead of suppressing it
-- `@PK(constraint = false)` suppresses missing PK constraint warning
-- `@UK(constraint = false)` suppresses missing unique constraint warning
-- Composite (multi-column) DB unique constraints that are not modeled in the entity do NOT produce a warning — modeling them requires structural changes that should be a deliberate choice
-- `@FK(constraint = false)` suppresses missing FK constraint warning
+- If a type carries both `Data` and `@DbIgnore` and is only used as a query result shape (an aggregation DTO), suggest rewriting it as a plain data class/record without the `Data` marker. That removes it from validation scope instead of suppressing it
+- `@PK(constraint = false)` suppresses the missing PK constraint warning
+- `@UK(constraint = false)` suppresses the missing unique constraint warning
+- Composite (multi-column) DB unique constraints that the entity does not model produce no warning: modeling them requires structural changes that should be a deliberate choice
+- `@FK(constraint = false)` suppresses the missing FK constraint warning
 - Polymorphic FKs (sealed interface targets) cannot have standard DB FK constraints; skip FK validation for these
 
-Projections intentionally map a subset of columns; do not flag extra DB columns for projections, only for entities.
+**Do not flag extra DB columns for projections, only for entities.** Projections intentionally map a subset of columns.
 
-After LLM-assisted entity changes, write a targeted test to verify only the affected entities:
+**After LLM-assisted entity changes, write a targeted test that verifies only the affected entities:**
 ```kotlin
 @StormTest(scripts = ["/schema.sql"])
 class EntitySchemaTest {

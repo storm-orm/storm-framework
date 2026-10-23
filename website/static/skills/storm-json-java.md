@@ -8,7 +8,7 @@ Ask: what data they want to store as JSON and whether they need JSON aggregation
 
 ## JSON Columns
 
-Annotate a field with `@Json` to store it as a JSON column. Storm auto-detects Jackson at runtime.
+**Annotate a field with `@Json` to store it as a JSON column.** Storm auto-detects Jackson at runtime.
 
 ```java
 record User(@PK Integer id,
@@ -19,7 +19,7 @@ record User(@PK Integer id,
 
 ## Complex Types
 
-JSON columns can store structured domain objects, not just maps and primitives. Jackson handles records automatically without additional annotations.
+**JSON columns can store structured domain objects,** not just maps and primitives. Jackson handles records without additional annotations.
 
 ```java
 record Address(String street, String city, String postalCode) {}
@@ -31,12 +31,12 @@ record User(@PK Integer id,
 
 ## JSON Aggregation
 
-Use JSON aggregation functions to load one-to-many relationships in a single query:
+**Use JSON aggregation functions to load one-to-many relationships in a single query:**
 
 ```java
 /**
  * Query result shape: a user with their roles aggregated from JSON. Not
- * backed by a database table or view, so it is a plain record —
+ * backed by a database table or view, so it is a plain record,
  * deliberately not a Data type.
  */
 record RolesByUser(User user, @Json List<Role> roles) {}
@@ -60,35 +60,19 @@ Storm auto-detects Jackson at runtime. Just add the dependency.
 
 ### Column types
 
-When writing migrations, use the correct JSON column type for the target database:
-
-| Database | Column Type | Notes |
-|----------|-------------|-------|
-| PostgreSQL | `JSONB` | Binary format, indexable |
-| MySQL | `JSON` | Native JSON type |
-| MariaDB | `JSON` | Alias for LONGTEXT with validation |
-| Oracle | `JSON` | Native JSON (21c+) |
-| MS SQL Server | `NVARCHAR(MAX)` | Stored as text |
-| H2 | `CLOB` | Stored as text (test databases) |
+**In migrations, use the database's JSON column type, or a text type holding JSON where it has none.**
 
 ### JSON aggregation functions
 
-In Storm templates, `JSON_OBJECTAGG(\{Role.class})` with the entity class as single argument is valid — Storm expands `\{Role.class}` to the entity's projected columns, producing the dialect-appropriate key/value arguments. The table below shows the underlying raw SQL forms per database (relevant when writing the SQL by hand or debugging generated SQL). Always ask or detect which dialect the user is targeting:
+**`JSON_OBJECTAGG(\{Role.class})` with the entity class as single argument is valid in a Storm template.** Storm expands `\{Role.class}` to the entity's projected columns, producing the dialect-appropriate key/value arguments.
 
-| Database | Object aggregation | Array aggregation |
-|----------|-------------------|-------------------|
-| PostgreSQL | `JSON_OBJECT_AGG(key, value)` | `JSON_AGG(value)` |
-| MySQL | `JSON_OBJECTAGG(key, value)` | `JSON_ARRAYAGG(value)` |
-| MariaDB | `JSON_OBJECTAGG(key, value)` | `JSON_ARRAYAGG(value)` |
-| Oracle | `JSON_OBJECTAGG(KEY key VALUE value)` | `JSON_ARRAYAGG(value)` |
-| MS SQL Server | Manual via `FOR JSON` | Manual via `FOR JSON` |
-| H2 | Not supported | Not supported |
+**When writing the SQL by hand or debugging generated SQL, use the database's JSON object and array aggregate functions.** These are `JSON_OBJECTAGG` and `JSON_ARRAYAGG` in standard SQL, under the spelling the target database documents. A database without them builds the JSON with its own query syntax, written by hand.
 
-H2 does not support JSON aggregation functions. Run tests that use JSON aggregation on the target database with `@StormTest(database = POSTGRESQL, ...)` (or `MYSQL`, `MARIADB`, `MSSQL_SERVER`, `ORACLE`; a Testcontainers-managed container, see /storm-setup), or verify only the generated SQL using `SqlCapture` without executing the query.
+**Run tests that use JSON aggregation on the project's database.** The in-memory test database has no JSON aggregate functions. Use `@StormTest(database = ..., ...)` with the constant for the project's database, which runs the test in a Testcontainers-managed container (see /storm-setup). Alternatively, verify only the generated SQL with `SqlCapture`, without executing the query.
 
 ## Rules
 
 - Use JSON for truly dynamic or denormalized data, not to avoid proper schema design.
-- JSON aggregation is suitable for moderate-size collections (< 100 items, < 1MB). For large or unbounded collections, use separate queries.
+- JSON aggregation suits moderate-size collections (< 100 items, < 1MB). For large or unbounded collections, use separate queries.
 - `@Json` fields are harder to filter and index than normalized columns. Consider query patterns before choosing JSON.
-- Always check the target database dialect before writing JSON aggregation queries. The function names and syntax vary.
+- Always ask or detect the target database dialect before writing JSON aggregation queries. The function names and syntax vary.
