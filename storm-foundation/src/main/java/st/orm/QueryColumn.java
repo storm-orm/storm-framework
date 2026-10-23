@@ -30,13 +30,16 @@ import java.lang.annotation.Target;
  * value to give it.
  *
  * <pre>{@code
- * @QueryColumn(field = "titleFolded", type = String.class)
+ * @QueryColumn(field = "titleFolded", type = String.class, function = "fold_accents")
  * record Movie(@PK Integer id, String title, Integer year) implements Entity<Integer> {}
  *
  * orm.entity(Movie.class).select()
  *     .where(it -> it.search(input, Movie_.titleFolded))
  *     .getResultList();
  * }</pre>
+ *
+ * <p>The search compares {@code LOWER(m.title_folded) LIKE LOWER(fold_accents(?))}: the column as stored, the input
+ * folded by the database through the {@link #function()} the column names.</p>
  *
  * <p>The generated {@code Movie_.titleFolded} is a {@code Metamodel<Movie, String>} and goes wherever a column does:
  * {@code where}, {@code orderBy}, {@code orderFirst}, {@code search} and {@code suggest}, a {@link SqlFunction}, a
@@ -80,4 +83,17 @@ public @interface QueryColumn {
      * keyset sort field, as a nullable field is.
      */
     boolean nullable() default false;
+
+    /**
+     * The SQL function whose result the column stores, such as {@code fold_accents} for a generated column holding
+     * {@code fold_accents(title)}. A value the column is compared with passes through it, on the value side only:
+     * {@code title_folded = fold_accents(?)}. The column is read as stored, which is what its index holds, and the
+     * database computes the value in the same statement, so a caller passes the input as it is. It applies wherever
+     * the column is compared with a value: the comparison operators, {@code IN}, {@code BETWEEN}, the text operators,
+     * {@code search}, {@code suggest} and {@code orderFirst}; a pattern passes through it too, so the function must
+     * leave the wildcards and the escape character as they are. A position of a keyset scroll holds the stored value
+     * and is compared as it is. A SQL identifier, optionally qualified by a schema, as {@link SqlFunction} takes.
+     * Empty for a column compared with a value as it is.
+     */
+    String function() default "";
 }

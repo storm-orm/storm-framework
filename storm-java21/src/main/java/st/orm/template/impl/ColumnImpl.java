@@ -52,6 +52,7 @@ public record ColumnImpl(
         boolean updatable,
         boolean version,
         boolean ref,
+        String function,
         Metamodel<Data, ?> metamodel
 ) implements Column {
 
@@ -70,6 +71,7 @@ public record ColumnImpl(
                 column.updatable(),
                 column.version(),
                 column.ref(),
+                column.function(),
                 column.metamodel()
         );
     }

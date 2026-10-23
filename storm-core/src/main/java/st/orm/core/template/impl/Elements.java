@@ -195,12 +195,15 @@ public final class Elements {
      * When the metamodel is {@code null}, the object is matched against the table's primary key.
      *
      * <p>{@code indexable} is {@code false} for a comparison that does not select rows, such as the condition an
-     * {@code orderFirst} ranks the rows by: an index on its column spares no read, so the comparison asks for none.</p>
+     * {@code orderFirst} ranks the rows by: an index on its column spares no read, so the comparison asks for none.
+     * {@code fromRow} is {@code true} for a value read from a row of the table, as a keyset position holds one: it is
+     * in the column's own form already and is compared as it is, without the function a query column names for the
+     * values a caller supplies.</p>
      */
     public record ObjectExpression(@Nullable Metamodel<?, ?> metamodel, Operator operator, Object object,
-                                   boolean indexable) implements Expression {
+                                   boolean indexable, boolean fromRow) implements Expression {
         public ObjectExpression(@Nullable Metamodel<?, ?> metamodel, Operator operator, Object object) {
-            this(metamodel, operator, object, true);
+            this(metamodel, operator, object, true, false);
         }
         public ObjectExpression(Operator operator, Object object) {
             this(null, operator, object);
@@ -213,7 +216,7 @@ public final class Elements {
          * Returns this comparison as one that does not select rows, and so asks no index for its column.
          */
         public ObjectExpression ranking() {
-            return indexable ? new ObjectExpression(metamodel, operator, object, false) : this;
+            return indexable ? new ObjectExpression(metamodel, operator, object, false, fromRow) : this;
         }
         public ObjectExpression {
             requireNonNull(object, "object");

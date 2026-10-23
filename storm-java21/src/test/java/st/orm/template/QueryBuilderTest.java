@@ -1346,5 +1346,9 @@ public class QueryBuilderTest {
         assertEquals(List.of("last_name_folded"), model.queryColumns().stream().map(Column::name).toList());
         assertTrue(model.columns().stream().noneMatch(column -> column.name().equals("last_name_folded")));
         assertThrows(UnsupportedOperationException.class, () -> Owner_.lastNameFolded.getValue(owners.getFirst()));
+        // The query column names lower as the function that computed it, so the value side is lowered by the database.
+        assertEquals("lower", model.queryColumns().getFirst().function());
+        List<Owner> upperCased = orm.entity(Owner.class).select().where(Owner_.lastNameFolded, EQUALS, "DAVIS").getResultList();
+        assertEquals(List.of("Betty", "Harold"), upperCased.stream().map(Owner::firstName).sorted().toList());
     }
 }

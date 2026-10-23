@@ -151,6 +151,16 @@ public interface Column {
     boolean ref();
 
     /**
+     * Returns the SQL function whose result a query column stores, which a value compared with the column passes
+     * through on the value side: {@code title_folded = fold_accents(?)}. Empty for a column compared with a value as
+     * it is, which every column a field maps is.
+     *
+     * @return the function's name, or an empty string.
+     * @since 1.16
+     */
+    String function();
+
+    /**
      * Returns the metamodel for this element.
      *
      * <p>In case of a foreign key relationship, this metamodel represents the foreign key column on the referencing

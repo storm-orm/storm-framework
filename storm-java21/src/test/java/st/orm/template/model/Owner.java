@@ -6,7 +6,7 @@ import st.orm.PK;
 import st.orm.QueryColumn;
 import st.orm.Version;
 
-@QueryColumn(field = "lastNameFolded", type = String.class)
+@QueryColumn(field = "lastNameFolded", type = String.class, function = "lower")
 public record Owner(
         @PK Integer id,
         String firstName,

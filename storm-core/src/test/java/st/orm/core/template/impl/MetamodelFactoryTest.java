@@ -359,4 +359,12 @@ class MetamodelFactoryTest {
                 () -> MetamodelFactory.of(EntityWithQueryColumn.class, "unknown.nameFolded"));
         assertTrue(exception.getMessage().contains("unknown.nameFolded"), exception.getMessage());
     }
+
+    @Test
+    void testInlineRecordWithoutAUniqueConstraintIsNotNullable() {
+        Metamodel<EntityWithInline, InlineAddress> metamodel = MetamodelFactory.of(EntityWithInline.class, "address");
+
+        // No unique constraint restricts the inline record's NULL values, so nothing makes it nullable.
+        assertFalse(MetamodelFactory.isNullable(metamodel));
+    }
 }

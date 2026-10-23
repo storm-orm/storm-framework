@@ -20,6 +20,7 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static st.orm.Operator.EQUALS;
+import static st.orm.Operator.IN;
 import static st.orm.core.template.SqlInterceptor.observe;
 import static st.orm.core.template.TemplateString.raw;
 
@@ -38,6 +39,7 @@ import st.orm.PK;
 import st.orm.PersistenceException;
 import st.orm.QueryColumn;
 import st.orm.Scrollable;
+import st.orm.SqlFunction;
 import st.orm.core.model.Owner;
 import st.orm.core.model.Owner_;
 import st.orm.core.model.Pet;
@@ -156,7 +158,7 @@ public class QueryColumnIntegrationTest {
     @Test
     public void modelListsTheQueryColumnApart() throws Exception {
         var model = orm().entity(Owner.class).model();
-        assertEquals(1, model.queryColumns().size());
+        assertEquals(List.of("last_name_folded", "last_name_upper"), model.queryColumns().stream().map(st.orm.core.template.Column::name).toList());
         var column = model.queryColumns().getFirst();
         assertEquals("last_name_folded", column.name());
         assertEquals(0, column.index());
@@ -203,5 +205,88 @@ public class QueryColumnIntegrationTest {
             messages.add(String.valueOf(cause.getMessage()));
         }
         assertTrue(messages.stream().anyMatch(message -> message.contains("which field 'name' maps")), messages.toString());
+    }
+
+    // A query column that names the function which computed it: owner.last_name_upper stores upper(last_name).
+
+    @Test
+    public void queryColumnFunctionFoldsTheValueInTheStatement() {
+        List<String> statements = new ArrayList<>();
+        List<Owner> owners = observe(sql -> statements.add(sql.statement().replaceAll("\\s+", " ")),
+                () -> orm().entity(Owner.class).select().where(Owner_.lastNameUpper, EQUALS, "davis").getResultList());
+        assertEquals(List.of("Betty", "Harold"), firstNames(owners));
+        // The column is read as stored; the value passes through the function.
+        assertTrue(statements.getFirst().contains("last_name_upper = upper(?)"), statements.getFirst());
+    }
+
+    @Test
+    public void queryColumnFunctionAppliesToSearchAndToInLists() {
+        List<String> statements = new ArrayList<>();
+        List<Owner> searched = observe(sql -> statements.add(sql.statement().replaceAll("\\s+", " ")),
+                () -> orm().entity(Owner.class).select().where(it -> PredicateBuilderFactory.<Owner, Owner, Integer>search("dav", List.of(Owner_.lastNameUpper))).getResultList());
+        assertEquals(List.of("Betty", "Harold"), firstNames(searched));
+        assertTrue(statements.getFirst().contains("LIKE LOWER(upper(?)) ESCAPE '!'"), statements.getFirst());
+        List<Owner> listed = observe(sql -> statements.add(sql.statement().replaceAll("\\s+", " ")),
+                () -> orm().entity(Owner.class).select().where(Owner_.lastNameUpper, IN, List.of("davis", "franklin")).getResultList());
+        assertEquals(List.of("Betty", "George", "Harold"), firstNames(listed));
+        assertTrue(statements.getLast().contains("IN (upper(?), upper(?))"), statements.getLast());
+    }
+
+    @Test
+    public void queryColumnFunctionAppliesToOrderFirst() {
+        List<String> statements = new ArrayList<>();
+        List<Owner> owners = observe(sql -> statements.add(sql.statement().replaceAll("\\s+", " ")),
+                () -> orm().entity(Owner.class).select()
+                        .orderFirst(it -> it.where(Owner_.lastNameUpper, EQUALS, "davis"))
+                        .orderBy(Owner_.id)
+                        .getResultList());
+        assertEquals(List.of("Davis", "Davis"), owners.subList(0, 2).stream().map(Owner::lastName).toList());
+        assertTrue(statements.getFirst().contains("upper(?)"), statements.getFirst());
+    }
+
+    @Test
+    public void queryColumnFunctionWrapsInsideASqlFunctionCall() {
+        SqlFunction<String> lower = SqlFunction.of("lower");
+        List<String> statements = new ArrayList<>();
+        List<Owner> owners = observe(sql -> statements.add(sql.statement().replaceAll("\\s+", " ")),
+                () -> orm().entity(Owner.class).select().where(lower.apply(Owner_.lastNameUpper), EQUALS, "Davis").getResultList());
+        assertEquals(List.of("Betty", "Harold"), firstNames(owners));
+        // The column's own function is applied to the value first, the call around both sides after.
+        assertTrue(statements.getFirst().contains("lower(o.last_name_upper) = lower(upper(?))"), statements.getFirst());
+    }
+
+    @Test
+    public void keysetPositionIsComparedAsStored() {
+        List<String> statements = new ArrayList<>();
+        List<Owner> ordered = orm().entity(Owner.class).select().orderBy(Owner_.lastName).orderBy(Owner_.id).getResultList();
+        var first = orm().entity(Owner.class).select().scroll(Scrollable.of(Owner_.id, 3).sortBy(Owner_.lastNameUpper));
+        var second = observe(sql -> statements.add(sql.statement().replaceAll("\\s+", " ")),
+                () -> orm().entity(Owner.class).select().scroll(first.next()));
+        assertEquals(ordered.subList(0, 3), first.content());
+        assertEquals(ordered.subList(3, 6), second.content());
+        // The position holds the value the previous window read from the column, so no function folds it again.
+        assertTrue(statements.getFirst().contains("last_name_upper > ?"), statements.getFirst());
+        assertFalse(statements.getFirst().contains("upper(?)"), statements.getFirst());
+    }
+
+    @Test
+    public void modelReportsTheQueryColumnFunction() throws Exception {
+        var model = orm().entity(Owner.class).model();
+        assertEquals("upper", model.getColumns(Owner_.lastNameUpper).getFirst().function());
+        assertEquals("", model.getColumns(Owner_.lastNameFolded).getFirst().function());
+        assertEquals("", model.getColumns(Owner_.lastName).getFirst().function());
+    }
+
+    @QueryColumn(field = "nameFolded", type = String.class, function = "not a function")
+    public record MisnamedFunctionQueryColumn(@PK Integer id, String name) implements Entity<Integer> {}
+
+    @Test
+    public void queryColumnFunctionMustBeAnIdentifier() {
+        var exception = assertThrows(PersistenceException.class, () -> orm().entity(MisnamedFunctionQueryColumn.class).model());
+        var messages = new ArrayList<String>();
+        for (Throwable cause = exception; cause != null; cause = cause.getCause()) {
+            messages.add(String.valueOf(cause.getMessage()));
+        }
+        assertTrue(messages.stream().anyMatch(message -> message.contains("not a SQL identifier")), messages.toString());
     }
 }

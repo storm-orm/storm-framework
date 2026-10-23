@@ -2293,6 +2293,10 @@ internal open class QueryBuilderTest(
         model.queryColumns.map { it.name } shouldBe listOf("last_name_folded")
         model.columns.none { it.name == "last_name_folded" } shouldBe true
         shouldThrow<UnsupportedOperationException> { lastNameFolded.getValue(owners.first()) }
+        // The query column names lower as the function that computed it, so the value side is lowered by the database.
+        model.queryColumns.first().function shouldBe "lower"
+        orm.entity(Owner::class).select().where(lastNameFolded eq "DAVIS").resultList
+            .map { it.firstName }.sorted() shouldBe listOf("Betty", "Harold")
     }
 
     @Test

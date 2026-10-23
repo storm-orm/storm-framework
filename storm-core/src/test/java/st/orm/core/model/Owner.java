@@ -28,6 +28,7 @@ import st.orm.Version;
  */
 @Builder(toBuilder = true)
 @QueryColumn(field = "lastNameFolded", type = String.class)
+@QueryColumn(field = "lastNameUpper", type = String.class, function = "upper")
 public record Owner(
         @PK Integer id,
         String firstName,
