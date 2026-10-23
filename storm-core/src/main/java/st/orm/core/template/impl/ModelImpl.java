@@ -836,8 +836,7 @@ public final class ModelImpl<E extends Data, ID> implements Model<E, ID> {
             case LocalTime it -> Time.valueOf(it);
             case Calendar it -> new Timestamp(it.getTimeInMillis());
             case java.util.Date it -> new Timestamp(it.getTime());
-            // A query column has no record field, and so no @DbEnum: its enum values compare by name.
-            case Enum<?> it -> switch (ofNullable(column.index() > 0 ? fields.get(column.index() - 1).getAnnotation(DbEnum.class) : null)
+            case Enum<?> it -> switch (ofNullable(fields.get(column.index() - 1).getAnnotation(DbEnum.class))
                     .map(DbEnum::value)
                     .orElse(NAME)) {
                 case NAME -> it.name();

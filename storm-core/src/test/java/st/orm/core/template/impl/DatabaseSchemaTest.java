@@ -8,6 +8,8 @@ import java.lang.reflect.Proxy;
 import java.sql.Connection;
 import java.sql.DatabaseMetaData;
 import java.sql.DriverManager;
+import java.sql.ResultSet;
+import java.sql.ResultSetMetaData;
 import java.sql.SQLException;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -190,6 +192,54 @@ class DatabaseSchemaTest {
 
             DbColumn nameColumn = schema.getColumn("generated_test", "name").orElseThrow();
             assertFalse(nameColumn.generated());
+        }
+    }
+
+    /**
+     * Wraps the connection so the column metadata carries no {@code IS_GENERATEDCOLUMN} column, the way a driver
+     * that predates it reports columns.
+     */
+    private Connection withoutGeneratedColumnMetadata() throws SQLException {
+        Connection delegate = getConnection();
+        DatabaseMetaData realMetaData = delegate.getMetaData();
+        DatabaseMetaData metaData = (DatabaseMetaData) Proxy.newProxyInstance(
+                DatabaseMetaData.class.getClassLoader(), new Class<?>[]{DatabaseMetaData.class},
+                (proxy, method, args) -> {
+                    Object result = invoke(method, realMetaData, args);
+                    if (!method.getName().equals("getColumns")) {
+                        return result;
+                    }
+                    ResultSet columns = (ResultSet) result;
+                    ResultSetMetaData realColumnsMetaData = columns.getMetaData();
+                    ResultSetMetaData columnsMetaData = (ResultSetMetaData) Proxy.newProxyInstance(
+                            ResultSetMetaData.class.getClassLoader(), new Class<?>[]{ResultSetMetaData.class},
+                            (p, m, a) -> {
+                                Object value = invoke(m, realColumnsMetaData, a);
+                                return m.getName().equals("getColumnLabel") && "IS_GENERATEDCOLUMN".equalsIgnoreCase(String.valueOf(value))
+                                        ? "UNREPORTED"
+                                        : value;
+                            });
+                    return Proxy.newProxyInstance(
+                            ResultSet.class.getClassLoader(), new Class<?>[]{ResultSet.class},
+                            (p, m, a) -> m.getName().equals("getMetaData") ? columnsMetaData : invoke(m, columns, a));
+                });
+        return (Connection) Proxy.newProxyInstance(
+                Connection.class.getClassLoader(), new Class<?>[]{Connection.class},
+                (proxy, method, args) -> method.getName().equals("getMetaData")
+                        ? metaData
+                        : invoke(method, delegate, args));
+    }
+
+    @Test
+    void testAGeneratedColumnIsNotReportedWithoutTheMetadataColumn() throws SQLException {
+        execute("CREATE TABLE generated_test (id INTEGER AUTO_INCREMENT, name VARCHAR(100) NOT NULL, name_folded VARCHAR(100) GENERATED ALWAYS AS (LOWER(name)) NOT NULL, PRIMARY KEY (id))");
+        try (Connection connection = withoutGeneratedColumnMetadata()) {
+            DatabaseSchema schema = DatabaseSchema.read(connection);
+
+            // The driver says nothing about generation, so the column reads as an ordinary one.
+            DbColumn foldedColumn = schema.getColumn("generated_test", "name_folded").orElseThrow();
+            assertFalse(foldedColumn.generated());
+            assertFalse(foldedColumn.nullable());
         }
     }
 
