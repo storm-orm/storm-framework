@@ -10,9 +10,11 @@ import static st.orm.Operator.GREATER_THAN;
 import static st.orm.Operator.IN;
 import static st.orm.Operator.NOT_EQUALS;
 import static st.orm.Operator.NOT_IN;
+import static st.orm.core.template.SqlInterceptor.observe;
 import static st.orm.core.template.TemplateString.raw;
 
 import java.time.LocalDate;
+import java.util.ArrayList;
 import java.util.List;
 import javax.sql.DataSource;
 import org.junit.jupiter.api.Test;
@@ -25,6 +27,8 @@ import st.orm.PersistenceException;
 import st.orm.Scrollable;
 import st.orm.SqlTemplateException;
 import st.orm.core.model.Pet;
+import st.orm.core.model.PetPair;
+import st.orm.core.model.PetPair_;
 import st.orm.core.model.Pet_;
 import st.orm.core.model.Specialty;
 import st.orm.core.model.Vet;
@@ -651,6 +655,27 @@ public class BuilderPreparedStatementIntegrationTest {
         for (int i = 0; i < tokenWindow.content().size(); i++) {
             assertEquals(tokenWindow.content().get(i).id(), cursorWindow.content().get(i).id());
         }
+    }
+
+    @Test
+    public void testScrollKeyThroughOneOfTwoForeignKeysToOneTable() {
+        // PetPair holds two foreign keys to pet. The key names pet's id through the first one, which the ORDER BY
+        // collapses onto first_id; the keyset predicate of the next window must resolve it to that column too.
+        // 3 pairs with first pets 1, 3 and 5.
+        var firstWindow = ORMTemplate.of(dataSource)
+                .selectFrom(PetPair.class)
+                .scroll(Scrollable.of(PetPair_.first.id, 2));
+        assertEquals(List.of(1, 3), firstWindow.content().stream().map(pair -> pair.first().id()).toList());
+        assertTrue(firstWindow.hasNext());
+
+        var statements = new ArrayList<String>();
+        var nextWindow = observe(sql -> statements.add(sql.statement().replaceAll("\\s+", " ")), () -> ORMTemplate.of(dataSource)
+                .selectFrom(PetPair.class)
+                .scroll(Scrollable.of(PetPair_.first.id, 2).from(firstWindow.nextCursor())));
+        assertEquals(List.of(5), nextWindow.content().stream().map(pair -> pair.first().id()).toList());
+        assertFalse(nextWindow.hasNext());
+        // The predicate compares the foreign key column of pet_pair, as the ORDER BY does, not the id of a joined pet.
+        assertTrue(statements.getFirst().contains("first_id > ?"), statements.getFirst());
     }
 
     @Test
