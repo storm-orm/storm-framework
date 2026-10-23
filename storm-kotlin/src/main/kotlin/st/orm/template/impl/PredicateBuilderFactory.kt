@@ -70,17 +70,19 @@ internal fun <T : Data, R : Any> createSearch(
 ): PredicateBuilder<T, R, *> = PredicateBuilderImpl(PredicateBuilderFactory.search<T, R, Any>(input, paths))
 
 /**
- * Creates a predicate that matches the terms of a search input the dialect's substring index serves in at least one
- * of the paths, ignoring case, and no rows when the input holds none.
+ * Creates a predicate that matches the terms of a search input the dialect's substring index serves, and the search
+ * box does not ignore, in at least one of the paths, ignoring case, and no rows when the input holds none.
  *
  * @param input the search input.
+ * @param ignore the terms to ignore, compared ignoring case.
  * @param paths the text columns to search, at least one.
  * @return a new instance of [PredicateBuilder]
  */
 internal fun <T : Data, R : Any> createSuggest(
     input: String,
+    ignore: Set<String>,
     paths: List<Metamodel<*, String>>,
-): PredicateBuilder<T, R, *> = PredicateBuilderImpl(PredicateBuilderFactory.suggest<T, R, Any>(input, paths))
+): PredicateBuilder<T, R, *> = PredicateBuilderImpl(PredicateBuilderFactory.suggest<T, R, Any>(input, ignore, paths))
 
 /**
  * Combines two predicates using an AND condition, rooting the result at the operands' least common root.

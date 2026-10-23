@@ -25,6 +25,8 @@ import static st.orm.template.Templates.column;
 
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
+import java.util.function.Function;
 import java.util.stream.Stream;
 import javax.sql.DataSource;
 import org.junit.jupiter.api.Test;
@@ -774,6 +776,20 @@ public class QueryBuilderTest {
                 .semiJoin(Pet.class).on(Owner.class)
                 .where(it -> it.suggest(input, Owner_.lastName, Pet_.name))
                 .getResultList().stream().map(Owner::firstName).sorted().toList();
+    }
+
+    @Test
+    public void testSuggestIgnoresTheWordsTheSearchBoxNames() {
+        // data.sql: owner 1 (Betty Davis) has pet Leo; owner 4 (Harold Davis) has pet Iggy.
+        var ignore = Set.of("davis", "the");
+        Function<String, List<String>> firstNames = input -> orm.entity(Owner.class).select()
+                .semiJoin(Pet.class).on(Owner.class)
+                .where(it -> it.suggest(input, ignore, Owner_.lastName, Pet_.name))
+                .getResultList().stream().map(Owner::firstName).sorted().toList();
+        assertEquals(List.of("Betty"), firstNames.apply("The Davis leo"));
+        assertEquals(List.of(), firstNames.apply("the davis"));
+        assertEquals(List.of(), firstNames.apply(""));
+        assertEquals(List.of("Betty", "Harold"), semiJoinSuggestFirstNames(orm, "davis"));
     }
 
     private List<String> semiJoinSearchFirstNames(String input) {

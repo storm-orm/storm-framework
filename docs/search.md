@@ -100,6 +100,49 @@ List<Movie> suggestions = orm.entity(Movie.class)
 
 Every statement `suggest` renders is therefore served by the substring index, however the user types; the trade-off is that a short word does not narrow the suggestions. The search page the box leads to keeps `search`, which matches every word. Which words are short is the dialect's to say: three characters on PostgreSQL, whose trigram index needs three, and none on the other databases, where `suggest` matches as `search` does, except that an empty input matches no rows. The `storm.search.min_term_length` property sets another length, for an index of a different kind.
 
+### Ignoring Words
+
+A word the index serves can be as useless as a short one when it occurs in a large share of the rows: `the` is three characters, so the trigram index serves it, but it matches a third of the titles in a movie catalog. Typed alone it returns a page of noise, and next to another word it narrows nothing. Which words those are depends on the column's content, `the` and `of` for titles, `de` and `van` for names, so the search box names them, as it names the columns. `suggest` takes the words to ignore after the input:
+
+<Tabs groupId="language">
+<TabItem value="kotlin" label="Kotlin" default>
+
+```kotlin
+val titleNoise = setOf("the", "a", "of")
+
+val suggestions = orm.entity(Movie::class)
+    .select()
+    .where(suggest(input, titleNoise, Movie_.title, Movie_.director.name))
+    .limit(6)
+    .resultList
+```
+
+</TabItem>
+<TabItem value="java" label="Java">
+
+```java
+private static final Set<String> TITLE_NOISE = Set.of("the", "a", "of");
+
+List<Movie> suggestions = orm.entity(Movie.class)
+    .select()
+    .where(it -> it.suggest(input, TITLE_NOISE, Movie_.title, Movie_.director.name))
+    .limit(6)
+    .getResultList();
+```
+
+</TabItem>
+</Tabs>
+
+An ignored word is treated as a short word is: it takes no part in the predicate, compared ignoring case as the words themselves match, and an input without a remaining word matches no rows. A quoted phrase is one word, ignored when it equals an ignored word, not when it contains one.
+
+| Input | Words `suggest` matches |
+|-------|----------|
+| `the god` | `god`: finds "The Godfather" and "City of God" |
+| `The` | none: no rows |
+| `"the good"` | `the good`: the phrase is one word |
+
+The set is a constant next to the box that uses it, typed by hand for most boxes. Where the catalog is large enough to measure, a query over the column counts the words and the set holds those that occur in more rows than the box shows. `search` takes no such set: on a results page a frequent word next to a longer one costs nothing and still narrows correctly, and a page of every title with `the` in it is a broad but legitimate query.
+
 ## Searching Related Rows
 
 Sometimes the user remembers something about a related row rather than the row itself: the front desk knows the dog is called Leo, not the owner's last name. To search the rows related to each row, semi-join the related table and name its column next to the row's own. Every owner comes back once, however many pets match:
