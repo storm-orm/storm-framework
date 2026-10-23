@@ -2261,6 +2261,22 @@ internal open class QueryBuilderTest(
     }
 
     @Test
+    fun `suggest should ignore the words the search box names`() {
+        // data.sql: owner 1 (Betty Davis) has pet Leo; owner 4 (Harold Davis) has pet Iggy.
+        val ownerRepo = orm.entity(Owner::class)
+        val lastName = metamodel<Owner, String>(ownerRepo.model, "last_name")
+        val petName = metamodel<Pet, String>(orm.entity(Pet::class).model, "name")
+        val ignore = setOf("davis", "the")
+        fun firstNames(input: String): List<String> = ownerRepo.select()
+            .semiJoin<Pet>().on<Owner>()
+            .where(suggest(input, ignore, lastName, petName))
+            .resultList.map { it.firstName }.sorted()
+        firstNames("The Davis leo") shouldBe listOf("Betty")
+        firstNames("the davis") shouldBe emptyList()
+        firstNames("") shouldBe emptyList()
+    }
+
+    @Test
     fun `orderFirst should put the matching rows first in the order of the calls`() {
         val ownerRepo = orm.entity(Owner::class)
         val lastName = metamodel<Owner, String>(ownerRepo.model, "last_name")

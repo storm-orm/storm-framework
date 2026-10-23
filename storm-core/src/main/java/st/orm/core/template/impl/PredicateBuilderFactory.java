@@ -15,12 +15,15 @@
  */
 package st.orm.core.template.impl;
 
+import static java.util.Locale.ROOT;
 import static java.util.Objects.requireNonNull;
+import static java.util.stream.Collectors.toSet;
 import static st.orm.Operator.CONTAINS_IGNORE_CASE;
 import static st.orm.core.template.TemplateString.wrap;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Set;
 import st.orm.Data;
 import st.orm.Metamodel;
 import st.orm.Operator;
@@ -115,7 +118,7 @@ public interface PredicateBuilderFactory {
      */
     static <T extends Data, R, ID> PredicateBuilder<T, R, ID> search(String input,
                                                                      List<? extends Metamodel<?, String>> paths) {
-        return words(input, paths, false);
+        return words(input, Set.of(), paths, false);
     }
 
     /**
@@ -136,14 +139,38 @@ public interface PredicateBuilderFactory {
      */
     static <T extends Data, R, ID> PredicateBuilder<T, R, ID> suggest(String input,
                                                                       List<? extends Metamodel<?, String>> paths) {
-        return words(input, paths, true);
+        return suggest(input, Set.of(), paths);
     }
 
     /**
-     * Creates the predicate of {@link #search(String, List)} or {@link #suggest(String, List)}. Each word is kept
-     * apart until the query is built, since which words a substring index serves depends on the dialect.
+     * Creates the predicate of {@link #suggest(String, List)}, ignoring the given terms as well: a term that equals
+     * one of them, ignoring case, takes no part in the predicate, as a term the index does not serve takes none, so an
+     * input of ignored terms alone matches no rows. A search box names the words that occur in a large share of its
+     * rows, such as "the" in a catalog of titles, which the index serves but which narrow nothing.
+     *
+     * @param input the search input, as a search box receives it.
+     * @param ignore the terms to ignore, compared ignoring case.
+     * @param paths the text columns to search, at least one.
+     * @param <T> the type of the table being queried.
+     * @param <R> the type of the result.
+     * @param <ID> the type of the primary key.
+     * @return the predicate.
+     * @since 1.16
+     */
+    static <T extends Data, R, ID> PredicateBuilder<T, R, ID> suggest(String input,
+                                                                      Set<String> ignore,
+                                                                      List<? extends Metamodel<?, String>> paths) {
+        requireNonNull(ignore, "ignore");
+        return words(input, ignore, paths, true);
+    }
+
+    /**
+     * Creates the predicate of {@link #search(String, List)} or {@link #suggest(String, Set, List)}. Each word is kept
+     * apart until the query is built, since which words a substring index serves depends on the dialect; an ignored
+     * word is left out here, since no dialect serves it.
      */
     private static <T extends Data, R, ID> PredicateBuilder<T, R, ID> words(String input,
+                                                                            Set<String> ignore,
                                                                             List<? extends Metamodel<?, String>> paths,
                                                                             boolean suggest) {
         requireNonNull(input, "input");
@@ -151,6 +178,10 @@ public interface PredicateBuilderFactory {
             throw new IllegalArgumentException("%s needs at least one path to search.".formatted(suggest ? "suggest" : "search"));
         }
         List<String> terms = SearchTerms.parse(input);
+        if (!ignore.isEmpty()) {
+            Set<String> ignored = ignore.stream().map(word -> word.toLowerCase(ROOT)).collect(toSet());
+            terms = terms.stream().filter(term -> !ignored.contains(term.toLowerCase(ROOT))).toList();
+        }
         var words = new ArrayList<PredicateNode>(terms.size());
         for (String term : terms) {
             var matches = new ArrayList<PredicateNode>(paths.size());

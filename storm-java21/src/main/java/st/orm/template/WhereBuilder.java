@@ -21,6 +21,7 @@ import static st.orm.Operator.IN;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Set;
 import st.orm.Data;
 import st.orm.Navigable;
 import st.orm.Operator;
@@ -286,10 +287,33 @@ public abstract class WhereBuilder<T extends Data, R, ID> implements SubqueryTem
     public final PredicateBuilder<T, R, ID> suggest(String input,
                                                     Navigable<? extends T, String> path,
                                                     Navigable<? extends T, String>... more) {
+        return suggest(input, Set.of(), path, more);
+    }
+
+    /**
+     * Matches the words of a search box that queries as the user types against one or more text columns, as
+     * {@link #suggest(String, Navigable, Navigable[])} does, ignoring the given words as well. A word that equals one
+     * of them, ignoring case, takes no part in the predicate, as a word the index does not serve takes none, so an
+     * input of ignored words alone matches no rows. A search box names the words that occur in a large share of its
+     * rows, such as "the" in a catalog of titles, which the index serves but which narrow nothing:
+     * {@code suggest("the god", Set.of("the", "a", "of"), Movie_.title)} matches on "god" alone.
+     *
+     * @param input  the search input, as a search box receives it.
+     * @param ignore the words to ignore, compared ignoring case.
+     * @param path   the first text column to search.
+     * @param more   further text columns to search.
+     * @return the predicate builder.
+     * @since 1.16
+     */
+    @SafeVarargs
+    public final PredicateBuilder<T, R, ID> suggest(String input,
+                                                    Set<String> ignore,
+                                                    Navigable<? extends T, String> path,
+                                                    Navigable<? extends T, String>... more) {
         var paths = new ArrayList<Navigable<? extends T, String>>(more.length + 1);
         paths.add(path);
         paths.addAll(List.of(more));
-        return suggestImpl(input, paths);
+        return suggestImpl(input, ignore, paths);
     }
 
     /**
@@ -327,12 +351,16 @@ public abstract class WhereBuilder<T extends Data, R, ID> implements SubqueryTem
     protected abstract PredicateBuilder<T, R, ID> searchImpl(String input, List<Navigable<? extends T, String>> paths);
 
     /**
-     * Matches the words of a search input that the database's substring index serves against the given text columns.
+     * Matches the words of a search input that the database's substring index serves, and that the search box does
+     * not ignore, against the given text columns.
      *
-     * @param input the search input.
-     * @param paths the text columns to search, at least one.
+     * @param input  the search input.
+     * @param ignore the words to ignore, compared ignoring case.
+     * @param paths  the text columns to search, at least one.
      * @return the predicate builder.
      * @since 1.16
      */
-    protected abstract PredicateBuilder<T, R, ID> suggestImpl(String input, List<Navigable<? extends T, String>> paths);
+    protected abstract PredicateBuilder<T, R, ID> suggestImpl(String input,
+                                                              Set<String> ignore,
+                                                              List<Navigable<? extends T, String>> paths);
 }

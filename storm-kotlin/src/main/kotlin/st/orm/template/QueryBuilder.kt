@@ -1776,7 +1776,28 @@ public fun <T : Data> suggest(
     input: String,
     path: Navigable<out T, String>,
     vararg more: Navigable<out T, String>,
-): PredicateBuilder<T, T, *> = createSuggest(input, listOf(path.asMetamodel()) + more.map { it.asMetamodel() })
+): PredicateBuilder<T, T, *> = suggest(input, emptySet(), path, *more)
+
+/**
+ * Creates a predicate that matches the words of a search box that queries as the user types against one or more text
+ * columns, as [suggest] does, ignoring the given words as well. A word that equals one of them, ignoring case, takes
+ * no part in the predicate, as a word the index does not serve takes none, so an input of ignored words alone matches
+ * no rows. A search box names the words that occur in a large share of its rows, such as "the" in a catalog of
+ * titles, which the index serves but which narrow nothing: `suggest("the god", setOf("the", "a", "of"), Movie_.title)`
+ * matches on "god" alone.
+ *
+ * @param input the search input, as a search box receives it.
+ * @param ignore the words to ignore, compared ignoring case.
+ * @param path the first text column to search.
+ * @param more further text columns to search.
+ * @since 1.16
+ */
+public fun <T : Data> suggest(
+    input: String,
+    ignore: Set<String>,
+    path: Navigable<out T, String>,
+    vararg more: Navigable<out T, String>,
+): PredicateBuilder<T, T, *> = createSuggest(input, ignore, listOf(path.asMetamodel()) + more.map { it.asMetamodel() })
 
 /**
  * Applies a SQL function to a column, for a query that names the expression an index is built on. The call is taken

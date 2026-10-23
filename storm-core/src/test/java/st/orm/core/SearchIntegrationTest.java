@@ -22,6 +22,7 @@ import static st.orm.core.template.SqlInterceptor.observe;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import javax.sql.DataSource;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -63,12 +64,17 @@ public class SearchIntegrationTest {
 
     @SafeVarargs
     private List<String> suggest(String input, int minimumLength, Metamodel<Owner, String>... paths) {
+        return suggest(input, Set.of(), minimumLength, paths);
+    }
+
+    @SafeVarargs
+    private List<String> suggest(String input, Set<String> ignore, int minimumLength, Metamodel<Owner, String>... paths) {
         var orm = ORMTemplate.of(dataSource,
                 StormConfig.of(Map.of(StormConfig.SEARCH_MIN_TERM_LENGTH, String.valueOf(minimumLength))));
         statements = new ArrayList<>();
         List<String> names = new ArrayList<>();
         observe(sql -> statements.add(sql.statement()), () -> orm.entity(Owner.class).select()
-                .where(it -> PredicateBuilderFactory.<Owner, Owner, Integer>suggest(input, List.of(paths)))
+                .where(it -> PredicateBuilderFactory.<Owner, Owner, Integer>suggest(input, ignore, List.of(paths)))
                 .getResultList()
                 .forEach(owner -> names.add(owner.firstName())));
         return names.stream().sorted().toList();
@@ -122,6 +128,24 @@ public class SearchIntegrationTest {
         assertEquals(List.of("Betty", "Harold"), suggest("da", 0, Owner_.lastName));
         assertEquals(List.of(), suggest("dav xy", 0, Owner_.lastName));
         assertEquals(List.of(), suggest("", 0, Owner_.lastName));
+    }
+
+    @Test
+    public void suggestIgnoresTheWordsTheSearchBoxNames() {
+        var ignore = Set.of("Davis", "the");
+        // An ignored word takes no part, whatever its case; alone, it matches no rows.
+        assertEquals(List.of("Betty", "Harold"), suggest("davis", 3, Owner_.lastName));
+        assertEquals(List.of(), suggest("davis", ignore, 3, Owner_.lastName));
+        assertEquals("1 <> 1", whereClause());
+        assertEquals(List.of(), suggest("DAVIS the", ignore, 3, Owner_.lastName));
+        // The other words match as before, each over every path.
+        assertEquals(List.of("Betty"), suggest("the davis betty", ignore, 3, Owner_.lastName, Owner_.firstName));
+        assertEquals(2, whereClause().split("LIKE").length - 1);
+        // A quoted phrase is one word, ignored when it equals an ignored word.
+        assertEquals(List.of(), suggest("\"Davis\"", ignore, 3, Owner_.lastName));
+        // Ignored on a dialect that treats every word alike as well.
+        assertEquals(List.of("Betty"), suggest("the betty", ignore, 0, Owner_.firstName));
+        assertEquals(List.of(), suggest("the", ignore, 0, Owner_.firstName));
     }
 
     @Test

@@ -24,6 +24,7 @@ import static st.orm.template.impl.StringTemplates.convert;
 
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 import java.util.function.Function;
 import java.util.stream.Stream;
 import org.jspecify.annotations.Nullable;
@@ -634,8 +635,10 @@ public final class QueryBuilderImpl<T extends Data, R, ID> extends QueryBuilder<
         }
 
         @Override
-        protected PredicateBuilder<TX, RX, IDX> suggestImpl(String input, List<Navigable<? extends TX, String>> paths) {
-            return new PredicateBuilderImpl<>(PredicateBuilderFactory.suggest(input, paths.stream().map(Navigable::asMetamodel).toList()));
+        protected PredicateBuilder<TX, RX, IDX> suggestImpl(String input,
+                                                            Set<String> ignore,
+                                                            List<Navigable<? extends TX, String>> paths) {
+            return new PredicateBuilderImpl<>(PredicateBuilderFactory.suggest(input, ignore, paths.stream().map(Navigable::asMetamodel).toList()));
         }
     }
 
