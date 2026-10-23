@@ -64,6 +64,7 @@ Generation rules:
    - IDENTITY (default): `val id: Int = 0`. Storm omits the PK on insert and retrieves the generated value.
    - SEQUENCE: `@PK(generation = SEQUENCE, sequence = "seq_name") val id: Long = 0`
    - NONE: `@PK(generation = NONE) val code: String` for natural keys.
+   - Key types: `Boolean`, `Int`, `Long`, `Short`, `String`, `UUID`, `BigInteger`, enums, `Ref`, `LocalDate`, `LocalDateTime` and `Instant` (`java.time`). Floating-point types, `OffsetDateTime`, `ZonedDateTime` and `java.util.Date` are rejected. A temporal key must be truncated to the column's precision before the entity is constructed, or a later update by that entity misses its row.
    - **Import `GenerationStrategy` values from the top-level enum:** `import st.orm.GenerationStrategy.NONE`, not `st.orm.PK.GenerationStrategy.NONE`. `GenerationStrategy` is a top-level enum in `st.orm`, not nested inside `PK`.
 
 3. Foreign keys (`@FK`):

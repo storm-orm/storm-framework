@@ -17,8 +17,9 @@ When Storm first encounters an entity or projection type, it inspects the record
 
 **Primary key rules:**
 
-- The `@PK` type must be one of: `boolean`, `int`, `long`, `short`, `String`, `UUID`, `BigInteger`, `Enum`, or `Ref`. Floating-point types (`float`, `double`, `BigDecimal`) are rejected because they cannot reliably serve as identity values.
+- The `@PK` type must be one of: `boolean`, `int`, `long`, `short`, `String`, `UUID`, `BigInteger`, `LocalDate`, `LocalDateTime`, `Instant`, `Enum`, or `Ref`. Floating-point types (`float`, `double`, `BigDecimal`) are rejected because they cannot reliably serve as identity values. `OffsetDateTime` and `ZonedDateTime` are rejected because the database does not store the offset, so a key would not equal itself after a read. The legacy `java.util.Date` family is rejected because it is mutable.
 - Compound keys (inline records annotated with `@PK`) follow the same type restrictions for each component.
+- A temporal key must hold a value at the precision the column stores. `LocalDateTime.now()` carries nanoseconds that a microsecond column drops, after which an update or delete by that entity misses its row. Truncate before constructing the entity: `Instant.now().truncatedTo(ChronoUnit.MICROS)`.
 
 **Foreign key rules:**
 

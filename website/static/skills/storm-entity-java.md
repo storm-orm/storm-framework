@@ -64,6 +64,7 @@ Generation rules:
    - IDENTITY (default): `@PK Integer id` with null on insert.
    - SEQUENCE: `@PK(generation = SEQUENCE, sequence = "seq_name") Long id`
    - NONE: `@PK(generation = NONE) String code` for natural keys.
+   - Key types: booleans, `int`, `long`, `short`, `String`, `UUID`, `BigInteger`, enums, `Ref`, `LocalDate`, `LocalDateTime` and `Instant`. Floating-point types, `OffsetDateTime`, `ZonedDateTime` and `java.util.Date` are rejected. A temporal key must be truncated to the column's precision before the entity is constructed, or a later update by that entity misses its row.
 
 3. Nullability:
    - **Record components are non-null by default, exactly like Kotlin. Mark nullable fields with `@Nullable`** (JSpecify `org.jspecify.annotations.Nullable`, `jakarta.annotation.Nullable`, or `javax.annotation.Nullable`). `@NullUnmarked` on a class or package restores nullable-by-default components for that scope.

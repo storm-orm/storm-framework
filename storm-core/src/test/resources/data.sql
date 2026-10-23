@@ -1,3 +1,6 @@
+drop table if exists calendar_day CASCADE;
+drop table if exists exchange_rate CASCADE;
+drop table if exists heartbeat CASCADE;
 drop table if exists appointment_report_review CASCADE;
 drop table if exists appointment_report CASCADE;
 drop table if exists appointment CASCADE;
@@ -56,6 +59,10 @@ create table appointment_report (appointment_id integer not null, report varchar
 create table appointment_report_review (id integer auto_increment, appointment_report_id integer not null, review varchar(255) not null, primary key (id));
 alter table appointment_report add constraint appointment_report_appointment_fk foreign key (appointment_id) references appointment (id);
 alter table appointment_report_review add constraint appointment_report_review_report_fk foreign key (appointment_report_id) references appointment_report (appointment_id);
+-- Tables keyed on a date or a timestamp: a simple date key, a compound key with a date component, and a timestamp key.
+create table calendar_day (calendar_date date not null, holiday boolean not null, primary key (calendar_date));
+create table exchange_rate (currency varchar(3) not null, rate_date date not null, rate double not null, primary key (currency, rate_date));
+create table heartbeat (recorded_at timestamp(6) not null, status varchar(255) not null, primary key (recorded_at));
 create table self_ref_node (id integer auto_increment, name varchar(255), parent_id integer, primary key (id));
 alter table self_ref_node add constraint self_ref_node_parent_fk foreign key (parent_id) references self_ref_node (id);
 create table cross_package_owner (id integer auto_increment, label varchar(255), score integer, primary key (id));
