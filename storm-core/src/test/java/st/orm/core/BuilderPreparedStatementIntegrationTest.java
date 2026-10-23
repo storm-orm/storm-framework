@@ -10,9 +10,11 @@ import static st.orm.Operator.GREATER_THAN;
 import static st.orm.Operator.IN;
 import static st.orm.Operator.NOT_EQUALS;
 import static st.orm.Operator.NOT_IN;
+import static st.orm.core.template.SqlInterceptor.observe;
 import static st.orm.core.template.TemplateString.raw;
 
 import java.time.LocalDate;
+import java.util.ArrayList;
 import java.util.List;
 import javax.sql.DataSource;
 import org.junit.jupiter.api.Test;
@@ -666,11 +668,14 @@ public class BuilderPreparedStatementIntegrationTest {
         assertEquals(List.of(1, 3), firstWindow.content().stream().map(pair -> pair.first().id()).toList());
         assertTrue(firstWindow.hasNext());
 
-        var nextWindow = ORMTemplate.of(dataSource)
+        var statements = new ArrayList<String>();
+        var nextWindow = observe(sql -> statements.add(sql.statement().replaceAll("\\s+", " ")), () -> ORMTemplate.of(dataSource)
                 .selectFrom(PetPair.class)
-                .scroll(Scrollable.of(PetPair_.first.id, 2).from(firstWindow.nextCursor()));
+                .scroll(Scrollable.of(PetPair_.first.id, 2).from(firstWindow.nextCursor())));
         assertEquals(List.of(5), nextWindow.content().stream().map(pair -> pair.first().id()).toList());
         assertFalse(nextWindow.hasNext());
+        // The predicate compares the foreign key column of pet_pair, as the ORDER BY does, not the id of a joined pet.
+        assertTrue(statements.getFirst().contains("first_id > ?"), statements.getFirst());
     }
 
     @Test

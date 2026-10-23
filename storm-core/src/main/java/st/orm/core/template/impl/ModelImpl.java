@@ -473,12 +473,13 @@ public final class ModelImpl<E extends Data, ID> implements Model<E, ID> {
         }
         if (columns.size() > 1) {
             // Get fully qualified matches. A foreign key column is registered under the key it carries as well, so
-            // a path naming that key ("movie.id") matches the column through its secondary metamodel: two foreign
-            // keys to one table then resolve to their own column instead of being ambiguous.
+            // a path naming that key ("movie.id") matches the column through its secondary metamodel, and each of
+            // two foreign keys to one table resolves to its own column.
+            String fieldPath = metamodel.fieldPath();
             var matches = columns.stream()
-                    .filter(column -> column.metamodel().fieldPath().equals(metamodel.fieldPath())
+                    .filter(column -> column.metamodel().fieldPath().equals(fieldPath)
                             || (column.secondaryMetamodel() != null
-                                && column.secondaryMetamodel().fieldPath().equals(metamodel.fieldPath())))
+                                && column.secondaryMetamodel().fieldPath().equals(fieldPath)))
                     .toList();
             if (!matches.isEmpty()) {
                 return matches;
