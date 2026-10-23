@@ -13,7 +13,7 @@ Compare Storm entities against the live database schema.
    - Entities without tables
    - Column type mismatches (incompatible types are errors; narrowing like Long mapped to INTEGER is a warning)
    - Missing columns (entity field has no matching DB column)
-   - Extra columns that are NOT NULL without a default value (these would cause INSERT failures)
+   - Extra columns that are NOT NULL without a default value and not generated (these would cause INSERT failures). A column declared with `@QueryColumn` is not extra; on an entity it must be generated, an identity column, have a default or be nullable, or every insert fails (`QUERY_COLUMN_NOT_FILLED`)
    - FK/`@FK` mismatches (FK referencing wrong table is an error; missing FK constraint is a warning)
    - Nullability differences (entity non-null but DB nullable is a warning)
    - Missing unique constraints for @UK fields (use `uniqueConstraints` array from `describe_table`)

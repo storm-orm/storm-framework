@@ -15,6 +15,7 @@
  */
 package st.orm.core.template.impl;
 
+import static st.orm.core.template.impl.RecordReflection.findQueryColumn;
 import static st.orm.core.template.impl.RecordReflection.isPolymorphicData;
 
 import java.lang.reflect.ParameterizedType;
@@ -44,6 +45,7 @@ import st.orm.FK;
 import st.orm.GenerationStrategy;
 import st.orm.PK;
 import st.orm.ProjectionQuery;
+import st.orm.QueryColumn;
 import st.orm.Ref;
 import st.orm.SqlTemplateException;
 import st.orm.StormConfig;
@@ -529,41 +531,31 @@ public final class SchemaValidator {
         // Track all column names (including @DbIgnore) for the unmapped column check (step 9).
         Set<String> mappedColumns = new TreeSet<>(String.CASE_INSENSITIVE_ORDER);
         for (Column column : model.declaredColumns()) {
-            String columnName = column.name();
-            mappedColumns.add(columnName);
+            mappedColumns.add(column.name());
             if (isIgnored(column, ignoredComponents)) {
                 continue;
             }
-            Optional<DbColumn> dbColumn = schema.getColumn(tableName, columnName);
-
-            if (dbColumn.isEmpty()) {
-                errors.add(new SchemaValidationError(type, ErrorKind.COLUMN_NOT_FOUND,
-                        "Column '%s' not found in table '%s'.".formatted(columnName, qualifiedTableName)));
+            validateColumn(type, column, schema, tableName, qualifiedTableName, errors);
+        }
+        // A query column is checked as a declared column is, and on an entity for being filled by the database,
+        // since every insert leaves it out.
+        boolean entity = Entity.class.isAssignableFrom(type);
+        for (Column column : model.queryColumns()) {
+            mappedColumns.add(column.name());
+            QueryColumn declaration = findQueryColumn(type, column.metamodel().field()).orElse(null);
+            if (declaration != null && !declaration.validate()) {
                 continue;
             }
-            DbColumn dbCol = dbColumn.get();
-            // Type compatibility check against the persisted type, so foreign key columns are validated
-            // against the referenced key's terminal type rather than being skipped as unknown entity types.
-            Compatibility compatibility = typeCompatibility.check(column.persistedType(), dbCol.dataType(), dbCol.typeName());
-            if (compatibility == Compatibility.NARROWING) {
-                errors.add(new SchemaValidationError(type, ErrorKind.TYPE_NARROWING,
-                        "Column '%s' in table '%s': Java type '%s' mapped to SQL type '%s' (%d) may involve precision or range loss."
-                                .formatted(columnName, qualifiedTableName, column.persistedType().getSimpleName(),
-                                        dbCol.typeName(), dbCol.dataType())));
-            } else if (compatibility == Compatibility.INCOMPATIBLE) {
-                errors.add(new SchemaValidationError(type, ErrorKind.TYPE_INCOMPATIBLE,
-                        "Column '%s' in table '%s': Java type '%s' is not compatible with SQL type '%s' (%d)."
-                                .formatted(columnName, qualifiedTableName, column.persistedType().getSimpleName(),
-                                        dbCol.typeName(), dbCol.dataType())));
-            }
-            // Nullability check: entity field is non-nullable but database column allows NULL.
-            // We only flag the case where the entity says non-null but the DB says nullable,
-            // since the reverse (entity nullable, DB not null) is safe. A view's columns read as nullable
-            // whatever its query returns, so they carry no answer to check against.
-            if (!column.nullable() && dbCol.nullable() && !schema.isView(tableName)) {
-                errors.add(new SchemaValidationError(type, ErrorKind.NULLABILITY_MISMATCH,
-                        "Column '%s' in table '%s': entity field is non-nullable but database column allows NULL."
-                                .formatted(columnName, qualifiedTableName)));
+            DbColumn dbColumn = validateColumn(type, column, schema, tableName, qualifiedTableName, errors);
+            if (dbColumn != null && entity && !dbColumn.nullable() && !dbColumn.hasDefault()
+                    && !dbColumn.autoIncrement() && !dbColumn.generated()) {
+                errors.add(new SchemaValidationError(type, ErrorKind.QUERY_COLUMN_NOT_FILLED,
+                        ("Query column '%s' in table '%s' is NOT NULL and the database does not fill it: the column is "
+                        + "not generated, is not an identity column and has no default. Every insert of entity '%s' "
+                        + "leaves it out and fails. Give the column a generation expression or a default, or declare "
+                        + "the query column with validate = false where the database fills it in a way its metadata "
+                        + "does not show.")
+                                .formatted(column.name(), qualifiedTableName, type.getSimpleName())));
             }
         }
         // 5. Primary key match. Skipped when this table's primary key could not be read: an empty result would
@@ -830,14 +822,60 @@ public final class SchemaValidator {
             if (mappedColumns.contains(dbColumn.columnName())) {
                 continue;  // Column is mapped in the entity.
             }
-            // Skip columns that are safe to omit: nullable, has a default, or auto-incremented.
-            if (dbColumn.nullable() || dbColumn.hasDefault() || dbColumn.autoIncrement()) {
+            // Skip columns that are safe to omit: nullable, has a default, auto-incremented, or generated.
+            if (dbColumn.nullable() || dbColumn.hasDefault() || dbColumn.autoIncrement() || dbColumn.generated()) {
                 continue;
             }
             errors.add(new SchemaValidationError(type, ErrorKind.UNMAPPED_COLUMN,
                     "Column '%s' in table '%s' is NOT NULL without a default value, but is not mapped in entity '%s'. Inserts will fail. If intentional, use @DbIgnore to suppress this check."
                             .formatted(dbColumn.columnName(), qualifiedTableName, type.getSimpleName())));
         }
+    }
+
+    /**
+     * Checks that a column exists in the table with a compatible type and nullability, and returns the database
+     * column, or {@code null} when the table has none by that name.
+     */
+    private @Nullable DbColumn validateColumn(
+            Class<? extends Data> type,
+            Column column,
+            DatabaseSchema schema,
+            String tableName,
+            String qualifiedTableName,
+            List<SchemaValidationError> errors
+    ) {
+        String columnName = column.name();
+        Optional<DbColumn> dbColumn = schema.getColumn(tableName, columnName);
+        if (dbColumn.isEmpty()) {
+            errors.add(new SchemaValidationError(type, ErrorKind.COLUMN_NOT_FOUND,
+                    "Column '%s' not found in table '%s'.".formatted(columnName, qualifiedTableName)));
+            return null;
+        }
+        DbColumn dbCol = dbColumn.get();
+        // Type compatibility check against the persisted type, so foreign key columns are validated
+        // against the referenced key's terminal type rather than being skipped as unknown entity types.
+        Compatibility compatibility = typeCompatibility.check(column.persistedType(), dbCol.dataType(), dbCol.typeName());
+        if (compatibility == Compatibility.NARROWING) {
+            errors.add(new SchemaValidationError(type, ErrorKind.TYPE_NARROWING,
+                    "Column '%s' in table '%s': Java type '%s' mapped to SQL type '%s' (%d) may involve precision or range loss."
+                            .formatted(columnName, qualifiedTableName, column.persistedType().getSimpleName(),
+                                    dbCol.typeName(), dbCol.dataType())));
+        } else if (compatibility == Compatibility.INCOMPATIBLE) {
+            errors.add(new SchemaValidationError(type, ErrorKind.TYPE_INCOMPATIBLE,
+                    "Column '%s' in table '%s': Java type '%s' is not compatible with SQL type '%s' (%d)."
+                            .formatted(columnName, qualifiedTableName, column.persistedType().getSimpleName(),
+                                    dbCol.typeName(), dbCol.dataType())));
+        }
+        // Nullability check: entity field is non-nullable but database column allows NULL.
+        // We only flag the case where the entity says non-null but the DB says nullable,
+        // since the reverse (entity nullable, DB not null) is safe. A view's columns read as nullable
+        // whatever its query returns, so they carry no answer to check against.
+        if (!column.nullable() && dbCol.nullable() && !schema.isView(tableName)) {
+            errors.add(new SchemaValidationError(type, ErrorKind.NULLABILITY_MISMATCH,
+                    "Column '%s' in table '%s': entity field is non-nullable but database column allows NULL."
+                            .formatted(columnName, qualifiedTableName)));
+        }
+        return dbCol;
     }
 
     /**

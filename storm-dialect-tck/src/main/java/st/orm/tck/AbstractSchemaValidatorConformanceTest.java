@@ -25,6 +25,7 @@ import org.slf4j.LoggerFactory;
 import st.orm.DbTable;
 import st.orm.Entity;
 import st.orm.PK;
+import st.orm.QueryColumn;
 import st.orm.StormConfig;
 import st.orm.UK;
 import st.orm.core.spi.Providers;
@@ -76,6 +77,24 @@ public abstract class AbstractSchemaValidatorConformanceTest {
     protected boolean supportsSequences() {
         return true;
     }
+
+    /**
+     * The statement that creates {@code generated_probe} with an integer primary key {@code id}, a {@code NOT NULL}
+     * text column {@code name}, and a {@code NOT NULL} text column {@code name_folded} the database generates from
+     * {@code name}; {@code null} for a database without generated columns.
+     */
+    protected @Nullable String generatedColumnProbeDdl() {
+        return null;
+    }
+
+    /** {@code generated_probe} with its generated column declared as a query column. */
+    @DbTable("generated_probe")
+    @QueryColumn(field = "nameFolded", type = String.class)
+    public record GeneratedProbe(@PK Integer id, String name) implements Entity<Integer> {}
+
+    /** {@code generated_probe} with its generated column left unmapped. */
+    @DbTable("generated_probe")
+    public record GeneratedProbeUnmapped(@PK Integer id, String name) implements Entity<Integer> {}
 
     public record Vet(
             @PK Integer id,
@@ -264,6 +283,30 @@ public abstract class AbstractSchemaValidatorConformanceTest {
                         errors::toString);
             } finally {
                 statement.execute("DROP TABLE index_probe");
+            }
+        }
+    }
+
+    @Test
+    public void testAGeneratedColumnIsFilledByTheDatabase() throws SQLException {
+        var ddl = generatedColumnProbeDdl();
+        assumeTrue(ddl != null);
+        try (var connection = dataSource.getConnection(); var statement = connection.createStatement()) {
+            statement.execute(ddl);
+            try {
+                var dialect = Providers.getSqlDialect(connection, StormConfig.defaults());
+                var schema = DatabaseSchema.read(connection, connection.getCatalog(), connection.getSchema(),
+                    DatabaseSchema.Discovery.of(dialect));
+                var column = schema.getColumn("generated_probe", "name_folded").orElseThrow();
+                // The driver reports the column as generated or with its expression as default; either way the
+                // database fills it, so neither a query column nor an unmapped column over it fails an insert.
+                assertTrue(column.generated() || column.hasDefault(), column::toString);
+                var errors = SchemaValidator.of(dataSource).validate(List.of(GeneratedProbe.class, GeneratedProbeUnmapped.class));
+                assertFalse(errors.stream().anyMatch(error -> error.kind() == ErrorKind.QUERY_COLUMN_NOT_FILLED
+                        || error.kind() == ErrorKind.UNMAPPED_COLUMN || error.kind() == ErrorKind.COLUMN_NOT_FOUND
+                        || error.kind() == ErrorKind.TYPE_INCOMPATIBLE), errors::toString);
+            } finally {
+                statement.execute("DROP TABLE generated_probe");
             }
         }
     }

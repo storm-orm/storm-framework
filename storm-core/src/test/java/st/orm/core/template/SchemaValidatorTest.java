@@ -43,7 +43,9 @@ import st.orm.FK;
 import st.orm.GenerationStrategy;
 import st.orm.PK;
 import st.orm.Persist;
+import st.orm.Projection;
 import st.orm.ProjectionQuery;
+import st.orm.QueryColumn;
 import st.orm.Ref;
 import st.orm.UK;
 import st.orm.core.QuietValidationLog;
@@ -239,6 +241,26 @@ class SchemaValidatorTest {
             String name,
             @DbIgnore @Nullable @FK Ref<ForeignKeyTarget> foreignKeyTarget
     ) implements Entity<Integer> {}
+
+    @QueryColumn(field = "nameFolded", type = String.class)
+    public record QueryColumnEntity(@PK Integer id, String name) implements Entity<Integer> {}
+
+    @QueryColumn(field = "nameFolded", type = String.class, validate = false)
+    public record UnvalidatedQueryColumnEntity(@PK Integer id, String name) implements Entity<Integer> {}
+
+    @QueryColumn(field = "nameFolded", type = String.class, nullable = true)
+    public record NullableQueryColumnEntity(@PK Integer id, String name) implements Entity<Integer> {}
+
+    @QueryColumn(field = "nameFolded", type = Integer.class)
+    public record MistypedQueryColumnEntity(@PK Integer id, String name) implements Entity<Integer> {}
+
+    @QueryColumn(field = "nameFolded", type = String.class, column = "folded")
+    public record NamedQueryColumnEntity(@PK Integer id, String name) implements Entity<Integer> {}
+
+    @QueryColumn(field = "nameFolded", type = String.class)
+    public record QueryColumnProjection(@PK Integer id, String name) implements Projection<Integer> {}
+
+    public record UnmappedGeneratedEntity(@PK Integer id, String name) implements Entity<Integer> {}
 
     @BeforeEach
     void setUp() {
@@ -788,6 +810,110 @@ class SchemaValidatorTest {
 
         assertFalse(errors.stream().anyMatch(error -> error.kind() == ErrorKind.UNIQUE_KEY_MISSING),
                 "Expected no UNIQUE_KEY_MISSING with @UK(constraint = false), but got: " + errors);
+    }
+
+    // Query columns
+
+    @Test
+    void testQueryColumnOfAGeneratedColumnPasses() throws SQLException {
+        execute("CREATE TABLE query_column_entity (id INTEGER AUTO_INCREMENT, name VARCHAR(255) NOT NULL, name_folded VARCHAR(255) GENERATED ALWAYS AS (LOWER(name)) NOT NULL, PRIMARY KEY (id))");
+
+        List<SchemaValidationError> errors = SchemaValidator.of(dataSource).validate(List.of(QueryColumnEntity.class));
+
+        assertTrue(errors.isEmpty(), "Expected no errors but got: " + errors);
+    }
+
+    @Test
+    void testQueryColumnWithADefaultPasses() throws SQLException {
+        execute("CREATE TABLE query_column_entity (id INTEGER AUTO_INCREMENT, name VARCHAR(255) NOT NULL, name_folded VARCHAR(255) DEFAULT '' NOT NULL, PRIMARY KEY (id))");
+
+        List<SchemaValidationError> errors = SchemaValidator.of(dataSource).validate(List.of(QueryColumnEntity.class));
+
+        assertTrue(errors.isEmpty(), "Expected no errors but got: " + errors);
+    }
+
+    @Test
+    void testQueryColumnNotFound() throws SQLException {
+        execute("CREATE TABLE query_column_entity (id INTEGER AUTO_INCREMENT, name VARCHAR(255) NOT NULL, PRIMARY KEY (id))");
+
+        List<SchemaValidationError> errors = SchemaValidator.of(dataSource).validate(List.of(QueryColumnEntity.class));
+
+        assertEquals(1, errors.size(), errors.toString());
+        assertEquals(ErrorKind.COLUMN_NOT_FOUND, errors.getFirst().kind());
+        assertTrue(errors.getFirst().message().contains("name_folded"), errors.getFirst().message());
+    }
+
+    @Test
+    void testQueryColumnTheDatabaseDoesNotFillIsAnError() throws SQLException {
+        execute("CREATE TABLE query_column_entity (id INTEGER AUTO_INCREMENT, name VARCHAR(255) NOT NULL, name_folded VARCHAR(255) NOT NULL, PRIMARY KEY (id))");
+
+        List<SchemaValidationError> errors = SchemaValidator.of(dataSource).validate(List.of(QueryColumnEntity.class));
+
+        assertEquals(1, errors.size(), errors.toString());
+        assertEquals(ErrorKind.QUERY_COLUMN_NOT_FILLED, errors.getFirst().kind());
+        assertFalse(errors.getFirst().kind().warning());
+        assertTrue(errors.getFirst().message().contains("name_folded"), errors.getFirst().message());
+        assertTrue(errors.getFirst().message().contains("validate = false"), errors.getFirst().message());
+    }
+
+    @Test
+    void testQueryColumnDeclaredUnvalidatedIsSkipped() throws SQLException {
+        execute("CREATE TABLE unvalidated_query_column_entity (id INTEGER AUTO_INCREMENT, name VARCHAR(255) NOT NULL, name_folded VARCHAR(255) NOT NULL, PRIMARY KEY (id))");
+
+        List<SchemaValidationError> errors = SchemaValidator.of(dataSource).validate(List.of(UnvalidatedQueryColumnEntity.class));
+
+        assertTrue(errors.isEmpty(), "Expected no errors but got: " + errors);
+    }
+
+    @Test
+    void testQueryColumnOfAProjectionIsNotCheckedForFilling() throws SQLException {
+        execute("CREATE TABLE query_column_projection (id INTEGER AUTO_INCREMENT, name VARCHAR(255) NOT NULL, name_folded VARCHAR(255) NOT NULL, PRIMARY KEY (id))");
+
+        List<SchemaValidationError> errors = SchemaValidator.of(dataSource).validate(List.of(QueryColumnProjection.class));
+
+        assertTrue(errors.isEmpty(), "Expected no errors but got: " + errors);
+    }
+
+    @Test
+    void testQueryColumnNullability() throws SQLException {
+        execute("CREATE TABLE nullable_query_column_entity (id INTEGER AUTO_INCREMENT, name VARCHAR(255) NOT NULL, name_folded VARCHAR(255), PRIMARY KEY (id))");
+        execute("CREATE TABLE query_column_entity (id INTEGER AUTO_INCREMENT, name VARCHAR(255) NOT NULL, name_folded VARCHAR(255), PRIMARY KEY (id))");
+
+        List<SchemaValidationError> nullableErrors = SchemaValidator.of(dataSource).validate(List.of(NullableQueryColumnEntity.class));
+        List<SchemaValidationError> errors = SchemaValidator.of(dataSource).validate(List.of(QueryColumnEntity.class));
+
+        assertTrue(nullableErrors.isEmpty(), "Expected no errors but got: " + nullableErrors);
+        // A nullable column is filled with NULL; the declaration's nullability is checked as a field's is.
+        assertEquals(1, errors.size(), errors.toString());
+        assertEquals(ErrorKind.NULLABILITY_MISMATCH, errors.getFirst().kind());
+    }
+
+    @Test
+    void testQueryColumnTypeIncompatible() throws SQLException {
+        execute("CREATE TABLE mistyped_query_column_entity (id INTEGER AUTO_INCREMENT, name VARCHAR(255) NOT NULL, name_folded VARCHAR(255) GENERATED ALWAYS AS (LOWER(name)) NOT NULL, PRIMARY KEY (id))");
+
+        List<SchemaValidationError> errors = SchemaValidator.of(dataSource).validate(List.of(MistypedQueryColumnEntity.class));
+
+        assertEquals(1, errors.size(), errors.toString());
+        assertEquals(ErrorKind.TYPE_INCOMPATIBLE, errors.getFirst().kind());
+    }
+
+    @Test
+    void testQueryColumnNamesItsColumn() throws SQLException {
+        execute("CREATE TABLE named_query_column_entity (id INTEGER AUTO_INCREMENT, name VARCHAR(255) NOT NULL, folded VARCHAR(255) GENERATED ALWAYS AS (LOWER(name)) NOT NULL, PRIMARY KEY (id))");
+
+        List<SchemaValidationError> errors = SchemaValidator.of(dataSource).validate(List.of(NamedQueryColumnEntity.class));
+
+        assertTrue(errors.isEmpty(), "Expected no errors but got: " + errors);
+    }
+
+    @Test
+    void testUnmappedGeneratedColumnIsNotReported() throws SQLException {
+        execute("CREATE TABLE unmapped_generated_entity (id INTEGER AUTO_INCREMENT, name VARCHAR(255) NOT NULL, name_folded VARCHAR(255) GENERATED ALWAYS AS (LOWER(name)) NOT NULL, PRIMARY KEY (id))");
+
+        List<SchemaValidationError> errors = SchemaValidator.of(dataSource).validate(List.of(UnmappedGeneratedEntity.class));
+
+        assertTrue(errors.isEmpty(), "Expected no errors but got: " + errors);
     }
 
     // Helpers

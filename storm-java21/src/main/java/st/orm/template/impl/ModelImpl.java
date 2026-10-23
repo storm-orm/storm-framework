@@ -31,6 +31,7 @@ public class ModelImpl<E extends Data, ID> implements Model<E, ID> {
     private final st.orm.core.template.impl.ModelImpl<E, ID> core;
     private final List<Column> columns;
     private final List<Column> declaredColumns;
+    private final List<Column> queryColumns;
 
     public ModelImpl(st.orm.core.template.impl.ModelImpl<E, ID> core) {
         this.core = core;
@@ -42,7 +43,10 @@ public class ModelImpl<E extends Data, ID> implements Model<E, ID> {
                 .map(ColumnImpl::new)
                 .map(Column.class::cast)
                 .toList();
-
+        this.queryColumns = core.queryColumns().stream()
+                .map(ColumnImpl::new)
+                .map(Column.class::cast)
+                .toList();
     }
 
     /**
@@ -131,6 +135,11 @@ public class ModelImpl<E extends Data, ID> implements Model<E, ID> {
     @Override
     public List<Column> declaredColumns() {
         return declaredColumns;
+    }
+
+    @Override
+    public List<Column> queryColumns() {
+        return queryColumns;
     }
 
     /**

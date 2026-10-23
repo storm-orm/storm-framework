@@ -16,6 +16,7 @@
 package st.orm.core.template.impl;
 
 import static java.util.Collections.nCopies;
+import static java.util.stream.Collectors.toSet;
 import static st.orm.core.spi.Providers.getORMConverter;
 import static st.orm.core.template.impl.RecordReflection.detectSealedPattern;
 import static st.orm.core.template.impl.RecordReflection.findJoinedSealedParent;
@@ -27,6 +28,8 @@ import static st.orm.core.template.impl.RecordReflection.getDiscriminatorColumnJ
 import static st.orm.core.template.impl.RecordReflection.getFkLeaves;
 import static st.orm.core.template.impl.RecordReflection.getForeignKeys;
 import static st.orm.core.template.impl.RecordReflection.getGenerationStrategy;
+import static st.orm.core.template.impl.RecordReflection.getQueryColumnField;
+import static st.orm.core.template.impl.RecordReflection.getQueryColumns;
 import static st.orm.core.template.impl.RecordReflection.getRecordType;
 import static st.orm.core.template.impl.RecordReflection.getRefDataType;
 import static st.orm.core.template.impl.RecordReflection.getSequence;
@@ -37,6 +40,7 @@ import static st.orm.core.template.impl.RecordReflection.isSealedEntity;
 import static st.orm.core.template.impl.RecordValidation.validateDataType;
 
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
@@ -49,6 +53,7 @@ import st.orm.GenerationStrategy;
 import st.orm.Metamodel;
 import st.orm.PK;
 import st.orm.Persist;
+import st.orm.QueryColumn;
 import st.orm.Ref;
 import st.orm.SqlTemplateException;
 import st.orm.Version;
@@ -125,11 +130,13 @@ final class ModelFactory {
         RecordType recordType = getRecordType(type);
         List<Column> columns = new ArrayList<>();
         List<RecordField> fields = new ArrayList<>();
+        List<Column> queryColumns = new ArrayList<>();
         try {
-            BuildContext ctx = new BuildContext(builder, columns, fields, Metamodel.root(type), new AtomicInteger(1), fetchPlan);
+            BuildContext ctx = new BuildContext(builder, columns, fields, queryColumns, Metamodel.root(type), new AtomicInteger(1), fetchPlan);
             for (var field : recordType.fields()) {
                 createColumns(ctx, ctx.rootMetamodel(), field, false, null, KeyScope.none(), PkContext.none(), null, false);
             }
+            createQueryColumns(ctx, ctx.rootMetamodel(), type, false);
             var tableName = getTableName(type, builder.tableNameResolver(), builder.schemaResolver());
             // For permitted subclasses of a JOINED sealed entity, adjust columns so that
             // base non-PK fields are not insertable/updatable (they belong to the base table),
@@ -141,7 +148,7 @@ final class ModelFactory {
             }
             // The first model of an entity is the moment it is first used, where no startup check saw it.
             DesignCheck.check(type);
-            return new ModelImpl<>(recordType, tableName, fields, finalColumns);
+            return new ModelImpl<>(recordType, tableName, fields, finalColumns, queryColumns);
         } catch (UncheckedSqlTemplateException e) {
             throw e.getCause();
         }
@@ -349,10 +356,15 @@ final class ModelFactory {
         var tableName = getTableName(sealedType, builder.tableNameResolver(), builder.schemaResolver());
         // Override the type to the sealed interface so that Model.type() returns the sealed interface
         // (e.g., Vehicle.class) rather than the first permitted subclass (e.g., Car.class).
-        return new ModelImpl<>(firstRecordType, sealedType, tableName, fields, columns);
+        return new ModelImpl<>(firstRecordType, sealedType, tableName, fields, columns, List.of());
     }
 
-    record BuildContext(ModelBuilder builder, List<Column> columns, List<RecordField> fields, Metamodel<?, ?> rootMetamodel, AtomicInteger index, FetchPlan fetchPlan) {
+    /**
+     * The state of a model under construction. {@code columns} and {@code fields} are aligned, one record field per
+     * column; {@code queryColumns} holds the columns the query side knows and the record does not carry, which have
+     * no field.
+     */
+    record BuildContext(ModelBuilder builder, List<Column> columns, List<RecordField> fields, List<Column> queryColumns, Metamodel<?, ?> rootMetamodel, AtomicInteger index, FetchPlan fetchPlan) {
     }
 
     record ColumnSpec(boolean primaryKey,
@@ -509,6 +521,63 @@ final class ModelFactory {
         RecordType targetRecordType = getRecordType(targetType);
         for (var child : targetRecordType.fields()) {
             createColumns(ctx, foreignMetamodel, child, nullableDueToJoin, null, KeyScope.none(), PkContext.none(), null, true);
+        }
+        createQueryColumns(ctx, foreignMetamodel, targetType, nullableDueToJoin);
+    }
+
+    /**
+     * Adds the query columns the type declares, under the parent's path, so that a path through a relation reaches
+     * them as it reaches the components. A query column is never selected, inserted or updated, so it takes no
+     * position among the model's columns and no record field.
+     */
+    private static void createQueryColumns(BuildContext ctx,
+                                           Metamodel<?, ?> parentMetamodel,
+                                           Class<? extends Data> type,
+                                           boolean parentNullable) {
+        try {
+            var componentNames = getRecordType(type).fields().stream().map(RecordField::name).collect(toSet());
+            var declared = new HashSet<String>();
+            for (QueryColumn queryColumn : getQueryColumns(type)) {
+                String fieldName = queryColumn.field();
+                if (fieldName.isEmpty()) {
+                    throw new SqlTemplateException("A query column of %s names no field.".formatted(type.getSimpleName()));
+                }
+                if (componentNames.contains(fieldName)) {
+                    throw new SqlTemplateException("Query column '%s' of %s has the name of a record component; a query column is a column the record does not carry.".formatted(fieldName, type.getSimpleName()));
+                }
+                if (!declared.add(fieldName)) {
+                    throw new SqlTemplateException("Query column '%s' of %s is declared twice.".formatted(fieldName, type.getSimpleName()));
+                }
+                RecordField field = getQueryColumnField(type, queryColumn);
+                @SuppressWarnings("unchecked")
+                Metamodel<Data, ?> metamodel = (Metamodel<Data, ?>) Metamodel.of(
+                        (Class<? extends Data>) parentMetamodel.root(),
+                        parentMetamodel.fieldPath().isEmpty() ? fieldName : parentMetamodel.fieldPath() + "." + fieldName);
+                ColumnName columnName = queryColumn.column().isEmpty()
+                        ? new ColumnName(ctx.builder().columnNameResolver().resolveColumnName(field))
+                        : new ColumnName(queryColumn.column());
+                ctx.queryColumns().add(new ColumnImpl(
+                        columnName,
+                        0,
+                        queryColumn.type(),
+                        queryColumn.type(),
+                        false,
+                        GenerationStrategy.NONE,
+                        "",
+                        false,
+                        GenerationStrategy.NONE,
+                        -1,
+                        parentNullable || queryColumn.nullable(),
+                        false,
+                        false,
+                        false,
+                        false,
+                        metamodel,
+                        null
+                ));
+            }
+        } catch (SqlTemplateException e) {
+            throw new UncheckedSqlTemplateException(e);
         }
     }
 

@@ -10,7 +10,7 @@ drop table if exists vet_specialty CASCADE;
 drop table if exists visit CASCADE;
 
 create table city (id integer auto_increment, name varchar(255) not null, primary key (id));
-create table owner (id integer auto_increment, first_name varchar(255) not null, last_name varchar(255) not null, address varchar(255), city_id integer, telephone varchar(255), primary key (id), version integer default 0 not null);
+create table owner (id integer auto_increment, first_name varchar(255) not null, last_name varchar(255) not null, address varchar(255), city_id integer, telephone varchar(255), primary key (id), version integer default 0 not null, last_name_folded varchar(255) generated always as (lower(last_name)) not null);
 create table pet (id integer auto_increment, name varchar(255) not null, birth_date date not null, owner_id integer, type_id integer not null, primary key (id));
 create table pet_type (id integer, name varchar(255) not null, primary key (id));
 create table specialty (id integer auto_increment, name varchar(255), primary key (id));

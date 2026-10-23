@@ -111,6 +111,20 @@ public interface Model<E extends Data, ID> {
     List<Column> declaredColumns();
 
     /**
+     * Returns the query columns declared on this model: the columns a query names but the record does not carry,
+     * declared with {@link st.orm.QueryColumn}. They are not among {@link #columns()} or {@link #declaredColumns()},
+     * so a select, insert or update never names them; {@link #getColumns(Metamodel)} resolves them, for a query
+     * column of this type and for one of a type reached through an expanded relation.
+     *
+     * <p>A query column has no record field: its {@link Column#index()} is {@code 0}, and it is neither insertable
+     * nor updatable.</p>
+     *
+     * @return the query columns declared on this model, in declaration order.
+     * @since 1.16
+     */
+    List<Column> queryColumns();
+
+    /**
      * Returns the record type metadata.
      *
      * @return the record type.

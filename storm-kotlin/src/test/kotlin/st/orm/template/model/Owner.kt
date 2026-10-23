@@ -17,12 +17,14 @@ package st.orm.template.model
 
 import st.orm.Entity
 import st.orm.PK
+import st.orm.QueryColumn
 import st.orm.Version
 
 /**
  * Simple domain object representing an owner.
  *
  */
+@QueryColumn(field = "lastNameFolded", type = String::class)
 internal data class Owner(
     @PK val id: Int = 0,
     override val firstName: String,

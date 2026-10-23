@@ -18,6 +18,7 @@ package st.orm.core.template.impl;
 import static java.lang.invoke.MethodType.methodType;
 import static st.orm.core.spi.Providers.getORMConverter;
 import static st.orm.core.template.impl.RecordReflection.findPkField;
+import static st.orm.core.template.impl.RecordReflection.findQueryColumn;
 import static st.orm.core.template.impl.RecordReflection.getRecordField;
 import static st.orm.core.template.impl.RecordReflection.getRecordFields;
 import static st.orm.core.template.impl.RecordReflection.getRefDataType;
@@ -41,6 +42,7 @@ import st.orm.Metamodel;
 import st.orm.Navigable;
 import st.orm.PK;
 import st.orm.PersistenceException;
+import st.orm.QueryColumn;
 import st.orm.Ref;
 import st.orm.SqlTemplateException;
 import st.orm.UK;
@@ -208,8 +210,14 @@ public final class MetamodelFactory {
             // The root metamodel designates the row itself rather than a column.
             return false;
         }
+        Class<? extends Data> fieldResolutionClass = fieldResolutionClass(metamodel.root());
+        QueryColumn queryColumn = findQueryColumnAtPath(fieldResolutionClass, path);
+        if (queryColumn != null) {
+            // A query column has no record field; its declaration states its nullability.
+            return queryColumn.nullable();
+        }
         try {
-            RecordField field = getRecordField(fieldResolutionClass(metamodel.root()), path);
+            RecordField field = getRecordField(fieldResolutionClass, path);
             boolean nullsDistinct = getNullsDistinct(field);
             boolean inline = !Ref.class.isAssignableFrom(field.type())
                     && getORMConverter(field).isEmpty()
@@ -390,6 +398,10 @@ public final class MetamodelFactory {
             return (Metamodel<T, E>) root(rootTable);
         }
         Class<? extends Data> fieldResolutionClass = fieldResolutionClass(rootTable);
+        QueryColumn queryColumn = findQueryColumnAtPath(fieldResolutionClass, path);
+        if (queryColumn != null) {
+            return queryColumnModel(rootTable, fieldResolutionClass, path, queryColumn);
+        }
         Class<E> fieldType;
         String effectivePath;
         StringBuilder effectiveField;
@@ -530,6 +542,66 @@ public final class MetamodelFactory {
                 tableModel,
                 handle
         );
+    }
+
+    /**
+     * Returns the query column a path ends in, or {@code null} when its last segment is not one. The table the path
+     * reaches declares it, as it declares its components; an inline record declares none.
+     */
+    @SuppressWarnings("unchecked")
+    private static @Nullable QueryColumn findQueryColumnAtPath(Class<? extends Data> fieldResolutionClass, String path) {
+        String parentPath = stripLast(path);
+        String fieldName = parentPath.isEmpty() ? path : path.substring(parentPath.length() + 1);
+        Class<? extends Data> tableType;
+        if (parentPath.isEmpty()) {
+            tableType = fieldResolutionClass;
+        } else {
+            try {
+                RecordField parent = getRecordField(fieldResolutionClass, parentPath);
+                if (Ref.class.isAssignableFrom(parent.type())) {
+                    tableType = getRefDataType(parent);
+                } else if (Data.class.isAssignableFrom(parent.type())) {
+                    tableType = (Class<? extends Data>) parent.type();
+                } else {
+                    return null;
+                }
+            } catch (SqlTemplateException e) {
+                return null;
+            }
+        }
+        return findQueryColumn(tableType, fieldName).orElse(null);
+    }
+
+    /**
+     * Creates the metamodel of a query column reached by path, with the table it belongs to resolved as a
+     * component's table is.
+     */
+    @SuppressWarnings({"unchecked", "rawtypes"})
+    private static <T extends Data, E> Metamodel<T, E> queryColumnModel(Class<T> rootTable,
+                                                                      Class<? extends Data> fieldResolutionClass,
+                                                                      String path,
+                                                                      QueryColumn queryColumn) {
+        String tablePathToParent = stripLast(path);
+        Metamodel<T, ? extends Data> rootModel = root(rootTable);
+        Metamodel<T, ? extends Data> tableModel;
+        if (tablePathToParent.isEmpty()) {
+            tableModel = rootModel;
+        } else {
+            String tablePath = getTablePath(fieldResolutionClass, tablePathToParent);
+            String tableField = tablePath.isEmpty() ? tablePathToParent : tablePathToParent.substring(tablePath.length() + 1);
+            Class<? extends Data> tableType = resolveDataTypeAtPath(fieldResolutionClass, tablePathToParent);
+            tableModel = new SimpleMetamodel<>(
+                    rootTable,
+                    tablePath,
+                    (Class) tableType,
+                    tableField,
+                    false,
+                    false,
+                    rootModel,
+                    buildGetterHandle(rootTable, tablePathToParent)
+            );
+        }
+        return new QueryColumnMetamodel<>(rootTable, tablePathToParent, (Class<E>) queryColumn.type(), queryColumn.field(), tableModel);
     }
 
     @Nullable
@@ -869,6 +941,57 @@ public final class MetamodelFactory {
                 }
             }
             return false;
+        }
+    }
+
+    /**
+     * The metamodel of a query column resolved by name: a column the query names and the record does not carry, so
+     * a record holds no value for it.
+     */
+    private static final class QueryColumnMetamodel<T extends Data, E>
+            extends AbstractMetamodel<T, E, Object> {
+
+        private final Class<T> root;
+        private final Metamodel<T, ? extends Data> table;
+
+        QueryColumnMetamodel(Class<T> root,
+                             String path,
+                             Class<E> fieldType,
+                             String field,
+                             Metamodel<T, ? extends Data> table) {
+            super(fieldType, path, field, false, null, true);
+            this.root = root;
+            this.table = table;
+        }
+
+        @Override
+        public Class<T> root() {
+            return root;
+        }
+
+        @Override
+        public Metamodel<T, ? extends Data> table() {
+            return table;
+        }
+
+        @Override
+        public Object getValue(T record) {
+            throw noValue();
+        }
+
+        @Override
+        public boolean isIdentical(T a, T b) {
+            throw noValue();
+        }
+
+        @Override
+        public boolean isSame(T a, T b) {
+            throw noValue();
+        }
+
+        private UnsupportedOperationException noValue() {
+            return new UnsupportedOperationException("%s.%s is a query column; a record holds no value for it."
+                    .formatted(table.fieldType().getSimpleName(), field()));
         }
     }
 

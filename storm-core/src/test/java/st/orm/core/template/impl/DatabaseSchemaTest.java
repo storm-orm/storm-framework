@@ -179,6 +179,21 @@ class DatabaseSchemaTest {
     }
 
     @Test
+    void testGeneratedColumnIsReported() throws SQLException {
+        execute("CREATE TABLE generated_test (id INTEGER AUTO_INCREMENT, name VARCHAR(100) NOT NULL, name_folded VARCHAR(100) GENERATED ALWAYS AS (LOWER(name)) NOT NULL, PRIMARY KEY (id))");
+        try (Connection connection = getConnection()) {
+            DatabaseSchema schema = DatabaseSchema.read(connection);
+
+            DbColumn foldedColumn = schema.getColumn("generated_test", "name_folded").orElseThrow();
+            assertTrue(foldedColumn.generated());
+            assertFalse(foldedColumn.nullable());
+
+            DbColumn nameColumn = schema.getColumn("generated_test", "name").orElseThrow();
+            assertFalse(nameColumn.generated());
+        }
+    }
+
+    @Test
     void testGetColumnProperties() throws SQLException {
         execute("CREATE TABLE prop_test (id INTEGER AUTO_INCREMENT, name VARCHAR(100) NOT NULL, description VARCHAR(500), PRIMARY KEY (id))");
         try (Connection connection = getConnection()) {

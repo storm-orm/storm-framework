@@ -29,6 +29,8 @@ import java.io.PrintWriter;
 import java.io.StringWriter;
 import java.io.UncheckedIOException;
 import java.io.Writer;
+import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -80,6 +82,8 @@ public final class MetamodelProcessor extends AbstractProcessor {
     private static final String FOREIGN_KEY = "st.orm.FK";
     private static final String PRIMARY_KEY = "st.orm.PK";
     private static final String UNIQUE_KEY = "st.orm.UK";
+    private static final String QUERY_COLUMN = "st.orm.QueryColumn";
+    private static final String QUERY_COLUMNS = "st.orm.QueryColumns";
 
     private static final Pattern REF_PATTERN = Pattern.compile("^st\\.orm\\.Ref<([^>]+)>$");
 
@@ -133,6 +137,21 @@ public final class MetamodelProcessor extends AbstractProcessor {
      */
     private final Set<String> generatedInstantiators;
 
+    /**
+     * The valid query columns per record type, keyed by qualified name. Reading a type's query columns reports its
+     * invalid declarations, so the cache makes each diagnostic print once.
+     */
+    private final Map<String, List<QueryColumnDeclaration>> queryColumns;
+
+    /**
+     * A column a record declares through {@code @QueryColumn}: it gets a metamodel field but has no record component.
+     *
+     * @param field the metamodel field name.
+     * @param type the column's value type, as the annotation names it.
+     * @param nullable whether the column allows null.
+     */
+    private record QueryColumnDeclaration(String field, TypeMirror type, boolean nullable) {}
+
     private Elements elementUtils;
     private Types typeUtils;
     private boolean jspecifyAvailable;
@@ -147,6 +166,7 @@ public final class MetamodelProcessor extends AbstractProcessor {
         this.generatedNavigableMetamodels = new HashSet<>();
         this.navPath = new HashSet<>();
         this.generatedInstantiators = new LinkedHashSet<>();
+        this.queryColumns = new HashMap<>();
     }
 
     @Override
@@ -322,18 +342,232 @@ public final class MetamodelProcessor extends AbstractProcessor {
         return implementsInterface(recordElement.asType(), DATA, typeUtils);
     }
 
+    private static boolean hasGenerateMetamodel(Element element) {
+        return element.getAnnotationMirrors().stream()
+                .anyMatch(annotationMirror -> GENERATE_METAMODEL.equals(annotationMirror.getAnnotationType().toString()));
+    }
+
+    /**
+     * Returns the valid query columns the record declares, in declaration order. Query columns apply to records that
+     * implement {@code Data} or carry {@code @GenerateMetamodel}; on any other record the annotation is ignored. The
+     * first read of a type reports its invalid declarations (an empty field, a field that is not a Java identifier, a
+     * field that repeats a record component or another query column) and leaves them out.
+     */
+    private List<QueryColumnDeclaration> queryColumns(Element recordElement) {
+        if (!(recordElement instanceof TypeElement typeElement) || !isRecord(recordElement)) {
+            return List.of();
+        }
+        String qualifiedName = typeElement.getQualifiedName().toString();
+        List<QueryColumnDeclaration> cached = queryColumns.get(qualifiedName);
+        if (cached == null) {
+            cached = readQueryColumns(typeElement);
+            queryColumns.put(qualifiedName, cached);
+        }
+        return cached;
+    }
+
+    private List<QueryColumnDeclaration> readQueryColumns(TypeElement recordElement) {
+        if (!implementsData(recordElement) && !hasGenerateMetamodel(recordElement)) {
+            return List.of();
+        }
+        List<AnnotationMirror> declarations = queryColumnMirrors(recordElement);
+        if (declarations.isEmpty()) {
+            return List.of();
+        }
+        String recordName = recordElement.getSimpleName().toString();
+        Set<String> componentNames = new HashSet<>();
+        for (Element enclosed : recordElement.getEnclosedElements()) {
+            if (getRecordComponentType(enclosed).isEmpty()) continue;
+            String fieldName = enclosed.getSimpleName().toString();
+            if (getTypeElement(recordElement, fieldName) != null) {
+                componentNames.add(fieldName);
+            }
+        }
+        Set<String> declaredFields = new HashSet<>();
+        List<QueryColumnDeclaration> result = new ArrayList<>();
+        for (AnnotationMirror declaration : declarations) {
+            Object field = annotationAttribute(declaration, "field");
+            Object type = annotationAttribute(declaration, "type");
+            Object nullable = annotationAttribute(declaration, "nullable");
+            String fieldName = field instanceof String name ? name : "";
+            if (fieldName.isEmpty()) {
+                processingEnv.getMessager().printMessage(ERROR,
+                        "Query column on " + recordName + " declares an empty field. "
+                        + "Name the metamodel field the query column gets.",
+                        recordElement, declaration);
+                continue;
+            }
+            if (!SourceVersion.isIdentifier(fieldName) || SourceVersion.isKeyword(fieldName)) {
+                processingEnv.getMessager().printMessage(ERROR,
+                        "Query column field '" + fieldName + "' on " + recordName + " is not a valid Java identifier.",
+                        recordElement, declaration);
+                continue;
+            }
+            if (componentNames.contains(fieldName)) {
+                processingEnv.getMessager().printMessage(ERROR,
+                        "Query column field '" + fieldName + "' on " + recordName + " has the name of a record "
+                        + "component. A query column declares a column the record does not carry; the component "
+                        + "already has a metamodel field.",
+                        recordElement, declaration);
+                continue;
+            }
+            if (!declaredFields.add(fieldName)) {
+                processingEnv.getMessager().printMessage(ERROR,
+                        "Query column field '" + fieldName + "' is declared more than once on " + recordName + ".",
+                        recordElement, declaration);
+                continue;
+            }
+            if (!(type instanceof TypeMirror typeMirror) || typeMirror.getKind() == TypeKind.ERROR) {
+                // The compiler reports an unresolvable class literal itself.
+                continue;
+            }
+            if (typeMirror.getKind() == TypeKind.VOID) {
+                processingEnv.getMessager().printMessage(ERROR,
+                        "Query column field '" + fieldName + "' on " + recordName + " declares type void.",
+                        recordElement, declaration);
+                continue;
+            }
+            result.add(new QueryColumnDeclaration(fieldName, typeMirror, Boolean.TRUE.equals(nullable)));
+        }
+        return List.copyOf(result);
+    }
+
+    /**
+     * Returns the {@code @QueryColumn} mirrors on the element in declaration order: a direct annotation, or the
+     * {@code @QueryColumns} container javac synthesizes for a repeated one (or that the source names explicitly).
+     */
+    private static List<AnnotationMirror> queryColumnMirrors(Element element) {
+        List<AnnotationMirror> mirrors = new ArrayList<>();
+        for (AnnotationMirror annotationMirror : element.getAnnotationMirrors()) {
+            String annotationName = annotationMirror.getAnnotationType().toString();
+            if (QUERY_COLUMN.equals(annotationName)) {
+                mirrors.add(annotationMirror);
+            } else if (QUERY_COLUMNS.equals(annotationName)) {
+                for (var entry : annotationMirror.getElementValues().entrySet()) {
+                    if (!"value".equals(entry.getKey().getSimpleName().toString())) continue;
+                    if (entry.getValue().getValue() instanceof List<?> values) {
+                        for (Object value : values) {
+                            if (value instanceof AnnotationValue annotationValue
+                                    && annotationValue.getValue() instanceof AnnotationMirror nested) {
+                                mirrors.add(nested);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        return mirrors;
+    }
+
+    @Nullable
+    private Object annotationAttribute(AnnotationMirror annotationMirror, String name) {
+        for (var entry : elementUtils.getElementValuesWithDefaults(annotationMirror).entrySet()) {
+            if (name.equals(entry.getKey().getSimpleName().toString())) {
+                return entry.getValue().getValue();
+            }
+        }
+        return null;
+    }
+
+    /**
+     * Renders the {@code E} type of a query column's metamodel: the boxed type, qualified unless it is declared
+     * directly in the record's package, as a record component's type renders.
+     */
+    private static String queryColumnTypeName(QueryColumnDeclaration queryColumn, String packageName) {
+        return getTypeName(queryColumn.type(), packageName);
+    }
+
+    /**
+     * Renders the {@code V} type of a query column's metamodel: the {@code E} type, marked nullable when the column
+     * allows null.
+     */
+    /**
+     * The value type of a query column field, which is its type: a component's value type carries no nullability
+     * annotation either.
+     */
+    private String queryColumnValueTypeName(QueryColumnDeclaration queryColumn, String packageName) {
+        return queryColumnTypeName(queryColumn, packageName);
+    }
+
+    private static String queryColumnDoc(String recordName, String fieldName) {
+        return "the {@code " + fieldName + "} query column of {@link " + recordName + "}";
+    }
+
+    private void appendQueryColumnInterfaceFields(StringBuilder builder, Element recordElement, String packageName,
+                                                  String recordName, String modelRef) {
+        for (QueryColumnDeclaration queryColumn : queryColumns(recordElement)) {
+            String fieldName = queryColumn.field();
+            builder.append("    /** Represents ").append(queryColumnDoc(recordName, fieldName)).append(". */\n");
+            builder.append("    AbstractMetamodel<").append(recordName).append(", ")
+                    .append(queryColumnTypeName(queryColumn, packageName)).append(", ")
+                    .append(queryColumnValueTypeName(queryColumn, packageName)).append("> ")
+                    .append(fieldName).append(" = ").append(modelRef).append(".").append(fieldName).append(";\n");
+        }
+    }
+
+    private void appendQueryColumnClassFields(StringBuilder builder, Element recordElement, String packageName,
+                                              String recordName) {
+        for (QueryColumnDeclaration queryColumn : queryColumns(recordElement)) {
+            String fieldName = queryColumn.field();
+            builder.append("    /** Represents ").append(queryColumnDoc(recordName, fieldName)).append(". */\n");
+            builder.append("    public final AbstractMetamodel<T, ").append(queryColumnTypeName(queryColumn, packageName))
+                    .append(", ").append(queryColumnValueTypeName(queryColumn, packageName)).append("> ")
+                    .append(fieldName).append(";\n");
+        }
+    }
+
+    /**
+     * Appends the initializers of the query column fields. A record holds no value for a query column, so the value
+     * methods throw.
+     */
+    private void appendQueryColumnInitializers(StringBuilder builder, Element recordElement, String packageName,
+                                               String recordName) {
+        for (QueryColumnDeclaration queryColumn : queryColumns(recordElement)) {
+            String fieldName = queryColumn.field();
+            String typeName = queryColumnTypeName(queryColumn, packageName);
+            String valueTypeName = queryColumnValueTypeName(queryColumn, packageName);
+            String failure = "throw new UnsupportedOperationException(\"" + recordName + "." + fieldName
+                    + " is a query column; a record holds no value for it.\");";
+            builder.append("        this.").append(fieldName).append(" = new AbstractMetamodel<T, ")
+                    .append(typeName).append(", ").append(valueTypeName).append(">(")
+                    .append(typeName).append(".class, subPath, fieldBase + \"").append(fieldName)
+                    .append("\", false, this) {\n")
+                    .append("            @Override public ").append(nullableReturnType(typeName))
+                    .append(" getValue(T record) { ").append(failure).append(" }\n")
+                    .append("            @Override public boolean isIdentical(T a, T b) { ").append(failure).append(" }\n")
+                    .append("            @Override public boolean isSame(T a, T b) { ").append(failure).append(" }\n")
+                    .append("        };\n");
+        }
+    }
+
+    private void appendQueryColumnNavFields(StringBuilder builder, Element recordElement, String packageName,
+                                            String recordName) {
+        for (QueryColumnDeclaration queryColumn : queryColumns(recordElement)) {
+            String fieldName = queryColumn.field();
+            builder.append("    /** Represents navigation to ").append(queryColumnDoc(recordName, fieldName))
+                    .append(". */\n");
+            builder.append("    public final st.orm.AbstractNavigableMetamodel<T, ")
+                    .append(queryColumnTypeName(queryColumn, packageName)).append("> ").append(fieldName).append(";\n");
+        }
+    }
+
+    private void appendQueryColumnNavInitializers(StringBuilder builder, Element recordElement, String packageName) {
+        for (QueryColumnDeclaration queryColumn : queryColumns(recordElement)) {
+            String fieldName = queryColumn.field();
+            String typeName = queryColumnTypeName(queryColumn, packageName);
+            builder.append("        this.").append(fieldName).append(" = new st.orm.AbstractNavigableMetamodel<T, ")
+                    .append(typeName).append(">(").append(typeName).append(".class, subPath, fieldBase + \"")
+                    .append(fieldName).append("\", false, this) {};\n");
+        }
+    }
+
     @Override
     public boolean process(Set<? extends TypeElement> annotations,
                            RoundEnvironment roundEnv) {
         for (Element element : roundEnv.getRootElements()) {
             try {
                 if (isRecord(element)) {
-                    boolean hasGenerateMetamodel = element.getAnnotationMirrors().stream()
-                            .anyMatch(annotationMirror -> GENERATE_METAMODEL
-                                    .equals(annotationMirror.getAnnotationType().toString()));
-
-                    boolean isData = implementsData(element);
-                    if (hasGenerateMetamodel || isData) {
+                    if (hasGenerateMetamodel(element) || implementsData(element)) {
                         generateMetamodelArtifacts(element);
                     }
                 } else if (element.getKind() == ElementKind.INTERFACE
@@ -1074,6 +1308,7 @@ public final class MetamodelProcessor extends AbstractProcessor {
                         .append(fieldName).append(";\n");
             }
         }
+        appendQueryColumnInterfaceFields(builder, recordElement, packageName, recordName, modelRef);
         if (!builder.isEmpty()) {
             builder.setLength(builder.length() - 1);
         }
@@ -1247,6 +1482,7 @@ public final class MetamodelProcessor extends AbstractProcessor {
                         .append(";\n");
             }
         }
+        appendQueryColumnClassFields(builder, recordElement, packageName, recordName);
         return builder.toString();
     }
 
@@ -1392,6 +1628,7 @@ public final class MetamodelProcessor extends AbstractProcessor {
                         .append("        };\n");
             }
         }
+        appendQueryColumnInitializers(builder, recordElement, packageName, recordName);
         if (!builder.isEmpty()) {
             builder.setLength(builder.length() - 1);
         }
@@ -1569,6 +1806,7 @@ public final class MetamodelProcessor extends AbstractProcessor {
                 builder.append("    public final st.orm.AbstractNavigableMetamodel<T, ").append(fieldTypeName).append("> ").append(fieldName).append(";\n");
             }
         }
+        appendQueryColumnNavFields(builder, recordElement, packageName, recordName);
         return builder.toString();
     }
 
@@ -1594,6 +1832,7 @@ public final class MetamodelProcessor extends AbstractProcessor {
                         .append(fieldName).append("\", false, this) {};\n");
             }
         }
+        appendQueryColumnNavInitializers(builder, recordElement, packageName);
         if (!builder.isEmpty()) builder.setLength(builder.length() - 1);
         return builder.toString();
     }

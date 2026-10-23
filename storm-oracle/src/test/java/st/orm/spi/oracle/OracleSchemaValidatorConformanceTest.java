@@ -35,4 +35,9 @@ public class OracleSchemaValidatorConformanceTest extends AbstractSchemaValidato
     protected String expressionIndexDdl() {
         return "CREATE UNIQUE INDEX index_probe_lower ON index_probe (LOWER(a))";
     }
+
+    @Override
+    protected String generatedColumnProbeDdl() {
+        return "CREATE TABLE generated_probe (id NUMBER(10) NOT NULL PRIMARY KEY, name VARCHAR2(50) NOT NULL, name_folded VARCHAR2(50) GENERATED ALWAYS AS (LOWER(name)) VIRTUAL NOT NULL)";
+    }
 }

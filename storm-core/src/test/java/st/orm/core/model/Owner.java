@@ -19,6 +19,7 @@ import lombok.Builder;
 import org.jspecify.annotations.Nullable;
 import st.orm.Entity;
 import st.orm.PK;
+import st.orm.QueryColumn;
 import st.orm.Version;
 
 /**
@@ -26,6 +27,7 @@ import st.orm.Version;
  *
  */
 @Builder(toBuilder = true)
+@QueryColumn(field = "lastNameFolded", type = String.class)
 public record Owner(
         @PK Integer id,
         String firstName,

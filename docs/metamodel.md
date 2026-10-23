@@ -374,7 +374,7 @@ A direct (non-`Ref`) self-referential foreign key is rejected at generation time
 
 ## Generated Code
 
-Understanding the generated code helps when debugging or reading compiler errors. The metamodel mirrors your entity structure, creating a static field for each entity field. Each field carries generic type parameters that encode both the root entity type and the field's value type, which is how the compiler enforces type safety in queries.
+Understanding the generated code helps when debugging or reading compiler errors. The metamodel mirrors your entity structure, creating a static field for each entity field, and one for each [query column](entities.md#query-columns) the entity declares. Each field carries generic type parameters that encode both the root entity type and the field's value type, which is how the compiler enforces type safety in queries.
 
 ```
 Entity                              Metamodel

@@ -57,7 +57,12 @@ public record SchemaValidationError(
         /** A {@code @FK} field does not have a matching foreign key constraint in the database. */
         FOREIGN_KEY_MISSING(true),
         /** A database column is NOT NULL without a default value, but is not mapped in the entity. @since 1.10 */
-        UNMAPPED_COLUMN(true);
+        UNMAPPED_COLUMN(true),
+        /**
+         * A query column of an entity is NOT NULL and the database does not fill it: it is not generated, is not an
+         * identity column and has no default, so every insert, which leaves it out, fails. @since 1.16
+         */
+        QUERY_COLUMN_NOT_FILLED;
 
         private final boolean warning;
 

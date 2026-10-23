@@ -95,6 +95,21 @@ class MetamodelProcessor(
      */
     private val generatedInstantiators = mutableListOf<Pair<String, KSFile?>>()
 
+    /**
+     * The valid query columns per data class, keyed by qualified name. Reading a type's query columns reports its
+     * invalid declarations, so the cache makes each diagnostic print once.
+     */
+    private val queryColumns = mutableMapOf<String, List<QueryColumnDeclaration>>()
+
+    /**
+     * A column a data class declares through `@QueryColumn`: it gets a metamodel field but has no component.
+     *
+     * @property field the metamodel field name.
+     * @property type the column's value type, as the annotation names it.
+     * @property nullable whether the column allows null.
+     */
+    private data class QueryColumnDeclaration(val field: String, val type: KSType, val nullable: Boolean)
+
     companion object {
         /**
          * The `@Suppress` key that silences the warning for a nullable unique key, on the property or an enclosing
@@ -146,6 +161,8 @@ class MetamodelProcessor(
         private const val FOREIGN_KEY = "st.orm.FK"
         private const val PRIMARY_KEY = "st.orm.PK"
         private const val UNIQUE_KEY = "st.orm.UK"
+        private const val QUERY_COLUMN = "st.orm.QueryColumn"
+        private const val QUERY_COLUMNS = "st.orm.QueryColumns"
 
         private const val K_BOOLEAN = "kotlin.Boolean"
         private const val K_BYTE = "kotlin.Byte"
@@ -295,6 +312,102 @@ class MetamodelProcessor(
     private fun KSClassDeclaration.hasAnnotation(annotationQn: String): Boolean = annotations.any { it.annotationType.resolve().declaration.qualifiedName?.asString() == annotationQn }
 
     private fun isSealedInterface(classDeclaration: KSClassDeclaration): Boolean = classDeclaration.classKind == ClassKind.INTERFACE && classDeclaration.modifiers.contains(Modifier.SEALED)
+
+    /**
+     * Returns the valid query columns the data class declares, in declaration order. Query columns apply to data
+     * classes that implement `Data` or carry `@GenerateMetamodel`; on any other type, a sealed interface included, the
+     * annotation is ignored. The first read of a type reports its invalid declarations (an empty field, a field that
+     * repeats a component or another query column) and leaves them out.
+     */
+    private fun queryColumns(classDeclaration: KSClassDeclaration): List<QueryColumnDeclaration> {
+        if (isSealedInterface(classDeclaration) || !classDeclaration.isDataClass()) return emptyList()
+        val qualifiedName = classDeclaration.qualifiedName?.asString() ?: return emptyList()
+        return queryColumns.getOrPut(qualifiedName) { readQueryColumns(classDeclaration) }
+    }
+
+    private fun readQueryColumns(classDeclaration: KSClassDeclaration): List<QueryColumnDeclaration> {
+        if (!classDeclaration.implementsInterface(DATA) && !classDeclaration.hasAnnotation(GENERATE_METAMODEL)) {
+            return emptyList()
+        }
+        val declarations = queryColumnAnnotations(classDeclaration)
+        if (declarations.isEmpty()) return emptyList()
+        val className = classDeclaration.simpleName.asString()
+        val componentNames = getModelProperties(classDeclaration).map { it.simpleName.asString() }.toSet()
+        val declaredFields = mutableSetOf<String>()
+        val result = mutableListOf<QueryColumnDeclaration>()
+        for (declaration in declarations) {
+            val fieldName = annotationArgument(declaration, "field") as? String ?: ""
+            if (fieldName.isEmpty()) {
+                logger.error(
+                    "Query column on $className declares an empty field. " +
+                        "Name the metamodel field the query column gets.",
+                    classDeclaration,
+                )
+                continue
+            }
+            if (fieldName in componentNames) {
+                logger.error(
+                    "Query column field '$fieldName' on $className has the name of a component. " +
+                        "A query column declares a column the data class does not carry; the component already has " +
+                        "a metamodel field.",
+                    classDeclaration,
+                )
+                continue
+            }
+            if (!declaredFields.add(fieldName)) {
+                logger.error("Query column field '$fieldName' is declared more than once on $className.", classDeclaration)
+                continue
+            }
+            // The compiler reports an unresolvable class literal itself.
+            val type = annotationArgument(declaration, "type") as? KSType ?: continue
+            if (type.isError) continue
+            val nullable = annotationArgument(declaration, "nullable") as? Boolean ?: false
+            result.add(QueryColumnDeclaration(fieldName, type, nullable))
+        }
+        return result.toList()
+    }
+
+    /**
+     * Returns the `@QueryColumn` annotations on the declaration in declaration order: direct annotations (a repeated
+     * annotation may be presented as several) and the ones a `@QueryColumns` container holds.
+     */
+    private fun queryColumnAnnotations(classDeclaration: KSClassDeclaration): List<KSAnnotation> = classDeclaration.annotations.flatMap { annotation ->
+        when (annotation.annotationType.resolve().declaration.qualifiedName?.asString()) {
+            QUERY_COLUMN -> sequenceOf(annotation)
+            QUERY_COLUMNS -> when (val value = annotationArgument(annotation, "value")) {
+                is List<*> -> value.asSequence().filterIsInstance<KSAnnotation>()
+                is Array<*> -> value.asSequence().filterIsInstance<KSAnnotation>()
+                else -> emptySequence()
+            }
+            else -> emptySequence()
+        }
+    }.toList()
+
+    private fun annotationArgument(annotation: KSAnnotation, name: String): Any? = annotation.arguments.firstOrNull { it.name?.asString() == name }?.value
+        ?: annotation.defaultArguments.firstOrNull { it.name?.asString() == name }?.value
+
+    /**
+     * Renders the `E` type of a query column's metamodel as a component's addressed type renders, with star
+     * projections for a generic type.
+     */
+    private fun queryColumnTypeName(queryColumn: QueryColumnDeclaration, packageName: String): String {
+        val baseName = kotlinTypeNameOf(queryColumn.type, packageName)
+        val typeParameterCount = (queryColumn.type.declaration as? KSClassDeclaration)?.typeParameters?.size ?: 0
+        return if (typeParameterCount == 0) baseName else baseName + List(typeParameterCount) { "*" }.joinToString(", ", "<", ">")
+    }
+
+    /**
+     * Renders the `V` type of a query column's metamodel: the `E` type, nullable when the column allows null or the
+     * metamodel is a nullable-chain variant.
+     */
+    private fun queryColumnValueTypeName(
+        queryColumn: QueryColumnDeclaration,
+        packageName: String,
+        forceNullableChain: Boolean,
+    ): String {
+        val typeName = queryColumnTypeName(queryColumn, packageName)
+        return if (queryColumn.nullable || forceNullableChain) ensureNullable(typeName) else typeName
+    }
 
     /**
      * Returns the properties to include in the metamodel for the given class declaration.
@@ -878,6 +991,16 @@ class MetamodelProcessor(
                 )
             }
         }
+        queryColumns(classDeclaration).forEach { queryColumn ->
+            val fieldRef = escaped(queryColumn.field)
+            val kotlinTypeName = queryColumnTypeName(queryColumn, packageName)
+            val valueKotlinTypeName = queryColumnValueTypeName(queryColumn, packageName, forceNullableChain = false)
+            builder.append("        /** Represents the ${queryColumn.field} query column of $className. */\n")
+            builder.append(
+                "        val $fieldRef: AbstractMetamodel<$className, $kotlinTypeName, $valueKotlinTypeName> = " +
+                    "$modelRef.$fieldRef\n",
+            )
+        }
 
         if (builder.isNotEmpty()) builder.setLength(builder.length - 1)
         return builder.toString()
@@ -913,6 +1036,11 @@ class MetamodelProcessor(
                 val baseClass = if (!isData || unique) "AbstractKeyMetamodel" else "AbstractMetamodel"
                 builder.append("    val $fieldRef: $baseClass<T, $kotlinTypeName, $v>\n")
             }
+        }
+        queryColumns(classDeclaration).forEach { queryColumn ->
+            val kotlinTypeName = queryColumnTypeName(queryColumn, packageName)
+            val valueKotlinTypeName = queryColumnValueTypeName(queryColumn, packageName, forceNullableChain)
+            builder.append("    val ${escaped(queryColumn.field)}: AbstractMetamodel<T, $kotlinTypeName, $valueKotlinTypeName>\n")
         }
         return builder.toString()
     }
@@ -1080,6 +1208,24 @@ class MetamodelProcessor(
                 )
             }
         }
+        // A data class instance holds no value for a query column, so the value methods throw.
+        val className = classDeclaration.simpleName.asString()
+        queryColumns(classDeclaration).forEach { queryColumn ->
+            val fieldName = queryColumn.field
+            val kotlinTypeName = queryColumnTypeName(queryColumn, packageName)
+            val valueKotlinTypeName = queryColumnValueTypeName(queryColumn, packageName, forceNullableChain)
+            val javaTypeName = javaTypeNameOf(queryColumn.type, packageName)
+            val failure = "throw UnsupportedOperationException(" +
+                "\"$className.$fieldName is a query column; a record holds no value for it.\")"
+            builder.append(
+                "        this.${escaped(fieldName)} = object : AbstractMetamodel<T, $kotlinTypeName, $valueKotlinTypeName>(" +
+                    "$javaTypeName, subPath, fieldBase + \"$fieldName\", false, this) {\n" +
+                    "            override fun getValue(record: T): $valueKotlinTypeName = $failure\n\n" +
+                    "            override fun isIdentical(a: T, b: T): Boolean = $failure\n\n" +
+                    "            override fun isSame(a: T, b: T): Boolean = $failure\n" +
+                    "        }\n",
+            )
+        }
 
         if (builder.isNotEmpty()) builder.setLength(builder.length - 1)
         return builder.toString()
@@ -1171,6 +1317,11 @@ class MetamodelProcessor(
                 builder.append("    val $fieldRef: st.orm.AbstractNavigableMetamodel<T, $kotlinTypeName>\n")
             }
         }
+        queryColumns(classDeclaration).forEach { queryColumn ->
+            val kotlinTypeName = queryColumnTypeName(queryColumn, packageName)
+            builder.append("    /** Represents navigation to the ${queryColumn.field} query column of $className. */\n")
+            builder.append("    val ${escaped(queryColumn.field)}: st.orm.AbstractNavigableMetamodel<T, $kotlinTypeName>\n")
+        }
         return builder.toString()
     }
 
@@ -1198,6 +1349,15 @@ class MetamodelProcessor(
                         "$javaTypeName, subPath, fieldBase + \"$fieldName\", false, this) {}\n",
                 )
             }
+        }
+        queryColumns(classDeclaration).forEach { queryColumn ->
+            val fieldName = queryColumn.field
+            val kotlinTypeName = queryColumnTypeName(queryColumn, packageName)
+            val javaTypeName = javaTypeNameOf(queryColumn.type, packageName)
+            builder.append(
+                "        this.${escaped(fieldName)} = object : st.orm.AbstractNavigableMetamodel<T, $kotlinTypeName>(" +
+                    "$javaTypeName, subPath, fieldBase + \"$fieldName\", false, this) {}\n",
+            )
         }
         if (builder.isNotEmpty()) builder.setLength(builder.length - 1)
         return builder.toString()
