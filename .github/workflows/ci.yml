@@ -101,7 +101,7 @@ jobs:
         run: mvn -B -DskipTests -Dmaven.javadoc.skip=true -Dspotless.check.skip=true package org.cyclonedx:cyclonedx-maven-plugin:makeAggregateBom
 
       - name: Scan the bill of materials for known vulnerabilities
-        uses: aquasecurity/trivy-action@0.36.0
+        uses: aquasecurity/trivy-action@v0.36.0
         with:
           scan-type: sbom
           scan-ref: target/bom.json
