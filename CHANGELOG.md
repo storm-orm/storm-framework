@@ -12,6 +12,8 @@ for the CLI, to [npm](https://www.npmjs.com/package/@storm-orm/cli)
 
 ## [Unreleased]
 
+- `LocalDate`, `LocalDateTime` and `Instant` are accepted as primary key types, alone or as a compound key component (#750), for tables keyed on a date or a timestamp. `OffsetDateTime`, `ZonedDateTime` and the `java.util.Date` family stay rejected.
+
 - A keyset scroll continues when its key is the referenced key through one of two foreign keys to the same table, such as `Recommendation_.movie.id` beside a `seedMovie` (#748). The next window's predicate reported the path as ambiguous.
 
 - Fixed `@Json(failOnUnknown = true)` on Jackson 3 and `failOnMissing = true` on Jackson 2 and 3, which accepted JSON they should refuse (#409). Sealed `@Json` arrays register their subtypes, and `{"@entity": null}` reads as no ref on Jackson 2.

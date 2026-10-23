@@ -27,6 +27,9 @@ import static st.orm.core.template.impl.RecordReflection.isRecord;
 
 import java.lang.invoke.MethodType;
 import java.math.BigInteger;
+import java.time.Instant;
+import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashSet;
@@ -170,25 +173,28 @@ final class RecordValidation {
     /**
      * Checks if the provided type is a valid primary key type.
      *
-     * <p><strong>Note:</strong> Floating point types are prohibited as primary keys.</p>
+     * <p>Floating point types are prohibited because they cannot reliably serve as identity values. Of the temporal
+     * types only {@code LocalDate}, {@code LocalDateTime} and {@code Instant} are accepted: they are immutable and
+     * round-trip unchanged at the precision the column holds. Offset and zoned date-times are read back normalized to
+     * UTC, so a key written with another offset would no longer equal itself; the legacy {@code java.util.Date}
+     * family is mutable.</p>
      *
      * @param type the type to check.
      * @return true if the type is a valid primary key type, false otherwise.
      */
     private static boolean isValidPrimaryKeyType(Class<?> type) {
-        if (!(type == boolean.class || type == Boolean.class
+        return type == boolean.class || type == Boolean.class
                 || type == int.class || type == Integer.class
                 || type == long.class || type == Long.class
                 || type == short.class || type == Short.class
                 || type == String.class
                 || type == UUID.class
                 || type == BigInteger.class
+                || type == LocalDate.class
+                || type == LocalDateTime.class
+                || type == Instant.class
                 || type.isEnum()
-                || type == Ref.class)
-        ) {
-            return false;
-        }
-        return true;
+                || type == Ref.class;
     }
 
     /**

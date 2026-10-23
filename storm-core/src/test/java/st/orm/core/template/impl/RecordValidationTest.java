@@ -6,6 +6,13 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static st.orm.StormConfig.VALIDATION_RECORD_MODE;
 
+import java.time.Instant;
+import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.time.LocalTime;
+import java.time.OffsetDateTime;
+import java.time.ZonedDateTime;
+import java.util.Date;
 import java.util.List;
 import java.util.Map;
 import org.jspecify.annotations.Nullable;
@@ -83,6 +90,57 @@ class RecordValidationTest {
             @PK Double id,
             String name
     ) implements Entity<Double> {}
+
+    // Temporal PK types
+
+    public record LocalDatePkEntity(
+            @PK LocalDate day,
+            String name
+    ) implements Entity<LocalDate> {}
+
+    public record LocalDateTimePkEntity(
+            @PK LocalDateTime at,
+            String name
+    ) implements Entity<LocalDateTime> {}
+
+    public record InstantPkEntity(
+            @PK Instant at,
+            String name
+    ) implements Entity<Instant> {}
+
+    public record SnapshotPk(int accountId, LocalDate snapshotDate) {}
+
+    public record SnapshotEntity(
+            @PK SnapshotPk id,
+            String name
+    ) implements Entity<SnapshotPk> {}
+
+    public record OffsetDateTimePkEntity(
+            @PK OffsetDateTime at,
+            String name
+    ) implements Entity<OffsetDateTime> {}
+
+    public record ZonedDateTimePkEntity(
+            @PK ZonedDateTime at,
+            String name
+    ) implements Entity<ZonedDateTime> {}
+
+    public record LocalTimePkEntity(
+            @PK LocalTime at,
+            String name
+    ) implements Entity<LocalTime> {}
+
+    public record DatePkEntity(
+            @PK Date at,
+            String name
+    ) implements Entity<Date> {}
+
+    public record OffsetPk(int accountId, OffsetDateTime at) {}
+
+    public record OffsetCompoundPkEntity(
+            @PK OffsetPk id,
+            String name
+    ) implements Entity<OffsetPk> {}
 
     // FK validation
 
@@ -319,6 +377,51 @@ class RecordValidationTest {
     @Test
     void testInvalidPkTypeDouble() {
         assertThrows(SqlTemplateException.class, () -> RecordValidation.validateDataType(DoublePkTypeEntity.class));
+    }
+
+    @Test
+    void testLocalDatePk() {
+        assertDoesNotThrow(() -> RecordValidation.validateDataType(LocalDatePkEntity.class));
+    }
+
+    @Test
+    void testLocalDateTimePk() {
+        assertDoesNotThrow(() -> RecordValidation.validateDataType(LocalDateTimePkEntity.class));
+    }
+
+    @Test
+    void testInstantPk() {
+        assertDoesNotThrow(() -> RecordValidation.validateDataType(InstantPkEntity.class));
+    }
+
+    @Test
+    void testCompoundPkWithLocalDate() {
+        assertDoesNotThrow(() -> RecordValidation.validateDataType(SnapshotEntity.class));
+    }
+
+    @Test
+    void testInvalidPkTypeOffsetDateTime() {
+        assertThrows(SqlTemplateException.class, () -> RecordValidation.validateDataType(OffsetDateTimePkEntity.class));
+    }
+
+    @Test
+    void testInvalidPkTypeZonedDateTime() {
+        assertThrows(SqlTemplateException.class, () -> RecordValidation.validateDataType(ZonedDateTimePkEntity.class));
+    }
+
+    @Test
+    void testInvalidPkTypeLocalTime() {
+        assertThrows(SqlTemplateException.class, () -> RecordValidation.validateDataType(LocalTimePkEntity.class));
+    }
+
+    @Test
+    void testInvalidPkTypeDate() {
+        assertThrows(SqlTemplateException.class, () -> RecordValidation.validateDataType(DatePkEntity.class));
+    }
+
+    @Test
+    void testInvalidCompoundPkComponentOffsetDateTime() {
+        assertThrows(SqlTemplateException.class, () -> RecordValidation.validateDataType(OffsetCompoundPkEntity.class));
     }
 
     @Test
