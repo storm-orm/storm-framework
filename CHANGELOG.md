@@ -12,6 +12,8 @@ for the CLI, to [npm](https://www.npmjs.com/package/@storm-orm/cli)
 
 ## [Unreleased]
 
+- `SqlCapture` records a statement that binds a `NULL` value, such as an insert with an unset nullable foreign key (#752). The statement ran but was missing from `statements()` and `count()`; its `parameters()` now hold `null` for the value.
+
 - `LocalDate`, `LocalDateTime` and `Instant` are accepted as primary key types, alone or as a compound key component (#750), for tables keyed on a date or a timestamp. `OffsetDateTime`, `ZonedDateTime` and the `java.util.Date` family stay rejected.
 
 - A keyset scroll continues when its key is the referenced key through one of two foreign keys to the same table, such as `Recommendation_.movie.id` beside a `seedMovie` (#748). The next window's predicate reported the path as ambiguous.
