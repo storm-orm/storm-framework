@@ -19,6 +19,7 @@ import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
 import java.util.function.Function;
+import org.jspecify.annotations.Nullable;
 import st.orm.Data;
 import st.orm.SqlTemplateException;
 import st.orm.core.template.Column;
@@ -95,9 +96,13 @@ final class ValuesProcessor implements ElementProcessor<Values> {
             var table = queryModel.getTable();
             //noinspection unchecked
             var model = (Model<Data, ?>) binder.getModel(table.type());
+            var discriminator = SubtypeDiscriminator.of(table.type()).orElse(null);
             if (values.records() != null) {
                 values.records().forEach(record -> {
                     try {
+                        if (discriminator != null) {
+                            binder.bindParameter(discriminator.value());
+                        }
                         model.validateForeignKeys(columns, record);
                         model.forEachValue(columns, record, (column, value) -> {
                             switch (column.generation()) {
@@ -119,6 +124,9 @@ final class ValuesProcessor implements ElementProcessor<Values> {
                 vars.addParameterExtractor(record -> {
                     var round = parameterFactory.newRound();
                     try {
+                        if (discriminator != null) {
+                            round.bind(discriminator.value());
+                        }
                         model.validateForeignKeys(columns, record);
                         model.forEachValue(columns, record, (column, value) -> {
                             switch (column.generation()) {
@@ -157,6 +165,7 @@ final class ValuesProcessor implements ElementProcessor<Values> {
         //noinspection unchecked
         var model = (Model<Data, ?>) compiler.getModel(table.type());
         var columns = insertableColumns(model);
+        var discriminator = SubtypeDiscriminator.of(table.type()).orElse(null);
         List<String> rows = new ArrayList<>();
         for (var record : values.records()) {
             if (record == null) {
@@ -166,7 +175,9 @@ final class ValuesProcessor implements ElementProcessor<Values> {
                 throw new SqlTemplateException("Record type %s does not match the target entity type %s. Ensure the record passed to values() matches the entity type specified in the INSERT INTO clause.".formatted(record.getClass().getSimpleName(), table.type().getSimpleName()));
             }
             var mapped = model.values(columns, record);
-            rows.add(renderRow(columns, values.ignoreAutoGenerate(), compiler, column -> compiler.mapParameter(mapped.get(column))));
+            // The discriminator of a single-table subtype leads the row; its parameter precedes the columns' too.
+            String lead = discriminator == null ? null : compiler.mapParameter(discriminator.value());
+            rows.add(renderRow(lead, columns, values.ignoreAutoGenerate(), compiler, column -> compiler.mapParameter(mapped.get(column))));
         }
         return new CompiledElement(String.join(", ", rows), new ValuesBindHint(columns));
     }
@@ -180,13 +191,14 @@ final class ValuesProcessor implements ElementProcessor<Values> {
             //noinspection unchecked
             var model = (Model<Data, ?>) compiler.getModel(table.type());
             var columns = insertableColumns(model);
+            boolean discriminator = SubtypeDiscriminator.of(table.type()).isPresent();
             compiler.mapBindVars((int) columns.stream()
                     .filter(column -> switch (column.generation()) {
                         case NONE -> true;
                         case IDENTITY, SEQUENCE -> values.ignoreAutoGenerate();
                     })
-                    .count());
-            return new CompiledElement(renderRow(columns, values.ignoreAutoGenerate(), compiler, column -> "?"),
+                    .count() + (discriminator ? 1 : 0));
+            return new CompiledElement(renderRow(discriminator ? "?" : null, columns, values.ignoreAutoGenerate(), compiler, column -> "?"),
                     new ValuesBindHint(columns));
         }
         throw new SqlTemplateException("Unsupported BindVars type in VALUES clause. Expected a standard BindVars implementation.");
@@ -202,15 +214,19 @@ final class ValuesProcessor implements ElementProcessor<Values> {
      * bound value or a deferred bind placeholder. Sharing this keeps the value and bindVars paths from drifting on
      * dialect-specific rendering such as sequence next-value.
      *
+     * @param lead the parameter fragment of the discriminator a single-table subtype writes first, or {@code null}.
      * @param columns the insertable columns, in model order.
      * @param ignoreAutoGenerate whether database-generated columns are supplied explicitly.
      * @param compiler the active compiler context.
      * @param parameterSql renders the parameter fragment for a bound column.
      * @return the rendered row, parenthesized.
      */
-    private String renderRow(List<Column> columns, boolean ignoreAutoGenerate,
+    private String renderRow(@Nullable String lead, List<Column> columns, boolean ignoreAutoGenerate,
                              TemplateCompiler compiler, Function<Column, String> parameterSql) {
         List<String> placeholders = new ArrayList<>();
+        if (lead != null) {
+            placeholders.add(lead);
+        }
         for (var column : columns) {
             switch (column.generation()) {
                 case NONE -> placeholders.add(parameterSql.apply(column));

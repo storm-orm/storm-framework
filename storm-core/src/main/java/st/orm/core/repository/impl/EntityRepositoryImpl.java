@@ -72,6 +72,7 @@ import st.orm.core.template.impl.Elements;
 import st.orm.core.template.impl.JoinedEntityHelper;
 import st.orm.core.template.impl.LazySupplier;
 import st.orm.core.template.impl.SqlInterceptorManager;
+import st.orm.core.template.impl.SubtypeDiscriminator;
 
 /**
  * Default implementation of {@link EntityRepository}.
@@ -1178,7 +1179,7 @@ public class EntityRepositoryImpl<E extends Entity<ID>, ID>
         if (usePlans()) {
             var plan = removeAllPlan;
             if (plan == null) {
-                plan = createPlanQuietly(() -> ormTemplate.plan(TemplateString.raw("DELETE FROM \0", model.type())));
+                plan = createPlanQuietly(() -> ormTemplate.plan(removeAllStatement()));
                 removeAllPlan = plan;
             }
             if (plan != null) {
@@ -1190,10 +1191,23 @@ public class EntityRepositoryImpl<E extends Entity<ID>, ID>
             }
         }
         // Don't use query builder to prevent WHERE IN clause.
-        ormTemplate.query(TemplateString.raw("DELETE FROM \0", model.type()))
+        ormTemplate.query(removeAllStatement())
                 .unsafe() // Omission of WHERE clause is intentional.
                 .managed()
                 .executeUpdate();
+    }
+
+    /**
+     * Returns the statement removing every row of the entity. A subtype of a single-table hierarchy removes its own
+     * rows among the other subtypes' in the shared table, selected by the discriminator its WHERE clause carries.
+     */
+    private TemplateString removeAllStatement() {
+        if (SubtypeDiscriminator.isSingleTableSubtype(model.type())) {
+            return TemplateString.raw("""
+                    DELETE FROM \0
+                    WHERE \0""", model.type(), new Elements.Where(null, null));
+        }
+        return TemplateString.raw("DELETE FROM \0", model.type());
     }
 
     // List based methods.

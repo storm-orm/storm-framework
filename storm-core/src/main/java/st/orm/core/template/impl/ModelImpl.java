@@ -15,7 +15,6 @@
  */
 package st.orm.core.template.impl;
 
-import static java.util.Collections.unmodifiableList;
 import static java.util.List.copyOf;
 import static java.util.Objects.requireNonNull;
 import static java.util.Optional.empty;
@@ -26,6 +25,7 @@ import static st.orm.core.spi.Providers.getORMConverter;
 import static st.orm.core.template.impl.ObjectMapperFactory.nullableHint;
 import static st.orm.core.template.impl.RecordReflection.getDiscriminatorValue;
 import static st.orm.core.template.impl.RecordReflection.getFkLeaves;
+import static st.orm.core.template.impl.RecordReflection.getRecordField;
 import static st.orm.core.template.impl.RecordReflection.getRefDataType;
 import static st.orm.core.template.impl.RecordReflection.isJoinedEntity;
 import static st.orm.core.template.impl.RecordReflection.isPolymorphicData;
@@ -41,12 +41,12 @@ import java.time.LocalDateTime;
 import java.time.LocalTime;
 import java.time.OffsetDateTime;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.Calendar;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.function.BiConsumer;
 import org.jspecify.annotations.Nullable;
 import st.orm.Data;
@@ -88,24 +88,6 @@ public final class ModelImpl<E extends Data, ID> implements Model<E, ID> {
 
     private static final ORMReflection REFLECTION = Providers.getORMReflection();
 
-    /**
-     * Caches field-name to component-index maps per concrete sealed subtype. Since the set of permitted subtypes is
-     * small and fixed, this avoids rebuilding a HashMap on every row during sealed entity value extraction.
-     * {@link ClassValue} ties each entry to the lifetime of the subtype, so the cache never pins its class loader.
-     */
-    private static final ClassValue<Map<String, Integer>> FIELD_INDEX_CACHE = new ClassValue<>() {
-        @Override
-        protected Map<String, Integer> computeValue(Class<?> type) {
-            RecordType concreteRecordType = REFLECTION.getRecordType(type);
-            var concreteFields = concreteRecordType.fields();
-            Map<String, Integer> map = HashMap.newHashMap(concreteFields.size());
-            for (int i = 0; i < concreteFields.size(); i++) {
-                map.put(concreteFields.get(i).name(), i);
-            }
-            return Map.copyOf(map);
-        }
-    };
-
     private final RecordType recordType;
     private final Class<E> typeOverride;
     private final TableName tableName;
@@ -135,12 +117,19 @@ public final class ModelImpl<E extends Data, ID> implements Model<E, ID> {
     private final Map<Integer, Class<?>> polymorphicFkDiscriminatorColumns;
 
     /**
-     * Converter aligned to {@link #columns()} by column index (1-based in {@link Column#index()}).
+     * The metamodel reading each column's value from a record, aligned to {@link #columns()} by column index
+     * (1-based in {@link Column#index()}).
+     */
+    private final Metamodel<Data, ?>[] columnMetamodels;
+
+    /**
+     * Converter aligned to {@link #columns()} by column index (1-based in {@link Column#index()}); {@code null} for
+     * a column without one.
      *
      * <p>If a logical field expands into multiple physical columns, the converter is registered for each
      * physical column that belongs to that expansion.</p>
      */
-    private final List<ORMConverter> converters;
+    private final ORMConverter[] converters;
 
     /**
      * Per-column accessor paths for foreign key columns, following the referenced key chain from the foreign
@@ -158,7 +147,26 @@ public final class ModelImpl<E extends Data, ID> implements Model<E, ID> {
      * top-level field. Precomputed so the per-row value loop is a single lookup plus {@code getValue}, with no
      * string/metamodel allocation on the write path.
      */
-    private final Map<Integer, Metamodel<Data, ?>> converterParents;
+    private final Metamodel<Data, ?>[] converterParents;
+
+    /**
+     * How each permitted subtype of a sealed entity supplies the model's columns, keyed by subtype; empty for other
+     * models. The columns of a sealed model are rooted at the subtype that first declares their field, so a record
+     * of another subtype reads them through its own metamodels, precomputed here so the per-row value loop is the
+     * same array walk as for any model.
+     */
+    private final Map<Class<?>, SubtypeAccess> subtypeAccess;
+
+    /** The model's own accessors: the column metamodels, converters and converter parents as one. */
+    private final SubtypeAccess access;
+
+    /**
+     * The accessors of one subtype of a sealed entity, aligned to {@link #columns()}: {@code null} where the subtype
+     * does not declare the column's field, whose columns then hold NULL in its rows.
+     */
+    private record SubtypeAccess(Metamodel<Data, ?>[] metamodels,
+                                 ORMConverter[] converters,
+                                 Metamodel<Data, ?>[] converterParents) {}
 
     public ModelImpl(RecordType recordType,
                      TableName tableName,
@@ -197,11 +205,14 @@ public final class ModelImpl<E extends Data, ID> implements Model<E, ID> {
         this.fields = copyOf(fields);
         this.columns = copyOf(columns);
         this.queryColumns = initDeclaredColumns(queryColumns);
-        this.columnMap = initColumnMap(this.columns, queryColumns);
         this.discriminatorColumnIndex = initDiscriminatorColumnIndex(typeOverride);
+        this.columnMap = initColumnMap(this.columns, queryColumns, typeOverride, this.discriminatorColumnIndex);
         this.polymorphicFkDiscriminatorColumns = initPolymorphicFkDiscriminatorColumns(this.fields, this.columns);
+        this.columnMetamodels = initColumnMetamodels(this.columns);
         this.converters = initConverters(this.fields, this.columns);
         this.converterParents = initConverterParents(this.converters, this.columns);
+        this.access = new SubtypeAccess(this.columnMetamodels, this.converters, this.converterParents);
+        this.subtypeAccess = initSubtypeAccess(typeOverride, this.discriminatorColumnIndex, this.columns, this.converters);
         this.keyPaths = initKeyPaths(this.fields, this.columns);
         this.primaryKeyField = initPrimaryKeyField(this.recordType);
         this.declaredColumns = initDeclaredColumns(this.columns);
@@ -209,12 +220,35 @@ public final class ModelImpl<E extends Data, ID> implements Model<E, ID> {
         this.mappedMetamodels = initMappedMetamodels(this.fields, this.columns);
     }
 
-    private static Map<Metamodel<?, ?>, List<Column>> initColumnMap(List<Column> columns, List<Column> queryColumns) {
+    /**
+     * Maps each column under its metamodels. A column of a sealed entity is rooted at the subtype that first declares
+     * its field, and is registered as well under the sealed type and under every other subtype declaring the field,
+     * so a path rooted at any of them resolves to it. The discriminator column maps no field and is not registered.
+     */
+    @SuppressWarnings("unchecked")
+    private static Map<Metamodel<?, ?>, List<Column>> initColumnMap(List<Column> columns,
+                                                                   List<Column> queryColumns,
+                                                                   @Nullable Class<?> typeOverride,
+                                                                   int discriminatorColumnIndex) {
         var map = new HashMap<Metamodel<?, ?>, List<Column>>();
+        List<Class<? extends Data>> sealedRoots = discriminatorColumnIndex > 0
+                ? sealedRoots((Class<? extends Data>) typeOverride)
+                : List.of();
         for (var column : columns) {
+            if (column.index() == discriminatorColumnIndex) {
+                continue;
+            }
             map.computeIfAbsent(column.metamodel().canonical(), ignore -> new ArrayList<>()).add(column);
             if (column.secondaryMetamodel() != null) {
                 map.computeIfAbsent(column.secondaryMetamodel().canonical(), ignore -> new ArrayList<>()).add(column);
+            }
+            if (!sealedRoots.isEmpty() && column.metamodel().path().isEmpty()) {
+                String fieldPath = column.metamodel().fieldPath();
+                for (var root : sealedRoots) {
+                    if (root != column.metamodel().root() && declaresField(root, fieldPath)) {
+                        map.computeIfAbsent(Metamodel.of(root, fieldPath).canonical(), ignore -> new ArrayList<>()).add(column);
+                    }
+                }
             }
         }
         for (var column : queryColumns) {
@@ -222,6 +256,96 @@ public final class ModelImpl<E extends Data, ID> implements Model<E, ID> {
         }
         map.replaceAll((k, v) -> List.copyOf(v));
         return Map.copyOf(map);
+    }
+
+    /**
+     * Returns the types a column of a sealed entity can be rooted at: the sealed type and its permitted subtypes.
+     */
+    @SuppressWarnings("unchecked")
+    private static List<Class<? extends Data>> sealedRoots(Class<? extends Data> sealedType) {
+        var roots = new ArrayList<Class<? extends Data>>();
+        roots.add(sealedType);
+        for (Class<?> subtype : sealedType.getPermittedSubclasses()) {
+            roots.add((Class<? extends Data>) subtype);
+        }
+        return roots;
+    }
+
+    /**
+     * Returns whether a path rooted at {@code root} resolves: its first segment names a field of a subtype, or an
+     * accessor the sealed type declares, which is what a metamodel rooted at the sealed type reads the value through.
+     */
+    private static boolean declaresField(Class<? extends Data> root, String fieldPath) {
+        int dot = fieldPath.indexOf('.');
+        String topLevel = dot < 0 ? fieldPath : fieldPath.substring(0, dot);
+        if (root.isSealed()) {
+            return MetamodelFactory.hasAccessor(root, topLevel);
+        }
+        for (var field : REFLECTION.getRecordType(root).fields()) {
+            if (field.name().equals(topLevel)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    @SuppressWarnings("unchecked")
+    private static Metamodel<Data, ?>[] initColumnMetamodels(List<Column> columns) {
+        var metamodels = new Metamodel[columns.size()];
+        for (int i = 0; i < columns.size(); i++) {
+            metamodels[i] = columns.get(i).metamodel();
+        }
+        return metamodels;
+    }
+
+    /**
+     * Precomputes, per permitted subtype of a sealed entity, the metamodels and converters that read the model's
+     * columns from a record of that subtype. A column's own metamodel serves the subtype it is rooted at; another
+     * subtype declaring the field reads the same path rooted at itself, and a top-level converted field takes the
+     * converter of the subtype's own field, since a converter reads its value through the declaring record.
+     */
+    @SuppressWarnings("unchecked")
+    private static Map<Class<?>, SubtypeAccess> initSubtypeAccess(@Nullable Class<?> typeOverride,
+                                                                 int discriminatorColumnIndex,
+                                                                 List<Column> columns,
+                                                                 ORMConverter[] converters) throws SqlTemplateException {
+        if (discriminatorColumnIndex < 0) {
+            return Map.of();
+        }
+        Map<Class<?>, SubtypeAccess> access = new HashMap<>();
+        for (Class<?> subtype : typeOverride.getPermittedSubclasses()) {
+            Set<String> fieldNames = REFLECTION.getRecordType(subtype).fields().stream()
+                    .map(RecordField::name)
+                    .collect(toSet());
+            var metamodels = new Metamodel[columns.size()];
+            var subtypeConverters = new ORMConverter[columns.size()];
+            var parents = new Metamodel[columns.size()];
+            for (int i = 0; i < columns.size(); i++) {
+                if (i == discriminatorColumnIndex - 1) {
+                    continue;
+                }
+                var metamodel = columns.get(i).metamodel();
+                String fieldPath = metamodel.fieldPath();
+                int dot = fieldPath.indexOf('.');
+                String topLevel = dot < 0 ? fieldPath : fieldPath.substring(0, dot);
+                if (!fieldNames.contains(topLevel)) {
+                    continue;   // The subtype lacks the field, so the column holds NULL in its rows.
+                }
+                metamodels[i] = metamodel.root() == subtype
+                        ? metamodel
+                        : (Metamodel<Data, ?>) Metamodel.of((Class<? extends Data>) subtype, fieldPath);
+                if (converters[i] != null) {
+                    int lastDot = fieldPath.lastIndexOf('.');
+                    String parentPath = lastDot < 0 ? "" : fieldPath.substring(0, lastDot);
+                    subtypeConverters[i] = parentPath.isEmpty()
+                            ? getORMConverter(getRecordField(subtype, topLevel)).orElseThrow()
+                            : converters[i];
+                    parents[i] = (Metamodel<Data, ?>) Metamodel.of((Class<? extends Data>) subtype, parentPath);
+                }
+            }
+            access.put(subtype, new SubtypeAccess(metamodels, subtypeConverters, parents));
+        }
+        return Map.copyOf(access);
     }
 
     /**
@@ -322,12 +446,12 @@ public final class ModelImpl<E extends Data, ID> implements Model<E, ID> {
         return value;
     }
 
-    private static List<ORMConverter> initConverters(List<RecordField> fields, List<Column> columns) {
+    private static ORMConverter[] initConverters(List<RecordField> fields, List<Column> columns) {
         var converters = new ORMConverter[columns.size()];
         for (int i = 0; i < columns.size(); i++) {
             converters[i] = getORMConverter(fields.get(i)).orElse(null);
         }
-        return unmodifiableList(Arrays.asList(converters));
+        return converters;
     }
 
     /**
@@ -336,11 +460,12 @@ public final class ModelImpl<E extends Data, ID> implements Model<E, ID> {
      * Keyed by column index (0-based) so the value loop resolves a converter group's parent with a single lookup. A
      * converter group's start column is always converter-backed, so its key is always present.
      */
-    private static Map<Integer, Metamodel<Data, ?>> initConverterParents(List<ORMConverter> converters,
-                                                                          List<Column> columns) {
-        var parents = new HashMap<Integer, Metamodel<Data, ?>>();
+    @SuppressWarnings("unchecked")
+    private static Metamodel<Data, ?>[] initConverterParents(ORMConverter[] converters,
+                                                             List<Column> columns) {
+        var parents = new Metamodel[columns.size()];
         for (int i = 0; i < columns.size(); i++) {
-            if (converters.get(i) == null) {
+            if (converters[i] == null) {
                 continue;
             }
             Metamodel<Data, ?> columnMetamodel = columns.get(i).metamodel();
@@ -348,9 +473,9 @@ public final class ModelImpl<E extends Data, ID> implements Model<E, ID> {
             int lastDot = fieldPath.lastIndexOf('.');
             // The parent path is the field path without its final segment; empty resolves to the root record itself.
             String parentPath = lastDot < 0 ? "" : fieldPath.substring(0, lastDot);
-            parents.put(i, Metamodel.of(columnMetamodel.root(), parentPath));
+            parents[i] = Metamodel.of(columnMetamodel.root(), parentPath);
         }
-        return Map.copyOf(parents);
+        return parents;
     }
 
     private static RecordField initPrimaryKeyField(RecordType recordType) {
@@ -410,7 +535,7 @@ public final class ModelImpl<E extends Data, ID> implements Model<E, ID> {
 
     @Override
     public Optional<Metamodel<E, ?>> findMetamodel(Class<? extends Data> type) {
-        if (recordType.type().equals(type)) {
+        if (recordType.type().equals(type) || type().equals(type)) {
             return Optional.ofNullable(primaryKeyMetamodel);
         }
         var metamodels = mappedMetamodels.get(type);
@@ -523,11 +648,16 @@ public final class ModelImpl<E extends Data, ID> implements Model<E, ID> {
     public void validateForeignKeys(List<Column> columns, E record) throws SqlTemplateException {
         requireNonNull(columns, "columns");
         requireNonNull(record, "record");
+        var metamodels = accessors(record).metamodels();
         for (var column : columns) {
             if (!column.foreignKey() || column.foreignKeyGeneration() == GenerationStrategy.NONE) {
                 continue;
             }
-            var value = getValue(column.metamodel(), record);
+            var metamodel = metamodels[column.index() - 1];
+            if (metamodel == null) {
+                continue;   // The record's subtype lacks the field.
+            }
+            var value = getValue(metamodel, record);
             if (value == null) {
                 continue;
             }
@@ -561,9 +691,9 @@ public final class ModelImpl<E extends Data, ID> implements Model<E, ID> {
         boolean resolvedViaInline = false;
         List<Column> columns;
         if (discriminatorColumnIndex > 0) {
-            var mapped = metamodel.isColumn() ? columnMap.get(metamodel.canonical()) : null;
-            columns = mapped != null
-                    ? mapped
+            // The root of a sealed entity names the entity itself, which its primary key identifies.
+            columns = metamodel.isColumn()
+                    ? getColumns(metamodel)
                     : declaredColumns.stream().filter(Column::primaryKey).toList();
         } else if (metamodel.isInline() && columnMap.get(metamodel.canonical()) == null) {
             // Inline record not directly in column map (e.g., Address). Fall back to inline resolution.
@@ -679,10 +809,10 @@ public final class ModelImpl<E extends Data, ID> implements Model<E, ID> {
                                      E record,
                                      BiConsumer<Column, Object> consumer)
             throws SqlTemplateException {
-        if (discriminatorColumnIndex > 0) {
-            forEachSealedEntityValue(view, record, consumer);
-            return;
-        }
+        var accessors = accessors(record);
+        var metamodels = accessors.metamodels();
+        var converters = accessors.converters();
+        var converterParents = accessors.converterParents();
         int lastIndex = -1;
         int cachedGroupStart = -1;
         int cachedParamCount = -1;
@@ -698,15 +828,26 @@ public final class ModelImpl<E extends Data, ID> implements Model<E, ID> {
                 );
             }
             lastIndex = index;
-            var converter = converters.get(index - 1);
+            if (index == discriminatorColumnIndex) {
+                // The discriminator value follows from the record's concrete type.
+                consumer.accept(column, getDiscriminatorValue(record.getClass(), typeOverride));
+                continue;
+            }
+            var metamodel = metamodels[index - 1];
+            if (metamodel == null) {
+                // The column belongs to a field of another subtype of the sealed entity.
+                consumer.accept(column, null);
+                continue;
+            }
+            var converter = converters[index - 1];
             if (converter != null) {
                 int parameterCount = converter.getParameterCount();
-                int groupStart = findConverterGroupStart(index - 1, parameterCount);
+                int groupStart = findConverterGroupStart(converters, index - 1, parameterCount);
                 int groupStartIndex = groupStart + 1;
                 if (groupStart != cachedGroupStart) {
                     // Navigate the root record down to the record that declares the converted field so the converter
                     // reflects its accessor on the correct instance (the enclosing inline component, or the root).
-                    cachedValues = converter.toDatabase(converterParents.get(groupStart).getValue(record));
+                    cachedValues = converter.toDatabase(converterParents[groupStart].getValue(record));
                     cachedGroupStart = groupStart;
                     cachedParamCount = parameterCount;
                 }
@@ -727,7 +868,7 @@ public final class ModelImpl<E extends Data, ID> implements Model<E, ID> {
                 consumer.accept(column, cachedValues.get(valueIndex));
                 continue;
             }
-            var value = getValue(column.metamodel(), record);
+            var value = getValue(metamodel, record);
             if (value == null && !column.nullable() && !column.primaryKey()) {
                 throw new SqlTemplateException("Cannot write NULL to non-nullable column '%s'. Ensure the entity field has a value before inserting or updating, or %s if NULL is intended.".formatted(column.name(), nullableHint(type())));
             }
@@ -761,49 +902,18 @@ public final class ModelImpl<E extends Data, ID> implements Model<E, ID> {
     }
 
     /**
-     * Sealed entity value extraction. For each column in the view:
-     * <ul>
-     *   <li>Discriminator column: emits the discriminator value derived from the record's concrete type.</li>
-     *   <li>Data columns present in the concrete type: extracts the value via reflection.</li>
-     *   <li>Data columns absent from the concrete type (subtype-specific): emits NULL.</li>
-     * </ul>
+     * Returns the accessors reading the model's columns from the given record: the model's own for a record of its
+     * type, or those of the record's subtype for a sealed entity.
      */
-    private void forEachSealedEntityValue(List<Column> view,
-                                           E record,
-                                           BiConsumer<Column, Object> consumer)
-            throws SqlTemplateException {
-        assert typeOverride != null && typeOverride.isSealed();
-        Class<?> concreteType = record.getClass();
-        // Look up (or compute once) the field-name -> component-index map for the concrete type.
-        Map<String, Integer> fieldIndexMap = FIELD_INDEX_CACHE.get(concreteType);
-        for (var column : view) {
-            int index = column.index();
-            if (index == discriminatorColumnIndex) {
-                // Auto-populate discriminator value from the concrete type.
-                consumer.accept(column, getDiscriminatorValue(concreteType, typeOverride));
-                continue;
-            }
-            // Look up the field in the sealed model's field list (aligned with columns).
-            RecordField modelField = fields.get(index - 1);
-            Integer componentIndex = fieldIndexMap.get(modelField.name());
-            if (componentIndex == null) {
-                // Column belongs to a different subtype -> NULL.
-                consumer.accept(column, null);
-                continue;
-            }
-            Object value = REFLECTION.getRecordValue(record, componentIndex);
-            if (column.foreignKey()) {
-                if (value instanceof Ref<?> ref) {
-                    value = ref.id();
-                } else if (value instanceof Data data) {
-                    value = REFLECTION.getId(data);
-                }
-            }
-            if (value != null && (column.primaryKey() || column.foreignKey()) && isRecord(value.getClass())) {
-                value = REFLECTION.getRecordValue(value, column.keyIndex() - 1);
-            }
-            consumer.accept(column, map(column, value));
+    private SubtypeAccess accessors(E record) throws SqlTemplateException {
+        if (discriminatorColumnIndex < 0) {
+            return access;
         }
+        var subtypeAccessors = subtypeAccess.get(record.getClass());
+        if (subtypeAccessors == null) {
+            throw new SqlTemplateException("%s is not a permitted subtype of %s.".formatted(record.getClass().getSimpleName(), typeOverride.getSimpleName()));
+        }
+        return subtypeAccessors;
     }
 
     private Object getValue(Metamodel<Data, ?> metamodel, E record) throws SqlTemplateException {
@@ -823,10 +933,10 @@ public final class ModelImpl<E extends Data, ID> implements Model<E, ID> {
      *
      * <p>This method chooses the earliest possible start within that window that is still converter-backed.</p>
      */
-    private int findConverterGroupStart(int index, int parameterCount) {
+    private static int findConverterGroupStart(ORMConverter[] converters, int index, int parameterCount) {
         int min = Math.max(0, index - (parameterCount - 1));
         int start = index;
-        while (start > min && converters.get(start - 1) != null) {
+        while (start > min && converters[start - 1] != null) {
             start--;
         }
         return start;

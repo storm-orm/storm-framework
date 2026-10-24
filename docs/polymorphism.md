@@ -481,6 +481,97 @@ The table below shows the SQL generated for each operation. Because all subtypes
 
 Notice that INSERT only includes the columns relevant to the concrete subtype. Columns belonging to other subtypes are omitted entirely (they default to NULL in the database). The SELECT, by contrast, always includes all columns from all subtypes, because the query does not know in advance which subtypes will appear in the result set.
 
+### Foreign Keys in the Hierarchy
+
+A subtype declares foreign keys as any entity does. A foreign key every subtype declares is a column of the shared table that every row fills, so Storm joins it with an INNER JOIN. A foreign key only some subtypes declare holds NULL in the rows of the others, so Storm joins it with a LEFT JOIN, and a `Ref` foreign key reads and writes its id column without a join. Each subtype is built from its own columns, so a `Cat` never sees the kennel and a `Dog` always has one.
+
+<Tabs groupId="language">
+<TabItem value="kotlin" label="Kotlin" default>
+
+```kotlin
+@Discriminator
+sealed interface Pet : Entity<Int> {
+    val owner: Owner
+}
+
+data class Cat(
+    @PK val id: Int = 0,
+    @FK override val owner: Owner,
+    val name: String,
+    val indoor: Boolean
+) : Pet
+
+data class Dog(
+    @PK val id: Int = 0,
+    @FK override val owner: Owner,
+    val name: String,
+    @FK val kennel: Kennel
+) : Pet
+```
+
+</TabItem>
+<TabItem value="java" label="Java">
+
+```java
+@Discriminator
+sealed interface Pet extends Entity<Integer> permits Cat, Dog {
+    Owner owner();
+}
+
+record Cat(@PK Integer id, @FK Owner owner, String name, boolean indoor) implements Pet {}
+
+record Dog(@PK Integer id, @FK Owner owner, String name, @FK Kennel kennel) implements Pet {}
+```
+
+</TabItem>
+</Tabs>
+
+```sql
+SELECT p.dtype, p.id, p.owner_id, o.first_name, o.last_name, p.name, p.indoor, p.kennel_id, k.name
+FROM pet p
+INNER JOIN owner o ON p.owner_id = o.id
+LEFT JOIN kennel k ON p.kennel_id = k.id
+```
+
+A foreign key the sealed interface declares is a path of the sealed metamodel: `Pet_.owner` compares the owner, and `Pet_.owner.lastName` reaches through the join. A subtype's own foreign key is a path of the subtype's metamodel, `Dog_.kennel`, which the query on the sealed type accepts as well; it does not narrow the query to dogs, since a cat's kennel column is simply NULL. To work with one kind, query the subtype.
+
+### Querying One Subtype
+
+A subtype of a Single-Table hierarchy is an entity of its own: `orm.entity(Dog::class)` in Kotlin, `orm.entity(Dog.class)` in Java, or an `EntityRepository<Dog, Int>`. It reads and writes the shared table, and every statement selects the subtype's rows by the discriminator: a select, count, `findById`, `update()` or `delete()` adds `dtype = 'Dog'` to its WHERE clause, an insert writes it, and `removeAll` removes the dogs and keeps the cats. The subtype's metamodel works as for any entity, so `Dog_.kennel` filters the dogs by kennel.
+
+<Tabs groupId="language">
+<TabItem value="kotlin" label="Kotlin" default>
+
+```kotlin
+interface DogRepository : EntityRepository<Dog, Int> {
+    fun findByKennel(kennel: Kennel): List<Dog> = findAll(Dog_.kennel eq kennel)
+}
+
+val dogs = orm.entity(Dog::class)
+dogs.count()                          // SELECT COUNT(*) FROM pet p WHERE p.dtype = ?
+dogs.findById(1)                      // null when row 1 is a cat
+```
+
+</TabItem>
+<TabItem value="java" label="Java">
+
+```java
+interface DogRepository extends EntityRepository<Dog, Integer> {
+    default List<Dog> findByKennel(Kennel kennel) {
+        return select().where(Dog_.kennel, EQUALS, kennel).getResultList();
+    }
+}
+
+var dogs = orm.entity(Dog.class);
+dogs.count();                         // SELECT COUNT(*) FROM pet p WHERE p.dtype = ?
+dogs.findById(1);                     // empty when row 1 is a cat
+```
+
+</TabItem>
+</Tabs>
+
+A join onto the subtype matches its rows only: `innerJoin(Dog::class)` adds the discriminator to its ON clause. A SQL template on the subtype carries the discriminator in its WHERE element, so a template whose condition is written out as text, without a `where` element, is refused with a message saying so. Use the query builder or the repository for such a statement.
+
 ### Foreign Keys to Single-Table Entities
 
 Other entities reference the shared table with a regular single-column foreign key. Since all subtypes live in the same table, the FK column always points to one table regardless of which concrete subtype the row represents. This is one of the advantages of Single-Table: foreign key relationships are simple and standard.
@@ -860,6 +951,12 @@ Unlike Single-Table, DML operations for Joined Table entities are multi-statemen
 Note that SQL-level upsert operations (`INSERT ... ON CONFLICT`, `MERGE`, etc.) are not supported for Joined Table entities, because these SQL constructs are fundamentally single-table operations. Storm will throw a clear error if you attempt an upsert on a joined sealed entity. You can still use `insert()` and `update()` separately, which correctly handle the multi-table logic.
 
 The [`update()` and `delete()` query builders](queries.md#deleting-rows-by-condition) are refused for the sealed type and for each of its subtypes for the same reason: a single UPDATE or DELETE writes one table, and the rows of a Joined Table entity span the base table and an extension table. Remove the entities with `remove` or `removeById`, which delete from every table in order, and update them with `update(entity)`.
+
+### Foreign Keys in the Hierarchy
+
+A subtype declares foreign keys as it does in a Single-Table hierarchy. A foreign key every subtype declares lives in the base table and is joined from it; a foreign key only some subtypes declare lives in the declaring subtype's extension table, which Storm joins first, and is joined from that table with a LEFT JOIN. `JoinedPet_.owner` and `JoinedDog_.kennel` are the paths to filter by.
+
+A subtype of a Joined Table hierarchy is not an entity of its own: its rows span the base table and its extension table, which the sealed type reads and writes as one. `orm.entity(JoinedDog::class)` and a select from the subtype are refused with a message naming the sealed type; select the sealed type and dispatch on the subtype.
 
 ### Foreign Keys to Joined Table Entities
 
@@ -1292,6 +1389,8 @@ The table below offers guidance on when each strategy is a good fit and when it 
 
 There is no universally "best" strategy. The choice depends on your schema design goals, query patterns, and the nature of the relationship between your subtypes.
 
+A hierarchy is not the answer to every "kind of" column. Kinds that share every field, such as a status or a category, are an enum column on one entity: a `when` over the enum covers every case as a `when` over the subtypes does, without a second type per kind. A hierarchy pays off when each kind carries fields, and foreign keys, the other kinds do not have: a checkup and a surgery that both name the pet while only the surgery names the surgeon, or a post and a photo that a comment can point at.
+
 ---
 
 ## Pattern Matching
@@ -1339,3 +1438,5 @@ If you later add a `Bird` subtype to the `Pet` hierarchy, the compiler flags eve
 4. **`@Discriminator` is required for Single-Table, optional for Joined Table.** For Single-Table, the default column name `"dtype"` (consistent with JPA) is used when no column name is specified. For Joined Table, omitting `@Discriminator` enables implicit type resolution via extension table PKs.
 5. **Polymorphic FK targets cannot be auto-joined.** Use `Ref.fetch()` to load the target entity. This is by design: the target spans multiple tables, so a single JOIN is not possible.
 6. **All subtypes must share the same PK type.** Mixing `Integer` and `Long` primary keys within a sealed hierarchy is not supported.
+7. **Query one kind through its own repository.** A subtype of a Single-Table hierarchy is an entity of its own, and every statement on it carries the discriminator. A subtype of a Joined Table hierarchy is reached through the sealed type.
+8. **A hierarchy is for kinds with different fields.** Kinds that share every field are a column, typically an enum, not subtypes; a hierarchy earns its place when each kind carries fields, and foreign keys, the others do not have.

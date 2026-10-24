@@ -205,6 +205,10 @@ public final class ORMTemplateImpl extends QueryTemplateImpl implements ORMTempl
     public <T extends Entity<ID>, ID> EntityRepository<T, ID> entity(Class<T> type) {
         //noinspection unchecked
         return (EntityRepository<T, ID>) entityRepositories.computeIfAbsent(type, t -> {
+            RecordReflection.findJoinedSealedParent(t).ifPresent(parent -> {
+                throw new PersistenceException("Cannot create a repository for %1$s: its rows span the tables of the joined inheritance hierarchy %2$s, which the repository of %2$s reads and writes as one. Use the repository of %2$s and dispatch on %1$s."
+                        .formatted(t.getSimpleName(), parent.getSimpleName()));
+            });
             try {
                 return getEntityRepository(this, modelBuilder.build(type, true), providerFilter == null ? ignore -> true : providerFilter);
             } catch (SqlTemplateException e) {

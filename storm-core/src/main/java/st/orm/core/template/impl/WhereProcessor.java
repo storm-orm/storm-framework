@@ -31,10 +31,22 @@ import st.orm.core.template.TemplateString;
 import st.orm.core.template.impl.Elements.Where;
 
 final class WhereProcessor implements ElementProcessor<Where> {
-    record WhereBindHint(List<Column> columns) implements BindHint {}
+    /**
+     * @param columns the identifying columns a bind-vars condition compares, empty for an expression.
+     * @param discriminator whether the condition carries the discriminator of the statement's table, a subtype of a
+     *                      single-table hierarchy, whose value is bound before the condition's parameters.
+     */
+    record WhereBindHint(List<Column> columns, boolean discriminator) implements BindHint {
+        WhereBindHint(List<Column> columns) {
+            this(columns, false);
+        }
+    }
 
     /** Marker passed as the placeholder value; the dialect reads only column names and the parameter function. */
     private static final Object PLACEHOLDER = new Object();
+
+    /** The compilation key of a condition holding a discriminator alone. */
+    private static final Object DISCRIMINATOR_KEY = "discriminator";
 
     /**
      * Returns a key that represents the compiled shape of the given element.
@@ -60,7 +72,9 @@ final class WhereProcessor implements ElementProcessor<Where> {
         if (where.bindVars() != null) {
             return new Where(null, null, where.bindVarsKey());
         }
-        throw new SqlTemplateException("Invalid element in WHERE clause: %s. Expected a valid expression, entity, or bind variable.".formatted(where));
+        // A condition without expression and bind variables holds the discriminator of a single-table subtype alone,
+        // which the statement's table decides.
+        return DISCRIMINATOR_KEY;
     }
 
     /**
@@ -90,14 +104,35 @@ final class WhereProcessor implements ElementProcessor<Where> {
      */
     @Override
     public CompiledElement compile(Where where, TemplateCompiler compiler) throws SqlTemplateException {
+        // The discriminator comes first, so its parameter precedes the condition's in the bind order.
+        String discriminator = where.discriminator() ? compileDiscriminator(compiler) : null;
+        CompiledElement condition;
         if (where.expression() != null) {
-            return new CompiledElement(compiler.getQueryModel().compileExpression(where.expression(), compiler),
+            condition = new CompiledElement(compiler.getQueryModel().compileExpression(where.expression(), compiler),
                     new WhereBindHint(List.of()));
+        } else if (where.bindVars() != null) {
+            condition = compileWhereBindVars(where, compiler);
+        } else if (discriminator != null) {
+            return new CompiledElement(discriminator, new WhereBindHint(List.of(), true));
+        } else {
+            throw new SqlTemplateException("No expression or bind variables found for WHERE clause. Provide at least one filter condition.");
         }
-        if (where.bindVars() != null) {
-            return compileWhereBindVars(where, compiler);
+        if (discriminator == null) {
+            return condition;
         }
-        throw new SqlTemplateException("No expression or bind variables found for WHERE clause. Provide at least one filter condition.");
+        var hint = (WhereBindHint) condition.bindHint();
+        return new CompiledElement(() -> "%s AND (%s)".formatted(discriminator, condition.get()),
+                new WhereBindHint(hint.columns(), true));
+    }
+
+    /**
+     * Renders the condition selecting the rows of the statement's table, a subtype of a single-table hierarchy.
+     */
+    private static String compileDiscriminator(TemplateCompiler compiler) throws SqlTemplateException {
+        var table = compiler.getQueryModel().getTable();
+        var discriminator = SubtypeDiscriminator.of(table.type()).orElseThrow(
+                () -> new SqlTemplateException("%s is not a subtype of a single-table hierarchy, so its condition carries no discriminator.".formatted(table.type().getSimpleName())));
+        return discriminator.predicate(table.alias(), compiler);
     }
 
     /**
@@ -111,8 +146,12 @@ final class WhereProcessor implements ElementProcessor<Where> {
      * @param binder the binder used to bind runtime values.
      */
     @Override
-    public void bind(Where where, TemplateBinder binder, BindHint bindHint) {
-        if (bindHint instanceof WhereBindHint(var columns)) {
+    public void bind(Where where, TemplateBinder binder, BindHint bindHint) throws SqlTemplateException {
+        if (bindHint instanceof WhereBindHint(var columns, var discriminator)) {
+            if (discriminator) {
+                var table = binder.getQueryModel().getTable();
+                binder.bindParameter(SubtypeDiscriminator.of(table.type()).orElseThrow().value());
+            }
             if (where.expression() != null) {
                 assert columns.isEmpty();
                 binder.getQueryModel().bindExpression(where.expression(), binder);

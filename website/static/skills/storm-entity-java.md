@@ -207,6 +207,30 @@ Generation rules:
 
 After generating, remind the user to rebuild for metamodel generation.
 
+## Polymorphism
+
+**Model kinds of one thing with different fields as a sealed hierarchy, not as one entity with nullable columns per kind.** A `sealed interface` extending `Entity<ID>` with a record per kind: Storm stores the kind in a discriminator column (Single-Table) or in a table per kind (Joined Table), and every read returns the record of the row's kind, so a `switch` over the result is exhaustive. Full rules and SQL in /storm-docs under Polymorphism.
+
+**Reach for a hierarchy when:**
+- Each kind carries fields, and foreign keys, the other kinds do not have: a checkup and a surgery both name the pet, only the surgery names the surgeon.
+- A reference can point at rows of unrelated tables, such as comments on posts and on photos: a `sealed interface Commentable : Data` the target entities implement, and `@FK Ref<Commentable> target` on the comment. Storm writes the target's type beside its id.
+
+**Do not reach for one when:**
+- The kinds share every field: a status or category is an enum column on one entity, and a `switch` over the enum is as exhaustive.
+- The kinds differ only in behavior, not in data.
+- The hierarchy would nest: Storm supports one level, an interface and its records.
+
+**Pick the strategy by the fields that differ.** Single-Table (the default, `@Discriminator` on the interface) when the kinds differ in a few fields: one table, no joins, NULL in the other kinds' columns. Joined Table (`@Polymorphic(JOINED)`) when they differ in many: a base table plus a table per kind, LEFT JOINs on every read, and no `update()`/`delete()` builders or upserts, since a row spans two tables.
+
+**Define it as any entity:**
+- The sealed interface declares the fields the kinds share as accessor methods; each record declares them as components, the primary key with `@PK` and the same type and generation in every kind.
+- `@FK` goes on the record component. A foreign key every kind declares is joined with an INNER JOIN; one only some kinds declare holds NULL in the other kinds' rows and is joined with a LEFT JOIN. `Ref<T>` works as it does elsewhere.
+- `@DbTable` and `@Discriminator(column = "kind")` go on the interface, `@Discriminator("surgery")` on a record to name its value.
+
+**Query the sealed type for every kind, the subtype for one kind:**
+- `orm.entity(Treatment.class)` returns `Checkup` and `Surgery` instances; `Treatment_.pet` and `Treatment_.pet.name` filter through the shared foreign key.
+- `orm.entity(Surgery.class)`, or an `EntityRepository<Surgery, Integer>`, reads and writes the surgeries in the shared table: every statement carries the discriminator, `removeAll` keeps the checkups, and `Surgery_.surgeon` filters by a field only surgeries have. A Joined Table subtype has no repository of its own; query the sealed type and dispatch.
+
 ## Verification
 
 **After creating or modifying entities, write a `@StormTest` that validates them against the database schema with `validateSchema()`.** Tell the user what you are doing and why: `validateSchema()` checks entities against the database at the JDBC level, catching type mismatches, nullability disagreements, missing columns, unmapped NOT NULL columns, and FK inconsistencies before anything reaches production. This is Storm's verify-then-trust pattern.

@@ -510,7 +510,18 @@ abstract class QueryBuilderImpl<T extends Data, R, ID> extends QueryBuilder<T, R
             clauses.addAll(having);
             clauses.addAll(orderBy);
             var whereClause = FilterJoinPlacement.where(queryTemplate, fromType, join, where, clauses, subqueriesMayReadTable());
-            return whereClause == null ? template : TemplateString.combine(template, TemplateString.of("\nWHERE "), whereClause);
+            if (whereClause == null) {
+                return template;
+            }
+            // The composed condition is one WHERE element, so a subtype of a single-table hierarchy carries its
+            // discriminator in front of it.
+            return TemplateString.combine(template, TemplateString.of("\nWHERE "),
+                    wrap(new Where(new TemplateExpression(whereClause), null)));
+        }
+        if (where.isEmpty() && isSingleTableSubtype()) {
+            // A statement on a subtype of a single-table hierarchy selects the subtype's rows by the discriminator,
+            // which its WHERE clause carries: without a condition, the clause holds the discriminator alone.
+            return TemplateString.combine(template, TemplateString.of("\nWHERE "), wrap(new Where(null, null)));
         }
         if (!where.isEmpty()) {
             if (where.size() == 1) {
@@ -524,6 +535,25 @@ abstract class QueryBuilderImpl<T extends Data, R, ID> extends QueryBuilder<T, R
             }
         }
         return template;
+    }
+
+    /**
+     * Returns whether the statement's table is a subtype of a single-table hierarchy, whose statements select the
+     * subtype's rows by the discriminator their WHERE clause carries.
+     */
+    protected final boolean isSingleTableSubtype() {
+        return RecordReflection.findSingleTableSealedParent(fromType).isPresent();
+    }
+
+    /**
+     * Returns the start of a WHERE clause whose condition is written out, such as a key lookup through a subquery:
+     * for a subtype of a single-table hierarchy a WHERE element holding the discriminator alone, followed by
+     * {@code AND}, and nothing for any other table.
+     */
+    protected final TemplateString discriminatorCondition() {
+        return isSingleTableSubtype()
+                ? TemplateString.combine(wrap(new Where(null, null)), TemplateString.of(" AND "))
+                : TemplateString.of("");
     }
 
     /**

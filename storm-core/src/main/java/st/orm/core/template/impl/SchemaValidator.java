@@ -257,9 +257,15 @@ public final class SchemaValidator {
      * with {@link DbIgnore} or {@link ProjectionQuery}.
      */
     private @Nullable Model<?, ?> modelOf(Class<? extends Data> type) {
-        // Skip sealed interfaces: their permitted subclasses will be validated individually,
-        // and for single-table inheritance the sealed model's columns are the union of all subtypes.
-        if (type.isInterface() || (type.isSealed() && !type.isRecord())) {
+        // A single-table hierarchy is one table: the sealed type's model holds the union of the subtypes' columns
+        // and the discriminator, and a subtype checks that table through it.
+        var singleTableParent = RecordReflection.findSingleTableSealedParent(type);
+        if (singleTableParent.isPresent()) {
+            type = singleTableParent.get();
+        }
+        // A joined hierarchy's sealed type checks the base table; each subtype checks its extension table.
+        boolean sealedEntity = type.isSealed() && RecordReflection.isSealedEntity(type);
+        if (!sealedEntity && (type.isInterface() || (type.isSealed() && !type.isRecord()))) {
             return null;
         }
         boolean requirePrimaryKey = Entity.class.isAssignableFrom(type);
@@ -527,8 +533,9 @@ public final class SchemaValidator {
         }
         // 2-4. Column existence, type compatibility, nullability.
         // Track all column names (including @DbIgnore) for the unmapped column check (step 9).
+        List<Column> columns = tableColumns(type, model);
         Set<String> mappedColumns = new TreeSet<>(String.CASE_INSENSITIVE_ORDER);
-        for (Column column : model.declaredColumns()) {
+        for (Column column : columns) {
             mappedColumns.add(column.name());
             if (isIgnored(column, ignoredComponents)) {
                 continue;
@@ -543,7 +550,7 @@ public final class SchemaValidator {
         // 5. Primary key match. Skipped when this table's primary key could not be read: an empty result would
         // otherwise read as "the table has no primary key".
         if (requirePrimaryKey && schema.isDiscovered(tableName, ConstraintKind.PRIMARY_KEY)) {
-            Set<String> entityPkColumns = model.declaredColumns().stream()
+            Set<String> entityPkColumns = columns.stream()
                     .filter(Column::primaryKey)
                     .map(column -> column.name().toUpperCase())
                     .collect(Collectors.toCollection(() -> new TreeSet<>(String.CASE_INSENSITIVE_ORDER)));
@@ -573,7 +580,7 @@ public final class SchemaValidator {
         // 6. Sequence existence. Only validated when sequences were actually discovered: a dialect that cannot
         // enumerate sequences leaves them unknown, and unknown must not be reported as missing.
         if (schema.sequencesDiscovered()) {
-            for (Column column : model.declaredColumns()) {
+            for (Column column : columns) {
                 if (isIgnored(column, ignoredComponents)) {
                     continue;
                 }
@@ -588,10 +595,10 @@ public final class SchemaValidator {
             }
         }
         // 7. Unique key validation.
-        validateUniqueKeys(type, model, schema, tableName, qualifiedTableName, ignoredComponents, errors);
+        validateUniqueKeys(type, model, columns, schema, tableName, qualifiedTableName, ignoredComponents, errors);
         // 8. Foreign key validation.
         if (requirePrimaryKey) {
-            validateForeignKeys(type, model, schema, tableName, qualifiedTableName, ignoredComponents, errors);
+            validateForeignKeys(type, model, columns, schema, tableName, qualifiedTableName, ignoredComponents, errors);
         }
         // 9. Unmapped column check: detect NOT NULL columns without a default that are not mapped in the entity.
         // Only applies to Entity types (projections intentionally select a subset of columns).
@@ -610,9 +617,45 @@ public final class SchemaValidator {
      * entity field is not annotated with {@code @UK}. Composite (multi-column) constraints are not flagged,
      * since modeling them requires structural changes (inline records) that should be a deliberate choice.</p>
      */
+    /**
+     * Returns the columns of the table a type checks. A joined hierarchy splits its columns over tables: the sealed
+     * type checks the base table, which holds the discriminator and the fields every subtype declares, and a subtype
+     * checks its extension table, which holds the primary key and the fields only some subtypes declare. Any other
+     * type checks all of its declared columns.
+     */
+    private static List<Column> tableColumns(Class<? extends Data> type, Model<?, ?> model) {
+        if (type.isSealed() && RecordReflection.isJoinedEntity(type)) {
+            boolean discriminator = RecordReflection.hasDiscriminator(type);
+            return model.declaredColumns().stream()
+                    .filter(column -> column.metamodel().fieldPath().isEmpty()
+                            ? discriminator
+                            : RecordReflection.isCommonField(type, column.metamodel().fieldPath()))
+                    .toList();
+        }
+        var joinedParent = RecordReflection.findJoinedSealedParent(type);
+        if (joinedParent.isPresent()) {
+            return model.declaredColumns().stream()
+                    .filter(column -> column.primaryKey()
+                            || !RecordReflection.isCommonField(joinedParent.get(), column.metamodel().fieldPath()))
+                    .toList();
+        }
+        return model.declaredColumns();
+    }
+
+    /**
+     * Returns the fields whose keys a type checks: the union of the subtypes' fields for a sealed type, since a key
+     * a later subtype declares is a key of the shared table too, and the record's fields otherwise.
+     */
+    private static List<RecordField> tableFields(Class<? extends Data> type, Model<?, ?> model) {
+        return type.isSealed() && RecordReflection.isSealedEntity(type)
+                ? RecordReflection.getTableFields(type)
+                : model.recordType().fields();
+    }
+
     private void validateUniqueKeys(
             Class<? extends Data> type,
             Model<?, ?> model,
+            List<Column> columns,
             DatabaseSchema schema,
             String tableName,
             String qualifiedTableName,
@@ -645,13 +688,13 @@ public final class SchemaValidator {
             uniqueIndexes.computeIfAbsent(index.indexName(), k -> new TreeSet<>(String.CASE_INSENSITIVE_ORDER))
                     .add(index.columnName());
         }
-        uniqueIndexes.forEach((indexName, columns) -> {
+        uniqueIndexes.forEach((indexName, indexColumns) -> {
             if (!partialIndexes.contains(indexName)) {
-                indexColumnsByName.putIfAbsent(indexName, columns);
+                indexColumnsByName.putIfAbsent(indexName, indexColumns);
             }
         });
         // Forward check: @UK fields must have a matching database constraint.
-        for (RecordField field : model.recordType().fields()) {
+        for (RecordField field : tableFields(type, model)) {
             if (field.isAnnotationPresent(DbIgnore.class)) continue;
             if (!field.isAnnotationPresent(UK.class)) continue;
             if (field.isAnnotationPresent(PK.class)) continue;
@@ -660,7 +703,7 @@ public final class SchemaValidator {
             if (ukAnnotation == null) continue;
             if (!ukAnnotation.constraint()) continue;
             SortedSet<String> expectedColumns = new TreeSet<>(String.CASE_INSENSITIVE_ORDER);
-            for (Column column : model.declaredColumns()) {
+            for (Column column : columns) {
                 String fieldPath = column.metamodel().fieldPath();
                 if (fieldPath.equals(field.name()) || fieldPath.startsWith(field.name() + ".")) {
                     expectedColumns.add(column.name());
@@ -686,6 +729,7 @@ public final class SchemaValidator {
     private void validateForeignKeys(
             Class<? extends Data> type,
             Model<?, ?> model,
+            List<Column> columns,
             DatabaseSchema schema,
             String tableName,
             String qualifiedTableName,
@@ -697,7 +741,7 @@ public final class SchemaValidator {
             return;
         }
         List<DbForeignKey> dbForeignKeys = schema.getForeignKeys(tableName);
-        for (RecordField field : model.recordType().fields()) {
+        for (RecordField field : tableFields(type, model)) {
             if (field.isAnnotationPresent(DbIgnore.class)) {
                 continue;
             }
@@ -740,7 +784,7 @@ public final class SchemaValidator {
             String targetTableName = targetModel.name();
             // Find the FK column(s) for this field in the current model.
             List<String> fkColumnNames = new ArrayList<>();
-            for (Column column : model.declaredColumns()) {
+            for (Column column : columns) {
                 if (!column.foreignKey()) {
                     continue;
                 }

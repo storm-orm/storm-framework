@@ -189,6 +189,34 @@ class MetamodelProcessorTest {
     }
 
     @Test
+    fun `sealed interfaces declare their entity-typed properties as foreign keys`() {
+        val compilation = compile(
+            """
+            package com.example
+
+            import st.orm.Discriminator
+            import st.orm.Entity
+            import st.orm.FK
+            import st.orm.PK
+
+            data class Pet(@PK val id: Int, val name: String) : Entity<Int>
+
+            @Discriminator
+            sealed interface Treatment : Entity<Int> {
+                val id: Int
+                val pet: Pet
+            }
+
+            data class Checkup(@PK override val id: Int, @FK override val pet: Pet, val notes: String) : Treatment
+            """.trimIndent(),
+        )
+        val metamodelInterface = compilation.generatedSource("Treatment_.kt")
+        assertTrue("val pet: PetMetamodel<Treatment>" in metamodelInterface) {
+            "expected the entity-typed property as a nested metamodel in the sealed metamodel:\n$metamodelInterface"
+        }
+    }
+
+    @Test
     fun `escapes keyword-named properties in the metamodel interface and primary key`() {
         val compilation = compile(
             """

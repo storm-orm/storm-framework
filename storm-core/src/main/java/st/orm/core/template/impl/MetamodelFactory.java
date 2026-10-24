@@ -710,6 +710,19 @@ public final class MetamodelFactory {
         return upper + property.substring(1);
     }
 
+    /**
+     * Returns whether {@code type} declares an accessor for {@code property}: a Kotlin getter, a boolean getter or a
+     * record accessor.
+     */
+    static boolean hasAccessor(Class<?> type, String property) {
+        try {
+            findAccessor(type, property);
+            return true;
+        } catch (NoSuchMethodException e) {
+            return false;
+        }
+    }
+
     private static Method findAccessor(Class<?> type, String property) throws NoSuchMethodException {
         String name = capitalize(property);
         try {

@@ -115,6 +115,18 @@ public final class StormFeature implements Feature {
         // kotlinx.serialization resolves serializers reflectively through the generated companions.
         registerCompanion(access, type.getName() + "$serializer");
         registerCompanion(access, type.getName() + "$Companion");
+        // Storm detects a sealed entity, and the target of a polymorphic foreign key, through the type's permitted
+        // subclasses, which a native image reports only when they are registered. Each subtype is a data type of
+        // its own, registered here in case the index does not list it.
+        if (type.isSealed()) {
+            RuntimeReflection.registerAllPermittedSubclasses(type);
+            for (Class<?> subtype : type.getPermittedSubclasses()) {
+                registerDataType(access, subtype);
+                for (Class<?> componentType : TypeDiscovery.getComponentTypes(subtype)) {
+                    registerDataType(access, componentType);
+                }
+            }
+        }
     }
 
     private static void registerCompanion(BeforeAnalysisAccess access, String className) {

@@ -22,7 +22,8 @@ simply do not work. Storm avoids those mechanisms by design:
   introspection either.
 
 What little reflection remains, such as the one-time model introspection at startup, is covered by
-metadata Storm provides itself.
+metadata Storm provides itself. That includes the permitted subclasses of a sealed entity and of a
+polymorphic foreign key's target, which Storm reads to tell the hierarchy's kinds apart.
 
 ## How registration works
 

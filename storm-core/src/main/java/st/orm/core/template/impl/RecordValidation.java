@@ -480,6 +480,14 @@ final class RecordValidation {
         if (dataType.isSealed() && RecordReflection.isPolymorphicData(dataType)) {
             return RecordReflection.validateSealedHierarchy(dataType);
         }
+        // A subtype of a single-table hierarchy lives in the sealed type's table, so its hierarchy's rules hold.
+        var singleTableParent = RecordReflection.findSingleTableSealedParent(dataType);
+        if (singleTableParent.isPresent()) {
+            String hierarchyMessage = RecordReflection.validateSealedHierarchy(singleTableParent.get());
+            if (!hierarchyMessage.isEmpty()) {
+                return hierarchyMessage;
+            }
+        }
         return validate(dataType, requirePrimaryKey, new HashSet<>());
     }
 
