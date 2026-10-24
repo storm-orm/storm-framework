@@ -239,6 +239,23 @@ class MetamodelProcessorTest {
     }
 
     @Test
+    void indexesSealedDataInterfacesWithTheirSubtypes() throws Exception {
+        Compilation compilation = compile("Shipment.java", """
+                import st.orm.Data;
+
+                public sealed interface Shipment extends Data permits Parcel {
+                    String code();
+                }
+
+                record Parcel(String code) implements Shipment {}
+                """);
+        assertTrue(compilation.success(), compilation.errors());
+        String index = Files.readString(compilation.classes().resolve("META-INF/storm/st.orm.Data.idx"));
+        assertTrue(index.contains("Shipment\n"), "expected the sealed Data interface in the index:\n" + index);
+        assertTrue(index.contains("Parcel\n"), "expected the subtype in the index:\n" + index);
+    }
+
+    @Test
     void reportsUniqueKeyNullabilityWarningOncePerRecord() throws Exception {
         Compilation compilation = compile("Account.java", """
                 import jakarta.annotation.Nullable;
@@ -577,7 +594,7 @@ class MetamodelProcessorTest {
             }
             JavaCompiler.CompilationTask task = compiler.getTask(null, fileManager, diagnostics, options, null,
                     fileManager.getJavaFileObjectsFromPaths(List.of(fixture)));
-            task.setProcessors(List.of(new MetamodelProcessor()));
+            task.setProcessors(List.of(new MetamodelProcessor(), new TypeIndexProcessor()));
             boolean success = task.call();
             String errors = diagnostics.getDiagnostics().stream()
                     .filter(diagnostic -> diagnostic.getKind() == Diagnostic.Kind.ERROR)

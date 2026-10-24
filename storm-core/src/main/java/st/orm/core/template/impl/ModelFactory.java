@@ -34,6 +34,7 @@ import static st.orm.core.template.impl.RecordReflection.getQueryColumnField;
 import static st.orm.core.template.impl.RecordReflection.getQueryColumns;
 import static st.orm.core.template.impl.RecordReflection.getRecordType;
 import static st.orm.core.template.impl.RecordReflection.getRefDataType;
+import static st.orm.core.template.impl.RecordReflection.getSealedFields;
 import static st.orm.core.template.impl.RecordReflection.getSequence;
 import static st.orm.core.template.impl.RecordReflection.getTableName;
 import static st.orm.core.template.impl.RecordReflection.hasDiscriminator;
@@ -63,6 +64,7 @@ import st.orm.Version;
 import st.orm.core.spi.Name;
 import st.orm.core.template.Column;
 import st.orm.core.template.Model;
+import st.orm.core.template.impl.RecordReflection.SealedField;
 import st.orm.core.template.impl.RecordReflection.SealedPattern;
 import st.orm.mapping.RecordField;
 import st.orm.mapping.RecordType;
@@ -211,17 +213,17 @@ final class ModelFactory {
     /**
      * Creates a model for a sealed entity type (single-table or joined inheritance).
      *
-     * <p>For single-table inheritance, the model includes a discriminator column followed by the
-     * union of all subtype fields. Fields shared across subtypes occupy the same column position.
-     * Subtype-specific columns are nullable (they hold NULL for rows of other subtypes).</p>
+     * <p>The model holds a discriminator column followed by the union of the subtypes' fields, each built as the
+     * subtype that first declares it builds it: a foreign key resolves its column through the foreign key resolver
+     * and is joined, an inline record contributes its components, and a converted field its converter's columns.
+     * Fields shared across subtypes occupy one position. A field some subtypes lack holds NULL in the rows of the
+     * others, so its columns are nullable and the join through it is an outer join.</p>
      *
-     * <p>For joined inheritance, the model covers the base table's columns. Extension table columns
-     * are handled via JOINs at query time.</p>
+     * <p>For single-table inheritance every column lives in the sealed type's table. For joined inheritance the
+     * model covers the base table: the columns of a field only some subtypes declare belong to that subtype's
+     * extension table, which is joined at query time, and are not written through this model.</p>
      *
-     * <p>Unlike normal models, sealed entity models build columns directly rather than using
-     * {@link #createColumns}, because sealed interfaces are not records and cannot participate
-     * in metamodel path resolution. The RecordMapper handles the actual mapping from result set
-     * to concrete subtype records via discriminator-based dispatch.</p>
+     * <p>The row mapper lays the union out the same way, so each subtype is built from its own positions.</p>
      */
     @SuppressWarnings("unchecked")
     private static <T extends Data, ID> Model<T, ID> createSealedModel(ModelBuilder builder,
@@ -235,12 +237,11 @@ final class ModelFactory {
         var pattern = detectSealedPattern(sealedType).orElseThrow();
         List<Column> columns = new ArrayList<>();
         List<RecordField> fields = new ArrayList<>();
+        List<Column> queryColumns = new ArrayList<>();
         AtomicInteger index = new AtomicInteger(1);
-        // Use the first subtype as the metamodel root since sealed interfaces aren't records.
-        Metamodel<?, ?> rootMetamodel = Metamodel.root(firstSubtype);
         RecordField pkFieldOfFirst = findPkField(permitted[0]).orElseThrow(
                 () -> new SqlTemplateException("No PK field in %s.".formatted(permitted[0].getSimpleName())));
-        // Emit discriminator column.
+        // Emit discriminator column. It maps no field, so it carries the table's own metamodel.
         String discriminatorColumnName = getDiscriminatorColumn(sealedType);
         boolean discriminator = hasDiscriminator(sealedType);
         columns.add(new ColumnImpl(
@@ -260,108 +261,51 @@ final class ModelFactory {
                 false,  // not version
                 false,  // not ref
                 "",
-                (Metamodel<Data, ?>) rootMetamodel,
+                (Metamodel<Data, ?>) Metamodel.root(firstSubtype),
                 null
         ));
         fields.add(pkFieldOfFirst); // Placeholder field for discriminator.
-        // Build union of all subtype fields. Use LinkedHashMap to preserve insertion order
-        // and avoid duplicates (fields shared across subtypes keep the first occurrence).
-        java.util.LinkedHashMap<String, RecordField> seenFields = new java.util.LinkedHashMap<>();
-        for (Class<?> subtype : permitted) {
-            RecordType subRecordType = getRecordType(subtype);
-            for (RecordField field : subRecordType.fields()) {
-                if (!seenFields.containsKey(field.name())) {
-                    seenFields.put(field.name(), field);
-                }
-            }
-        }
-        // For each unique field, determine if it's common or subtype-specific.
-        // For JOINED pattern, also identify which subtype owns each extension field.
-        for (var entry : seenFields.entrySet()) {
-            RecordField field = entry.getValue();
-            boolean isCommon = true;
-            Class<?> owningSubtype = null; // For JOINED: the subtype that owns this extension field.
-            for (Class<?> subtype : permitted) {
-                RecordType subRecordType = getRecordType(subtype);
-                boolean found = subRecordType.fields().stream()
-                        .anyMatch(f -> f.name().equals(field.name()) && f.type().equals(field.type()));
-                if (!found) {
-                    isCommon = false;
-                } else if (owningSubtype == null) {
-                    owningSubtype = subtype;
-                }
-            }
-            boolean isPk = field.isAnnotationPresent(PK.class);
-            boolean nullable;
-            if (isCommon) {
-                // For common fields, compute nullable as the disjunction (OR) of all subtypes' nullability.
-                nullable = false;
-                for (Class<?> subtype : permitted) {
-                    RecordType subRecordType = getRecordType(subtype);
-                    for (RecordField subField : subRecordType.fields()) {
-                        if (subField.name().equals(field.name()) && subField.type().equals(field.type())) {
-                            if (subField.nullable()) {
-                                nullable = true;
-                            }
-                            break;
-                        }
+        try {
+            for (SealedField sealedField : getSealedFields(sealedType)) {
+                RecordField field = sealedField.field();
+                var ctx = new BuildContext(builder, columns, fields, queryColumns, Metamodel.root(sealedField.owner()), index, FetchPlan.NONE);
+                int start = columns.size();
+                createColumns(ctx, ctx.rootMetamodel(), field, sealedField.nullable(), null, KeyScope.none(), PkContext.none(), null, false);
+                // The columns of a joined extension field are written to the extension table through the subtype's
+                // own model, not through the base table's.
+                if (pattern == SealedPattern.JOINED && !sealedField.common() && !field.isAnnotationPresent(PK.class)) {
+                    for (int i = start; i < columns.size(); i++) {
+                        ColumnImpl ci = (ColumnImpl) columns.get(i);
+                        columns.set(i, new ColumnImpl(
+                                ci.columnName(), ci.index(), ci.type(), ci.persistedType(), ci.primaryKey(),
+                                ci.generation(), ci.sequence(),
+                                ci.foreignKey(), ci.foreignKeyGeneration(), ci.keyIndex(), ci.nullable(),
+                                false, false, ci.version(), ci.ref(), ci.function(),
+                                ci.metamodel(), ci.secondaryMetamodel()
+                        ));
                     }
                 }
-            } else {
-                // Subtype-specific fields are always nullable in the union.
-                nullable = true;
             }
-            ColumnName columnName = getColumnName(field, builder.columnNameResolver());
-            // For JOINED pattern, extension-specific columns use a metamodel tied to their owning
-            // subtype so that alias resolution maps them to the correct extension table alias.
-            Metamodel<Data, ?> columnMetamodel;
-            if (pattern == SealedPattern.JOINED && !isCommon && !isPk && owningSubtype != null) {
-                //noinspection unchecked
-                columnMetamodel = (Metamodel<Data, ?>) Metamodel.of(
-                        (Class<? extends Data>) owningSubtype, field.name());
-            } else {
-                columnMetamodel = (Metamodel<Data, ?>) rootMetamodel;
+            // A query column a subtype declares is a column of the shared table; one declared by several subtypes is
+            // one column.
+            var queryColumnNames = new HashSet<String>();
+            for (Class<?> subtype : permitted) {
+                var subtypeQueryColumns = new ArrayList<Column>();
+                var ctx = new BuildContext(builder, columns, fields, subtypeQueryColumns, Metamodel.root((Class<? extends Data>) subtype), index, FetchPlan.NONE);
+                createQueryColumns(ctx, ctx.rootMetamodel(), (Class<? extends Data>) subtype, false);
+                for (var queryColumn : subtypeQueryColumns) {
+                    if (queryColumnNames.add(queryColumn.name().toLowerCase(ROOT))) {
+                        queryColumns.add(queryColumn);
+                    }
+                }
             }
-            // For JOINED pattern, extension-specific columns (not common across all subtypes,
-            // not PK) should not be insertable or updatable via the sealed (base table) model.
-            boolean extensionColumn = pattern == SealedPattern.JOINED && !isCommon && !isPk;
-            // Resolve a secondary metamodel rooted at the sealed type so that runtime metamodels
-            // (e.g., Metamodel.of(Animal.class, "name")) can be used in where clauses. This works
-            // both with generated metamodels and with the MetamodelFactory runtime path.
-            Metamodel<Data, ?> sealedFieldMetamodel = null;
-            try {
-                //noinspection unchecked
-                sealedFieldMetamodel = (Metamodel<Data, ?>) Metamodel.of(
-                        (Class<? extends Data>) sealedType, field.name());
-            } catch (RuntimeException ignored) {
-                // Field not declared on the sealed interface (e.g., extension-specific field).
-            }
-            columns.add(new ColumnImpl(
-                    columnName,
-                    index.getAndIncrement(),
-                    field.type(),
-                    field.type(),
-                    isPk,
-                    isPk ? getGenerationStrategy(field) : GenerationStrategy.NONE,
-                    isPk ? getSequence(field) : "",
-                    false,  // not foreign key
-                    GenerationStrategy.NONE,
-                    isPk ? 1 : -1,
-                    nullable,
-                    !extensionColumn,                       // insertable
-                    !extensionColumn && !isPk,              // updatable
-                    field.isAnnotationPresent(Version.class),
-                    false,  // not ref
-                    "",
-                    columnMetamodel,
-                    sealedFieldMetamodel
-            ));
-            fields.add(field);
+        } catch (UncheckedSqlTemplateException e) {
+            throw e.getCause();
         }
         var tableName = getTableName(sealedType, builder.tableNameResolver(), builder.schemaResolver());
         // Override the type to the sealed interface so that Model.type() returns the sealed interface
         // (e.g., Vehicle.class) rather than the first permitted subclass (e.g., Car.class).
-        return new ModelImpl<>(firstRecordType, sealedType, tableName, fields, columns, List.of());
+        return new ModelImpl<>(firstRecordType, sealedType, tableName, fields, columns, queryColumns);
     }
 
     /**

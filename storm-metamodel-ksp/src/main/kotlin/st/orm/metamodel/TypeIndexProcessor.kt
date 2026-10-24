@@ -24,6 +24,7 @@ import com.google.devtools.ksp.processing.SymbolProcessor
 import com.google.devtools.ksp.symbol.ClassKind
 import com.google.devtools.ksp.symbol.KSAnnotated
 import com.google.devtools.ksp.symbol.KSClassDeclaration
+import com.google.devtools.ksp.symbol.Modifier
 
 class TypeIndexProcessor(
     private val codeGenerator: CodeGenerator,
@@ -40,7 +41,11 @@ class TypeIndexProcessor(
                 .forEach { clazz ->
                     val fqName = clazz.qualifiedName?.asString() ?: return@forEach
                     INDEXED_TYPES.forEach { typeFqName ->
-                        val allowInterfaces = typeFqName in INDEXED_INTERFACE_TYPES
+                        // A sealed Data interface is a type of its own: a sealed entity, or the target of a
+                        // polymorphic foreign key, which the runtime and the native-image feature find through
+                        // the index.
+                        val allowInterfaces = typeFqName in INDEXED_INTERFACE_TYPES ||
+                            (typeFqName == DATA_TYPE && Modifier.SEALED in clazz.modifiers)
                         if (clazz.isSubtypeOfFqName(typeFqName, allowInterfaces)) {
                             indexEntries.getValue(typeFqName) += fqName
                         }
@@ -74,8 +79,10 @@ class TypeIndexProcessor(
     companion object {
         private const val INDEX_PACKAGE = "META-INF.storm"
 
+        private const val DATA_TYPE = "st.orm.Data"
+
         private val INDEXED_CLASS_TYPES = setOf(
-            "st.orm.Data",
+            DATA_TYPE,
             "st.orm.Converter",
         )
 

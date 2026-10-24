@@ -12,42 +12,39 @@ for the CLI, to [npm](https://www.npmjs.com/package/@storm-orm/cli)
 
 ## [Unreleased]
 
-- `SqlCapture` records a statement that binds a `NULL` value, such as an insert with an unset nullable foreign key (#752). The statement ran but was missing from `statements()` and `count()`; its `parameters()` now hold `null` for the value.
-
-- `LocalDate`, `LocalDateTime` and `Instant` are accepted as primary key types, alone or as a compound key component (#750), for tables keyed on a date or a timestamp. `OffsetDateTime`, `ZonedDateTime` and the `java.util.Date` family stay rejected.
-
-- A keyset scroll continues when its key is the referenced key through one of two foreign keys to the same table, such as `Recommendation_.movie.id` beside a `seedMovie` (#748). The next window's predicate reported the path as ambiguous.
-
-- Fixed `@Json(failOnUnknown = true)` on Jackson 3 and `failOnMissing = true` on Jackson 2 and 3, which accepted JSON they should refuse (#409). Sealed `@Json` arrays register their subtypes, and `{"@entity": null}` reads as no ref on Jackson 2.
-
-- Optimistic lock conflicts, single-result failures and writes that affect no row pass through the template's `ExceptionMapper` (#240). The Spring Boot starter translates them to Spring's exceptions, and `QueryTemplate.exceptionMapper()` returns the mapper.
-- Upgrade note: with the starter's exception translation on, catch `OptimisticLockingFailureException`, `EmptyResultDataAccessException` or `IncorrectResultSizeDataAccessException`, or read the Storm exception from the cause.
-
-- Added `writes-without-transaction` advice to the performance log summary: related writes that each committed on their own, such as an owner and then its pet (#730). `SqlLog.Statement.transactional()` says whether a statement ran in a transaction.
-
-- An `IN` list binds as one array parameter where the database supports it, `id = ANY(?)` (#727). `storm.in_list` selects `auto`, `padded` or `exact`, a `NULL` value binds as `NULL`, and `in-list-shapes` advice reports lists rendered in many lengths.
+- The subtypes of a sealed entity declare foreign keys (#754): a foreign key every subtype declares is joined as the field declares it, one only some subtypes declare holds NULL in the others' rows and is joined with a LEFT JOIN, and `Pet_.owner` is a path of the sealed metamodel. Both Single-Table and Joined Table.
+- A subtype of a Single-Table hierarchy is an entity of its own (#754): `orm.entity(Dog.class)` reads and writes the shared table, and every statement on it carries the discriminator, including a join onto it. A subtype of a Joined Table hierarchy is refused as a repository or a FROM table. Schema validation checks a Single-Table hierarchy through the sealed type's columns and a Joined Table hierarchy table by table.
+- The native-image feature registers the permitted subclasses of a sealed type, which a native image reports only when registered; a sealed entity, or a polymorphic foreign key's target, failed at startup as "Record type expected" (#754). Both metamodel processors list sealed `Data` interfaces in the type index, so `validateSchema()` checks a hierarchy's tables and startup validation checks the hierarchy.
 - Added the `update()` query builder, the UPDATE counterpart of `delete()` (#712): `set` names columns through the metamodel. It increments `@Version`, fires no entity callbacks and cannot set the primary key, the version or non-updatable fields.
 - `delete()` and `update()` refuse to run without a condition unless `unsafe()` is called, take explicit joins on every database and refuse a joined inheritance hierarchy (#712). `SqlDialect.writeJoinSyntax()` replaces `supportsDeleteAlias()`.
 - Added `semiJoin` and `antiJoin`, which filter rows by a related table without adding its rows, so no `distinct` is needed (#690). They filter `select()`, `delete()` and `update()` and nest through two to-many relations (#717).
 - A typed join takes a condition: `on<Owner> { ... }` in Kotlin, `on(Owner.class, it -> ...)` in Java (#690). On a left join it keeps the rows without a match, which the same condition in `where` drops.
 - Added `@QueryColumn`, a column a query names but the entity does not carry, such as a generated search column (#743). Its metamodel field is never selected or written; `Model.queryColumns()` lists them. Schema validation reports one the database does not fill as `UNMAPPED_COLUMN` and accepts an unmapped generated column.
 - A query column names the function that computed it, `@QueryColumn(function = "fold_accents")` (#745). A value compared with the column passes through the function, so the database folds the input. `Column.function()` reports it.
-- Added `suggest`, the `search` for input typed as you go: it ignores words shorter than the substring index serves and takes words to ignore (#741). `search` tests short words only on rows its longer words found. `storm.search.min_term_length` sets the length.
-- Added `orderFirst`, which sorts the rows matching a predicate first. A keyset `scroll` follows it, and `Scrollable.sortBy` and `sortByDescending` take a field of any table in the query.
 - Added `SqlFunction`, a one-argument SQL function applied to a column wherever a query takes one, so a query can match the expression an index is built on (#694). A comparison applies it to the column and the value alike.
+- Added `suggest`, the `search` for input typed as you go: it ignores words shorter than the substring index serves and takes words to ignore (#741). `search` tests short words only on rows its longer words found. `storm.search.min_term_length` sets the length.
+- Added `orderFirst`, which sorts the rows matching a predicate first (#693). A keyset `scroll` follows it, and `Scrollable.sortBy` and `sortByDescending` take a field of any table in the query.
+- An `IN` list binds as one array parameter where the database supports it, `id = ANY(?)` (#727). `storm.in_list` selects `auto`, `padded` or `exact`, a `NULL` value binds as `NULL`, and `in-list-shapes` advice reports lists rendered in many lengths.
+- `LocalDate`, `LocalDateTime` and `Instant` are accepted as primary key types, alone or as a compound key component (#750). `OffsetDateTime`, `ZonedDateTime` and the `java.util.Date` family stay rejected.
 - The Kotlin API takes a type argument where the call needs no `_` placeholders and a class literal where it would, such as `orm.selectFrom<Pet>()` and `orm.entity(User::class)` (#719). Ktor gains `entity(User::class)` and `projection(OwnerView::class)`.
 - Removed `orm.entity<User>()` and `orm.projection<OwnerView>()`, including their Ktor forms, which dropped the primary key type so `findById` did not resolve (#721).
 - Upgrade note: replace `orm.entity<User>()` with `orm.entity(User::class)`, which infers the key type. Reified shortcuts that take records, such as `orm insert user`, are unchanged.
+- Optimistic lock conflicts, single-result failures and writes that affect no row pass through the template's `ExceptionMapper` (#240). The Spring Boot starter translates them to Spring's exceptions, and `QueryTemplate.exceptionMapper()` returns the mapper.
+- Upgrade note: with the starter's exception translation on, catch `OptimisticLockingFailureException`, `EmptyResultDataAccessException` or `IncorrectResultSizeDataAccessException`, or read the Storm exception from the cause.
 - Added `ORMTemplate.loadSchema()`, which loads the schema without validating it, and the `load` value of `storm.validation.schema_mode`. Schema validation reads unique and non-unique indexes and accepts a unique index for a `@UK` field.
-- A dialect supplies catalog queries via `SqlDialect.keyDiscoveryQuery()`, `foreignKeyDiscoveryQuery()`, `sequenceDiscoveryQuery()` and `indexDiscoveryQuery()`. `ConstraintDiscoveryStrategy.ALL_CONSTRAINTS` and `SequenceDiscoveryStrategy.ALL_SEQUENCES` are removed.
+- A dialect supplies catalog queries through `SqlDialect.keyDiscoveryQuery()`, `foreignKeyDiscoveryQuery()`, `sequenceDiscoveryQuery()` and `indexDiscoveryQuery()`. `ConstraintDiscoveryStrategy.ALL_CONSTRAINTS` and `SequenceDiscoveryStrategy.ALL_SEQUENCES` are removed.
 - Added the advice log, `st.orm.sql.advice` (#704). Correctness advice is always on; performance and design advice are on in development or when named in `storm.advice.categories`. The level of `st.orm.sql.advice.<anchor>` sets how often advice repeats.
+- Added `@AcceptAdvice`, which accepts advice by anchor, such as `@AcceptAdvice("page-count")`, or all advice, on an entity, method, class or repository interface (#707). Accepted advice leaves only the advice log.
+- Added design advice on whether a foreign key should be an inline entity or a `Ref` (#704). In development, an entity whose read exceeds the budget of 10 joins and 96 columns is reported once; `storm.advice.entity_budget.joins` and `.columns` set it (#710).
 - The slow statement log advises on more shapes: `distinct` over a to-many join, the `page` count query, large offsets, short `search` words. With a loaded schema it names a missing index (#725) and an unindexed foreign key behind a slow delete (#731).
 - The slow statement log reports `idle-transaction` advice for a transaction that holds its connection over a second beyond its statements (#728). `storm.sql_log.slow.transaction` sets the threshold, and `0` switches it off.
 - A performance log summary closes with advice on what its unit of work repeated: ten or more `Ref.fetch()` calls for one type, or single-row SELECTs or writes of one shape.
-- Added design advice on whether a foreign key should be an inline entity or a `Ref` (#704). In development, an entity whose read exceeds the budget of 10 joins and 96 columns is reported once; `storm.advice.entity_budget.joins` and `.columns` set it (#710).
-- Added `@AcceptAdvice`, which accepts advice by anchor, such as `@AcceptAdvice("page-count")`, or all advice, on an entity, method, class or repository interface (#707). Accepted advice leaves only the advice log.
+- Added `writes-without-transaction` advice to the performance log summary: related writes that each committed on their own, such as an owner and then its pet (#730). `SqlLog.Statement.transactional()` says whether a statement ran in a transaction.
 - The labels on the slow statement log, advice log and performance log summary lines end in a colon: `shape:`, `parameters:`, `comment:`, `advice:` and `graph:`.
 - A Ktor application built as a GraalVM native image starts with the repositories the Storm plugin registers and inserts rows with generated keys (#689).
+- Fixed `@Json(failOnUnknown = true)` on Jackson 3 and `failOnMissing = true` on Jackson 2 and 3, which accepted JSON they should refuse (#409). Sealed `@Json` arrays register their subtypes, and `{"@entity": null}` reads as no ref on Jackson 2.
+- Fixed a keyset scroll whose key is reached through one of two foreign keys to the same table, such as `Recommendation_.movie.id` beside a `seedMovie`, which reported the path as ambiguous on the next window (#748).
+- Fixed `SqlCapture` dropping a statement that binds a `NULL` value, such as an insert with an unset nullable foreign key (#752). Its `parameters()` hold `null` for the value.
 
 ## [1.15.0] - 2026-10-15
 

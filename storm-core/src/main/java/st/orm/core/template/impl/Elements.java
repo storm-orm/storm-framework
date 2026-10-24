@@ -243,9 +243,22 @@ public final class Elements {
      * every column; query plans use this to bind key lookups without a full record.</p>
      */
     public record Where(@Nullable Expression expression, @Nullable BindVars bindVars,
-                        @Nullable Metamodel<?, ?> bindVarsKey) implements Element {
+                        @Nullable Metamodel<?, ?> bindVarsKey, boolean discriminator) implements Element {
         public Where(@Nullable Expression expression, @Nullable BindVars bindVars) {
             this(expression, bindVars, null);
+        }
+        public Where(@Nullable Expression expression, @Nullable BindVars bindVars,
+                     @Nullable Metamodel<?, ?> bindVarsKey) {
+            this(expression, bindVars, bindVarsKey, false);
+        }
+
+        /**
+         * Returns this condition carrying the discriminator of the statement's table, a subtype of a single-table
+         * hierarchy: the rendered WHERE clause selects the subtype's rows before it tests the condition. A condition
+         * without expression and bind variables renders the discriminator alone.
+         */
+        public Where withDiscriminator() {
+            return new Where(expression, bindVars, bindVarsKey, true);
         }
     }
 

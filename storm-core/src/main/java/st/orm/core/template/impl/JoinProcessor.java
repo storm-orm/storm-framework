@@ -126,12 +126,18 @@ final class JoinProcessor implements ElementProcessor<Join> {
      * @param bindHint the bind hint for the element, providing additional context for binding.
      */
     @Override
-    public void bind(Join join, TemplateBinder binder, BindHint bindHint) {
+    public void bind(Join join, TemplateBinder binder, BindHint bindHint) throws SqlTemplateException {
         if (join.target() instanceof TemplateTarget(var template)) {
             binder.bind(template, true);
         }
         if (join.target() instanceof TableTarget target && target.condition() != null) {
             binder.getQueryModel().bindExpression(new TemplateExpression(target.condition().toTemplate()), binder);
+        }
+        if (join.source() instanceof TableSource(var table) && join.type().hasOnClause() && !join.autoJoin()) {
+            var discriminator = SubtypeDiscriminator.of(table);
+            if (discriminator.isPresent()) {
+                binder.bindParameter(discriminator.get().value());
+            }
         }
         if (join.source() instanceof TemplateSource(var template)) {
             binder.bind(template, false);
@@ -154,16 +160,27 @@ final class JoinProcessor implements ElementProcessor<Join> {
             case TemplateTarget ts -> compiler.compile(ts.template(), true);
             default -> throw new SqlTemplateException("Unsupported join target type: %s. Join targets must be either a table type (Class<? extends Data>) or a template expression.".formatted(join.target().getClass().getSimpleName()));
         } : "";
-        final String clause = onClause.isEmpty() ? "" : " ON " + onClause;
         return switch (join.source()) {
             case TableSource ts -> {
                 var table = getTableName(ts.table(), compiler.template().tableNameResolver(), compiler.template().schemaResolver());
                 var alias = compiler.useAlias(ts.table(), join.sourceAlias());
+                // A join onto a subtype of a single-table hierarchy matches the subtype's rows only. A derived join
+                // matches on the primary key, which identifies the row across the hierarchy, and binds no parameter.
+                var discriminator = join.type().hasOnClause() && !join.autoJoin()
+                        ? SubtypeDiscriminator.of(ts.table()).orElse(null)
+                        : null;
+                String condition = discriminator == null
+                        ? onClause
+                        : onClause.isEmpty()
+                                ? discriminator.predicate(alias, compiler)
+                                : "%s AND %s".formatted(onClause, discriminator.predicate(alias, compiler));
+                String clause = condition.isEmpty() ? "" : " ON " + condition;
                 yield compiler.dialectTemplate().process("\n\0 \0 \0\0", joinType, table, alias, clause);
             }
             case TemplateSource ts -> {
                 var source = compiler.compile(ts.template(), false);
                 var alias = join.sourceAlias();
+                String clause = onClause.isEmpty() ? "" : " ON " + onClause;
                 yield compiler.dialectTemplate().process("\n\0 (\0) \0\0", joinType, source, alias, clause);
             }
         };

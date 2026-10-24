@@ -395,7 +395,8 @@ public class UpdateBuilderImpl<T extends Data, ID> extends QueryBuilderImpl<T, O
                 yield TemplateString.combine(
                         TemplateString.raw("UPDATE" + hintAfterKeyword() + " \0\nSET ", fromType),
                         getSetTemplate(false),
-                        TemplateString.of("\nWHERE ("), getPrimaryKeyTemplate(false), TemplateString.of(") IN ("),
+                        TemplateString.of("\nWHERE "), discriminatorCondition(),
+                        TemplateString.of("("), getPrimaryKeyTemplate(false), TemplateString.of(") IN ("),
                         wrap(subquery(select, false)), TemplateString.of(")"));
             }
         };

@@ -118,20 +118,24 @@ final class RecordReflection {
         }
         // Split on '.' to handle nested components (e.g., "x.y.z").
         String[] parts = path.split("\\.");
-        RecordType type = REFLECTION.getRecordType(table);
+        // A sealed entity has the fields of its subtypes.
+        List<RecordField> fields = table.isSealed() && isSealedEntity(table)
+                ? getTableFields(table)
+                : REFLECTION.getRecordType(table).fields();
+        Class<?> current = table;
         RecordField foundField = null;
         for (int i = 0; i < parts.length; i++) {
             String part = parts[i];
             // Get record components for the current record class.
             foundField = null;
-            for (RecordField field : type.fields()) {
+            for (RecordField field : fields) {
                 if (field.name().equals(part)) {
                     foundField = field;
                     break;
                 }
             }
             if (foundField == null) {
-                throw new SqlTemplateException("No field named '%s' found in record %s.".formatted(part, type.type().getName()));
+                throw new SqlTemplateException("No field named '%s' found in record %s.".formatted(part, current.getName()));
             }
             // If there's still a next part to search, update type if possible.
             boolean hasNextPart = (i < parts.length - 1);
@@ -145,9 +149,10 @@ final class RecordReflection {
                 // The type of the found field must be another record type to continue drilling down.
                 var fieldType = REFLECTION.findRecordType(nextType).orElse(null);
                 if (fieldType != null) {
-                    type = fieldType;
+                    fields = fieldType.fields();
+                    current = nextType;
                 } else {
-                    throw new SqlTemplateException("Component '%s' in record %s is not a record, but further components were specified: '%s'.".formatted(part, type.type().getName(), path));
+                    throw new SqlTemplateException("Component '%s' in record %s is not a record, but further components were specified: '%s'.".formatted(part, current.getName(), path));
                 }
             }
         }
@@ -393,21 +398,22 @@ final class RecordReflection {
         }
     }
 
-    @SuppressWarnings("unchecked")
     static Stream<RecordField> getFkFields(Class<?> table) {
-        if (table.isSealed()) {
-            return Stream.empty();  // Sealed interfaces have no own FK fields.
+        // A sealed entity has the fields of its subtypes, so its foreign keys are theirs.
+        var fields = table.isSealed()
+                ? getSealedFields(table).stream().map(SealedField::field)
+                : REFLECTION.getRecordType(table).fields().stream();
+        return fields.flatMap(RecordReflection::getFkFields);
+    }
+
+    private static Stream<RecordField> getFkFields(RecordField field) {
+        if (field.isAnnotationPresent(FK.class)) {
+            return Stream.of(field);
         }
-        return REFLECTION.getRecordType(table).fields().stream()
-                .flatMap(field -> {
-                    if (field.isAnnotationPresent(FK.class)) {
-                        return Stream.of(field);
-                    }
-                    if (REFLECTION.findRecordType(field.type()).isPresent() && getORMConverter(field).isEmpty()) {
-                        return getFkFields(field.type());
-                    }
-                    return Stream.empty();
-                });
+        if (REFLECTION.findRecordType(field.type()).isPresent() && getORMConverter(field).isEmpty()) {
+            return getFkFields(field.type());
+        }
+        return Stream.empty();
     }
 
     /**
@@ -460,10 +466,20 @@ final class RecordReflection {
         if (target.equals(source)) {
             return true;
         }
-        if (source.isSealed()) {
-            return false;  // Sealed interfaces have no own fields; auto-join not applicable.
+        return findRecordField(getTableFields(source), target).isPresent();
+    }
+
+    /**
+     * Returns the fields a table maps: a record's components, or the union of the subtypes' components for a sealed
+     * entity, and no fields for a type that is neither.
+     */
+    static List<RecordField> getTableFields(Class<?> table) {
+        if (table.isSealed()) {
+            return isSealedEntity(table)
+                    ? getSealedFields(table).stream().map(SealedField::field).toList()
+                    : List.of();
         }
-        return findRecordField(getRecordFields(source), target).isPresent();
+        return isRecord(table) ? getRecordFields(table) : List.of();
     }
 
     /**
@@ -503,10 +519,7 @@ final class RecordReflection {
         if (Data.class.isAssignableFrom(source)) {
             occurrences.put(path, (Class<? extends Data>) source);
         }
-        if (source.isSealed() || !isRecord(source)) {
-            return;
-        }
-        for (var field : getRecordFields(source)) {
+        for (var field : getTableFields(source)) {
             if (Ref.class.isAssignableFrom(field.type()) || !isRecord(field.type())) {
                 continue;
             }
@@ -523,10 +536,10 @@ final class RecordReflection {
         if (target.equals(source)) {
             return true;
         }
-        if (source.isSealed() || !isRecord(source) || !visited.add(source)) {
+        if (!visited.add(source)) {
             return false;
         }
-        for (var field : getRecordFields(source)) {
+        for (var field : getTableFields(source)) {
             if (Ref.class.isAssignableFrom(field.type()) || !isRecord(field.type())) {
                 continue;
             }
@@ -738,6 +751,11 @@ final class RecordReflection {
      */
     static TableName getTableName(Class<? extends Data> table,
                                   TableNameResolver tableNameResolver) throws SqlTemplateException {
+        // A subtype of a single-table hierarchy lives in the sealed type's table.
+        var singleTableParent = findSingleTableSealedParent(table);
+        if (singleTableParent.isPresent()) {
+            return getTableName(singleTableParent.get(), tableNameResolver);
+        }
         // For sealed entity interfaces, resolve table name from the @DbTable annotation on the
         // interface itself, or fall back to camelCase-to-snake_case conversion (sealed interfaces
         // aren't records and don't have a RecordType).
@@ -1616,15 +1634,112 @@ final class RecordReflection {
      * @return an Optional containing the joined sealed parent, or empty if the type is not a joined subtype.
      */
     static Optional<Class<?>> findJoinedSealedParent(Class<?> type) {
+        return findSealedParent(type, SealedPattern.JOINED);
+    }
+
+    /**
+     * Returns the sealed parent of the given type when the type is a permitted subclass of a single-table entity
+     * hierarchy. Such a subtype lives in the sealed type's table, with the discriminator telling its rows apart.
+     *
+     * @param type the type to inspect.
+     * @return the single-table sealed parent, or empty if the type is not a single-table subtype.
+     */
+    static Optional<Class<? extends Data>> findSingleTableSealedParent(Class<?> type) {
+        return SINGLE_TABLE_PARENT_CACHE.get(type);
+    }
+
+    private static final ClassValue<Optional<Class<? extends Data>>> SINGLE_TABLE_PARENT_CACHE = new ClassValue<>() {
+        @Override
+        @SuppressWarnings("unchecked")
+        protected Optional<Class<? extends Data>> computeValue(Class<?> type) {
+            return findSealedParent(type, SealedPattern.SINGLE_TABLE).map(parent -> (Class<? extends Data>) parent);
+        }
+    };
+
+    private static Optional<Class<?>> findSealedParent(Class<?> type, SealedPattern pattern) {
         if (type.isSealed() || type.isInterface()) {
             return Optional.empty();
         }
         for (Class<?> iface : type.getInterfaces()) {
-            if (isJoinedEntity(iface)) {
+            if (detectSealedPattern(iface).filter(pattern::equals).isPresent()) {
                 return Optional.of(iface);
             }
         }
         return Optional.empty();
+    }
+
+    /**
+     * A field of a sealed entity hierarchy: the union of the subtypes' fields holds one entry per field name, in the
+     * order the subtypes and their fields are declared.
+     *
+     * @param field the field, as the first subtype declaring it declares it.
+     * @param owner the first subtype declaring the field; its metamodel roots the field's columns.
+     * @param common whether every subtype declares the field. A field some subtypes lack holds NULL in the rows of
+     *               the others, so its columns are nullable and a join through it is an outer join.
+     * @param nullable whether the field's columns can hold NULL: the field is not common, or a subtype declares it
+     *                 nullable.
+     */
+    record SealedField(RecordField field, Class<? extends Data> owner, boolean common, boolean nullable) {}
+
+    private static final ClassValue<List<SealedField>> SEALED_FIELDS_CACHE = new ClassValue<>() {
+        @Override
+        @SuppressWarnings("unchecked")
+        protected List<SealedField> computeValue(Class<?> sealedType) {
+            Class<?>[] permitted = sealedType.getPermittedSubclasses();
+            if (permitted == null) {
+                return List.of();
+            }
+            var fields = new LinkedHashMap<String, SealedField>();
+            for (Class<?> subtype : permitted) {
+                for (RecordField field : REFLECTION.getRecordType(subtype).fields()) {
+                    if (fields.containsKey(field.name())) {
+                        continue;
+                    }
+                    boolean common = true;
+                    boolean nullable = false;
+                    for (Class<?> other : permitted) {
+                        var declared = REFLECTION.getRecordType(other).fields().stream()
+                                .filter(f -> f.name().equals(field.name()) && f.type().equals(field.type()))
+                                .findFirst();
+                        if (declared.isEmpty()) {
+                            common = false;
+                        } else if (declared.get().nullable()) {
+                            nullable = true;
+                        }
+                    }
+                    fields.put(field.name(), new SealedField(field, (Class<? extends Data>) subtype, common, nullable || !common));
+                }
+            }
+            return List.copyOf(fields.values());
+        }
+    };
+
+    /**
+     * Returns the fields of a sealed entity hierarchy: the union of its subtypes' fields, one per name.
+     *
+     * @param sealedType the sealed entity interface.
+     * @return the fields, in declaration order of the subtypes and their fields.
+     */
+    static List<SealedField> getSealedFields(Class<?> sealedType) {
+        return SEALED_FIELDS_CACHE.get(sealedType);
+    }
+
+    /**
+     * Returns whether every subtype of the sealed entity declares the field a path starts with.
+     *
+     * @param sealedType the sealed entity interface.
+     * @param fieldPath the path, whose first segment names the field.
+     * @return {@code true} if the field is common to the subtypes, {@code false} if some lack it or none has it.
+     */
+    static boolean isCommonField(Class<?> sealedType, String fieldPath) {
+        int dot = fieldPath.indexOf('.');
+        String fieldName = dot < 0 ? fieldPath : fieldPath.substring(0, dot);
+        for (var sealedField : getSealedFields(sealedType)) {
+            if (sealedField.field().name().equals(fieldName)) {
+                return sealedField.common();
+            }
+        }
+        return false;
     }
 
     // ---- End sealed type hierarchy support ----
@@ -1635,10 +1750,7 @@ final class RecordReflection {
                                Class<? extends Data> table,
                                @Nullable String path)
             throws SqlTemplateException {
-        if (table.isSealed() && isSealedEntity(table)) {
-            return; // Sealed entity interfaces have no FK fields; subtypes are handled separately.
-        }
-        for (var field : RecordReflection.getRecordFields(table)) {
+        for (var field : getTableFields(table)) {
             if (field.isAnnotationPresent(FK.class)) {
                 if (Ref.class.isAssignableFrom(field.type())) {
                     tableMapper.mapForeignKey(table, getRefDataType(field), alias, field, rootTable, path);

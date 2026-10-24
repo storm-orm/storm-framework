@@ -89,6 +89,11 @@ final class InsertProcessor implements ElementProcessor<Insert> {
                 })
                 .filter(Objects::nonNull)
                 .collect(joining(", "));
+        // A subtype of a single-table hierarchy writes its discriminator, which its record does not carry.
+        var discriminator = SubtypeDiscriminator.of(insert.table());
+        if (discriminator.isPresent()) {
+            columns = discriminator.get().columnName(dialect) + ", " + columns;
+        }
         compiler.setGeneratedKeys(generatedKeys);
         var table = queryModel.getTable();
         compiler.setAffectedType(insert.table());

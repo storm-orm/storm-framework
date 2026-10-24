@@ -86,7 +86,10 @@ public class TypeIndexProcessor extends AbstractProcessor {
             for (Map.Entry<String, TypeMirror> entry : indexedTypeMirrors.entrySet()) {
                 String typeFqName = entry.getKey();
                 TypeMirror targetType = entry.getValue();
-                boolean allowInterfaces = INDEXED_INTERFACE_TYPES.contains(typeFqName);
+                // A sealed Data interface is a type of its own: a sealed entity, or the target of a polymorphic
+                // foreign key, which the runtime and the native-image feature find through the index.
+                boolean allowInterfaces = INDEXED_INTERFACE_TYPES.contains(typeFqName)
+                        || (typeFqName.equals("st.orm.Data") && typeElement.getModifiers().contains(Modifier.SEALED));
                 if (isSubtypeOf(typeElement, targetType, allowInterfaces)) {
                     indexEntries.get(typeFqName).add(fqcn);
                 }

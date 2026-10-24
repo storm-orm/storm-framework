@@ -186,6 +186,7 @@ owners.update()
 - **The builder** requires a WHERE clause (or a semi-join/anti-join) unless `unsafe()` is called. It increments the `@Version` column, fires **no** entity callbacks (there is no entity), and evicts the entities of its type from the transaction's entity cache.
 - **Conditions** through a path, an explicit join, `semiJoin` or `antiJoin` work on every database.
 - **Both builders refuse a Joined Table entity** (sealed type or subtype), whose rows span two tables.
+- **A subtype of a Single-Table hierarchy is an entity of its own**, with its own repository: every statement on it carries the discriminator, so a select, `findById`, `count`, `update()`, `delete()` and `removeAll` see its rows only, and an insert writes the discriminator. A SQL template on it needs a `where` element to carry the discriminator; one with its condition written out as text is refused.
 
 **Never create a second, partial entity for a table that already has one** just to write a few of its columns. Rows the transaction did not read take the `update()` builder. An entity it did read takes `update(entity)`, with `@DynamicUpdate(FIELD)` on the entity (/storm-entity-java) to write only the changed columns.
 

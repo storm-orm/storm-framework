@@ -59,6 +59,7 @@ This is the default. Where the developer says otherwise, follow that.
   - Rows the transaction did not read take the update builder, which sets the named columns on the rows its conditions select: `pets.update { set(Pet_.owner, newOwner); where(Pet_.owner eq previousOwner) }` in Kotlin, `pets.update().set(Pet_.owner, newOwner).where(Pet_.owner, EQUALS, previousOwner)` in Java.
   - An entity the transaction read takes `update(entity)`, and `@DynamicUpdate(FIELD)` on the entity writes only the columns that changed.
 - **Other projections keep their purpose.** A projection over a database view or a `@ProjectionQuery`, and a plain data class or record for an aggregation or computed result, are not tables, so this rule does not apply to them.
+- **Kinds of one thing with different fields are a sealed hierarchy**, one type per kind under a sealed interface, not one entity with nullable columns per kind; kinds that share every field are an enum column. A reference that can point at rows of unrelated tables, such as a comment on a post or a photo, is a polymorphic foreign key. A subtype of a single-table hierarchy is the entity of its kind, with its own repository. See the entity skill's **Polymorphism**.
 
 ### Related Writes
 

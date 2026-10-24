@@ -199,6 +199,18 @@ INSERT INTO char_disc_animal (dtype, name, indoor) VALUES ('C', 'Luna', false);
 INSERT INTO char_disc_animal (dtype, name, weight) VALUES ('D', 'Rex', 30);
 INSERT INTO char_disc_animal (dtype, name, weight) VALUES ('D', 'Max', 15);
 
+-- Single-Table Inheritance whose subtypes declare foreign keys
+drop table if exists treatment CASCADE;
+create table treatment (id integer auto_increment, kind varchar(50) not null, pet_id integer not null, treatment_date date not null, vet_id integer, notes varchar(255), surgeon_id integer, duration integer, primary key (id));
+alter table treatment add constraint treatment_pet_fk foreign key (pet_id) references pet (id) on delete cascade;
+alter table treatment add constraint treatment_vet_fk foreign key (vet_id) references vet (id) on delete cascade;
+alter table treatment add constraint treatment_surgeon_fk foreign key (surgeon_id) references vet (id) on delete cascade;
+
+INSERT INTO treatment (kind, pet_id, treatment_date, vet_id, notes) VALUES ('Checkup', 1, '2024-01-10', 1, 'Healthy');
+INSERT INTO treatment (kind, pet_id, treatment_date, vet_id, notes) VALUES ('Checkup', 2, '2024-02-11', NULL, 'Shots');
+INSERT INTO treatment (kind, pet_id, treatment_date, surgeon_id, duration) VALUES ('Surgery', 3, '2024-03-12', 2, 90);
+INSERT INTO treatment (kind, pet_id, treatment_date, surgeon_id, duration) VALUES ('Surgery', 1, '2024-04-13', 3, 45);
+
 -- A plain entity with a nullable boolean column, for the IS TRUE / IS FALSE predicates: neither matches the row
 -- that leaves the column null, which is what distinguishes them from an equality comparison.
 drop table if exists feature_flag CASCADE;

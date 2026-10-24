@@ -231,8 +231,8 @@ public class DeleteBuilderImpl<T extends Data, ID> extends QueryBuilderImpl<T, O
                 var select = appendJoinsAndWhere(TemplateString.combine(TemplateString.of("SELECT "), getPrimaryKeyTemplate(true),
                         TemplateString.raw("\nFROM \0", from(fromType, true))));
                 yield TemplateString.combine(TemplateString.of("DELETE" + hintAfterKeyword()),
-                        TemplateString.raw("\nFROM \0\nWHERE (", from(fromType, false)),
-                        getPrimaryKeyTemplate(false), TemplateString.of(") IN ("), wrap(subquery(select, false)), TemplateString.of(")"));
+                        TemplateString.raw("\nFROM \0\nWHERE ", from(fromType, false)), discriminatorCondition(),
+                        TemplateString.of("("), getPrimaryKeyTemplate(false), TemplateString.of(") IN ("), wrap(subquery(select, false)), TemplateString.of(")"));
             }
         };
         if (!hasCondition()) {

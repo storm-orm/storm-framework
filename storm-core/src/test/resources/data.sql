@@ -253,6 +253,35 @@ create table api_key (id uuid, name varchar(255) not null, external_reference uu
 INSERT INTO api_key (id, name, external_reference) VALUES ('550e8400-e29b-41d4-a716-446655440000', 'Default Key', 'a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11');
 INSERT INTO api_key (id, name, external_reference) VALUES ('6ba7b810-9dad-11d1-80b4-00c04fd430c8', 'Secondary Key', NULL);
 
+-- Pattern G: Single-Table Inheritance whose subtypes declare foreign keys
+drop table if exists treatment CASCADE;
+create table treatment (id integer auto_increment, kind varchar(50) not null, pet_id integer not null, treatment_date date not null, vet_id integer, notes varchar(255), surgeon_id integer, duration integer, outcome varchar(50), keywords varchar(255), primary key (id));
+alter table treatment add constraint treatment_pet_fk foreign key (pet_id) references pet (id) on delete cascade;
+alter table treatment add constraint treatment_vet_fk foreign key (vet_id) references vet (id) on delete cascade;
+alter table treatment add constraint treatment_surgeon_fk foreign key (surgeon_id) references vet (id) on delete cascade;
+
+INSERT INTO treatment (kind, pet_id, treatment_date, vet_id, notes, keywords) VALUES ('Checkup', 1, '2024-01-10', 1, 'Healthy', 'healthy');
+INSERT INTO treatment (kind, pet_id, treatment_date, vet_id, notes) VALUES ('Checkup', 2, '2024-02-11', NULL, 'Shots');
+INSERT INTO treatment (kind, pet_id, treatment_date, surgeon_id, duration, outcome, keywords) VALUES ('Surgery', 3, '2024-03-12', 2, 90, 'recovered', 'spay');
+INSERT INTO treatment (kind, pet_id, treatment_date, surgeon_id, duration) VALUES ('Surgery', 1, '2024-04-13', 3, 45);
+
+-- Pattern H: Joined Table Inheritance with a foreign key in the base table and one in an extension table
+drop table if exists joined_checkup CASCADE;
+drop table if exists joined_surgery CASCADE;
+drop table if exists joined_treatment CASCADE;
+create table joined_treatment (id integer auto_increment, dtype varchar(50) not null, pet_id integer not null, primary key (id));
+create table joined_checkup (id integer not null, notes varchar(255) not null, primary key (id));
+create table joined_surgery (id integer not null, surgeon_id integer not null, primary key (id));
+alter table joined_treatment add constraint joined_treatment_pet_fk foreign key (pet_id) references pet (id) on delete cascade;
+alter table joined_checkup add constraint joined_checkup_treatment_fk foreign key (id) references joined_treatment (id);
+alter table joined_surgery add constraint joined_surgery_treatment_fk foreign key (id) references joined_treatment (id);
+alter table joined_surgery add constraint joined_surgery_vet_fk foreign key (surgeon_id) references vet (id) on delete cascade;
+
+INSERT INTO joined_treatment (dtype, pet_id) VALUES ('JoinedCheckup', 1);
+INSERT INTO joined_checkup (id, notes) VALUES (1, 'Healthy');
+INSERT INTO joined_treatment (dtype, pet_id) VALUES ('JoinedSurgery', 3);
+INSERT INTO joined_surgery (id, surgeon_id) VALUES (2, 2);
+
 -- Pattern E: Single-Table Inheritance with INTEGER discriminator
 drop table if exists int_disc_animal CASCADE;
 create table int_disc_animal (id integer auto_increment, dtype integer not null, name varchar(255), indoor boolean, weight integer, primary key (id));

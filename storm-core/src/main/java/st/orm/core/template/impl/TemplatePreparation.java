@@ -31,11 +31,14 @@ import static st.orm.core.template.Templates.update;
 import static st.orm.core.template.Templates.values;
 import static st.orm.core.template.Templates.where;
 import static st.orm.core.template.impl.Elements.Clause.GROUP_BY;
+import static st.orm.core.template.impl.RecordReflection.findJoinedSealedParent;
 import static st.orm.core.template.impl.RecordReflection.findPkField;
+import static st.orm.core.template.impl.RecordReflection.findSingleTableSealedParent;
 import static st.orm.core.template.impl.RecordReflection.getForeignKeys;
 import static st.orm.core.template.impl.RecordReflection.getPrimaryKeys;
 import static st.orm.core.template.impl.RecordReflection.getRecordType;
 import static st.orm.core.template.impl.RecordReflection.getRefDataType;
+import static st.orm.core.template.impl.RecordReflection.getSealedFields;
 import static st.orm.core.template.impl.RecordReflection.isJoinedEntity;
 import static st.orm.core.template.impl.RecordReflection.isRecord;
 import static st.orm.core.template.impl.RecordReflection.isSealedEntity;
@@ -54,10 +57,12 @@ import static st.orm.spi.SqlOperation.SELECT;
 import static st.orm.spi.SqlOperation.UPDATE;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.ListIterator;
+import java.util.Map;
 import java.util.Set;
 import java.util.stream.Stream;
 import java.util.stream.StreamSupport;
@@ -847,6 +852,12 @@ class TemplatePreparation {
         final From effectiveFrom;
         if (from != null && from.source() instanceof TableSource(var table)) {
             validateDataType(table);
+            var joinedParent = findJoinedSealedParent(table);
+            if (joinedParent.isPresent()) {
+                throw new SqlTemplateException("Cannot select from %1$s: its rows span the tables of the joined inheritance hierarchy %2$s, and a subtype reads its base table's columns only through the sealed type. Select %2$s and dispatch on %1$s."
+                        .formatted(table.getSimpleName(), joinedParent.get().getSimpleName()));
+            }
+            applySubtypeDiscriminator(table, mutableElements);
             String path = "";
             String alias;
             if (from.alias().isEmpty()) {
@@ -867,6 +878,31 @@ class TemplatePreparation {
         } else {
             addTableAliases(mutableElements, aliasMapper);
         }
+    }
+
+    /**
+     * Marks the condition of a statement on a subtype of a single-table hierarchy with the discriminator, which
+     * selects the subtype's rows among the other subtypes' in the shared table. A statement without a condition has
+     * nowhere to carry it and is refused: the query builder and the repositories always supply one.
+     *
+     * @param table the statement's table.
+     * @param mutableElements the mutable element list, whose first WHERE element receives the discriminator.
+     * @throws SqlTemplateException if the table is a single-table subtype and the statement has no WHERE element.
+     */
+    private static void applySubtypeDiscriminator(Class<? extends Data> table, List<Element> mutableElements)
+            throws SqlTemplateException {
+        var parent = findSingleTableSealedParent(table);
+        if (parent.isEmpty()) {
+            return;
+        }
+        for (ListIterator<Element> it = mutableElements.listIterator(); it.hasNext(); ) {
+            if (it.next() instanceof Where where) {
+                it.set(where.withDiscriminator());
+                return;
+            }
+        }
+        throw new SqlTemplateException("A statement on %1$s, a subtype of the single-table hierarchy %2$s, selects its rows by the discriminator, which its WHERE clause carries. Query %1$s through the query builder or its repository, or pass the condition as a where element."
+                .formatted(table.getSimpleName(), parent.get().getSimpleName()));
     }
 
     /**
@@ -1011,19 +1047,52 @@ class TemplatePreparation {
             ReferencedPaths referenced,
             boolean demandOnly
     ) throws SqlTemplateException {
-        // Sealed entity interfaces are not records and don't have FK fields that need auto-joining.
-        // Their columns are synthetic (union of subtype fields). Skip auto-join for sealed entities.
         // When demandOnly is set, only referenced foreign keys are joined (the hydrated graph is not expanded), so
         // the recursion starts already beyond the eager region.
+        var context = new AutoJoinContext(rootTable, aliasMapper, tableMapper, joins, referenced);
         if (!isSealedEntity(table)) {
-            var context = new AutoJoinContext(rootTable, aliasMapper, tableMapper, joins, referenced);
             deriveAutoJoins(getRecordType(table), table, List.of(), null, false, demandOnly, context);
-        } else if (!demandOnly && isJoinedEntity(table)) {
-            // For JOINED inheritance, add LEFT JOIN for each extension table (permitted subclass with
-            // @DbTable) using PK=PK ON conditions.
-            addJoinedExtensionJoins(table, aliasMapper, joins);
+        } else {
+            // A sealed entity has the fields of its subtypes. For JOINED inheritance, each extension table (permitted
+            // subclass with its own table) is joined on the primary key first, so that the foreign keys of its fields
+            // can start from it.
+            Map<Class<?>, String> extensionAliases = !demandOnly && isJoinedEntity(table)
+                    ? addJoinedExtensionJoins(table, aliasMapper, joins)
+                    : Map.of();
+            deriveSealedAutoJoins(table, extensionAliases, demandOnly, context);
         }
         joins.addAll(customJoins);
+    }
+
+    /**
+     * Derives the joins of a sealed entity from the union of its subtypes' fields. A field every subtype declares
+     * joins as the field declares it; a field only some subtypes declare holds NULL in the rows of the others, so its
+     * join is an outer join. In a joined hierarchy such a field lives in the declaring subtype's extension table,
+     * from which its join starts; without the extension join the field is not reachable and derives no join.
+     *
+     * @param sealedType the sealed entity, the FROM table.
+     * @param extensionAliases the aliases of the joined extension tables by subtype, empty when none were joined.
+     * @param beyondRef whether joins are demand-driven.
+     * @param context the arguments that stay fixed across the recursion.
+     */
+    private void deriveSealedAutoJoins(
+            Class<? extends Data> sealedType,
+            Map<Class<?>, String> extensionAliases,
+            boolean beyondRef,
+            AutoJoinContext context
+    ) throws SqlTemplateException {
+        boolean joined = isJoinedEntity(sealedType);
+        for (var sealedField : getSealedFields(sealedType)) {
+            String fromAlias = null;
+            if (joined && !sealedField.common() && !sealedField.field().isAnnotationPresent(PK.class)) {
+                fromAlias = extensionAliases.get(sealedField.owner());
+                if (fromAlias == null) {
+                    continue;
+                }
+            }
+            deriveAutoJoin(sealedField.field(), getRecordType(sealedField.owner()), sealedType, List.of(), fromAlias,
+                    !sealedField.common(), beyondRef, context);
+        }
     }
 
     /**
@@ -1041,18 +1110,20 @@ class TemplatePreparation {
      * @param sealedType  the sealed entity interface (the base/FROM table).
      * @param aliasMapper alias mapper used for alias generation and registration.
      * @param joins       output list that receives the extension table joins.
+     * @return the alias of each extension table by subtype.
      * @throws SqlTemplateException if extension join generation fails.
      */
     @SuppressWarnings("unchecked")
-    private void addJoinedExtensionJoins(
+    private Map<Class<?>, String> addJoinedExtensionJoins(
             Class<? extends Data> sealedType,
             AliasMapper aliasMapper,
             List<Join> joins
     ) throws SqlTemplateException {
         Class<?>[] permitted = sealedType.getPermittedSubclasses();
         if (permitted == null || permitted.length == 0) {
-            return;
+            return Map.of();
         }
+        Map<Class<?>, String> extensionAliases = new HashMap<>();
         // Get the base table alias (registered by postProcessSelect for the FROM table).
         String baseAlias = aliasMapper.findAlias(sealedType, "", INNER)
                 .orElseThrow(() -> new SqlTemplateException(
@@ -1065,6 +1136,7 @@ class TemplatePreparation {
         for (Class<?> subtype : permitted) {
             Class<? extends Data> extensionType = (Class<? extends Data>) subtype;
             String extensionAlias = aliasMapper.generateAlias(extensionType, null, template.dialect());
+            extensionAliases.put(subtype, extensionAlias);
             // Build ON clause: extensionAlias.pk = baseAlias.pk (supports compound PKs). The extension table's PK
             // doubles as the FK to the base table, so the FK side goes first, consistent with JoinProcessor.
             StringBuilder onClause = new StringBuilder();
@@ -1084,6 +1156,7 @@ class TemplatePreparation {
                     true
             ));
         }
+        return extensionAliases;
     }
 
     /**
@@ -1124,82 +1197,110 @@ class TemplatePreparation {
             boolean beyondRef,
             AutoJoinContext context
     ) throws SqlTemplateException {
+        for (var field : type.fields()) {
+            deriveAutoJoin(field, type, table, path, fkName, outerJoin, beyondRef, context);
+        }
+    }
+
+    /**
+     * Derives the joins and alias mappings of one field of a record type graph: see
+     * {@link #deriveAutoJoins(RecordType, Class, List, String, boolean, boolean, AutoJoinContext)}.
+     *
+     * @param field       the field.
+     * @param type        the record type declaring the field.
+     * @param table       the table the field belongs to, which is the sealed entity for a field of its subtype.
+     * @param path        the record field path to the field's record.
+     * @param fkName      the alias to use as the join source, or {@code null} for the table's alias at {@code path}.
+     * @param outerJoin   whether a join of the field must be an outer join due to a nullable ancestor, or because
+     *                    only some subtypes of a sealed entity declare the field.
+     * @param beyondRef   whether the traversal is below a reference boundary, where joins are demand-driven.
+     * @param context     the arguments that stay fixed across the recursion.
+     * @throws SqlTemplateException if derivation fails.
+     */
+    private void deriveAutoJoin(
+            RecordField field,
+            RecordType type,
+            Class<? extends Data> table,
+            List<RecordField> path,
+            @Nullable String fkName,
+            boolean outerJoin,
+            boolean beyondRef,
+            AutoJoinContext context
+    ) throws SqlTemplateException {
         var rootTable = context.rootTable();
         var aliasMapper = context.aliasMapper();
         var tableMapper = context.tableMapper();
         var joins = context.joins();
         var referenced = context.referenced();
-        for (var field : type.fields()) {
-            var list = new ArrayList<>(path);
-            String fkPath = toPathString(path);
-            list.add(field);
-            var copy = copyOf(list);
-            String pkPath = toPathString(copy);
-            if (field.isAnnotationPresent(FK.class)) {
-                if (Ref.class.isAssignableFrom(field.type())) {
-                    boolean navigated = isReferencedBeyond(referenced.joined(), pkPath);
-                    // A reference is never hydrated, so it contributes no eager join: it is selected as its foreign
-                    // key column, which keeps the entity graph optimized. In the eager (hydrated) region the reference
-                    // still registers its mapping so its foreign key component can be resolved, matching prior
-                    // behavior. Below a reference boundary the reference is only touched when a query element navigates
-                    // beyond it; then a filter-only join is materialized so the referenced table can be filtered,
-                    // joined, ordered, or selected. Gating on referenced paths bounds the recursion, which matters
-                    // because references can be cyclic (self-referencing foreign keys must be a Ref). Any ref join that
-                    // still ends up unreferenced is pruned by JoinProcessor.
-                    if (!beyondRef || navigated) {
-                        String fromAlias = fkName != null ? fkName : aliasMapper.getAlias(
-                                table,
-                                fkPath,
-                                INNER,
-                                template.dialect(),
-                                () -> new SqlTemplateException("Table %s for From not found at %s."
-                                        .formatted(type.type().getSimpleName(), fkPath)));
-                        tableMapper.mapForeignKey(table, getRefDataType(field), fromAlias, field, rootTable, fkPath);
-                        if (navigated) {
-                            RecordType fieldType = getRecordType(getRefDataType(field));
-                            boolean effectiveOuterJoin = outerJoin || field.nullable();
-                            String alias = addForeignKeyJoin(table, rootTable, field, fieldType, fromAlias, fkPath,
-                                    pkPath, effectiveOuterJoin, aliasMapper, tableMapper, joins);
-                            deriveAutoJoins(fieldType, fieldType.requireDataType(), copy, alias,
-                                    effectiveOuterJoin, !referenced.hydrated().contains(pkPath), context);
-                        }
+        var list = new ArrayList<>(path);
+        String fkPath = toPathString(path);
+        list.add(field);
+        var copy = copyOf(list);
+        String pkPath = toPathString(copy);
+        if (field.isAnnotationPresent(FK.class)) {
+            if (Ref.class.isAssignableFrom(field.type())) {
+                boolean navigated = isReferencedBeyond(referenced.joined(), pkPath);
+                // A reference is never hydrated, so it contributes no eager join: it is selected as its foreign
+                // key column, which keeps the entity graph optimized. In the eager (hydrated) region the reference
+                // still registers its mapping so its foreign key component can be resolved, matching prior
+                // behavior. Below a reference boundary the reference is only touched when a query element navigates
+                // beyond it; then a filter-only join is materialized so the referenced table can be filtered,
+                // joined, ordered, or selected. Gating on referenced paths bounds the recursion, which matters
+                // because references can be cyclic (self-referencing foreign keys must be a Ref). Any ref join that
+                // still ends up unreferenced is pruned by JoinProcessor.
+                if (!beyondRef || navigated) {
+                    String fromAlias = fkName != null ? fkName : aliasMapper.getAlias(
+                            table,
+                            fkPath,
+                            INNER,
+                            template.dialect(),
+                            () -> new SqlTemplateException("Table %s for From not found at %s."
+                                    .formatted(type.type().getSimpleName(), fkPath)));
+                    tableMapper.mapForeignKey(table, getRefDataType(field), fromAlias, field, rootTable, fkPath);
+                    if (navigated) {
+                        RecordType fieldType = getRecordType(getRefDataType(field));
+                        boolean effectiveOuterJoin = outerJoin || field.nullable();
+                        String alias = addForeignKeyJoin(table, rootTable, field, fieldType, fromAlias, fkPath,
+                                pkPath, effectiveOuterJoin, aliasMapper, tableMapper, joins);
+                        deriveAutoJoins(fieldType, fieldType.requireDataType(), copy, alias,
+                                effectiveOuterJoin, !referenced.hydrated().contains(pkPath), context);
                     }
-                    continue;
                 }
-                if (!isRecord(field.type())) {
-                    throw new SqlTemplateException("FK is only allowed on Ref and record types.");
-                }
-                if (field.type() == type.type()) {
-                    throw new SqlTemplateException(
-                            "Self-referencing FK annotation is not allowed: %s. FK must be marked as Ref."
-                                    .formatted(type.type().getSimpleName())
-                    );
-                }
-                // Below a reference boundary nothing is hydrated, so entity foreign keys are demand-driven too:
-                // only the ones a query element navigates to are joined. Above any reference (the hydrated graph)
-                // every entity foreign key is joined eagerly, preserving the existing behavior.
-                if (beyondRef && !isReferencedBeyond(referenced.joined(), pkPath)) {
-                    continue;
-                }
-                String fromAlias = resolveFromAlias(fkName, table, fkPath, type, aliasMapper);
-                RecordType fieldType = getRecordType(field.type());
-                boolean effectiveOuterJoin = outerJoin || field.nullable();
-                String alias = addForeignKeyJoin(table, rootTable, field, fieldType, fromAlias, fkPath,
-                        pkPath, effectiveOuterJoin, aliasMapper, tableMapper, joins);
-                deriveAutoJoins(fieldType, fieldType.requireDataType(), copy, alias, effectiveOuterJoin,
-                        beyondRef && !referenced.hydrated().contains(pkPath), context);
-            } else if (isRecord(field.type())) {
-                if (field.isAnnotationPresent(PK.class) || getORMConverter(field).isPresent()) {
-                    continue;
-                }
-                // Below a reference boundary, only recurse into an inline record when a query element navigates
-                // through it; above any reference the whole hydrated graph is traversed, preserving prior behavior.
-                if (beyondRef && !isReferencedBeyond(referenced.joined(), pkPath)) {
-                    continue;
-                }
-                String fromAlias = resolveFromAlias(fkName, table, fkPath, type, aliasMapper);
-                deriveAutoJoins(getRecordType(field.type()), table, copy, fromAlias, outerJoin, beyondRef, context);
+                return;
             }
+            if (!isRecord(field.type())) {
+                throw new SqlTemplateException("FK is only allowed on Ref and record types.");
+            }
+            if (field.type() == type.type()) {
+                throw new SqlTemplateException(
+                        "Self-referencing FK annotation is not allowed: %s. FK must be marked as Ref."
+                                .formatted(type.type().getSimpleName())
+                );
+            }
+            // Below a reference boundary nothing is hydrated, so entity foreign keys are demand-driven too:
+            // only the ones a query element navigates to are joined. Above any reference (the hydrated graph)
+            // every entity foreign key is joined eagerly, preserving the existing behavior.
+            if (beyondRef && !isReferencedBeyond(referenced.joined(), pkPath)) {
+                return;
+            }
+            String fromAlias = resolveFromAlias(fkName, table, fkPath, type, aliasMapper);
+            RecordType fieldType = getRecordType(field.type());
+            boolean effectiveOuterJoin = outerJoin || field.nullable();
+            String alias = addForeignKeyJoin(table, rootTable, field, fieldType, fromAlias, fkPath,
+                    pkPath, effectiveOuterJoin, aliasMapper, tableMapper, joins);
+            deriveAutoJoins(fieldType, fieldType.requireDataType(), copy, alias, effectiveOuterJoin,
+                    beyondRef && !referenced.hydrated().contains(pkPath), context);
+        } else if (isRecord(field.type())) {
+            if (field.isAnnotationPresent(PK.class) || getORMConverter(field).isPresent()) {
+                return;
+            }
+            // Below a reference boundary, only recurse into an inline record when a query element navigates
+            // through it; above any reference the whole hydrated graph is traversed, preserving prior behavior.
+            if (beyondRef && !isReferencedBeyond(referenced.joined(), pkPath)) {
+                return;
+            }
+            String fromAlias = resolveFromAlias(fkName, table, fkPath, type, aliasMapper);
+            deriveAutoJoins(getRecordType(field.type()), table, copy, fromAlias, outerJoin, beyondRef, context);
         }
     }
 
@@ -1644,6 +1745,7 @@ class TemplatePreparation {
                         .formatted(target.table().getSimpleName(), table.getSimpleName()));
             }
             validateDataType(table);
+            applySubtypeDiscriminator(table, mutableElements);
             String path = "";
             final From effectiveFrom;
             if (from.alias().isEmpty()) {
@@ -1660,6 +1762,7 @@ class TemplatePreparation {
         if (update != null) {
             var table = update.table();
             validateDataType(table);
+            applySubtypeDiscriminator(table, mutableElements);
             String path = "";
             String alias;
             if (update.alias().isEmpty()) {
@@ -1704,6 +1807,7 @@ class TemplatePreparation {
         final From effectiveFrom;
         if (from != null && from.source() instanceof TableSource(var table)) {
             validateDataType(table);
+            applySubtypeDiscriminator(table, mutableElements);
             String path = "";
             String alias;
             if (from.alias().isEmpty()) {
