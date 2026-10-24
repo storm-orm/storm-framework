@@ -23,6 +23,7 @@ import static java.util.stream.Collectors.toSet;
 import static st.orm.EnumType.NAME;
 import static st.orm.core.spi.Providers.getORMConverter;
 import static st.orm.core.template.impl.ObjectMapperFactory.nullableHint;
+import static st.orm.core.template.impl.RecordReflection.findQueryColumn;
 import static st.orm.core.template.impl.RecordReflection.getDiscriminatorValue;
 import static st.orm.core.template.impl.RecordReflection.getFkLeaves;
 import static st.orm.core.template.impl.RecordReflection.getRecordField;
@@ -253,6 +254,15 @@ public final class ModelImpl<E extends Data, ID> implements Model<E, ID> {
         }
         for (var column : queryColumns) {
             map.computeIfAbsent(column.metamodel().canonical(), ignore -> new ArrayList<>()).add(column);
+            // A query column several subtypes declare is one column of the shared table, reached from each of them.
+            if (!sealedRoots.isEmpty()) {
+                String fieldPath = column.metamodel().fieldPath();
+                for (var root : sealedRoots) {
+                    if (root != column.metamodel().root() && findQueryColumn(root, fieldPath).isPresent()) {
+                        map.computeIfAbsent(Metamodel.of(root, fieldPath).canonical(), ignore -> new ArrayList<>()).add(column);
+                    }
+                }
+            }
         }
         map.replaceAll((k, v) -> List.copyOf(v));
         return Map.copyOf(map);
@@ -684,17 +694,11 @@ public final class ModelImpl<E extends Data, ID> implements Model<E, ID> {
     public void forEachValue(Metamodel<E, ?> metamodel,
                              Object object,
                              BiConsumer<Column, Object> consumer) throws SqlTemplateException {
-        // For sealed entity models, columns originally share the same root metamodel, so
-        // getColumns() could not distinguish between PK and non-PK columns. When a generated
-        // metamodel is available (e.g., Animal_.name), its canonical form is registered via
-        // a secondary metamodel on the column, enabling field-specific resolution.
         boolean resolvedViaInline = false;
         List<Column> columns;
-        if (discriminatorColumnIndex > 0) {
+        if (discriminatorColumnIndex > 0 && metamodel.fieldPath().isEmpty()) {
             // The root of a sealed entity names the entity itself, which its primary key identifies.
-            columns = metamodel.isColumn()
-                    ? getColumns(metamodel)
-                    : declaredColumns.stream().filter(Column::primaryKey).toList();
+            columns = declaredColumns.stream().filter(Column::primaryKey).toList();
         } else if (metamodel.isInline() && columnMap.get(metamodel.canonical()) == null) {
             // Inline record not directly in column map (e.g., Address). Fall back to inline resolution.
             columns = getInlineColumns(metamodel);

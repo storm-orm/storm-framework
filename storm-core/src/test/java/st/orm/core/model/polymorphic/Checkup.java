@@ -19,10 +19,12 @@ import java.time.LocalDate;
 import org.jspecify.annotations.Nullable;
 import st.orm.FK;
 import st.orm.PK;
+import st.orm.QueryColumn;
 import st.orm.Ref;
 import st.orm.core.model.Pet;
 import st.orm.core.model.Vet;
 
+@QueryColumn(field = "keywords", type = String.class, nullable = true)
 public record Checkup(
         @PK Integer id,
         @FK Pet pet,

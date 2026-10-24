@@ -22,6 +22,7 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static st.orm.GenerationStrategy.NONE;
 import static st.orm.Operator.EQUALS;
 import static st.orm.Operator.GREATER_THAN;
 import static st.orm.core.template.SqlInterceptor.observe;
@@ -54,6 +55,7 @@ import st.orm.core.model.polymorphic.JoinedSurgery;
 import st.orm.core.model.polymorphic.JoinedSurgery_;
 import st.orm.core.model.polymorphic.JoinedTreatment;
 import st.orm.core.model.polymorphic.JoinedTreatment_;
+import st.orm.core.model.polymorphic.Outcome;
 import st.orm.core.model.polymorphic.Surgery;
 import st.orm.core.model.polymorphic.Surgery_;
 import st.orm.core.model.polymorphic.Treatment;
@@ -96,7 +98,7 @@ public class SealedForeignKeyIntegrationTest {
     public void sealedModelMapsForeignKeysAsForeignKeyColumns() {
         var model = orm().model(Treatment.class);
         var names = model.declaredColumns().stream().map(Column::name).toList();
-        assertEquals(List.of("kind", "id", "pet_id", "treatment_date", "vet_id", "notes", "surgeon_id", "duration"), names);
+        assertEquals(List.of("kind", "id", "pet_id", "treatment_date", "vet_id", "notes", "surgeon_id", "duration", "outcome"), names);
         var byName = model.declaredColumns().stream().collect(java.util.stream.Collectors.toMap(Column::name, c -> c));
         assertTrue(byName.get("pet_id").foreignKey());
         assertFalse(byName.get("pet_id").nullable(), "Every subtype declares the pet.");
@@ -143,7 +145,7 @@ public class SealedForeignKeyIntegrationTest {
         var treatments = orm().entity(Treatment.class);
         var pet = orm().entity(Pet.class).getById(2);
         var vet = orm().entity(Vet.class).getById(4);
-        var surgeryId = treatments.insertAndFetchId(new Surgery(null, pet, LocalDate.of(2024, 5, 1), vet, 30));
+        var surgeryId = treatments.insertAndFetchId(new Surgery(null, pet, LocalDate.of(2024, 5, 1), vet, 30, null));
         var checkupId = treatments.insertAndFetchId(new Checkup(null, pet, LocalDate.of(2024, 5, 2), Ref.of(vet), "Fine"));
         var surgery = assertInstanceOf(Surgery.class, treatments.getById(surgeryId));
         assertEquals("Basil", surgery.pet().name());
@@ -160,7 +162,7 @@ public class SealedForeignKeyIntegrationTest {
         var vet = orm().entity(Vet.class).getById(5);
         long before = treatments.count();
         treatments.insert(List.of(
-                new Surgery(null, pet, LocalDate.of(2024, 6, 1), vet, 20),
+                new Surgery(null, pet, LocalDate.of(2024, 6, 1), vet, 20, null),
                 new Checkup(null, pet, LocalDate.of(2024, 6, 2), null, "Batch")));
         assertEquals(before + 2, treatments.count());
         var inserted = treatments.select().where(Treatment_.treatmentDate, GREATER_THAN, LocalDate.of(2024, 5, 31)).getResultList();
@@ -174,7 +176,7 @@ public class SealedForeignKeyIntegrationTest {
         var treatments = orm().entity(Treatment.class);
         var surgery = (Surgery) treatments.getById(3);
         var vet = orm().entity(Vet.class).getById(6);
-        treatments.update(new Surgery(surgery.id(), surgery.pet(), surgery.treatmentDate(), vet, 120));
+        treatments.update(new Surgery(surgery.id(), surgery.pet(), surgery.treatmentDate(), vet, 120, null));
         var updated = (Surgery) treatments.getById(3);
         assertEquals("Jenkins", updated.surgeon().lastName());
         assertEquals(120, updated.duration());
@@ -185,7 +187,7 @@ public class SealedForeignKeyIntegrationTest {
         var treatments = orm().entity(Treatment.class);
         var pet = orm().entity(Pet.class).getById(1);
         var exception = assertThrows(PersistenceException.class,
-                () -> treatments.insert(new Surgery(null, pet, LocalDate.of(2024, 7, 1), new Vet(0, "New", "Vet"), 10)));
+                () -> treatments.insert(new Surgery(null, pet, LocalDate.of(2024, 7, 1), new Vet(0, "New", "Vet"), 10, null)));
         assertTrue(exception.getMessage().contains("default primary key"), exception.getMessage());
     }
 
@@ -338,12 +340,12 @@ public class SealedForeignKeyIntegrationTest {
         var vet = orm().entity(Vet.class).getById(1);
         statements.clear();
         var id = observe(sql -> statements.add(sql.statement()),
-                () -> surgeries.insertAndFetchId(new Surgery(null, pet, LocalDate.of(2024, 8, 1), vet, 15)));
+                () -> surgeries.insertAndFetchId(new Surgery(null, pet, LocalDate.of(2024, 8, 1), vet, 15, null)));
         assertTrue(statement().startsWith("INSERT INTO treatment (kind, "), statement());
         assertEquals(3, surgeries.count());
         var inserted = assertInstanceOf(Surgery.class, orm().entity(Treatment.class).getById(id));
         assertEquals("Carter", inserted.surgeon().lastName());
-        surgeries.insert(new Surgery(null, pet, LocalDate.of(2024, 8, 2), vet, 16));
+        surgeries.insert(new Surgery(null, pet, LocalDate.of(2024, 8, 2), vet, 16, null));
         assertEquals(4, surgeries.count());
         assertEquals(2, orm().entity(Checkup.class).count());
     }
@@ -367,7 +369,7 @@ public class SealedForeignKeyIntegrationTest {
     public void subtypeRepositoryUpdateAndRemove() {
         var surgeries = orm().entity(Surgery.class);
         var surgery = surgeries.getById(3);
-        surgeries.update(new Surgery(3, surgery.pet(), surgery.treatmentDate(), surgery.surgeon(), 100));
+        surgeries.update(new Surgery(3, surgery.pet(), surgery.treatmentDate(), surgery.surgeon(), 100, null));
         assertEquals(100, surgeries.getById(3).duration());
         surgeries.remove(surgeries.getById(3));
         assertEquals(1, surgeries.count());
@@ -454,6 +456,7 @@ public class SealedForeignKeyIntegrationTest {
     public void schemaValidationChecksTheHierarchyTable() {
         assertEquals(List.of(), orm().validateSchema(List.of(Treatment.class)));
         assertEquals(List.of(), orm().validateSchema(List.of(Surgery.class, Checkup.class)));
+        assertEquals(List.of(), orm().validateSchema(List.of(Surgery.class)));
         assertEquals(List.of(), orm().validateSchema(List.of(JoinedTreatment.class, JoinedCheckup.class, JoinedSurgery.class)));
         // A hierarchy with no table of its own reports it once, through the sealed type, however many of its types
         // are listed.
@@ -472,12 +475,65 @@ public class SealedForeignKeyIntegrationTest {
 
     @Discriminator
     sealed interface MissingHierarchy extends Entity<Integer> permits MissingKind, OtherMissingKind {
+        @Override
         Integer id();
     }
 
     record MissingKind(@PK Integer id) implements MissingHierarchy {}
 
     record OtherMissingKind(@PK Integer id, String note) implements MissingHierarchy {}
+
+    @Test
+    public void convertedFieldOfASubtypeGoesThroughItsConverter() {
+        var treatments = orm().entity(Treatment.class);
+        var surgery = assertInstanceOf(Surgery.class, treatments.findById(3).orElseThrow());
+        assertEquals(new Outcome("recovered"), surgery.outcome());
+        var surgeries = orm().entity(Surgery.class);
+        var id = surgeries.insertAndFetchId(new Surgery(null, surgery.pet(), LocalDate.of(2024, 9, 1), surgery.surgeon(), 25, new Outcome("stable")));
+        assertEquals(new Outcome("stable"), surgeries.findById(id).orElseThrow().outcome());
+        var ids = treatments.insertAndFetchIds(List.of(
+                new Surgery(null, surgery.pet(), LocalDate.of(2024, 9, 2), surgery.surgeon(), 35, new Outcome("observed")),
+                new Checkup(null, surgery.pet(), LocalDate.of(2024, 9, 3), null, "Fine")));
+        assertEquals(new Outcome("observed"), assertInstanceOf(Surgery.class, treatments.findById(ids.getFirst()).orElseThrow()).outcome());
+        treatments.update(new Surgery(id, surgery.pet(), LocalDate.of(2024, 9, 1), surgery.surgeon(), 25, null));
+        assertNull(surgeries.findById(id).orElseThrow().outcome());
+        var byTreatment = treatments.select().where(Treatment_.id, EQUALS, ids.getFirst()).getResultList();
+        assertEquals(new Outcome("observed"), assertInstanceOf(Surgery.class, byTreatment.getFirst()).outcome());
+    }
+
+    @Test
+    public void queryColumnOfTheSubtypesIsOneColumnOfTheSharedTable() {
+        assertEquals(List.of("keywords"), orm().model(Treatment.class).queryColumns().stream().map(Column::name).toList());
+        var checkups = capture(() -> orm().entity(Checkup.class).select()
+                .where(Checkup_.keywords, EQUALS, "healthy")
+                .getResultList());
+        assertEquals("Healthy", checkups.getFirst().notes());
+        assertFalse(statement().contains("keywords,"), "never selected: " + statement());
+        var surgeries = orm().entity(Treatment.class).select().where(Surgery_.keywords, EQUALS, "spay").getResultList();
+        assertEquals(90, assertInstanceOf(Surgery.class, surgeries.getFirst()).duration());
+        var checkedUp = orm().entity(Treatment.class).select().where(Checkup_.keywords, EQUALS, "healthy").getResultList();
+        assertEquals(1, checkedUp.size());
+    }
+
+    @Test
+    public void subtypeOfAnInvalidHierarchyIsRefused() {
+        var exception = assertThrows(PersistenceException.class, () -> orm().entity(BrokenKind.class).model());
+        var messages = new ArrayList<String>();
+        for (Throwable cause = exception; cause != null; cause = cause.getCause()) {
+            messages.add(String.valueOf(cause.getMessage()));
+        }
+        assertTrue(messages.stream().anyMatch(message -> message.contains("generation strategy")), messages.toString());
+    }
+
+    @Discriminator
+    sealed interface BrokenHierarchy extends Entity<Integer> permits BrokenKind, OtherBrokenKind {
+        @Override
+        Integer id();
+    }
+
+    record BrokenKind(@PK Integer id) implements BrokenHierarchy {}
+
+    record OtherBrokenKind(@PK(generation = NONE) Integer id) implements BrokenHierarchy {}
 
     // Joined Table.
 

@@ -30,6 +30,7 @@ import st.orm.core.model.Pet;
 @Polymorphic(JOINED)
 @DbTable("joined_treatment")
 public sealed interface JoinedTreatment extends Entity<Integer> permits JoinedCheckup, JoinedSurgery {
+    @Override
     Integer id();
     Pet pet();
 }

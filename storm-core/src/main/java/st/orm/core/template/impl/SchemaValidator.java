@@ -209,12 +209,10 @@ public final class SchemaValidator {
     }
 
     /**
-     * The schemas one validation or load reads, on one connection, each read once.
-     */
-    /**
      * Returns the types to check, one per table: a subtype of a single-table hierarchy shares its table with the
      * sealed type and the other subtypes, so the hierarchy is checked once, through the sealed type, however many
-     * of its types the list names.
+     * of its types the list names. The sealed type's model holds the union of the subtypes' columns and the
+     * discriminator.
      */
     private static Set<Class<? extends Data>> tablesOf(Iterable<Class<? extends Data>> types) {
         Set<Class<? extends Data>> tables = new LinkedHashSet<>();
@@ -224,6 +222,9 @@ public final class SchemaValidator {
         return tables;
     }
 
+    /**
+     * The schemas one validation or load reads, on one connection, each read once.
+     */
     private final class SchemaReads {
         private final Connection connection;
         private final SqlDialect dialect;
@@ -267,16 +268,11 @@ public final class SchemaValidator {
 
     /**
      * Returns the model of a type whose table the schema holds, or {@code null} for a type that has none to check: an
-     * interface, a sealed type whose subtypes are checked instead, a type that cannot be modeled, or one annotated
-     * with {@link DbIgnore} or {@link ProjectionQuery}.
+     * interface that is not a sealed entity, a type that cannot be modeled, or one annotated with {@link DbIgnore}
+     * or {@link ProjectionQuery}. A sealed entity checks its own table: the single table of a single-table
+     * hierarchy, or the base table of a joined one, whose subtypes check their extension tables.
      */
     private @Nullable Model<?, ?> modelOf(Class<? extends Data> type) {
-        // A single-table hierarchy is one table: the sealed type's model holds the union of the subtypes' columns
-        // and the discriminator, and a subtype checks that table through it.
-        var singleTableParent = RecordReflection.findSingleTableSealedParent(type);
-        if (singleTableParent.isPresent()) {
-            type = singleTableParent.get();
-        }
         // A joined hierarchy's sealed type checks the base table; each subtype checks its extension table.
         boolean sealedEntity = type.isSealed() && RecordReflection.isSealedEntity(type);
         if (!sealedEntity && (type.isInterface() || (type.isSealed() && !type.isRecord()))) {

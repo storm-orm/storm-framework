@@ -28,6 +28,7 @@ import st.orm.core.model.Pet;
 @Discriminator(column = "kind")
 @DbTable("treatment")
 public sealed interface Treatment extends Entity<Integer> permits Checkup, Surgery {
+    @Override
     Integer id();
     Pet pet();
     LocalDate treatmentDate();

@@ -255,14 +255,14 @@ INSERT INTO api_key (id, name, external_reference) VALUES ('6ba7b810-9dad-11d1-8
 
 -- Pattern G: Single-Table Inheritance whose subtypes declare foreign keys
 drop table if exists treatment CASCADE;
-create table treatment (id integer auto_increment, kind varchar(50) not null, pet_id integer not null, treatment_date date not null, vet_id integer, notes varchar(255), surgeon_id integer, duration integer, primary key (id));
+create table treatment (id integer auto_increment, kind varchar(50) not null, pet_id integer not null, treatment_date date not null, vet_id integer, notes varchar(255), surgeon_id integer, duration integer, outcome varchar(50), keywords varchar(255), primary key (id));
 alter table treatment add constraint treatment_pet_fk foreign key (pet_id) references pet (id) on delete cascade;
 alter table treatment add constraint treatment_vet_fk foreign key (vet_id) references vet (id) on delete cascade;
 alter table treatment add constraint treatment_surgeon_fk foreign key (surgeon_id) references vet (id) on delete cascade;
 
-INSERT INTO treatment (kind, pet_id, treatment_date, vet_id, notes) VALUES ('Checkup', 1, '2024-01-10', 1, 'Healthy');
+INSERT INTO treatment (kind, pet_id, treatment_date, vet_id, notes, keywords) VALUES ('Checkup', 1, '2024-01-10', 1, 'Healthy', 'healthy');
 INSERT INTO treatment (kind, pet_id, treatment_date, vet_id, notes) VALUES ('Checkup', 2, '2024-02-11', NULL, 'Shots');
-INSERT INTO treatment (kind, pet_id, treatment_date, surgeon_id, duration) VALUES ('Surgery', 3, '2024-03-12', 2, 90);
+INSERT INTO treatment (kind, pet_id, treatment_date, surgeon_id, duration, outcome, keywords) VALUES ('Surgery', 3, '2024-03-12', 2, 90, 'recovered', 'spay');
 INSERT INTO treatment (kind, pet_id, treatment_date, surgeon_id, duration) VALUES ('Surgery', 1, '2024-04-13', 3, 45);
 
 -- Pattern H: Joined Table Inheritance with a foreign key in the base table and one in an extension table

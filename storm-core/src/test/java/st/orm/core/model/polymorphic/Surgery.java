@@ -16,16 +16,21 @@
 package st.orm.core.model.polymorphic;
 
 import java.time.LocalDate;
+import org.jspecify.annotations.Nullable;
+import st.orm.Convert;
 import st.orm.FK;
 import st.orm.PK;
+import st.orm.QueryColumn;
 import st.orm.core.model.Pet;
 import st.orm.core.model.Vet;
 
+@QueryColumn(field = "keywords", type = String.class, nullable = true)
 public record Surgery(
         @PK Integer id,
         @FK Pet pet,
         LocalDate treatmentDate,
         @FK Vet surgeon,
-        int duration
+        int duration,
+        @Nullable @Convert(converter = OutcomeConverter.class) Outcome outcome
 ) implements Treatment {
 }
