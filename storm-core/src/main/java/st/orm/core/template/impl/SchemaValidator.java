@@ -24,6 +24,7 @@ import java.sql.SQLException;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashSet;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
@@ -153,7 +154,7 @@ public final class SchemaValidator {
         List<SchemaValidationError> errors = new ArrayList<>();
         try (Connection connection = dataSource.getConnection()) {
             var reads = new SchemaReads(connection);
-            for (Class<? extends Data> type : types) {
+            for (Class<? extends Data> type : tablesOf(types)) {
                 validateType(type, reads, errors);
             }
             // Validation has read the schema, so the slow statement log can check statements against its indexes
@@ -194,7 +195,7 @@ public final class SchemaValidator {
         try (Connection connection = dataSource.getConnection()) {
             var reads = new SchemaReads(connection);
             reads.resolve("");
-            for (Class<? extends Data> type : types) {
+            for (Class<? extends Data> type : tablesOf(types)) {
                 var model = modelOf(type);
                 if (model != null) {
                     reads.resolve(model.schema());
@@ -210,6 +211,19 @@ public final class SchemaValidator {
     /**
      * The schemas one validation or load reads, on one connection, each read once.
      */
+    /**
+     * Returns the types to check, one per table: a subtype of a single-table hierarchy shares its table with the
+     * sealed type and the other subtypes, so the hierarchy is checked once, through the sealed type, however many
+     * of its types the list names.
+     */
+    private static Set<Class<? extends Data>> tablesOf(Iterable<Class<? extends Data>> types) {
+        Set<Class<? extends Data>> tables = new LinkedHashSet<>();
+        for (Class<? extends Data> type : types) {
+            tables.add(RecordReflection.findSingleTableSealedParent(type).orElse(type));
+        }
+        return tables;
+    }
+
     private final class SchemaReads {
         private final Connection connection;
         private final SqlDialect dialect;

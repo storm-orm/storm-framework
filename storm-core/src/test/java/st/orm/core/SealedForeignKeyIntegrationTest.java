@@ -38,7 +38,10 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.jdbc.JdbcTest;
 import org.springframework.test.context.ContextConfiguration;
 import org.springframework.test.context.junit.jupiter.SpringExtension;
+import st.orm.Discriminator;
+import st.orm.Entity;
 import st.orm.Metamodel;
+import st.orm.PK;
 import st.orm.PersistenceException;
 import st.orm.Ref;
 import st.orm.core.model.Pet;
@@ -55,6 +58,7 @@ import st.orm.core.model.polymorphic.Surgery;
 import st.orm.core.model.polymorphic.Surgery_;
 import st.orm.core.model.polymorphic.Treatment;
 import st.orm.core.model.polymorphic.Treatment_;
+import st.orm.core.spi.TypeDiscovery;
 import st.orm.core.template.Column;
 import st.orm.core.template.ORMTemplate;
 import st.orm.core.template.Templates;
@@ -451,7 +455,29 @@ public class SealedForeignKeyIntegrationTest {
         assertEquals(List.of(), orm().validateSchema(List.of(Treatment.class)));
         assertEquals(List.of(), orm().validateSchema(List.of(Surgery.class, Checkup.class)));
         assertEquals(List.of(), orm().validateSchema(List.of(JoinedTreatment.class, JoinedCheckup.class, JoinedSurgery.class)));
+        // A hierarchy with no table of its own reports it once, through the sealed type, however many of its types
+        // are listed.
+        var missing = orm().validateSchema(List.of(MissingKind.class, MissingHierarchy.class, OtherMissingKind.class));
+        assertEquals(1, missing.size(), missing.toString());
+        assertTrue(missing.getFirst().contains("MissingHierarchy"), missing.getFirst());
     }
+
+    @Test
+    public void typeIndexListsTheSealedTypes() {
+        var types = TypeDiscovery.getDataTypes();
+        assertTrue(types.contains(Treatment.class), "the sealed entity");
+        assertTrue(types.contains(JoinedTreatment.class), "the joined sealed entity");
+        assertTrue(types.contains(Surgery.class), "its subtypes");
+    }
+
+    @Discriminator
+    sealed interface MissingHierarchy extends Entity<Integer> permits MissingKind, OtherMissingKind {
+        Integer id();
+    }
+
+    record MissingKind(@PK Integer id) implements MissingHierarchy {}
+
+    record OtherMissingKind(@PK Integer id, String note) implements MissingHierarchy {}
 
     // Joined Table.
 

@@ -217,6 +217,32 @@ class MetamodelProcessorTest {
     }
 
     @Test
+    fun `type index lists sealed Data interfaces with their subtypes`() {
+        val compilation = compilation(
+            """
+            package com.example
+
+            import st.orm.Discriminator
+            import st.orm.Entity
+            import st.orm.PK
+
+            @Discriminator
+            sealed interface Treatment : Entity<Int> {
+                val id: Int
+            }
+
+            data class Checkup(@PK override val id: Int, val notes: String) : Treatment
+            """.trimIndent(),
+        )
+        compilation.symbolProcessorProviders.add(TypeIndexProcessorProvider())
+        val result = compilation.compile()
+        assertEquals(KotlinCompilation.ExitCode.OK, result.exitCode, result.messages)
+        val index = compilation.kspSourcesDir.walkTopDown().first { it.isFile && it.name == "st.orm.Data.idx" }.readText()
+        assertTrue("com.example.Treatment" in index) { "expected the sealed entity in the index:\n$index" }
+        assertTrue("com.example.Checkup" in index) { "expected the subtype in the index:\n$index" }
+    }
+
+    @Test
     fun `escapes keyword-named properties in the metamodel interface and primary key`() {
         val compilation = compile(
             """
