@@ -15,9 +15,12 @@
  */
 package st.orm.core.graal;
 
+import java.util.HashSet;
+import java.util.Set;
 import org.graalvm.nativeimage.hosted.Feature;
 import org.graalvm.nativeimage.hosted.RuntimeProxyCreation;
 import org.graalvm.nativeimage.hosted.RuntimeReflection;
+import st.orm.Data;
 import st.orm.EntityCallbacks;
 import st.orm.core.spi.TypeDiscovery;
 
@@ -41,6 +44,9 @@ import st.orm.core.spi.TypeDiscovery;
  */
 public final class StormFeature implements Feature {
 
+    /** The data types registered so far: a sealed hierarchy is reached from each of its types and registered once. */
+    private final Set<Class<?>> registered = new HashSet<>();
+
     @Override
     public String getDescription() {
         return "Registers Storm entities, entity callbacks, converters, and repositories from the compile-time type index.";
@@ -55,7 +61,6 @@ public final class StormFeature implements Feature {
                     + "metamodel processor (storm-metamodel-processor for Java, storm-metamodel-ksp for "
                     + "Kotlin) to the build so the index is generated at compile time.");
         }
-        int dataTypes = 0;
         int callbackTypes = 0;
         for (Class<?> type : TypeDiscovery.getDataTypes()) {
             registerDataType(access, type);
@@ -63,7 +68,6 @@ public final class StormFeature implements Feature {
                 registerDataType(access, componentType);
             }
             callbackTypes += registerEntityCallbacks(type);
-            dataTypes++;
         }
         int converterTypes = 0;
         for (Class<?> type : TypeDiscovery.getConverterTypes()) {
@@ -84,7 +88,7 @@ public final class StormFeature implements Feature {
         System.out.printf(
                 "Storm: registered %d data types, %d entity callbacks, %d converters, and %d repositories from "
                         + "the type index.%n",
-                dataTypes, callbackTypes, converterTypes, repositoryTypes);
+                registered.size(), callbackTypes, converterTypes, repositoryTypes);
     }
 
     /**
@@ -103,7 +107,10 @@ public final class StormFeature implements Feature {
         return declared.value().length;
     }
 
-    private static void registerDataType(BeforeAnalysisAccess access, Class<?> type) {
+    private void registerDataType(BeforeAnalysisAccess access, Class<?> type) {
+        if (!registered.add(type)) {
+            return;
+        }
         RuntimeReflection.register(type);
         RuntimeReflection.register(type.getDeclaredConstructors());
         RuntimeReflection.register(type.getMethods());
@@ -116,8 +123,9 @@ public final class StormFeature implements Feature {
         registerCompanion(access, type.getName() + "$serializer");
         registerCompanion(access, type.getName() + "$Companion");
         // Storm detects a sealed entity, and the target of a polymorphic foreign key, through the type's permitted
-        // subclasses, which a native image reports only when they are registered. Each subtype is a data type of
-        // its own, registered here in case the index does not list it.
+        // subclasses, which a native image reports only when they are registered. The index lists the concrete
+        // types, so the sealed interface is reached from its subtypes, and each subtype from the interface, in case
+        // the index lists only one side.
         if (type.isSealed()) {
             RuntimeReflection.registerAllPermittedSubclasses(type);
             for (Class<?> subtype : type.getPermittedSubclasses()) {
@@ -125,6 +133,11 @@ public final class StormFeature implements Feature {
                 for (Class<?> componentType : TypeDiscovery.getComponentTypes(subtype)) {
                     registerDataType(access, componentType);
                 }
+            }
+        }
+        for (Class<?> implemented : type.getInterfaces()) {
+            if (implemented.isSealed() && Data.class.isAssignableFrom(implemented)) {
+                registerDataType(access, implemented);
             }
         }
     }
