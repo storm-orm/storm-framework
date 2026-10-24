@@ -18,6 +18,8 @@ package st.orm.test;
 import static java.util.Objects.requireNonNull;
 
 import java.time.Duration;
+import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 
 /**
@@ -25,7 +27,7 @@ import java.util.List;
  *
  * @param operation the type of SQL operation.
  * @param statement the SQL statement with {@code ?} placeholders.
- * @param parameters the bind variable values.
+ * @param parameters the bind variable values; a {@code NULL} bind value is {@code null}.
  * @param origin what caused the statement to execute.
  * @param duration the time the execution spent in the database, from prepare to the statement's return; for a
  *                 streamed read this excludes the consumption of the stream.
@@ -52,7 +54,7 @@ public record CapturedSql(
                        boolean exactRows) {
         this.operation = requireNonNull(operation, "operation");
         this.statement = requireNonNull(statement, "statement");
-        this.parameters = List.copyOf(parameters);
+        this.parameters = Collections.unmodifiableList(new ArrayList<>(parameters));
         this.origin = requireNonNull(origin, "origin");
         this.duration = requireNonNull(duration, "duration");
         this.rows = rows;

@@ -3,12 +3,16 @@ package st.orm.test;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import java.util.Arrays;
+import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.Test;
 import st.orm.Entity;
 import st.orm.PK;
 import st.orm.core.template.ORMTemplate;
+import st.orm.core.template.TemplateString;
 import st.orm.test.CapturedSql.Operation;
 
 /**
@@ -18,7 +22,7 @@ import st.orm.test.CapturedSql.Operation;
 @StormTest(scripts = {"/test-schema.sql", "/test-data.sql"})
 class SqlCaptureTest {
 
-    record Item(@PK Integer id, String name) implements Entity<Integer> {}
+    record Item(@PK Integer id, @Nullable String name) implements Entity<Integer> {}
 
     @Test
     void captureDeleteOperationShouldRecordDeleteStatement(ORMTemplate orm, SqlCapture capture) {
@@ -46,6 +50,28 @@ class SqlCaptureTest {
         var statements = capture.statements(Operation.SELECT);
         assertFalse(statements.isEmpty());
         assertNotNull(statements.getFirst().parameters());
+    }
+
+    @Test
+    void captureInsertBindingNullShouldRecordStatement(ORMTemplate orm, SqlCapture capture) {
+        capture.record(() -> orm.entity(Item.class).insert(new Item(0, null)));
+        assertEquals(1, capture.count(Operation.INSERT));
+        assertTrue(capture.statements(Operation.INSERT).getFirst().parameters().contains(null));
+    }
+
+    @Test
+    void captureUpdateBindingNullShouldRecordStatement(ORMTemplate orm, SqlCapture capture) {
+        Integer insertedId = orm.entity(Item.class).insertAndFetchId(new Item(0, "Named"));
+        capture.record(() -> orm.entity(Item.class).update(new Item(insertedId, null)));
+        assertEquals(1, capture.count(Operation.UPDATE));
+        assertEquals(Arrays.asList(null, insertedId), capture.statements(Operation.UPDATE).getFirst().parameters());
+    }
+
+    @Test
+    void captureTemplateWithNullArgumentShouldRecordStatement(ORMTemplate orm, SqlCapture capture) {
+        capture.record(() -> orm.query(TemplateString.raw("SELECT COUNT(*) FROM item WHERE name = \0", (Object) null)).getSingleResult(Long.class));
+        assertEquals(1, capture.count(Operation.SELECT));
+        assertNull(capture.statements(Operation.SELECT).getFirst().parameters().getFirst());
     }
 
     @Test
