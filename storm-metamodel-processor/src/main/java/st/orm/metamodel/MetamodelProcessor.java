@@ -24,6 +24,7 @@ import static javax.lang.model.element.ElementKind.RECORD;
 import static javax.tools.Diagnostic.Kind.ERROR;
 import static javax.tools.Diagnostic.Kind.WARNING;
 
+import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.PrintWriter;
 import java.io.StringWriter;
@@ -79,6 +80,10 @@ public final class MetamodelProcessor extends AbstractProcessor {
     private static final String METAMODEL_TYPE = "st.orm.MetamodelType";
     private static final String GENERATE_METAMODEL = "st.orm.GenerateMetamodel";
     private static final String DATA = "st.orm.Data";
+    private static final String CONVERT = "st.orm.Convert";
+    private static final String CONVERTER = "st.orm.Converter";
+    private static final String DEFAULT_CONVERTER = "st.orm.DefaultConverter";
+    private static final String CONVERTER_INDEX = "META-INF/storm/st.orm.Converter.idx";
     private static final String FOREIGN_KEY = "st.orm.FK";
     private static final String PRIMARY_KEY = "st.orm.PK";
     private static final String UNIQUE_KEY = "st.orm.UK";
@@ -152,6 +157,13 @@ public final class MetamodelProcessor extends AbstractProcessor {
      */
     private record QueryColumnDeclaration(String field, TypeMirror type, boolean nullable) {}
 
+    /**
+     * The qualified names of the types a default converter maps: the converters annotated in this compilation and the
+     * ones a dependency lists in its converter index. A component of such a type is a column, not an inline record.
+     */
+    private final Set<String> defaultConvertedTypes = new HashSet<>();
+    private boolean converterIndexRead;
+
     private Elements elementUtils;
     private Types typeUtils;
     private boolean jspecifyAvailable;
@@ -204,9 +216,75 @@ public final class MetamodelProcessor extends AbstractProcessor {
     private static boolean isNestedRecord(TypeMirror typeMirror) {
         if (typeMirror instanceof DeclaredType declaredType) {
             Element element = declaredType.asElement();
-            return isRecord(element) && element.getEnclosingElement().getKind() == CLASS;
+            return isRecord(element) && element.getEnclosingElement().getKind().isDeclaredType();
         }
         return false;
+    }
+
+    /**
+     * Returns whether the field embeds a record: an inline record or a foreign key, so not a {@code Ref} and not a
+     * converted field. A converted record is stored as its own column, as the runtime metamodel resolves it.
+     */
+    private boolean isEmbeddedRecord(Element recordElement, String fieldName, TypeMirror fieldType) {
+        return isRecord(fieldType) && !isRefType(fieldType) && !isConvertedField(recordElement, fieldName);
+    }
+
+    private boolean isEmbeddedRecordGetter(TypeElement sealedInterface, String fieldName, TypeMirror fieldType) {
+        return isRecord(fieldType) && !isRefType(fieldType) && !isConvertedOnSubclass(sealedInterface, fieldName);
+    }
+
+    /**
+     * Returns whether the field maps through a converter: {@code @Convert} on its record component or its canonical
+     * constructor parameter, with conversion not disabled, or a type a default converter maps.
+     */
+    private boolean isConvertedField(Element recordElement, String fieldName) {
+        if (recordElement.getKind() == RECORD && recordElement instanceof TypeElement typeElement) {
+            for (RecordComponentElement component : typeElement.getRecordComponents()) {
+                if (component.getSimpleName().toString().equals(fieldName)) {
+                    AnnotationMirror convert = findAnnotation(component, CONVERT);
+                    if (convert != null) {
+                        return isConversionEnabled(convert);
+                    }
+                }
+            }
+        }
+        var canonicalConstructor = findCanonicalConstructor(recordElement);
+        var constructors = canonicalConstructor != null
+                ? List.<Element>of(canonicalConstructor)
+                : recordElement.getEnclosedElements()
+                        .stream()
+                        .filter(enclosed -> enclosed.getKind() == CONSTRUCTOR)
+                        .toList();
+        for (var constructor : constructors) {
+            for (VariableElement parameter : ((ExecutableElement) constructor).getParameters()) {
+                if (parameter.getSimpleName().toString().equals(fieldName)) {
+                    AnnotationMirror convert = findAnnotation(parameter, CONVERT);
+                    if (convert != null) {
+                        return isConversionEnabled(convert);
+                    }
+                }
+            }
+        }
+        return isDefaultConverted(getDeclaredTypeElement(recordElement, fieldName));
+    }
+
+    private boolean isConvertedOnSubclass(TypeElement sealedInterface, String fieldName) {
+        TypeElement firstRecord = getFirstPermittedRecord(sealedInterface);
+        return firstRecord != null && isConvertedField(firstRecord, fieldName);
+    }
+
+    private boolean isConversionEnabled(AnnotationMirror convert) {
+        return !Boolean.TRUE.equals(annotationAttribute(convert, "disableConversion"));
+    }
+
+    @Nullable
+    private static AnnotationMirror findAnnotation(Element element, String annotationFqn) {
+        for (AnnotationMirror annotationMirror : element.getAnnotationMirrors()) {
+            if (annotationFqn.equals(annotationMirror.getAnnotationType().toString())) {
+                return annotationMirror;
+            }
+        }
+        return null;
     }
 
     private static boolean isRecord(TypeMirror typeMirror) {
@@ -564,6 +642,7 @@ public final class MetamodelProcessor extends AbstractProcessor {
     @Override
     public boolean process(Set<? extends TypeElement> annotations,
                            RoundEnvironment roundEnv) {
+        collectDefaultConverters(roundEnv);
         for (Element element : roundEnv.getRootElements()) {
             try {
                 if (isRecord(element)) {
@@ -592,6 +671,77 @@ public final class MetamodelProcessor extends AbstractProcessor {
             writeInstantiatorServices();
         }
         return false;
+    }
+
+    /**
+     * Records the entity types of the default converters this round declares, and once per compilation of the ones
+     * the converter index on the class path lists, so a component of such a type renders as a column.
+     */
+    private void collectDefaultConverters(RoundEnvironment roundEnv) {
+        if (!converterIndexRead) {
+            converterIndexRead = true;
+            readConverterIndex();
+        }
+        TypeElement defaultConverter = elementUtils.getTypeElement(DEFAULT_CONVERTER);
+        if (defaultConverter == null) {
+            return;
+        }
+        for (Element converter : roundEnv.getElementsAnnotatedWith(defaultConverter)) {
+            registerDefaultConverter(converter);
+        }
+    }
+
+    private void readConverterIndex() {
+        try {
+            FileObject index = processingEnv.getFiler().getResource(StandardLocation.CLASS_PATH, "", CONVERTER_INDEX);
+            try (BufferedReader reader = new BufferedReader(index.openReader(true))) {
+                for (String line; (line = reader.readLine()) != null; ) {
+                    String name = line.strip();
+                    if (name.isEmpty() || name.startsWith("#")) {
+                        continue;
+                    }
+                    TypeElement converter = elementUtils.getTypeElement(name);
+                    if (converter != null && findAnnotation(converter, DEFAULT_CONVERTER) != null) {
+                        registerDefaultConverter(converter);
+                    }
+                }
+            }
+        } catch (IOException | IllegalArgumentException | IllegalStateException e) {
+            // The class path carries no converter index.
+        }
+    }
+
+    private void registerDefaultConverter(Element converter) {
+        TypeMirror entityType = converterEntityType(converter.asType());
+        if (entityType instanceof DeclaredType declaredType
+                && declaredType.asElement() instanceof TypeElement typeElement) {
+            defaultConvertedTypes.add(typeElement.getQualifiedName().toString());
+        }
+    }
+
+    /** Returns the {@code E} of the {@code Converter<D, E>} supertype of a converter type, or {@code null}. */
+    @Nullable
+    private TypeMirror converterEntityType(TypeMirror type) {
+        for (TypeMirror supertype : typeUtils.directSupertypes(type)) {
+            if (!(supertype instanceof DeclaredType declaredType)
+                    || !(declaredType.asElement() instanceof TypeElement typeElement)) {
+                continue;
+            }
+            if (typeElement.getQualifiedName().contentEquals(CONVERTER) && declaredType.getTypeArguments().size() == 2) {
+                return declaredType.getTypeArguments().get(1);
+            }
+            TypeMirror entityType = converterEntityType(supertype);
+            if (entityType != null) {
+                return entityType;
+            }
+        }
+        return null;
+    }
+
+    private boolean isDefaultConverted(@Nullable TypeMirror type) {
+        return type instanceof DeclaredType declaredType
+                && declaredType.asElement() instanceof TypeElement typeElement
+                && defaultConvertedTypes.contains(typeElement.getQualifiedName().toString());
     }
 
     private static String stackTraceOf(Throwable throwable) {
@@ -642,7 +792,7 @@ public final class MetamodelProcessor extends AbstractProcessor {
             if (fieldType == null) continue;
 
             // Follow direct record references (not nested record definitions).
-            if (isRecord(fieldType) && !isRefType(fieldType)) {
+            if (isEmbeddedRecord(recordElement, fieldName, fieldType)) {
                 if (isNestedRecord(fieldType)) continue;
 
                 TypeElement nestedTypeEl = asTypeElement(fieldType);
@@ -675,7 +825,7 @@ public final class MetamodelProcessor extends AbstractProcessor {
                 String fieldName = enclosed.getSimpleName().toString();
                 TypeMirror fieldType = getTypeElement(recordElement, fieldName);
                 if (fieldType == null) continue;
-                if (!isRecord(fieldType) || isRefType(fieldType) || isNestedRecord(fieldType)) continue;
+                if (!isEmbeddedRecord(recordElement, fieldName, fieldType) || isNestedRecord(fieldType)) continue;
                 TypeElement child = asTypeElement(fieldType);
                 if (child == null) continue;
                 String childQualifiedName = child.getQualifiedName().toString();
@@ -1092,7 +1242,7 @@ public final class MetamodelProcessor extends AbstractProcessor {
             TypeMirror fieldType = getTypeElement(recordElement, fieldName);
             if (fieldType == null) continue;
 
-            if (isRecord(fieldType) && !isRefType(fieldType) && !isNestedRecord(fieldType)) {
+            if (isEmbeddedRecord(recordElement, fieldName, fieldType) && !isNestedRecord(fieldType)) {
                 if (!isDataType(recordElement, fieldName)) {
                     // Inline sub-record: recurse into it.
                     if (hasNullableLeaf(asTypeElement(fieldType))) return true;
@@ -1271,7 +1421,7 @@ public final class MetamodelProcessor extends AbstractProcessor {
 
             String fieldTypeName = getTypeName(fieldType, packageName);
 
-            if (isRecord(fieldType) && !isRefType(fieldType)) {
+            if (isEmbeddedRecord(recordElement, fieldName, fieldType)) {
                 if (isNestedRecord(fieldType)) continue;
                 // Always generate the nested metamodel class; only generate its interface if it is Data.
                 TypeElement nestedTypeEl = asTypeElement(fieldType);
@@ -1450,7 +1600,7 @@ public final class MetamodelProcessor extends AbstractProcessor {
 
             String fieldTypeName = getTypeName(fieldType, packageName);
 
-            if (isRecord(fieldType) && !isRefType(fieldType)) {
+            if (isEmbeddedRecord(recordElement, fieldName, fieldType)) {
                 if (isNestedRecord(fieldType)) continue;
 
                 boolean inline = !isDataType(recordElement, fieldName);
@@ -1502,7 +1652,7 @@ public final class MetamodelProcessor extends AbstractProcessor {
             if (fieldType == null) continue;
 
             String fieldTypeName = getTypeName(fieldType, packageName);
-            if (isRecord(fieldType) && !isRefType(fieldType)) {
+            if (isEmbeddedRecord(recordElement, fieldName, fieldType)) {
                 if (isNestedRecord(fieldType)) continue;
 
                 boolean inline = !isDataType(recordElement, fieldName);
@@ -1658,7 +1808,7 @@ public final class MetamodelProcessor extends AbstractProcessor {
             TypeMirror fieldType = getTypeElement(recordElement, fieldName);
             if (fieldType == null) continue;
 
-            if (isRecord(fieldType) && !isRefType(fieldType)) {
+            if (isEmbeddedRecord(recordElement, fieldName, fieldType)) {
                 if (isNestedRecord(fieldType)) continue;
                 boolean inline = !isDataType(recordElement, fieldName);
                 fieldNames.add(fieldName);
@@ -1763,7 +1913,7 @@ public final class MetamodelProcessor extends AbstractProcessor {
                 String fieldName = enclosed.getSimpleName().toString();
                 TypeMirror fieldType = getTypeElement(element, fieldName);
                 if (fieldType == null) continue;
-                if (isRecord(fieldType) && !isRefType(fieldType)) {
+                if (isEmbeddedRecord(element, fieldName, fieldType)) {
                     if (isNestedRecord(fieldType)) continue;
                     TypeElement childElement = asTypeElement(fieldType);
                     if (childElement != null) generateNavigableArtifacts(childElement);
@@ -1796,7 +1946,7 @@ public final class MetamodelProcessor extends AbstractProcessor {
             if (fieldType == null) continue;
             String fieldTypeName = getTypeName(fieldType, packageName);
             builder.append("    /** Represents navigation to {@link ").append(recordName).append("#").append(fieldName).append("}. */\n");
-            boolean record = isRecord(fieldType) && !isRefType(fieldType);
+            boolean record = isEmbeddedRecord(recordElement, fieldName, fieldType);
             boolean ref = isRefType(fieldType);
             if (record && isNestedRecord(fieldType)) continue;
             if ((record || ref) && !isCyclicNavChild(fieldType)) {
@@ -1818,7 +1968,7 @@ public final class MetamodelProcessor extends AbstractProcessor {
             TypeMirror fieldType = getTypeElement(recordElement, fieldName);
             if (fieldType == null) continue;
             String fieldTypeName = getTypeName(fieldType, packageName);
-            boolean record = isRecord(fieldType) && !isRefType(fieldType);
+            boolean record = isEmbeddedRecord(recordElement, fieldName, fieldType);
             boolean ref = isRefType(fieldType);
             if (record && isNestedRecord(fieldType)) continue;
             if ((record || ref) && !isCyclicNavChild(fieldType)) {
@@ -2224,7 +2374,7 @@ public final class MetamodelProcessor extends AbstractProcessor {
             TypeMirror fieldType = getter.getReturnType();
             String fieldTypeName = getTypeName(fieldType, packageName);
 
-            if (isRecord(fieldType) && !isRefType(fieldType)) {
+            if (isEmbeddedRecordGetter(sealedInterface, fieldName, fieldType)) {
                 if (isNestedRecord(fieldType)) continue;
                 TypeElement nestedTypeEl = asTypeElement(fieldType);
                 if (nestedTypeEl != null) {
@@ -2291,7 +2441,7 @@ public final class MetamodelProcessor extends AbstractProcessor {
             TypeMirror fieldType = getter.getReturnType();
             String fieldTypeName = getTypeName(fieldType, packageName);
 
-            if (isRecord(fieldType) && !isRefType(fieldType)) {
+            if (isEmbeddedRecordGetter(sealedInterface, fieldName, fieldType)) {
                 if (isNestedRecord(fieldType)) continue;
                 boolean inline = !implementsInterface(fieldType, DATA, typeUtils);
                 boolean childNullableChain = nullableChain || isNullableGetter(getter);
@@ -2319,7 +2469,7 @@ public final class MetamodelProcessor extends AbstractProcessor {
             TypeMirror fieldType = getter.getReturnType();
             String fieldTypeName = getTypeName(fieldType, packageName);
 
-            if (isRecord(fieldType) && !isRefType(fieldType)) {
+            if (isEmbeddedRecordGetter(sealedInterface, fieldName, fieldType)) {
                 if (isNestedRecord(fieldType)) continue;
                 boolean inline = !implementsInterface(fieldType, DATA, typeUtils);
                 boolean childNullableChain = nullableChain || isNullableGetter(getter);
@@ -2406,7 +2556,7 @@ public final class MetamodelProcessor extends AbstractProcessor {
         for (ExecutableElement getter : declaredGetters) {
             String fieldName = getter.getSimpleName().toString();
             TypeMirror fieldType = getter.getReturnType();
-            if (isRecord(fieldType) && !isRefType(fieldType)) {
+            if (isEmbeddedRecordGetter(sealedInterface, fieldName, fieldType)) {
                 if (isNestedRecord(fieldType)) continue;
                 boolean inline = !implementsInterface(fieldType, DATA, typeUtils);
                 fieldNames.add(fieldName);

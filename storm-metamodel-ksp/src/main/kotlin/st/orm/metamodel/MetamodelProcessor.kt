@@ -157,6 +157,9 @@ class MetamodelProcessor(
         private const val METAMODEL_TYPE = "st.orm.MetamodelType"
         private const val GENERATE_METAMODEL = "st.orm.GenerateMetamodel"
         private const val DATA = "st.orm.Data"
+        private const val CONVERT = "st.orm.Convert"
+        private const val CONVERTER = "st.orm.Converter"
+        private const val DEFAULT_CONVERTER = "st.orm.DefaultConverter"
         private const val REF = "st.orm.Ref"
         private const val FOREIGN_KEY = "st.orm.FK"
         private const val PRIMARY_KEY = "st.orm.PK"
@@ -250,7 +253,14 @@ class MetamodelProcessor(
         }
     }
 
+    /**
+     * The qualified names of the types a default converter in this compilation maps. A property of such a type is a
+     * column, not an inline record.
+     */
+    private val defaultConvertedTypes = mutableSetOf<String>()
+
     override fun process(resolver: Resolver): List<KSAnnotated> {
+        collectDefaultConverters(resolver)
         val deferred = mutableListOf<KSAnnotated>()
         val symbols = resolver.getSymbolsWithAnnotation(GENERATE_METAMODEL)
             .plus(
@@ -441,6 +451,47 @@ class MetamodelProcessor(
             false
         }
     }
+
+    /**
+     * Returns whether the property embeds a data class: an inline record or a foreign key, so not a converted value.
+     * A converted data class is stored as its own column, as the runtime metamodel resolves it.
+     */
+    private fun isEmbeddedDataClass(prop: KSPropertyDeclaration): Boolean = prop.type.isDataClass() && !isConverted(prop)
+
+    /**
+     * Returns whether the property maps through a converter: `@Convert` on the property or its primary constructor
+     * parameter, with conversion not disabled, or a type a default converter maps. A sealed interface property takes
+     * the answer of its first subclass.
+     */
+    private fun isConverted(prop: KSPropertyDeclaration): Boolean {
+        findAnnotation(prop, CONVERT)?.let { return isConversionEnabled(it) }
+        val parent = prop.parentDeclaration as? KSClassDeclaration ?: return false
+        val param = parent.primaryConstructor?.parameters?.firstOrNull { it.name?.asString() == prop.simpleName.asString() }
+        if (param != null) {
+            findAnnotation(param, CONVERT)?.let { return isConversionEnabled(it) }
+        }
+        if (prop.type.resolve().declaration.qualifiedName?.asString() in defaultConvertedTypes) return true
+        if (isSealedInterface(parent)) {
+            return parent.getSealedSubclasses().firstOrNull()?.getAllProperties()
+                ?.firstOrNull { it.simpleName.asString() == prop.simpleName.asString() }
+                ?.let { isConverted(it) } ?: false
+        }
+        return false
+    }
+
+    /** Records the entity type, the `E` of `Converter<D, E>`, of every default converter this compilation declares. */
+    private fun collectDefaultConverters(resolver: Resolver) {
+        resolver.getSymbolsWithAnnotation(DEFAULT_CONVERTER).filterIsInstance<KSClassDeclaration>().forEach { converter ->
+            converter.getAllSuperTypes()
+                .firstOrNull { it.declaration.qualifiedName?.asString() == CONVERTER }
+                ?.arguments?.getOrNull(1)?.type?.resolve()?.declaration?.qualifiedName?.asString()
+                ?.let { defaultConvertedTypes.add(it) }
+        }
+    }
+
+    private fun findAnnotation(annotated: KSAnnotated, annotationQn: String): KSAnnotation? = annotated.annotations.firstOrNull { it.annotationType.resolve().declaration.qualifiedName?.asString() == annotationQn }
+
+    private fun isConversionEnabled(convert: KSAnnotation): Boolean = convert.arguments.none { it.name?.asString() == "disableConversion" && it.value == true }
 
     private fun KSTypeReference.isDataClass(): Boolean {
         return try {
@@ -809,7 +860,7 @@ class MetamodelProcessor(
     private fun hasNullableLeaf(classDeclaration: KSClassDeclaration): Boolean {
         getModelProperties(classDeclaration).forEach { prop ->
             val typeRef = prop.type
-            if (typeRef.isDataClass()) {
+            if (isEmbeddedDataClass(prop)) {
                 if (typeRef.isNestedDataClass()) return@forEach
                 if (!isDataType(prop)) {
                     // Inline sub-record: recurse into it.
@@ -955,7 +1006,7 @@ class MetamodelProcessor(
             val fieldRef = escaped(fieldName)
             val typeRef = prop.type
             val propNullable = typeRef.resolve().isMarkedNullable
-            if (typeRef.isDataClass()) {
+            if (isEmbeddedDataClass(prop)) {
                 if (typeRef.isNestedDataClass()) return@forEach
 
                 val simpleTypeName = getSimpleTypeName(typeRef, packageName)
@@ -1016,7 +1067,7 @@ class MetamodelProcessor(
             val fieldRef = escaped(prop.simpleName.asString())
             val typeRef = prop.type
             val propNullable = typeRef.resolve().isMarkedNullable
-            if (typeRef.isDataClass()) {
+            if (isEmbeddedDataClass(prop)) {
                 if (typeRef.isNestedDataClass()) return@forEach
                 val simpleTypeName = getSimpleTypeName(typeRef, packageName)
                 val childForceNullable = forceNullableChain || propNullable
@@ -1059,7 +1110,7 @@ class MetamodelProcessor(
             val typeRef = prop.type
             val propNullable = typeRef.resolve().isMarkedNullable
 
-            if (typeRef.isDataClass()) {
+            if (isEmbeddedDataClass(prop)) {
                 if (typeRef.isNestedDataClass()) return@forEach
 
                 val simpleTypeName = getSimpleTypeName(typeRef, packageName)
@@ -1248,7 +1299,7 @@ class MetamodelProcessor(
                 generateReferenceArtifacts(refTarget, resolver)
                 return@forEach
             }
-            if (!typeRef.isDataClass()) return@forEach
+            if (!isEmbeddedDataClass(prop)) return@forEach
             if (typeRef.isNestedDataClass()) return@forEach
 
             val referencedDecl = typeRef.resolve().declaration as? KSClassDeclaration ?: return@forEach
@@ -1277,7 +1328,7 @@ class MetamodelProcessor(
                 if (isRefType(typeRef)) {
                     val child = unwrapRef(typeRef).resolve().declaration as? KSClassDeclaration ?: return@forEach
                     generateNavigableArtifacts(child, resolver)
-                } else if (typeRef.isDataClass() && !typeRef.isNestedDataClass()) {
+                } else if (isEmbeddedDataClass(prop) && !typeRef.isNestedDataClass()) {
                     val child = typeRef.resolve().declaration as? KSClassDeclaration ?: return@forEach
                     generateNavigableArtifacts(child, resolver)
                 }
@@ -1304,7 +1355,7 @@ class MetamodelProcessor(
             val fieldName = prop.simpleName.asString()
             val fieldRef = escaped(fieldName)
             val typeRef = prop.type
-            val record = typeRef.isDataClass() && !isRefType(typeRef)
+            val record = isEmbeddedDataClass(prop) && !isRefType(typeRef)
             val ref = isRefType(typeRef)
             if (record && typeRef.isNestedDataClass()) return@forEach
             builder.append("    /** Represents navigation to $className.$fieldName. */\n")
@@ -1331,7 +1382,7 @@ class MetamodelProcessor(
             val fieldName = prop.simpleName.asString()
             val fieldRef = escaped(fieldName)
             val typeRef = prop.type
-            val record = typeRef.isDataClass() && !isRefType(typeRef)
+            val record = isEmbeddedDataClass(prop) && !isRefType(typeRef)
             val ref = isRefType(typeRef)
             if (record && typeRef.isNestedDataClass()) return@forEach
             if ((record || ref) && !isCyclicNavChild(typeRef)) {
@@ -1481,7 +1532,7 @@ class MetamodelProcessor(
         try {
             getModelProperties(classDeclaration).forEach { prop ->
                 val typeRef = prop.type
-                if (!typeRef.isDataClass() || isRefType(typeRef) || typeRef.isNestedDataClass()) return@forEach
+                if (!isEmbeddedDataClass(prop) || isRefType(typeRef) || typeRef.isNestedDataClass()) return@forEach
                 val child = typeRef.resolve().declaration as? KSClassDeclaration ?: return@forEach
                 val childQualifiedName = child.qualifiedName?.asString() ?: return@forEach
                 if (childQualifiedName in recordCyclePath) {
@@ -1672,7 +1723,7 @@ class MetamodelProcessor(
             val fieldName = prop.simpleName.asString()
             val typeRef = prop.type
 
-            if (typeRef.isDataClass()) {
+            if (isEmbeddedDataClass(prop)) {
                 if (typeRef.isNestedDataClass()) return@forEach
                 val inline = !isDataType(prop)
                 fieldNames.add(fieldName)

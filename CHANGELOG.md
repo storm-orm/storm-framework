@@ -45,6 +45,7 @@ for the CLI, to [npm](https://www.npmjs.com/package/@storm-orm/cli)
 - Fixed `@Json(failOnUnknown = true)` on Jackson 3 and `failOnMissing = true` on Jackson 2 and 3, which accepted JSON they should refuse (#409). Sealed `@Json` arrays register their subtypes, and `{"@entity": null}` reads as no ref on Jackson 2.
 - Fixed a keyset scroll whose key is reached through one of two foreign keys to the same table, such as `Recommendation_.movie.id` beside a `seedMovie`, which reported the path as ambiguous on the next window (#748).
 - Fixed `SqlCapture` dropping a statement that binds a `NULL` value, such as an insert with an unset nullable foreign key (#752). Its `parameters()` hold `null` for the value.
+- Fixed the metamodel processors rendering a `@Convert` record component as an inline record with a metamodel of its own (#756). It is a column, as the runtime metamodel resolves it, as is a component of a type a `@DefaultConverter` in the same compilation maps; the Java processor also reads the converter index of a dependency. A record nested in a record is skipped like one nested in a class; its metamodel did not compile.
 
 ## [1.15.0] - 2026-10-15
 

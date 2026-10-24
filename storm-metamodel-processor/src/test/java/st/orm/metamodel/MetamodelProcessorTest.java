@@ -665,4 +665,139 @@ class MetamodelProcessorTest {
     private static String jarOf(Class<?> type) throws URISyntaxException {
         return Path.of(type.getProtectionDomain().getCodeSource().getLocation().toURI()).toString();
     }
+
+    @Test
+    void rendersAConvertedRecordComponentAsAColumn() throws Exception {
+        Compilation compilation = compile("Owner.java", """
+                import st.orm.Convert;
+                import st.orm.Converter;
+                import st.orm.GenerateMetamodel;
+
+                @GenerateMetamodel
+                public record Owner(String name, @Convert(converter = StreetConverter.class) Street street) {}
+
+                record Street(String value) {}
+
+                class StreetConverter implements Converter<String, Street> {
+                    public String toDatabase(Street value) { return value == null ? null : value.value(); }
+                    public Street fromDatabase(String dbValue) { return dbValue == null ? null : new Street(dbValue); }
+                }
+                """);
+        assertTrue(compilation.success(), compilation.errors());
+        String ownerMetamodel = compilation.generatedSource("OwnerMetamodel.java");
+        assertTrue(ownerMetamodel.contains("<T, Street, Street> street"),
+                "a converted component is a column of its declared type:\n" + ownerMetamodel);
+        assertFalse(compilation.generated("StreetMetamodel.java"),
+                "a converted record gets no metamodel of its own");
+        assertTrue(Files.exists(compilation.classes().resolve("OwnerMetamodel.class")),
+                "expected the generated metamodels to compile");
+    }
+
+    @Test
+    void rendersAConvertedComponentWithConversionDisabledAsAnInlineRecord() throws Exception {
+        Compilation compilation = compile("Owner.java", """
+                import st.orm.Convert;
+                import st.orm.GenerateMetamodel;
+
+                @GenerateMetamodel
+                public record Owner(String name, @Convert(disableConversion = true) Address address) {}
+
+                record Address(String street, String city) {}
+                """);
+        assertTrue(compilation.success(), compilation.errors());
+        String ownerMetamodel = compilation.generatedSource("OwnerMetamodel.java");
+        assertTrue(ownerMetamodel.contains("AddressMetamodel<T> address"),
+                "disabled conversion leaves the record inline:\n" + ownerMetamodel);
+    }
+
+    @Test
+    void skipsARecordNestedInTheRecord() throws Exception {
+        Compilation compilation = compile("Owner.java", """
+                import st.orm.Convert;
+                import st.orm.Converter;
+                import st.orm.GenerateMetamodel;
+
+                @GenerateMetamodel
+                public record Owner(String name, Address address, @Convert(converter = StreetConverter.class) Street street) {
+                    public record Address(String city) {}
+                    public record Street(String value) {}
+                    public static class StreetConverter implements Converter<String, Street> {
+                        public String toDatabase(Street value) { return value == null ? null : value.value(); }
+                        public Street fromDatabase(String dbValue) { return dbValue == null ? null : new Street(dbValue); }
+                    }
+                }
+                """);
+        assertTrue(compilation.success(), compilation.errors());
+        String ownerMetamodel = compilation.generatedSource("OwnerMetamodel.java");
+        assertFalse(ownerMetamodel.contains("address"),
+                "a record nested in the record is skipped like one nested in a class:\n" + ownerMetamodel);
+        assertTrue(ownerMetamodel.contains("<T, Owner.Street, Owner.Street> street"),
+                "a converted nested record is a column named by its qualified name:\n" + ownerMetamodel);
+        assertTrue(Files.exists(compilation.classes().resolve("OwnerMetamodel.class")),
+                "expected the generated metamodels to compile");
+    }
+
+    @Test
+    void rendersAComponentOfADefaultConvertedTypeAsAColumn() throws Exception {
+        Compilation compilation = compile("Product.java", """
+                import java.math.BigDecimal;
+                import st.orm.Convert;
+                import st.orm.Converter;
+                import st.orm.DefaultConverter;
+                import st.orm.GenerateMetamodel;
+
+                @GenerateMetamodel
+                public record Product(String name, Money price, @Convert(disableConversion = true) Money listPrice) {}
+
+                record Money(BigDecimal amount) {}
+
+                @DefaultConverter
+                class MoneyConverter implements Converter<BigDecimal, Money> {
+                    public BigDecimal toDatabase(Money value) { return value == null ? null : value.amount(); }
+                    public Money fromDatabase(BigDecimal dbValue) { return dbValue == null ? null : new Money(dbValue); }
+                }
+                """);
+        assertTrue(compilation.success(), compilation.errors());
+        String productMetamodel = compilation.generatedSource("ProductMetamodel.java");
+        assertTrue(productMetamodel.contains("<T, Money, Money> price"),
+                "a component of a default-converted type is a column:\n" + productMetamodel);
+        assertTrue(productMetamodel.contains("MoneyMetamodel<T> listPrice"),
+                "disabled conversion keeps the record inline:\n" + productMetamodel);
+    }
+
+    @Test
+    void readsDefaultConvertersFromTheConverterIndexOnTheClassPath() throws Exception {
+        Path sourcePath = Files.createDirectories(tempDir.resolve("sourcepath"));
+        copyFoundationSources(sourcePath);
+        String libraries = jarOf(jakarta.annotation.Nonnull.class) + java.io.File.pathSeparator
+                + jarOf(org.jspecify.annotations.Nullable.class);
+        Compilation library = compile("MoneyConverter.java", """
+                import java.math.BigDecimal;
+                import st.orm.Converter;
+                import st.orm.DefaultConverter;
+
+                @DefaultConverter
+                public class MoneyConverter implements Converter<BigDecimal, Money> {
+                    public BigDecimal toDatabase(Money value) { return value == null ? null : value.amount(); }
+                    public Money fromDatabase(BigDecimal dbValue) { return dbValue == null ? null : new Money(dbValue); }
+                }
+
+                record Money(BigDecimal amount) {}
+                """, libraries, sourcePath);
+        assertTrue(library.success(), library.errors());
+        Path index = Files.createDirectories(library.classes().resolve("META-INF/storm")).resolve("st.orm.Converter.idx");
+        Files.writeString(index, "MoneyConverter\n");
+        Compilation compilation = compile("Product.java", """
+                import st.orm.GenerateMetamodel;
+
+                @GenerateMetamodel
+                public record Product(String name, Money price) {}
+                """, library.classes() + java.io.File.pathSeparator + libraries, sourcePath);
+        assertTrue(compilation.success(), compilation.errors());
+        String productMetamodel = compilation.generatedSource("ProductMetamodel.java");
+        assertTrue(productMetamodel.contains("<T, Money, Money> price"),
+                "a default converter a dependency lists in its index makes the component a column:\n" + productMetamodel);
+        assertFalse(compilation.generated("MoneyMetamodel.java"),
+                "a default-converted record gets no metamodel of its own");
+    }
 }

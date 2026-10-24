@@ -139,6 +139,8 @@ public record Product(
 </TabItem>
 </Tabs>
 
+The generated metamodel renders a component of a default-converted type as a column, like one with `@Convert`, when the converter is compiled with the entity. The Java processor also reads the converters a dependency lists in its type index. A converter the processor cannot see leaves the component rendered as an inline record; declare `@Convert` on the component in that case.
+
 ### 3. Disabling Conversion
 
 If an auto-apply converter would match a component but you want the built-in mapping instead, disable it explicitly:

@@ -614,4 +614,88 @@ class MetamodelProcessorTest {
         )
         assertTrue("Unique key field" !in messages) { messages }
     }
+
+    @Test
+    fun `a converted data class property is a column`() {
+        val compilation = compile(
+            """
+            package com.example
+
+            import st.orm.Convert
+            import st.orm.Converter
+            import st.orm.GenerateMetamodel
+
+            @GenerateMetamodel
+            data class Owner(val name: String, @Convert(converter = StreetConverter::class) val street: Street)
+
+            data class Street(val value: String)
+
+            class StreetConverter : Converter<String, Street> {
+                override fun toDatabase(value: Street?): String? = value?.value
+                override fun fromDatabase(dbValue: String?): Street? = dbValue?.let { Street(it) }
+            }
+            """.trimIndent(),
+        )
+        val metamodel = compilation.generatedSource("OwnerMetamodel.kt")
+        assertTrue("<T, Street, Street>" in metamodel) {
+            "a converted property is a column of its declared type:\n$metamodel"
+        }
+        assertTrue("StreetMetamodel.kt" !in compilation.generatedFileNames()) {
+            "a converted data class gets no metamodel of its own: ${compilation.generatedFileNames()}"
+        }
+    }
+
+    @Test
+    fun `a converted property with conversion disabled stays an inline record`() {
+        val compilation = compile(
+            """
+            package com.example
+
+            import st.orm.Convert
+            import st.orm.GenerateMetamodel
+
+            @GenerateMetamodel
+            data class Owner(val name: String, @Convert(disableConversion = true) val address: Address)
+
+            data class Address(val street: String, val city: String)
+            """.trimIndent(),
+        )
+        val metamodel = compilation.generatedSource("OwnerMetamodel.kt")
+        assertTrue("AddressMetamodel<T>" in metamodel) {
+            "disabled conversion leaves the data class inline:\n$metamodel"
+        }
+    }
+
+    @Test
+    fun `a property of a default converted type is a column`() {
+        val compilation = compile(
+            """
+            package com.example
+
+            import java.math.BigDecimal
+            import st.orm.Convert
+            import st.orm.Converter
+            import st.orm.DefaultConverter
+            import st.orm.GenerateMetamodel
+
+            @GenerateMetamodel
+            data class Product(val name: String, val price: Money, @Convert(disableConversion = true) val listPrice: Money)
+
+            data class Money(val amount: BigDecimal)
+
+            @DefaultConverter
+            class MoneyConverter : Converter<BigDecimal, Money> {
+                override fun toDatabase(value: Money?): BigDecimal? = value?.amount
+                override fun fromDatabase(dbValue: BigDecimal?): Money? = dbValue?.let { Money(it) }
+            }
+            """.trimIndent(),
+        )
+        val metamodel = compilation.generatedSource("ProductMetamodel.kt")
+        assertTrue(Regex("val price: Abstract\\w*Metamodel<T, Money, Money>").containsMatchIn(metamodel)) {
+            "a property of a default-converted type is a column:\n$metamodel"
+        }
+        assertTrue("val listPrice: MoneyMetamodel<T>" in metamodel) {
+            "disabled conversion keeps the data class inline:\n$metamodel"
+        }
+    }
 }
