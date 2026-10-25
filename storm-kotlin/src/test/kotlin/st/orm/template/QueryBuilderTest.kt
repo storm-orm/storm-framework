@@ -2430,6 +2430,21 @@ internal open class QueryBuilderTest(
     }
 
     @Test
+    fun `semiJoin on the query's own table should find the rows referencing the same row`() {
+        // data.sql: pets 2 and 4 were spayed and neutered; pet 8 was neutered and never spayed.
+        val visitRepo = orm.entity(Visit::class)
+        val description = metamodel<Visit, String>(visitRepo.model, "description")
+        visitRepo.select()
+            .semiJoin<Visit>().on<Pet> { description eq "spayed" }
+            .where(description eq "neutered")
+            .resultList.map { it.pet.id }.sorted() shouldBe listOf(2, 4)
+        visitRepo.select()
+            .antiJoin<Visit>().on<Pet> { description eq "spayed" }
+            .where(description eq "neutered")
+            .resultList.map { it.pet.id } shouldBe listOf(8)
+    }
+
+    @Test
     fun `semiJoin on a semi-joined table should nest in its subquery`() {
         // data.sql: the neutered visits are of Basil (George), Jewel (Eduardo) and Max (Jean).
         val description = metamodel<Visit, String>(orm.entity(Visit::class).model, "description")

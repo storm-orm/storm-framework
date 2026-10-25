@@ -1149,6 +1149,44 @@ WHERE EXISTS (
 
 A table the query reaches itself, as its own table, a joined table or a table its foreign keys join, stays the query's.
 
+### Filtering by Other Rows of the Same Table
+
+A semi-join on the query's own table finds the rows that reference the same row of another table as the query's row, and `on` names that table. The visits since a date of the pets that had a rabies shot:
+
+<Tabs groupId="language">
+<TabItem value="kotlin" label="Kotlin" default>
+
+```kotlin
+val visits = orm.entity(Visit::class)
+    .select()
+    .semiJoin<Visit>().on<Pet> { Visit_.description eq "rabies shot" }
+    .where(Visit_.visitDate greaterEq LocalDate.of(2026, 1, 1))
+    .resultList
+```
+
+</TabItem>
+<TabItem value="java" label="Java">
+
+```java
+List<Visit> visits = orm.entity(Visit.class)
+    .select()
+    .semiJoin(Visit.class).on(Pet.class, it -> it.where(Visit_.description, EQUALS, "rabies shot"))
+    .where(Visit_.visitDate, GREATER_THAN_OR_EQUAL, LocalDate.of(2026, 1, 1))
+    .getResultList();
+```
+
+</TabItem>
+</Tabs>
+
+```sql
+SELECT ...
+FROM visit v
+WHERE v.visit_date >= ?
+  AND EXISTS (SELECT 1 FROM visit v1 WHERE v1.pet_id = v.pet_id AND v1.description = ?)
+```
+
+The condition on the join names the other visit, and a condition in `where` names the query's own. The two relate through the foreign key both hold to the table `on` names, so `on` takes a table the query's table references; `on<Visit>` is refused, as is a table that references the query's table instead. `antiJoin` finds the rows whose referenced row has no other such row: the visits of the pets that never had a rabies shot. The query orders, groups and selects by its own table as before.
+
 Semi-joins and anti-joins filter a [`delete()`](#deleting-rows-by-condition) and an [`update()`](#updating-rows-by-condition) as well, nested ones included.
 
 ---

@@ -42,6 +42,7 @@ import st.orm.core.model.OwnerPrimaryPet;
 import st.orm.core.model.Owner_;
 import st.orm.core.model.Pet;
 import st.orm.core.model.PetType;
+import st.orm.core.model.PetVisitCount;
 import st.orm.core.model.Pet_;
 import st.orm.core.model.VetSpecialty;
 import st.orm.core.model.Visit;
@@ -603,9 +604,55 @@ public class SemiJoinIntegrationTest {
     }
 
     @Test
-    public void semiJoinRefusesTheQueryTable() {
-        assertThrows(PersistenceException.class, () -> orm().entity(Owner.class).select()
+    public void semiJoinOnTheQueryTableFindsTheRowsReferencingTheSameRow() {
+        // data.sql: pets 2 and 4 were spayed and neutered; pet 8 was neutered and never spayed.
+        var neutered = capture(() -> orm().entity(Visit.class).select()
+                .semiJoin(Visit.class).on(Pet.class, it -> it.where(Visit_.description, EQUALS, "spayed"))
+                .where(Visit_.description, EQUALS, "neutered")
+                .getResultList());
+        assertEquals(List.of(2, 4), neutered.stream().map(visit -> visit.pet().id()).sorted().toList());
+        // The condition on the join names the other visit; the condition in where names the query's visit.
+        assertTrue(statement().contains("WHERE v.description = ? AND EXISTS (SELECT 1 FROM visit v1 WHERE v1.pet_id = v.pet_id AND v1.description = ?)"), statement());
+        var spayedOnly = orm().entity(Visit.class).select()
+                .antiJoin(Visit.class).on(Pet.class, it -> it.where(Visit_.description, EQUALS, "spayed"))
+                .where(Visit_.description, EQUALS, "neutered")
+                .getResultList();
+        assertEquals(List.of(8), spayedOnly.stream().map(visit -> visit.pet().id()).toList());
+    }
+
+    @Test
+    public void semiJoinOnTheQueryTableGroupsByTheQueryTable() {
+        // data.sql: the pets with a spayed visit are 1, 2, 3, 4, 6 and 7; pet 3 had one visit, the others two.
+        var counts = orm().entity(Visit.class)
+                .select(PetVisitCount.class, TemplateString.raw("\0, COUNT(*)", Visit_.pet))
+                .semiJoin(Visit.class).on(Pet.class, it -> it.where(Visit_.description, EQUALS, "spayed"))
+                .groupBy(Visit_.pet)
+                .orderBy(Visit_.pet)
+                .getResultList();
+        assertEquals(List.of(1, 2, 3, 4, 6, 7), counts.stream().map(PetVisitCount::petId).toList());
+        assertEquals(List.of(2L, 2L, 1L, 2L, 2L, 2L), counts.stream().map(PetVisitCount::visits).toList());
+    }
+
+    @Test
+    public void antiJoinOnTheQueryTableFiltersADelete() {
+        // data.sql: pet 8's neutered visit is the one of a pet never spayed.
+        var removed = capture(() -> orm().entity(Visit.class).delete()
+                .antiJoin(Visit.class).on(Pet.class, it -> it.where(Visit_.description, EQUALS, "spayed"))
+                .where(Visit_.description, EQUALS, "neutered")
+                .executeUpdate());
+        assertEquals(1, removed);
+        assertTrue(statement().contains("NOT EXISTS (SELECT 1 FROM visit v1 WHERE v1.pet_id = v.pet_id AND v1.description = ?)"), statement());
+        assertEquals(2, orm().entity(Visit.class).select().where(Visit_.description, EQUALS, "neutered").getResultCount());
+    }
+
+    @Test
+    public void semiJoinOnTheQueryTableNamesATableItReferences() {
+        var self = assertThrows(PersistenceException.class, () -> orm().entity(Visit.class).select()
+                .semiJoin(Visit.class).on(Visit.class));
+        assertTrue(self.getMessage().contains("semiJoin(Visit).on(Visit)"), self.getMessage());
+        var reversed = assertThrows(PersistenceException.class, () -> orm().entity(Owner.class).select()
                 .semiJoin(Owner.class).on(Pet.class));
+        assertTrue(reversed.getMessage().contains("Pet references Owner instead"), reversed.getMessage());
     }
 
     @Test
