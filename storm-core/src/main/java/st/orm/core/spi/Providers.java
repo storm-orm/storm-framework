@@ -45,6 +45,7 @@ import javax.sql.DataSource;
 import org.jspecify.annotations.Nullable;
 import st.orm.Data;
 import st.orm.Entity;
+import st.orm.Json;
 import st.orm.PersistenceException;
 import st.orm.Projection;
 import st.orm.Ref;
@@ -160,14 +161,42 @@ public final class Providers {
                 .orElseThrow()));
     }
 
+    /**
+     * Returns the converter of a field: the one of the first provider in provider order that claims the field.
+     *
+     * <p>Fails fast when the two first-ranked claimants are unordered peers, as the choice would otherwise depend on
+     * classpath order, and when a {@link Json} field is claimed by no provider, as the field cannot be mapped without
+     * a JSON module.</p>
+     *
+     * @param field the field.
+     * @return the converter, or empty when no provider claims the field.
+     */
     public static Optional<ORMConverter> getORMConverter(RecordField field) {
-        return ORM_CONVERTERS.get(field.declaringType()).computeIfAbsent(field.name(), ignore ->
-                enabled(ORM_CONVERTER_PROVIDERS)
-                        .map(p -> p.getConverter(field))
-                        .filter(Optional::isPresent)
-                        .map(Optional::get)
-                        .findFirst());
+        return ORM_CONVERTERS.get(field.declaringType()).computeIfAbsent(field.name(), ignore -> {
+            var claims = enabled(ORM_CONVERTER_PROVIDERS)
+                    .flatMap(provider -> provider.getConverter(field).stream()
+                            .map(converter -> new ConverterClaim(provider, converter)))
+                    .toList();
+            if (claims.size() > 1 && !isOrderedBefore(claims.get(0).provider().getClass(), claims.get(1).provider().getClass())) {
+                throw new PersistenceException(("Multiple converters claim field '%s.%s' without a defined order: %s. " +
+                        "Keep one of the annotations that select a converter for the field, or order the providers " +
+                        "with the Orderable annotations.")
+                        .formatted(field.declaringType().getSimpleName(), field.name(),
+                                claims.stream().map(claim -> claim.provider().getClass().getName()).collect(joining(", "))));
+            }
+            if (claims.isEmpty() && field.isAnnotationPresent(Json.class)) {
+                throw new PersistenceException(("No converter claims JSON field '%s.%s' of type %s. " +
+                        "storm-jackson2 and storm-jackson3 convert every @Json field; storm-kotlinx-serialization " +
+                        "converts the fields whose type it has a serializer for, such as a @Serializable type. " +
+                        "Add one of these modules, or make the type serializable.")
+                        .formatted(field.declaringType().getSimpleName(), field.name(), field.type().getName()));
+            }
+            return claims.stream().findFirst().map(ConverterClaim::converter);
+        });
     }
+
+    /** A provider and the converter it returned for a field. */
+    private record ConverterClaim(ORMConverterProvider provider, ORMConverter converter) {}
 
     public static <ID, E extends Entity<ID>> EntityRepository<E, ID> getEntityRepository(
             ORMTemplate ormTemplate,

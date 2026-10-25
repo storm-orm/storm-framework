@@ -3,6 +3,7 @@ package st.orm.spring.impl;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -18,6 +19,7 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Enumeration;
 import java.util.List;
+import javax.tools.ToolProvider;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.slf4j.LoggerFactory;
@@ -139,6 +141,42 @@ public class StormRuntimeHintsTest {
         RuntimeHints hints = registerHints(loader);
         assertEquals(2, hints.proxies().jdkProxyHints().count(),
                 "One repository must produce exactly two proxy shapes");
+    }
+
+    @Test
+    public void testResultTypesAreRegisteredLikeDataTypes() throws Exception {
+        ClassLoader loader = classLoaderWithIndex("st.orm.GenerateMetamodel.idx", "com.example.OwnerPetCount\n");
+        RuntimeHints hints = registerHints(loader);
+        TypeHint hint = hints.reflection().getTypeHint(TypeReference.of("com.example.OwnerPetCount"));
+        assertNotNull(hint, "result type from the index must be registered");
+        assertTrue(hint.getMemberCategories().contains(MemberCategory.INVOKE_DECLARED_CONSTRUCTORS));
+        assertTrue(hint.getMemberCategories().contains(MemberCategory.INVOKE_PUBLIC_METHODS));
+        assertNotNull(hints.reflection().getTypeHint(TypeReference.of("com.example.OwnerPetCountMetamodel")),
+                "generated metamodel companion must be registered");
+        assertNotNull(hints.reflection().getTypeHint(TypeReference.of("com.example.OwnerPetCount$Companion")),
+                "kotlinx.serialization companion must be registered");
+    }
+
+    @Test
+    public void testKotlinCollectionsAreRegisteredWhenTheKotlinStandardLibraryIsPresent() throws Exception {
+        ClassLoader loader = classLoaderWithIndex("st.orm.Data.idx", "com.example.City\n");
+        assertNull(registerHints(loader).reflection().getTypeHint(TypeReference.of("kotlin.collections.EmptyList")),
+                "no hint without the Kotlin standard library");
+        compileInto(indexDirectory, "kotlin.collections.EmptyList", "package kotlin.collections; public final class EmptyList {}");
+        TypeHint hint = registerHints(loader).reflection().getTypeHint(TypeReference.of("kotlin.collections.EmptyList"));
+        assertNotNull(hint, "the Kotlin standard library's empty list must be registered");
+        assertTrue(hint.getMemberCategories().contains(MemberCategory.INVOKE_DECLARED_CONSTRUCTORS));
+        assertTrue(hint.getMemberCategories().contains(MemberCategory.INVOKE_DECLARED_METHODS));
+    }
+
+    /** Compiles a class into the directory the index loader serves, so the class is present for that loader. */
+    private static void compileInto(Path directory, String className, String source) throws Exception {
+        Path sourceFile = directory.resolve(className.replace('.', '/') + ".java");
+        Files.createDirectories(sourceFile.getParent());
+        Files.writeString(sourceFile, source);
+        int result = ToolProvider.getSystemJavaCompiler()
+                .run(null, null, null, "-d", directory.toString(), sourceFile.toString());
+        assertEquals(0, result, "compilation of " + className);
     }
 
     @Test

@@ -30,11 +30,17 @@ import st.orm.Convert;
 import st.orm.Converter;
 import st.orm.DefaultConverter;
 import st.orm.PersistenceException;
+import st.orm.core.spi.Orderable.BeforeAny;
 import st.orm.mapping.RecordField;
 
 /**
+ * Provides the converter a field selects itself: the one named by its {@link Convert} annotation, or the
+ * {@link DefaultConverter} registered for the field's type. This provider is ordered before any other, so a converter
+ * the field selects wins over one a JSON module claims for the field.
+ *
  * @since 1.7
  */
+@BeforeAny
 public class DefaultORMConverterProviderImpl implements ORMConverterProvider {
     private static final Logger LOGGER = LoggerFactory.getLogger("st.orm.converter");
 

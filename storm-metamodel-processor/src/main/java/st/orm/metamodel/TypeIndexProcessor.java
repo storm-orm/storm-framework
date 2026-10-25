@@ -47,9 +47,16 @@ public class TypeIndexProcessor extends AbstractProcessor {
     private static final Set<String> INDEXED_INTERFACE_TYPES = Set.of(
             "st.orm.repository.Repository"
     );
+    /**
+     * The annotation of a record outside the entity graph that the runtime constructs, such as the result row of a
+     * custom query. Its index lets a native image register the record for reflection; a {@code Data} type carrying
+     * the annotation is listed in the Data index only.
+     */
+    private static final String GENERATE_METAMODEL_TYPE = "st.orm.GenerateMetamodel";
     private static final Set<String> INDEXED_TYPES = new LinkedHashSet<>() {{
         addAll(INDEXED_CLASS_TYPES);
         addAll(INDEXED_INTERFACE_TYPES);
+        add(GENERATE_METAMODEL_TYPE);
     }};
 
     private static final String INDEX_DIR = "META-INF/storm/";
@@ -83,16 +90,24 @@ public class TypeIndexProcessor extends AbstractProcessor {
                 continue;
             }
             String fqcn = elements.getBinaryName(typeElement).toString();
+            boolean indexedAsData = false;
             for (Map.Entry<String, TypeMirror> entry : indexedTypeMirrors.entrySet()) {
                 String typeFqName = entry.getKey();
                 TypeMirror targetType = entry.getValue();
+                if (typeFqName.equals(GENERATE_METAMODEL_TYPE)) {
+                    continue;
+                }
                 // A sealed Data interface is a type of its own: a sealed entity, or the target of a polymorphic
                 // foreign key, which the runtime and the native-image feature find through the index.
                 boolean allowInterfaces = INDEXED_INTERFACE_TYPES.contains(typeFqName)
                         || (typeFqName.equals("st.orm.Data") && typeElement.getModifiers().contains(Modifier.SEALED));
                 if (isSubtypeOf(typeElement, targetType, allowInterfaces)) {
                     indexEntries.get(typeFqName).add(fqcn);
+                    indexedAsData |= typeFqName.equals("st.orm.Data");
                 }
+            }
+            if (!indexedAsData && isAnnotatedRecord(typeElement, indexedTypeMirrors.get(GENERATE_METAMODEL_TYPE))) {
+                indexEntries.get(GENERATE_METAMODEL_TYPE).add(fqcn);
             }
         }
         // After all rounds, write the index files.
@@ -104,6 +119,18 @@ public class TypeIndexProcessor extends AbstractProcessor {
             }
         }
         return false; // Do not claim any annotations.
+    }
+
+    private boolean isAnnotatedRecord(TypeElement type, TypeMirror annotationType) {
+        if (annotationType == null) {
+            return false;
+        }
+        ElementKind kind = type.getKind();
+        if (kind != ElementKind.CLASS && kind != ElementKind.RECORD) {
+            return false;
+        }
+        return type.getAnnotationMirrors().stream()
+                .anyMatch(mirror -> types.isSameType(mirror.getAnnotationType(), annotationType));
     }
 
     private boolean isSubtypeOf(TypeElement type, TypeMirror target, boolean allowInterfaces) {

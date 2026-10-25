@@ -39,13 +39,22 @@ converters, and repositories of your application without configuration:
   image build it reports what it registered:
 
 ```text
-Storm: registered 11 data types, 0 converters, and 11 repositories from the type index.
+Storm: registered 11 data types, 2 query result types, 0 entity callbacks, 0 converters, and 11 repositories from the type index.
 ```
 
 Both paths register the same set of types: every Data type with its constructors, accessors, and
 generated metamodel companions, compound primary keys and inline components reached through
-constructor signatures, kotlinx.serialization companions for JSON columns, and every repository
-interface as a JDK proxy shape.
+constructor signatures, the types of `@Json` columns with their kotlinx.serialization companions
+and serializers, entity callbacks, and every repository interface as a JDK proxy shape.
+
+A record outside the entity graph that a query constructs, such as the result row of a custom
+`select`, is registered when it carries `@GenerateMetamodel`, which also gives it an instantiator
+so the row is built without reflection; see [the metamodel page](metamodel.md#generatemetamodel-annotation).
+A result record without the annotation is constructed reflectively and needs an entry of its own.
+
+Where Kotlin is on the classpath, both paths also register the standard library's collection
+classes, such as the `EmptySet` behind `emptySet()`: a `@Json` value holding one reaches Jackson's
+Kotlin module, which introspects the class through Kotlin reflection.
 
 ## Spring Boot
 
@@ -89,10 +98,11 @@ socket classes).
 
 ## What remains application-level
 
-Storm covers the data layer. Your application's own stack keeps its usual native-image
-requirements: template engines evaluate expressions reflectively against your view models, JSON
-serialization resolves serializers for your response types, and libraries without shipped
-metadata may need an entry or two. The example projects keep all of this in one commented
+Storm covers the data layer: entities, projections, the result records annotated
+`@GenerateMetamodel`, and the types of `@Json` columns. Your application's own stack keeps its
+usual native-image requirements: template engines evaluate expressions reflectively against your
+view models, JSON serialization resolves serializers for your response types, and libraries without
+shipped metadata may need an entry or two. The example projects keep all of this in one commented
 metadata directory, small enough to read in a minute:
 
 - [Spring Boot example metadata](https://github.com/storm-orm/storm-example-kotlin-spring-boot-4-graalvm/blob/main/src/main/kotlin/st/orm/demo/imdb/ApplicationRuntimeHints.kt)

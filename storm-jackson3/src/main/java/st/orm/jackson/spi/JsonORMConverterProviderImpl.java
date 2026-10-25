@@ -22,6 +22,7 @@ import java.util.Optional;
 import st.orm.Json;
 import st.orm.core.spi.ORMConverter;
 import st.orm.core.spi.ORMConverterProvider;
+import st.orm.core.spi.Orderable.AfterAny;
 import st.orm.mapping.RecordField;
 import tools.jackson.core.type.TypeReference;
 
@@ -29,8 +30,11 @@ import tools.jackson.core.type.TypeReference;
  * Provides an ORM converter for JSON annotated record components.
  *
  * <p>This implementation retrieves the {@link Json} annotation from the record component and creates a
- * {@link JsonORMConverterImpl} if the annotation is present.</p>
+ * {@link JsonORMConverterImpl} if the annotation is present. Jackson converts any type, so this provider is ordered
+ * after any other: a converter the field selects, or a kotlinx.serialization converter for a type it has a serializer
+ * for, wins over Jackson for that field.</p>
  */
+@AfterAny
 public class JsonORMConverterProviderImpl implements ORMConverterProvider {
     /**
      * Retrieves the converter for the specified record field.

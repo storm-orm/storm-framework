@@ -27,6 +27,7 @@ import st.orm.Data;
 import st.orm.core.AutoConverter;
 import st.orm.core.model.City;
 import st.orm.core.model.Country;
+import st.orm.core.model.OwnerPetCount;
 
 /**
  * The type index is written by the metamodel processor during this module's test compilation, so these
@@ -45,6 +46,13 @@ class TypeDiscoveryIndexTest {
         List<Class<? extends Data>> dataTypes = TypeDiscovery.getDataTypes();
         assertTrue(dataTypes.contains(City.class), "record entity");
         assertTrue(dataTypes.contains(Country.class), "record entity");
+    }
+
+    @Test
+    void resultIndexContainsTheRecordsAnnotatedGenerateMetamodel() {
+        List<Class<?>> resultTypes = TypeDiscovery.getResultTypes();
+        assertTrue(resultTypes.contains(OwnerPetCount.class), "result row of a custom query");
+        assertFalse(resultTypes.contains(City.class), "a Data type is listed in the Data index only");
     }
 
     @Test

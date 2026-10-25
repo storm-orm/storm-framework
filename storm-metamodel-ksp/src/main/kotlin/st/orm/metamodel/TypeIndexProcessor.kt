@@ -40,7 +40,7 @@ class TypeIndexProcessor(
                 .filterIsInstance<KSClassDeclaration>()
                 .forEach { clazz ->
                     val fqName = clazz.qualifiedName?.asString() ?: return@forEach
-                    INDEXED_TYPES.forEach { typeFqName ->
+                    INDEXED_SUPERTYPES.forEach { typeFqName ->
                         // A sealed Data interface is a type of its own: a sealed entity, or the target of a
                         // polymorphic foreign key, which the runtime and the native-image feature find through
                         // the index.
@@ -49,6 +49,16 @@ class TypeIndexProcessor(
                         if (clazz.isSubtypeOfFqName(typeFqName, allowInterfaces)) {
                             indexEntries.getValue(typeFqName) += fqName
                         }
+                    }
+                    // A class outside the entity graph that the runtime constructs, such as the result row of a
+                    // custom query, is indexed by its annotation; a Data type is listed in the Data index only.
+                    if (fqName !in indexEntries.getValue(DATA_TYPE) &&
+                        clazz.classKind == ClassKind.CLASS &&
+                        clazz.annotations.any {
+                            it.annotationType.resolve().declaration.qualifiedName?.asString() == GENERATE_METAMODEL_TYPE
+                        }
+                    ) {
+                        indexEntries.getValue(GENERATE_METAMODEL_TYPE) += fqName
                     }
                 }
         }
@@ -90,7 +100,11 @@ class TypeIndexProcessor(
             "st.orm.repository.Repository",
         )
 
-        private val INDEXED_TYPES = INDEXED_CLASS_TYPES + INDEXED_INTERFACE_TYPES
+        private const val GENERATE_METAMODEL_TYPE = "st.orm.GenerateMetamodel"
+
+        private val INDEXED_SUPERTYPES = INDEXED_CLASS_TYPES + INDEXED_INTERFACE_TYPES
+
+        private val INDEXED_TYPES = INDEXED_SUPERTYPES + GENERATE_METAMODEL_TYPE
     }
 }
 

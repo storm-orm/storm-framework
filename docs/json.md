@@ -65,6 +65,16 @@ Storm auto-detects the serialization library at runtime. Just add the dependency
 
 Storm compiles against kotlinx-serialization 1.7.3 and uses only its stable core API, so any 1.7.3 or newer release works: your project's dependency resolution picks the version, and Storm floats along with it.
 
+### Which Module Converts a Field
+
+An application may carry both `storm-kotlinx-serialization` and a Jackson module, kotlinx for its Kotlin types and Jackson for a client library. The module that converts a `@Json` field then follows from the field, never from classpath order:
+
+- A converter the field selects itself, with `@Convert`, wins over any JSON module.
+- kotlinx.serialization converts a field whose type it has a serializer for: a `@Serializable` type, a type registered in a serializers module, or a collection or `Ref` of one.
+- Jackson converts the remaining `@Json` fields, such as a Java record or a Kotlin class without `@Serializable`.
+
+A `@Json` field no module claims is refused when the entity is first used, naming the modules; with kotlinx.serialization alone this is a field of a type without a serializer. Two converter providers that claim one field without an order between them are refused with both named.
+
 ---
 
 ## JSON Columns

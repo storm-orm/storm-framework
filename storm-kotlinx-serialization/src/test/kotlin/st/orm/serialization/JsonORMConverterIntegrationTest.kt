@@ -379,12 +379,10 @@ internal open class JsonORMConverterIntegrationTest {
     ) : Entity<Int>
 
     @Test
-    fun `non-serializable type with Json annotation should throw IllegalArgumentException`() {
+    fun `non-serializable type with Json annotation is left to the Jackson module on the classpath`() {
         val orm = ORMTemplate.of(dataSource)
-        assertThrows(PersistenceException::class.java) {
-            val query = orm.query("SELECT 1 AS id, '{\"x\": 1}' AS data")
-            query.getSingleResult(NonSerializableJsonHolder::class)
-        }
+        val query = orm.query("SELECT 1 AS id, '{\"x\": 1}' AS data")
+        assertEquals(NonSerializableType(1), query.getSingleResult(NonSerializableJsonHolder::class).data)
     }
 
     @Test

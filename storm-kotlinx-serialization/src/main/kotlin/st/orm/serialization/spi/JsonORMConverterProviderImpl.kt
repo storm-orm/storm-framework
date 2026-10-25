@@ -24,17 +24,18 @@ import kotlin.reflect.KClass
 import kotlin.reflect.KType
 import kotlin.reflect.full.declaredMemberProperties
 
+/**
+ * Provides a kotlinx.serialization converter for a [Json] field whose type kotlinx.serialization has a serializer for:
+ * a `@Serializable` type, a type with a serializer registered in the serializers module, or a collection or `Ref` of
+ * one. A field of another type is left unclaimed, so a Jackson module on the classpath converts it; without one, the
+ * field is refused.
+ */
 internal class JsonORMConverterProviderImpl : ORMConverterProvider {
 
     override fun getConverter(field: RecordField): Optional<ORMConverter> {
         val jsonAnn = field.getAnnotation(Json::class.java) ?: return Optional.empty()
-        val owner = field.declaringType()
-        val kType = resolveKType(owner.kotlin, field.name())
-            ?: throw IllegalArgumentException(
-                "Cannot resolve Kotlin KType for '${owner.name}.${field.name()}'. " +
-                    "Add Kotlin metadata access to RecordField or fall back to Java Type resolution.",
-            )
-        return Optional.of(JsonORMConverterImpl(field, kType, jsonAnn))
+        val kType = resolveKType(field.declaringType().kotlin, field.name()) ?: return Optional.empty()
+        return Optional.ofNullable(JsonORMConverterImpl.of(field, kType, jsonAnn))
     }
 
     private fun resolveKType(kClass: KClass<*>, fieldName: String): KType? = kClass.declaredMemberProperties.firstOrNull { it.name == fieldName }?.returnType
