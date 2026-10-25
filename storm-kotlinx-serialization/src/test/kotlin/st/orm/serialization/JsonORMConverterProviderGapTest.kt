@@ -2,11 +2,15 @@ package st.orm.serialization
 
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertNotNull
+import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import st.orm.Entity
 import st.orm.Json
 import st.orm.PK
+import st.orm.core.spi.Providers
+import st.orm.mapping.RecordField
+import st.orm.serialization.spi.JsonORMConverterProviderImpl
 import st.orm.template.ORMTemplate
 import st.orm.test.StormTest
 import javax.sql.DataSource
@@ -68,5 +72,14 @@ internal open class JsonORMConverterProviderGapTest {
         assertNotNull(result.address)
         assertEquals("Oak St", result.address.street)
         assertEquals("Portland", result.address.city)
+    }
+
+    @Test
+    fun `a field whose declaring type has no Kotlin property of its name is left unclaimed`() {
+        val address = Providers.getORMReflection().getRecordType(SimpleJsonHolder::class.java).fields().first { it.name() == "address" }
+        val provider = JsonORMConverterProviderImpl()
+        assertTrue(provider.getConverter(address).isPresent)
+        val foreign = RecordField(Any::class.java, address.name(), address.type(), address.genericType(), address.nullable(), address.mutable(), address.method(), address.annotations())
+        assertTrue(provider.getConverter(foreign).isEmpty)
     }
 }

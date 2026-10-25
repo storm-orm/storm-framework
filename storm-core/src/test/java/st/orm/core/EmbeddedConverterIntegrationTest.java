@@ -128,6 +128,9 @@ public class EmbeddedConverterIntegrationTest {
         Metamodel<OwnerWithEmbeddedConverter, Street> street = Metamodel.of(OwnerWithEmbeddedConverter.class, "address.street");
         var byStreet = owners.select().where(street, EQUALS, new Street("42 Converter Lane")).getResultList();
         assertEquals(List.of(inserted.id()), byStreet.stream().map(OwnerWithEmbeddedConverter::id).toList());
+        Metamodel<OwnerWithEmbeddedConverter, Object> streetColumn = Metamodel.of(OwnerWithEmbeddedConverter.class, "address.street");
+        var byStoredText = owners.select().where(streetColumn, EQUALS, "42 Converter Lane").getResultList();
+        assertEquals(List.of(inserted.id()), byStoredText.stream().map(OwnerWithEmbeddedConverter::id).toList());
         Metamodel<OwnerWithEmbeddedConverter, AddressWithConverter> embedded = Metamodel.of(OwnerWithEmbeddedConverter.class, "address");
         var byAddress = owners.select().where(embedded, EQUALS, address).getResultList();
         assertEquals(List.of(inserted.id()), byAddress.stream().map(OwnerWithEmbeddedConverter::id).toList());
