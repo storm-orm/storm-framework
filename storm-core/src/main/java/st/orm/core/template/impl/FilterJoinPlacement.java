@@ -111,8 +111,9 @@ final class FilterJoinPlacement {
      * @param type the join type.
      * @param parent the semi-join or anti-join whose subquery holds this one's, or {@code null} when the anchor is a
      *               table of the query.
-     * @param anchorKey the foreign key field of the parent's table that references the anchor, or {@code null} when
-     *                  the anchor is the parent's table itself or a table of the query.
+     * @param anchorKey the foreign key field of the parent's table that references the anchor, or of the query's table
+     *                  for a join on the query's own table; {@code null} when the anchor is the parent's table itself
+     *                  or a table of the query.
      */
     private record FilterJoin(Class<? extends Data> table,
                               Class<? extends Data> anchor,
@@ -139,6 +140,7 @@ final class FilterJoinPlacement {
     private record Hop(FilterJoin filterJoin, RecordField foreignKey) {}
 
     private final QueryTemplate queryTemplate;
+    private final Class<? extends Data> fromType;
     private final boolean branchOnAnchor;
     /**
      * Every semi-join and anti-join in the order they were added, a join before the joins its subquery holds. A table
@@ -158,6 +160,7 @@ final class FilterJoinPlacement {
                                 List<Join> joins,
                                 boolean branchOnAnchor) {
         this.queryTemplate = queryTemplate;
+        this.fromType = fromType;
         this.branchOnAnchor = branchOnAnchor;
         this.filterJoins = resolve(queryTemplate, fromType, joins);
     }
@@ -182,10 +185,6 @@ final class FilterJoinPlacement {
     static void verify(QueryTemplate queryTemplate, Class<? extends Data> fromType, List<Join> joins, Join join) {
         var type = (FilterJoinType) join.type();
         var table = ((TableSource) join.source()).table();
-        if (table == fromType) {
-            throw new PersistenceException("%s(%s): %s is the query's own table. A %s filters the rows of the query by the rows of another table."
-                    .formatted(type.method(), table.getSimpleName(), table.getSimpleName(), type.method()));
-        }
         for (var existing : joins) {
             if (!isFilterJoin(existing) && existing.source() instanceof TableSource(var existingTable) && existingTable == table) {
                 throw new PersistenceException("%s(%s): the query already joins %s, so a condition naming it could not tell the joins apart."
@@ -229,7 +228,7 @@ final class FilterJoinPlacement {
         }
         for (var filterJoin : filterJoins) {
             var antiJoin = antiJoinHolding(filterJoin);
-            if (antiJoin == null) {
+            if (antiJoin == null || filterJoin.table() == fromType) {
                 continue;
             }
             for (var conjunct : conjuncts) {
@@ -301,7 +300,7 @@ final class FilterJoinPlacement {
             collect(clause, tables);
             for (var table : tables) {
                 var named = filterJoinsOf(filterJoins, table);
-                if (!named.isEmpty()) {
+                if (!named.isEmpty() && table != fromType) {
                     throw new PersistenceException("%1$s is %2$s: it filters the query but adds no columns to it, so the query cannot order, group or select by its columns. Join %1$s to use its columns."
                             .formatted(table.getSimpleName(), named.getFirst().type() == FilterJoinType.SEMI ? "semi-joined" : "anti-joined"));
                 }
@@ -461,9 +460,10 @@ final class FilterJoinPlacement {
     private TemplateString exists(FilterJoin filterJoin, @Nullable PredicateNode condition) {
         var relation = filterJoin.relation();
         var parent = filterJoin.parent();
-        var correlation = filterJoin.anchorKey() == null || parent == null
+        // A join on the query's own table correlates the foreign key of the subquery's row with the query's row's.
+        var correlation = filterJoin.anchorKey() == null
                 ? new Correlation(filterJoin.table(), filterJoin.anchor(), relation.foreignKey(), relation.tableHoldsKey())
-                : new Correlation(filterJoin.table(), parent.table(), relation.foreignKey(), true, filterJoin.anchorKey());
+                : new Correlation(filterJoin.table(), parent == null ? fromType : parent.table(), relation.foreignKey(), true, filterJoin.anchorKey());
         var parts = new ArrayList<PredicateNode>(2);
         parts.add(new Term(wrap(correlation), true));
         var inner = condition(filterJoin, condition == null ? List.of() : List.of(condition), true);
@@ -477,11 +477,16 @@ final class FilterJoinPlacement {
     }
 
     /**
-     * Returns the filtered table and the tables filtered inside its subquery, at any depth.
+     * Returns the filtered table and the tables filtered inside its subquery, at any depth. The query's own table is
+     * not among them: a condition naming it names the query's row, and a join on the table takes its condition on the
+     * join.
      */
     private Set<Class<? extends Data>> tablesOf(FilterJoin filterJoin) {
         var tables = new LinkedHashSet<Class<? extends Data>>();
         for (var candidate : filterJoins) {
+            if (candidate.table() == fromType) {
+                continue;
+            }
             for (FilterJoin join = candidate; join != null; join = join.parent()) {
                 if (join == filterJoin) {
                     tables.add(candidate.table());
@@ -551,6 +556,9 @@ final class FilterJoinPlacement {
     private Set<FilterJoin> filterJoinsNamed(@Nullable FilterJoin level, PredicateNode node) {
         var named = new LinkedHashSet<FilterJoin>();
         for (var table : references(node)) {
+            if (level == null && table == fromType) {
+                continue;   // The condition names the query's row; a join on the table takes its condition on the join.
+            }
             var candidates = new ArrayList<FilterJoin>(1);
             for (var candidate : filterJoinsOf(filterJoins, table)) {
                 var join = candidate;
@@ -690,6 +698,10 @@ final class FilterJoinPlacement {
      * table its own foreign keys join. Otherwise it is joined on a semi-joined or anti-joined table named as the
      * anchor, or on a table one of them holds a foreign key to. An anchor neither reaches stays the query's, which
      * resolves it as it resolves any table, including the tables of an enclosing query.</p>
+     *
+     * <p>A join on the query's own table finds the rows that reference the same row of the anchor as the query's row:
+     * the visits of the pets another visit was for. Both occurrences hold the foreign key, so the subquery's row
+     * correlates with the query's row through it.</p>
      */
     private static List<FilterJoin> resolve(QueryTemplate queryTemplate, Class<? extends Data> fromType, List<Join> joins) {
         var joined = new HashSet<Class<? extends Data>>();
@@ -719,6 +731,9 @@ final class FilterJoinPlacement {
         if (condition != null) {
             condition = PredicateNode.resolve(condition, queryTemplate.dialect().minimumSearchTermLength());
         }
+        if (table == fromType) {
+            return selfFilterJoin(queryTemplate, type, table, anchor, condition);
+        }
         var parents = filterJoinsOf(resolved, anchor);
         if (parents.size() > 1) {
             throw new PersistenceException("%1$s(%2$s).on(%3$s): the query filters by %3$s more than once (%4$s), so the subquery to place the join in is ambiguous."
@@ -740,6 +755,29 @@ final class FilterJoinPlacement {
                             parent.table().getSimpleName(), anchorKey.name()));
         }
         return new FilterJoin(table, anchor, relation, condition, type, parent, anchorKey);
+    }
+
+    /**
+     * Resolves a semi-join or anti-join on the query's own table: the rows referencing the same row of the anchor as
+     * the query's row, through the foreign key the table holds to the anchor.
+     *
+     * @throws PersistenceException if the anchor is the table itself, or the table holds no foreign key to the anchor.
+     */
+    private static FilterJoin selfFilterJoin(QueryTemplate queryTemplate,
+                                             FilterJoinType type,
+                                             Class<? extends Data> table,
+                                             Class<? extends Data> anchor,
+                                             @Nullable PredicateNode condition) {
+        if (anchor == table) {
+            throw new PersistenceException("%1$s(%2$s).on(%2$s): a %1$s on the query's own table finds the %2$s rows that reference the same row of another table as the query's row. Name that table: %1$s(%2$s).on(<table>)."
+                    .formatted(type.method(), table.getSimpleName()));
+        }
+        var relation = relation(queryTemplate, type, table, anchor);
+        if (!relation.tableHoldsKey()) {
+            throw new PersistenceException("%1$s(%2$s).on(%3$s): a %1$s on the query's own table finds the %2$s rows that reference the same %3$s as the query's row, which takes a foreign key of %2$s referencing %3$s; %3$s references %2$s instead."
+                    .formatted(type.method(), table.getSimpleName(), anchor.getSimpleName()));
+        }
+        return new FilterJoin(table, anchor, relation, condition, type, null, relation.foreignKey());
     }
 
     /**
