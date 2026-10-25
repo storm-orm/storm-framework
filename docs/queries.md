@@ -1094,6 +1094,8 @@ WHERE NOT EXISTS (SELECT 1 FROM visit v WHERE v.pet_id = p.id AND v.description 
 
 `NOT EXISTS`, unlike `NOT IN`, keeps its meaning when a related row's foreign key is null. A condition in `where` that names the anti-joined table is refused when the query is built, pointing at the join's condition.
 
+Two semi-joins or anti-joins on one table are two subqueries, each with its own condition on the join. `antiJoin<Visit>().on<Pet> { Visit_.description eq "rabies shot" }` followed by `semiJoin<Visit>().on<Pet>()` finds the pets that had a visit but never a rabies shot, and two semi-joins with different conditions find the rows with a related row matching each, where one semi-join with both conditions asks for a single related row matching both. A condition in `where` that names the table could not tell the joins apart and is refused; each condition goes on its join.
+
 ### Filtering Through Two Relations
 
 `on` also names a semi-joined table, to filter through two to-many relations. The owners with a pet that had a visit this year:

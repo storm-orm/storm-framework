@@ -602,6 +602,7 @@ Pick the form by the direction of the relation and by whether the related rows b
 - A semi-joined or anti-joined table adds no columns, so ordering, grouping or selecting by it is refused. When the result, `orderBy` or `groupBy` needs its columns, the query wants a regular join instead.
 - Both filter `delete()` and `update()` as they filter a select. `owners.delete().antiJoin<Pet>().on<Owner>()` removes the owners without pets. `owners.update().set(Owner_.telephone, null).semiJoin<Pet>().on<Owner>().where(Pet_.name eq "Leo")` clears the telephone of the owners of a pet named Leo.
 - `semiJoin` and `antiJoin` are complements: on the same table with the same condition on the join, the one keeps the rows the other drops. Without a condition, `semiJoin` keeps the rows with any related row and `antiJoin` the rows without one.
+- Two semi-joins or anti-joins on one table are two subqueries, each with its own condition on the join: `antiJoin<Visit>().on<Pet> { Visit_.description eq "rabies shot" }.semiJoin<Visit>().on<Pet>()` finds the pets with a visit but no rabies shot, and two `semiJoin`s with different conditions match a related row each. A `where` naming the table is then refused: each condition goes on its join.
 - Keep `whereExists` for a subquery a foreign key does not express.
 
 **Through two to-many relations, chain the semi-joins.** `on` names a semi-joined table, so `.semiJoin<Pet>().on<Owner>().semiJoin<Visit>().on<Pet>().where(Visit_.visitDate greaterEq date)` finds the owners with a pet that had a visit since the date, each once.
