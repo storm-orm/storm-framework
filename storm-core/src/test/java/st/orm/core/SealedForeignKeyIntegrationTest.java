@@ -25,6 +25,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import static st.orm.GenerationStrategy.NONE;
 import static st.orm.Operator.EQUALS;
 import static st.orm.Operator.GREATER_THAN;
+import static st.orm.Operator.IN;
 import static st.orm.core.template.SqlInterceptor.observe;
 import static st.orm.core.template.TemplateString.raw;
 
@@ -532,6 +533,16 @@ public class SealedForeignKeyIntegrationTest {
         assertNull(surgeries.findById(id).orElseThrow().outcome());
         var byTreatment = treatments.select().where(Treatment_.id, EQUALS, ids.getFirst()).getResultList();
         assertEquals(new Outcome("observed"), assertInstanceOf(Surgery.class, byTreatment.getFirst()).outcome());
+        // A value the field is compared with, or set to, goes through the converter as well.
+        var observed = treatments.select().where(Surgery_.outcome, EQUALS, new Outcome("observed")).getResultList();
+        assertEquals(List.of(ids.getFirst()), observed.stream().map(Treatment::id).toList());
+        assertEquals(1, surgeries.select().where(Surgery_.outcome, IN, List.of(new Outcome("observed"), new Outcome("none"))).getResultList().size());
+        var recovered = orm().entity(Pet.class).select()
+                .semiJoin(Surgery.class).on(Pet.class, it -> it.where(Surgery_.outcome, EQUALS, new Outcome("recovered")))
+                .getResultList();
+        assertEquals(List.of("Rosy"), recovered.stream().map(Pet::name).toList());
+        assertEquals(1, surgeries.update().set(Surgery_.outcome, new Outcome("healed")).where(Surgery_.id, EQUALS, id).executeUpdate());
+        assertEquals(new Outcome("healed"), surgeries.findById(id).orElseThrow().outcome());
     }
 
     @Test

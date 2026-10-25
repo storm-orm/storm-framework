@@ -710,6 +710,17 @@ public final class ModelImpl<E extends Data, ID> implements Model<E, ID> {
             forEachInlineValue(metamodel, columns, object, consumer);
             return;
         }
+        // A converted field takes the value through its converter, as the record path does.
+        if (!columns.isEmpty()) {
+            var converter = converterOf(columns.getFirst());
+            if (converter != null) {
+                var values = convert(converter, columns.getFirst(), object);
+                for (var column : columns) {
+                    consumer.accept(column, convertedValue(converter, column, values));
+                }
+                return;
+            }
+        }
         // Follow the key chain down to the value the column holds. The identifier of an entity-keyed entity is itself
         // an entity, and a reference-keyed entity holds its identifier in the reference, which carries the key without
         // fetching the target. A compound key record is not a key holder and terminates the chain, so it reaches the
@@ -779,6 +790,11 @@ public final class ModelImpl<E extends Data, ID> implements Model<E, ID> {
                         .formatted(componentName, object.getClass().getSimpleName()));
             }
             Object value = REFLECTION.getRecordValue(object, componentIndex);
+            var converter = converterOf(column);
+            if (converter != null) {
+                consumer.accept(column, convertedValue(converter, column, convert(converter, column, value)));
+                continue;
+            }
             if (column.foreignKey()) {
                 // Handle FK components: walk the key chain from the referenced Data object to the column value.
                 var path = keyPaths[column.index() - 1];
@@ -937,6 +953,50 @@ public final class ModelImpl<E extends Data, ID> implements Model<E, ID> {
      *
      * <p>This method chooses the earliest possible start within that window that is still converter-backed.</p>
      */
+    /**
+     * Returns the converter of the column, or {@code null} for a column without one. A query column has no record
+     * component and no index among the model's columns.
+     */
+    private @Nullable ORMConverter converterOf(Column column) {
+        int index = column.index();
+        return index > 0 && index <= converters.length ? converters[index - 1] : null;
+    }
+
+    /**
+     * Converts a value of a converted field, given on its own, to the values of the converter's columns.
+     *
+     * @param column a column of the converter's group, named when the converter returns the wrong number of values.
+     */
+    private static List<@Nullable Object> convert(ORMConverter converter, Column column, @Nullable Object value)
+            throws SqlTemplateException {
+        var values = converter.toDatabaseValue(value);
+        int parameterCount = converter.getParameterCount();
+        if (values.size() != parameterCount) {
+            throw new SqlTemplateException(
+                    "Converter for '%s' returned %d value(s), expected %d."
+                            .formatted(column.name(), values.size(), parameterCount)
+            );
+        }
+        return values;
+    }
+
+    /**
+     * Returns the column's value among the values its converter returned for the converter's group of columns.
+     */
+    private @Nullable Object convertedValue(ORMConverter converter, Column column, List<@Nullable Object> values)
+            throws SqlTemplateException {
+        int index = column.index();
+        int groupStart = findConverterGroupStart(converters, index - 1, values.size());
+        int valueIndex = index - 1 - groupStart;
+        if (valueIndex < 0 || valueIndex >= values.size()) {
+            throw new SqlTemplateException(
+                    "Converter value index out of bounds for '%s': idx=%d start=%d count=%d."
+                            .formatted(column.name(), index, groupStart + 1, values.size())
+            );
+        }
+        return values.get(valueIndex);
+    }
+
     private static int findConverterGroupStart(ORMConverter[] converters, int index, int parameterCount) {
         int min = Math.max(0, index - (parameterCount - 1));
         int start = index;

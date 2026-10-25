@@ -37,6 +37,8 @@ The type parameters are:
 
 Both methods receive a possibly-null value and may return null. This allows converters to handle nullable columns naturally.
 
+`toDatabase` runs on the entity's value when it is written, and on a value a query compares the field with or sets it to, `where(Product_.price, EQUALS, money)` or `update().set(Product_.price, money)`, so the database compares the converted value. A value given in the database type, such as the `BigDecimal` a `Money` is stored as, passes through as the stored value.
+
 ### Requirements
 
 Every converter class must provide a **public no-argument constructor**. Storm instantiates converters via classpath scanning and cannot inject dependencies. If your converter needs external state, use a static configuration pattern or a lookup in the constructor.

@@ -78,6 +78,19 @@ public interface ORMConverter {
     List<@Nullable Object> toDatabase(@Nullable Object record) throws SqlTemplateException;
 
     /**
+     * Converts a value of the converted field, given on its own rather than through the record declaring the field,
+     * to the values its columns take in the SQL template: the value a query compares the field with, or sets it to.
+     *
+     * <p><strong>Note:</strong> The values must match the parameters as returned by {@link #getParameterTypes()}.</p>
+     *
+     * @param value the value of the field, or {@code null} for no value.
+     * @return the values to be used in the SQL template; a value is {@code null} for a column written as NULL.
+     * @throws SqlTemplateException if the value cannot be converted.
+     * @since 1.16
+     */
+    List<@Nullable Object> toDatabaseValue(@Nullable Object value) throws SqlTemplateException;
+
+    /**
      * Converts the given values to an object that is used in the object model.
      *
      * @param values the arguments to convert. The arguments match the parameter types as returned by getParameterTypes(),

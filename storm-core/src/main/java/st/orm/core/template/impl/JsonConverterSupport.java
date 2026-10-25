@@ -109,8 +109,25 @@ public abstract class JsonConverterSupport implements ORMConverter {
 
     @Override
     public List<@Nullable Object> toDatabase(@Nullable Object record) throws SqlTemplateException {
+        Object value;
         try {
-            Object value = record == null ? null : REFLECTION.invoke(field, record);
+            value = record == null ? null : REFLECTION.invoke(field, record);
+        } catch (Throwable e) {
+            throw new SqlTemplateException(e);
+        }
+        return toDatabaseValue(value);
+    }
+
+    /**
+     * Serializes a value of the field to JSON. A string given for a field of another type is the stored JSON text,
+     * which a predicate on a JSON column compares against, and passes through as it is.
+     */
+    @Override
+    public List<@Nullable Object> toDatabaseValue(@Nullable Object value) throws SqlTemplateException {
+        if (value instanceof String && field.type() != String.class) {
+            return singletonList(value);
+        }
+        try {
             return singletonList(value == null ? null : new JsonString(write(value)));
         } catch (Throwable e) {
             throw new SqlTemplateException(e);
