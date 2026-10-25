@@ -256,6 +256,27 @@ class MetamodelProcessorTest {
     }
 
     @Test
+    void indexesTheRecordsAnnotatedGenerateMetamodelOutsideTheEntityGraph() throws Exception {
+        Compilation compilation = compile("OwnerPetCount.java", """
+                import st.orm.Entity;
+                import st.orm.GenerateMetamodel;
+                import st.orm.PK;
+
+                @GenerateMetamodel
+                public record OwnerPetCount(int ownerId, long pets) {}
+
+                @GenerateMetamodel
+                record Owner(@PK Integer id, String name) implements Entity<Integer> {}
+                """);
+        assertTrue(compilation.success(), compilation.errors());
+        String index = Files.readString(compilation.classes().resolve("META-INF/storm/st.orm.GenerateMetamodel.idx"));
+        assertEquals("OwnerPetCount\n", index,
+                "expected the result record alone in the index: a Data type is listed in the Data index only");
+        String dataIndex = Files.readString(compilation.classes().resolve("META-INF/storm/st.orm.Data.idx"));
+        assertTrue(dataIndex.contains("Owner\n"), "expected the entity in the Data index:\n" + dataIndex);
+    }
+
+    @Test
     void reportsUniqueKeyNullabilityWarningOncePerRecord() throws Exception {
         Compilation compilation = compile("Account.java", """
                 import jakarta.annotation.Nullable;

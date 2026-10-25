@@ -243,6 +243,34 @@ class MetamodelProcessorTest {
     }
 
     @Test
+    fun `type index lists the classes annotated GenerateMetamodel outside the entity graph`() {
+        val compilation = compilation(
+            """
+            package com.example
+
+            import st.orm.Entity
+            import st.orm.GenerateMetamodel
+            import st.orm.PK
+
+            @GenerateMetamodel
+            data class OwnerPetCount(val ownerId: Int, val pets: Long)
+
+            @GenerateMetamodel
+            data class Owner(@PK val id: Int, val name: String) : Entity<Int>
+            """.trimIndent(),
+        )
+        compilation.symbolProcessorProviders.add(TypeIndexProcessorProvider())
+        val result = compilation.compile()
+        assertEquals(KotlinCompilation.ExitCode.OK, result.exitCode, result.messages)
+        val index = compilation.kspSourcesDir.walkTopDown().first { it.isFile && it.name == "st.orm.GenerateMetamodel.idx" }.readText()
+        assertEquals("com.example.OwnerPetCount\n", index) {
+            "expected the result class alone in the index: a Data type is listed in the Data index only"
+        }
+        val dataIndex = compilation.kspSourcesDir.walkTopDown().first { it.isFile && it.name == "st.orm.Data.idx" }.readText()
+        assertTrue("com.example.Owner" in dataIndex) { "expected the entity in the Data index:\n$dataIndex" }
+    }
+
+    @Test
     fun `escapes keyword-named properties in the metamodel interface and primary key`() {
         val compilation = compile(
             """

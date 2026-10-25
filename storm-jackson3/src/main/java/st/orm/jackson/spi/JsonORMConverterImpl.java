@@ -76,6 +76,9 @@ public final class JsonORMConverterImpl extends JsonConverterSupport {
             }
             // Register StormModule with supplier for dynamic RefFactory resolution.
             builder.addModule(new StormModule(JsonConverterSupport::currentRefFactory));
+            // A collection or map of final types writes by its declared type, so the collection's runtime class is
+            // never introspected.
+            builder.addModule(new DeclaredContainerTypeModule());
             // Register custom serializers/deserializers if specified.
             if (serializerClass != null || deserializerClass != null) {
                 var customModule = new SimpleModule();

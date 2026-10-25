@@ -253,6 +253,25 @@
             <version>${project.version}</version>
             <scope>test</scope>
         </dependency>
+        <!-- A second JSON module on the test classpath: the tests pin down which module converts which field. -->
+        <dependency>
+            <groupId>st.orm</groupId>
+            <artifactId>storm-jackson3</artifactId>
+            <version>${project.version}</version>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>tools.jackson.core</groupId>
+            <artifactId>jackson-databind</artifactId>
+            <version>3.0.4</version>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>tools.jackson.module</groupId>
+            <artifactId>jackson-module-kotlin</artifactId>
+            <version>3.0.4</version>
+            <scope>test</scope>
+        </dependency>
         <dependency>
             <groupId>org.slf4j</groupId>
             <artifactId>slf4j-simple</artifactId>

@@ -16,6 +16,7 @@
 package st.orm.core.graal;
 
 import java.util.HashSet;
+import java.util.List;
 import java.util.Set;
 import org.graalvm.nativeimage.hosted.Feature;
 import org.graalvm.nativeimage.hosted.RuntimeProxyCreation;
@@ -49,7 +50,7 @@ public final class StormFeature implements Feature {
 
     @Override
     public String getDescription() {
-        return "Registers Storm entities, entity callbacks, converters, and repositories from the compile-time type index.";
+        return "Registers Storm entities, query result types, entity callbacks, converters, and repositories from the compile-time type index.";
     }
 
     @Override
@@ -69,6 +70,14 @@ public final class StormFeature implements Feature {
             }
             callbackTypes += registerEntityCallbacks(type);
         }
+        int dataTypes = registered.size();
+        for (Class<?> type : TypeDiscovery.getResultTypes()) {
+            registerDataType(access, type);
+            for (Class<?> componentType : TypeDiscovery.getComponentTypes(type)) {
+                registerDataType(access, componentType);
+            }
+        }
+        int resultTypes = registered.size() - dataTypes;
         int converterTypes = 0;
         for (Class<?> type : TypeDiscovery.getConverterTypes()) {
             RuntimeReflection.register(type);
@@ -85,10 +94,38 @@ public final class StormFeature implements Feature {
             }
             repositoryTypes++;
         }
+        registerKotlinCollections(access);
         System.out.printf(
-                "Storm: registered %d data types, %d entity callbacks, %d converters, and %d repositories from "
-                        + "the type index.%n",
-                registered.size(), callbackTypes, converterTypes, repositoryTypes);
+                "Storm: registered %d data types, %d query result types, %d entity callbacks, %d converters, and "
+                        + "%d repositories from the type index.%n",
+                dataTypes, resultTypes, callbackTypes, converterTypes, repositoryTypes);
+    }
+
+    /**
+     * The Kotlin standard library's collection classes that are not JDK classes: the empty collections and the
+     * builders of {@code buildList} and friends. A JSON converter hands a collection of a Kotlin record to Jackson,
+     * whose Kotlin module introspects the collection's runtime class through Kotlin reflection, which a native image
+     * refuses for a class that is not registered.
+     */
+    private static final List<String> KOTLIN_COLLECTIONS = List.of(
+            "kotlin.collections.EmptyList",
+            "kotlin.collections.EmptySet",
+            "kotlin.collections.EmptyMap",
+            "kotlin.collections.builders.ListBuilder",
+            "kotlin.collections.builders.SetBuilder",
+            "kotlin.collections.builders.MapBuilder");
+
+    private static void registerKotlinCollections(BeforeAnalysisAccess access) {
+        for (String className : KOTLIN_COLLECTIONS) {
+            Class<?> type = access.findClassByName(className);
+            if (type == null) {
+                continue;
+            }
+            RuntimeReflection.register(type);
+            RuntimeReflection.register(type.getDeclaredConstructors());
+            RuntimeReflection.register(type.getDeclaredMethods());
+            RuntimeReflection.register(type.getDeclaredFields());
+        }
     }
 
     /**

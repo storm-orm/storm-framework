@@ -35,15 +35,29 @@ import kotlin.reflect.KType
 import kotlin.reflect.full.createInstance
 import kotlinx.serialization.json.Json as JsonMapper
 
-internal class JsonORMConverterImpl(
+internal class JsonORMConverterImpl private constructor(
     field: RecordField,
-    kType: KType,
-    json: Json,
+    private val json: JsonMapper,
+    private val serializer: KSerializer<Any?>,
 ) : JsonConverterSupport(field) {
 
     companion object {
         // The mapper depends only on the Json flags, so the cache holds at most one entry per flag combination.
         private val JSON_CACHE = ConcurrentHashMap<Json, JsonMapper>()
+
+        /**
+         * Creates the converter for a field, or returns null when kotlinx.serialization has no serializer for the
+         * field's type: such a field is left to another JSON module.
+         */
+        fun of(field: RecordField, kType: KType, json: Json): JsonORMConverterImpl? {
+            val mapper = JSON_CACHE.computeIfAbsent(json) { buildJson(it) }
+            val serializer = try {
+                createSerializer(mapper, field, kType)
+            } catch (_: SerializationException) {
+                return null
+            }
+            return JsonORMConverterImpl(field, mapper, serializer)
+        }
 
         private fun buildJson(json: Json): JsonMapper = JsonMapper {
             serializersModule = StormSerializersModule { currentRefFactory() }
@@ -141,22 +155,6 @@ internal class JsonORMConverterImpl(
                 },
                 refFactoryProvider = { currentRefFactory() },
             ) as KSerializer<Any?>
-        }
-    }
-
-    private val json: JsonMapper
-    private val serializer: KSerializer<Any?>
-
-    init {
-        this.json = JSON_CACHE.computeIfAbsent(json) { buildJson(it) }
-        this.serializer = try {
-            createSerializer(this@JsonORMConverterImpl.json, field, kType)
-        } catch (e: SerializationException) {
-            throw IllegalArgumentException(
-                "No kotlinx serializer found for JSON field '${field.name()}' of Kotlin type '$kType'. " +
-                    "Ensure the type is @Serializable or registered in a SerializersModule.",
-                e,
-            )
         }
     }
 

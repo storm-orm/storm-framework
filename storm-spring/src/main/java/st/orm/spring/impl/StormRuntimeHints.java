@@ -37,6 +37,7 @@ import org.springframework.aot.hint.RuntimeHints;
 import org.springframework.aot.hint.RuntimeHintsRegistrar;
 import org.springframework.aot.hint.TypeReference;
 import org.springframework.core.DecoratingProxy;
+import org.springframework.util.ClassUtils;
 import st.orm.EntityCallbacks;
 import st.orm.core.spi.TypeDiscovery;
 
@@ -86,6 +87,21 @@ public class StormRuntimeHints implements RuntimeHintsRegistrar {
     private static final String DATA_INDEX = INDEX_DIRECTORY + "st.orm.Data.idx";
     private static final String CONVERTER_INDEX = INDEX_DIRECTORY + "st.orm.Converter.idx";
     private static final String REPOSITORY_INDEX = INDEX_DIRECTORY + "st.orm.repository.Repository.idx";
+    private static final String RESULT_INDEX = INDEX_DIRECTORY + "st.orm.GenerateMetamodel.idx";
+
+    /**
+     * The Kotlin standard library's collection classes that are not JDK classes: the empty collections and the
+     * builders of {@code buildList} and friends. A JSON converter hands a collection of a Kotlin record to Jackson,
+     * whose Kotlin module introspects the collection's runtime class through Kotlin reflection, which a native image
+     * refuses for a class that is not registered.
+     */
+    private static final List<String> KOTLIN_COLLECTIONS = List.of(
+            "kotlin.collections.EmptyList",
+            "kotlin.collections.EmptySet",
+            "kotlin.collections.EmptyMap",
+            "kotlin.collections.builders.ListBuilder",
+            "kotlin.collections.builders.SetBuilder",
+            "kotlin.collections.builders.MapBuilder");
 
     @Override
     public void registerHints(RuntimeHints hints, @Nullable ClassLoader classLoader) {
@@ -120,6 +136,18 @@ public class StormRuntimeHints implements RuntimeHintsRegistrar {
                 // Entries that do not load still get their hints registered by name above.
             }
         }
+        // The result rows of custom queries are constructed like Data types.
+        for (String typeName : readIndex(loader, RESULT_INDEX)) {
+            registerDataType(hints, typeName);
+            try {
+                Class<?> type = Class.forName(typeName, false, loader);
+                for (Class<?> componentType : TypeDiscovery.getComponentTypes(type)) {
+                    registerDataType(hints, componentType.getName());
+                }
+            } catch (Throwable ignore) {
+                // Entries that do not load still get their hints registered by name above.
+            }
+        }
         for (String typeName : readIndex(loader, CONVERTER_INDEX)) {
             hints.reflection().registerType(TypeReference.of(typeName),
                     MemberCategory.INVOKE_DECLARED_CONSTRUCTORS);
@@ -135,6 +163,18 @@ public class StormRuntimeHints implements RuntimeHintsRegistrar {
             hints.reflection().registerType(TypeReference.of(typeName + "$DefaultImpls"),
                     MemberCategory.INVOKE_DECLARED_METHODS,
                     MemberCategory.INVOKE_PUBLIC_METHODS);
+        }
+        registerKotlinCollections(hints, loader);
+    }
+
+    private static void registerKotlinCollections(RuntimeHints hints, ClassLoader loader) {
+        for (String className : KOTLIN_COLLECTIONS) {
+            if (ClassUtils.isPresent(className, loader)) {
+                hints.reflection().registerType(TypeReference.of(className),
+                        MemberCategory.INVOKE_DECLARED_CONSTRUCTORS,
+                        MemberCategory.INVOKE_DECLARED_METHODS,
+                        MemberCategory.DECLARED_FIELDS);
+            }
         }
     }
 

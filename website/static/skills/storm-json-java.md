@@ -76,3 +76,4 @@ Storm auto-detects Jackson at runtime. Just add the dependency.
 - JSON aggregation suits moderate-size collections (< 100 items, < 1MB). For large or unbounded collections, use separate queries.
 - `@Json` fields are harder to filter and index than normalized columns. Consider query patterns before choosing JSON.
 - Always ask or detect the target database dialect before writing JSON aggregation queries. The function names and syntax vary.
+- For a GraalVM native image, annotate a query result record outside the entity graph with `@GenerateMetamodel`: the native-image metadata and an instantiator are generated for it. Entities, projections and the types of `@Json` columns need nothing.

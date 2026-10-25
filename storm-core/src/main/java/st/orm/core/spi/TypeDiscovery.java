@@ -38,6 +38,7 @@ public final class TypeDiscovery {
     private static final String DATA_TYPE = "st.orm.Data";
     private static final String CONVERTER_TYPE = "st.orm.Converter";
     private static final String REPOSITORY_TYPE = "st.orm.repository.Repository";
+    private static final String GENERATE_METAMODEL_TYPE = "st.orm.GenerateMetamodel";
 
     private TypeDiscovery() {
     }
@@ -74,6 +75,17 @@ public final class TypeDiscovery {
      */
     public static List<Class<? extends Data>> getDataTypes() {
         return loadTypes(DATA_TYPE, Data.class);
+    }
+
+    /**
+     * Returns the records outside the entity graph that carry {@code @GenerateMetamodel}, such as the result rows
+     * of custom queries, based on the index file. The runtime constructs them like Data types, so a native image
+     * registers them the same way; Data types carrying the annotation are listed by {@link #getDataTypes()} only.
+     *
+     * @since 1.16
+     */
+    public static List<Class<?>> getResultTypes() {
+        return loadClasses(GENERATE_METAMODEL_TYPE);
     }
 
     /**
@@ -173,7 +185,6 @@ public final class TypeDiscovery {
                 && !name.startsWith("kotlin");
     }
 
-    @SuppressWarnings("SameParameterValue")
     private static List<Class<?>> loadClasses(String typeFqName) {
         ClassLoader classLoader = Thread.currentThread().getContextClassLoader();
         if (classLoader == null) {

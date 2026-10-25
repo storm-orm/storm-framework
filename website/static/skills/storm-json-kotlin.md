@@ -58,7 +58,7 @@ Storm supports three JSON libraries for Kotlin (add one):
 - `storm-jackson3` - Jackson 3.0+ (Spring Boot 4+)
 - `storm-kotlinx-serialization` - Kotlinx Serialization (requires the `plugin.serialization` Gradle plugin)
 
-Storm auto-detects the library at runtime. Just add the dependency.
+Storm auto-detects the library at runtime. Just add the dependency. With kotlinx.serialization and a Jackson module both present, kotlinx converts the `@Json` fields whose type it has a serializer for (`@Serializable`), Jackson the rest; a `@Convert` on the field wins over both.
 
 ## Database Support
 
@@ -80,3 +80,4 @@ Storm auto-detects the library at runtime. Just add the dependency.
 - JSON aggregation suits moderate-size collections (< 100 items, < 1MB). For large or unbounded collections, use separate queries.
 - `@Json` fields are harder to filter and index than normalized columns. Consider query patterns before choosing JSON.
 - Always ask or detect the target database dialect before writing JSON aggregation queries. The function names and syntax vary.
+- For a GraalVM native image, annotate a query result record outside the entity graph with `@GenerateMetamodel`: the native-image metadata and an instantiator are generated for it. Entities, projections and the types of `@Json` columns need nothing.

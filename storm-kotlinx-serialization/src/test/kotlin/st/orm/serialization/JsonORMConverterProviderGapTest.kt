@@ -2,13 +2,11 @@ package st.orm.serialization
 
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertNotNull
-import org.junit.jupiter.api.Assertions.assertThrows
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import st.orm.Entity
 import st.orm.Json
 import st.orm.PK
-import st.orm.PersistenceException
 import st.orm.template.ORMTemplate
 import st.orm.test.StormTest
 import javax.sql.DataSource
@@ -32,12 +30,10 @@ internal open class JsonORMConverterProviderGapTest {
         this.dataSource = dataSource
     }
 
-    // toDatabase error path: trigger SqlTemplateException by causing a serialization failure
+    // A type kotlinx.serialization has no serializer for is not claimed by this module; the Jackson module on the
+    // test classpath converts it instead.
 
-    // Use a type that has a field whose getter throws an exception.
-    // This exercises the toDatabase catch block (line 182-183 in JsonORMConverterImpl.kt).
-
-    data class NonSerializableValue(val value: Any)
+    data class NonSerializableValue(val value: Int)
 
     data class EntityWithNonSerializableJson(
         @PK val id: Int = 0,
@@ -45,14 +41,10 @@ internal open class JsonORMConverterProviderGapTest {
     ) : Entity<Int>
 
     @Test
-    fun `toDatabase with non-serializable type should throw PersistenceException`() {
+    fun `a type without a kotlinx serializer is left to the Jackson module`() {
         val orm = ORMTemplate.of(dataSource)
-        // This should fail because NonSerializableValue is not @Serializable,
-        // triggering the error path when creating the converter.
-        assertThrows(PersistenceException::class.java) {
-            val query = orm.query("SELECT 1 AS id, '{\"value\": 1}' AS data")
-            query.getSingleResult(EntityWithNonSerializableJson::class)
-        }
+        val query = orm.query("SELECT 1 AS id, '{\"value\": 1}' AS data")
+        assertEquals(NonSerializableValue(1), query.getSingleResult(EntityWithNonSerializableJson::class).data)
     }
 
     // Verify that getParameterCount and getParameterTypes return expected values
