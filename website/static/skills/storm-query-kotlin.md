@@ -386,6 +386,17 @@ val citySummaries = orm.entity(City::class)
 - `: Data` plus `@DbIgnore` on a result type is an anti-pattern: opting in and immediately opting out. A plain data class expresses the intent directly.
 - Define result types next to the code that produces them, typically top-level in the repository file whose queries return them. The model package is reserved for table-backed types.
 - Document them as query result shapes (not backed by a table or view), so readers see why they carry no marker.
+- For a GraalVM native image, annotate each result type with `@GenerateMetamodel` (`st.orm`). It is not a table marker, so schema validation still skips it: the metamodel processor gives the type an instantiator, and the native-image feature registers it. Without it the native image cannot construct the row, and the first query fails at runtime with `Could not compute caller for function: public constructor SpeciesCount(...)`. On the JVM the annotation is optional: the row is constructed reflectively.
+
+```kotlin
+/**
+ * Query result shape: the pets of each species. Not backed by a database
+ * table or view, so it is a plain data class; @GenerateMetamodel lets a
+ * native image construct it.
+ */
+@GenerateMetamodel
+data class SpeciesCount(val species: Species, val pets: Long)
+```
 
 **The `{ template }` provides the SELECT list only, not a full SQL query.** A full `SELECT ... FROM ... WHERE ...` inside it is wrapped as a scalar subquery and fails. For full custom SQL, use `orm.query { }.resultList<T>()` (see /storm-sql-kotlin).
 
