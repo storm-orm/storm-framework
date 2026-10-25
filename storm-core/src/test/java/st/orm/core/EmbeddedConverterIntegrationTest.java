@@ -2,7 +2,9 @@ package st.orm.core;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static st.orm.Operator.EQUALS;
 
+import java.util.List;
 import javax.sql.DataSource;
 import lombok.Builder;
 import org.jspecify.annotations.Nullable;
@@ -19,6 +21,7 @@ import st.orm.DbTable;
 import st.orm.Entity;
 import st.orm.FK;
 import st.orm.Inline;
+import st.orm.Metamodel;
 import st.orm.PK;
 import st.orm.Version;
 import st.orm.core.model.City;
@@ -93,7 +96,7 @@ public class EmbeddedConverterIntegrationTest {
                 .firstName("Ada")
                 .lastName("Lovelace")
                 .address(AddressWithConverter.builder()
-                        .street(new Street("638 Cardinal Ave."))
+                        .street(new Street("42 Converter Lane"))
                         .city(City.builder().id(1).build())
                         .build())
                 .telephone("6085551749")
@@ -105,7 +108,30 @@ public class EmbeddedConverterIntegrationTest {
 
         assertNotNull(inserted.id());
         var reloaded = owners.getById(inserted.id());
-        assertEquals("638 Cardinal Ave.", reloaded.address().street().value());
+        assertEquals("42 Converter Lane", reloaded.address().street().value());
         assertEquals(1, reloaded.address().city().id());
+    }
+
+    @Test
+    void testWhereOnConverterInEmbeddedComponentConvertsTheValue() {
+        var owners = ORMTemplate.of(dataSource).entity(OwnerWithEmbeddedConverter.class);
+        var address = AddressWithConverter.builder()
+                .street(new Street("42 Converter Lane"))
+                .city(City.builder().id(1).build())
+                .build();
+        var inserted = owners.insertAndFetch(OwnerWithEmbeddedConverter.builder()
+                .firstName("Ada")
+                .lastName("Lovelace")
+                .address(address)
+                .version(0)
+                .build());
+        Metamodel<OwnerWithEmbeddedConverter, Street> street = Metamodel.of(OwnerWithEmbeddedConverter.class, "address.street");
+        var byStreet = owners.select().where(street, EQUALS, new Street("42 Converter Lane")).getResultList();
+        assertEquals(List.of(inserted.id()), byStreet.stream().map(OwnerWithEmbeddedConverter::id).toList());
+        Metamodel<OwnerWithEmbeddedConverter, AddressWithConverter> embedded = Metamodel.of(OwnerWithEmbeddedConverter.class, "address");
+        var byAddress = owners.select().where(embedded, EQUALS, address).getResultList();
+        assertEquals(List.of(inserted.id()), byAddress.stream().map(OwnerWithEmbeddedConverter::id).toList());
+        assertEquals(1, owners.update().set(street, new Street("1 Main St.")).where(street, EQUALS, new Street("42 Converter Lane")).executeUpdate());
+        assertEquals("1 Main St.", owners.getById(inserted.id()).address().street().value());
     }
 }

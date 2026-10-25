@@ -18,6 +18,7 @@ package st.orm.core.spi;
 import static java.util.Collections.singletonList;
 import static java.util.Objects.requireNonNull;
 
+import java.lang.invoke.MethodType;
 import java.util.List;
 import org.jspecify.annotations.Nullable;
 import st.orm.Converter;
@@ -98,16 +99,46 @@ public final class DefaultORMConverterImpl<D, E> implements ORMConverter {
      */
     @Override
     public List<@Nullable Object> toDatabase(@Nullable Object record) throws SqlTemplateException {
+        Object value;
+        try {
+            value = record == null ? null : REFLECTION.invoke(field, record);
+        } catch (Throwable e) {
+            throw new SqlTemplateException("Failed to convert value to database format for field '%s.%s'.".formatted(field.type().getSimpleName(), field.name()), e);
+        }
+        return toDatabaseValue(value);
+    }
+
+    /**
+     * Converts a value of the field to the database type through the {@link Converter}. A value that is not of the
+     * field's type but of the database type is the stored value, as the column holds it, and passes through.
+     *
+     * @param value the value of the field, or {@code null} for no value.
+     * @return the database value as a singleton list.
+     * @throws SqlTemplateException if the conversion fails.
+     */
+    @Override
+    public List<@Nullable Object> toDatabaseValue(@Nullable Object value) throws SqlTemplateException {
+        if (value != null && !isFieldValue(value) && databaseType.isInstance(value)) {
+            return singletonList(value);
+        }
         try {
             @SuppressWarnings("unchecked")
-            E value = record == null
-                    ? null
-                    : (E) REFLECTION.invoke(field, record);
-            D dbValue = converter.toDatabase(value);
+            D dbValue = converter.toDatabase((E) value);
             return singletonList(dbValue);
         } catch (Throwable e) {
             throw new SqlTemplateException("Failed to convert value to database format for field '%s.%s'.".formatted(field.type().getSimpleName(), field.name()), e);
         }
+    }
+
+    /**
+     * Returns whether the value is of the field's type, boxed for a primitive field.
+     */
+    private boolean isFieldValue(Object value) {
+        Class<?> type = field.type();
+        if (type.isPrimitive()) {
+            type = MethodType.methodType(type).wrap().returnType();
+        }
+        return type.isInstance(value);
     }
 
     /**

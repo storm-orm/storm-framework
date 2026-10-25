@@ -46,6 +46,7 @@ for the CLI, to [npm](https://www.npmjs.com/package/@storm-orm/cli)
 - Fixed a keyset scroll whose key is reached through one of two foreign keys to the same table, such as `Recommendation_.movie.id` beside a `seedMovie`, which reported the path as ambiguous on the next window (#748).
 - Fixed `SqlCapture` dropping a statement that binds a `NULL` value, such as an insert with an unset nullable foreign key (#752). Its `parameters()` hold `null` for the value.
 - Fixed the metamodel processors rendering a `@Convert` record component as an inline record with a metamodel of its own (#756). It is a column, as the runtime metamodel resolves it, as is a component of a type a `@DefaultConverter` in the same compilation maps; the Java processor also reads the converter index of a dependency. A record nested in a record is skipped like one nested in a class; its metamodel did not compile.
+- Fixed a `where` condition, and an `update().set`, on a converted field, which bound the compared value without running its converter, and failed when the field's type is a record (#760). The value passes through the converter as the entity's does, at the top level, inside an inline record and on a subtype of a sealed entity, and a value given in the database type passes through as the stored value. `ORMConverter.toDatabaseValue` converts a value given on its own.
 
 ## [1.15.0] - 2026-10-15
 
