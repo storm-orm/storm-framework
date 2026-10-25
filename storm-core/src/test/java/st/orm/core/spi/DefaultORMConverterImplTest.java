@@ -4,7 +4,9 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import java.util.Collections;
 import java.util.List;
 import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.Test;
@@ -45,6 +47,24 @@ public class DefaultORMConverterImplTest {
             @PK int id,
             Integer convertedField
     ) implements Data {}
+
+    @DbTable("primitive_converter_test")
+    record PrimitiveConverterTestEntity(
+            @PK int id,
+            int convertedField
+    ) implements Data {}
+
+    private static final RefFactory UNUSED_REF_FACTORY = new RefFactory() {
+        @Override
+        public <T extends Data, ID> st.orm.Ref<T> create(Class<T> type, ID pk) {
+            throw new UnsupportedOperationException();
+        }
+
+        @Override
+        public <T extends Data, ID> st.orm.Ref<T> create(T record, ID pk) {
+            throw new UnsupportedOperationException();
+        }
+    };
 
     // Helper
 
@@ -183,5 +203,61 @@ public class DefaultORMConverterImplTest {
         };
         assertThrows(SqlTemplateException.class,
                 () -> converter.fromDatabase(new Object[]{"some value"}, refFactory));
+    }
+
+    @Test
+    public void testToDatabaseValueConvertsTheValueOfTheField() throws SqlTemplateException {
+        RecordField field = getField(ConverterTestEntity.class, "convertedField");
+        DefaultORMConverterImpl<String, Integer> converter =
+                new DefaultORMConverterImpl<>(field, new IntToStringConverter(), String.class);
+        assertEquals(List.of("NUM:42"), converter.toDatabaseValue(42));
+        assertEquals(Collections.singletonList(null), converter.toDatabaseValue(null));
+    }
+
+    @Test
+    public void testToDatabaseValuePassesAValueOfTheDatabaseTypeThrough() throws SqlTemplateException {
+        RecordField field = getField(ConverterTestEntity.class, "convertedField");
+        DefaultORMConverterImpl<String, Integer> converter =
+                new DefaultORMConverterImpl<>(field, new IntToStringConverter(), String.class);
+        // The stored value, as a predicate compares the column with.
+        assertEquals(List.of("NUM:42"), converter.toDatabaseValue("NUM:42"));
+    }
+
+    @Test
+    public void testToDatabaseValueConvertsTheBoxedValueOfAPrimitiveField() throws SqlTemplateException {
+        RecordField field = getField(PrimitiveConverterTestEntity.class, "convertedField");
+        DefaultORMConverterImpl<String, Integer> converter =
+                new DefaultORMConverterImpl<>(field, new IntToStringConverter(), String.class);
+        assertEquals(List.of("NUM:42"), converter.toDatabaseValue(42));
+        assertEquals(List.of("NUM:42"), converter.toDatabaseValue("NUM:42"));
+        assertEquals(List.of("NUM:7"), converter.toDatabase(new PrimitiveConverterTestEntity(1, 7)));
+    }
+
+    @Test
+    public void testToDatabaseValueNamesTheFieldForAValueOfNeitherType() {
+        RecordField field = getField(ConverterTestEntity.class, "convertedField");
+        DefaultORMConverterImpl<String, Integer> converter =
+                new DefaultORMConverterImpl<>(field, new IntToStringConverter(), String.class);
+        var exception = assertThrows(SqlTemplateException.class, () -> converter.toDatabaseValue(4.2));
+        assertTrue(exception.getMessage().contains("'ConverterTestEntity.convertedField'"), exception.getMessage());
+    }
+
+    @Test
+    public void testToDatabaseNamesTheFieldForARecordOfAnotherType() {
+        RecordField field = getField(ConverterTestEntity.class, "convertedField");
+        DefaultORMConverterImpl<String, Integer> converter =
+                new DefaultORMConverterImpl<>(field, new IntToStringConverter(), String.class);
+        var exception = assertThrows(SqlTemplateException.class, () -> converter.toDatabase("not an entity"));
+        assertTrue(exception.getMessage().contains("'ConverterTestEntity.convertedField'"), exception.getMessage());
+    }
+
+    @Test
+    public void testFromDatabaseNamesTheFieldForAValueOfAnotherType() {
+        RecordField field = getField(ConverterTestEntity.class, "convertedField");
+        DefaultORMConverterImpl<String, Integer> converter =
+                new DefaultORMConverterImpl<>(field, new IntToStringConverter(), String.class);
+        var exception = assertThrows(SqlTemplateException.class,
+                () -> converter.fromDatabase(new Object[]{42}, UNUSED_REF_FACTORY));
+        assertTrue(exception.getMessage().contains("'ConverterTestEntity.convertedField'"), exception.getMessage());
     }
 }

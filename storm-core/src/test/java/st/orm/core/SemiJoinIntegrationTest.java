@@ -607,4 +607,63 @@ public class SemiJoinIntegrationTest {
         assertThrows(PersistenceException.class, () -> orm().entity(Owner.class).select()
                 .semiJoin(Owner.class).on(Pet.class));
     }
+
+    @Test
+    public void twoSemiJoinsOnOneTableInsideASubqueryEachMatchARelatedRowOfTheirOwn() {
+        // data.sql: Basil (George) and Jewel (Eduardo) were spayed and neutered, on different visits.
+        var owners = capture(() -> ownersWithPets()
+                .semiJoin(Visit.class).on(Pet.class, it -> it.where(Visit_.description, EQUALS, "spayed"))
+                .semiJoin(Visit.class).on(Pet.class, it -> it.where(Visit_.description, EQUALS, "neutered"))
+                .getResultList());
+        assertEquals(List.of("Eduardo", "George"), firstNames(owners));
+        assertTrue(statement().contains("EXISTS (SELECT 1 FROM pet p WHERE p.owner_id = o.id AND EXISTS (SELECT 1 FROM visit v WHERE v.pet_id = p.id AND v.description = ?) AND EXISTS (SELECT 1 FROM visit v WHERE v.pet_id = p.id AND v.description = ?))"), statement());
+    }
+
+    @Test
+    public void conditionNamingATableFilteredTwiceInsideASubqueryIsRefused() {
+        var e = assertThrows(PersistenceException.class, () -> ownersWithPets()
+                .semiJoin(Visit.class).on(Pet.class, it -> it.where(Visit_.description, EQUALS, "spayed"))
+                .semiJoin(Visit.class).on(Pet.class, it -> it.where(Visit_.description, EQUALS, "neutered"))
+                .where(it -> it.where(Visit_.description, EQUALS, "rabies shot"))
+                .getResultList());
+        assertTrue(e.getMessage().contains("filters by more than once (semiJoin(Visit).on(Pet), semiJoin(Visit).on(Pet))"), e.getMessage());
+    }
+
+    @Test
+    public void semiJoinReachedThroughATwiceFilteredTableIsRefused() {
+        var e = assertThrows(PersistenceException.class, () -> orm().entity(Owner.class).select()
+                .semiJoin(OwnerPrimaryPet.class).on(Owner.class)
+                .antiJoin(OwnerPrimaryPet.class).on(Owner.class)
+                .semiJoin(Visit.class).on(Pet.class)
+                .getResultList());
+        assertTrue(e.getMessage().contains("semiJoin(Visit).on(Pet): Pet is reached through the foreign key of OwnerPrimaryPet, which the query filters by more than once (semiJoin(OwnerPrimaryPet).on(Owner), antiJoin(OwnerPrimaryPet).on(Owner))"), e.getMessage());
+    }
+
+    @Test
+    public void semiJoinOnAJoinedTableCorrelatesWithTheJoin() {
+        // data.sql: pets 1 to 8 have visits, each with an owner.
+        var owners = capture(() -> orm().entity(Owner.class).select()
+                .innerJoin(Pet.class).on(Owner.class)
+                .semiJoin(Visit.class).on(Pet.class)
+                .getResultList());
+        assertEquals(8, owners.size());
+        assertTrue(statement().contains("INNER JOIN pet p ON"), statement());
+        assertTrue(statement().contains("EXISTS (SELECT 1 FROM visit v WHERE v.pet_id = p.id)"), statement());
+    }
+
+    @Test
+    public void antiJoinedColumnsCannotOrderTheQuery() {
+        var e = assertThrows(PersistenceException.class, () -> orm().entity(Owner.class).select()
+                .antiJoin(Pet.class).on(Owner.class)
+                .orderBy(Pet_.name)
+                .getResultList());
+        assertTrue(e.getMessage().contains("Pet is anti-joined"), e.getMessage());
+    }
+
+    @Test
+    public void orderingByTheQueryTableNextToASemiJoin() {
+        var owners = ownersWithPets().orderBy(Owner_.lastName).getResultList();
+        assertEquals(10, owners.size());
+        assertEquals(owners.stream().map(Owner::lastName).sorted().toList(), owners.stream().map(Owner::lastName).toList());
+    }
 }

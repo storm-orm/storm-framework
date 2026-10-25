@@ -63,6 +63,10 @@ class DeclaredContainerTypeModuleTest {
 
     record Scores(Map<String, Integer> scores) {}
 
+    static class RuntimeKeyedMap extends LinkedHashMap<CharSequence, Integer> {}
+
+    record Visits(Map<CharSequence, Integer> visits) {}
+
     record Dynamic(@JsonSerialize(typing = JsonSerialize.Typing.DYNAMIC) List<String> clinics) {}
 
     interface Animal {
@@ -112,5 +116,13 @@ class DeclaredContainerTypeModuleTest {
     void aCollectionOfAnOpenTypeKeepsTheRuntimeTyping() throws Exception {
         assertEquals("{\"animals\":[{\"name\":\"Rex\",\"goodBoy\":true}]}",
                 mapper.writeValueAsString(new Zoo(List.of(new Dog("Rex", true)))));
+    }
+
+    @Test
+    void aMapWithAnOpenKeyTypeKeepsTheRuntimeTyping() throws Exception {
+        var visits = new RuntimeKeyedMap();
+        visits.put("Downtown", 3);
+        assertEquals("{\"visits\":{\"Downtown\":3}}", mapper.writeValueAsString(new Visits(visits)));
+        assertTrue(introspected.contains(RuntimeKeyedMap.class), "an open key type consults the runtime class: " + introspected);
     }
 }

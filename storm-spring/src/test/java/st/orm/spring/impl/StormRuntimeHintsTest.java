@@ -10,6 +10,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import ch.qos.logback.classic.Logger;
 import ch.qos.logback.classic.spi.ILoggingEvent;
 import ch.qos.logback.core.read.ListAppender;
+import java.io.File;
 import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.net.URL;
@@ -19,6 +20,7 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Enumeration;
 import java.util.List;
+import java.util.Map;
 import javax.tools.ToolProvider;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -146,7 +148,12 @@ public class StormRuntimeHintsTest {
     @Test
     public void testResultTypesAreRegisteredLikeDataTypes() throws Exception {
         ClassLoader loader = classLoaderWithIndex("st.orm.GenerateMetamodel.idx", "com.example.OwnerPetCount\n");
+        compileInto(indexDirectory, Map.of(
+                "com.example.OwnerKey", "package com.example; public record OwnerKey(int id) {}",
+                "com.example.OwnerPetCount", "package com.example; public record OwnerPetCount(OwnerKey owner, long pets) {}"));
         RuntimeHints hints = registerHints(loader);
+        assertNotNull(hints.reflection().getTypeHint(TypeReference.of("com.example.OwnerKey")),
+                "the component of a result type must be registered like the result type");
         TypeHint hint = hints.reflection().getTypeHint(TypeReference.of("com.example.OwnerPetCount"));
         assertNotNull(hint, "result type from the index must be registered");
         assertTrue(hint.getMemberCategories().contains(MemberCategory.INVOKE_DECLARED_CONSTRUCTORS));
@@ -155,6 +162,24 @@ public class StormRuntimeHintsTest {
                 "generated metamodel companion must be registered");
         assertNotNull(hints.reflection().getTypeHint(TypeReference.of("com.example.OwnerPetCount$Companion")),
                 "kotlinx.serialization companion must be registered");
+    }
+
+    @Test
+    public void testLoadableDataTypesRegisterTheirComponentsAndCallbacks() throws Exception {
+        classLoaderWithIndex("st.orm.Data.idx", "com.example.Owner\n");
+        compileInto(indexDirectory, Map.of(
+                "com.example.Address", "package com.example; public record Address(String street, String city) {}",
+                "com.example.OwnerAudit", "package com.example; public class OwnerAudit implements st.orm.EntityCallback<Owner> {}",
+                "com.example.Owner", "package com.example; @st.orm.EntityCallbacks(OwnerAudit.class) "
+                        + "public record Owner(@st.orm.PK Integer id, Address address) implements st.orm.Entity<Integer> {}"));
+        // The owner refers to Storm's types, which the test classpath serves.
+        ClassLoader loader = new URLClassLoader(new URL[] { indexDirectory.toUri().toURL() }, getClass().getClassLoader());
+        RuntimeHints hints = registerHints(loader);
+        assertNotNull(hints.reflection().getTypeHint(TypeReference.of("com.example.Address")),
+                "the component of a data type must be registered like the data type");
+        TypeHint audit = hints.reflection().getTypeHint(TypeReference.of("com.example.OwnerAudit"));
+        assertNotNull(audit, "a declared entity callback must be registered");
+        assertTrue(audit.getMemberCategories().contains(MemberCategory.INVOKE_DECLARED_CONSTRUCTORS));
     }
 
     @Test
@@ -171,12 +196,24 @@ public class StormRuntimeHintsTest {
 
     /** Compiles a class into the directory the index loader serves, so the class is present for that loader. */
     private static void compileInto(Path directory, String className, String source) throws Exception {
-        Path sourceFile = directory.resolve(className.replace('.', '/') + ".java");
-        Files.createDirectories(sourceFile.getParent());
-        Files.writeString(sourceFile, source);
-        int result = ToolProvider.getSystemJavaCompiler()
-                .run(null, null, null, "-d", directory.toString(), sourceFile.toString());
-        assertEquals(0, result, "compilation of " + className);
+        compileInto(directory, Map.of(className, source));
+    }
+
+    /**
+     * Compiles the classes, which may refer to each other and to the test classpath, into the directory the index
+     * loader serves.
+     */
+    private static void compileInto(Path directory, Map<String, String> sources) throws Exception {
+        var arguments = new ArrayList<>(List.of("-d", directory.toString(),
+                "-cp", directory + File.pathSeparator + System.getProperty("java.class.path")));
+        for (var source : sources.entrySet()) {
+            Path sourceFile = directory.resolve(source.getKey().replace('.', '/') + ".java");
+            Files.createDirectories(sourceFile.getParent());
+            Files.writeString(sourceFile, source.getValue());
+            arguments.add(sourceFile.toString());
+        }
+        int result = ToolProvider.getSystemJavaCompiler().run(null, null, null, arguments.toArray(String[]::new));
+        assertEquals(0, result, "compilation of " + sources.keySet());
     }
 
     @Test

@@ -72,6 +72,7 @@ import st.orm.core.repository.spring.PetRepository;
 import st.orm.core.template.ORMTemplate;
 import st.orm.core.template.TemplateBuilder;
 import st.orm.core.template.TemplateString;
+import st.orm.core.template.impl.Elements.Where;
 
 @ExtendWith(SpringExtension.class)
 @ContextConfiguration(classes = IntegrationConfig.class)
@@ -1101,5 +1102,14 @@ public class TemplatePreparedStatementIntegrationTest {
                 """.formatted(it.interpolate(Pet.class), it.interpolate(Pet.class), it.interpolate(orm.subquery(Pet.class)
                 .where(TemplateBuilder.create(i -> "%s.id = %s.id".formatted(i.interpolate(alias(Pet.class, OUTER)), i.interpolate(alias(Pet.class, INNER)))))))));
         assertEquals(0, query.getResultCount());
+    }
+
+    @Test
+    public void testWhereElementWithoutConditionIsRefused() {
+        var exception = assertThrows(PersistenceException.class, () -> ORMTemplate.of(dataSource).query(raw("""
+                SELECT \0
+                FROM \0
+                WHERE \0""", Owner.class, Owner.class, new Where(null, null))).getResultList(Owner.class));
+        assertTrue(exception.getMessage().contains("No expression or bind variables found for WHERE clause"), exception.getMessage());
     }
 }

@@ -155,6 +155,26 @@ class JsonConverterSupportTest {
     }
 
     @Test
+    void aValueOfTheFieldIsWrittenOnItsOwnAndStoredJsonTextPassesThrough() throws SqlTemplateException {
+        var shape = new StubConverter(field(Sample.class, "shape"));
+        var written = shape.toDatabaseValue(new Circle(1));
+        assertEquals("\"Circle[radius=1.0]\"", ((JsonString) written.getFirst()).value());
+        assertEquals(List.of(new Circle(1)), shape.written);
+        // The JSON text a predicate compares the column with is the stored value.
+        assertEquals(List.of("{\"radius\":1.0}"), shape.toDatabaseValue("{\"radius\":1.0}"));
+        assertEquals(List.of(new Circle(1)), shape.written, "the text is not written again");
+        var plain = new StubConverter(field(Sample.class, "plain"));
+        assertEquals("\"text\"", ((JsonString) plain.toDatabaseValue("text").getFirst()).value());
+        assertEquals(Collections.singletonList(null), shape.toDatabaseValue(null));
+    }
+
+    @Test
+    void aRecordOfAnotherTypeSurfacesAsATemplateException() {
+        var converter = new StubConverter(field(Sample.class, "plain"));
+        assertThrows(SqlTemplateException.class, () -> converter.toDatabase("not a sample"));
+    }
+
+    @Test
     void aWriteFailureSurfacesAsATemplateException() {
         var converter = new StubConverter(field(Sample.class, "plain"));
         converter.failure = new IllegalStateException("refused");
