@@ -45,6 +45,7 @@ import st.orm.Metamodel;
 import st.orm.PK;
 import st.orm.PersistenceException;
 import st.orm.Ref;
+import st.orm.Scrollable;
 import st.orm.core.model.Pet;
 import st.orm.core.model.Pet_;
 import st.orm.core.model.Vet;
@@ -331,6 +332,38 @@ public class SealedForeignKeyIntegrationTest {
                 .where(Checkup_.notes, EQUALS, "Healthy")
                 .getResultList();
         assertEquals(1, checkups.size());
+    }
+
+    @Test
+    public void filterJoinOnASubtypeCarriesTheDiscriminatorInItsSubquery() {
+        // Surgeries treat pets 3 and 1, checkups pets 1 and 2; of 13 pets, the discriminator tells them apart.
+        var withoutSurgery = capture(() -> orm().entity(Pet.class).select()
+                .antiJoin(Surgery.class).on(Pet.class)
+                .getResultList());
+        assertTrue(statement().contains("NOT EXISTS ( SELECT 1 FROM treatment s WHERE s.kind = ? AND (s.pet_id = p.id) )"), statement());
+        assertEquals(11, withoutSurgery.size());
+        var withSurgery = orm().entity(Pet.class).select()
+                .semiJoin(Surgery.class).on(Pet.class)
+                .getResultList();
+        assertEquals(2, withSurgery.size());
+        var withoutLongSurgery = orm().entity(Pet.class).select()
+                .antiJoin(Surgery.class).on(Pet.class, it -> it.where(Surgery_.duration, GREATER_THAN, 60))
+                .getResultList();
+        assertEquals(12, withoutLongSurgery.size());
+        var withLongSurgery = orm().entity(Pet.class).select()
+                .semiJoin(Surgery.class).on(Pet.class, it -> it.where(Surgery_.duration, GREATER_THAN, 60))
+                .getResultList();
+        assertEquals(List.of("Rosy"), withLongSurgery.stream().map(Pet::name).toList());
+        var window = orm().entity(Pet.class).select()
+                .antiJoin(Surgery.class).on(Pet.class)
+                .narrow(Pet.class)
+                .scroll(Scrollable.of(Pet_.id, 5));
+        assertEquals(5, window.content().size());
+        assertTrue(window.hasNext());
+        var withoutCheckup = orm().entity(Pet.class).select()
+                .antiJoin(Checkup.class).on(Pet.class)
+                .getResultList();
+        assertEquals(11, withoutCheckup.size());
     }
 
     @Test
