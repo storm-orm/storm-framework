@@ -140,8 +140,11 @@ final class FilterJoinPlacement {
 
     private final QueryTemplate queryTemplate;
     private final boolean branchOnAnchor;
-    /** Every semi-join and anti-join by its table, a join before the joins its subquery holds. */
-    private final Map<Class<? extends Data>, FilterJoin> filterJoins = new LinkedHashMap<>();
+    /**
+     * Every semi-join and anti-join in the order they were added, a join before the joins its subquery holds. A table
+     * may be filtered by more than one join, each a subquery of its own with its own condition on the join.
+     */
+    private final List<FilterJoin> filterJoins;
 
     /**
      * @param queryTemplate the template the query builds its subqueries with.
@@ -156,9 +159,7 @@ final class FilterJoinPlacement {
                                 boolean branchOnAnchor) {
         this.queryTemplate = queryTemplate;
         this.branchOnAnchor = branchOnAnchor;
-        for (var filterJoin : resolve(queryTemplate, fromType, joins)) {
-            filterJoins.put(filterJoin.table(), filterJoin);
-        }
+        this.filterJoins = resolve(queryTemplate, fromType, joins);
     }
 
     /**
@@ -186,7 +187,7 @@ final class FilterJoinPlacement {
                     .formatted(type.method(), table.getSimpleName(), table.getSimpleName(), type.method()));
         }
         for (var existing : joins) {
-            if (existing.source() instanceof TableSource(var existingTable) && existingTable == table) {
+            if (!isFilterJoin(existing) && existing.source() instanceof TableSource(var existingTable) && existingTable == table) {
                 throw new PersistenceException("%s(%s): the query already joins %s, so a condition naming it could not tell the joins apart."
                         .formatted(type.method(), table.getSimpleName(), table.getSimpleName()));
             }
@@ -221,9 +222,12 @@ final class FilterJoinPlacement {
     private @Nullable TemplateString where(List<Where> where) {
         var conjuncts = new ArrayList<PredicateNode>();
         for (var condition : where) {
-            conjuncts.add(node(condition));
+            var conjunct = node(condition);
+            // A condition naming a table the query filters by more than once could not tell the joins apart.
+            filterJoinsNamed(null, conjunct);
+            conjuncts.add(conjunct);
         }
-        for (var filterJoin : filterJoins.values()) {
+        for (var filterJoin : filterJoins) {
             var antiJoin = antiJoinHolding(filterJoin);
             if (antiJoin == null) {
                 continue;
@@ -261,7 +265,7 @@ final class FilterJoinPlacement {
         if (!conjuncts.isEmpty()) {
             parts.add(place(level, PredicateNode.and(conjuncts), residual));
         }
-        for (var filterJoin : filterJoins.values()) {
+        for (var filterJoin : filterJoins) {
             if (filterJoin.parent() != level) {
                 continue;
             }
@@ -296,10 +300,10 @@ final class FilterJoinPlacement {
             var tables = new LinkedHashSet<Class<? extends Data>>();
             collect(clause, tables);
             for (var table : tables) {
-                var filterJoin = filterJoins.get(table);
-                if (filterJoin != null) {
+                var named = filterJoinsOf(filterJoins, table);
+                if (!named.isEmpty()) {
                     throw new PersistenceException("%1$s is %2$s: it filters the query but adds no columns to it, so the query cannot order, group or select by its columns. Join %1$s to use its columns."
-                            .formatted(table.getSimpleName(), filterJoin.type() == FilterJoinType.SEMI ? "semi-joined" : "anti-joined"));
+                            .formatted(table.getSimpleName(), named.getFirst().type() == FilterJoinType.SEMI ? "semi-joined" : "anti-joined"));
                 }
             }
         }
@@ -477,7 +481,7 @@ final class FilterJoinPlacement {
      */
     private Set<Class<? extends Data>> tablesOf(FilterJoin filterJoin) {
         var tables = new LinkedHashSet<Class<? extends Data>>();
-        for (var candidate : filterJoins.values()) {
+        for (var candidate : filterJoins) {
             for (FilterJoin join = candidate; join != null; join = join.parent()) {
                 if (join == filterJoin) {
                     tables.add(candidate.table());
@@ -528,16 +532,65 @@ final class FilterJoinPlacement {
      */
     private Set<FilterJoin> semiJoinsOf(@Nullable FilterJoin level, PredicateNode node) {
         var named = new LinkedHashSet<FilterJoin>();
-        for (var table : references(node)) {
-            var join = filterJoins.get(table);
-            while (join != null && join.parent() != level) {
-                join = join.parent();
-            }
-            if (join != null && join.type() == FilterJoinType.SEMI) {
+        for (var join : filterJoinsNamed(level, node)) {
+            if (join.type() == FilterJoinType.SEMI) {
                 named.add(join);
             }
         }
         return named;
+    }
+
+    /**
+     * Returns the semi-joins and anti-joins of the level whose table, or a table filtered inside whose subquery, the
+     * predicate names.
+     *
+     * @param level the semi-join or anti-join whose subquery the predicate is for, or {@code null} for the statement.
+     * @throws PersistenceException if a table the predicate names resolves to more than one join of the level, which
+     *                              the predicate could not tell apart.
+     */
+    private Set<FilterJoin> filterJoinsNamed(@Nullable FilterJoin level, PredicateNode node) {
+        var named = new LinkedHashSet<FilterJoin>();
+        for (var table : references(node)) {
+            var candidates = new ArrayList<FilterJoin>(1);
+            for (var candidate : filterJoinsOf(filterJoins, table)) {
+                var join = candidate;
+                while (join != null && join.parent() != level) {
+                    join = join.parent();
+                }
+                if (join != null && !candidates.contains(join)) {
+                    candidates.add(join);
+                }
+            }
+            if (candidates.size() > 1) {
+                var first = candidates.getFirst();
+                throw new PersistenceException("A condition names %1$s, which the query filters by more than once (%2$s), so the condition could not tell the joins apart. State it on the join it belongs to: %3$s(%1$s).on(%4$s, condition)."
+                        .formatted(table.getSimpleName(), describe(candidates), first.type().method(), first.anchor().getSimpleName()));
+            }
+            named.addAll(candidates);
+        }
+        return named;
+    }
+
+    /**
+     * Returns the semi-joins and anti-joins on the table, in the order they were added.
+     */
+    private static List<FilterJoin> filterJoinsOf(Iterable<FilterJoin> filterJoins, Class<? extends Data> table) {
+        var named = new ArrayList<FilterJoin>(1);
+        for (var filterJoin : filterJoins) {
+            if (filterJoin.table() == table) {
+                named.add(filterJoin);
+            }
+        }
+        return named;
+    }
+
+    /**
+     * Describes the joins as they were written, {@code semiJoin(Visit).on(Pet)}, for a message naming them.
+     */
+    private static String describe(List<FilterJoin> joins) {
+        return joins.stream()
+                .map(join -> "%s(%s).on(%s)".formatted(join.type().method(), join.table().getSimpleName(), join.anchor().getSimpleName()))
+                .collect(joining(", "));
     }
 
     private static boolean namesAny(PredicateNode node, Set<Class<? extends Data>> tables) {
@@ -640,7 +693,7 @@ final class FilterJoinPlacement {
      */
     private static List<FilterJoin> resolve(QueryTemplate queryTemplate, Class<? extends Data> fromType, List<Join> joins) {
         var joined = new HashSet<Class<? extends Data>>();
-        var resolved = new LinkedHashMap<Class<? extends Data>, FilterJoin>();
+        var resolved = new ArrayList<FilterJoin>();
         for (var join : joins) {
             if (!isFilterJoin(join)) {
                 if (join.source() instanceof TableSource(var table)) {
@@ -648,16 +701,15 @@ final class FilterJoinPlacement {
                 }
                 continue;
             }
-            var filterJoin = filterJoin(queryTemplate, fromType, joined, resolved, join);
-            resolved.put(filterJoin.table(), filterJoin);
+            resolved.add(filterJoin(queryTemplate, fromType, joined, resolved, join));
         }
-        return List.copyOf(resolved.values());
+        return List.copyOf(resolved);
     }
 
     private static FilterJoin filterJoin(QueryTemplate queryTemplate,
                                          Class<? extends Data> fromType,
                                          Set<Class<? extends Data>> joined,
-                                         Map<Class<? extends Data>, FilterJoin> resolved,
+                                         List<FilterJoin> resolved,
                                          Join join) {
         var type = (FilterJoinType) join.type();
         var table = ((TableSource) join.source()).table();
@@ -667,10 +719,15 @@ final class FilterJoinPlacement {
         if (condition != null) {
             condition = PredicateNode.resolve(condition, queryTemplate.dialect().minimumSearchTermLength());
         }
-        var parent = resolved.get(anchor);
+        var parents = filterJoinsOf(resolved, anchor);
+        if (parents.size() > 1) {
+            throw new PersistenceException("%1$s(%2$s).on(%3$s): the query filters by %3$s more than once (%4$s), so the subquery to place the join in is ambiguous."
+                    .formatted(type.method(), table.getSimpleName(), anchor.getSimpleName(), describe(parents)));
+        }
+        var parent = parents.isEmpty() ? null : parents.getFirst();
         RecordField anchorKey = null;
         if (parent == null && anchor != fromType && !joined.contains(anchor) && !joinedThroughForeignKeys(fromType, anchor)) {
-            var hop = hop(queryTemplate, type, table, anchor, resolved.values());
+            var hop = hop(queryTemplate, type, table, anchor, resolved);
             if (hop != null) {
                 parent = hop.filterJoin();
                 anchorKey = hop.foreignKey();
@@ -710,6 +767,12 @@ final class FilterJoinPlacement {
                 }
             }
             if (hops.size() > 1) {
+                var holders = hops.stream().map(Hop::filterJoin).toList();
+                if (holders.stream().map(FilterJoin::table).distinct().count() < holders.size()) {
+                    throw new PersistenceException("%1$s(%2$s).on(%3$s): %3$s is reached through the foreign key of %4$s, which the query filters by more than once (%5$s), so the subquery to place the join in is ambiguous."
+                            .formatted(type.method(), table.getSimpleName(), anchor.getSimpleName(),
+                                    holders.getFirst().table().getSimpleName(), describe(holders)));
+                }
                 throw new PersistenceException("%s(%s).on(%s): %s is reached through more than one foreign key of the filtered tables (%s), so the table to filter by is ambiguous. Filter by %s itself first: semiJoin(%s).on(<table>), with the table holding the foreign key to use."
                         .formatted(type.method(), table.getSimpleName(), anchor.getSimpleName(), anchor.getSimpleName(),
                                 hops.stream().map(hop -> hop.filterJoin().table().getSimpleName() + "." + hop.foreignKey().name()).collect(joining(", ")),

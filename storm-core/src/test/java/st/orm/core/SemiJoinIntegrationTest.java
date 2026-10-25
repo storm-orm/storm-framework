@@ -397,6 +397,58 @@ public class SemiJoinIntegrationTest {
     }
 
     @Test
+    public void twoFilterJoinsOnOneTableAreTwoSubqueries() {
+        // data.sql: pets 1 to 8 have visits; pets 1, 2, 3, 4, 6 and 7 have a 'spayed' visit.
+        var pets = capture(() -> orm().entity(Pet.class).select()
+                .antiJoin(Visit.class).on(Pet.class, it -> it.where(Visit_.description, EQUALS, "spayed"))
+                .semiJoin(Visit.class).on(Pet.class)
+                .getResultList());
+        assertEquals(List.of("Iggy", "Max"), petNames(pets));
+        assertTrue(statement().contains("NOT EXISTS (SELECT 1 FROM visit v WHERE v.pet_id = p.id AND v.description = ?)"), statement());
+        assertTrue(statement().contains(" AND EXISTS (SELECT 1 FROM visit v WHERE v.pet_id = p.id)"), statement());
+        var none = orm().entity(Pet.class).select()
+                .semiJoin(Visit.class).on(Pet.class)
+                .antiJoin(Visit.class).on(Pet.class)
+                .getResultList();
+        assertEquals(List.of(), petNames(none));
+    }
+
+    @Test
+    public void twoSemiJoinsOnOneTableEachMatchARelatedRowOfTheirOwn() {
+        // data.sql: pets 2 and 4 were spayed and neutered, on different visits.
+        var both = orm().entity(Pet.class).select()
+                .semiJoin(Visit.class).on(Pet.class, it -> it.where(Visit_.description, EQUALS, "spayed"))
+                .semiJoin(Visit.class).on(Pet.class, it -> it.where(Visit_.description, EQUALS, "neutered"))
+                .getResultList();
+        assertEquals(List.of("Basil", "Jewel"), petNames(both));
+        var oneVisit = orm().entity(Pet.class).select()
+                .semiJoin(Visit.class).on(Pet.class, it -> it.where(Visit_.description, EQUALS, "spayed")
+                        .and(it.where(Visit_.description, EQUALS, "neutered")))
+                .getResultList();
+        assertEquals(List.of(), petNames(oneVisit));
+    }
+
+    @Test
+    public void conditionNamingATwiceFilteredTableIsRefused() {
+        var e = assertThrows(PersistenceException.class, () -> orm().entity(Pet.class).select()
+                .semiJoin(Visit.class).on(Pet.class)
+                .antiJoin(Visit.class).on(Pet.class, it -> it.where(Visit_.description, EQUALS, "neutered"))
+                .where(it -> it.where(Visit_.description, EQUALS, "spayed"))
+                .getResultList());
+        assertTrue(e.getMessage().contains("filters by more than once (semiJoin(Visit).on(Pet), antiJoin(Visit).on(Pet))"), e.getMessage());
+        assertTrue(e.getMessage().contains("semiJoin(Visit).on(Pet, condition)"), e.getMessage());
+    }
+
+    @Test
+    public void joinOnATwiceFilteredTableIsRefused() {
+        var e = assertThrows(PersistenceException.class, () -> orm().entity(Owner.class).select()
+                .semiJoin(Pet.class).on(Owner.class)
+                .antiJoin(Pet.class).on(Owner.class, it -> it.where(Pet_.name, EQUALS, "Lucky"))
+                .semiJoin(Visit.class).on(Pet.class));
+        assertTrue(e.getMessage().contains("semiJoin(Visit).on(Pet): the query filters by Pet more than once"), e.getMessage());
+    }
+
+    @Test
     public void semiJoinOnASemiJoinedTableNestsInItsSubquery() {
         // data.sql: the neutered visits are of Basil (George), Jewel (Eduardo) and Max (Jean).
         var owners = capture(() -> ownersWithPets()

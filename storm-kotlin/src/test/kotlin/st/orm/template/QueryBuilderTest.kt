@@ -2473,6 +2473,28 @@ internal open class QueryBuilderTest(
     }
 
     @Test
+    fun `two filter joins on one table should be two subqueries`() {
+        // data.sql: pets 1 to 8 have visits; pets 1, 2, 3, 4, 6 and 7 have a 'spayed' visit; 2 and 4 were neutered too.
+        val petRepo = orm.entity(Pet::class)
+        val description = metamodel<Visit, String>(orm.entity(Visit::class).model, "description")
+        petRepo.select {
+            antiJoin<Visit, Pet> { description eq "spayed" }
+            semiJoin<Visit, Pet>()
+        }.resultList.map { it.name }.sorted() shouldBe listOf("Iggy", "Max")
+        petRepo.select()
+            .semiJoin<Visit>().on<Pet> { description eq "spayed" }
+            .semiJoin<Visit>().on<Pet> { description eq "neutered" }
+            .resultList.map { it.name }.sorted() shouldBe listOf("Basil", "Jewel")
+        assertThrows<PersistenceException> {
+            petRepo.select()
+                .semiJoin<Visit>().on<Pet>()
+                .antiJoin<Visit>().on<Pet> { description eq "spayed" }
+                .where(description eq "neutered")
+                .resultList
+        }.message shouldContain "filters by more than once"
+    }
+
+    @Test
     fun `left join condition should keep the rows without a match`() {
         val ownerRepo = orm.entity(Owner::class)
         val petName = metamodel<Pet, String>(orm.entity(Pet::class).model, "name")
