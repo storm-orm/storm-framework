@@ -187,14 +187,38 @@ public suspend fun <T> transaction(
         (currentContext[TransactionCaller] ?: TransactionCaller())
     // The dispatcher only applies to outermost transactions; nested blocks stay on the caller's dispatcher.
     val context = if (parentScope == null) currentContext + dispatcher + elements else currentContext + elements
-    // Fire callbacks AFTER withContext returns, so CallbacksKey and ThreadLocals are restored.
+    // The scope completes inside the dispatched block, on the dispatcher that ran it: the connection is released
+    // without a hop back to the caller's dispatcher, which may be saturated while the block is in flight.
+    // Callbacks fire AFTER withContext returns, so CallbacksKey and ThreadLocals are restored.
     val outcome = try {
         withContext(context) {
-            val value = block(scopeTransaction(scope, callbacks))
-            TransactionOutcome(value, scope.isRollbackOnly)
+            val value = try {
+                block(scopeTransaction(scope, callbacks))
+            } catch (e: Throwable) {
+                // Read while the scope still holds its transaction state, which completing releases.
+                val mayDefer = TransactionRunner.mayDeferToExternal(scope)
+                val mayMark = TransactionRunner.mayMarkExternalRollbackOnly(scope)
+                val wrapped = try {
+                    TransactionRunner.completeAfterFailure(scope, e)
+                } catch (completionException: Throwable) {
+                    completionException
+                }
+                return@withContext TransactionOutcome<T>(null, false, mayDefer, mayMark, wrapped)
+            }
+            val rollbackOnly = scope.isRollbackOnly
+            val mayDefer = TransactionRunner.mayDeferToExternal(scope)
+            val mayMark = TransactionRunner.mayMarkExternalRollbackOnly(scope)
+            try {
+                scope.complete(false)
+                TransactionRunner.afterSuccessfulCompletion(scope)
+            } catch (completionException: Throwable) {
+                return@withContext TransactionOutcome<T>(null, rollbackOnly, mayDefer, mayMark, completionException)
+            }
+            TransactionOutcome(value, rollbackOnly, mayDefer, mayMark, null)
         }
     } catch (e: Throwable) {
-        // Read while the scope still holds its transaction state, which completing releases.
+        // withContext itself failed before the block could complete the scope, as when the coroutine is cancelled
+        // while entering the dispatcher; completing an untouched scope is a no-op.
         val mayDefer = TransactionRunner.mayDeferToExternal(scope)
         val mayMark = TransactionRunner.mayMarkExternalRollbackOnly(scope)
         val wrapped = try {
@@ -209,22 +233,18 @@ public suspend fun <T> transaction(
         }
         throw wrapped
     }
-    // Read while the scope still holds its transaction state, which completing releases.
-    val mayDefer = TransactionRunner.mayDeferToExternal(scope)
-    val mayMark = TransactionRunner.mayMarkExternalRollbackOnly(scope)
-    try {
-        scope.complete(false)
-        TransactionRunner.afterSuccessfulCompletion(scope)
-    } catch (completionException: Throwable) {
+    val failure = outcome.failure
+    if (failure != null) {
         try {
-            callbacks.settle(mayDefer, mayMark, committed = false)
+            callbacks.settle(outcome.mayDefer, outcome.mayMark, committed = false)
         } catch (callbackException: Throwable) {
-            completionException.addSuppressed(callbackException)
+            failure.addSuppressed(callbackException)
         }
-        throw completionException
+        throw failure
     }
-    callbacks.settle(mayDefer, outcome.rollbackOnly && mayMark, committed = !outcome.rollbackOnly)
-    return outcome.value
+    callbacks.settle(outcome.mayDefer, outcome.rollbackOnly && outcome.mayMark, committed = !outcome.rollbackOnly)
+    @Suppress("UNCHECKED_CAST")
+    return outcome.value as T
 }
 
 /**
@@ -281,7 +301,13 @@ private val TransactionPropagation.isJoining: Boolean
 /**
  * Captures the result and rollback-only status of a transaction execution.
  */
-private class TransactionOutcome<T>(val value: T, val rollbackOnly: Boolean)
+private class TransactionOutcome<T>(
+    val value: T?,
+    val rollbackOnly: Boolean,
+    val mayDefer: Boolean,
+    val mayMark: Boolean,
+    val failure: Throwable?,
+)
 
 /**
  * Wraps the language-neutral transaction handle in the Kotlin [Transaction], bridging suspend callbacks via
