@@ -12,6 +12,7 @@ for the CLI, to [npm](https://www.npmjs.com/package/@storm-orm/cli)
 
 ## [Unreleased]
 
+- A suspending `transaction { }` commits or rolls back on the dispatcher that ran its block and returns the connection from there (#770). The caller's dispatcher, which the completion needed before, held connections idle in transaction while it was saturated, until the pool's wait timed out.
 - The subtypes of a sealed entity declare foreign keys (#754): a foreign key every subtype declares is joined as the field declares it, one only some subtypes declare holds NULL in the others' rows and is joined with a LEFT JOIN, and `Pet_.owner` is a path of the sealed metamodel. Both Single-Table and Joined Table.
 - A subtype of a Single-Table hierarchy is an entity of its own (#754): `orm.entity(Dog.class)` reads and writes the shared table, and every statement on it carries the discriminator, including a join onto it. A subtype of a Joined Table hierarchy is refused as a repository or a FROM table. Schema validation checks a Single-Table hierarchy through the sealed type's columns and a Joined Table hierarchy table by table.
 - The native-image feature registers the permitted subclasses of a sealed type, which a native image reports only when registered; a sealed entity, or a polymorphic foreign key's target, failed at startup as "Record type expected" (#754). Both metamodel processors list sealed `Data` interfaces in the type index, so `validateSchema()` checks a hierarchy's tables and startup validation checks the hierarchy.
