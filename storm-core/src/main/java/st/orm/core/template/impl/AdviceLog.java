@@ -490,11 +490,15 @@ public final class AdviceLog {
         if (level == Level.TRACE) {
             return true;
         }
+        var reported = new ReportedTransaction(callSite, level == Level.DEBUG ? repeat : null, advice);
+        // A full record starts over only for advice it does not hold, so what it holds stays quiet.
+        if (REPORTED_TRANSACTIONS.contains(reported)) {
+            return false;
+        }
         if (REPORTED_TRANSACTIONS.size() >= MAX_REPORTED) {
             REPORTED_TRANSACTIONS.clear();
         }
-        return REPORTED_TRANSACTIONS.add(new ReportedTransaction(callSite, level == Level.DEBUG ? repeat : null,
-                advice));
+        return REPORTED_TRANSACTIONS.add(reported);
     }
 
     /**

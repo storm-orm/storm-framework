@@ -181,11 +181,14 @@ public final class SqlLog {
          * The executions of one operation on one type past the recording limit.
          *
          * @param operation what the statements did.
-         * @param type the simple name of the type they read or wrote, or {@code null} for none.
+         * @param type the simple name of the type they read or wrote, or {@code null} for none or for other types.
+         * @param otherTypes whether the group holds the executions of the types counted past the most a scope counts
+         *                   apart, rather than of statements without a type.
          * @param executions how many ran.
          * @param nanos the time they spent in the database.
          */
-        public record Group(SqlOperation operation, @Nullable String type, int executions, long nanos) {}
+        public record Group(SqlOperation operation, @Nullable String type, boolean otherTypes, int executions,
+                            long nanos) {}
     }
 
     /**
@@ -694,15 +697,19 @@ public final class SqlLog {
         private final AtomicInteger cacheHits = new AtomicInteger();
         /** What the scope repeated, counted from every execution, past the limit too. */
         private final UnitOfWorkRepeats repeats = new UnitOfWorkRepeats();
+
+        /**
+         * The most operation and type pairs a scope counts apart past its limit; executions of further types count
+         * with the other types of their operation. An application's types bound the pairs, so this only guards
+         * against a pathological one. Settable for tests.
+         */
+        static volatile int maxGroups = 1_024;
         /** The database time of the executions past the limit. */
         private final LongAdder unrecordedNanos = new LongAdder();
-        /** The executions past the limit per operation and type, bounded by {@link #MAX_GROUPS}. */
+        /** The executions past the limit per operation and type, bounded by {@link #maxGroups}. */
         private final ConcurrentHashMap<GroupKey, GroupCount> unrecordedGroups = new ConcurrentHashMap<>();
 
-        /** The most operation and type pairs counted apart past the limit; the rest count per operation alone. */
-        private static final int MAX_GROUPS = 64;
-
-        private record GroupKey(SqlOperation operation, @Nullable String type) {}
+        private record GroupKey(SqlOperation operation, @Nullable String type, boolean otherTypes) {}
 
         private static final class GroupCount {
             final LongAdder executions = new LongAdder();
@@ -712,11 +719,14 @@ public final class SqlLog {
         /** Counts an execution past the limit, as the statement returns from the database. */
         private void unrecorded(QueryContext context, long nanos) {
             unrecordedNanos.add(nanos);
-            var key = new GroupKey(context.operation(), context.dataType().map(Class::getSimpleName).orElse(null));
+            var key = new GroupKey(context.operation(), context.dataType().map(Class::getSimpleName).orElse(null),
+                    false);
             var count = unrecordedGroups.get(key);
             if (count == null) {
-                if (unrecordedGroups.size() >= MAX_GROUPS) {
-                    key = new GroupKey(context.operation(), null);
+                if (key.type() != null && unrecordedGroups.size() >= maxGroups) {
+                    // Past the pairs counted apart, a type's executions count with the other types of the operation,
+                    // apart from the statements without a type, which have one group per operation anyway.
+                    key = new GroupKey(context.operation(), null, true);
                 }
                 count = unrecordedGroups.computeIfAbsent(key, ignore -> new GroupCount());
             }
@@ -728,7 +738,7 @@ public final class SqlLog {
         Unrecorded unrecorded() {
             var groups = new ArrayList<Unrecorded.Group>();
             unrecordedGroups.forEach((key, count) -> groups.add(new Unrecorded.Group(key.operation(), key.type(),
-                    count.executions.intValue(), count.nanos.sum())));
+                    key.otherTypes(), count.executions.intValue(), count.nanos.sum())));
             groups.sort(comparingLong(Unrecorded.Group::nanos).reversed());
             return new Unrecorded(unrecordedNanos.sum(), groups);
         }

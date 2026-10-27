@@ -321,6 +321,8 @@ public final class SqlLogRenderer {
                             .append(group.operation().name());
                     if (group.type() != null) {
                         rendered.append(" of ").append(group.type());
+                    } else if (group.otherTypes()) {
+                        rendered.append(" of other types");
                     }
                     rendered.append(' ').append(NANOSECONDS.toMillis(group.nanos())).append(" ms");
                 }

@@ -143,16 +143,16 @@ public class SqlLogRendererTest {
     @Test
     public void timedStatementsPastTheLimitMakeTheDatabaseTimeExactAndSayWhereItWent() {
         var unrecorded = new SqlLog.Unrecorded(5_075_000_000L, List.of(
-                new SqlLog.Unrecorded.Group(SqlOperation.INSERT, "Reminder", 120, 4_800_000_000L),
-                new SqlLog.Unrecorded.Group(SqlOperation.SELECT, "Visit", 10, 200_000_000L),
-                new SqlLog.Unrecorded.Group(SqlOperation.SELECT, null, 4, 50_000_000L),
-                new SqlLog.Unrecorded.Group(SqlOperation.DELETE, "Visit", 1, 25_000_000L)));
+                new SqlLog.Unrecorded.Group(SqlOperation.INSERT, "Reminder", false, 120, 4_800_000_000L),
+                new SqlLog.Unrecorded.Group(SqlOperation.SELECT, "Visit", false, 10, 200_000_000L),
+                new SqlLog.Unrecorded.Group(SqlOperation.SELECT, null, true, 4, 50_000_000L),
+                new SqlLog.Unrecorded.Group(SqlOperation.DELETE, "Visit", false, 1, 25_000_000L)));
         String rendered = SqlLogRenderer.render("VisitReminderScheduler.run", 335, 0, 2, 6441, 1366, 1, 8390,
                 List.of(line("SELECT v FROM visit", "Visit", 1, 841, 28)), 135, unrecorded);
         assertTrue(rendered.startsWith("SQL (VisitReminderScheduler.run): 335 statements, 2 from cache, 6441 ms in "
                 + "database, 8390 ms total"), rendered);
         assertTrue(rendered.endsWith(NL + "\t(135 statements not recorded, 5075 ms: 120 INSERT of Reminder 4800 ms, "
-                + "10 SELECT of Visit 200 ms, 4 SELECT 50 ms, +1 more)"), rendered);
+                + "10 SELECT of Visit 200 ms, 4 SELECT of other types 50 ms, +1 more)"), rendered);
         // The elapsed time covers the recorded executions alone, so it stays a lower bound.
         String concurrent = SqlLogRenderer.render("call", 30, 0, 0, 900, 120, 4, 300,
                 List.of(line("SELECT 1", "-", 8, 214, 8)), 22, unrecorded);
