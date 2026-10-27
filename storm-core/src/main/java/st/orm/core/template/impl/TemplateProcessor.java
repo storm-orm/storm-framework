@@ -715,11 +715,12 @@ class TemplateProcessor {
             unsafeWarning = warning;
         }
         var advisories = this.advisories;
-        // A list that renders a placeholder per value is a statement per length to the database; the lengths are
-        // recorded while the advice log reports what they add up to, or while a statement threshold would show
-        // them on a slow line, and a shape that has run in enough of them carries the advice from then on. A list
-        // of more than two values compiles anew for each execution, so the advice is appended per binding.
-        if (session.inListLength > 0
+        // A list that renders a placeholder per value is a statement per length to a database that keeps a plan
+        // per statement text; the lengths are recorded while the advice log reports what they add up to, or while
+        // a statement threshold would show them on a slow line, and a shape that has run in enough of them carries
+        // the advice from then on. A list of more than two values compiles anew for each execution, so the advice
+        // is appended per binding.
+        if (session.inListLength > 0 && template.dialect().keepsPlanPerStatementText()
                 && (AdviceLog.reports(Advice.IN_LIST_SHAPES) || SlowStatementLog.timesStatements())) {
             var advisory = InListShapes.observe(shapeId, session.inListLength);
             if (advisory != null) {

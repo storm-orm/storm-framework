@@ -1,1 +1,2 @@
 st.orm.core.spi.FetchSizeSqlDialectProviderImpl
+st.orm.core.spi.NoPlanPerStatementSqlDialectProviderImpl

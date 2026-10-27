@@ -20,12 +20,12 @@ import static java.util.concurrent.TimeUnit.NANOSECONDS;
 import static st.orm.core.spi.StormConfigHelper.getInt;
 
 import java.util.ArrayList;
-import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
-import java.util.Map;
 import java.util.Set;
+import org.jspecify.annotations.Nullable;
 import st.orm.StormConfig;
+import st.orm.core.template.SqlLog;
 import st.orm.core.template.SqlLog.StatementLine;
 import st.orm.core.template.SqlLog.Summary;
 import st.orm.spi.SqlOperation;
@@ -53,6 +53,9 @@ public final class SqlLogRenderer {
      */
     private static volatile int lineWidth = 200;
 
+    /** The groups of unrecorded statements the closing line names, heaviest first. */
+    private static final int UNRECORDED_GROUPS = 3;
+
     /** The least statement text a row keeps, whatever its other columns consume. */
     private static final int MIN_STATEMENT_WIDTH = 40;
 
@@ -78,7 +81,7 @@ public final class SqlLogRenderer {
                 summary.count(StatementOrigin.FETCH), summary.cacheHits(),
                 NANOSECONDS.toMillis(summary.databaseNanos()), NANOSECONDS.toMillis(summary.databaseElapsedNanos()),
                 summary.peakConcurrency(), NANOSECONDS.toMillis(summary.durationNanos()), summary.byStatement(),
-                summary.recorded() - summary.statements().size()));
+                summary.recorded() - summary.statements().size(), summary.unrecorded()));
         for (var advisory : advisories(summary)) {
             rendered.append(System.lineSeparator()).append("\tadvice: ").append(advisory);
         }
@@ -91,39 +94,23 @@ public final class SqlLogRenderer {
                 || operation == SqlOperation.DELETE;
     }
 
-    /** A statement that repeated in the unit of work, under construction. */
-    private static final class Repeat {
-        final SqlOperation operation;
-        final String type;
-        int executions;
-        boolean singleRows = true;
-
-        Repeat(SqlOperation operation, String type) {
-            this.operation = operation;
-            this.type = type;
-        }
-    }
-
     /**
-     * Returns the advice on what the unit of work repeated, over its recorded statements: references of one type
-     * fetched one statement at a time, and the same single-row read or unbatched single-row write run again and
-     * again, each from {@link Advice#REPEAT_THRESHOLD} executions; and on related writes that each committed on
-     * their own, a write outside any transaction to a type that references a type an earlier write outside any
-     * transaction wrote. A statement without a type is not advised on, since the advice names it.
+     * Returns the advice on the unit of work: related writes that each committed on their own first, over the
+     * recorded statements, a write outside any transaction to a type that references a type an earlier write
+     * outside any transaction wrote; then what the unit of work repeated across its transactions, heaviest first by
+     * the time the repeat took on the clock: references of one type fetched one statement at a time, and the same
+     * single-row read or unbatched single-row write run again and again, each from {@link Advice#REPEAT_THRESHOLD}
+     * executions. The repeats of a scope are counted from every execution, past the table's recording limit too; a
+     * summary built from its statements alone derives them from those. The executions of a transaction that advised
+     * on a repeat are that transaction's. A statement without a type is not advised on, since the advice names it.
      */
     static List<String> advisories(Summary summary) {
-        Map<String, Integer> fetches = new LinkedHashMap<>();
-        Map<Object, Repeat> repeats = new LinkedHashMap<>();
         Set<Class<?>> writtenOutside = new LinkedHashSet<>();
         Set<String> relatedWrites = new LinkedHashSet<>();
+        var derived = summary.repeatAdvice() == null ? new Repeats(true) : null;
         for (var statement : summary.statements()) {
             var dataType = statement.dataType();
             if (dataType == null) {
-                continue;
-            }
-            String type = dataType.getSimpleName();
-            if (statement.origin() == StatementOrigin.FETCH) {
-                fetches.merge(type, 1, Integer::sum);
                 continue;
             }
             if (!statement.transactional() && writes(statement.operation())) {
@@ -131,39 +118,30 @@ public final class SqlLogRenderer {
                     // Accepted on the type written second, or on the method or class running the unit of work.
                     if (writtenOutside.contains(target)
                             && !AdviceAcceptance.accepts(Advice.WRITES_WITHOUT_TRANSACTION, 0, dataType)) {
-                        relatedWrites.add(target.getSimpleName() + "\u0000" + type);
+                        relatedWrites.add(target.getSimpleName() + "\u0000" + dataType.getSimpleName());
                     }
                 }
                 writtenOutside.add(dataType);
             }
-            // Grouped as the summary's rows are: by shape, by text for a statement without one.
-            Object key = statement.shapeId() != 0 ? statement.shapeId() : statement.statement();
-            var repeat = repeats.computeIfAbsent(key, ignore -> new Repeat(statement.operation(), type));
-            repeat.executions++;
-            // A batch is one execution, so a row count of at most one per execution means no batch took the rows.
-            repeat.singleRows &= statement.exactRows() && statement.rows() <= 1;
+            if (derived != null) {
+                derived.record(statement.operation(), dataType, statement.origin(), statement.shapeId(),
+                        statement.statement(), statement.startNanos(), statement.executedNanos(), statement.rows(),
+                        statement.exactRows(), statement.transactional(), statement.transactionId(),
+                        statement.callSite(), true, false);
+            }
         }
         var advisories = new ArrayList<String>();
-        fetches.forEach((type, count) -> {
-            if (count >= Advice.REPEAT_THRESHOLD) {
-                advisories.add(Advice.REPEATED_FETCH.format(count, type));
-            }
-        });
-        for (var repeat : repeats.values()) {
-            if (repeat.executions < Advice.REPEAT_THRESHOLD || !repeat.singleRows) {
-                continue;
-            }
-            switch (repeat.operation) {
-                case SELECT -> advisories.add(Advice.REPEATED_SELECT.format(repeat.executions, repeat.type));
-                case INSERT, UPDATE, DELETE -> advisories.add(Advice.REPEATED_WRITE.format(repeat.operation.name(),
-                        repeat.type, repeat.executions));
-                default -> { }
-            }
-        }
         for (var related : relatedWrites) {
             int separator = related.indexOf('\u0000');
             advisories.add(Advice.WRITES_WITHOUT_TRANSACTION.format(related.substring(0, separator),
                     related.substring(separator + 1)));
+        }
+        if (derived != null) {
+            for (var advisory : derived.advisories(false)) {
+                advisories.add(advisory.text());
+            }
+        } else {
+            advisories.addAll(summary.repeatAdvice());
         }
         return advisories;
     }
@@ -195,8 +173,8 @@ public final class SqlLogRenderer {
      * the concurrency the work achieved. Database time is measured to the statement's return, so a streamed read
      * held open while the application consumes it does not read as database time.</p>
      *
-     * <p>Statements that ran past the recording limit are counted but not retained, so they contribute no duration
-     * and no row. The database times are then lower bounds and are marked {@code +}, and a closing line reports how
+     * <p>Statements that ran past the recording limit are counted but not retained here, so they contribute no
+     * duration and no row. The database times are then lower bounds and are marked {@code +}, and a closing line reports how
      * many statements went unrecorded. The statement count and the call's own duration stay exact.</p>
      *
      * @param name what the scope covered.
@@ -221,6 +199,40 @@ public final class SqlLogRenderer {
                                 long totalMillis,
                                 List<StatementLine> byStatement,
                                 int notRecorded) {
+        return render(name, statementCount, fetchCount, cacheHits, databaseMillis, databaseElapsedMillis,
+                peakConcurrency, totalMillis, byStatement, notRecorded, null);
+    }
+
+    /**
+     * Renders a summary as {@link #render(String, int, int, int, long, long, int, long, List, int)} does, with the
+     * executions past the recording limit timed: the database time then covers them and is exact, and the closing
+     * line says what they spent, per operation and type for the heaviest few. The elapsed time and the concurrency
+     * cover the recorded executions alone, so they stay lower bounds.
+     *
+     * @param name what the scope covered.
+     * @param statementCount the statements the call executed.
+     * @param fetchCount how many of those resolved a reference.
+     * @param cacheHits the reads the transaction's entity cache served without a statement.
+     * @param databaseMillis the summed duration of the statements, every one where they were timed.
+     * @param databaseElapsedMillis the time during which at least one recorded statement was in flight.
+     * @param peakConcurrency the greatest number of recorded statements in flight at once.
+     * @param totalMillis how long the call took.
+     * @param byStatement one line per distinct statement, in any order.
+     * @param notRecorded how many statements ran past the recording limit.
+     * @param unrecorded what those statements cost, or {@code null} when they were not timed.
+     * @return the rendered summary.
+     */
+    public static String render(String name,
+                                int statementCount,
+                                int fetchCount,
+                                int cacheHits,
+                                long databaseMillis,
+                                long databaseElapsedMillis,
+                                int peakConcurrency,
+                                long totalMillis,
+                                List<StatementLine> byStatement,
+                                int notRecorded,
+                                SqlLog.@Nullable Unrecorded unrecorded) {
         var rendered = new StringBuilder("SQL (%s): %s".formatted(name, statements(statementCount)));
         if (fetchCount > 0) {
             rendered.append(", ").append(fetches(fetchCount));
@@ -231,7 +243,8 @@ public final class SqlLogRenderer {
         // Statements past the recording limit contribute no duration, so the database times cover the recorded
         // ones only; mark them as lower bounds rather than let a truncated summary understate its own cost.
         var bound = notRecorded > 0 ? "+" : "";
-        rendered.append(", %d%s ms in database".formatted(databaseMillis, bound));
+        // Timed past the limit, the database time covers every execution and is exact.
+        rendered.append(", %d%s ms in database".formatted(databaseMillis, unrecorded != null ? "" : bound));
         // Concurrency is a count of simultaneous executions, reported only when the work overlapped: summed
         // database time then exceeds the elapsed time it was compressed into, so both appear.
         if (peakConcurrency > 1) {
@@ -298,7 +311,24 @@ public final class SqlLogRenderer {
             }
         }
         if (notRecorded > 0) {
-            rendered.append("%n\t(%s not recorded)".formatted(statements(notRecorded)));
+            rendered.append("%n\t(%s not recorded".formatted(statements(notRecorded)));
+            if (unrecorded != null) {
+                rendered.append(", %d ms".formatted(NANOSECONDS.toMillis(unrecorded.nanos())));
+                var groups = unrecorded.groups();
+                for (int i = 0; i < Math.min(UNRECORDED_GROUPS, groups.size()); i++) {
+                    var group = groups.get(i);
+                    rendered.append(i == 0 ? ": " : ", ").append(group.executions()).append(' ')
+                            .append(group.operation().name());
+                    if (group.type() != null) {
+                        rendered.append(" of ").append(group.type());
+                    }
+                    rendered.append(' ').append(NANOSECONDS.toMillis(group.nanos())).append(" ms");
+                }
+                if (groups.size() > UNRECORDED_GROUPS) {
+                    rendered.append(", +").append(groups.size() - UNRECORDED_GROUPS).append(" more");
+                }
+            }
+            rendered.append(')');
         }
         return rendered.toString();
     }

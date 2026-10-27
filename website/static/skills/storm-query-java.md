@@ -161,7 +161,7 @@ Operators (static constants of `st.orm.Operator`): `EQUALS`, `NOT_EQUALS`, `LESS
 - On a database that binds a list as one array parameter (`id = ANY(?)`), `IN`, `findAllById` and `whereId` render one statement whatever the list's length. The database plans and caches one statement for a varying number of keys, faster than a placeholder per value.
 - Elsewhere each value has a placeholder.
 - Where a database's plan cache fills with the different lengths, `storm.in_list` set to `padded` renders a placeholder per value, padded to the next power of two. It changes no result, and it forgoes the array parameter where the database has one, which is faster.
-- The `in-list-shapes` advice says when to set it. It is reported once a statement has run with eight different list lengths: in the advice log in development, on a slow line in production.
+- The `in-list-shapes` advice says when to set it. It is reported once a statement has run with eight different list lengths: in the advice log in development, on a slow line in production. A database that keeps no plan per statement text gets none, since every length costs it the same there.
 - `storm.in_list=exact` keeps a placeholder per value everywhere.
 
 **Search text goes through `CONTAINS`, `STARTS_WITH` or `ENDS_WITH`, never through `LIKE`.** Text a user typed can hold `%`, `_`, `[` or a backslash, which `LIKE` reads as wildcards or escapes, differently per database. The text operators escape it for the dialect and add the wildcards themselves, so `.where(User_.name, CONTAINS, query)` matches exactly what was typed.

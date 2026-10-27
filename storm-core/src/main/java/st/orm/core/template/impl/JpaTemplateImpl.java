@@ -399,7 +399,7 @@ public final class JpaTemplateImpl implements JpaTemplate, QueryFactory {
                         : null;
                 // A JPA statement runs in the entity manager's transaction.
                 var context = new QueryImpl.QueryContextImpl(sql.operation(), dataType, kind, sql.statement(),
-                        sql.origin(), sql.shapeId(), true);
+                        sql.origin(), sql.shapeId(), true, null, true, false);
                 var handles = QueryImpl.listen(operators, context, sql.parameters());
                 if (handles == null) {
                     return null;

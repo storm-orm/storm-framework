@@ -40,7 +40,6 @@ import st.orm.core.template.impl.StatementListener.Handle;
 import st.orm.spi.QueryContext;
 import st.orm.spi.QueryContext.ExecutionKind;
 import st.orm.spi.SqlCommenter;
-import st.orm.spi.SqlOperation;
 import st.orm.spi.StatementOrigin;
 
 /**
@@ -185,19 +184,21 @@ public final class SlowStatementLog {
     }
 
     /**
-     * Returns whether executions or transactions are measured against a threshold.
+     * Returns whether executions or transactions are measured against a threshold, or transactions are recorded for
+     * the advice log.
      *
-     * @return {@code true} while a threshold is configured.
+     * @return {@code true} while a threshold is configured or the advice log reports what a transaction repeats.
      */
     public static boolean active() {
-        return thresholdNanos != 0 || transactionThresholdNanos != 0;
+        return thresholdNanos != 0 || TransactionRecord.records();
     }
 
     /**
      * Returns whether an execution about to run is to be observed: every execution while a statement threshold is
-     * set, and, while transactions are watched, an execution on a thread that is in a transaction, whose time the
-     * transaction is credited with. An execution outside any transaction while no statement threshold is set is
-     * what lets the execution path skip every other cost of the log, which is the common case with the defaults.
+     * set, and, while transactions are recorded, an execution on a thread that is in a transaction, which the
+     * transaction's record is credited with. An execution outside any transaction while no statement threshold is
+     * set is what lets the execution path skip every other cost of the log, which is the common case with the
+     * defaults.
      *
      * @param inTransaction whether the thread is in a transaction block or a transaction of the provider, as
      *                      {@link TransactionScope#inTransaction} answers it; a block that opens its transaction at
@@ -205,7 +206,7 @@ public final class SlowStatementLog {
      * @return {@code true} when the execution is to be observed.
      */
     static boolean observes(boolean inTransaction) {
-        return thresholdNanos != 0 || (transactionThresholdNanos != 0 && inTransaction);
+        return thresholdNanos != 0 || (inTransaction && TransactionRecord.records());
     }
 
     /** The default rate limit, applied when neither the system property nor an integration sets one. */
@@ -451,7 +452,7 @@ public final class SlowStatementLog {
         private final @Nullable DataSource dataSource;
         private final TransactionTemplateProvider transactionTemplateProvider;
         private final long start = System.nanoTime();
-        private @Nullable HeldConnection held;
+        private @Nullable TransactionRecord record;
         private long executed;
         private long databaseNanos;
         private boolean slow;
@@ -481,11 +482,11 @@ public final class SlowStatementLog {
         public void executed() {
             executed = System.nanoTime();
             databaseNanos = executed - start;
-            if (transactionThresholdNanos != 0) {
+            if (TransactionRecord.records()) {
                 // The transaction the statement ran in, looked up without starting one: the statement has run, so
                 // a block that was to open a transaction has opened it by now. Credited when the statement closes.
                 var transactionContext = TransactionScope.peekContext(transactionTemplateProvider);
-                held = transactionContext == null ? null : transactionContext.heldConnection();
+                record = transactionContext == null ? null : transactionContext.transactionRecord();
             }
             long threshold = thresholdNanos;
             if (threshold == 0) {
@@ -521,9 +522,8 @@ public final class SlowStatementLog {
 
         @Override
         public void close(long rows, boolean exact) {
-            if (held != null) {
-                // A SELECT reads; anything else, a call to a procedure included, may have written and taken locks.
-                held.statementClosed(System.nanoTime() - start, context.operation() != SqlOperation.SELECT);
+            if (record != null) {
+                record.statementClosed(context, start, executed, System.nanoTime(), rows, exact);
             }
             if (!slow) {
                 return;
@@ -659,26 +659,30 @@ public final class SlowStatementLog {
     }
 
     /**
-     * Decides, as a transaction returns its connection, whether it held the connection idle for longer than the
-     * threshold: the time it held the connection less the time its statements spent on it. A transaction that did
-     * is reported with the call site that began it, unless the method running it accepts the advice; the stack is
-     * walked for both only for a transaction that was idle too long.
+     * Reports, as a transaction returns its connection, what the advice log has to say on what it repeated, and
+     * decides whether it held the connection idle for longer than the threshold: the time it held the connection
+     * less the time its statements spent on it. A transaction that did is reported with the call site that began
+     * it, unless the method running it accepts the advice; the stack is walked for both only for a transaction that
+     * was idle too long.
      *
-     * @param held the connection the transaction held.
+     * @param record the record of the transaction.
      * @param now the moment the connection is returned.
      */
-    static void transactionCompleted(HeldConnection held, long now) {
+    static void transactionCompleted(TransactionRecord record, long now) {
         long threshold = transactionThresholdNanos;
-        if (threshold == 0) {
-            return;
-        }
-        long heldNanos = now - held.takenNanos();
-        long idleNanos = heldNanos - held.busyNanos();
-        if (idleNanos < threshold || !LOGGER.isWarnEnabled()) {
-            return;
-        }
+        long heldNanos = now - record.takenNanos();
+        long idleNanos = heldNanos - record.busyNanos();
         // The method that runs the transaction is still on the stack while the transaction completes.
-        if (AdviceAcceptance.accepts(Advice.IDLE_TRANSACTION, 0, null)) {
+        boolean idle = threshold != 0 && idleNanos >= threshold
+                && !AdviceAcceptance.accepts(Advice.IDLE_TRANSACTION, 0, null);
+        String idleAdvisory = idle ? idleAdvisory(heldNanos, record.busyNanos(), idleNanos,
+                record.lockedIdleNanos(now), record.wrote()) : null;
+        // The advice log's block carries the idle advice beside what the transaction repeated, or alone.
+        var advisories = record.advisories();
+        if (!advisories.isEmpty() || idleAdvisory != null) {
+            AdviceLog.onTransaction(advisories, idleAdvisory, record.beganAt());
+        }
+        if (!idle || !LOGGER.isWarnEnabled()) {
             return;
         }
         var budget = transactions;
@@ -687,18 +691,29 @@ public final class SlowStatementLog {
         if (suppressed < 0) {
             return;
         }
-        LOGGER.warn(renderTransaction(heldNanos, held.busyNanos(), idleNanos, held.statements(), held.wrote(),
-                held.fromFirstStatement(), CallSiteCapture.callSite(), suppressed));
+        // The site that began the transaction where it was walked; otherwise the method that runs the transaction
+        // is still on the stack while a blocking transaction completes.
+        var callSite = record.beganAt() != null ? record.beganAt() : CallSiteCapture.callSite();
+        LOGGER.warn(renderTransaction(heldNanos, record.busyNanos(), idleNanos, record.lockedIdleNanos(now),
+                record.statements(), record.wrote(), record.fromFirstStatement(), callSite, suppressed));
+    }
+
+    /** Renders the idle advice of a transaction, claiming the row locks of its writes for the idle time after the first. */
+    static String idleAdvisory(long heldNanos, long busyNanos, long idleNanos, long lockedIdleNanos, boolean wrote) {
+        return Advice.IDLE_TRANSACTION.format(millis(heldNanos), millis(busyNanos), millis(idleNanos),
+                wrote ? ", and the row locks of its writes for " + millis(lockedIdleNanos) + " of it" : "");
     }
 
     /**
      * Renders a slow transaction line: the headline states how long the transaction held its connection, how much
      * of it its statements spent, how many there were and whether they wrote, and the call site; the advice follows
-     * on a line of its own, as it does under a slow statement.
+     * on a line of its own, as it does under a slow statement, and claims the row locks of the writes for the idle
+     * time from the first write on.
      */
     static String renderTransaction(long heldNanos,
                                     long busyNanos,
                                     long idleNanos,
+                                    long lockedIdleNanos,
                                     int statements,
                                     boolean wrote,
                                     boolean fromFirstStatement,
@@ -717,9 +732,8 @@ public final class SlowStatementLog {
         if (suppressed > 0) {
             rendered.append(System.lineSeparator()).append("\t+").append(suppressed).append(" suppressed");
         }
-        rendered.append(System.lineSeparator()).append("\tadvice: ").append(Advice.IDLE_TRANSACTION.format(
-                millis(heldNanos), millis(busyNanos), millis(idleNanos),
-                wrote ? ", and the row locks of its writes," : ""));
+        rendered.append(System.lineSeparator()).append("\tadvice: ")
+                .append(idleAdvisory(heldNanos, busyNanos, idleNanos, lockedIdleNanos, wrote));
         return rendered.toString();
     }
 
@@ -748,7 +762,7 @@ public final class SlowStatementLog {
      * Renders nanoseconds as milliseconds, with decimals below ten milliseconds so a typical sub-millisecond cost
      * keeps a value.
      */
-    private static String millis(long nanos) {
+    static String millis(long nanos) {
         long micros = NANOSECONDS.toMicros(nanos);
         if (micros < 1_000) {
             return "%.2f ms".formatted(micros / 1000.0);

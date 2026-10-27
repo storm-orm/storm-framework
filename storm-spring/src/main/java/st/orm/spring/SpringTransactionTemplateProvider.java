@@ -40,7 +40,7 @@ import st.orm.core.spi.TransactionContext;
 import st.orm.core.spi.TransactionStatus;
 import st.orm.core.spi.TransactionTemplate;
 import st.orm.core.spi.TransactionTemplateProvider;
-import st.orm.core.template.impl.HeldConnection;
+import st.orm.core.template.impl.TransactionRecord;
 import st.orm.spring.impl.EntityCaches;
 import st.orm.spring.impl.SpringTransactionContext;
 
@@ -241,14 +241,14 @@ public class SpringTransactionTemplateProvider implements TransactionTemplatePro
     private static final class SpringLinkedTransactionContext implements TransactionContext {
         private final Map<Class<? extends Entity<?>>, EntityCache<? extends Entity<?>, ?>> caches = new HashMap<>();
         private final Decorator<?> noopDecorator = resource -> resource;
-        private @Nullable HeldConnection heldConnection;
+        private @Nullable TransactionRecord transactionRecord;
 
         @Override
-        public @Nullable HeldConnection heldConnection() {
-            if (heldConnection == null) {
-                heldConnection = SpringTransactionContext.holdSpringTransaction();
+        public @Nullable TransactionRecord transactionRecord() {
+            if (transactionRecord == null) {
+                transactionRecord = SpringTransactionContext.recordSpringTransaction();
             }
-            return heldConnection;
+            return transactionRecord;
         }
 
         @Override

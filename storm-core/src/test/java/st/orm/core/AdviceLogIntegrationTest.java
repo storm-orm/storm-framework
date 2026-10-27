@@ -25,6 +25,7 @@ import ch.qos.logback.classic.spi.ILoggingEvent;
 import ch.qos.logback.core.read.ListAppender;
 import java.util.List;
 import java.util.Map;
+import java.util.regex.Pattern;
 import javax.sql.DataSource;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -128,6 +129,9 @@ public class AdviceLogIntegrationTest {
         assertEquals(LOGGER + ".unordered-limit", event.getLoggerName());
         var line = event.getFormattedMessage();
         assertTrue(line.startsWith("SQL advice (SELECT Owner)"), line);
+        // The line goes out when the execution closes, with what it cost.
+        assertTrue(Pattern.compile("^SQL advice \\(SELECT Owner\\): [0-9.]+ ms in database, \\d+ rows")
+                .matcher(line).find(), line);
         assertTrue(line.contains("\tshape: "), line);
         assertTrue(line.contains("\tadvice: the statement takes part of the result without an ORDER BY"), line);
         assertTrue(line.contains("See https://orm.st/docs/advice#unordered-limit"), line);

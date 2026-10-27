@@ -147,6 +147,15 @@ public final class StormConfig {
      */
     public static final String ADVICE_ENTITY_BUDGET_COLUMNS = "storm.advice.entity_budget.columns";
 
+    /**
+     * The time a repeated statement must have taken, on the clock, before it carries advice: the same single-row
+     * read or write run again and again, or references fetched one at a time, below it is not advised on. Defaults
+     * to {@code 50ms}; {@code 0} advises on every repeat past ten executions.
+     *
+     * @since 1.16
+     */
+    public static final String ADVICE_REPEAT_FLOOR = "storm.advice.repeat_floor";
+
     private static final Set<String> SQL_SHAPING_KEYS = sqlShapingKeysFromDeclarations();
 
     private static final StormConfig DEFAULTS = new StormConfig(Map.of());

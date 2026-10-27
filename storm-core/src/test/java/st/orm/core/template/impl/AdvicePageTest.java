@@ -73,7 +73,11 @@ public class AdvicePageTest {
     private static Object[] sample(Advice advice) {
         return switch (advice) {
             case ENTITY_BUDGET, WIDE_ENTITY_READ -> new Object[] {"Visit", 12, 140, "a Ref for Clinic.organization", 10, 96};
-            case REPEATED_WRITE -> new Object[] {"INSERT", "Owner", 10};
+            case REPEATED_WRITE -> new Object[] {"INSERT", "Owner", 10, ", 10 ms, 1.0 ms each", "one row each",
+                    ", at OwnerService.kt:52", "", "the overloads that take a list send the rows as one batch", ""};
+            case REPEATED_SELECT -> new Object[] {12, "Owner", ", 12 ms, 1.0 ms each", "one row each", "", "",
+                    "one query for all of them reads the rows in one round trip"};
+            case REPEATED_FETCH -> new Object[] {10, "City", ", 10 ms, 1.0 ms each", ""};
             case MISSING_INDEX -> new Object[] {"owner", "last_name", "which the statement filters owner by",
                     "owner(last_name)", "finds them directly"};
             case UNINDEXED_FOREIGN_KEY -> new Object[] {"owner", "pet", "owner_id", "owner_id"};

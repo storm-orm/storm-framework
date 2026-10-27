@@ -78,7 +78,13 @@ public final class LazySupplier<T> implements Supplier<T> {
         if (result != null) {
             return result;
         }
-        result = reference.updateAndGet(value -> requireNonNullElseGet(value, supplier));
+        // Read once: another thread that resolves the value clears the field, and the update below may run after
+        // it did. The field is cleared only once the value is set, so a cleared field means the value is there.
+        var pending = supplier;
+        if (pending == null) {
+            return reference.get();
+        }
+        result = reference.updateAndGet(value -> requireNonNullElseGet(value, pending));
         supplier = null;    // Release the supplier (and its captured context) for GC.
         return result;
     }

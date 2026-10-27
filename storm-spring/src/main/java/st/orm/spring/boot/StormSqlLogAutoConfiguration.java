@@ -122,6 +122,10 @@ public class StormSqlLogAutoConfiguration {
         if (entityBudget.getJoins() != null || entityBudget.getColumns() != null) {
             AdviceLog.entityBudget(entityBudget.getJoins(), entityBudget.getColumns());
         }
+        var repeatFloor = advice.getRepeatFloor();
+        if (repeatFloor != null) {
+            AdviceLog.repeatFloor(repeatFloor);
+        }
         var categories = advice.getCategories();
         if (categories != null) {
             AdviceLog.categories(categories);

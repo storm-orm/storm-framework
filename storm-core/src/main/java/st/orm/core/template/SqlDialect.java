@@ -904,6 +904,23 @@ public interface SqlDialect {
     }
 
     /**
+     * Returns whether the database keeps a plan per distinct statement text, so that an {@code IN} list rendered
+     * with a placeholder per value is a plan of its own for every length it runs in, filling the plan cache with
+     * the variants of one statement.
+     *
+     * <p>The default is {@code true}, which fits a database that caches plans by statement text or prepares
+     * statements on the server. A dialect whose database plans every execution anew, and whose driver sends a
+     * prepared statement as text by default, returns {@code false}: a list of one length then costs the database
+     * what a list of any other costs, and the advice to pad lists to a few lengths is withheld.</p>
+     *
+     * @return {@code true} when each length of an {@code IN} list is a plan of its own to the database.
+     * @since 1.16
+     */
+    default boolean keepsPlanPerStatementText() {
+        return true;
+    }
+
+    /**
      * Returns the name of the array element type the dialect binds values of the given Java type as, when an
      * {@code IN} list binds as one array parameter, or {@code null} when the dialect binds no array of the type.
      *

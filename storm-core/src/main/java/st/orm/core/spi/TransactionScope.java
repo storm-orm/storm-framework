@@ -21,6 +21,8 @@ import st.orm.PersistenceException;
 import st.orm.TransactionOptions;
 import st.orm.TransactionPropagation;
 import st.orm.core.spi.TransactionTemplate.TransactionHandle;
+import st.orm.core.template.impl.AdviceLog;
+import st.orm.core.template.impl.CallSiteCapture;
 import st.orm.spi.QueryObserver;
 
 /**
@@ -173,6 +175,7 @@ public final class TransactionScope {
     private final boolean suspendMode;
     private final @Nullable TransactionScope parent;
     private final @Nullable Long deadlineNanos;
+    private final @Nullable String beganAt;
 
     private volatile @Nullable TransactionTemplateProvider owner;
     private volatile @Nullable TransactionHandle handle;
@@ -187,6 +190,21 @@ public final class TransactionScope {
         this.deadlineNanos = options.timeoutSeconds() != null
                 ? System.nanoTime() + options.timeoutSeconds() * 1_000_000_000L
                 : null;
+        // The caller is on the stack where the scope is created, which a suspending block's completion is not;
+        // walked only while the advice log reports what a transaction repeats, so production pays nothing.
+        this.beganAt = AdviceLog.recordsRepeats() ? CallSiteCapture.captureCallSite() : null;
+    }
+
+    /**
+     * Returns the application frame that began this scope, walked where the scope was created while the advice
+     * log reports what a transaction repeats, or {@code null} when it was not walked or no application frame was
+     * on the stack.
+     *
+     * @return the call site that began the scope, or {@code null}.
+     * @since 1.16
+     */
+    public @Nullable String beganAt() {
+        return beganAt;
     }
 
     /**

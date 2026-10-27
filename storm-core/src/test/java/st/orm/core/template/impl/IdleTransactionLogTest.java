@@ -224,15 +224,15 @@ class IdleTransactionLogTest {
 
     @Test
     void theLineNamesEveryPartItCanCarry() {
-        var line = SlowStatementLog.renderTransaction(2_300_000_000L, 120_000_000L, 2_180_000_000L, 1, true, true,
-                null, 3);
+        var line = SlowStatementLog.renderTransaction(2_300_000_000L, 120_000_000L, 2_180_000_000L,
+                2_000_000_000L, 1, true, true, null, 3);
         assertEquals("SQL slow (transaction): held its connection 2300 ms from its first statement, 120 ms in its "
                 + "statement, wrote" + System.lineSeparator()
                 + "	+3 suppressed" + System.lineSeparator()
                 + "	advice: the transaction held its connection 2300 ms and its statements spent 120 ms of it; for "
-                + "2180 ms between them it held the connection, and the row locks of its writes, while the "
-                + "application did other work; move that work before the transaction or after it commits. See "
-                + "https://orm.st/docs/advice#idle-transaction", line);
+                + "2180 ms between them it held the connection while the application did other work, and the row "
+                + "locks of its writes for 2000 ms of it; move that work before the transaction or after it "
+                + "commits. See https://orm.st/docs/advice#idle-transaction", line);
     }
 
     @Test
@@ -244,8 +244,31 @@ class IdleTransactionLogTest {
         assertEquals(1, lines.size(), lines.toString());
         var line = lines.getFirst();
         assertTrue(line.contains(" ms in its statement, wrote, "), line);
-        assertTrue(line.contains("it held the connection, and the row locks of its writes, while the application "
-                + "did other work"), line);
+        assertTrue(line.contains("it held the connection while the application did other work, and the row locks "
+                + "of its writes for "), line);
+        // The work followed the write, so the locks were held for all of it.
+        assertTrue(lockedIdleMillis(line) >= 100, line);
+    }
+
+    @Test
+    void theRowLocksAreClaimedOnlyFromTheFirstWriteOn() {
+        var lines = capture(() -> transaction(REQUIRED_OPTIONS, () -> {
+            read();
+            otherWork();
+            write();
+        }));
+        assertEquals(1, lines.size(), lines.toString());
+        var line = lines.getFirst();
+        assertTrue(line.contains(" ms in its 2 statements, wrote, "), line);
+        // The work preceded the write, so the locks were held for the commit alone.
+        assertTrue(lockedIdleMillis(line) < 50, line);
+    }
+
+    /** Returns the idle time the line claims the row locks for, in milliseconds. */
+    private static double lockedIdleMillis(String line) {
+        var matcher = Pattern.compile("the row locks of its writes for ([0-9.]+) ms of it").matcher(line);
+        assertTrue(matcher.find(), line);
+        return Double.parseDouble(matcher.group(1));
     }
 
     @Test
@@ -319,7 +342,7 @@ class IdleTransactionLogTest {
     void switchedOffNoConnectionIsHeld() {
         SlowStatementLog.transactionThreshold(null);
         assertFalse(SlowStatementLog.active());
-        assertNull(HeldConnection.take(false));
+        assertNull(TransactionRecord.take(false));
         var lines = capture(() -> transaction(REQUIRED_OPTIONS, () -> {
             read();
             otherWork();
@@ -335,7 +358,7 @@ class IdleTransactionLogTest {
         assertEquals(Duration.ofSeconds(1), SlowStatementLog.DEFAULT_TRANSACTION_THRESHOLD);
         SlowStatementLog.transactionThreshold(SlowStatementLog.DEFAULT_TRANSACTION_THRESHOLD);
         assertTrue(SlowStatementLog.active());
-        assertNotNull(HeldConnection.take(false));
+        assertNotNull(TransactionRecord.take(false));
         assertEquals(Duration.ofSeconds(1), SlowStatementLog.transactionThreshold());
         // Zero, the value a configuration sets to switch the watch off, stops it as null does, and so does a
         // negative duration.

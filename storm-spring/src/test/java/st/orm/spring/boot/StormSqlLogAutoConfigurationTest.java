@@ -340,6 +340,17 @@ public class StormSqlLogAutoConfigurationTest {
     }
 
     @Test
+    public void testTheRepeatFloorPropertyAppliesToTheAdviceLog() {
+        try {
+            contextRunner
+                    .withPropertyValues("storm.advice.repeat-floor=50ms")
+                    .run(context -> assertEquals(Duration.ofMillis(50), AdviceLog.repeatFloor()));
+        } finally {
+            AdviceLog.repeatFloor(null);
+        }
+    }
+
+    @Test
     public void testWithoutTheSlowStatementPropertyNoThresholdApplies() {
         SlowStatementLog.threshold(null);
         contextRunner

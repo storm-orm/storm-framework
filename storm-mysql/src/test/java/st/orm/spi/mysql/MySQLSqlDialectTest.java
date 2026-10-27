@@ -42,6 +42,13 @@ class MySQLSqlDialectTest {
         assertFalse(dialect.getValidIdentifierPattern().matcher("").matches());
     }
 
+    // Plans: MySQL plans every execution anew, and Connector/J sends prepared statements as text by default
+
+    @Test
+    void keepsNoPlanPerStatementText() {
+        assertFalse(dialect.keepsPlanPerStatementText());
+    }
+
     // Escape: MySQL uses backtick escaping
 
     @Test

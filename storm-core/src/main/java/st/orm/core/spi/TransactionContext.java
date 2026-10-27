@@ -18,7 +18,7 @@ package st.orm.core.spi;
 import java.util.Optional;
 import org.jspecify.annotations.Nullable;
 import st.orm.Entity;
-import st.orm.core.template.impl.HeldConnection;
+import st.orm.core.template.impl.TransactionRecord;
 
 /**
  * @since 1.5
@@ -185,16 +185,16 @@ public interface TransactionContext {
     }
 
     /**
-     * Returns the connection the transaction holds, as the slow statement log measures it, or {@code null} when no
-     * transaction holds one or the log does not watch transactions.
+     * Returns the record of the transaction, which the slow statement log and the advice log credit with each
+     * statement as it closes, or {@code null} when no transaction is active or transactions are not recorded.
      *
-     * <p>The slow statement log credits each statement to it as the statement closes, and the context releases it
-     * when the connection goes back to the pool.</p>
+     * <p>The context releases the record when the connection goes back to the pool, which is when the logs report
+     * what they have to say about the transaction.</p>
      *
-     * @return the held connection, or {@code null}.
+     * @return the transaction record, or {@code null}.
      * @since 1.16
      */
-    default @Nullable HeldConnection heldConnection() {
+    default @Nullable TransactionRecord transactionRecord() {
         return null;
     }
 }

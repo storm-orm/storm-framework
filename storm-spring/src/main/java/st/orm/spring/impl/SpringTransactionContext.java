@@ -63,7 +63,7 @@ import st.orm.core.spi.CacheRetention;
 import st.orm.core.spi.ConnectionGuard;
 import st.orm.core.spi.EntityCache;
 import st.orm.core.spi.TransactionContext;
-import st.orm.core.template.impl.HeldConnection;
+import st.orm.core.template.impl.TransactionRecord;
 
 /**
  * Transaction context that bridges Storm-initiated transactions into Spring's
@@ -127,9 +127,9 @@ public final class SpringTransactionContext implements TransactionContext {
         boolean rollbackOnly;
         @Nullable Integer timeoutSeconds;
         @Nullable Long deadlineNanos;
-        // The connection this frame's transaction holds for the slow statement log, taken at its first statement
-        // and released when the Spring transaction completes.
-        @Nullable HeldConnection heldConnection;
+        // The record of this frame's transaction, taken at its first statement and released when the Spring
+        // transaction completes.
+        @Nullable TransactionRecord transactionRecord;
         Map<Class<?>, EntityCache<?, ?>> entityCacheMap = new HashMap<>();
 
         TransactionState(int index, int ownerIndex, boolean transactional) {
@@ -288,7 +288,7 @@ public final class SpringTransactionContext implements TransactionContext {
     }
 
     @Override
-    public @Nullable HeldConnection heldConnection() {
+    public @Nullable TransactionRecord transactionRecord() {
         var state = lastOrNull();
         if (state == null) {
             return null;
@@ -297,36 +297,36 @@ public final class SpringTransactionContext implements TransactionContext {
         if (!owner.transactional) {
             return null;
         }
-        if (owner.heldConnection == null) {
-            owner.heldConnection = holdSpringTransaction();
+        if (owner.transactionRecord == null) {
+            owner.transactionRecord = recordSpringTransaction();
         }
-        return owner.heldConnection;
+        return owner.transactionRecord;
     }
 
     /**
-     * Takes the connection of the Spring transaction active on this thread, from this moment, to be released when
-     * the transaction completes; {@code null} while the slow statement log does not watch transactions, or when no
-     * synchronization is active to report the completion.
+     * Takes the record of the Spring transaction active on this thread, from this moment, to be released when the
+     * transaction completes; {@code null} while transactions are not recorded, or when no synchronization is active
+     * to report the completion.
      *
      * <p>Spring opens the connection when it begins the transaction, before Storm runs a statement in it, so the
      * hold is measured from Storm's first statement and the line says so.</p>
      *
-     * @return the held connection, or {@code null}.
+     * @return the transaction record, or {@code null}.
      */
-    public static @Nullable HeldConnection holdSpringTransaction() {
+    public static @Nullable TransactionRecord recordSpringTransaction() {
         if (!TransactionSynchronizationManager.isSynchronizationActive()) {
             return null;
         }
-        var held = HeldConnection.take(true);
-        if (held != null) {
+        var record = TransactionRecord.take(true);
+        if (record != null) {
             TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
                 @Override
                 public void afterCompletion(int status) {
-                    held.released();
+                    record.released();
                 }
             });
         }
-        return held;
+        return record;
     }
 
 /**

@@ -30,6 +30,7 @@ Storm can be configured through `StormConfig`, system properties, Spring Boot's 
 | `storm.advice.categories` | `correctness` (all three in development) | Categories of advice the advice log reports, comma-separated: `correctness`, `performance`, `design` |
 | `storm.advice.entity_budget.joins` | `10` | The most tables the [design budget](entity-design.md#the-budget) lets an entity's read join; at least 1 |
 | `storm.advice.entity_budget.columns` | `96` | The most columns the [design budget](entity-design.md#the-budget) lets an entity's read select beyond its own; at least 1 |
+| `storm.advice.repeat_floor` | `50ms` | Time a repeated statement must have taken on the clock before it carries [advice](advice.md#repeated-select); `0` advises on every repeat past ten executions |
 
 ### Setting Properties
 

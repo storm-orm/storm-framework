@@ -15,6 +15,10 @@
  */
 package st.orm.core.template.impl;
 
+import static st.orm.core.spi.StormConfigHelper.getDuration;
+
+import java.time.Duration;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.EnumSet;
@@ -29,6 +33,7 @@ import org.slf4j.LoggerFactory;
 import org.slf4j.event.Level;
 import st.orm.StormConfig;
 import st.orm.core.template.impl.Advice.Category;
+import st.orm.core.template.impl.StatementListener.Handle;
 import st.orm.spi.QueryContext;
 
 /**
@@ -50,9 +55,17 @@ import st.orm.spi.QueryContext;
  * at {@code INFO}, once per statement shape at {@code DEBUG}, and at every execution at {@code TRACE}.</p>
  *
  * <p>Advice is decided when the statement is built, so a statement without advice pays one test of whether it carries
- * any, and only a statement with advice asks its loggers whether they are enabled. The record of what was reported
- * per shape holds at most {@link #MAX_REPORTED} entries and starts over when full, which may repeat a line but never
- * changes what a line says.</p>
+ * any, and only a statement with advice asks its loggers whether they are enabled. A statement whose advice is
+ * reported is reported when it closes, with what the execution cost. The record of what was reported per shape
+ * holds at most {@link #MAX_REPORTED} entries and starts over when full, which may repeat a line but never changes
+ * what a line says.</p>
+ *
+ * <p>What a transaction repeats, the same single-row read or write again and again or references fetched one at a
+ * time, is recorded by the transaction while the log reports that advice, and reported as one block when the
+ * transaction completes, under the call site that began it. The block is reported at the frequency of the level,
+ * counted per call site: once per piece of advice there at {@code INFO}, once per repeated shape there at
+ * {@code DEBUG}, every time at {@code TRACE}, so what one transaction repeats is reported whatever another
+ * reported before.</p>
  *
  * @since 1.16
  */
@@ -79,6 +92,15 @@ public final class AdviceLog {
     /** The advice reported per shape at {@code DEBUG}. */
     private static final Set<Reported> REPORTED = ConcurrentHashMap.newKeySet();
 
+    /**
+     * A transaction's advice reported for a call site: per piece of advice at {@code INFO}, per repeat at
+     * {@code DEBUG}.
+     */
+    private record ReportedTransaction(String callSite, Repeats.@Nullable ShapeAtSite repeat, Advice advice) {}
+
+    /** The advice reported per transaction call site. */
+    private static final Set<ReportedTransaction> REPORTED_TRANSACTIONS = ConcurrentHashMap.newKeySet();
+
     /** The categories reported unless the application names others. */
     static final String DEFAULT_CATEGORIES = "correctness";
 
@@ -94,6 +116,29 @@ public final class AdviceLog {
 
     private static volatile Set<Category> categories = parse(Objects.requireNonNullElse(
             StormConfig.defaults().getProperty(StormConfig.ADVICE_CATEGORIES), DEFAULT_CATEGORIES));
+
+    /**
+     * The time a repeat must have taken before it carries advice, applied when neither the system property nor an
+     * integration sets one: fifty milliseconds. Most repeats in a larger application are correct and cost a few
+     * milliseconds, such as lookups of reference rows or a guard that keeps a task idempotent; the floor keeps the
+     * advice to the repeats worth a change, and the performance log's table still lists every shape.
+     */
+    public static final Duration DEFAULT_REPEAT_FLOOR = Duration.ofMillis(50);
+
+    /**
+     * The time a repeat must have taken on the clock before it carries advice, in nanoseconds; zero for no floor.
+     */
+    private static volatile long repeatFloorNanos;
+
+    /**
+     * Applies the repeat floor from configuration ({@link StormConfig#defaults()}, which reads system properties);
+     * the Spring and Ktor integrations apply their own configuration through {@link #repeatFloor(Duration)}.
+     */
+    // Placed after every field it touches, the default included, since static initialization runs in textual
+    // order and a Duration is no compile-time constant.
+    static {
+        configuredRepeatFloor();
+    }
 
     private AdviceLog() {
     }
@@ -218,6 +263,49 @@ public final class AdviceLog {
     }
 
     /**
+     * Returns whether the advice log reports what a transaction repeats, which is what makes a transaction record
+     * its statements.
+     *
+     * @return {@code true} if a piece of advice on a repeat is reported.
+     */
+    public static boolean recordsRepeats() {
+        return reports(Advice.REPEATED_SELECT) || reports(Advice.REPEATED_WRITE) || reports(Advice.REPEATED_FETCH);
+    }
+
+    /**
+     * Sets the time a repeated statement must have taken, on the clock, before it carries advice: the same
+     * single-row read or write run again and again, or references fetched one at a time, that took less is not
+     * advised on. {@link #DEFAULT_REPEAT_FLOOR} unless set; zero advises on every repeat past ten executions.
+     * Measured on the clock rather than as the sum of the executions, so executions that ran concurrently count
+     * for the time they covered.
+     *
+     * @param floor the floor, or {@code null} or zero for none.
+     */
+    public static void repeatFloor(@Nullable Duration floor) {
+        repeatFloorNanos = floor == null || floor.isNegative() || floor.isZero() ? 0 : floor.toNanos();
+    }
+
+    /**
+     * Returns the time a repeated statement must have taken before it carries advice, or {@code null} for none.
+     *
+     * @return the floor, or {@code null}.
+     */
+    public static @Nullable Duration repeatFloor() {
+        long nanos = repeatFloorNanos;
+        return nanos == 0 ? null : Duration.ofNanos(nanos);
+    }
+
+    /** Returns the floor in nanoseconds, zero for none. */
+    static long repeatFloorNanos() {
+        return repeatFloorNanos;
+    }
+
+    /** Restores the floor to the configured or default setting. */
+    private static void configuredRepeatFloor() {
+        repeatFloor(getDuration(StormConfig.defaults(), StormConfig.ADVICE_REPEAT_FLOOR, DEFAULT_REPEAT_FLOOR));
+    }
+
+    /**
      * Reports design advice on an entity, once per entity and advice, at {@code INFO}: it describes the model rather
      * than an execution, so the level of {@code st.orm.sql.advice} does not repeat it.
      *
@@ -237,17 +325,19 @@ public final class AdviceLog {
     }
 
     /**
-     * Reports the advice of an executing statement that the advice log reports and, at its frequency, has not
-     * reported yet: once per piece of advice at {@code INFO}, once per shape at {@code DEBUG}, every time at
-     * {@code TRACE}.
+     * Decides which advice of an executing statement the advice log reports and, at its frequency, has not reported
+     * yet: once per piece of advice at {@code INFO}, once per shape at {@code DEBUG}, every time at {@code TRACE}.
+     * The call site is walked now, while the caller is on the stack; the lines go out when the execution closes,
+     * with what it cost.
      *
      * @param context the execution.
      * @param statement the statement text, or {@code null} when unknown.
      * @param advisories the advice the statement carries.
+     * @return the handle that reports the advice when the execution closes, or {@code null} when none is reported.
      */
-    static void onExecute(QueryContext context, @Nullable String statement, List<String> advisories) {
+    static @Nullable Handle onExecute(QueryContext context, @Nullable String statement, List<String> advisories) {
         Level level = LOGGER.isTraceEnabled() ? Level.TRACE : LOGGER.isDebugEnabled() ? Level.DEBUG : Level.INFO;
-        String callSite = null;
+        List<String> reported = null;
         for (var advisory : advisories) {
             var advice = Advice.of(advisory);
             // Whether the application accepts the advice is asked only of advice the log would report now.
@@ -256,20 +346,155 @@ public final class AdviceLog {
                     || !firstReport(context.shapeId(), advice, level)) {
                 continue;
             }
-            if (callSite == null) {
-                callSite = Objects.requireNonNullElse(CallSiteCapture.callSite(), "");
+            if (reported == null) {
+                reported = new ArrayList<>();
             }
-            var logger = LOGGERS[advice.ordinal()];
-            var line = render(context, callSite.isEmpty() ? null : callSite, statement, List.of(advisory));
-            // The line goes out at the frequency's level, or at INFO where the advice's own logger is set to INFO.
-            if (level == Level.TRACE && logger.isTraceEnabled()) {
-                logger.trace("{}", line);
-            } else if (level != Level.INFO && logger.isDebugEnabled()) {
-                logger.debug("{}", line);
-            } else {
-                logger.info("{}", line);
+            reported.add(advisory);
+        }
+        if (reported == null) {
+            return null;
+        }
+        return new Report(context, CallSiteCapture.callSite(), statement, reported, level);
+    }
+
+    /** Logs a line at the frequency's level, or at INFO where the advice's own logger is set to INFO. */
+    private static void log(Logger logger, Level level, String line) {
+        if (level == Level.TRACE && logger.isTraceEnabled()) {
+            logger.trace("{}", line);
+        } else if (level != Level.INFO && logger.isDebugEnabled()) {
+            logger.debug("{}", line);
+        } else {
+            logger.info("{}", line);
+        }
+    }
+
+    /** The advice of one execution, reported when the execution closes, with what it cost. */
+    private static final class Report implements Handle {
+        private final QueryContext context;
+        private final @Nullable String callSite;
+        private final @Nullable String statement;
+        private final List<String> advisories;
+        private final Level level;
+        private final long start = System.nanoTime();
+        private long executed;
+        private @Nullable Throwable failure;
+
+        Report(QueryContext context,
+               @Nullable String callSite,
+               @Nullable String statement,
+               List<String> advisories,
+               Level level) {
+            this.context = context;
+            this.callSite = callSite;
+            this.statement = statement;
+            this.advisories = advisories;
+            this.level = level;
+        }
+
+        @Override
+        public void executed() {
+            executed = System.nanoTime();
+        }
+
+        @Override
+        public void error(Throwable throwable) {
+            failure = throwable;
+        }
+
+        @Override
+        public void close(long rows, boolean exact) {
+            for (var advisory : advisories) {
+                var advice = Objects.requireNonNull(Advice.of(advisory));
+                log(LOGGERS[advice.ordinal()], level, render(context, executed - start, rows, exact, failure,
+                        callSite, statement, List.of(advisory)));
             }
         }
+    }
+
+    /**
+     * Reports the advice on what a completing transaction repeated, as one block under the call site that began the
+     * transaction, at the frequency of the level counted per call site: once per piece of advice there at
+     * {@code INFO}, once per repeated shape there at {@code DEBUG}, every time at {@code TRACE}. Whether the
+     * application accepts the advice was decided by the transaction, where the statement's call path was still on
+     * the stack; a piece of advice whose logger is off is left out of the block.
+     *
+     * <p>The idle advice of a transaction that held its connection beyond the slow statement log's threshold is in
+     * the block too, after the repeats or alone, once per call site like the rest: a reader working through the
+     * advice log sees what the transaction has to be advised on in one place, whether or not a repeat survived the
+     * floor. The slow statement log reports the same transaction on its own line, in production too.</p>
+     *
+     * @param advisories the advice on what the transaction repeated, heaviest first.
+     * @param idleAdvisory the advice on the connection the transaction held idle, or {@code null} when it did not.
+     * @param beganAt the call site that began the transaction, walked where its block was entered, or {@code null}
+     *                to walk it now, which names the method that runs a blocking transaction.
+     */
+    static void onTransaction(List<Repeats.Advisory> advisories,
+                              @Nullable String idleAdvisory,
+                              @Nullable String beganAt) {
+        Level level = LOGGER.isTraceEnabled() ? Level.TRACE : LOGGER.isDebugEnabled() ? Level.DEBUG : Level.INFO;
+        String callSite = null;
+        StringBuilder lines = null;
+        // The advice this block reports already, so every repeat of the same advice in it goes out with the first.
+        var reporting = EnumSet.noneOf(Advice.class);
+        var all = new ArrayList<Repeats.Advisory>(advisories.size() + 1);
+        all.addAll(advisories);
+        if (idleAdvisory != null) {
+            all.add(new Repeats.Advisory(Advice.IDLE_TRANSACTION, null, 0, 0, idleAdvisory));
+        }
+        for (var advisory : all) {
+            var advice = advisory.advice();
+            if (!reportsInTransaction(advice)) {
+                continue;
+            }
+            if (callSite == null) {
+                // A suspending transaction completes on the dispatcher that ran its block, with no caller on the
+                // stack, which is why the site is walked where the block was entered; the walk here names the
+                // method that runs a blocking transaction, still on the stack while it completes.
+                callSite = Objects.requireNonNullElse(beganAt != null ? beganAt : CallSiteCapture.callSite(), "");
+            }
+            if (!reporting.contains(advice) && !firstTransactionReport(callSite, advisory.key(), advice, level)) {
+                continue;
+            }
+            reporting.add(advice);
+            if (lines == null) {
+                lines = new StringBuilder("SQL advice (transaction)");
+                if (!callSite.isEmpty()) {
+                    lines.append(": ").append(callSite);
+                }
+            }
+            lines.append(System.lineSeparator()).append("\tadvice: ").append(advisory.text());
+        }
+        if (lines != null) {
+            log(LOGGER, level, lines.toString());
+        }
+    }
+
+    /**
+     * Returns whether a transaction's block reports a piece of advice: as {@link #reports(Advice)} decides, except
+     * that the idle advice, which holds only once the transaction held its connection too long and is otherwise
+     * the slow statement log's, is reported while its category is and its logger is on.
+     */
+    private static boolean reportsInTransaction(Advice advice) {
+        return advice == Advice.IDLE_TRANSACTION
+                ? categories.contains(advice.category()) && LOGGERS[advice.ordinal()].isInfoEnabled()
+                : reports(advice);
+    }
+
+    /**
+     * Records a transaction's advice as reported for its call site at the frequency of the level and returns whether
+     * to report it: always at {@code TRACE}, the first time for the repeat there at {@code DEBUG}, the first time
+     * for the advice there at {@code INFO}.
+     */
+    private static boolean firstTransactionReport(String callSite, Repeats.@Nullable ShapeAtSite repeat,
+                                                  Advice advice, Level level) {
+        if (level == Level.TRACE) {
+            return true;
+        }
+        if (REPORTED_TRANSACTIONS.size() >= MAX_REPORTED) {
+            REPORTED_TRANSACTIONS.clear();
+        }
+        return REPORTED_TRANSACTIONS.add(new ReportedTransaction(callSite, level == Level.DEBUG ? repeat : null,
+                advice));
     }
 
     /**
@@ -302,16 +527,27 @@ public final class AdviceLog {
     }
 
     /**
-     * Renders an advice line: what the statement does and where it was called from, the statement as sent, its shape,
-     * and a line per piece of advice.
+     * Renders an advice line: what the statement does, what the execution cost, the database time and the rows,
+     * and where it was called from; the statement as sent, its shape, and a line per piece of advice. A failed
+     * execution is named by the class of its failure, as a slow line names it.
      */
     static String render(QueryContext context,
+                         long databaseNanos,
+                         long rows,
+                         boolean exact,
+                         @Nullable Throwable failure,
                          @Nullable String callSite,
                          @Nullable String statement,
                          List<String> advisories) {
-        var rendered = new StringBuilder("SQL advice (").append(SlowStatementLog.describe(context)).append(')');
+        var rendered = new StringBuilder("SQL advice (").append(SlowStatementLog.describe(context)).append("): ")
+                .append(SlowStatementLog.millis(databaseNanos)).append(" in database");
+        if (failure != null) {
+            rendered.append(", failed (").append(failure.getClass().getSimpleName()).append(')');
+        } else {
+            rendered.append(", ").append(exact ? rows : rows + "*").append(" rows");
+        }
         if (callSite != null) {
-            rendered.append(": ").append(callSite);
+            rendered.append(", ").append(callSite);
         }
         if (statement != null) {
             rendered.append(System.lineSeparator()).append(SlowStatementLog.indent(statement));
@@ -332,11 +568,14 @@ public final class AdviceLog {
     static void reset() {
         categories = parse(DEFAULT_CATEGORIES);
         EntityGraph.budget(EntityGraph.Budget.DEFAULT);
+        configuredRepeatFloor();
         configured = false;
         REPORTED_DESIGN.clear();
         REPORTED_ONCE.clear();
         REPORTED.clear();
+        REPORTED_TRANSACTIONS.clear();
         InListShapes.reset();
         AdviceAcceptance.reset();
+        TransactionRecord.reset();
     }
 }

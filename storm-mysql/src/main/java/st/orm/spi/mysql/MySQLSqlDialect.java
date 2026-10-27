@@ -367,6 +367,19 @@ public class MySQLSqlDialect extends DefaultSqlDialect {
      * @return {@code 65535}.
      * @since 1.13
      */
+    /**
+     * MySQL plans every execution anew and keeps no plan cache keyed by statement text, and Connector/J emulates
+     * prepared statements on the client by default, sending each execution as text; an {@code IN} list rendered in
+     * one length then costs the server what a list of any other length costs, so padding lists gains nothing.
+     *
+     * @return {@code false}.
+     * @since 1.16
+     */
+    @Override
+    public boolean keepsPlanPerStatementText() {
+        return false;
+    }
+
     @Override
     public int maxBindParameters() {
         return 65_535;

@@ -21,9 +21,9 @@ The advice reaches you three ways.
 
 **The slow statement log.** A line in the [slow statement log](sql-logging.md#the-slow-statement-log) ends with every piece of advice its statement carries, every time it is slow.
 
-**The performance log.** A [performance log](sql-logging.md#the-performance-log) summary ends with advice on what its unit of work repeated, which no single statement shows: references fetched one at a time, and the same single-row read or write run again and again.
+**The performance log.** A [performance log](sql-logging.md#the-performance-log) summary ends with advice on what its unit of work repeated across its transactions, which no single statement shows: references fetched one at a time, and the same single-row read or write run again and again, each with the time it cost, the transactions it spanned and the call site where recorded, heaviest first.
 
-**The advice log.** The `st.orm.sql.advice` logger reports advice whether the statement is fast or slow, with the statement, its call site and its shape:
+**The advice log.** The `st.orm.sql.advice` logger reports advice whether the statement is fast or slow, with the statement, its call site, its shape and what the execution cost:
 
 - **Correctness is on by default.** An application that logs at `INFO` sees it without asking, in production too: rows in no stated order are wrong wherever they run.
 - **Design and performance are on in development.** Spring Boot with DevTools on the classpath, Ktor in development mode, and every `@StormTest` report all three categories, so the developer and the agent see what to change while writing the code, and a production deployment never runs the design check. Design advice on an entity is reported once per entity, at startup or when the entity is first used.
@@ -32,6 +32,7 @@ The advice reaches you three ways.
 - **A deliberate choice is advised only when slow.** A page that reports its total is a choice of `page` over `slice`, so its [count](#page-count) is advised in the slow statement log alone.
 - **Advice that needs evidence is advised only when slow.** Whether an index is worth its cost depends on how many rows a table holds and how few a condition selects, which only a slow execution shows, so a [missing index](#missing-index) and an [unindexed foreign key](#unindexed-foreign-key) are advised in the slow statement log alone.
 - **A transaction is measured against a threshold of its own.** A [transaction that holds its connection idle](#idle-transaction) for more than a second beyond what its statements spent on it is reported by the slow statement log, in production too; `storm.sql_log.slow.transaction` retunes the second.
+- **A transaction reports what it repeated when it completes.** Where the advice log reports performance and design advice, every transaction counts the statements on its connection, and the [same row lookup](#repeated-select), the [same single-row write](#repeated-write) or [references fetched one at a time](#repeated-fetch) ten or more times is reported as one block under the call site that began the transaction, with the time the executions spent and the call site of the statement. The block is counted per call site: once per piece of advice there at `INFO`, once per repeat there at `DEBUG`, so what one transaction repeats is reported whatever another reported before.
 
 The level of `st.orm.sql.advice` decides how often a piece of advice is reported:
 
@@ -43,8 +44,19 @@ The level of `st.orm.sql.advice` decides how often a piece of advice is reported
 
 At `INFO` the log stays quiet. At `DEBUG` it lists every statement shape to change, a list to work through while developing or in a test environment. The offset of a page is part of its statement, so each page of the same query is a shape of its own. See [The Advice Log](sql-logging.md#the-advice-log).
 
+Each piece of advice is derived in the scope that sees what it is about, and reported where that scope ends:
+
+| Advice | Derived per | Reported |
+|--------|-------------|----------|
+| [`unordered-limit`](#unordered-limit), [`deep-offset`](#deep-offset), [`distinct-over-join`](#distinct-over-join), [`unindexed-search`](#unindexed-search), [`in-list-shapes`](#in-list-shapes) | statement shape, for the life of the application | the advice log, once per shape, with the call site and the cost of the execution; every slow line of the shape |
+| [`repeated-select`](#repeated-select), [`repeated-write`](#repeated-write), [`repeated-fetch`](#repeated-fetch) within a transaction | transaction | the advice log when the transaction completes, one block under its call site |
+| the same, across transactions, and [`writes-without-transaction`](#writes-without-transaction) | the unit of work a performance log scope covers, less the executions a transaction advised on | the performance log summary, which says that a batch commits the rows together |
+| [`idle-transaction`](#idle-transaction) | transaction | the slow statement log when the transaction completes |
+| [`page-count`](#page-count), [`missing-index`](#missing-index), [`unindexed-foreign-key`](#unindexed-foreign-key), [`wide-entity-read`](#wide-entity-read) | statement shape, decided for a slow execution | the slow statement log |
+| [`entity-budget`](#entity-budget) | entity, at startup or first use | the advice log, once per entity |
+
 ```
-SQL slow (SELECT Owner): 412 ms in database, 12 rows, OwnerService.kt:42
+SQL advice (SELECT Owner): 412 ms in database, 12 rows, OwnerService.kt:42
 	SELECT DISTINCT o.id, o.first_name, o.last_name, ...
 	FROM owner o
 	INNER JOIN pet p ON p.owner_id = o.id
@@ -203,11 +215,13 @@ Storm stays quiet where it cannot tell:
 
 ## A transaction that holds its connection idle {#idle-transaction}
 
-> the transaction held its connection 2300 ms and its statements spent 120 ms of it; for 2180 ms between them it held the connection, and the row locks of its writes, while the application did other work; move that work before the transaction or after it commits
+> the transaction held its connection 2300 ms and its statements spent 120 ms of it; for 2180 ms between them it held the connection while the application did other work, and the row locks of its writes for 2100 ms of it; move that work before the transaction or after it commits
 
 Category: performance, reported by the slow statement log only, against a threshold of its own: a transaction may hold its connection for one second beyond what its statements spent on it, and `storm.sql_log.slow.transaction` (Spring Boot `storm.sql-log.slow.transaction`, Ktor `sqlLogSlowTransaction`) retunes that, with `0` stopping the watch.
 
-A transaction that calls another service, sends mail or renders a document between a write and its commit keeps its connection out of the pool for the whole of that work, and the row locks of its writes with it. Every statement in it is fast, so neither the statement log nor a slow statement line shows it; under load the pool runs dry and other transactions queue on the locks. Storm times both halves: when a transaction it runs or joins takes its connection and when it returns it, and what each statement spent on it. The difference is time the connection was held for nothing, and a transaction whose difference reaches the threshold is reported when it completes, with the call site that began it, how many statements it ran and whether they wrote. See [A Transaction That Holds Its Connection](sql-logging.md#a-transaction-that-holds-its-connection).
+A transaction that calls another service, sends mail or renders a document between a write and its commit keeps its connection out of the pool for the whole of that work, and the row locks of its writes with it. Every statement in it is fast, so neither the statement log nor a slow statement line shows it; under load the pool runs dry and other transactions queue on the locks. Storm times both halves: when a transaction it runs or joins takes its connection and when it returns it, and what each statement spent on it. The difference is time the connection was held for nothing, and a transaction whose difference reaches the threshold is reported when it completes, with the call site that began it, how many statements it ran and whether they wrote. The row locks are held from the first write on, so the advice claims them for the idle time from that write to the completion: a transaction that reads, computes for a second and then writes held no locks during that second, and its line says the locks were held for the commit alone. See [A Transaction That Holds Its Connection](sql-logging.md#a-transaction-that-holds-its-connection).
+
+While the advice log reports performance advice, as it does in development, the transaction's block in the advice log carries this advice too, after what the transaction repeated or alone, so a reader working through that log sees everything a transaction has to be advised on in one place; the slow statement log reports the transaction on its own line regardless, in production too.
 
 Move the work out of the transaction: before it, where the work decides what to write, or after it commits, through an `onCommit` callback or a row the transaction writes and a worker acts on. Where the work has to stay inside, such as a batch job that holds its transaction by design, accept the advice on the method that runs the transaction with `@AcceptAdvice("idle-transaction")`, and the transaction is not reported there.
 
@@ -217,6 +231,7 @@ What the measurement covers:
 - **A Spring-managed transaction** is measured from Storm's first statement in it to its completion, since Spring opened the connection before Storm saw the transaction; the line says `from its first statement`.
 - **A joined block** is part of the transaction it joined, which is reported once, on the frame that owns the connection. A block that opens a transaction of its own, `REQUIRES_NEW`, is measured on its own.
 - **The threshold is on the idle time**, not on the transaction's length: a transaction that spends its whole time in its statements is never reported, however long it runs.
+- **The locks are claimed from the first write on.** The idle time the line states for the row locks runs from the first write to the moment the connection is returned, the commit included, less what the statements spent in it.
 
 ## The count behind a page {#page-count}
 
@@ -258,6 +273,8 @@ An `IN` list with a placeholder per value, the default shape on every database b
 
 `storm.in_list=padded` pads every list to the next power of two by repeating its last value, so lengths 1 to 1,000 render as 11 statements, and changes no result; see [IN Lists](queries.md#in-lists). It is a setting of the template, so it applies to every list the template renders. On PostgreSQL a list on a plain column binds as one array and is never reported; the advice there points at a list compared through a function, which renders placeholders, and `padded` pads that one at the cost of the array for the rest. A statement that runs in many lengths by design, and on a database whose plan cache has room for them, accepts the advice with `@AcceptAdvice("in-list-shapes")`.
 
+The advice fits the database it runs on. A database that plans every execution anew and whose driver sends prepared statements as text by default, as MySQL and MariaDB do, keeps no plan per statement text: a list of 17 values costs it what a list of 18 costs, and padding would bind values for nothing. The dialect says so through `SqlDialect.keepsPlanPerStatementText()`, and no length is recorded or advised on there.
+
 ## An entity past the design budget {#entity-budget}
 
 > every read of Visit joins 12 tables and selects 140 columns beyond its own, past the design budget of 10 joins and 96 columns; a Ref for Clinic.organization removes 4 joins and 52 columns
@@ -286,11 +303,11 @@ A read of an entity whose graph reaches half the design budget, 5 joins or 48 co
 
 ## References fetched one at a time {#repeated-fetch}
 
-> 24 statements each fetched one City; an inline foreign key joins it into every read of the rows, or a query that fetches the references, such as select().fetch(...), resolves them in the statement that reads them
+> 24 statements each fetched one City, 28 ms, 1.2 ms each, at OwnerView.kt:31; an inline foreign key joins it into every read of the rows, or a query that fetches the references, such as select().fetch(...), resolves them in the statement that reads them
 
-Category: design, reported by the [performance log](sql-logging.md#the-performance-log) summary of the unit of work: a `Ref` the application fetches on every read is evidence from real use that it should be an inline entity.
+Category: design. Reported by the advice log when a transaction that fetched ten or more references of one type completes, and by the [performance log](sql-logging.md#the-performance-log) summary where the fetches spanned the transactions of its unit of work: a `Ref` the application fetches on every read is evidence from real use that it should be an inline entity.
 
-Each `Ref.fetch()` that the transaction's entity cache cannot serve is a statement of its own, so a loop over rows that fetches a reference from each runs one statement per row: the N+1 pattern. The performance log counts these as fetches, and advises once a unit of work fetched ten or more of one type.
+Each `Ref.fetch()` that the transaction's entity cache cannot serve is a statement of its own, so a loop over rows that fetches a reference from each runs one statement per row: the N+1 pattern. The advice states the time the fetches spent in the database and the call site of the fetch, where the stack was walked for it: in a transaction at the tenth fetch, in a summary when the scope records call sites.
 
 Where every reader needs the referenced row, make the foreign key inline: `@FK val pet: Pet` rather than `Ref<Pet>` joins the pet into every read of a visit, repository methods such as `findById` included. See [Entity Design](entity-design.md).
 
@@ -298,13 +315,26 @@ Where only some readers need it, keep the `Ref` and read the rows with a query t
 
 ## The same row lookup, again and again {#repeated-select}
 
-> the same SELECT of Owner ran 12 times, one row each
+> the same SELECT of Owner ran 12 times, 36 ms, 3.0 ms each, one row each, at OwnerService.kt:52; one query for all of them, such as findAllById or a where with IN, reads the rows in one round trip
 
-Category: performance, reported by the [performance log](sql-logging.md#the-performance-log) summary of the unit of work.
+Category: performance. Reported by the advice log when a transaction that ran the statement ten or more times completes, and by the [performance log](sql-logging.md#the-performance-log) summary where the executions spanned the transactions of its unit of work.
 
-A unit of work that runs the same SELECT ten or more times, each returning at most one row, is looking rows up one at a time, typically by key inside a loop. Every lookup is a round trip to the database.
+A transaction, or a unit of work, that runs the same SELECT ten or more times from one call site, each returning at most one row, is looking rows up one at a time, typically by key inside a loop. Every lookup is a round trip to the database. The advice states the time the executions spent in the database and the call site of the statement; a shape repeated from two loops is two pieces of advice, each pointing at its own loop and weighed by its own cost. A query that lives in a repository's default method is named through it, `ReminderService.kt:52 via VisitRepository.findByPet`: the loop that calls the method is the line to change, and the method is where a list variant such as `findByPets` would go.
 
-Read them in one query: `findAllById(ids)`, or a `where` with `IN` over the keys, returns all of them in one statement. A read of several rows each time, such as scrolling window after window, gets no advice.
+Executions that ran concurrently cost the caller the time they covered on the clock, not their sum. Where the sum is at least twice that, the line states both, `727 ms over 140 ms elapsed`, and the advice is ordered by the time on the clock. A repeat that took less than 50 ms on the clock carries no advice: in a larger application most repeats are correct and cost a few milliseconds, such as lookups of a few reference rows or a guard that keeps a task idempotent, and they would bury the few worth a change. `storm.advice.repeat_floor` (Spring Boot `storm.advice.repeat-floor`, Ktor `adviceRepeatFloor`) sets the floor, and `0` advises on every repeat past ten executions; the performance log's table lists every shape either way. One run is a rough judge of a repeat near the floor: the first run after startup reads on cold caches, so a loop advised at 188 ms then may cost 25 ms on every later run, and a concurrent repeat varies with how its executions overlap from run to run. The advice is for working through, and a repeat is reported once per call site however many runs cross the floor.
+
+Read them in one query: `findAllById(ids)`, or a `where` with `IN` over the keys, returns all of them in one statement. A read of several rows each time, such as scrolling window after window, gets no advice. A read of computed values, such as a count per pet, is not a lookup of rows: the advice then names one query with a `where` with `IN` over what the loop varies and a `GROUP BY` on it, one count per pet in one round trip.
+
+The line states the mean time per execution. From 10 ms per execution, well above what a round trip costs, it says the statement itself is the cost and to look at it first: combining twelve executions of 170 ms each saves little next to what each one costs on its own. A line whose executions read or wrote nothing says `no rows`.
+
+Within one transaction every execution sees the same data, so the advice is reported as the transaction's, as one block with its other repeats under the call site that began it:
+
+```
+SQL advice (transaction): VisitReminderService.kt:41
+	advice: the same SELECT of Visit ran 40 times, 120 ms, 3.0 ms each, one row each, at VisitReminderService.kt:52; one query for all of them, such as findAllById or a where with IN, reads the rows in one round trip. See https://orm.st/docs/advice#repeated-select
+```
+
+The call site that heads the block is walked where the transaction's block is entered, so a suspending transaction, which completes on the dispatcher that ran its block, is named all the same; a transaction another manager opened is named by the method still on the stack when it completes. A joined block counts toward the transaction it joined; a `REQUIRES_NEW` block is a transaction of its own. The transaction records its statements only while the advice log reports the advice, which is development, and the record is discarded when it completes. A loop that opens a transaction per item repeats across transactions, which no single transaction sees; the performance log summary of the unit of work reports it, and says how many transactions the executions ran in. The summary leaves the executions a transaction advised on to that transaction, so one repeat never reads as two problems. Accept the advice on the method that runs the loop, or on the entity, with `@AcceptAdvice("repeated-select")`.
 
 ## Related writes that each commit on their own {#writes-without-transaction}
 
@@ -320,10 +350,12 @@ Run the writes in one transaction, `transaction { }` in Kotlin or `transaction(t
 
 ## The same single-row write, again and again {#repeated-write}
 
-> the same INSERT of Owner ran 10 times, one row each
+> the same INSERT of Owner ran 10 times, 14 ms, 1.4 ms each, one row each, in 10 transactions of their own; the overloads that take a list send the rows as one batch, which commits them together
 
-Category: performance, reported by the [performance log](sql-logging.md#the-performance-log) summary of the unit of work.
+Category: performance. Reported by the advice log when a transaction that ran the statement ten or more times completes, and by the [performance log](sql-logging.md#the-performance-log) summary where the executions spanned the transactions of its unit of work.
 
-A unit of work that runs the same INSERT, UPDATE or DELETE ten or more times, one row each, sends every row in a round trip of its own.
+A transaction, or a unit of work, that runs the same INSERT, UPDATE or DELETE ten or more times, one row each, sends every row in a round trip of its own. The advice states the time the executions spent and the call site of the statement where it is known, as [the same row lookup](#repeated-select) does, and is reported in the same scopes.
 
-The repository overloads that take a list, such as `insert(owners)`, send the rows as one JDBC batch. A batch already counts as one execution, so batched writes never get this advice.
+The repository overloads that take a list, such as `insert(owners)`, send the rows as one JDBC batch. A batch already counts as one execution, so batched writes never get this advice. That remedy is for an insert, and for an update or removal the repository made for an entity or key it was given. A write by condition, such as `removeAll(Visit_.pet eq pet)` per pet, has no list overload: the advice names one statement whose condition covers all of them, such as `Visit_.pet inList pets`, which is often a change of design as well as of the loop.
+
+Within one transaction a batch changes nothing about what commits. Across transactions it does: a task that calls an external registry per `Pet` and records each answer in a transaction of its own keeps the answers recorded so far when a later call fails, and batched, they commit together. The summary knows the executions ran in transactions of their own, so its advice says that the batch commits the rows together, and the choice is yours.

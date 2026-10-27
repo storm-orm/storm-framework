@@ -180,13 +180,13 @@ class IdleTransactionSpringTest {
     @Test
     void holdingNeedsTheWatchAndAnActiveSynchronization() {
         // Outside a transaction no synchronization is active to report the completion.
-        assertNull(SpringTransactionContext.holdSpringTransaction());
+        assertNull(SpringTransactionContext.recordSpringTransaction());
         SlowStatementLog.transactionThreshold(null);
         transactionTemplate.executeWithoutResult(status ->
-                assertNull(SpringTransactionContext.holdSpringTransaction()));
+                assertNull(SpringTransactionContext.recordSpringTransaction()));
         SlowStatementLog.transactionThreshold(Duration.ofMillis(50));
         transactionTemplate.executeWithoutResult(status ->
-                assertNotNull(SpringTransactionContext.holdSpringTransaction()));
+                assertNotNull(SpringTransactionContext.recordSpringTransaction()));
     }
 
     @Test

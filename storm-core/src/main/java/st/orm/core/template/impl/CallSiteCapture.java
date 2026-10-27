@@ -15,17 +15,27 @@
  */
 package st.orm.core.template.impl;
 
+import static java.lang.StackWalker.Option.RETAIN_CLASS_REFERENCE;
 import static java.util.Objects.requireNonNull;
 
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Set;
 import org.jspecify.annotations.Nullable;
 import st.orm.StormConfig;
 
 /**
  * Attributes a statement execution to the application frame that caused it: the innermost frame that is neither
  * framework infrastructure nor declared plumbing, as {@code File.ext:line}.
+ *
+ * <p>A repository is plumbing of a kind of its own: a query that lives in a repository's default method runs for
+ * every caller of that method, so the line inside the repository says which query ran, which the statement already
+ * says, and not where. A frame whose class is a repository, or a Kotlin interface's default implementations of
+ * one, is kept as the repository frame, and the walk continues to the first application frame beyond it; the site
+ * then names both, the caller first and the repository by its method, which says at once which query repeated
+ * and where a list variant would go: {@code ReminderService.kt:52 via VisitRepository.findByPet}. A repository
+ * called from plumbing end to end is named alone.</p>
  *
  * <p>Which frames count as plumbing is a property of the deployment, configured like one: the
  * {@code storm.sql_log.call_site_skip} system property on a plain JVM, or the corresponding keys of the Spring
@@ -38,7 +48,46 @@ public final class CallSiteCapture {
     private CallSiteCapture() {
     }
 
-    private static final StackWalker CALL_SITE_WALKER = StackWalker.getInstance();
+    private static final StackWalker CALL_SITE_WALKER = StackWalker.getInstance(RETAIN_CLASS_REFERENCE);
+
+    /** The repository interfaces, by name, since the facades of the other modules are not visible here. */
+    private static final Set<String> REPOSITORY_TYPES = Set.of("st.orm.core.repository.Repository",
+            "st.orm.repository.Repository");
+
+    /**
+     * Whether a class is a repository: it, or the nest host a Kotlin interface's default implementations belong to,
+     * implements a repository interface. Decided once per class.
+     */
+    private static final ClassValue<Boolean> REPOSITORY = new ClassValue<>() {
+        @Override
+        protected Boolean computeValue(Class<?> type) {
+            try {
+                if (implementsRepository(type) || implementsRepository(type.getNestHost())) {
+                    return true;
+                }
+                // A class Kotlin copies into a repository for an inline function, such as a flow operator, is no
+                // nest member of it: it belongs to the repository through its top-level class.
+                String topLevel = topLevel(type.getName());
+                if (topLevel.equals(type.getName())) {
+                    return false;
+                }
+                return implementsRepository(Class.forName(topLevel, false, type.getClassLoader()));
+            } catch (LinkageError | SecurityException | ClassNotFoundException e) {
+                return false;
+            }
+        }
+    };
+
+    private static boolean implementsRepository(Class<?> type) {
+        for (Class<?> candidate = type; candidate != null; candidate = candidate.getSuperclass()) {
+            for (var implemented : candidate.getInterfaces()) {
+                if (REPOSITORY_TYPES.contains(implemented.getName()) || implementsRepository(implemented)) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
 
     /**
      * The launch-site fallback for executions whose stack no longer contains the caller, such as work resumed
@@ -77,7 +126,7 @@ public final class CallSiteCapture {
     @Nullable
     public static String captureCallSite() {
         var walked = walkFrames();
-        return walked.application() != null ? walked.application() : CALL_SITE_HINT.get();
+        return walked.site(walked.application() != null ? walked.application() : CALL_SITE_HINT.get());
     }
 
     /**
@@ -92,25 +141,60 @@ public final class CallSiteCapture {
     public static String callSite() {
         var walked = walkFrames();
         if (walked.application() != null) {
-            return walked.application();
+            return walked.site(walked.application());
         }
         String hint = CALL_SITE_HINT.get();
         if (hint != null) {
-            return hint;
+            return walked.site(hint);
+        }
+        if (walked.repository() != null) {
+            return walked.repository();
         }
         return walked.plumbing();
     }
 
-    /** The two frames a walk can surface: the first application frame, and the innermost plumbing frame. */
-    private record WalkedFrames(@Nullable String application, @Nullable String plumbing) {
+    /**
+     * The frames a walk can surface: the first application frame, the innermost repository frame before it, and
+     * the innermost plumbing frame.
+     */
+    private record WalkedFrames(@Nullable String application,
+                                @Nullable String repository,
+                                @Nullable String plumbing) {
+
+        /** Returns the caller's site, through the repository frame where the walk passed one. */
+        @Nullable String site(@Nullable String caller) {
+            if (caller == null) {
+                return null;
+            }
+            return repository == null ? caller : caller + " via " + repository;
+        }
     }
 
+    /**
+     * Walks the stack lazily, as far as the first application frame and no further: every check is made on the frame
+     * at hand, so a walk reads only the frames above the caller.
+     */
     private static WalkedFrames walkFrames() {
         return CALL_SITE_WALKER.walk(frames -> {
+            String repository = null;
             String plumbing = null;
             for (var iterator = frames.iterator(); iterator.hasNext(); ) {
                 var frame = iterator.next();
                 if (isInfrastructure(frame.getClassName())) {
+                    continue;
+                }
+                if (REPOSITORY.get(frame.getDeclaringClass())) {
+                    if (repository == null) {
+                        repository = repositoryMethod(frame);
+                    }
+                    continue;
+                }
+                // A library's inline function, such as a flow operator, has its lambda regenerated under the
+                // caller's class with the library's file and line: it reads as the caller's frame but is not.
+                if (isInlinedFromElsewhere(frame)) {
+                    if (plumbing == null) {
+                        plumbing = format(frame);
+                    }
                     continue;
                 }
                 if (isDeclaredPlumbing(frame.getClassName(), frame.getFileName())) {
@@ -119,10 +203,57 @@ public final class CallSiteCapture {
                     }
                     continue;
                 }
-                return new WalkedFrames(format(frame), plumbing);
+                return new WalkedFrames(format(frame), repository, plumbing);
             }
-            return new WalkedFrames(null, plumbing);
+            return new WalkedFrames(null, repository, plumbing);
         });
+    }
+
+    /**
+     * Names a repository frame by its method, {@code VisitRepository.findByPet}: the repository is the nest host
+     * of the frame's class, so a Kotlin default method run through the interface's default implementations reads as
+     * the method of the interface, as a Java default method does.
+     */
+    private static String repositoryMethod(StackWalker.StackFrame frame) {
+        String className = frame.getClassName();
+        int inlined = className.indexOf(INLINED);
+        if (inlined >= 0) {
+            // A copy of an inline function's code names the repository method it was copied into, as in
+            // VisitRepository$DefaultImpls$findByPet$$inlined$map$1; the frame's own method is the copy's.
+            String copiedInto = className.substring(0, inlined);
+            String method = copiedInto.substring(copiedInto.lastIndexOf('$') + 1);
+            return simpleName(topLevel(className)) + "." + method;
+        }
+        return frame.getDeclaringClass().getNestHost().getSimpleName() + "." + frame.getMethodName();
+    }
+
+    /** The part of a class name Kotlin gives a class it copies for an inline function. */
+    private static final String INLINED = "$$inlined$";
+
+    private static String simpleName(String className) {
+        return className.substring(className.lastIndexOf('.') + 1);
+    }
+
+    /**
+     * Returns whether the frame is a library's code that Kotlin copied into the application's class for an inline
+     * function, such as a flow operator: the copy is a class named {@code ...$$inlined$...} that keeps the inline
+     * function's source file, so its frame names the library's file rather than the one named after its top-level
+     * class. Decided on the frame alone, so the walk stops at the first application frame.
+     */
+    private static boolean isInlinedFromElsewhere(StackWalker.StackFrame frame) {
+        String className = frame.getClassName();
+        String file = frame.getFileName();
+        if (file == null || !className.contains(INLINED)) {
+            return false;
+        }
+        String own = simpleName(topLevel(className));
+        return !file.equals(own + ".kt") && !file.equals(own + ".java");
+    }
+
+    /** Returns the top-level class of a class name: the part before its first nested-class separator. */
+    private static String topLevel(String className) {
+        int nested = className.indexOf('$');
+        return nested < 0 ? className : className.substring(0, nested);
     }
 
     private static String format(StackWalker.StackFrame frame) {
