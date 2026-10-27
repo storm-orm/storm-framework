@@ -30,9 +30,12 @@ import java.sql.SQLException;
 import java.sql.Statement;
 import java.sql.Timestamp;
 import java.time.Instant;
+import java.time.ZoneOffset;
 import java.util.ArrayList;
+import java.util.Calendar;
 import java.util.List;
 import java.util.Map;
+import java.util.TimeZone;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
 import javax.sql.DataSource;
@@ -105,6 +108,8 @@ public abstract class AbstractUpdateBuilderConformanceTest {
     /** The version every visit starts with, well before the statements of the suite run. */
     private static final Instant INITIAL_VERSION = Instant.parse("2000-01-01T00:00:00Z");
 
+    private static final Calendar UTC = Calendar.getInstance(TimeZone.getTimeZone(ZoneOffset.UTC));
+
     private static final List<String> TABLES = List.of("update_visit", "update_pet", "update_owner", "update_city");
 
     private DataSource dataSource;
@@ -163,7 +168,9 @@ public abstract class AbstractUpdateBuilderConformanceTest {
                 statement.setInt(1, visit[0]);
                 statement.setString(2, "checkup");
                 statement.setInt(3, visit[1]);
-                statement.setTimestamp(4, Timestamp.from(INITIAL_VERSION));
+                // Against the UTC calendar Storm binds and reads instants with, so the seed is the instant the
+                // test expects whatever the JVM's time zone.
+                statement.setTimestamp(4, Timestamp.from(INITIAL_VERSION), UTC);
                 statement.executeUpdate();
             }
         }
