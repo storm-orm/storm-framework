@@ -370,7 +370,9 @@ public class MySQLSqlDialect extends DefaultSqlDialect {
     /**
      * MySQL plans every execution anew and keeps no plan cache keyed by statement text, and Connector/J emulates
      * prepared statements on the client by default, sending each execution as text; an {@code IN} list rendered in
-     * one length then costs the server what a list of any other length costs, so padding lists gains nothing.
+     * one length then costs the server what a list of any other length costs, so padding lists gains nothing. MariaDB,
+     * whose dialect extends this one, does the same: its server keeps no plan per statement text either, and its own
+     * driver sends prepared statements as text unless {@code useServerPrepStmts} is set.
      *
      * @return {@code false}.
      * @since 1.16

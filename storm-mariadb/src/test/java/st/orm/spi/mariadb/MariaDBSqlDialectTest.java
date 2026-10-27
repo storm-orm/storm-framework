@@ -20,6 +20,13 @@ class MariaDBSqlDialectTest {
 
     private final MariaDBSqlDialect dialect = new MariaDBSqlDialect();
 
+    // Plans: MariaDB plans every execution anew, and its driver sends prepared statements as text by default
+
+    @Test
+    void keepsNoPlanPerStatementText() {
+        assertFalse(dialect.keepsPlanPerStatementText());
+    }
+
     // Escape: MariaDB inherits MySQL backtick escaping
 
     @Test

@@ -36,6 +36,7 @@ import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
 import java.time.ZonedDateTime;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Calendar;
 import java.util.List;
 import java.util.Optional;
@@ -316,7 +317,7 @@ class QueryImpl implements Query, KeyedQuery {
         if (handles == null) {
             return new StatementListener.Handle[] {handle};
         }
-        var appended = java.util.Arrays.copyOf(handles, handles.length + 1);
+        var appended = Arrays.copyOf(handles, handles.length + 1);
         appended[handles.length] = handle;
         return appended;
     }
@@ -350,7 +351,7 @@ class QueryImpl implements Query, KeyedQuery {
         if (handles == null) {
             return null;
         }
-        return count == handles.length ? handles : java.util.Arrays.copyOf(handles, count);
+        return count == handles.length ? handles : Arrays.copyOf(handles, count);
     }
 
     /**

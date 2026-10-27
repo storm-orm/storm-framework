@@ -18,10 +18,14 @@ package st.orm.core.template;
 import static java.util.Comparator.comparingLong;
 import static java.util.Objects.requireNonNull;
 
+import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Queue;
+import java.util.Set;
 import java.util.concurrent.Callable;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentLinkedQueue;
@@ -365,8 +369,8 @@ public final class SqlLog {
         private static final class Group {
             final String text;
             final String dataTypeName;
-            final java.util.Set<String> texts = new java.util.HashSet<>();
-            final java.util.Set<String> sites = new java.util.LinkedHashSet<>();
+            final Set<String> texts = new HashSet<>();
+            final Set<String> sites = new LinkedHashSet<>();
             boolean fetch;
             int executions;
             long durationNanos;
@@ -722,7 +726,7 @@ public final class SqlLog {
 
         /** Returns what the executions past the limit cost, heaviest group first. */
         Unrecorded unrecorded() {
-            var groups = new java.util.ArrayList<Unrecorded.Group>();
+            var groups = new ArrayList<Unrecorded.Group>();
             unrecordedGroups.forEach((key, count) -> groups.add(new Unrecorded.Group(key.operation(), key.type(),
                     count.executions.intValue(), count.nanos.sum())));
             groups.sort(comparingLong(Unrecorded.Group::nanos).reversed());
@@ -736,7 +740,7 @@ public final class SqlLog {
 
         /** Returns the statements as they stand: completed ones as closed, open ones as of the database's return. */
         List<Statement> statements() {
-            var snapshot = new java.util.ArrayList<Statement>();
+            var snapshot = new ArrayList<Statement>();
             for (var slot : statements) {
                 var statement = slot.statement;
                 if (statement != null) {

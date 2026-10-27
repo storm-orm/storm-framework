@@ -19,6 +19,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static st.orm.Operator.EQUALS;
 import static st.orm.TransactionPropagation.REQUIRED;
 import static st.orm.TransactionPropagation.REQUIRES_NEW;
 
@@ -31,7 +32,10 @@ import clinic.CustomerRepository;
 import clinic.ReminderService;
 import java.sql.SQLException;
 import java.time.Duration;
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 import java.util.UUID;
 import java.util.regex.Pattern;
 import org.junit.jupiter.api.AfterEach;
@@ -40,12 +44,14 @@ import org.junit.jupiter.api.Test;
 import org.slf4j.LoggerFactory;
 import org.springframework.jdbc.datasource.DriverManagerDataSource;
 import st.orm.AcceptAdvice;
+import st.orm.Metamodel;
 import st.orm.TransactionOptions;
 import st.orm.core.spi.JdbcConnectionProviderImpl;
 import st.orm.core.spi.JdbcTransactionTemplateProviderImpl;
 import st.orm.core.spi.TransactionRunner;
 import st.orm.core.template.ORMTemplate;
 import st.orm.core.template.SqlLog;
+import st.orm.core.template.TemplateString;
 
 /**
  * A transaction records what it repeats, the same single-row read or write again and again, while the advice log
@@ -255,13 +261,13 @@ class TransactionAdviceTest {
         var line = events.getFirst().getFormattedMessage();
         var sites = Pattern.compile("ran (\\d+) times, [0-9.]+ ms, [0-9.]+ ms each, one row each, at (ReminderService\\.java:\\d+) via")
                 .matcher(line);
-        var counts = new java.util.HashMap<String, String>();
+        var counts = new HashMap<String, String>();
         while (sites.find()) {
             counts.put(sites.group(2), sites.group(1));
         }
         // Two loops, two pieces of advice, each with its own count at its own line.
         assertEquals(2, counts.size(), line);
-        assertEquals(java.util.Set.of("10", "12"), new java.util.HashSet<>(counts.values()), line);
+        assertEquals(Set.of("10", "12"), new HashSet<>(counts.values()), line);
     }
 
     @Test
@@ -519,7 +525,7 @@ class TransactionAdviceTest {
             // Past the limit: reads of a type, which can repeat, and statements of none, which cannot.
             for (int i = 0; i < 4; i++) {
                 orm.entity(Customer.class).findAll();
-                orm.query(st.orm.core.template.TemplateString.of("SELECT COUNT(*) FROM customer"))
+                orm.query(TemplateString.of("SELECT COUNT(*) FROM customer"))
                         .getSingleResult(Long.class);
             }
         });
@@ -541,7 +547,7 @@ class TransactionAdviceTest {
         assertEquals(recordedNanos + unrecorded.nanos(), summary.databaseNanos());
     }
 
-    private static final st.orm.Metamodel<Customer, Integer> CUSTOMER_ID = st.orm.Metamodel.of(Customer.class, "id");
+    private static final Metamodel<Customer, Integer> CUSTOMER_ID = Metamodel.of(Customer.class, "id");
 
     /** Returns the one advice line of the one block the action's transaction reported. */
     private String adviceOf(Runnable work) {
@@ -558,7 +564,7 @@ class TransactionAdviceTest {
         var line = adviceOf(() -> {
             for (int i = 1; i <= 10; i++) {
                 // No customer has an id past 100, so every delete affects no row.
-                orm.entity(Customer.class).delete().where(CUSTOMER_ID, st.orm.Operator.EQUALS, 100 + i)
+                orm.entity(Customer.class).delete().where(CUSTOMER_ID, EQUALS, 100 + i)
                         .executeUpdate();
             }
         });
@@ -585,7 +591,7 @@ class TransactionAdviceTest {
     void aRepeatedCountIsAdvisedOneGroupedQuery() {
         var line = adviceOf(() -> {
             for (int i = 1; i <= 10; i++) {
-                orm.entity(Customer.class).selectCount().where(CUSTOMER_ID, st.orm.Operator.EQUALS, i)
+                orm.entity(Customer.class).selectCount().where(CUSTOMER_ID, EQUALS, i)
                         .getSingleResult();
             }
         });
