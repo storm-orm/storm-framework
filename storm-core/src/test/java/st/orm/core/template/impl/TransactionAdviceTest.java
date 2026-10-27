@@ -17,8 +17,11 @@ package st.orm.core.template.impl;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static st.orm.GenerationStrategy.NONE;
 import static st.orm.Operator.EQUALS;
 import static st.orm.TransactionPropagation.REQUIRED;
 import static st.orm.TransactionPropagation.REQUIRES_NEW;
@@ -44,7 +47,11 @@ import org.junit.jupiter.api.Test;
 import org.slf4j.LoggerFactory;
 import org.springframework.jdbc.datasource.DriverManagerDataSource;
 import st.orm.AcceptAdvice;
+import st.orm.DbTable;
+import st.orm.Entity;
 import st.orm.Metamodel;
+import st.orm.PK;
+import st.orm.PersistenceException;
 import st.orm.TransactionOptions;
 import st.orm.core.spi.JdbcConnectionProviderImpl;
 import st.orm.core.spi.JdbcTransactionTemplateProviderImpl;
@@ -286,6 +293,8 @@ class TransactionAdviceTest {
         AdviceLog.reset();
         assertEquals(AdviceLog.DEFAULT_REPEAT_FLOOR, AdviceLog.repeatFloor());
         AdviceLog.repeatFloor(Duration.ZERO);
+        assertNull(AdviceLog.repeatFloor());
+        AdviceLog.repeatFloor(Duration.ofMillis(-1));
         assertNull(AdviceLog.repeatFloor());
     }
 
@@ -599,6 +608,113 @@ class TransactionAdviceTest {
         assertTrue(line.contains("; one query for all of them, with a where with IN over what the loop varies and a "
                 + "GROUP BY on it for an aggregate such as a count, computes them in one round trip. See"), line);
         assertFalse(line.contains("findAllById"), line);
+    }
+
+    @Test
+    void aJoinedBlockThatRunsTheFirstStatementReportsUnderTheSiteThatBeganTheTransaction() {
+        var service = new ReminderService(() -> transaction(REQUIRED_OPTIONS, () -> readOneByOne(10)));
+        var events = capture(Level.INFO, service::remindOwners);
+        assertEquals(1, events.size(), lines(events).toString());
+        var line = events.getFirst().getFormattedMessage();
+        assertTrue(line.startsWith("SQL advice (transaction): ReminderService.java:"), line);
+    }
+
+    @Test
+    void aStatementWithoutATypeIsNotCountedAsARepeat() {
+        assertEquals(List.of(), capture(Level.TRACE, () -> transaction(REQUIRED_OPTIONS, () -> {
+            for (int i = 0; i < 12; i++) {
+                orm.query(TemplateString.of("SELECT COUNT(*) FROM customer")).getSingleResult(Long.class);
+            }
+        })));
+    }
+
+    @Test
+    void aRecordTakenOutsideAnyTransactionBlockNamesNoSite() {
+        capture(Level.INFO, () -> {
+            var record = TransactionRecord.take(false);
+            assertNotNull(record);
+            assertNull(record.beganAt());
+        });
+    }
+
+    @Test
+    void theSummaryKeepsTheExecutionsOfAShapeATransactionDidNotAdviseOn() {
+        capture(Level.TRACE, () -> {
+            var summary = record(() -> {
+                // The first transaction advises on its reads, not on the one count it also runs.
+                transaction(REQUIRED_OPTIONS, () -> {
+                    readOneByOne(10);
+                    orm.entity(Customer.class).selectCount().getSingleResult();
+                });
+                for (int i = 0; i < 9; i++) {
+                    transaction(REQUIRED_OPTIONS, () -> orm.entity(Customer.class).selectCount().getSingleResult());
+                }
+            });
+            var advisories = SqlLogRenderer.advisories(summary);
+            assertEquals(1, advisories.size(), advisories.toString());
+            assertTrue(advisories.getFirst().startsWith("the same SELECT of Customer ran 10 times, "),
+                    advisories.getFirst());
+            assertTrue(advisories.getFirst().contains("in 10 transactions of their own"), advisories.getFirst());
+        });
+    }
+
+    @Test
+    void theRepeatsPastTheTablesLimitNameTheirCallSiteWhereTheScopeRecordsThem() {
+        AdviceLog.reset();
+        AdviceLog.repeatFloor(null);
+        SqlLog.Summary summary;
+        try (var scope = SqlLog.open("task", 3, true)) {
+            for (int i = 1; i <= 15; i++) {
+                int id = 1 + i % 10;
+                transaction(REQUIRED_OPTIONS, () -> orm.entity(Customer.class).getById(id));
+            }
+            scope.close();
+            summary = scope.summary();
+        }
+        var advisories = SqlLogRenderer.advisories(summary);
+        assertEquals(1, advisories.size(), advisories.toString());
+        assertTrue(advisories.getFirst().contains("ran 15 times, "), advisories.getFirst());
+        assertTrue(advisories.getFirst().contains(", at "), advisories.getFirst());
+    }
+
+    /** A customer read through a view whose column fails as it is computed. */
+    @DbTable("failing_customer")
+    public record FailingCustomer(@PK(generation = NONE) Integer id, String name) implements Entity<Integer> {}
+
+    @Test
+    void anAdviceLineOfAFailedExecutionNamesTheFailure() {
+        var context = new QueryImpl.QueryContextImpl(st.orm.spi.SqlOperation.SELECT, Customer.class,
+                st.orm.spi.QueryContext.ExecutionKind.QUERY, "SELECT c.id FROM customer c LIMIT 1",
+                st.orm.spi.StatementOrigin.DIRECT, 99, false, null, true, false);
+        var events = capture(Level.TRACE, () -> {
+            var handle = AdviceLog.onExecute(context, "SELECT c.id FROM customer c LIMIT 1",
+                    List.of(Advice.UNORDERED_LIMIT.format()));
+            assertNotNull(handle);
+            handle.error(new java.sql.SQLTimeoutException("cancelled"));
+            handle.close(0, true);
+        });
+        assertEquals(1, events.size(), lines(events).toString());
+        assertTrue(events.getFirst().getFormattedMessage().contains(" in database, failed (SQLTimeoutException)"),
+                lines(events).toString());
+    }
+
+    @Test
+    void anAdviceLineStatesAFailedExecutionAndAStreamClosedBeforeItsEnd() {
+        orm.query(TemplateString.of("CREATE VIEW failing_customer AS SELECT id, CAST(1 / (id - id) AS VARCHAR) AS name "
+                + "FROM customer")).executeUpdate();
+        var events = capture(Level.TRACE, () -> {
+            // A read of the view prepares without error and fails as it executes: its column divides by zero.
+            assertThrows(PersistenceException.class,
+                    () -> orm.entity(FailingCustomer.class).select().limit(2).getResultList());
+            try (var stream = orm.entity(Customer.class).select().limit(5).getResultStream()) {
+                assertTrue(stream.findFirst().isPresent());
+            }
+        });
+        var all = lines(events);
+        assertTrue(all.stream().anyMatch(line -> line.startsWith("SQL advice (SELECT FailingCustomer): ")
+                && line.contains(" in database, failed (")), all.toString());
+        assertTrue(all.stream().anyMatch(line -> line.startsWith("SQL advice (SELECT Customer): ")
+                && line.contains("* rows")), all.toString());
     }
 
     @Test
