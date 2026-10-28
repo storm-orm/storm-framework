@@ -254,7 +254,7 @@ final class JoinProcessor implements ElementProcessor<Join> {
     private static void demandJoinedKey(Class<? extends Data> joined,
                                         RecordField foreignKey,
                                         TemplateCompiler compiler) throws SqlTemplateException {
-        if (IndexDemandProcessor.inJoinedHierarchy(joined)) {
+        if (ColumnDemands.inJoinedHierarchy(joined)) {
             return;
         }
         var model = compiler.getModel(joined);

@@ -201,8 +201,8 @@ public class MSSQLServerEntityRepositoryImpl<E extends Entity<ID>, ID>
                     MERGE INTO \0 t
                     USING (\0) AS src(\0)
                     ON (\0)\0\0
-                    OUTPUT INSERTED.%s;""".formatted(pkName), model.type(), mergeSelect(entities), mergeSource(), mergeOn(), mergeUpdate(versionAware), mergeInsert())))
-                        .managed());
+                    OUTPUT INSERTED.%s;""".formatted(pkName), model.type(), mergeSelect(entities), mergeSource(), mergeOn(), mergeUpdate(versionAware), mergeInsert()))).managed()
+                        );
     }
 
     /**

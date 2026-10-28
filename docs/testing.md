@@ -523,7 +523,7 @@ Each captured statement is represented as a `CapturedSql` record with seven fiel
 
 | Field        | Type              | Description                                                                     |
 |--------------|-------------------|---------------------------------------------------------------------------------|
-| `operation`  | `Operation`       | The SQL operation type: `SELECT`, `INSERT`, `UPDATE`, `DELETE`, or `UNDEFINED`. |
+| `operation`  | `Operation`       | The SQL operation type: `SELECT`, `INSERT`, `UPDATE`, `DELETE`, `UPSERT`, or `UNDEFINED`. |
 | `statement`  | `String`          | The SQL text with `?` placeholders for bind variables.                          |
 | `parameters` | `List<Object>`    | The bound parameter values in order.                                            |
 | `origin`     | `Origin`          | What caused the statement: `DIRECT`, or `FETCH` for a statement resolving a reference. |
@@ -565,7 +565,7 @@ List<CapturedSql> selectStmts = capture.statements(Operation.SELECT);
 CapturedSql stmt = selectStmts.getFirst();
 String sql = stmt.statement();          // SQL with ? placeholders
 List<Object> params = stmt.parameters(); // Bound parameter values
-Operation op = stmt.operation();         // SELECT, INSERT, UPDATE, DELETE, or UNDEFINED
+Operation op = stmt.operation();         // SELECT, INSERT, UPDATE, DELETE, UPSERT, or UNDEFINED
 ```
 
 ### Accumulation and Clearing

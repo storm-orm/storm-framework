@@ -86,6 +86,7 @@ public record CapturedSql(
         INSERT,
         UPDATE,
         DELETE,
+        UPSERT,
         UNDEFINED
     }
 }

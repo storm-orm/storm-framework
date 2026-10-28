@@ -44,7 +44,7 @@ A lightweight identifier (`Ref<T>`) that carries only the record type and primar
 An interface that provides database access methods for an entity or projection type. `EntityRepository<E, ID>` offers built-in CRUD operations; `ProjectionRepository<P, ID>` offers read-only operations. Custom repositories extend these interfaces with domain-specific query methods. See [Repositories](repositories.md).
 
 **Search**
-A predicate built from what a user typed into a search box: `search(input, columns...)` requires every word of the input to occur in at least one of the columns, ignoring case and matched literally, with a quoted phrase as one word. `suggest` is its counterpart for a box that queries as the user types, ignoring words too short for the database's substring index. See [Search](search.md).
+A predicate built from what a user typed into a search box: `search(input, columns...)` requires every word of the input to occur in at least one of the columns, ignoring case and matched literally, with a quoted phrase as one word. `suggest` is its counterpart for a box that queries as the user types, matching every word of two characters or more in the form the database's index serves, so each statement stays cheap however little has been typed. See [Search](search.md).
 
 **SQL Function**
 A database function of one argument (`SqlFunction`), applied to a column wherever a query takes the column. A comparison applies it to both the column and the value, so an expression index built on the same call serves the query. See [Queries: SQL Functions](queries.md#sql-functions).

@@ -38,8 +38,8 @@ public class MSSQLServerMissingIndexConformanceTest extends AbstractMissingIndex
     }
 
     @Override
-    protected void analyze(Statement statement) throws SQLException {
-        statement.execute("UPDATE STATISTICS advice_pet");
+    protected void analyze(Statement statement, String table) throws SQLException {
+        statement.execute("UPDATE STATISTICS " + table);
     }
 
     @Override
@@ -64,5 +64,17 @@ public class MSSQLServerMissingIndexConformanceTest extends AbstractMissingIndex
             }
         }
         return plan.toString();
+    }
+
+    @Override
+    protected java.util.List<String> suggestProbeDdl() {
+        return java.util.List.of(
+                "CREATE TABLE suggest_probe (id INT PRIMARY KEY, title VARCHAR(100) NOT NULL, title_lower AS LOWER(title) PERSISTED)",
+                "CREATE INDEX probe_stored ON suggest_probe (title_lower)");
+    }
+
+    @Override
+    protected boolean servedByIndex(String plan) {
+        return plan.contains("Index Seek") && plan.contains("probe_stored");
     }
 }

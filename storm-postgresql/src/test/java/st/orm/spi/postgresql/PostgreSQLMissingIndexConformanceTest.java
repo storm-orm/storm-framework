@@ -37,7 +37,25 @@ public class PostgreSQLMissingIndexConformanceTest extends AbstractMissingIndexC
     }
 
     @Override
-    protected void analyze(Statement statement) throws SQLException {
-        statement.execute("ANALYZE advice_pet");
+    protected void analyze(Statement statement, String table) throws SQLException {
+        statement.execute("ANALYZE " + table);
+    }
+
+    @Override
+    protected void preferIndexes(Statement statement) throws SQLException {
+        statement.execute("SET enable_seqscan = off");
+    }
+
+    @Override
+    protected java.util.List<String> suggestProbeDdl() {
+        return java.util.List.of(
+                "CREATE TABLE suggest_probe (id INT PRIMARY KEY, title VARCHAR(100) NOT NULL, title_lower VARCHAR(100) GENERATED ALWAYS AS (LOWER(title)) STORED)",
+                "CREATE EXTENSION IF NOT EXISTS pg_trgm",
+                "CREATE INDEX probe_trgm ON suggest_probe USING gin (LOWER(title_lower) gin_trgm_ops)");
+    }
+
+    @Override
+    protected boolean servedByIndex(String plan) {
+        return plan.contains("Bitmap Index Scan on probe_trgm");
     }
 }

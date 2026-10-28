@@ -66,6 +66,7 @@ public final class SqlCapture {
                 case INSERT -> Operation.INSERT;
                 case UPDATE -> Operation.UPDATE;
                 case DELETE -> Operation.DELETE;
+                case UPSERT -> Operation.UPSERT;
                 case UNDEFINED -> Operation.UNDEFINED;
             };
             Origin origin = switch (context.origin()) {

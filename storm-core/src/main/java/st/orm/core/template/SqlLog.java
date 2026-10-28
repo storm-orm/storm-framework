@@ -805,7 +805,8 @@ public final class SqlLog {
                 statement = new Statement(operation, dataType, origin, text, start, executed, System.nanoTime(),
                         shapeId, callSite, rows, exact, transactional, transactionId);
                 recorder.repeats.record(operation, dataType, origin, shapeId, text, start, executed, rows, exact,
-                        transactional, transactionId, callSite, context.readsRecords(), context.repositoryWrite());
+                        transactional, transactionId, callSite, context.readsRecords(), context.repositoryWrite(),
+                        UnitOfWorkRepeats.upsertTakesGeneratedKey(context));
             }
         }
 
@@ -864,7 +865,7 @@ public final class SqlLog {
                 recorder.repeats.record(context.operation(), context.dataType().orElse(null), context.origin(),
                         context.shapeId(), context.statement().orElse(""), start, executed, rows, exact,
                         context.transactional(), transactionId, callSite, context.readsRecords(),
-                        context.repositoryWrite());
+                        context.repositoryWrite(), UnitOfWorkRepeats.upsertTakesGeneratedKey(context));
             }
         }
 

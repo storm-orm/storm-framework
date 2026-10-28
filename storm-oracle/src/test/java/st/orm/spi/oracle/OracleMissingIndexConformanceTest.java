@@ -38,8 +38,8 @@ public class OracleMissingIndexConformanceTest extends AbstractMissingIndexConfo
     }
 
     @Override
-    protected void analyze(Statement statement) throws SQLException {
-        statement.execute("BEGIN DBMS_STATS.GATHER_TABLE_STATS(USER, 'ADVICE_PET', cascade => TRUE); END;");
+    protected void analyze(Statement statement, String table) throws SQLException {
+        statement.execute("BEGIN DBMS_STATS.GATHER_TABLE_STATS(USER, '" + table.toUpperCase(java.util.Locale.ROOT) + "', cascade => TRUE); END;");
     }
 
     @Override
@@ -54,5 +54,17 @@ public class OracleMissingIndexConformanceTest extends AbstractMissingIndexConfo
             }
         }
         return plan.toString();
+    }
+
+    @Override
+    protected java.util.List<String> suggestProbeDdl() {
+        return java.util.List.of(
+                "CREATE TABLE suggest_probe (id NUMBER(10) PRIMARY KEY, title VARCHAR2(100) NOT NULL, title_lower VARCHAR2(100) GENERATED ALWAYS AS (LOWER(title)) VIRTUAL)",
+                "CREATE INDEX probe_stored ON suggest_probe (title_lower)");
+    }
+
+    @Override
+    protected boolean servedByIndex(String plan) {
+        return plan.contains("INDEX RANGE SCAN") && plan.contains("PROBE_STORED");
     }
 }

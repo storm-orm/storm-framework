@@ -395,6 +395,20 @@ public class MySQLSqlDialect extends DefaultSqlDialect {
         return 3_072;
     }
 
+    /**
+     * Returns whether an upsert that leaves the key to the database and updates the row another unique key finds
+     * draws an auto-increment value all the same: it does, as the value is drawn for the insert before the duplicate
+     * key is found, so an upsert repeated on rows that exist advances the auto-increment counter by one per
+     * execution.
+     *
+     * @return {@code true}.
+     * @since 1.16
+     */
+    @Override
+    public boolean upsertTakesGeneratedKeyOnUpdate() {
+        return true;
+    }
+
     @Override
     public int maxBindParameters() {
         return 65_535;
@@ -411,5 +425,20 @@ public class MySQLSqlDialect extends DefaultSqlDialect {
     @Override
     public String optimizerHint(List<String> hints) {
         return "/*+ %s */".formatted(String.join(" ", hints));
+    }
+
+    private static final Pattern ON_DUPLICATE_KEY_UPDATE = Pattern.compile("^\\s*(?:/\\*.*?\\*/\\s*)*INSERT\\b.*\\bON\\s+DUPLICATE\\s+KEY\\s+UPDATE\\b", Pattern.CASE_INSENSITIVE | Pattern.DOTALL);
+
+    /**
+     * Returns whether the statement is an upsert: an {@code INSERT ... ON DUPLICATE KEY UPDATE}, the database's own
+     * form, or a {@code MERGE} that both updates and inserts.
+     *
+     * @param sql the compiled statement.
+     * @return {@code true} when the statement is an upsert.
+     * @since 1.16
+     */
+    @Override
+    public boolean isUpsert(String sql) {
+        return super.isUpsert(sql) || ON_DUPLICATE_KEY_UPDATE.matcher(sql).find();
     }
 }

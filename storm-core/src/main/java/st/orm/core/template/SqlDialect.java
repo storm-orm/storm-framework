@@ -438,10 +438,12 @@ public interface SqlDialect {
      * index built for substring matching, such as a trigram index, serves that comparison for terms of a minimum
      * length, and reads every row for a shorter one. {@code search} therefore matches a shorter term only against the
      * rows its longer terms found, which keeps the result and leaves the short term no table to read in full, and
-     * {@code suggest} ignores a shorter term. A search of short terms alone still reads every row.</p>
+     * {@code suggest} matches a shorter term at the start of a word, which the index serves from one character less.
+     * A search of short terms alone still reads every row.</p>
      *
-     * <p>The default is {@code 0}, which treats every term alike. {@link st.orm.StormConfig#SEARCH_MIN_TERM_LENGTH}
-     * overrides the dialect's value.</p>
+     * <p>The default is {@code 0}: no index of the database serves a substring. {@code search} then treats every
+     * term alike, and {@code suggest} matches a term as a prefix of the column, which an ordinary index over the
+     * column serves. {@link st.orm.StormConfig#SEARCH_MIN_TERM_LENGTH} overrides the dialect's value.</p>
      *
      * @return the shortest term the substring index serves, or {@code 0} to treat every term alike.
      * @since 1.16
@@ -934,6 +936,38 @@ public interface SqlDialect {
      */
     default int maxIndexKeyBytes() {
         return 0;
+    }
+
+    /**
+     * Returns whether an upsert that leaves the key to the database and updates an existing row, found by another
+     * unique key, still takes a value from the table's generated key, as a database does that draws the key for the
+     * insert before it finds the row to update. An upsert repeated on rows that exist then advances the key by one
+     * per execution, which the advice on the repeat says.
+     *
+     * <p>The default is {@code false}: the database draws a generated key only for a row it inserts, or finds the
+     * row to update by the key the statement names, which no generated value is drawn for.</p>
+     *
+     * @return {@code true} when an upsert that updates draws a generated key value all the same.
+     * @since 1.16
+     */
+    default boolean upsertTakesGeneratedKeyOnUpdate() {
+        return false;
+    }
+
+    /**
+     * Returns whether the statement is an upsert: an insert of the row that updates the one its key names where it
+     * exists, in the form the database upserts by. The dialect recognizes its own form, so that a compiled statement
+     * reports {@link st.orm.spi.SqlOperation#UPSERT} whatever keyword it starts with.
+     *
+     * <p>The default recognizes none; {@link st.orm.core.spi.DefaultSqlDialect} recognizes a {@code MERGE} that both
+     * updates and inserts, and a dialect with an upsert form of {@code INSERT} adds it.</p>
+     *
+     * @param sql the compiled statement.
+     * @return {@code true} when the statement is an upsert.
+     * @since 1.16
+     */
+    default boolean isUpsert(String sql) {
+        return false;
     }
 
     /**

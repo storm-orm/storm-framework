@@ -56,10 +56,8 @@ import st.orm.core.template.SubqueryTemplate;
 import st.orm.core.template.TemplateString;
 import st.orm.core.template.TypedJoinBuilder;
 import st.orm.core.template.WhereBuilder;
-import st.orm.core.template.impl.Elements.Advisory;
 import st.orm.core.template.impl.Elements.Expression;
 import st.orm.core.template.impl.Elements.ObjectExpression;
-import st.orm.core.template.impl.Elements.OrderFirst;
 import st.orm.core.template.impl.Elements.TableSource;
 import st.orm.core.template.impl.Elements.TableTarget;
 import st.orm.core.template.impl.Elements.TemplateExpression;
@@ -85,6 +83,8 @@ abstract class QueryBuilderImpl<T extends Data, R, ID> extends QueryBuilder<T, R
     protected final List<TemplateString> having;
     protected final List<TemplateString> orderBy;
     protected final List<String> hints;
+    /** How many of the ORDER BY keys rank the rows by a condition, as {@code orderFirst} adds them, at the front. */
+    protected final int orderFirstKeys;
     protected final Supplier<Model<T, ID>> modelSupplier;
 
     protected QueryBuilderImpl(QueryTemplate queryTemplate,
@@ -95,6 +95,7 @@ abstract class QueryBuilderImpl<T extends Data, R, ID> extends QueryBuilder<T, R
                                List<TemplateString> having,
                                List<TemplateString> orderBy,
                                List<String> hints,
+                               int orderFirstKeys,
                                Supplier<Model<T, ID>> modelSupplier) {
         this.queryTemplate = queryTemplate;
         this.fromType = fromType;
@@ -104,6 +105,7 @@ abstract class QueryBuilderImpl<T extends Data, R, ID> extends QueryBuilder<T, R
         this.having = List.copyOf(having);
         this.orderBy = List.copyOf(orderBy);
         this.hints = List.copyOf(hints);
+        this.orderFirstKeys = orderFirstKeys;
         this.modelSupplier = requireNonNull(modelSupplier, "modelSupplier");
     }
 
@@ -123,7 +125,7 @@ abstract class QueryBuilderImpl<T extends Data, R, ID> extends QueryBuilder<T, R
         // The keys orderFirst added lead the ordering. Each ranks a row 0 or 1, a value the window reads from the row
         // and carries in its position after the values of the sort fields and the key, like a sort field of its own.
         var ranks = orderBy;
-        if (ranks.stream().anyMatch(template -> !isOrderFirst(template))) {
+        if (orderFirstKeys != ranks.size()) {
             throw new PersistenceException("scroll manages ORDER BY internally; remove explicit orderBy calls. Rows a condition puts first go through orderFirst, which scroll follows.");
         }
         validateKey(scrollable.key());
@@ -135,7 +137,7 @@ abstract class QueryBuilderImpl<T extends Data, R, ID> extends QueryBuilder<T, R
         // A window before a row is read in the reversed ordering and turned around, so it comes back in the
         // request's sort order like every other window.
         boolean reverse = position != null && !position.after();
-        QueryBuilder<T, R, ID> query = copyWith(queryTemplate, fromType, join, where, groupBy, having, List.of(), hints);
+        QueryBuilder<T, R, ID> query = copyWith(queryTemplate, fromType, join, where, groupBy, having, List.of(), hints, 0);
         if (position != null) {
             var values = PositionImpl.of(position).values();
             if (values.size() != orders.size() + ranks.size()) {
@@ -148,7 +150,9 @@ abstract class QueryBuilderImpl<T extends Data, R, ID> extends QueryBuilder<T, R
             query = query.where(wb -> keysetPredicate(wb, ranks, orders, values, reverse));
         }
         for (var rank : ranks) {
-            query = reverse ? query.orderByDescending(rank) : query.orderBy(rank);
+            query = ((QueryBuilderImpl<T, R, ID>) query).orderFirstKey(reverse
+                    ? TemplateString.combine(rank, TemplateString.of(" DESC"))
+                    : rank);
         }
         for (var order : orders) {
             var field = (Metamodel<T, Object>) order.field();
@@ -189,13 +193,6 @@ abstract class QueryBuilderImpl<T extends Data, R, ID> extends QueryBuilder<T, R
     private static <T extends Data> Scrollable<T> at(Scrollable<T> scrollable, List<Object> values, boolean after) {
         return new Scrollable<>(scrollable.key(), scrollable.keyDescending(), scrollable.sort(), scrollable.size(),
                 PositionFactory.position(values, after));
-    }
-
-    /**
-     * Returns {@code true} if the ORDER BY key ranks the rows by a condition, as {@code orderFirst} adds one.
-     */
-    private static boolean isOrderFirst(TemplateString template) {
-        return template.values().stream().anyMatch(OrderFirst.class::isInstance);
     }
 
     /**
@@ -389,7 +386,8 @@ abstract class QueryBuilderImpl<T extends Data, R, ID> extends QueryBuilder<T, R
                                              List<TemplateString> groupBy,
                                              List<TemplateString> having,
                                              List<TemplateString> orderBy,
-                                             List<String> hints);
+                                             List<String> hints,
+                                             int orderFirstKeys);
 
     /**
      * Adds an optimizer hint to the statement this builder builds.
@@ -412,7 +410,7 @@ abstract class QueryBuilderImpl<T extends Data, R, ID> extends QueryBuilder<T, R
         }
         List<String> copy = new ArrayList<>(hints);
         copy.add(hint.strip());
-        return copyWith(queryTemplate, fromType, join, where, groupBy, having, orderBy, copy);
+        return copyWith(queryTemplate, fromType, join, where, groupBy, having, orderBy, copy, orderFirstKeys);
     }
 
     /**
@@ -488,13 +486,12 @@ abstract class QueryBuilderImpl<T extends Data, R, ID> extends QueryBuilder<T, R
      * Appends the registered joins and the WHERE clause, with multiple where-conditions AND-ed together, to the
      * given template.
      */
-    protected final TemplateString appendJoinsAndWhere(TemplateString template) {
+    protected final TemplateString appendJoinsAndWhere(TemplateString template, StatementFacts.Collector facts) {
         // Which search terms a substring index serves depends on the dialect, so a search resolves its words here.
         int minimumSearchTermLength = queryTemplate.dialect().minimumSearchTermLength();
         var where = resolveSearches(this.where, minimumSearchTermLength);
         if (where != this.where && this.where.stream().anyMatch(it -> unindexedSearch(it, minimumSearchTermLength))) {
-            template = TemplateString.combine(template, wrap(new Advisory(Advice.UNINDEXED_SEARCH
-                    .format(minimumSearchTermLength))));
+            facts.advise(Advice.UNINDEXED_SEARCH.format(minimumSearchTermLength));
         }
         var filterJoins = join.stream().filter(FilterJoinPlacement::isFilterJoin).toList();
         var joins = filterJoins.isEmpty() ? join : join.stream().filter(it -> !FilterJoinPlacement.isFilterJoin(it)).toList();
@@ -611,7 +608,7 @@ abstract class QueryBuilderImpl<T extends Data, R, ID> extends QueryBuilder<T, R
         }
         List<Join> copy = new ArrayList<>(this.join);
         copy.add(join);
-        return (QueryBuilder<Data, R, ID>) copyWith(queryTemplate, fromType, copy, where, groupBy, having, orderBy, hints);
+        return (QueryBuilder<Data, R, ID>) copyWith(queryTemplate, fromType, copy, where, groupBy, having, orderBy, hints, orderFirstKeys);
     }
 
     /**
@@ -634,7 +631,7 @@ abstract class QueryBuilderImpl<T extends Data, R, ID> extends QueryBuilder<T, R
     private QueryBuilder<T, R, ID> addWhere(Where where) {
         List<Where> copy = new ArrayList<>(this.where);
         copy.add(where);
-        return copyWith(queryTemplate, fromType, join, copy, groupBy, having, orderBy, hints);
+        return copyWith(queryTemplate, fromType, join, copy, groupBy, having, orderBy, hints, orderFirstKeys);
     }
 
     /**
@@ -658,13 +655,22 @@ abstract class QueryBuilderImpl<T extends Data, R, ID> extends QueryBuilder<T, R
     public QueryBuilder<T, R, ID> orderBy(TemplateString template) {
         List<TemplateString> copy = new ArrayList<>(orderBy);
         copy.add(template);
-        return copyWith(queryTemplate, fromType, join, where, groupBy, having, copy, hints);
+        return copyWith(queryTemplate, fromType, join, where, groupBy, having, copy, hints, orderFirstKeys);
+    }
+
+    /**
+     * Adds an ORDER BY key that ranks the rows by a condition, counted as one {@code orderFirst} added.
+     */
+    private QueryBuilder<T, R, ID> orderFirstKey(TemplateString key) {
+        List<TemplateString> copy = new ArrayList<>(orderBy);
+        copy.add(key);
+        return copyWith(queryTemplate, fromType, join, where, groupBy, having, copy, hints, orderFirstKeys + 1);
     }
 
     @Override
     public QueryBuilder<T, R, ID> orderFirst(PredicateBuilder<? extends T, ?, ?> predicate) {
         requireNonNull(predicate, "predicate");
-        return orderBy(TemplateString.combine(wrap(new OrderFirst()), TemplateString.of("CASE WHEN "),
+        return orderFirstKey(TemplateString.combine(TemplateString.of("CASE WHEN "),
                 ranking(((PredicateBuilderImpl<?, ?, ?>) predicate).asTemplate()), TemplateString.of(" THEN 0 ELSE 1 END")));
     }
 
@@ -699,7 +705,7 @@ abstract class QueryBuilderImpl<T extends Data, R, ID> extends QueryBuilder<T, R
      * {@code orderFirst} adds one.
      */
     protected final boolean hasOrderFirst() {
-        return orderBy.stream().anyMatch(QueryBuilderImpl::isOrderFirst);
+        return orderFirstKeys > 0;
     }
 
     /**
@@ -713,7 +719,7 @@ abstract class QueryBuilderImpl<T extends Data, R, ID> extends QueryBuilder<T, R
     public QueryBuilder<T, R, ID> groupBy(TemplateString template) {
         List<TemplateString> copy = new ArrayList<>(groupBy);
         copy.add(template);
-        return copyWith(queryTemplate, fromType, join, where, copy, having, orderBy, hints);
+        return copyWith(queryTemplate, fromType, join, where, copy, having, orderBy, hints, orderFirstKeys);
     }
 
     /**
@@ -727,7 +733,7 @@ abstract class QueryBuilderImpl<T extends Data, R, ID> extends QueryBuilder<T, R
     public QueryBuilder<T, R, ID> having(TemplateString template) {
         List<TemplateString> copy = new ArrayList<>(having);
         copy.add(template);
-        return copyWith(queryTemplate, fromType, join, where, groupBy, copy, orderBy, hints);
+        return copyWith(queryTemplate, fromType, join, where, groupBy, copy, orderBy, hints, orderFirstKeys);
     }
 
     /**

@@ -141,7 +141,7 @@ Category: performance. Logger: `st.orm.sql.advice.unindexed-search`.
 
 A substring index, such as PostgreSQL's trigram index, serves words of a minimum length, three characters for a trigram. `search` tests a shorter word only on the rows its longer words found, but an input of short words alone, such as `de`, leaves it nothing to start from, so the database reads every row of each searched table.
 
-A search box that queries as the user types meets such input on almost every keystroke. Use `suggest` there: it ignores the words the index cannot serve and matches no rows for an input without a longer one, so every statement it renders is served by the index. The search page the box leads to keeps `search`. See [Suggestions as the User Types](search.md#suggestions-as-the-user-types) and [Indexing a Search](search.md#indexing-a-search).
+A search box that queries as the user types meets such input on almost every keystroke. Use `suggest` there: it matches every word of two characters or more in the form the index serves, at the start of a word where a substring index cannot serve it anywhere and as a prefix of the column where no index serves a substring, and matches no rows for an input without such a word, so every statement it renders is served by an index. The search page the box leads to keeps `search`. See [Suggestions as the User Types](search.md#suggestions-as-the-user-types) and [Indexing a Search](search.md#indexing-a-search).
 
 ## DISTINCT over a join that repeats rows {#distinct-over-join}
 
@@ -374,3 +374,13 @@ A transaction, or a unit of work, that runs the same INSERT, UPDATE or DELETE te
 The repository overloads that take a list, such as `insert(owners)`, send the rows as one JDBC batch. A batch already counts as one execution, so batched writes never get this advice. That remedy is for an insert, and for an update or removal the repository made for an entity or key it was given. A write by condition, such as `removeAll(Visit_.pet eq pet)` per pet, has no list overload: the advice names one statement whose condition covers all of them, such as `Visit_.pet inList pets`, which is often a change of design as well as of the loop.
 
 Within one transaction a batch changes nothing about what commits. Across transactions it does: a task that calls an external registry per `Pet` and records each answer in a transaction of its own keeps the answers recorded so far when a later call fails, and batched, they commit together. The summary knows the executions ran in transactions of their own, so its advice says that the batch commits the rows together, and the choice is yours.
+
+Where the writes sit between work outside the database, as in that loop around a remote call, the advice says so and names the remedy that fits: collect the rows and write them after the loop, never a transaction around it, which would hold the connection across every call:
+
+> the same INSERT of PetRegistration ran 29 times, 96 ms, 3.3 ms each, one row each, in 29 transactions of their own, spread over 7157 ms with work outside the database between them, at PetRegistryService.kt:60; collect the rows and write them after the loop through the overloads that take a list, which sends them as one batch and commits them together, rather than opening a transaction around the loop
+
+Storm keeps when each execution began and returned, so it sees the gaps: the executions are spread when the time outside the database between the first and the last is at least ten times what they spent inside it.
+
+An upsert is named one, since the dialect recognizes the database's own upsert form, a `MERGE` that both updates and inserts included, and its remedy comes first: a sync that upserts the same rows every run writes back what the rows already hold, which a batch makes cheaper and a read first removes, leaving one select and no writes in the steady state. On a database whose upsert draws a generated key value for the insert before it finds the row to update, the advice adds that each upsert that leaves the key to the database takes one, which the dialect states through `SqlDialect.upsertTakesGeneratedKeyOnUpdate()`:
+
+> the same UPSERT of PetRegistration ran 29 times, ...; where the rows mostly exist and rarely change, reading them first and writing only the new or changed ones avoids the writes, and, where the key is left to the database, the generated key value each upsert takes even where it updates; otherwise the overloads that take a list send the rows as one batch, which commits them together

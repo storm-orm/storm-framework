@@ -49,12 +49,13 @@ class RepeatsTest {
 
     private static Repeats.Repeat record(Repeats repeats, SqlOperation operation, long shapeId, long transactionId) {
         return repeats.record(operation, Owner.class, StatementOrigin.DIRECT, shapeId, "SQL", 0, 1_000_000, 1, true,
-                true, transactionId, null, true, false);
+                true, transactionId, null, true, false, false);
     }
 
     @Test
     void aStatementWhoseRepetitionCarriesNoAdviceIsNotCounted() {
         assertNull(Repeats.adviceOn(SqlOperation.UNDEFINED, StatementOrigin.DIRECT));
+        assertEquals(Advice.REPEATED_WRITE, Repeats.adviceOn(SqlOperation.UPSERT, StatementOrigin.DIRECT));
         var repeats = new Repeats(true);
         for (int i = 0; i < 20; i++) {
             assertNull(record(repeats, SqlOperation.UNDEFINED, 7, i + 1));
@@ -89,6 +90,20 @@ class RepeatsTest {
         assertTrue(advisories.getFirst().text().contains("ran " + transactions + " times, "), advisories.toString());
         assertTrue(advisories.getFirst().text().contains("in " + transactions + " transactions of their own"),
                 advisories.toString());
+    }
+
+    @Test
+    void anUpsertThatDrawsAGeneratedKeyOnUpdateIsSaidToTakeOne() {
+        var repeats = new Repeats(false);
+        for (int i = 0; i < Advice.REPEAT_THRESHOLD; i++) {
+            repeats.record(SqlOperation.UPSERT, Owner.class, StatementOrigin.DIRECT, 11, "SQL", i * 2_000_000L,
+                    i * 2_000_000L + 1_000_000L, 1, true, true, 1, null, true, true, true);
+        }
+        var text = repeats.advisories(true).getFirst().text();
+        assertTrue(text.startsWith("the same UPSERT of Owner ran 10 times, "), text);
+        assertTrue(text.contains("avoids the writes, and, where the key is left to the database, the generated key "
+                + "value each upsert takes even where it updates; otherwise the overloads that take a list send the "
+                + "rows as one batch."), text);
     }
 
     @Test

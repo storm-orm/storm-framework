@@ -175,7 +175,8 @@ public final class TransactionRecord {
         }
         var repeat = repeats.record(context.operation(), context.dataType().orElse(null), context.origin(),
                 context.shapeId(), context.statement().orElse(""), startNanos, executedNanos, rows, exactRows,
-                true, id(), CallSiteCapture.callSite(), context.readsRecords(), context.repositoryWrite());
+                true, id(), CallSiteCapture.callSite(), context.readsRecords(), context.repositoryWrite(),
+                UnitOfWorkRepeats.upsertTakesGeneratedKey(context));
         if (repeat != null && (!AdviceLog.reports(repeat.advice)
                 || AdviceAcceptance.accepts(repeat.advice, repeat.shapeId, repeat.type))) {
             repeat.accepted = true;

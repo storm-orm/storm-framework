@@ -424,6 +424,49 @@ public class SqlLogRendererTest {
                 + "trip. See https://orm.st/docs/advice#repeated-select", read.getFirst());
     }
 
+    /**
+     * The statements of a repeat whose executions each followed work outside the database, such as a remote call:
+     * one millisecond in the database, then a gap of the given millis before the next.
+     */
+    private static List<Statement> spread(SqlOperation operation, Class<? extends Data> type, int executions,
+                                          long gapMillis, IntToLongFunction transaction) {
+        var statements = new ArrayList<Statement>();
+        long nanos = 1_000_000L;
+        long shapeId = (type.getName() + operation + "spread").hashCode();
+        for (int i = 0; i < executions; i++) {
+            long transactionId = transaction.applyAsLong(i);
+            long start = i * (nanos + gapMillis * 1_000_000L);
+            statements.add(new Statement(operation, type, StatementOrigin.DIRECT, "SQL " + type.getSimpleName(), start,
+                    start + nanos, start + nanos, shapeId, "PetRegistryService.kt:60", 1, true,
+                    transactionId != OUTSIDE, Math.max(transactionId, 0)));
+        }
+        return statements;
+    }
+
+    @Test
+    public void aWriteSpreadBetweenWorkOutsideTheDatabaseIsCollectedAndWrittenAfterTheLoop() {
+        // Each write in a transaction of its own, 240 ms of other work between them: the loop around a remote call.
+        var writes = spread(SqlOperation.INSERT, Owner.class, 29, 240, execution -> OUTSIDE);
+        var advisories = SqlLogRenderer.advisories(new Summary("task", writes, 29, 0, 7_000));
+        assertEquals("the same INSERT of Owner ran 29 times, 29 ms, 1.0 ms each, one row each, in 29 transactions of "
+                + "their own, spread over 6749 ms with work outside the database between them, at "
+                + "PetRegistryService.kt:60; collect the rows and write them after the loop through the overloads "
+                + "that take a list, which sends them as one batch and commits them together, rather than opening a "
+                + "transaction around the loop. See https://orm.st/docs/advice#repeated-write", advisories.getFirst());
+        // Within one transaction, the fact is stated and the rows are still to be collected and written after it.
+        var within = spread(SqlOperation.INSERT, Owner.class, 12, 240, execution -> 5L);
+        var advice = SqlLogRenderer.advisories(new Summary("task", within, 12, 0, 3_000)).getFirst();
+        assertTrue(advice.contains("one row each, spread over 2652 ms with work outside the database between them, at "
+                + "PetRegistryService.kt:60; collect the rows and write them after the loop through the overloads "
+                + "that take a list, which sends them as one batch. See"), advice);
+        // Work that is a fraction of the writes is no spread: the executions follow one another.
+        var dense = spread(SqlOperation.INSERT, Owner.class, 12, 5, execution -> OUTSIDE);
+        var plain = SqlLogRenderer.advisories(new Summary("task", dense, 12, 0, 100)).getFirst();
+        assertFalse(plain.contains("spread over"), plain);
+        assertTrue(plain.contains("in 12 transactions of their own, at PetRegistryService.kt:60; the overloads that "
+                + "take a list send the rows as one batch, which commits them together."), plain);
+    }
+
     @Test
     public void aRepeatAcrossSeveralTransactionsSaysHowMany() {
         var statements = repeated(SqlOperation.SELECT, Owner.class, StatementOrigin.DIRECT, 12, 1, true, 1, null,

@@ -210,18 +210,19 @@ public class SemiJoinIntegrationTest {
     }
 
     @Test
-    public void suggestIgnoresShortWords() {
+    public void suggestMatchesAShortWordAtTheStartOfAWord() {
+        // The short word matches pet Leo at the start of a word, where search matched Coleman anywhere.
         var owners = capture(() -> ownersWithPets(trigramOrm())
                 .where(it -> suggest("davis le", Owner_.lastName, Pet_.name))
                 .getResultList());
-        assertEquals(List.of("Betty", "Harold"), firstNames(owners));
+        assertEquals(List.of("Betty"), firstNames(owners));
         assertFalse(statement().contains("EXISTS"), statement());
     }
 
     @Test
-    public void suggestOfShortWordsAloneMatchesNoRows() {
+    public void suggestOfWordsTooShortForAWordStartMatchesNoRows() {
         var owners = capture(() -> ownersWithPets(trigramOrm())
-                .where(it -> suggest("le", Owner_.lastName, Pet_.name))
+                .where(it -> suggest("l", Owner_.lastName, Pet_.name))
                 .getResultList());
         assertEquals(List.of(), firstNames(owners));
         assertTrue(statement().contains("1 <> 1"), statement());
@@ -239,10 +240,15 @@ public class SemiJoinIntegrationTest {
     }
 
     @Test
-    public void suggestMatchesAsSearchWhereTheDialectTreatsWordsAlike() {
-        assertEquals(List.of("Betty", "Jean"), firstNames(ownersWithPets()
+    public void suggestMatchesAPrefixOfTheColumnWhereNoIndexServesASubstring() {
+        // The prefix leaves the column bare, for an index over it; these columns compare case-sensitively, so the
+        // lowered term finds nothing in them, which is why a suggestion column is one that compares ignoring case.
+        var owners = capture(() -> ownersWithPets()
                 .where(it -> suggest("le", Owner_.lastName, Pet_.name))
-                .getResultList()));
+                .getResultList());
+        assertEquals(List.of(), firstNames(owners));
+        assertTrue(statement().contains("last_name LIKE ? ESCAPE '!'"), statement());
+        assertFalse(statement().contains("LOWER(o.last_name)"), statement());
     }
 
     @Test

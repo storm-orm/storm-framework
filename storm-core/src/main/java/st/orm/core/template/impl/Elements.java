@@ -30,7 +30,6 @@ import st.orm.Metamodel;
 import st.orm.Operator;
 import st.orm.ResolveScope;
 import st.orm.SelectMode;
-import st.orm.core.template.Column;
 import st.orm.core.template.TemplateString;
 import st.orm.mapping.RecordField;
 
@@ -514,66 +513,6 @@ public final class Elements {
             this(inner, outer, foreignKey, innerHoldsKey, null);
         }
     }
-
-    /**
-     * Advice about the statement, which renders nothing. The statement carries it to the slow statement log, which
-     * reports it when an execution of the statement is slow.
-     *
-     * @param text the advice.
-     * @since 1.16
-     */
-    public record Advisory(String text) implements Element {
-        public Advisory {
-            requireNonNull(text, "text");
-        }
-    }
-
-    /**
-     * Records that the statement uses a column in a way an index can serve, which renders nothing. The query builder
-     * adds one where the use is not a predicate it compiles, such as the ordering of a limited result; the slow
-     * statement log checks it against the database's indexes when an execution of the statement is slow.
-     *
-     * @param fields the columns' paths, in the statement's order; one element carries every path of one kind.
-     * @param kind how the statement uses the columns.
-     * @since 1.16
-     */
-    public record IndexDemand(List<Metamodel<?, ?>> fields, IndexDemands.Kind kind) implements Element {
-        public IndexDemand {
-            fields = List.copyOf(fields);
-            requireNonNull(kind, "kind");
-        }
-    }
-
-    /**
-     * Records what a select list built from a template reads, which renders nothing: the columns it names through
-     * the metamodel, and whether it names every column it reads, so that an index that holds them is known to serve
-     * the select without reading the table. The query builder adds one for a select that is not the entity's own.
-     *
-     * @param select the select template.
-     * @since 1.16
-     */
-    public record SelectDemand(TemplateString select) implements Element {
-        public SelectDemand {
-            requireNonNull(select, "select");
-        }
-    }
-
-    /**
-     * Marks an ORDER BY key that ranks the rows by a condition, as {@code orderFirst} adds one. It renders nothing; the
-     * query builder reads it to refuse what such a key cannot follow, a keyset scroll and a distinct query.
-     *
-     * @since 1.16
-     */
-    public record OrderFirst() implements Element {}
-
-    /**
-     * Marks an UPDATE or DELETE whose query builder holds no condition. It renders nothing; the statement is flagged as
-     * potentially unsafe whatever WHERE clause it renders, since the form that matches its rows by primary key in a
-     * subquery carries a WHERE clause of its own. The query refuses to run unless it is marked unsafe.
-     *
-     * @since 1.16
-     */
-    public record Unconditional() implements Element {}
 
     /** Raw SQL rendered verbatim, bypassing the template's safety checks. */
     public record Unsafe(String sql) implements Element {

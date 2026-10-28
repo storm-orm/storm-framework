@@ -708,7 +708,7 @@ Physical transactions report as `storm.transaction` observations with their dura
 
 | Key | Cardinality | Value |
 |-----|-------------|-------|
-| `storm.operation` | low | The SQL operation: `SELECT`, `INSERT`, `UPDATE`, `DELETE`, or `UNDEFINED`. |
+| `storm.operation` | low | The SQL operation: `SELECT`, `INSERT`, `UPDATE`, `DELETE`, `UPSERT`, or `UNDEFINED`. |
 | `storm.execution` | low | How the statement executed: `QUERY`, `UPDATE`, or `BATCH`. |
 | `storm.data_type` | low | Simple name of the entity or projection type the statement operates on, or `none` for raw queries. |
 | `storm.origin` | low | What caused the statement: `DIRECT`, or `FETCH` for a statement resolving a reference. |

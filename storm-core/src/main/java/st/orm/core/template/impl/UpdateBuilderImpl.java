@@ -47,7 +47,6 @@ import st.orm.core.template.QueryBuilder;
 import st.orm.core.template.QueryPlan;
 import st.orm.core.template.QueryTemplate;
 import st.orm.core.template.TemplateString;
-import st.orm.core.template.impl.Elements.Unconditional;
 import st.orm.core.template.impl.Elements.UpdateTarget;
 import st.orm.core.template.impl.Elements.Where;
 
@@ -79,7 +78,7 @@ public class UpdateBuilderImpl<T extends Data, ID> extends QueryBuilderImpl<T, O
     private final boolean unsafe;
 
     public UpdateBuilderImpl(QueryTemplate queryTemplate, Class<T> fromType, Supplier<Model<T, ID>> modelSupplier) {
-        this(queryTemplate, fromType, List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), modelSupplier, List.of(), false);
+        this(queryTemplate, fromType, List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), 0, modelSupplier, List.of(), false);
     }
 
     private UpdateBuilderImpl(QueryTemplate queryTemplate,
@@ -90,10 +89,11 @@ public class UpdateBuilderImpl<T extends Data, ID> extends QueryBuilderImpl<T, O
                               List<TemplateString> having,
                               List<TemplateString> orderBy,
                               List<String> hints,
+                              int orderFirstKeys,
                               Supplier<Model<T, ID>> modelSupplier,
                               List<Assignment> assignments,
                               boolean unsafe) {
-        super(queryTemplate, fromType, join, where, groupBy, having, orderBy, hints, modelSupplier);
+        super(queryTemplate, fromType, join, where, groupBy, having, orderBy, hints, orderFirstKeys, modelSupplier);
         this.assignments = List.copyOf(assignments);
         this.unsafe = unsafe;
     }
@@ -107,7 +107,7 @@ public class UpdateBuilderImpl<T extends Data, ID> extends QueryBuilderImpl<T, O
      */
     @Override
     public QueryBuilder<T, Object, ID> unsafe() {
-        return new UpdateBuilderImpl<>(queryTemplate, fromType, join, where, groupBy, having, orderBy, hints, modelSupplier, assignments, true);
+        return new UpdateBuilderImpl<>(queryTemplate, fromType, join, where, groupBy, having, orderBy, hints, orderFirstKeys, modelSupplier, assignments, true);
     }
 
     @Override
@@ -118,8 +118,9 @@ public class UpdateBuilderImpl<T extends Data, ID> extends QueryBuilderImpl<T, O
                                          List<TemplateString> groupBy,
                                          List<TemplateString> having,
                                          List<TemplateString> orderBy,
-                                         List<String> hints) {
-        return new UpdateBuilderImpl<>(queryTemplate, fromType, join, where, groupBy, having, orderBy, hints, modelSupplier, assignments, unsafe);
+                                         List<String> hints,
+                                         int orderFirstKeys) {
+        return new UpdateBuilderImpl<>(queryTemplate, fromType, join, where, groupBy, having, orderBy, hints, orderFirstKeys, modelSupplier, assignments, unsafe);
     }
 
     private QueryBuilder<T, Object, ID> with(Assignment assignment) {
@@ -130,7 +131,7 @@ public class UpdateBuilderImpl<T extends Data, ID> extends QueryBuilderImpl<T, O
         }
         var copy = new ArrayList<>(assignments);
         copy.add(assignment);
-        return new UpdateBuilderImpl<>(queryTemplate, fromType, join, where, groupBy, having, orderBy, hints, modelSupplier, copy, unsafe);
+        return new UpdateBuilderImpl<>(queryTemplate, fromType, join, where, groupBy, having, orderBy, hints, orderFirstKeys, modelSupplier, copy, unsafe);
     }
 
     /**
@@ -368,7 +369,7 @@ public class UpdateBuilderImpl<T extends Data, ID> extends QueryBuilderImpl<T, O
         };
     }
 
-    private TemplateString toTemplateString() {
+    private TemplateString toTemplateString(StatementFacts.Collector facts) {
         refuseJoinedInheritance("UPDATE");
         TemplateString template = switch (queryTemplate.dialect().writeJoinSyntax()) {
             // UPDATE pet p INNER JOIN owner o ON ... SET p.name = ? WHERE o.last_name = ?. The joins render after the
@@ -378,7 +379,7 @@ public class UpdateBuilderImpl<T extends Data, ID> extends QueryBuilderImpl<T, O
                     wrap(new UpdateTarget(fromType)),
                     wrap(from(fromType, true)),
                     TemplateString.of("\nSET "),
-                    getSetTemplate(true)));
+                    getSetTemplate(true)), facts);
             // UPDATE p SET p.name = ? FROM pet p INNER JOIN owner o ON ... WHERE o.last_name = ?.
             case FROM_CLAUSE -> appendJoinsAndWhere(TemplateString.combine(
                     TemplateString.of("UPDATE" + hintAfterKeyword() + " "),
@@ -387,11 +388,11 @@ public class UpdateBuilderImpl<T extends Data, ID> extends QueryBuilderImpl<T, O
                     TemplateString.of("\nSET "),
                     getSetTemplate(true),
                     TemplateString.of("\nFROM "),
-                    wrap(from(fromType, true))));
+                    wrap(from(fromType, true))), facts);
             // UPDATE pet SET name = ? WHERE (id) IN (SELECT p.id FROM pet p INNER JOIN owner o ON ... WHERE ...).
             case SUBQUERY -> {
                 var select = appendJoinsAndWhere(TemplateString.combine(TemplateString.of("SELECT "), getPrimaryKeyTemplate(true),
-                        TemplateString.raw("\nFROM \0", from(fromType, true))));
+                        TemplateString.raw("\nFROM \0", from(fromType, true))), facts);
                 yield TemplateString.combine(
                         TemplateString.raw("UPDATE" + hintAfterKeyword() + " \0\nSET ", fromType),
                         getSetTemplate(false),
@@ -401,7 +402,7 @@ public class UpdateBuilderImpl<T extends Data, ID> extends QueryBuilderImpl<T, O
             }
         };
         if (!hasCondition()) {
-            template = TemplateString.combine(template, wrap(new Unconditional()));
+            facts.unconditional();
         }
         String hint = hintAtEnd();
         return hint.isEmpty() ? template : TemplateString.combine(template, TemplateString.of(hint));
@@ -423,7 +424,9 @@ public class UpdateBuilderImpl<T extends Data, ID> extends QueryBuilderImpl<T, O
      */
     @Override
     public Query build() {
-        Query query = queryTemplate.query(toTemplateString());
+        var facts = new StatementFacts.Collector();
+        var template = toTemplateString(facts);
+        Query query = QueryTemplateImpl.query(queryTemplate, template, facts.build());
         if (unsafe || hasCondition()) {
             query = query.unsafe();
         }
@@ -441,7 +444,9 @@ public class UpdateBuilderImpl<T extends Data, ID> extends QueryBuilderImpl<T, O
      */
     @Override
     public QueryPlan plan() {
-        var plan = queryTemplate.plan(toTemplateString());
+        var facts = new StatementFacts.Collector();
+        var template = toTemplateString(facts);
+        var plan = QueryTemplateImpl.plan(queryTemplate, template, facts.build());
         if (!unsafe && !hasCondition()) {
             return plan;
         }

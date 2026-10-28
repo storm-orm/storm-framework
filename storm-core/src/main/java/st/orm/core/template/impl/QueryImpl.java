@@ -65,6 +65,7 @@ import st.orm.core.spi.TransactionTemplateProvider;
 import st.orm.core.spi.WeakInterner;
 import st.orm.core.template.PreparedQuery;
 import st.orm.core.template.Query;
+import st.orm.core.template.SqlDialect;
 import st.orm.core.template.SqlTemplate.Parameter;
 import st.orm.spi.QueryContext;
 import st.orm.spi.QueryContext.ExecutionKind;
@@ -95,7 +96,8 @@ class QueryImpl implements Query, KeyedQuery {
                        @Nullable SqlCommenter sqlCommenter,
                        List<String> advisories,
                        @Nullable IndexDemands indexDemands,
-                       @Nullable DataSource dataSource) {
+                       @Nullable DataSource dataSource,
+                       SqlDialect dialect) {
 
         /**
          * Returns the references to resolve while mapping rows into the given type.
@@ -269,7 +271,7 @@ class QueryImpl implements Query, KeyedQuery {
                 advice = AdviceLog.onExecute(new QueryContextImpl(environment.operation(), environment.dataType(),
                         kind, environment.statementText(), environment.origin(), environment.shapeId(),
                         transactional, environment.transactionTemplateProvider(), readsRecords(resultType),
-                        managed), environment.statementText(), advisories);
+                        managed, upsertTakesGeneratedKey()), environment.statementText(), advisories);
             }
             boolean slowLog = SlowStatementLog.observes(transactional);
             if (queryObserver == QueryObserver.NOOP && operators == null && !slowLog && advice == null) {
@@ -278,7 +280,8 @@ class QueryImpl implements Query, KeyedQuery {
             }
             var context = new QueryContextImpl(environment.operation(), environment.dataType(), kind,
                     environment.statementText(), environment.origin(), environment.shapeId(), transactional,
-                    environment.transactionTemplateProvider(), readsRecords(resultType), managed);
+                    environment.transactionTemplateProvider(), readsRecords(resultType), managed,
+                    upsertTakesGeneratedKey());
             var observation = queryObserver == QueryObserver.NOOP
                     ? Observation.NOOP
                     : queryObserver.onExecute(context);
@@ -307,6 +310,12 @@ class QueryImpl implements Query, KeyedQuery {
      * computed values, such as a count, or columns picked from the rows. Without a result type, as for a write or an
      * untyped read, it is not known, and counts as a read of records, as the context's default has it.
      */
+    /** Returns whether the statement is an upsert that draws a generated key value even where it updates. */
+    private boolean upsertTakesGeneratedKey() {
+        return environment.operation() == SqlOperation.UPSERT
+                && environment.dialect().upsertTakesGeneratedKeyOnUpdate();
+    }
+
     private static boolean readsRecords(@Nullable Class<?> resultType) {
         return resultType == null || Data.class.isAssignableFrom(resultType);
     }
@@ -1363,7 +1372,8 @@ class QueryImpl implements Query, KeyedQuery {
                                     boolean transactional,
                                     @Nullable TransactionTemplateProvider transactionTemplateProvider,
                                     boolean readsRecords,
-                                    boolean repositoryWrite)
+                                    boolean repositoryWrite,
+                                    boolean upsertTakesGeneratedKey)
             implements QueryContext {
         @Override
         public Optional<Class<? extends Data>> dataType() {

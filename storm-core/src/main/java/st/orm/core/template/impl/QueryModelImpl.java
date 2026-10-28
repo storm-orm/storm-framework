@@ -453,7 +453,7 @@ final class QueryModelImpl implements QueryModel {
             // A comparison on the bare column is one an index on it can serve; one on a function call is not.
             var kind = IndexDemands.kindOf(operator);
             if (kind != null) {
-                IndexDemandProcessor.demand(model.getColumns(metamodel), kind, compiler);
+                ColumnDemands.demand(model.getColumns(metamodel), kind, compiler);
             }
         }
         try {

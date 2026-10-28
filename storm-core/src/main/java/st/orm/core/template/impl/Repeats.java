@@ -97,6 +97,9 @@ final class Repeats {
         boolean singleRows = true;
         /** Whether an execution produced or affected a row, or reported no exact count. */
         boolean anyRows;
+        /** When the first execution was prepared and the last returned, which bound the time the loop spanned. */
+        long firstStartNanos = Long.MAX_VALUE;
+        long lastEndNanos = Long.MIN_VALUE;
     }
 
     /** A statement or fetch that may repeat, under construction. */
@@ -109,6 +112,8 @@ final class Repeats {
         final boolean readsRecords;
         /** Whether a write was made for given entities or keys, rather than by condition. */
         final boolean repositoryWrite;
+        /** Whether an upsert that updates draws a generated key value all the same, on the database it ran on. */
+        final boolean upsertTakesGeneratedKey;
         /** Every execution recorded, which decides when the threshold is reached. */
         int executions;
         /** The call site of the executions, part of the key where it is known. */
@@ -125,7 +130,8 @@ final class Repeats {
         private long maxTransactionId;
 
         private Repeat(Advice advice, SqlOperation operation, Class<? extends Data> type, long shapeId,
-                       boolean readsRecords, boolean repositoryWrite, boolean intervals) {
+                       boolean readsRecords, boolean repositoryWrite, boolean upsertTakesGeneratedKey,
+                       boolean intervals) {
             this.intervals = intervals ? new Intervals() : null;
             this.advice = advice;
             this.operation = operation;
@@ -133,12 +139,13 @@ final class Repeats {
             this.shapeId = shapeId;
             this.readsRecords = readsRecords;
             this.repositoryWrite = repositoryWrite;
+            this.upsertTakesGeneratedKey = upsertTakesGeneratedKey;
         }
     }
 
     /** What the advice on a repeat states, over the parts that count. */
-    private record Counted(int executions, long nanos, long elapsedNanos, boolean singleRows, boolean noRows,
-                           int transactions) {}
+    private record Counted(int executions, long nanos, long elapsedNanos, long spanNanos, boolean singleRows,
+                           boolean noRows, int transactions) {}
 
     private final Map<ShapeAtSite, Repeat> repeats = new LinkedHashMap<>();
     private final boolean intervals;
@@ -155,7 +162,7 @@ final class Repeats {
 
     /**
      * Returns the advice a statement's repetition carries: on a fetch, the same single-row read, or the same
-     * single-row write; {@code null} for a statement whose repetition carries none.
+     * single-row write, an upsert included; {@code null} for a statement whose repetition carries none.
      */
     static @Nullable Advice adviceOn(SqlOperation operation, StatementOrigin origin) {
         if (origin == StatementOrigin.FETCH) {
@@ -163,7 +170,7 @@ final class Repeats {
         }
         return switch (operation) {
             case SELECT -> Advice.REPEATED_SELECT;
-            case INSERT, UPDATE, DELETE -> Advice.REPEATED_WRITE;
+            case INSERT, UPDATE, DELETE, UPSERT -> Advice.REPEATED_WRITE;
             default -> null;
         };
     }
@@ -187,6 +194,7 @@ final class Repeats {
      * @param callSite the call site of the execution, or {@code null} when not recorded.
      * @param readsRecords whether a read maps its rows to a type, rather than to computed values.
      * @param repositoryWrite whether a write was made for given entities or keys, rather than by condition.
+     * @param upsertTakesGeneratedKey whether an upsert that updates draws a generated key value all the same.
      * @return the repeat that reached the threshold with this execution, or {@code null}.
      */
     @Nullable Repeat record(SqlOperation operation,
@@ -202,7 +210,8 @@ final class Repeats {
                             long transactionId,
                             @Nullable String callSite,
                             boolean readsRecords,
-                            boolean repositoryWrite) {
+                            boolean repositoryWrite,
+                            boolean upsertTakesGeneratedKey) {
         if (type == null) {
             return null;
         }
@@ -217,7 +226,8 @@ final class Repeats {
             if (repeats.size() >= MAX_REPEATS) {
                 return null;
             }
-            repeat = new Repeat(advice, operation, type, shapeId, readsRecords, repositoryWrite, intervals);
+            repeat = new Repeat(advice, operation, type, shapeId, readsRecords, repositoryWrite,
+                    upsertTakesGeneratedKey, intervals);
             repeats.put(key, repeat);
         }
         repeat.executions++;
@@ -237,6 +247,8 @@ final class Repeats {
         var part = repeat.parts.computeIfAbsent(partId, ignore -> new Part());
         part.executions++;
         part.nanos += executedNanos - startNanos;
+        part.firstStartNanos = Math.min(part.firstStartNanos, startNanos);
+        part.lastEndNanos = Math.max(part.lastEndNanos, executedNanos);
         // A batch is one execution, so a row count of at most one per execution means no batch took the rows.
         part.singleRows &= exactRows && rows <= 1;
         part.anyRows |= !exactRows || rows > 0;
@@ -261,6 +273,8 @@ final class Repeats {
         int transactions = 0;
         boolean unknown = false;
         boolean leftOut = false;
+        long firstStart = Long.MAX_VALUE;
+        long lastEnd = Long.MIN_VALUE;
         for (var entry : repeat.parts.entrySet()) {
             long partId = entry.getKey();
             var part = entry.getValue();
@@ -272,6 +286,8 @@ final class Repeats {
             nanos += part.nanos;
             singleRows &= part.singleRows;
             anyRows |= part.anyRows;
+            firstStart = Math.min(firstStart, part.firstStartNanos);
+            lastEnd = Math.max(lastEnd, part.lastEndNanos);
             if (partId == OWN) {
                 transactions += part.executions;
             } else if (partId == UNKNOWN) {
@@ -284,8 +300,8 @@ final class Repeats {
         }
         long elapsed = repeat.intervals == null || leftOut ? nanos
                 : Math.min(nanos, Intervals.union(List.of(repeat.intervals)));
-        return new Counted(executions, nanos, elapsed, singleRows, !anyRows,
-                withinTransaction ? 1 : unknown ? -1 : transactions);
+        return new Counted(executions, nanos, elapsed, executions == 0 ? 0 : lastEnd - firstStart, singleRows,
+                !anyRows, withinTransaction ? 1 : unknown ? -1 : transactions);
     }
 
     /**
@@ -320,12 +336,29 @@ final class Repeats {
     }
 
     /**
+     * Returns whether the executions were spread over far more time than they spent in the database, with work
+     * outside it between them, as a loop around a remote call is: the time outside the database between the first
+     * and the last is at least {@link #SPREAD_FACTOR} times what they spent inside it.
+     */
+    private static boolean spread(Counted counted) {
+        long outside = counted.spanNanos() - counted.elapsedNanos();
+        return counted.elapsedNanos() > 0 && outside >= SPREAD_FACTOR * counted.elapsedNanos();
+    }
+
+    /** How many times the time outside the database must exceed the time inside it for a repeat to be spread. */
+    static final long SPREAD_FACTOR = 10;
+
+    /**
      * Renders the advice of a repeat with its facts: the time, with the elapsed time where the executions ran
      * concurrently enough for the sum to overstate what they cost, by at least twice, and the mean per execution;
-     * the rows, none where no execution touched one; the transactions where stated; the call site. From
+     * the rows, none where no execution touched one; the transactions where stated; where the executions were
+     * spread over far more time than they took, with work outside the database between them; the call site. From
      * {@link Advice#STATEMENT_COST_NANOS} per execution the advice says the statement itself is the cost, ahead of
      * the remedy for the loop, which fits the statement: rows by key or a grouped query for a read, the overloads
-     * that take a list or one statement whose condition covers all of them for a write.
+     * that take a list or one statement whose condition covers all of them for a write. A write spread between
+     * work outside the database is to be collected and written after the loop, never wrapped in a transaction that
+     * would hold the connection across that work. An upsert repeated on rows that mostly exist is to be replaced
+     * by a read and a write of what is new or changed, before any batch.
      */
     private static String text(Repeat repeat, Counted counted) {
         long mean = counted.nanos() / Math.max(1, counted.executions());
@@ -338,12 +371,19 @@ final class Repeats {
         String rows = counted.noRows() ? "no rows" : "one row each";
         var facts = new StringBuilder();
         String commits = "";
+        boolean spread = spread(counted);
         int transactions = counted.transactions();
         if (transactions == counted.executions()) {
             facts.append(", in ").append(transactions).append(" transactions of their own");
-            commits = ", which commits them together";
+            commits = spread
+                    ? " and commits them together, rather than opening a transaction around the loop"
+                    : ", which commits them together";
         } else if (transactions > 1) {
             facts.append(", in ").append(transactions).append(" transactions");
+        }
+        if (spread) {
+            facts.append(", spread over ").append(SlowStatementLog.millis(counted.spanNanos()))
+                    .append(" with work outside the database between them");
         }
         if (repeat.callSite != null) {
             facts.append(", at ").append(repeat.callSite);
@@ -362,12 +402,35 @@ final class Repeats {
                             : "one query for all of them, with a where with IN over what the loop varies and a "
                                     + "GROUP BY on it for an aggregate such as a count, computes them in one round "
                                     + "trip");
-            default -> Advice.REPEATED_WRITE.format(repeat.operation.name(), type, counted.executions(), time, rows,
-                    facts, cost, repeat.operation == SqlOperation.INSERT || repeat.repositoryWrite
-                            ? "the overloads that take a list send the rows as one batch"
-                            : "one statement whose condition covers all of them, such as a where with IN over what "
-                                    + "the loop varies, writes them in one round trip", commits);
+            default -> Advice.REPEATED_WRITE.format(repeat.operation.name(), type,
+                    counted.executions(), time, rows, facts, cost, writeRemedy(repeat, spread), commits);
         };
+    }
+
+    /**
+     * Returns the remedy for a repeated write: for an upsert, a read first and a write of what is new or changed,
+     * then the batch; for an insert or a write the repository made for given entities or keys, the overloads that
+     * take a list, collected and written after the loop where the executions were spread between work outside the
+     * database; for a write by condition, one statement whose condition covers all of them.
+     */
+    private static String writeRemedy(Repeat repeat, boolean spread) {
+        boolean upsert = repeat.operation == SqlOperation.UPSERT;
+        if (!upsert && repeat.operation != SqlOperation.INSERT && !repeat.repositoryWrite) {
+            return "one statement whose condition covers all of them, such as a where with IN over what the loop "
+                    + "varies, writes them in one round trip";
+        }
+        String batch = spread
+                ? "collect the rows and write them after the loop through the overloads that take a list, which "
+                        + "sends them as one batch"
+                : "the overloads that take a list send the rows as one batch";
+        if (!upsert) {
+            return batch;
+        }
+        return "where the rows mostly exist and rarely change, reading them first and writing only the new or "
+                + "changed ones avoids the writes"
+                + (repeat.upsertTakesGeneratedKey ? ", and, where the key is left to the database, the generated "
+                        + "key value each upsert takes even where it updates" : "")
+                + "; otherwise " + batch;
     }
 
     /**

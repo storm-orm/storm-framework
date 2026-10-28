@@ -35,6 +35,7 @@ import java.util.Locale;
 import java.util.regex.Pattern;
 import javax.sql.DataSource;
 import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.slf4j.LoggerFactory;
@@ -45,6 +46,7 @@ import st.orm.PK;
 import st.orm.core.template.ORMTemplate;
 import st.orm.core.template.PreparedStatementTemplate;
 import st.orm.core.template.TemplateString;
+import st.orm.core.template.impl.PredicateBuilderFactory;
 import st.orm.core.template.impl.SlowStatementLog;
 
 /**
@@ -87,7 +89,25 @@ public abstract class AbstractMissingIndexConformanceTest {
     private ORMTemplate orm;
 
     /** Refreshes the planner's statistics of the table, once its rows or indexes change. */
-    protected void analyze(Statement statement) throws SQLException {
+    protected void analyze(Statement statement, String table) throws SQLException {
+    }
+
+    /**
+     * Returns the statements that create the probe table of {@link #theIndexTheDocsNameServesASuggestion()} with
+     * the index the docs name for a suggestion: {@code suggest_probe(id, title, title_lower)} with
+     * {@code title_lower} the stored lowered title, and {@code probe_stored} over it, or on a database with a
+     * substring index, {@code probe_trgm} over {@code LOWER(title_lower)}. Empty where the probe does not apply.
+     */
+    protected List<String> suggestProbeDdl() {
+        return List.of();
+    }
+
+    /**
+     * Prepares the session the probe reads its plans in, so the plans show what an index can serve rather than what
+     * the planner prefers for a small table: a database whose planner weighs a sequential scan against an index
+     * turns the sequential scan off here.
+     */
+    protected void preferIndexes(Statement statement) throws SQLException {
     }
 
     /** Returns the database's plan for the statement, as text. */
@@ -131,7 +151,7 @@ public abstract class AbstractMissingIndexConformanceTest {
             connection.setAutoCommit(autoCommit);
         }
         try (var connection = dataSource.getConnection(); var statement = connection.createStatement()) {
-            analyze(statement);
+            analyze(statement, "advice_pet");
         }
         orm = PreparedStatementTemplate.ORM(dataSource);
     }
@@ -205,7 +225,7 @@ public abstract class AbstractMissingIndexConformanceTest {
         assertTrue(advised.find(), advice);
         try (var connection = dataSource.getConnection(); var ddl = connection.createStatement()) {
             ddl.execute("CREATE INDEX advised_idx ON advice_pet (" + advised.group(1) + ")");
-            analyze(ddl);
+            analyze(ddl, "advice_pet");
         }
         try (var connection = dataSource.getConnection()) {
             var plan = plan(connection, line.sql());
@@ -290,5 +310,94 @@ public abstract class AbstractMissingIndexConformanceTest {
     public void theIndexAdvisedForAGroupedReadIsTheOneTheDatabaseUses() throws SQLException {
         assertAdvisedIndexIsUsed(() -> orm.entity(AdvicePet.class).selectCount().where(TYPE_ID, EQUALS, 7)
                 .groupBy(NAME).getResultList());
+    }
+
+    /** A table of titles with a stored lowered copy, the column a suggestion box reads. */
+    @DbTable("suggest_probe")
+    public record SuggestProbe(@PK(generation = NONE) Integer id, String title, String titleLower)
+            implements Entity<Integer> {}
+
+    private static final Metamodel<SuggestProbe, String> TITLE_LOWER = Metamodel.of(SuggestProbe.class, "titleLower");
+
+    /**
+     * Returns whether the plan reads the probe table through the index the docs name for a suggestion, as a range
+     * or a seek rather than a scan of the index: a database that prints the index name for a full scan of it says
+     * so in its own words.
+     */
+    protected boolean servedByIndex(String plan) {
+        return plan.toLowerCase(Locale.ROOT).contains("probe_");
+    }
+
+    /**
+     * The index the docs name serves the statement {@code suggest} renders: on a database with a substring index,
+     * the one over the lowered column; elsewhere an ordinary index over a column that compares case-insensitively on
+     * its own, here the stored lowered title. The plan is read with the word inlined, as the missing-index test
+     * reads it, and with the planner's preference for a sequential scan of a small table turned off where it has
+     * one, so the plan shows what the index serves.
+     */
+    @Test
+    public void theIndexTheDocsNameServesASuggestion() throws SQLException {
+        var ddl = suggestProbeDdl();
+        Assumptions.assumeFalse(ddl.isEmpty(), "No probe for this dialect.");
+        try (var connection = dataSource.getConnection(); var statement = connection.createStatement()) {
+            try {
+                statement.execute("DROP TABLE suggest_probe");
+            } catch (SQLException ignore) {
+                // Not there yet.
+            }
+            for (String sql : ddl) {
+                statement.execute(sql);
+            }
+        }
+        String[] words = {"alpha", "bravo", "charlie", "delta", "echo", "foxtrot", "golf", "hotel", "india",
+                "juliet", "kilo", "lima", "mike", "november", "oscar", "papa", "quebec", "romeo", "sierra", "tango",
+                "victor", "whiskey", "xray", "yankee", "zulu"};
+        try (var connection = dataSource.getConnection();
+             var insert = connection.prepareStatement("INSERT INTO suggest_probe (id, title) VALUES (?, ?)")) {
+            boolean autoCommit = connection.getAutoCommit();
+            connection.setAutoCommit(false);
+            for (int id = 1; id <= ROWS; id++) {
+                String title = switch (id % 1_000) {
+                    case 1 -> "Upside Down " + id;
+                    case 2 -> "Pick Me Up " + id;
+                    case 3 -> "Grown Ups " + id;
+                    default -> words[id % words.length] + " " + words[id * 7 % words.length] + " " + id;
+                };
+                insert.setInt(1, id);
+                insert.setString(2, title);
+                insert.addBatch();
+                if (id % 1_000 == 0) {
+                    insert.executeBatch();
+                }
+            }
+            connection.commit();
+            connection.setAutoCommit(autoCommit);
+        }
+        try (var connection = dataSource.getConnection(); var statement = connection.createStatement()) {
+            analyze(statement, "suggest_probe");
+        }
+        var results = new ArrayList<SuggestProbe>();
+        var lines = slowLines(() -> results.addAll(orm.entity(SuggestProbe.class).select()
+                .where(it -> PredicateBuilderFactory.<SuggestProbe, SuggestProbe, Integer>suggest("Up", List.of(TITLE_LOWER)))
+                .getResultList()));
+        assertFalse(results.isEmpty(), "A two-character word takes part in a suggestion.");
+        for (var result : results) {
+            assertTrue(result.titleLower().matches("(^|.* )up.*"), result.titleLower());
+        }
+        try (var connection = dataSource.getConnection()) {
+            try (var statement = connection.createStatement()) {
+                preferIndexes(statement);
+            }
+            var plan = plan(connection, lines.getFirst().sql());
+            assertTrue(servedByIndex(plan), "The suggestion is not served by the index the docs name:\n"
+                    + lines.getFirst().sql() + "\n" + plan);
+        }
+        // A one-character word takes no part, whatever the index serves.
+        assertEquals(List.of(), orm.entity(SuggestProbe.class).select()
+                .where(it -> PredicateBuilderFactory.<SuggestProbe, SuggestProbe, Integer>suggest("U", List.of(TITLE_LOWER)))
+                .getResultList());
+        try (var connection = dataSource.getConnection(); var statement = connection.createStatement()) {
+            statement.execute("DROP TABLE suggest_probe");
+        }
     }
 }

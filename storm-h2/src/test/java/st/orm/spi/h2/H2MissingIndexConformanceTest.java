@@ -25,7 +25,19 @@ import st.orm.test.StormTest;
 public class H2MissingIndexConformanceTest extends AbstractMissingIndexConformanceTest {
 
     @Override
-    protected void analyze(Statement statement) throws SQLException {
+    protected void analyze(Statement statement, String table) throws SQLException {
         statement.execute("ANALYZE");
+    }
+
+    @Override
+    protected java.util.List<String> suggestProbeDdl() {
+        return java.util.List.of(
+                "CREATE TABLE suggest_probe (id INT PRIMARY KEY, title VARCHAR(100) NOT NULL, title_lower VARCHAR(100) GENERATED ALWAYS AS (LOWER(title)))",
+                "CREATE INDEX probe_stored ON suggest_probe (title_lower)");
+    }
+
+    @Override
+    protected boolean servedByIndex(String plan) {
+        return plan.contains("PROBE_STORED:");
     }
 }

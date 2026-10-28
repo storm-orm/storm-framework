@@ -37,7 +37,19 @@ public class MariaDBMissingIndexConformanceTest extends AbstractMissingIndexConf
     }
 
     @Override
-    protected void analyze(Statement statement) throws SQLException {
-        statement.execute("ANALYZE TABLE advice_pet");
+    protected void analyze(Statement statement, String table) throws SQLException {
+        statement.execute("ANALYZE TABLE " + table);
+    }
+
+    @Override
+    protected java.util.List<String> suggestProbeDdl() {
+        return java.util.List.of(
+                "CREATE TABLE suggest_probe (id INT PRIMARY KEY, title VARCHAR(100) NOT NULL, title_lower VARCHAR(100) AS (LOWER(title)) STORED)",
+                "CREATE INDEX probe_stored ON suggest_probe (title_lower)");
+    }
+
+    @Override
+    protected boolean servedByIndex(String plan) {
+        return plan.contains("range") && plan.contains("probe_stored");
     }
 }

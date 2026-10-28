@@ -86,9 +86,11 @@ public final class StormConfig {
     public static final String ANSI_ESCAPING = "storm.ansi_escaping";
     /**
      * Shortest search term, in characters, that the database's substring index serves. {@code search} matches a
-     * shorter term only against the rows its longer terms found, and {@code suggest} ignores it. Defaults to the
-     * dialect's value: 3 on PostgreSQL, whose trigram index needs three characters, and 0 elsewhere, which treats
-     * every term alike.
+     * shorter term only against the rows its longer terms found, and {@code suggest} matches it at the start of a
+     * word, which the index serves from one character less. Defaults to the dialect's value: 3 on PostgreSQL, whose
+     * trigram index needs three characters, and 0 elsewhere, where no index serves a substring: {@code search} then
+     * treats every term alike, and {@code suggest} matches a term as a prefix of the column, which an ordinary index
+     * over the column serves.
      */
     @SqlShaping
     public static final String SEARCH_MIN_TERM_LENGTH = "storm.search.min_term_length";

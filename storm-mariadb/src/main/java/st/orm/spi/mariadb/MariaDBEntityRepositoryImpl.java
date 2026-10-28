@@ -103,8 +103,8 @@ public class MariaDBEntityRepositoryImpl<E extends Entity<ID>, ID>
             var query = ormTemplate.query(flatten(raw("""
                 INSERT INTO \0
                 VALUES \0\0
-                RETURNING %s""".formatted(pkName), model.type(), entity, onDuplicateKey(versionAware))))
-                    .managed();
+                RETURNING %s""".formatted(pkName), model.type(), entity, onDuplicateKey(versionAware)))).managed()
+                    ;
             return query.getSingleResult(model.primaryKeyType());
         });
     }
@@ -152,7 +152,7 @@ public class MariaDBEntityRepositoryImpl<E extends Entity<ID>, ID>
                 ormTemplate.query(flatten(raw("""
                     INSERT INTO \0
                     VALUES \0\0
-                    RETURNING %s""".formatted(pkName), model.type(), entities, onDuplicateKey(versionAware))))
-                        .managed());
+                    RETURNING %s""".formatted(pkName), model.type(), entities, onDuplicateKey(versionAware)))).managed()
+                        );
     }
 }

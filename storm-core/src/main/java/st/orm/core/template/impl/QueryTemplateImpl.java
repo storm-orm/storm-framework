@@ -37,7 +37,7 @@ import st.orm.core.template.SqlDialect;
 import st.orm.core.template.TemplateString;
 import st.orm.spi.ExceptionMapper;
 
-class QueryTemplateImpl implements QueryTemplate {
+public class QueryTemplateImpl implements QueryTemplate {
     protected final QueryFactory queryFactory;
     protected final ModelBuilder modelBuilder;
     private final RefFactory refFactory;
@@ -235,5 +235,53 @@ class QueryTemplateImpl implements QueryTemplate {
     @Override
     public QueryPlan plan(TemplateString template) {
         return queryFactory.plan(template);
+    }
+
+    /**
+     * Creates a query for the template with the facts a builder asserts about the statement, which compile into it.
+     */
+    Query query(TemplateString template, StatementFacts facts) {
+        return facts.isEmpty() || !(queryFactory instanceof FactsQueryFactory factory)
+                ? queryFactory.create(template)
+                : factory.create(template, facts);
+    }
+
+    /**
+     * Compiles the template into a plan with the facts a builder asserts about the statement.
+     */
+    QueryPlan plan(TemplateString template, StatementFacts facts) {
+        return facts.isEmpty() || !(queryFactory instanceof FactsQueryFactory factory)
+                ? queryFactory.plan(template)
+                : factory.plan(template, facts);
+    }
+
+    /**
+     * Creates a query on the given template for a statement with the facts its builder asserts; a template of
+     * another implementation takes the template alone.
+     *
+     * @param queryTemplate the template to create the query on.
+     * @param template the statement's template.
+     * @param facts what the builder asserts about the statement.
+     * @return the query.
+     */
+    public static Query query(QueryTemplate queryTemplate, TemplateString template, StatementFacts facts) {
+        return queryTemplate instanceof QueryTemplateImpl impl
+                ? impl.query(template, facts)
+                : queryTemplate.query(template);
+    }
+
+    /**
+     * Compiles a plan on the given template for a statement with the facts its builder asserts; a template of
+     * another implementation takes the template alone.
+     *
+     * @param queryTemplate the template to compile the plan on.
+     * @param template the statement's template.
+     * @param facts what the builder asserts about the statement.
+     * @return the plan.
+     */
+    public static QueryPlan plan(QueryTemplate queryTemplate, TemplateString template, StatementFacts facts) {
+        return queryTemplate instanceof QueryTemplateImpl impl
+                ? impl.plan(template, facts)
+                : queryTemplate.plan(template);
     }
 }

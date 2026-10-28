@@ -26,7 +26,7 @@ import st.orm.test.StormTest;
 public class SQLiteMissingIndexConformanceTest extends AbstractMissingIndexConformanceTest {
 
     @Override
-    protected void analyze(Statement statement) throws SQLException {
+    protected void analyze(Statement statement, String table) throws SQLException {
         statement.execute("ANALYZE");
     }
 
@@ -41,5 +41,17 @@ public class SQLiteMissingIndexConformanceTest extends AbstractMissingIndexConfo
             }
         }
         return plan.toString();
+    }
+
+    @Override
+    protected java.util.List<String> suggestProbeDdl() {
+        return java.util.List.of(
+                "CREATE TABLE suggest_probe (id INTEGER PRIMARY KEY, title TEXT NOT NULL, title_lower TEXT GENERATED ALWAYS AS (lower(title)) STORED)",
+                "CREATE INDEX probe_stored ON suggest_probe (title_lower COLLATE NOCASE)");
+    }
+
+    @Override
+    protected boolean servedByIndex(String plan) {
+        return plan.contains("SEARCH") && plan.contains("probe_stored");
     }
 }

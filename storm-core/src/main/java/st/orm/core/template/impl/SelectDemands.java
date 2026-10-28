@@ -21,14 +21,12 @@ import java.util.Locale;
 import java.util.Set;
 import java.util.regex.Pattern;
 import org.jspecify.annotations.Nullable;
-import st.orm.BindVars;
 import st.orm.Data;
 import st.orm.Element;
 import st.orm.Metamodel;
 import st.orm.SqlTemplateException;
 import st.orm.core.template.TemplateString;
 import st.orm.core.template.impl.Elements.Columns;
-import st.orm.core.template.impl.Elements.SelectDemand;
 
 /**
  * Records what a select list built from a template reads: the columns of the query's own table it names through the
@@ -38,11 +36,14 @@ import st.orm.core.template.impl.Elements.SelectDemand;
  * <p>A select names every column it reads when its values are paths, parameters or bind variables and its text names
  * no column: words in it are function names, keywords, type names or aliases. A word that could be a column, a quoted
  * identifier, a value that is a template of its own, or a bare {@code *} outside a function leaves the select partly
- * opaque, and the advice hedges. The decision is made once per statement shape, as the element compiles.</p>
+ * opaque, and the advice hedges. The decision is made once per statement shape, as the statement compiles.</p>
  *
  * @since 1.16
  */
-final class SelectDemandProcessor implements ElementProcessor<SelectDemand> {
+final class SelectDemands {
+
+    private SelectDemands() {
+    }
 
     /** A word, a quoted identifier, a string literal, or a star. */
     private static final Pattern TOKEN = Pattern.compile(
@@ -59,22 +60,19 @@ final class SelectDemandProcessor implements ElementProcessor<SelectDemand> {
             "WITH", "WITHOUT", "ZONE", "SIGNED", "UNSIGNED", "NULLS", "FIRST", "LAST");
 
     /**
-     * Returns a constant key: the select template the element carries is the select clause of the same statement,
-     * which the statement's own key already covers, so two statements keyed alike demand alike.
+     * Records what the select list reads: the columns of the query's own table it names through the metamodel, as
+     * a whole select where it names every column it reads.
+     *
+     * @param select the select template.
+     * @param compiler the compiler of the statement.
+     * @throws SqlTemplateException if a column's model cannot be built.
      */
-    @Override
-    public Object getCompilationKey(SelectDemand demand) {
-        return SelectDemand.class;
-    }
-
-    @Override
-    public CompiledElement compile(SelectDemand demand, TemplateCompiler compiler) throws SqlTemplateException {
+    static void record(TemplateString select, TemplateCompiler compiler) throws SqlTemplateException {
         var queryModel = compiler.findQueryModel().orElse(null);
         if (queryModel == null) {
-            return new CompiledElement("");
+            return;
         }
         Class<? extends Data> fromType = queryModel.getTable().type();
-        var select = demand.select();
         var paths = new ArrayList<Metamodel<?, ?>>();
         boolean whole = true;
         for (var value : select.values()) {
@@ -91,32 +89,24 @@ final class SelectDemandProcessor implements ElementProcessor<SelectDemand> {
                         }
                     }
                 }
-                case BindVars ignored -> {
-                }
                 case Element ignored -> whole = false;
-                case TemplateString ignored -> whole = false;
                 case Record ignored -> whole = false;
-                case null, default -> {
+                default -> {
                 }
             }
         }
         whole = whole && namesNoColumn(select.fragments());
         var kind = whole ? IndexDemands.Kind.WHOLE_SELECT : IndexDemands.Kind.SELECT;
         if (paths.isEmpty()) {
-            if (whole && !IndexDemandProcessor.inJoinedHierarchy(fromType)) {
+            if (whole && !ColumnDemands.inJoinedHierarchy(fromType)) {
                 compiler.demandIndex(compiler.getModel(fromType), "", kind);
             }
-            return new CompiledElement("");
+            return;
         }
         for (var path : paths) {
             var metamodel = MetamodelFactory.canonical(path);
-            IndexDemandProcessor.demand(compiler.getModel(metamodel.tableType()).getColumns(metamodel), kind, compiler);
+            ColumnDemands.demand(compiler.getModel(metamodel.tableType()).getColumns(metamodel), kind, compiler);
         }
-        return new CompiledElement("");
-    }
-
-    @Override
-    public void bind(SelectDemand demand, TemplateBinder binder, BindHint bindHint) {
     }
 
     /**

@@ -18,6 +18,7 @@ package st.orm.core.template.impl;
 import java.util.List;
 import org.jspecify.annotations.Nullable;
 import st.orm.Data;
+import st.orm.spi.QueryContext;
 import st.orm.spi.SqlOperation;
 import st.orm.spi.StatementOrigin;
 
@@ -66,6 +67,7 @@ public final class UnitOfWorkRepeats {
      * @param callSite the call site of the execution, or {@code null} when not recorded.
      * @param readsRecords whether a read maps its rows to a type, rather than to computed values.
      * @param repositoryWrite whether a write was made for given entities or keys, rather than by condition.
+     * @param upsertTakesGeneratedKey whether an upsert that updates draws a generated key value all the same.
      */
     public synchronized void record(SqlOperation operation,
                                     @Nullable Class<? extends Data> type,
@@ -80,9 +82,21 @@ public final class UnitOfWorkRepeats {
                                     long transactionId,
                                     @Nullable String callSite,
                                     boolean readsRecords,
-                                    boolean repositoryWrite) {
+                                    boolean repositoryWrite,
+                                    boolean upsertTakesGeneratedKey) {
         repeats.record(operation, type, origin, shapeId, statement, startNanos, executedNanos, rows, exactRows,
-                transactional, transactionId, callSite, readsRecords, repositoryWrite);
+                transactional, transactionId, callSite, readsRecords, repositoryWrite, upsertTakesGeneratedKey);
+    }
+
+    /**
+     * Returns whether an upsert the context describes draws a generated key value even where it updates, which the
+     * dialect of the database it ran on knows and the context carries from it.
+     *
+     * @param context the context of the execution.
+     * @return {@code true} for an upsert that draws a generated key value on update.
+     */
+    public static boolean upsertTakesGeneratedKey(QueryContext context) {
+        return context instanceof QueryImpl.QueryContextImpl impl && impl.upsertTakesGeneratedKey();
     }
 
     /**

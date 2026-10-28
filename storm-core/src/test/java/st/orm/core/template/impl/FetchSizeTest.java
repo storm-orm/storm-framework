@@ -90,7 +90,8 @@ public class FetchSizeTest {
                 null,
                 java.util.List.of(),
                 null,
-                null);
+                null,
+                new st.orm.core.spi.DefaultSqlDialect());
         return new QueryImpl(
                 environment,
                 unsafe -> {

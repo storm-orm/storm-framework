@@ -18,32 +18,17 @@ package st.orm.core.template.impl;
 import java.util.List;
 import st.orm.SqlTemplateException;
 import st.orm.core.template.Column;
-import st.orm.core.template.impl.Elements.IndexDemand;
 
 /**
- * A processor for an index demand element of a template: it renders nothing and records the demand on the
- * statement.
+ * Records the columns a statement uses in a way an index can serve, on the table that holds them, as the statement
+ * compiles: the processors of the elements that compare, join, group or sort by columns call it, and so does the
+ * compile for what the builder asserts beside the template.
  *
  * @since 1.16
  */
-final class IndexDemandProcessor implements ElementProcessor<IndexDemand> {
+final class ColumnDemands {
 
-    @Override
-    public Object getCompilationKey(IndexDemand demand) {
-        return demand;
-    }
-
-    @Override
-    public CompiledElement compile(IndexDemand demand, TemplateCompiler compiler) throws SqlTemplateException {
-        for (var field : demand.fields()) {
-            var metamodel = MetamodelFactory.canonical(field);
-            demand(compiler.getModel(metamodel.tableType()).getColumns(metamodel), demand.kind(), compiler);
-        }
-        return new CompiledElement("");
-    }
-
-    @Override
-    public void bind(IndexDemand demand, TemplateBinder binder, BindHint bindHint) {
+    private ColumnDemands() {
     }
 
     /**

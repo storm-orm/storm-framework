@@ -26,10 +26,10 @@ import org.junit.jupiter.api.Test;
  * through the metamodel is known to serve it alone. A function name, a keyword, a type name, an alias, a literal or
  * a star inside a function names none; a bare word, a quoted identifier or a star outside a function may.
  */
-public class SelectDemandProcessorTest {
+public class SelectDemandsTest {
 
     private static boolean namesNoColumn(String... fragments) {
-        return SelectDemandProcessor.namesNoColumn(List.of(fragments));
+        return SelectDemands.namesNoColumn(List.of(fragments));
     }
 
     @Test

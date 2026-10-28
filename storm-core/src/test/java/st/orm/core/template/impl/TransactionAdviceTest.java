@@ -597,6 +597,25 @@ class TransactionAdviceTest {
     }
 
     @Test
+    void aRepeatedUpsertIsNamedOneAndAdvisedAReadFirst() {
+        var line = adviceOf(() -> {
+            for (int i = 1; i <= 10; i++) {
+                // Every customer exists, so every upsert writes back a row that is there. The dialect recognizes the
+                // statement as the upsert it is, a MERGE that both updates and inserts.
+                orm.query(TemplateString.raw("""
+                        MERGE INTO \0 USING (VALUES (\0, \0)) AS src(id, name) ON \0.id = src.id
+                        WHEN MATCHED THEN UPDATE SET name = src.name
+                        WHEN NOT MATCHED THEN INSERT (id, name) VALUES (src.id, src.name)""", Customer.class, i, "c" + i,
+                        Customer.class)).executeUpdate();
+            }
+        });
+        assertTrue(line.startsWith("the same UPSERT of Customer ran 10 times, "), line);
+        assertTrue(line.contains("; where the rows mostly exist and rarely change, reading them first and writing only "
+                + "the new or changed ones avoids the writes; otherwise the overloads that take a list send the rows "
+                + "as one batch. See"), line);
+    }
+
+    @Test
     void aRepeatedCountIsAdvisedOneGroupedQuery() {
         var line = adviceOf(() -> {
             for (int i = 1; i <= 10; i++) {
@@ -685,7 +704,7 @@ class TransactionAdviceTest {
     void anAdviceLineOfAFailedExecutionNamesTheFailure() {
         var context = new QueryImpl.QueryContextImpl(st.orm.spi.SqlOperation.SELECT, Customer.class,
                 st.orm.spi.QueryContext.ExecutionKind.QUERY, "SELECT c.id FROM customer c LIMIT 1",
-                st.orm.spi.StatementOrigin.DIRECT, 99, false, null, true, false);
+                st.orm.spi.StatementOrigin.DIRECT, 99, false, null, true, false, false);
         var events = capture(Level.TRACE, () -> {
             var handle = AdviceLog.onExecute(context, "SELECT c.id FROM customer c LIMIT 1",
                     List.of(Advice.UNORDERED_LIMIT.format()));

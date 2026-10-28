@@ -91,7 +91,7 @@ public final class SqlLogRenderer {
     /** Returns whether the operation writes rows. */
     private static boolean writes(SqlOperation operation) {
         return operation == SqlOperation.INSERT || operation == SqlOperation.UPDATE
-                || operation == SqlOperation.DELETE;
+                || operation == SqlOperation.DELETE || operation == SqlOperation.UPSERT;
     }
 
     /**
@@ -127,7 +127,7 @@ public final class SqlLogRenderer {
                 derived.record(statement.operation(), dataType, statement.origin(), statement.shapeId(),
                         statement.statement(), statement.startNanos(), statement.executedNanos(), statement.rows(),
                         statement.exactRows(), statement.transactional(), statement.transactionId(),
-                        statement.callSite(), true, false);
+                        statement.callSite(), true, false, false);
             }
         }
         var advisories = new ArrayList<String>();

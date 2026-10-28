@@ -79,15 +79,32 @@ public sealed interface PredicateNode {
      * on the dialect.
      *
      * @param terms the terms, as the input holds them.
-     * @param words per term, the predicate matching it in at least one of the paths.
-     * @param suggest {@code true} to ignore the terms the index does not serve, and match no rows when none remains;
-     *                {@code false} to match every term.
+     * @param words per term, the predicate matching it anywhere in at least one of the paths.
+     * @param starts per term, the predicate matching it at the start of a word in at least one of the paths; empty
+     *               for a search, which renders no such form.
+     * @param prefixes per term, the predicate matching it as a prefix of the column, in at least one of the paths;
+     *                 empty for a search.
+     * @param suggest {@code true} to match the terms from {@link #SUGGEST_MIN_LENGTH} characters in the form the
+     *                database's index serves, and match no rows when none remains; {@code false} to match every term.
      */
-    record Search(List<String> terms, List<PredicateNode> words, boolean suggest) implements PredicateNode {
+    record Search(List<String> terms, List<PredicateNode> words, List<PredicateNode> starts,
+                  List<PredicateNode> prefixes, boolean suggest) implements PredicateNode {
+
+        /**
+         * The characters a word takes part in a suggestion from. A one-character word names too many rows to suggest
+         * from, and the box orders what it finds, so the database would fetch and sort them all before the limit cut
+         * the list; whatever the index serves, it is left out.
+         */
+        static final int SUGGEST_MIN_LENGTH = 2;
+
         public Search {
             terms = List.copyOf(terms);
             words = List.copyOf(words);
-            if (terms.size() != words.size()) {
+            starts = List.copyOf(starts);
+            prefixes = List.copyOf(prefixes);
+            if (terms.size() != words.size()
+                    || (suggest ? terms.size() != starts.size() || terms.size() != prefixes.size()
+                            : !starts.isEmpty() || !prefixes.isEmpty())) {
                 throw new IllegalArgumentException("A search holds one predicate per term.");
             }
         }
@@ -95,9 +112,13 @@ public sealed interface PredicateNode {
         /**
          * Returns the search as the predicates it renders for a dialect whose substring index serves terms of the
          * given length: an AND over the words. {@code search} keeps every word and marks a short one as residual when a
-         * longer one narrows the rows; {@code suggest} keeps the long words only.
+         * longer one narrows the rows. {@code suggest} takes a word from {@link #SUGGEST_MIN_LENGTH} characters and
+         * matches it in the form the index serves: where a substring index serves terms of the given length, a word of
+         * that length anywhere and a shorter one at the start of a word, since the space before a word counts as a
+         * character to the index; where no index serves a substring, lowered, as a prefix of the bare column, which
+         * an ordinary index over the column serves.
          *
-         * @param minimumLength the shortest term the substring index serves, {@code 0} to treat every term alike.
+         * @param minimumLength the shortest term the substring index serves, {@code 0} where no index serves one.
          */
         PredicateNode resolve(int minimumLength) {
             var indexed = new ArrayList<PredicateNode>(words.size());
@@ -106,10 +127,24 @@ public sealed interface PredicateNode {
                 (indexed(terms.get(i), minimumLength) ? indexed : shortWords).add(words.get(i));
             }
             if (suggest) {
-                if (indexed.isEmpty()) {
+                var served = new ArrayList<PredicateNode>(words.size());
+                for (int i = 0; i < terms.size(); i++) {
+                    String term = terms.get(i);
+                    if (!indexed(term, SUGGEST_MIN_LENGTH)) {
+                        continue;
+                    }
+                    if (minimumLength == 0) {
+                        served.add(new Scope(prefixes.get(i)));
+                    } else if (indexed(term, minimumLength)) {
+                        served.add(new Scope(words.get(i)));
+                    } else {
+                        served.add(new Scope(starts.get(i)));
+                    }
+                }
+                if (served.isEmpty()) {
                     return new Term(TemplateString.of("1 <> 1"), true);
                 }
-                return and(indexed.stream().<PredicateNode>map(Scope::new).toList());
+                return and(served);
             }
             if (terms.isEmpty()) {
                 return new Term(TemplateString.of("1 = 1"), true);
