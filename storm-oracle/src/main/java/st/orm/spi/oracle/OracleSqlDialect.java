@@ -354,4 +354,17 @@ public class OracleSqlDialect extends DefaultSqlDialect {
     public int maxInListElements() {
         return 1_000;
     }
+
+    /**
+     * Returns the most bytes an index key may hold: 6398, three quarters of the default 8 KB block less the overhead
+     * of an index entry, which the database checks against the declared sizes of the key's columns when the index is
+     * created. A tablespace with a larger block allows proportionally more.
+     *
+     * @return {@code 6398}.
+     * @since 1.16
+     */
+    @Override
+    public int maxIndexKeyBytes() {
+        return 6_398;
+    }
 }

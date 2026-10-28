@@ -71,6 +71,9 @@ public final class DatabaseSchema {
      * @param dataType      the SQL type from {@link java.sql.Types}.
      * @param typeName      the database-specific type name.
      * @param columnSize    the column size (precision for numeric types, length for character types).
+     * @param charOctetLength the most bytes a value of a character column takes, as the driver reports it from the
+     *                      column's length and character set; {@code 0} for a column of another type or a driver
+     *                      that does not report it.
      * @param nullable      whether the column allows NULL values.
      * @param autoIncrement whether the column is auto-incremented.
      * @param hasDefault    whether the column has a default value defined.
@@ -83,6 +86,7 @@ public final class DatabaseSchema {
             int dataType,
             String typeName,
             int columnSize,
+            int charOctetLength,
             boolean nullable,
             boolean autoIncrement,
             boolean hasDefault,
@@ -360,6 +364,7 @@ public final class DatabaseSchema {
                 String typeName = columns.getString("TYPE_NAME");
                 int columnSize = columns.getInt("COLUMN_SIZE");
                 String columnDef = columns.getString("COLUMN_DEF");
+                int charOctetLength = columns.getInt("CHAR_OCTET_LENGTH");
                 boolean hasDefault = columnDef != null;
                 String nullableStr = columns.getString("IS_NULLABLE");
                 boolean nullable = !"NO".equalsIgnoreCase(nullableStr);
@@ -368,7 +373,7 @@ public final class DatabaseSchema {
                 boolean generated = reportsGenerated && "YES".equalsIgnoreCase(columns.getString("IS_GENERATEDCOLUMN"));
 
                 columnsByTable.computeIfAbsent(tableName, k -> new ArrayList<>())
-                        .add(new DbColumn(tableName, columnName, dataType, typeName, columnSize, nullable, autoIncrement, hasDefault, generated));
+                        .add(new DbColumn(tableName, columnName, dataType, typeName, columnSize, charOctetLength, nullable, autoIncrement, hasDefault, generated));
             }
         }
         // A database that names its schemas as catalogs has no schema pattern; its catalog is the schema the

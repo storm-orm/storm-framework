@@ -533,14 +533,28 @@ public final class Elements {
      * adds one where the use is not a predicate it compiles, such as the ordering of a limited result; the slow
      * statement log checks it against the database's indexes when an execution of the statement is slow.
      *
-     * @param field the column's path.
-     * @param kind how the statement uses the column.
+     * @param fields the columns' paths, in the statement's order; one element carries every path of one kind.
+     * @param kind how the statement uses the columns.
      * @since 1.16
      */
-    public record IndexDemand(Metamodel<?, ?> field, IndexDemands.Kind kind) implements Element {
+    public record IndexDemand(List<Metamodel<?, ?>> fields, IndexDemands.Kind kind) implements Element {
         public IndexDemand {
-            requireNonNull(field, "field");
+            fields = List.copyOf(fields);
             requireNonNull(kind, "kind");
+        }
+    }
+
+    /**
+     * Records what a select list built from a template reads, which renders nothing: the columns it names through
+     * the metamodel, and whether it names every column it reads, so that an index that holds them is known to serve
+     * the select without reading the table. The query builder adds one for a select that is not the entity's own.
+     *
+     * @param select the select template.
+     * @since 1.16
+     */
+    public record SelectDemand(TemplateString select) implements Element {
+        public SelectDemand {
+            requireNonNull(select, "select");
         }
     }
 

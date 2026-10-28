@@ -221,6 +221,7 @@ final class JoinProcessor implements ElementProcessor<Join> {
         var leftComponent = findExactJoinField(fromTable, toTable);
         if (leftComponent.isPresent()) {
             validateDataType(toTable, true);
+            demandJoinedKey(fromTable, leftComponent.get(), compiler);
             // Joins foreign key of left table to the primary key of right table.
             return compileJoinCondition(toTable, toAlias, fromTable, alias, leftComponent.get(),
                     findPkField(toTable).orElseThrow(), compiler);
@@ -237,11 +238,30 @@ final class JoinProcessor implements ElementProcessor<Join> {
         var leftTableComponent = findTableJoinField(fromTable, toTable, compiler);
         if (leftTableComponent.isPresent()) {
             validateDataType(toTable, true);
+            demandJoinedKey(fromTable, leftTableComponent.get(), compiler);
             return compileJoinCondition(toTable, toAlias, fromTable, alias, leftTableComponent.get(),
                     findPkField(toTable).orElseThrow(), compiler);
         }
         throw new SqlTemplateException(
                 "Failed to join %s with %s: no matching foreign key relationship found. Ensure one of the types has an @FK-annotated field referencing the other, or use an explicit ON clause with a template-based join.".formatted(fromTable.getSimpleName(), toTable.getSimpleName()));
+    }
+
+    /**
+     * Records that a to-many join reads the joined table by its foreign key: the database looks the joined rows up by
+     * that key for every row it joins them to, which an index on the key serves. The other direction joins on the
+     * joined table's primary key, which is always indexed.
+     */
+    private static void demandJoinedKey(Class<? extends Data> joined,
+                                        RecordField foreignKey,
+                                        TemplateCompiler compiler) throws SqlTemplateException {
+        if (IndexDemandProcessor.inJoinedHierarchy(joined)) {
+            return;
+        }
+        var model = compiler.getModel(joined);
+        for (var column : getForeignKeys(foreignKey, compiler.template().foreignKeyResolver(),
+                compiler.template().columnNameResolver())) {
+            compiler.demandIndex(model, column.name(), IndexDemands.Kind.JOIN);
+        }
     }
 
     /**

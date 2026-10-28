@@ -57,6 +57,18 @@ public class MSSQLServerSqlDialect extends DefaultSqlDialect {
     }
 
     /**
+     * Returns the most bytes the key of a nonclustered index may hold: 1700. The database creates an index on wider
+     * columns with a warning and refuses a row whose key values pass the limit.
+     *
+     * @return {@code 1700}.
+     * @since 1.16
+     */
+    @Override
+    public int maxIndexKeyBytes() {
+        return 1_700;
+    }
+
+    /**
      * Returns the selected columns rather than the key alone.
      *
      * <p>SQL Server does not resolve functional dependency from a grouped key, so every non-aggregated column of the

@@ -193,6 +193,87 @@ public class MissingIndexAdviceIntegrationTest {
     }
 
     @Test
+    public void aToManyJoinIsAdvisedTheIndexOnTheJoinedTablesKey() {
+        var orm = ORMTemplate.of(dataSource);
+        orm.loadSchema();
+        var advice = missingIndexAdvice(() -> orm.entity(Customer.class).select().distinct()
+                .innerJoin(Purchase.class).on(Customer.class).getResultList());
+        assertTrue(advice.stream().anyMatch(line -> line.contains("no index on purchase starts with customer_id, which "
+                + "the statement joins purchase on")), advice.toString());
+    }
+
+    @Test
+    public void aSelectNamedThroughTheMetamodelIsHeldByTheGroupedIndex() {
+        var orm = ORMTemplate.of(dataSource);
+        orm.loadSchema();
+        var advice = missingIndexAdvice(() -> orm.selectFrom(Customer.class, String.class,
+                        TemplateString.raw("MAX(\0)", EMAIL))
+                .where(JOINED_ON, EQUALS, LocalDate.of(2024, 1, 1)).groupBy(LAST_NAME).getResultList());
+        assertEquals(1, advice.size(), advice.toString());
+        assertTrue(advice.getFirst().contains("customer(joined_on, last_name) finds the matching rows and reads them "
+                + "already grouped, without a temporary table or sort; with email appended it reads the index alone, "
+                + "since it then holds every column the select reads"), advice.getFirst());
+    }
+
+    @Test
+    public void aSelectWithAColumnStormDoesNotSeeHedgesOnWhatItReads() {
+        var orm = ORMTemplate.of(dataSource);
+        orm.loadSchema();
+        var advice = missingIndexAdvice(() -> orm.selectFrom(Customer.class, String.class,
+                        TemplateString.raw("COALESCE(MAX(\0), MAX(c.email))", LAST_NAME))
+                .where(JOINED_ON, EQUALS, LocalDate.of(2024, 1, 1)).groupBy(LAST_NAME).getResultList());
+        assertEquals(1, advice.size(), advice.toString());
+        assertTrue(advice.getFirst().contains("customer(joined_on, last_name) finds the matching rows and reads them "
+                + "already grouped, without a temporary table or sort, and reads the index alone where the select reads "
+                + "no other columns"), advice.getFirst());
+    }
+
+    @Test
+    public void aCountReadsNoColumnSoTheGroupedIndexHoldsEverythingTheSelectReads() {
+        var orm = ORMTemplate.of(dataSource);
+        orm.loadSchema();
+        var advice = missingIndexAdvice(() -> orm.entity(Customer.class).selectCount()
+                .where(JOINED_ON, EQUALS, LocalDate.of(2024, 1, 1)).groupBy(LAST_NAME).getResultList());
+        assertEquals(1, advice.size(), advice.toString());
+        assertTrue(advice.getFirst().contains("customer(joined_on, last_name) finds the matching rows and reads them "
+                + "already grouped, without a temporary table or sort, and reads the index alone, since it holds every "
+                + "column the select reads"), advice.getFirst());
+    }
+
+    @Test
+    public void anIndexedFilterIsAdvisedTheIndexThatContinuesItWithTheOrderOfALimitedResult() throws SQLException {
+        try (var connection = dataSource.getConnection(); var statement = connection.createStatement()) {
+            statement.execute("CREATE INDEX customer_last_name ON customer (last_name)");
+        }
+        var orm = ORMTemplate.of(dataSource);
+        orm.loadSchema();
+        var advice = missingIndexAdvice(() -> orm.entity(Customer.class).select().where(LAST_NAME, EQUALS, "Davis")
+                .orderBy(JOINED_ON, EMAIL).limit(10).getResultList());
+        assertEquals(1, advice.size(), advice.toString());
+        assertTrue(advice.getFirst().contains("no index on customer continues last_name with joined_on, email"),
+                advice.getFirst());
+        assertTrue(advice.getFirst().contains("an index on customer(last_name, joined_on, email), extending "
+                + "CUSTOMER_LAST_NAME, reads the matching rows in order and stops at the limit"), advice.getFirst());
+        // An order in mixed directions is left alone: an index serves it only when declared in the same directions.
+        assertEquals(List.of(), missingIndexAdvice(() -> orm.entity(Customer.class).select()
+                .where(LAST_NAME, EQUALS, "Davis").orderBy(JOINED_ON).orderByDescending(EMAIL).limit(10)
+                .getResultList()));
+    }
+
+    @Test
+    public void aGroupedReadIsAdvisedTheIndexThatReadsItInGroupOrder() {
+        var orm = ORMTemplate.of(dataSource);
+        orm.loadSchema();
+        var advice = missingIndexAdvice(() -> orm.entity(Customer.class).selectCount()
+                .where(JOINED_ON, EQUALS, LocalDate.of(2024, 1, 1)).groupBy(LAST_NAME).getResultList());
+        assertEquals(1, advice.size(), advice.toString());
+        assertTrue(advice.getFirst().contains("which the statement filters customer by and groups by last_name"),
+                advice.getFirst());
+        assertTrue(advice.getFirst().contains("; customer(joined_on, last_name) finds the matching rows and reads them "
+                + "already grouped"), advice.getFirst());
+    }
+
+    @Test
     public void aRangeAndTheOrderOfALimitedResultSuggestAnIndexOnTheColumn() {
         var orm = ORMTemplate.of(dataSource);
         orm.loadSchema();

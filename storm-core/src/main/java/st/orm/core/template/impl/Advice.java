@@ -49,7 +49,7 @@ enum Advice {
      * index cannot be judged worth its cost in advance, so the advice waits for a slow execution to say it is.
      */
     MISSING_INDEX("missing-index", Category.PERFORMANCE, true,
-            "no index on %1$s starts with %2$s, %3$s; an index on %4$s %5$s."),
+            "no index on %1$s %2$s, %3$s; %4$s."),
 
     /**
      * A delete from a table that a foreign key references, with no index on the referencing table to serve the check

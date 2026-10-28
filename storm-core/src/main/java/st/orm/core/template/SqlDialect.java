@@ -921,6 +921,22 @@ public interface SqlDialect {
     }
 
     /**
+     * Returns the most bytes the key of an ordinary index may hold, where the database checks the declared sizes of
+     * the key's columns against a limit when the index is created, so that an index on columns too wide for it cannot
+     * be created, or takes no value past it.
+     *
+     * <p>The default is {@code 0}: the database sets no such limit, or checks the values it stores rather than the
+     * declared sizes, so an index on wide columns is created and only an outsized value is refused. The missing-index
+     * advice sizes the index it names from the columns' declared sizes and says where the key would pass the limit.</p>
+     *
+     * @return the limit in bytes, or {@code 0} where there is none to check declared sizes against.
+     * @since 1.16
+     */
+    default int maxIndexKeyBytes() {
+        return 0;
+    }
+
+    /**
      * Returns the name of the array element type the dialect binds values of the given Java type as, when an
      * {@code IN} list binds as one array parameter, or {@code null} when the dialect binds no array of the type.
      *

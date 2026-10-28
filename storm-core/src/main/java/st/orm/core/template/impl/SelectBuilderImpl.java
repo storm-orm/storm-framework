@@ -52,6 +52,7 @@ import st.orm.core.template.impl.Elements.Cursor;
 import st.orm.core.template.impl.Elements.Fetch;
 import st.orm.core.template.impl.Elements.IndexDemand;
 import st.orm.core.template.impl.Elements.Select;
+import st.orm.core.template.impl.Elements.SelectDemand;
 import st.orm.core.template.impl.Elements.TableSource;
 import st.orm.core.template.impl.Elements.TableTarget;
 import st.orm.core.template.impl.Elements.Where;
@@ -242,6 +243,19 @@ public class SelectBuilderImpl<T extends Data, R, ID> extends QueryBuilderImpl<T
     }
 
     /**
+     * Returns whether a select clause selects an entity or projection, whose columns the select element names: every
+     * column of the type, which no index is advised to hold.
+     */
+    private static boolean selectsEntity(TemplateString selectClause) {
+        for (var value : selectClause.values()) {
+            if (value instanceof Select || value instanceof Class<?>) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
      * Returns whether the select clause is the plain nested select of the given type, the only shape in which a
      * reference occupies a position that can be expanded into the referenced table's columns.
      */
@@ -352,7 +366,14 @@ public class SelectBuilderImpl<T extends Data, R, ID> extends QueryBuilderImpl<T
                         TemplateString.of(" "));
             }
         }
-        template = TemplateString.combine(template, selectClause, TemplateString.raw("\nFROM \0", from(fromType, true)));
+        // What a select built from a template reads, which an index that holds it serves without reading the table,
+        // is decided as the statement compiles, once per shape. A select of the entity reads all of its columns,
+        // which no index is advised to hold. The element rides the select clause's own combine, which copies the
+        // template once either way.
+        var fromClause = TemplateString.raw("\nFROM \0", from(fromType, true));
+        template = selectsEntity(selectClause)
+                ? TemplateString.combine(template, selectClause, fromClause)
+                : TemplateString.combine(template, selectClause, wrap(new SelectDemand(selectClause)), fromClause);
         boolean hasLock = hasLockHint();
         if (hasLock && queryTemplate.dialect().applyLockHintAfterFrom()) {
             template = TemplateString.combine(template, TemplateString.of("\n"), forLock);
@@ -402,9 +423,12 @@ public class SelectBuilderImpl<T extends Data, R, ID> extends QueryBuilderImpl<T
         // A limited result read in the order of an index stops at the limit, where one in any other order sorts every
         // matching row first. Only an order on the query's own table can be read that way, and only for rows that
         // are not grouped or made distinct first, which reads every matching row whatever the order.
-        if (withOrderBy && limit != null && !distinct && groupBy.isEmpty()) {
-            var sortedBy = sortedBy(orderBy);
-            if (sortedBy != null && sortedBy.tableType() == fromType) {
+        // A grouped result is read in group order whatever its limit, and an ORDER BY on its group columns is served by
+        // the same index, which the GROUP BY columns record as they render. One element per kind: the demands cost
+        // a statement nothing past the elements it is built from.
+        if (withOrderBy && !distinct && (groupBy.isEmpty() ? limit != null : !orderBy.isEmpty())) {
+            var sortedBy = sortedBy(orderBy, fromType);
+            if (!sortedBy.isEmpty()) {
                 template = TemplateString.combine(template, wrap(new IndexDemand(sortedBy, IndexDemands.Kind.ORDER)));
             }
         }
@@ -749,19 +773,38 @@ public class SelectBuilderImpl<T extends Data, R, ID> extends QueryBuilderImpl<T
     }
 
     /**
-     * Returns the path the first key of the ordering sorts by, or {@code null} when that key is not a path, such as a
-     * raw template or an {@code orderFirst} ranking, and so names no column an index could serve.
+     * Returns the paths the statement sorts by on the query's own table, in order, as far as an index can read them:
+     * up to the first path on another table or built from a raw template, and none where the directions differ, which
+     * an index serves only when it was declared in the same directions.
      */
-    private static @Nullable Metamodel<?, ?> sortedBy(List<TemplateString> orderBy) {
-        if (orderBy.isEmpty()) {
-            return null;
+    private static List<Metamodel<?, ?>> sortedBy(List<TemplateString> orderBy, Class<?> fromType) {
+        List<Metamodel<?, ?>> paths = List.of();
+        Elements.Clause direction = null;
+        for (var clause : orderBy) {
+            var values = clause.values();
+            if (values.isEmpty()) {
+                return paths;
+            }
+            // The columns of an ordering key are ordering columns: the builder adds them in an ascending or
+            // descending clause, one element per path.
+            for (var value : values) {
+                if (!(value instanceof Columns columns)) {
+                    return paths;
+                }
+                if (direction != null && direction != columns.clause()) {
+                    return List.of();
+                }
+                direction = columns.clause();
+                for (var field : columns.fields()) {
+                    if (field.tableType() != fromType) {
+                        return paths;
+                    }
+                    if (paths.isEmpty()) {
+                        paths = new ArrayList<>();
+                    }
+                    paths.add(field);
+                }
+            }
         }
-        var values = orderBy.getFirst().values();
-        // The columns of an ordering key are ordering columns: the builder adds them in an ascending or descending
-        // clause.
-        if (!values.isEmpty() && values.getFirst() instanceof Columns columns) {
-            return columns.fields().getFirst();
-        }
-        return null;
-    }
-}
+        return paths;
+    }}

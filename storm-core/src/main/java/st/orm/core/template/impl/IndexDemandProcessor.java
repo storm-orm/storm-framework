@@ -35,8 +35,10 @@ final class IndexDemandProcessor implements ElementProcessor<IndexDemand> {
 
     @Override
     public CompiledElement compile(IndexDemand demand, TemplateCompiler compiler) throws SqlTemplateException {
-        var metamodel = MetamodelFactory.canonical(demand.field());
-        demand(compiler.getModel(metamodel.tableType()).getColumns(metamodel), demand.kind(), compiler);
+        for (var field : demand.fields()) {
+            var metamodel = MetamodelFactory.canonical(field);
+            demand(compiler.getModel(metamodel.tableType()).getColumns(metamodel), demand.kind(), compiler);
+        }
         return new CompiledElement("");
     }
 
@@ -63,7 +65,8 @@ final class IndexDemandProcessor implements ElementProcessor<IndexDemand> {
                 return;
             }
             compiler.demandIndex(compiler.getModel(type), column.name(), kind);
-            if (kind != IndexDemands.Kind.EQUALITY) {
+            // A range or an order is served on one column; every column of a key, a group or a select counts.
+            if (kind == IndexDemands.Kind.RANGE || kind == IndexDemands.Kind.ORDER) {
                 return;
             }
         }

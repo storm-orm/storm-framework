@@ -33,7 +33,7 @@ Constraints:
 
 Indexes:
 - **Index FK columns and the columns frequent queries use.**
-- **Add the index a `missing-index` advice names, after checking the plan.** Such advice on a slow statement's line in `st.orm.sql.slow` names a table no index serves for the columns the statement filters or sorts by, and the index that would. Check the statement's plan on the target database, then add that index in a new migration.
+- **Add the index a `missing-index` advice names, after checking the plan.** Such advice on a slow statement's line in `st.orm.sql.slow` names a table no index serves for the columns the statement filters, groups or sorts by, and the index that would. Where it names two, one finds the matching rows and one reads them in group or sort order; check the plan of each against the target database's data and add the one the plan uses. Columns the advice names as `appended` let the database read the index alone; add them only where the read's cost warrants the wider key, and never where the advice says the key would pass the database's limit. Check the statement's plan on the target database, then add that index in a new migration.
 - **Never add an index for advice that has not appeared.** On a small table or an unselective column, reading the table is right.
 - **Add the index an `unindexed-foreign-key` advice names.** Such advice on a slow delete names a foreign key of another table that references the deleted table and that no index starts with, so the database reads that table in full for every deleted row. Add the index in a new migration. Several databases never create this index themselves.
 

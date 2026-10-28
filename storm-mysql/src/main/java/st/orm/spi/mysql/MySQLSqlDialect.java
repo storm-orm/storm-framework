@@ -382,6 +382,19 @@ public class MySQLSqlDialect extends DefaultSqlDialect {
         return false;
     }
 
+    /**
+     * Returns the most bytes an index key may hold: 3072, the limit of the default row format, which the database
+     * checks against the declared sizes of the key's columns when the index is created. A table in a legacy row
+     * format allows a quarter of it.
+     *
+     * @return {@code 3072}.
+     * @since 1.16
+     */
+    @Override
+    public int maxIndexKeyBytes() {
+        return 3_072;
+    }
+
     @Override
     public int maxBindParameters() {
         return 65_535;

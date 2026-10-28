@@ -32,6 +32,7 @@ import st.orm.core.template.impl.Elements.OrderFirst;
 import st.orm.core.template.impl.Elements.Param;
 import st.orm.core.template.impl.Elements.RelationKey;
 import st.orm.core.template.impl.Elements.Select;
+import st.orm.core.template.impl.Elements.SelectDemand;
 import st.orm.core.template.impl.Elements.Set;
 import st.orm.core.template.impl.Elements.Subquery;
 import st.orm.core.template.impl.Elements.Table;
@@ -68,6 +69,7 @@ class ElementRouter {
     private static final UnsafeProcessor UNSAFE_PROCESSOR = new UnsafeProcessor();
     private static final AdvisoryProcessor ADVISORY_PROCESSOR = new AdvisoryProcessor();
     private static final IndexDemandProcessor INDEX_DEMAND_PROCESSOR = new IndexDemandProcessor();
+    private static final SelectDemandProcessor SELECT_DEMAND_PROCESSOR = new SelectDemandProcessor();
     private static final OrderFirstProcessor ORDER_FIRST_PROCESSOR = new OrderFirstProcessor();
     private static final UnconditionalProcessor UNCONDITIONAL_PROCESSOR = new UnconditionalProcessor();
     private static final CacheableProcessor CACHEABLE_PROCESSOR = new CacheableProcessor();
@@ -100,6 +102,7 @@ class ElementRouter {
             case Unsafe ignored -> UNSAFE_PROCESSOR;
             case Advisory ignored -> ADVISORY_PROCESSOR;
             case IndexDemand ignored -> INDEX_DEMAND_PROCESSOR;
+            case SelectDemand ignored -> SELECT_DEMAND_PROCESSOR;
             case OrderFirst ignored -> ORDER_FIRST_PROCESSOR;
             case Unconditional ignored -> UNCONDITIONAL_PROCESSOR;
             case Cacheable ignored -> CACHEABLE_PROCESSOR;

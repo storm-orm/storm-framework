@@ -78,8 +78,8 @@ public class AdvicePageTest {
             case REPEATED_SELECT -> new Object[] {12, "Owner", ", 12 ms, 1.0 ms each", "one row each", "", "",
                     "one query for all of them reads the rows in one round trip"};
             case REPEATED_FETCH -> new Object[] {10, "City", ", 10 ms, 1.0 ms each", ""};
-            case MISSING_INDEX -> new Object[] {"owner", "last_name", "which the statement filters owner by",
-                    "owner(last_name)", "finds them directly"};
+            case MISSING_INDEX -> new Object[] {"owner", "starts with last_name", "which the statement filters owner by",
+                    "an index on owner(last_name) finds them directly"};
             case UNINDEXED_FOREIGN_KEY -> new Object[] {"owner", "pet", "owner_id", "owner_id"};
             case IDLE_TRANSACTION -> new Object[] {"2300 ms", "120 ms", "2180 ms", ""};
             case WRITES_WITHOUT_TRANSACTION -> new Object[] {"Owner", "Pet"};
