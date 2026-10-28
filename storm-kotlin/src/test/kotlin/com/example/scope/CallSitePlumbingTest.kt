@@ -3,6 +3,7 @@
 package com.example.scope
 
 import io.kotest.matchers.nulls.shouldNotBeNull
+import io.kotest.matchers.shouldBe
 import io.kotest.matchers.string.shouldEndWith
 import io.kotest.matchers.string.shouldStartWith
 import kotlinx.coroutines.flow.flowOf
@@ -17,6 +18,7 @@ import org.springframework.test.context.jdbc.Sql
 import org.springframework.test.context.junit.jupiter.SpringExtension
 import st.orm.core.template.SqlLog.Summary
 import st.orm.core.template.impl.CallSiteCapture
+import st.orm.repository.exists
 import st.orm.template.DEFAULT_SQL_LOG_LIMIT
 import st.orm.template.IntegrationConfig
 import st.orm.template.InternalStormApi
@@ -88,5 +90,17 @@ internal open class CallSitePlumbingTest(
         callSite.shouldNotBeNull()
         callSite shouldStartWith "CallSitePlumbingTest.kt:"
         callSite shouldEndWith " via PetOwnerRefs.allRenamed"
+    }
+
+    @Test
+    fun `a statement Storm's inline function runs names the line that called it`(): Unit = runBlocking {
+        var line = 0
+        val summary = record("inline") {
+            // The call follows on the next line.
+            line = Throwable().stackTrace[0].lineNumber + 1
+            orm.exists<PetOwnerRef>()
+        }
+        val callSite = summary.byStatement().first().callSite()
+        callSite shouldBe "CallSitePlumbingTest.kt:$line"
     }
 }
