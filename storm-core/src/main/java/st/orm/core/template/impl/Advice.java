@@ -119,22 +119,24 @@ enum Advice {
 
     /**
      * The same single-row read repeated, in one transaction or across the transactions of one unit of work. The
+     * read is named by the built-in repository call it served where it served one, or as the same SELECT. The
      * time the executions spent and the mean per execution follow the count, the transactions they ran in and the
-     * call site follow the rows, each where known, and the remedy fits the read: a lookup of the rows by key for a
-     * read of records, one grouped query for a read of computed values such as a count.
+     * call site follow the rows, each where known, and the remedy fits the read: the list form of the call, a
+     * lookup of the rows by key for a read of records, the keys that exist for a read of computed values.
      */
     REPEATED_SELECT("repeated-select", Category.PERFORMANCE, false,
-            "the same SELECT of %2$s ran %1$d times%3$s, %4$s%5$s; %6$s%7$s."),
+            "%1$s of %2$s ran %3$d times%4$s, %5$s%6$s; %7$s%8$s."),
 
     /**
      * The same single-row write repeated without a batch, in one transaction or across the transactions of one unit
      * of work. The remedy fits the write: the overloads that take a list for an insert or a write a repository made
-     * for given entities, one statement whose condition covers all of them for a write by condition. Where every
-     * write ran in a transaction of its own, the advice says that the combined write commits them together, which
-     * is what changes.
+     * for given entities, one statement whose condition covers all of them for a write by condition. The write is
+     * named by the built-in repository call it served where it served one, or as the same statement. Where every
+     * write ran in a transaction that held nothing else, the advice says that the combined write commits them
+     * together, which is what changes.
      */
     REPEATED_WRITE("repeated-write", Category.PERFORMANCE, false,
-            "the same %1$s of %2$s ran %3$d times%4$s, %5$s%6$s; %7$s%8$s%9$s."),
+            "%1$s of %2$s ran %3$d times%4$s, %5$s%6$s; %7$s%8$s%9$s."),
 
     /**
      * A write outside any transaction to a type that references a type an earlier write outside any transaction

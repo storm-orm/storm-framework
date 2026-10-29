@@ -165,9 +165,9 @@ class TransactionAdviceTest {
         // as framework, so the frame it finds is the test runner's.
         assertTrue(Pattern.compile("^SQL advice \\(transaction\\): [A-Za-z0-9_$.]+:\\d+" + System.lineSeparator())
                 .matcher(line).find(), line);
-        assertTrue(Pattern.compile(System.lineSeparator() + "\tadvice: the same SELECT of Customer ran 10 times, "
-                + "[0-9.]+ ms, [0-9.]+ ms each, one row each, at [A-Za-z0-9_$.]+:\\d+; one query for all of them").matcher(line).find(),
-                line);
+        assertTrue(Pattern.compile(System.lineSeparator() + "\tadvice: getById of Customer ran 10 times, "
+                + "[0-9.]+ ms, [0-9.]+ ms each, one row each, at [A-Za-z0-9_$.]+:\\d+; findAllById over the keys reads "
+                + "the rows in one round trip").matcher(line).find(), line);
         assertTrue(line.endsWith("See https://orm.st/docs/advice#repeated-select"), line);
         assertFalse(line.contains("transactions"), line);
     }
@@ -186,7 +186,7 @@ class TransactionAdviceTest {
         var events = capture(Level.INFO, () -> transaction(REQUIRED_OPTIONS, () -> writeOneByOne(10)));
         assertEquals(1, events.size(), lines(events).toString());
         var line = events.getFirst().getFormattedMessage();
-        assertTrue(line.contains("\tadvice: the same INSERT of Customer ran 10 times, "), line);
+        assertTrue(line.contains("\tadvice: insert of Customer ran 10 times, "), line);
         assertTrue(line.contains("one row each, at "), line);
         // Within one transaction a batch changes nothing about what commits, so the advice does not say it does.
         assertTrue(line.endsWith("send the rows as one batch. See https://orm.st/docs/advice#repeated-write"), line);
@@ -439,10 +439,10 @@ class TransactionAdviceTest {
             });
             var advisories = SqlLogRenderer.advisories(summary);
             assertEquals(1, advisories.size(), advisories.toString());
-            assertTrue(advisories.getFirst().startsWith("the same SELECT of Customer ran 10 times, "),
+            assertTrue(advisories.getFirst().startsWith("getById of Customer ran 10 times, "),
                     advisories.getFirst());
-            assertTrue(advisories.getFirst().contains("one row each, in 10 transactions of their own; one query"),
-                    advisories.getFirst());
+            assertTrue(advisories.getFirst().contains("one row each, in 10 transactions of their own; findAllById "
+                    + "over the keys reads the rows in one round trip"), advisories.getFirst());
         });
         // The four transactions that repeated the read each reported it; the ten single reads repeated nothing.
         assertEquals(4, events.size(), lines(events).toString());
@@ -501,7 +501,7 @@ class TransactionAdviceTest {
         assertEquals(5, summary.statements().size());
         var advisories = SqlLogRenderer.advisories(summary);
         assertEquals(1, advisories.size(), advisories.toString());
-        assertTrue(advisories.getFirst().startsWith("the same SELECT of Customer ran 12 times, "), advisories.getFirst());
+        assertTrue(advisories.getFirst().startsWith("getById of Customer ran 12 times, "), advisories.getFirst());
     }
 
     @Test
@@ -512,7 +512,7 @@ class TransactionAdviceTest {
         assertEquals(5, summary.statements().size());
         var advisories = SqlLogRenderer.advisories(summary);
         assertEquals(1, advisories.size(), advisories.toString());
-        assertTrue(advisories.getFirst().startsWith("the same SELECT of Customer ran 20 times, "), advisories.getFirst());
+        assertTrue(advisories.getFirst().startsWith("getById of Customer ran 20 times, "), advisories.getFirst());
     }
 
     @Test
@@ -591,7 +591,7 @@ class TransactionAdviceTest {
                 orm.entity(Customer.class).update(new Customer(i, "renamed" + i));
             }
         });
-        assertTrue(line.startsWith("the same UPDATE of Customer ran 10 times, "), line);
+        assertTrue(line.startsWith("update of Customer ran 10 times, "), line);
         assertTrue(line.contains(", one row each, at "), line);
         assertTrue(line.contains("; the overloads that take a list send the rows as one batch. See"), line);
     }
@@ -616,7 +616,7 @@ class TransactionAdviceTest {
     }
 
     @Test
-    void aRepeatedCountIsAdvisedOneGroupedQuery() {
+    void aRepeatedCountIsAdvisedTheKeysThatExist() {
         var line = adviceOf(() -> {
             for (int i = 1; i <= 10; i++) {
                 orm.entity(Customer.class).selectCount().where(CUSTOMER_ID, EQUALS, i)
@@ -624,9 +624,34 @@ class TransactionAdviceTest {
             }
         });
         assertTrue(line.startsWith("the same SELECT of Customer ran 10 times, "), line);
-        assertTrue(line.contains("; one query for all of them, with a where with IN over what the loop varies and a "
-                + "GROUP BY on it for an aggregate such as a count, computes them in one round trip. See"), line);
+        assertTrue(line.contains("; one query for all of them, with a where with IN over what the loop varies, "
+                + "selects the keys that exist in one round trip, with a GROUP BY on it where the counts themselves "
+                + "are used. See"), line);
         assertFalse(line.contains("findAllById"), line);
+    }
+
+    @Test
+    void aRepeatedExistenceCheckIsAdvisedTheListFormOfTheCall() {
+        var line = adviceOf(() -> {
+            for (int i = 1; i <= 10; i++) {
+                orm.entity(Customer.class).existsById(i);
+            }
+        });
+        // existsById counts through the query builder, yet the advice names the call the application made.
+        assertTrue(line.startsWith("existsById of Customer ran 10 times, "), line);
+        assertTrue(line.contains("; findAllById over the keys reads the ones that exist in one round trip. See"), line);
+        assertFalse(line.contains("GROUP BY"), line);
+    }
+
+    @Test
+    void aRepeatedLookupByRefIsAdvisedTheListFormOfTheCall() {
+        var line = adviceOf(() -> {
+            for (int i = 1; i <= 10; i++) {
+                orm.entity(Customer.class).findByRef(st.orm.Ref.of(Customer.class, i));
+            }
+        });
+        assertTrue(line.startsWith("findByRef of Customer ran 10 times, "), line);
+        assertTrue(line.contains("; findAllByRef over the keys reads the rows in one round trip. See"), line);
     }
 
     @Test
@@ -673,7 +698,11 @@ class TransactionAdviceTest {
             assertEquals(1, advisories.size(), advisories.toString());
             assertTrue(advisories.getFirst().startsWith("the same SELECT of Customer ran 10 times, "),
                     advisories.getFirst());
-            assertTrue(advisories.getFirst().contains("in 10 transactions of their own"), advisories.getFirst());
+            // The first transaction held the reads beside its count, so the counts did not run in transactions of
+            // their own, and the advice does not say they did.
+            assertTrue(advisories.getFirst().contains("one row each, in 10 transactions; one query"),
+                    advisories.getFirst());
+            assertFalse(advisories.getFirst().contains("of their own"), advisories.getFirst());
         });
     }
 
@@ -704,7 +733,7 @@ class TransactionAdviceTest {
     void anAdviceLineOfAFailedExecutionNamesTheFailure() {
         var context = new QueryImpl.QueryContextImpl(st.orm.spi.SqlOperation.SELECT, false, Customer.class,
                 st.orm.spi.QueryContext.ExecutionKind.QUERY, "SELECT c.id FROM customer c LIMIT 1",
-                st.orm.spi.StatementOrigin.DIRECT, 99, false, null, true, false, false);
+                st.orm.spi.StatementOrigin.DIRECT, 99, false, null, true, null, false);
         var events = capture(Level.TRACE, () -> {
             var handle = AdviceLog.onExecute(context, "SELECT c.id FROM customer c LIMIT 1",
                     List.of(Advice.UNORDERED_LIMIT.format()));
@@ -744,6 +773,6 @@ class TransactionAdviceTest {
         var summary = record(() -> transaction(REQUIRED_OPTIONS, () -> readOneByOne(10)));
         var advisories = SqlLogRenderer.advisories(summary);
         assertEquals(1, advisories.size(), advisories.toString());
-        assertTrue(advisories.getFirst().startsWith("the same SELECT of Customer ran 10 times, "), advisories.getFirst());
+        assertTrue(advisories.getFirst().startsWith("getById of Customer ran 10 times, "), advisories.getFirst());
     }
 }

@@ -808,6 +808,7 @@ public final class SqlLog {
             public void close(long rows, boolean exact) {
                 statement = new Statement(operation, upsert, dataType, origin, text, start, executed, System.nanoTime(),
                         shapeId, callSite, rows, exact, transactional, transactionId);
+                recorder.repeats.observed(transactionId, start, executed);
                 recorder.repeats.record(context, start, executed, rows, exact, transactional, transactionId, callSite);
             }
         }
@@ -820,6 +821,7 @@ public final class SqlLog {
             private final Recorder recorder;
             private final QueryContext context;
             private final long start = System.nanoTime();
+            private long executed;
 
             Timed(Recorder recorder, QueryContext context) {
                 this.recorder = recorder;
@@ -828,11 +830,13 @@ public final class SqlLog {
 
             @Override
             public void executed() {
-                recorder.unrecorded(context, System.nanoTime() - start);
+                executed = System.nanoTime();
+                recorder.unrecorded(context, executed - start);
             }
 
             @Override
             public void close(long rows, boolean exact) {
+                recorder.repeats.observed(context.transactionId(), start, executed);
             }
         }
 
@@ -864,6 +868,7 @@ public final class SqlLog {
 
             @Override
             public void close(long rows, boolean exact) {
+                recorder.repeats.observed(transactionId, start, executed);
                 recorder.repeats.record(context, start, executed, rows, exact, context.transactional(), transactionId,
                         callSite);
             }

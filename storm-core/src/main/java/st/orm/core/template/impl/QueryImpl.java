@@ -272,7 +272,7 @@ class QueryImpl implements Query, KeyedQuery {
                 advice = AdviceLog.onExecute(new QueryContextImpl(environment.operation(), environment.upsert(), environment.dataType(),
                         kind, environment.statementText(), environment.origin(), environment.shapeId(),
                         transactional, environment.transactionTemplateProvider(), readsRecords(resultType),
-                        managed, upsertTakesGeneratedKey()), environment.statementText(), advisories);
+                        repositoryCall(), upsertTakesGeneratedKey()), environment.statementText(), advisories);
             }
             boolean slowLog = SlowStatementLog.observes(transactional);
             if (queryObserver == QueryObserver.NOOP && operators == null && !slowLog && advice == null) {
@@ -281,7 +281,7 @@ class QueryImpl implements Query, KeyedQuery {
             }
             var context = new QueryContextImpl(environment.operation(), environment.upsert(), environment.dataType(), kind,
                     environment.statementText(), environment.origin(), environment.shapeId(), transactional,
-                    environment.transactionTemplateProvider(), readsRecords(resultType), managed,
+                    environment.transactionTemplateProvider(), readsRecords(resultType), repositoryCall(),
                     upsertTakesGeneratedKey());
             var observation = queryObserver == QueryObserver.NOOP
                     ? Observation.NOOP
@@ -304,6 +304,14 @@ class QueryImpl implements Query, KeyedQuery {
         } catch (Throwable ignore) {
             return Observation.NOOP;
         }
+    }
+
+    /**
+     * Returns the built-in repository call the statement serves, or {@code null} for none. Asked only while
+     * something observes the execution, so a statement with every log off reads no thread-local.
+     */
+    private @Nullable RepositoryCall repositoryCall() {
+        return RepositoryCall.of(environment.operation(), environment.upsert(), managed);
     }
 
     /** Returns whether the statement is an upsert that draws a generated key value even where it updates. */
@@ -1370,12 +1378,17 @@ class QueryImpl implements Query, KeyedQuery {
                                     boolean transactional,
                                     @Nullable TransactionTemplateProvider transactionTemplateProvider,
                                     boolean readsRecords,
-                                    boolean repositoryWrite,
+                                    @Nullable RepositoryCall call,
                                     boolean upsertTakesGeneratedKey)
             implements QueryContext {
         @Override
         public Optional<Class<? extends Data>> dataType() {
             return ofNullable(type);
+        }
+
+        @Override
+        public boolean repositoryWrite() {
+            return call != null && call.writes();
         }
 
         @Override
