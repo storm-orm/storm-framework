@@ -86,6 +86,7 @@ class QueryImpl implements Query, KeyedQuery {
                        QueryObserver queryObserver,
                        Function<Throwable, RuntimeException> exceptionTransformer,
                        SqlOperation operation,
+                       boolean upsert,
                        @Nullable Class<? extends Data> dataType,
                        FetchPlan fetchPlan,
                        List<List<Integer>> cursorColumns,
@@ -268,7 +269,7 @@ class QueryImpl implements Query, KeyedQuery {
             if (!advisories.isEmpty() && AdviceLog.enabled(advisories)) {
                 // Advice is decided when the statement is built; a statement without any costs this test alone.
                 // Advice that is reported now is reported when the execution closes, with what it cost.
-                advice = AdviceLog.onExecute(new QueryContextImpl(environment.operation(), environment.dataType(),
+                advice = AdviceLog.onExecute(new QueryContextImpl(environment.operation(), environment.upsert(), environment.dataType(),
                         kind, environment.statementText(), environment.origin(), environment.shapeId(),
                         transactional, environment.transactionTemplateProvider(), readsRecords(resultType),
                         managed, upsertTakesGeneratedKey()), environment.statementText(), advisories);
@@ -278,7 +279,7 @@ class QueryImpl implements Query, KeyedQuery {
                 // Fast path: skip context creation when nothing is observing.
                 return Observation.NOOP;
             }
-            var context = new QueryContextImpl(environment.operation(), environment.dataType(), kind,
+            var context = new QueryContextImpl(environment.operation(), environment.upsert(), environment.dataType(), kind,
                     environment.statementText(), environment.origin(), environment.shapeId(), transactional,
                     environment.transactionTemplateProvider(), readsRecords(resultType), managed,
                     upsertTakesGeneratedKey());
@@ -305,17 +306,16 @@ class QueryImpl implements Query, KeyedQuery {
         }
     }
 
+    /** Returns whether the statement is an upsert that draws a generated key value even where it updates. */
+    private boolean upsertTakesGeneratedKey() {
+        return environment.upsert() && environment.dialect().upsertTakesGeneratedKeyOnUpdate();
+    }
+
     /**
      * Returns whether a read maps its rows to an entity or projection: one to a scalar or a plain record returns
      * computed values, such as a count, or columns picked from the rows. Without a result type, as for a write or an
      * untyped read, it is not known, and counts as a read of records, as the context's default has it.
      */
-    /** Returns whether the statement is an upsert that draws a generated key value even where it updates. */
-    private boolean upsertTakesGeneratedKey() {
-        return environment.operation() == SqlOperation.UPSERT
-                && environment.dialect().upsertTakesGeneratedKeyOnUpdate();
-    }
-
     private static boolean readsRecords(@Nullable Class<?> resultType) {
         return resultType == null || Data.class.isAssignableFrom(resultType);
     }
@@ -1357,13 +1357,11 @@ class QueryImpl implements Query, KeyedQuery {
     }
 
     /**
-     * Describes a statement execution for the query observer.
-     */
-    /**
-     * The context of one execution. The transaction it runs in is identified on request, since a block that opens
-     * its transaction at its first statement has none to identify before that statement has run.
+     * Describes one execution for the query observer. The transaction it runs in is identified on request, since a
+     * block that opens its transaction at its first statement has none to identify before that statement has run.
      */
     record QueryContextImpl(SqlOperation operation,
+                                    boolean upsert,
                                     @Nullable Class<? extends Data> type,
                                     ExecutionKind kind,
                                     @Nullable String statementText,

@@ -24,6 +24,7 @@ public class SqlImplTest {
     private SqlImpl createBasicSql() {
         return new SqlImpl(
                 SqlOperation.SELECT,
+                false,
                 "SELECT * FROM users",
                 List.of(),
                 Optional.empty(),
@@ -116,6 +117,7 @@ public class SqlImplTest {
     public void testUnsafeWarningNullClearsWarning() {
         SqlImpl sql = new SqlImpl(
                 SqlOperation.SELECT,
+                false,
                 "SELECT * FROM users",
                 List.of(),
                 Optional.empty(),
@@ -135,6 +137,7 @@ public class SqlImplTest {
     public void testNullOperationThrows() {
         assertThrows(NullPointerException.class, () -> new SqlImpl(
                 null,
+                false,
                 "SELECT 1",
                 List.of(),
                 Optional.empty(),
@@ -153,6 +156,7 @@ public class SqlImplTest {
     public void testNullStatementThrows() {
         assertThrows(NullPointerException.class, () -> new SqlImpl(
                 SqlOperation.SELECT,
+                false,
                 null,
                 List.of(),
                 Optional.empty(),
@@ -172,6 +176,7 @@ public class SqlImplTest {
         for (SqlOperation operation : SqlOperation.values()) {
             SqlImpl sql = new SqlImpl(
                     operation,
+                    false,
                     "SQL",
                     List.of(),
                     Optional.empty(),
@@ -195,6 +200,7 @@ public class SqlImplTest {
         // must not affect the constructed statement.
         SqlImpl sql = new SqlImpl(
                 SqlOperation.SELECT,
+                false,
                 "SELECT 1",
                 mutableParameters,
                 Optional.empty(),
@@ -214,6 +220,7 @@ public class SqlImplTest {
     public void testGeneratedKeysDefensivelyCopied() {
         SqlImpl sql = new SqlImpl(
                 SqlOperation.INSERT,
+                false,
                 "INSERT INTO t (x) VALUES (?)",
                 List.of(),
                 Optional.empty(),
@@ -236,6 +243,7 @@ public class SqlImplTest {
         var demands = builder.build();
         var sql = new SqlImpl(
                 SqlOperation.SELECT,
+                false,
                 "SELECT * FROM users",
                 List.of(),
                 Optional.empty(),

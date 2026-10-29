@@ -66,7 +66,6 @@ public final class SqlCapture {
                 case INSERT -> Operation.INSERT;
                 case UPDATE -> Operation.UPDATE;
                 case DELETE -> Operation.DELETE;
-                case UPSERT -> Operation.UPSERT;
                 case UNDEFINED -> Operation.UNDEFINED;
             };
             Origin origin = switch (context.origin()) {
@@ -88,7 +87,7 @@ public final class SqlCapture {
 
                 @Override
                 public void close(long rows, boolean exact) {
-                    statements.add(new CapturedSql(op, statement, values, origin,
+                    statements.add(new CapturedSql(op, context.upsert(), statement, values, origin,
                             Duration.ofNanos(executed - start), rows, exact));
                 }
             };

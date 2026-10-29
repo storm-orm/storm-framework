@@ -314,7 +314,7 @@ class TemplatePreparation {
     ) throws SqlTemplateException {
         String previous = removeComments(previousFragment, template.dialect()).stripTrailing().toUpperCase();
         return switch (operation) {
-            case SELECT, DELETE, UNDEFINED, UPSERT -> {
+            case SELECT, DELETE, UNDEFINED -> {
                 if (endsWithKeyword(previous, "WHERE")) {
                     yield where(bindVars);
                 }
@@ -360,7 +360,7 @@ class TemplatePreparation {
     ) throws SqlTemplateException {
         String previous = removeComments(previousFragment, template.dialect()).stripTrailing().toUpperCase();
         return switch (operation) {
-            case SELECT, DELETE, UNDEFINED, UPSERT -> whereOrParam(previous, o);
+            case SELECT, DELETE, UNDEFINED -> whereOrParam(previous, o);
             case INSERT -> {
                 if (endsWithKeyword(previous, "VALUES")) {
                     if (o instanceof Data r) {
@@ -436,7 +436,7 @@ class TemplatePreparation {
     ) throws SqlTemplateException {
         String previous = removeComments(previousFragment, template.dialect()).stripTrailing().toUpperCase();
         return switch (operation) {
-            case SELECT, UPDATE, DELETE, UNDEFINED, UPSERT -> {
+            case SELECT, UPDATE, DELETE, UNDEFINED -> {
                 if (endsWithKeyword(previous, "WHERE")) {
                     yield where(iterable);
                 }
@@ -515,7 +515,7 @@ class TemplatePreparation {
                 }
                 yield table(recordType);
             }
-            case UNDEFINED, UPSERT -> table(recordType);
+            case UNDEFINED -> table(recordType);
         };
     }
 

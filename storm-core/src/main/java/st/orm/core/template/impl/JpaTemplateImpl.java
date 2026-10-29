@@ -395,9 +395,9 @@ public final class JpaTemplateImpl implements JpaTemplate, FactsQueryFactory {
          * executions exactly like the JDBC path.
          */
         @SuppressWarnings("unchecked")
-        private QueryImpl.ListenedObservation listen(Sql sql,
-                                                     @Nullable Class<?> resultClass,
-                                                     ExecutionKind kind) {
+        private QueryImpl.@Nullable ListenedObservation listen(Sql sql,
+                                                               @Nullable Class<?> resultClass,
+                                                               ExecutionKind kind) {
             try {
                 var operators = SqlInterceptorManager.localOperators();
                 if (operators == null) {
@@ -407,12 +407,9 @@ public final class JpaTemplateImpl implements JpaTemplate, FactsQueryFactory {
                         ? (Class<? extends Data>) resultClass
                         : null;
                 // A JPA statement runs in the entity manager's transaction.
-                var context = new QueryImpl.QueryContextImpl(sql.operation(), dataType, kind, sql.statement(),
+                var context = new QueryImpl.QueryContextImpl(sql.operation(), sql.upsert(), dataType, kind, sql.statement(),
                         sql.origin(), sql.shapeId(), true, null, true, false, false);
                 var handles = QueryImpl.listen(operators, context, sql.parameters());
-                if (handles == null) {
-                    return null;
-                }
                 return new QueryImpl.ListenedObservation(Observation.NOOP, handles);
             } catch (Throwable ignore) {
                 // Scope failures never affect query execution.

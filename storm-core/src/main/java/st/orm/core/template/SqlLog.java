@@ -121,6 +121,7 @@ public final class SqlLog {
      * trips interleaved with the application consuming rows, which is not the database's cost to carry.</p>
      *
      * @param operation what the statement does.
+     * @param upsert whether the statement is an upsert in the database's own form, whatever keyword it starts with.
      * @param dataType the entity or projection it targets, or {@code null} when it targets none.
      * @param origin what caused it to execute.
      * @param statement the statement text, with placeholders.
@@ -136,6 +137,7 @@ public final class SqlLog {
      *                      the execution ran outside any transaction or the transaction is not recorded.
      */
     public record Statement(SqlOperation operation,
+                            boolean upsert,
                             Class<? extends Data> dataType,
                             StatementOrigin origin,
                             String statement,
@@ -766,6 +768,7 @@ public final class SqlLog {
             private final QueryContext context;
             private final long start = System.nanoTime();
             private final SqlOperation operation;
+            private final boolean upsert;
             private final @Nullable Class<? extends Data> dataType;
             private final StatementOrigin origin;
             private final String text;
@@ -780,6 +783,7 @@ public final class SqlLog {
                 this.recorder = recorder;
                 this.context = context;
                 this.operation = context.operation();
+                this.upsert = context.upsert();
                 this.dataType = context.dataType().orElse(null);
                 this.origin = context.origin();
                 this.text = context.statement().orElse("");
@@ -795,18 +799,16 @@ public final class SqlLog {
                 // opened it by now, and the transaction can be identified.
                 transactionId = context.transactionId();
                 // Rows are not known yet; the count is a lower bound until the close reports it.
-                statement = new Statement(operation, dataType, origin, text, start, executed, executed, shapeId,
+                statement = new Statement(operation, upsert, dataType, origin, text, start, executed, executed, shapeId,
                         callSite, 0, false, transactional, transactionId);
                 recorder.statements.add(this);
             }
 
             @Override
             public void close(long rows, boolean exact) {
-                statement = new Statement(operation, dataType, origin, text, start, executed, System.nanoTime(),
+                statement = new Statement(operation, upsert, dataType, origin, text, start, executed, System.nanoTime(),
                         shapeId, callSite, rows, exact, transactional, transactionId);
-                recorder.repeats.record(operation, dataType, origin, shapeId, text, start, executed, rows, exact,
-                        transactional, transactionId, callSite, context.readsRecords(), context.repositoryWrite(),
-                        UnitOfWorkRepeats.upsertTakesGeneratedKey(context));
+                recorder.repeats.record(context, start, executed, rows, exact, transactional, transactionId, callSite);
             }
         }
 
@@ -862,18 +864,15 @@ public final class SqlLog {
 
             @Override
             public void close(long rows, boolean exact) {
-                recorder.repeats.record(context.operation(), context.dataType().orElse(null), context.origin(),
-                        context.shapeId(), context.statement().orElse(""), start, executed, rows, exact,
-                        context.transactional(), transactionId, callSite, context.readsRecords(),
-                        context.repositoryWrite(), UnitOfWorkRepeats.upsertTakesGeneratedKey(context));
+                recorder.repeats.record(context, start, executed, rows, exact, context.transactional(), transactionId,
+                        callSite);
             }
         }
 
         @Override
         public Handle onExecute(QueryContext context, List<Parameter> parameters) {
             if (recorded.incrementAndGet() > limit) {
-                var type = context.dataType().orElse(null);
-                if (!UnitOfWorkRepeats.candidate(context.operation(), type, context.origin())) {
+                if (!UnitOfWorkRepeats.candidate(context)) {
                     return new Timed(this, context);
                 }
                 return new Counted(this, context, callSites ? CallSiteCapture.callSite() : null);

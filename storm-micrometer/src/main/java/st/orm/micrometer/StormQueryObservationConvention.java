@@ -28,7 +28,7 @@ import java.util.Locale;
  * names into hyphenated form. The low-cardinality key values are suitable as metric tags:</p>
  *
  * <ul>
- *   <li>{@code storm.operation} — {@code SELECT}, {@code INSERT}, {@code UPDATE}, {@code DELETE}, {@code UPSERT} or
+ *   <li>{@code storm.operation} — {@code SELECT}, {@code INSERT}, {@code UPDATE}, {@code DELETE} or
  *   {@code UNDEFINED}</li>
  *   <li>{@code storm.execution} — {@code QUERY}, {@code UPDATE} or {@code BATCH}</li>
  *   <li>{@code storm.data_type} — the simple name of the targeted entity or projection, or {@code none}</li>

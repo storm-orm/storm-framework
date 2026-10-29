@@ -21,10 +21,13 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.util.List;
+import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import st.orm.Data;
 import st.orm.Entity;
+import st.orm.spi.QueryContext.ExecutionKind;
 import st.orm.spi.SqlOperation;
 import st.orm.spi.StatementOrigin;
 
@@ -47,22 +50,31 @@ class RepeatsTest {
         AdviceLog.reset();
     }
 
+    private static QueryImpl.QueryContextImpl context(SqlOperation operation, boolean upsert,
+                                                      @Nullable Class<? extends Data> type, long shapeId,
+                                                      boolean repositoryWrite, boolean upsertTakesGeneratedKey) {
+        return new QueryImpl.QueryContextImpl(operation, upsert, type, ExecutionKind.QUERY, "SQL",
+                StatementOrigin.DIRECT, shapeId, true, null, true, repositoryWrite, upsertTakesGeneratedKey);
+    }
+
     private static Repeats.Repeat record(Repeats repeats, SqlOperation operation, long shapeId, long transactionId) {
-        return repeats.record(operation, Owner.class, StatementOrigin.DIRECT, shapeId, "SQL", 0, 1_000_000, 1, true,
-                true, transactionId, null, true, false, false);
+        return repeats.record(context(operation, false, Owner.class, shapeId, false, false), 0, 1_000_000, 1, true,
+                true, transactionId, null);
     }
 
     @Test
     void aStatementWhoseRepetitionCarriesNoAdviceIsNotCounted() {
-        assertNull(Repeats.adviceOn(SqlOperation.UNDEFINED, StatementOrigin.DIRECT));
-        assertEquals(Advice.REPEATED_WRITE, Repeats.adviceOn(SqlOperation.UPSERT, StatementOrigin.DIRECT));
+        assertNull(Repeats.adviceOn(context(SqlOperation.UNDEFINED, false, Owner.class, 7, false, false)));
+        // A MERGE that both updates and inserts: an undefined operation the dialect recognizes as an upsert.
+        assertEquals(Advice.REPEATED_WRITE,
+                Repeats.adviceOn(context(SqlOperation.UNDEFINED, true, Owner.class, 7, false, false)));
         var repeats = new Repeats(true);
         for (int i = 0; i < 20; i++) {
             assertNull(record(repeats, SqlOperation.UNDEFINED, 7, i + 1));
         }
         assertEquals(List.of(), repeats.advisories(false));
-        assertFalse(UnitOfWorkRepeats.candidate(SqlOperation.SELECT, null, StatementOrigin.DIRECT));
-        assertTrue(UnitOfWorkRepeats.candidate(SqlOperation.SELECT, Owner.class, StatementOrigin.DIRECT));
+        assertFalse(UnitOfWorkRepeats.candidate(context(SqlOperation.SELECT, false, null, 7, false, false)));
+        assertTrue(UnitOfWorkRepeats.candidate(context(SqlOperation.SELECT, false, Owner.class, 7, false, false)));
     }
 
     @Test
@@ -95,15 +107,14 @@ class RepeatsTest {
     @Test
     void anUpsertThatDrawsAGeneratedKeyOnUpdateIsSaidToTakeOne() {
         var repeats = new Repeats(false);
+        var upsert = context(SqlOperation.INSERT, true, Owner.class, 11, true, true);
         for (int i = 0; i < Advice.REPEAT_THRESHOLD; i++) {
-            repeats.record(SqlOperation.UPSERT, Owner.class, StatementOrigin.DIRECT, 11, "SQL", i * 2_000_000L,
-                    i * 2_000_000L + 1_000_000L, 1, true, true, 1, null, true, true, true);
+            repeats.record(upsert, i * 2_000_000L, i * 2_000_000L + 1_000_000L, 1, true, true, 1, null);
         }
         var text = repeats.advisories(true).getFirst().text();
         assertTrue(text.startsWith("the same UPSERT of Owner ran 10 times, "), text);
-        assertTrue(text.contains("avoids the writes, and, where the key is left to the database, the generated key "
-                + "value each upsert takes even where it updates; otherwise the overloads that take a list send the "
-                + "rows as one batch."), text);
+        assertTrue(text.contains("avoids the writes, and the generated key value each upsert takes even where it "
+                + "updates. Otherwise, the overloads that take a list send the rows as one batch."), text);
     }
 
     @Test

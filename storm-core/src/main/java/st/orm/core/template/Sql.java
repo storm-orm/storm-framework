@@ -46,6 +46,16 @@ public interface Sql {
     Sql operation(SqlOperation operation);
 
     /**
+     * Returns whether the statement is an upsert: an insert of the row that updates the one its key names where it
+     * exists, in the database's own form, which the dialect recognizes. The {@link #operation()} stays the keyword
+     * the statement starts with, {@code INSERT} or {@code UNDEFINED} for a {@code MERGE}.
+     *
+     * @return {@code true} when the statement is an upsert.
+     * @since 1.16
+     */
+    boolean upsert();
+
+    /**
      * The generated SQL with all parameters replaced by '?' or named ':name' placeholders.
      */
     String statement();

@@ -17,10 +17,7 @@ package st.orm.core.template.impl;
 
 import java.util.List;
 import org.jspecify.annotations.Nullable;
-import st.orm.Data;
 import st.orm.spi.QueryContext;
-import st.orm.spi.SqlOperation;
-import st.orm.spi.StatementOrigin;
 
 /**
  * What the unit of work a performance log scope covers repeated, counted from every execution as it closes, past
@@ -40,24 +37,17 @@ public final class UnitOfWorkRepeats {
      * Returns whether an execution can take part in a repeat, so a scope walks a call site past its recording
      * limit only for one that can.
      *
-     * @param operation what the statement does.
-     * @param type the type it reads or writes, or {@code null} for none.
-     * @param origin what caused it.
+     * @param context the context of the execution.
      * @return {@code true} if the execution's repetition can carry advice.
      */
-    public static boolean candidate(SqlOperation operation, @Nullable Class<? extends Data> type,
-                                    StatementOrigin origin) {
-        return type != null && Repeats.adviceOn(operation, origin) != null;
+    public static boolean candidate(QueryContext context) {
+        return context.dataType().isPresent() && Repeats.adviceOn(context) != null;
     }
 
     /**
      * Records an execution that has closed.
      *
-     * @param operation what the statement did.
-     * @param type the type it read or wrote, or {@code null} for none.
-     * @param origin what caused it.
-     * @param shapeId the shape of the statement, or {@code 0} for none.
-     * @param statement the statement text, the key of a statement without a shape.
+     * @param context the context of the execution: what the statement did, the type it read or wrote, its shape.
      * @param startNanos when the execution was prepared.
      * @param executedNanos when it returned from the database.
      * @param rows the rows it produced or affected.
@@ -65,38 +55,16 @@ public final class UnitOfWorkRepeats {
      * @param transactional whether it ran in a transaction.
      * @param transactionId the identity of that transaction, or {@code 0} when unknown.
      * @param callSite the call site of the execution, or {@code null} when not recorded.
-     * @param readsRecords whether a read maps its rows to a type, rather than to computed values.
-     * @param repositoryWrite whether a write was made for given entities or keys, rather than by condition.
-     * @param upsertTakesGeneratedKey whether an upsert that updates draws a generated key value all the same.
      */
-    public synchronized void record(SqlOperation operation,
-                                    @Nullable Class<? extends Data> type,
-                                    StatementOrigin origin,
-                                    long shapeId,
-                                    String statement,
+    public synchronized void record(QueryContext context,
                                     long startNanos,
                                     long executedNanos,
                                     long rows,
                                     boolean exactRows,
                                     boolean transactional,
                                     long transactionId,
-                                    @Nullable String callSite,
-                                    boolean readsRecords,
-                                    boolean repositoryWrite,
-                                    boolean upsertTakesGeneratedKey) {
-        repeats.record(operation, type, origin, shapeId, statement, startNanos, executedNanos, rows, exactRows,
-                transactional, transactionId, callSite, readsRecords, repositoryWrite, upsertTakesGeneratedKey);
-    }
-
-    /**
-     * Returns whether an upsert the context describes draws a generated key value even where it updates, which the
-     * dialect of the database it ran on knows and the context carries from it.
-     *
-     * @param context the context of the execution.
-     * @return {@code true} for an upsert that draws a generated key value on update.
-     */
-    public static boolean upsertTakesGeneratedKey(QueryContext context) {
-        return context instanceof QueryImpl.QueryContextImpl impl && impl.upsertTakesGeneratedKey();
+                                    @Nullable String callSite) {
+        repeats.record(context, startNanos, executedNanos, rows, exactRows, transactional, transactionId, callSite);
     }
 
     /**

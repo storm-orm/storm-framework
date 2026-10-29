@@ -31,7 +31,6 @@ import st.orm.Metamodel;
 import st.orm.PersistenceException;
 import st.orm.core.template.PreparedStatementTemplate;
 import st.orm.core.template.Sql;
-import st.orm.spi.SqlOperation;
 import st.orm.tck.model.Address;
 import st.orm.tck.model.ApiKey;
 import st.orm.tck.model.CycleA;
@@ -682,7 +681,7 @@ public abstract class AbstractEntityRepositoryConformanceTest {
                 () -> specialties.upsert(Specialty.builder().id(4).name("anaesthetics").build()));
         // A key the entity supplies takes the SQL-level upsert on every dialect, and the dialect recognizes its own
         // form of it, whatever keyword the statement starts with.
-        assertEquals(SqlOperation.UPSERT, sql.operation());
+        assertTrue(sql.upsert());
         assertFalse(sql.versionAware());
         assertEquals(4, sql.parameters().get(0).dbValue());
         assertEquals("anaesthetics", sql.parameters().get(1).dbValue());

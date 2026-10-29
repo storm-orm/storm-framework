@@ -92,7 +92,7 @@ class AdviceRecordBoundsTest {
     private static TransactionRecord advisingTransaction() {
         var record = TransactionRecord.take(false);
         assertNotNull(record);
-        var context = new QueryImpl.QueryContextImpl(SqlOperation.SELECT, Owner.class, ExecutionKind.QUERY,
+        var context = new QueryImpl.QueryContextImpl(SqlOperation.SELECT, false, Owner.class, ExecutionKind.QUERY,
                 "SELECT o.id FROM owner o WHERE o.id = ?", StatementOrigin.DIRECT, 7, true, null, true, false, false);
         for (int i = 0; i < Advice.REPEAT_THRESHOLD; i++) {
             record.statementClosed(context, 0, 1_000, 1_000, 1, true);

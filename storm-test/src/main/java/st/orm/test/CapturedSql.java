@@ -25,7 +25,8 @@ import java.util.List;
 /**
  * Represents a captured SQL statement with its operation type and bind variables.
  *
- * @param operation the type of SQL operation.
+ * @param operation the type of SQL operation: the keyword the statement starts with.
+ * @param upsert whether the statement is an upsert in the database's own form, whatever keyword it starts with.
  * @param statement the SQL statement with {@code ?} placeholders.
  * @param parameters the bind variable values; a {@code NULL} bind value is {@code null}.
  * @param origin what caused the statement to execute.
@@ -38,6 +39,7 @@ import java.util.List;
  */
 public record CapturedSql(
         Operation operation,
+        boolean upsert,
         String statement,
         List<Object> parameters,
         Origin origin,
@@ -46,6 +48,7 @@ public record CapturedSql(
         boolean exactRows) {
 
     public CapturedSql(Operation operation,
+                       boolean upsert,
                        String statement,
                        List<Object> parameters,
                        Origin origin,
@@ -53,6 +56,7 @@ public record CapturedSql(
                        long rows,
                        boolean exactRows) {
         this.operation = requireNonNull(operation, "operation");
+        this.upsert = upsert;
         this.statement = requireNonNull(statement, "statement");
         this.parameters = Collections.unmodifiableList(new ArrayList<>(parameters));
         this.origin = requireNonNull(origin, "origin");
@@ -86,7 +90,6 @@ public record CapturedSql(
         INSERT,
         UPDATE,
         DELETE,
-        UPSERT,
         UNDEFINED
     }
 }

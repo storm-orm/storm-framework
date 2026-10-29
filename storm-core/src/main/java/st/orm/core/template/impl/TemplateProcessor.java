@@ -205,10 +205,10 @@ class TemplateProcessor {
     /** What the builder asserts about the statement, applied as the statement compiles. */
     private final StatementFacts facts;
     /**
-     * Compile-time only: the operation the compiled statement reports, which the dialect refines from the parsed
-     * one where the statement is an upsert in the database's own form.
+     * Compile-time only: whether the compiled statement is an upsert in the database's own form, which the dialect
+     * recognizes.
      */
-    private SqlOperation statementOperation;
+    private boolean upsert;
 
     /**
      * Compile-time only: the select list the query model generated, which a cursor element finds its columns in.
@@ -321,7 +321,6 @@ class TemplateProcessor {
         this.template = template;
         this.templatePreparation = templatePreparation;
         this.operation = operation;
-        this.statementOperation = operation;
         this.modelBuilder = modelBuilder;
         this.tableUse = tableUse;
         this.aliasMapper = aliasMapper;
@@ -647,8 +646,8 @@ class TemplateProcessor {
     }
 
     /**
-     * Refines the operation the statement reports: an INSERT or an undefined statement in the database's own upsert
-     * form is an upsert, which the dialect recognizes. An upsert written as a MERGE names its target table first,
+     * Recognizes an upsert: an INSERT or an undefined statement in the database's own upsert form, which the dialect
+     * recognizes, is reported as one. An upsert written as a MERGE names its target table first,
      * and no element records the type for it, so the first table named is taken as the type the statement writes.
      */
     private void classify(String sql, List<Element> elements) {
@@ -658,7 +657,7 @@ class TemplateProcessor {
         if (!template.dialect().isUpsert(sql)) {
             return;
         }
-        statementOperation = SqlOperation.UPSERT;
+        upsert = true;
         if (dataType == null) {
             for (Element element : elements) {
                 var table = element instanceof Wrapped(var wrapped)
@@ -806,7 +805,8 @@ class TemplateProcessor {
             }
         }
         return new SqlImpl(
-                statementOperation,
+                operation,
+                upsert,
                 sql,
                 session.parameters,
                 ofNullable(session.bindVariables),
@@ -849,7 +849,7 @@ class TemplateProcessor {
      */
     private Optional<String> checkSafety(String sql, SqlOperation operation) {
         return switch (operation) {
-            case SELECT, INSERT, UPSERT, UNDEFINED -> empty();
+            case SELECT, INSERT, UNDEFINED -> empty();
             case UPDATE, DELETE -> {
                 if (unconditional || !hasWhereClause(sql, template.dialect())) {
                     yield Optional.of("%s without a WHERE clause is potentially unsafe.".formatted(operation));

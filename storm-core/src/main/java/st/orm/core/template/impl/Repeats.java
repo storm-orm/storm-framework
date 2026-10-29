@@ -24,6 +24,7 @@ import java.util.List;
 import java.util.Map;
 import org.jspecify.annotations.Nullable;
 import st.orm.Data;
+import st.orm.spi.QueryContext;
 import st.orm.spi.SqlOperation;
 import st.orm.spi.StatementOrigin;
 
@@ -106,6 +107,8 @@ final class Repeats {
     static final class Repeat {
         final Advice advice;
         final SqlOperation operation;
+        /** Whether the statement is an upsert, which its keyword does not show. */
+        final boolean upsert;
         final Class<? extends Data> type;
         final long shapeId;
         /** Whether a read maps its rows to a type, rather than to computed values such as a count. */
@@ -129,18 +132,30 @@ final class Repeats {
         /** The greatest transaction identity seen. */
         private long maxTransactionId;
 
-        private Repeat(Advice advice, SqlOperation operation, Class<? extends Data> type, long shapeId,
-                       boolean readsRecords, boolean repositoryWrite, boolean upsertTakesGeneratedKey,
-                       boolean intervals) {
+        private Repeat(Advice advice, QueryContext context, Class<? extends Data> type, boolean intervals) {
             this.intervals = intervals ? new Intervals() : null;
             this.advice = advice;
-            this.operation = operation;
+            this.operation = context.operation();
+            this.upsert = context.upsert();
             this.type = type;
-            this.shapeId = shapeId;
-            this.readsRecords = readsRecords;
-            this.repositoryWrite = repositoryWrite;
-            this.upsertTakesGeneratedKey = upsertTakesGeneratedKey;
+            this.shapeId = context.shapeId();
+            this.readsRecords = context.readsRecords();
+            this.repositoryWrite = context.repositoryWrite();
+            this.upsertTakesGeneratedKey = upsertTakesGeneratedKey(context);
         }
+
+        /** What the statement did, as the advice names it: its operation, or UPSERT for an upsert. */
+        String name() {
+            return upsert ? "UPSERT" : operation.name();
+        }
+    }
+
+    /**
+     * Returns whether an upsert the context describes draws a generated key value even where it updates, which the
+     * dialect of the database it ran on knows and only Storm's own context carries from it.
+     */
+    private static boolean upsertTakesGeneratedKey(QueryContext context) {
+        return context instanceof QueryImpl.QueryContextImpl impl && impl.upsertTakesGeneratedKey();
     }
 
     /** What the advice on a repeat states, over the parts that count. */
@@ -164,13 +179,16 @@ final class Repeats {
      * Returns the advice a statement's repetition carries: on a fetch, the same single-row read, or the same
      * single-row write, an upsert included; {@code null} for a statement whose repetition carries none.
      */
-    static @Nullable Advice adviceOn(SqlOperation operation, StatementOrigin origin) {
-        if (origin == StatementOrigin.FETCH) {
+    static @Nullable Advice adviceOn(QueryContext context) {
+        if (context.origin() == StatementOrigin.FETCH) {
             return Advice.REPEATED_FETCH;
         }
-        return switch (operation) {
+        if (context.upsert()) {
+            return Advice.REPEATED_WRITE;
+        }
+        return switch (context.operation()) {
             case SELECT -> Advice.REPEATED_SELECT;
-            case INSERT, UPDATE, DELETE, UPSERT -> Advice.REPEATED_WRITE;
+            case INSERT, UPDATE, DELETE -> Advice.REPEATED_WRITE;
             default -> null;
         };
     }
@@ -180,11 +198,8 @@ final class Repeats {
      * decide the advice while the execution is still on the stack; {@code null} for every other execution, and for
      * a statement without a type, since the advice names it.
      *
-     * @param operation what the statement did.
-     * @param type the type it read or wrote, or {@code null} for none.
-     * @param origin what caused it.
-     * @param shapeId the shape of the statement, or {@code 0} for none.
-     * @param statement the statement text, the key of a statement without a shape.
+     * @param context the context of the execution: what the statement did, the type it read or wrote, its shape,
+     *                and its text, the key of a statement without a shape.
      * @param startNanos when the execution was prepared.
      * @param executedNanos when it returned from the database.
      * @param rows the rows it produced or affected.
@@ -192,42 +207,34 @@ final class Repeats {
      * @param transactional whether it ran in a transaction.
      * @param transactionId the identity of that transaction, or {@code 0} when unknown.
      * @param callSite the call site of the execution, or {@code null} when not recorded.
-     * @param readsRecords whether a read maps its rows to a type, rather than to computed values.
-     * @param repositoryWrite whether a write was made for given entities or keys, rather than by condition.
-     * @param upsertTakesGeneratedKey whether an upsert that updates draws a generated key value all the same.
      * @return the repeat that reached the threshold with this execution, or {@code null}.
      */
-    @Nullable Repeat record(SqlOperation operation,
-                            @Nullable Class<? extends Data> type,
-                            StatementOrigin origin,
-                            long shapeId,
-                            String statement,
+    @Nullable Repeat record(QueryContext context,
                             long startNanos,
                             long executedNanos,
                             long rows,
                             boolean exactRows,
                             boolean transactional,
                             long transactionId,
-                            @Nullable String callSite,
-                            boolean readsRecords,
-                            boolean repositoryWrite,
-                            boolean upsertTakesGeneratedKey) {
+                            @Nullable String callSite) {
+        var type = context.dataType().orElse(null);
         if (type == null) {
             return null;
         }
-        var advice = adviceOn(operation, origin);
+        var advice = adviceOn(context);
         if (advice == null) {
             return null;
         }
-        Object shape = advice == Advice.REPEATED_FETCH ? new Fetched(type) : shapeId != 0 ? shapeId : statement;
+        long shapeId = context.shapeId();
+        Object shape = advice == Advice.REPEATED_FETCH ? new Fetched(type)
+                : shapeId != 0 ? shapeId : context.statement().orElse("");
         var key = new ShapeAtSite(shape, callSite);
         var repeat = repeats.get(key);
         if (repeat == null) {
             if (repeats.size() >= MAX_REPEATS) {
                 return null;
             }
-            repeat = new Repeat(advice, operation, type, shapeId, readsRecords, repositoryWrite,
-                    upsertTakesGeneratedKey, intervals);
+            repeat = new Repeat(advice, context, type, intervals);
             repeats.put(key, repeat);
         }
         repeat.executions++;
@@ -402,7 +409,7 @@ final class Repeats {
                             : "one query for all of them, with a where with IN over what the loop varies and a "
                                     + "GROUP BY on it for an aggregate such as a count, computes them in one round "
                                     + "trip");
-            default -> Advice.REPEATED_WRITE.format(repeat.operation.name(), type,
+            default -> Advice.REPEATED_WRITE.format(repeat.name(), type,
                     counted.executions(), time, rows, facts, cost, writeRemedy(repeat, spread), commits);
         };
     }
@@ -414,7 +421,7 @@ final class Repeats {
      * database; for a write by condition, one statement whose condition covers all of them.
      */
     private static String writeRemedy(Repeat repeat, boolean spread) {
-        boolean upsert = repeat.operation == SqlOperation.UPSERT;
+        boolean upsert = repeat.upsert;
         if (!upsert && repeat.operation != SqlOperation.INSERT && !repeat.repositoryWrite) {
             return "one statement whose condition covers all of them, such as a where with IN over what the loop "
                     + "varies, writes them in one round trip";
@@ -428,9 +435,9 @@ final class Repeats {
         }
         return "where the rows mostly exist and rarely change, reading them first and writing only the new or "
                 + "changed ones avoids the writes"
-                + (repeat.upsertTakesGeneratedKey ? ", and, where the key is left to the database, the generated "
-                        + "key value each upsert takes even where it updates" : "")
-                + "; otherwise " + batch;
+                + (repeat.upsertTakesGeneratedKey ? ", and the generated key value each upsert takes even where it "
+                        + "updates" : "")
+                + ". Otherwise, " + batch;
     }
 
     /**

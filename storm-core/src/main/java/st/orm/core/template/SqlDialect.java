@@ -957,7 +957,8 @@ public interface SqlDialect {
     /**
      * Returns whether the statement is an upsert: an insert of the row that updates the one its key names where it
      * exists, in the form the database upserts by. The dialect recognizes its own form, so that a compiled statement
-     * reports {@link st.orm.spi.SqlOperation#UPSERT} whatever keyword it starts with.
+     * reports it as one through {@link Sql#upsert()} whatever keyword it starts with; its operation stays that
+     * keyword.
      *
      * <p>The default recognizes none; {@link st.orm.core.spi.DefaultSqlDialect} recognizes a {@code MERGE} that both
      * updates and inserts, and a dialect with an upsert form of {@code INSERT} adds it.</p>

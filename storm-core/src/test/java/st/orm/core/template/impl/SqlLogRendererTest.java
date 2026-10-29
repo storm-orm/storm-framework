@@ -263,7 +263,7 @@ public class SqlLogRendererTest {
         for (int i = 0; i < executions; i++) {
             long transactionId = transaction.applyAsLong(i);
             long start = i * nanos;
-            statements.add(new Statement(operation, type, origin, "SQL " + type.getSimpleName(), start,
+            statements.add(new Statement(operation, false, type, origin, "SQL " + type.getSimpleName(), start,
                     start + nanos, start + nanos, shapeId, callSite, rows, exactRows, transactionId != OUTSIDE,
                     Math.max(transactionId, 0)));
         }
@@ -275,7 +275,7 @@ public class SqlLogRendererTest {
     private static Summary writes(boolean transactional, Class<? extends Data>... types) {
         var statements = new ArrayList<Statement>();
         for (int i = 0; i < types.length; i++) {
-            statements.add(new Statement(SqlOperation.INSERT, types[i], StatementOrigin.DIRECT,
+            statements.add(new Statement(SqlOperation.INSERT, false, types[i], StatementOrigin.DIRECT,
                     "INSERT " + types[i].getSimpleName(), i, i + 1, i + 1, types[i].getName().hashCode(), null, 1,
                     true, transactional, 0));
         }
@@ -436,7 +436,7 @@ public class SqlLogRendererTest {
         for (int i = 0; i < executions; i++) {
             long transactionId = transaction.applyAsLong(i);
             long start = i * (nanos + gapMillis * 1_000_000L);
-            statements.add(new Statement(operation, type, StatementOrigin.DIRECT, "SQL " + type.getSimpleName(), start,
+            statements.add(new Statement(operation, false, type, StatementOrigin.DIRECT, "SQL " + type.getSimpleName(), start,
                     start + nanos, start + nanos, shapeId, "PetRegistryService.kt:60", 1, true,
                     transactionId != OUTSIDE, Math.max(transactionId, 0)));
         }
@@ -492,7 +492,7 @@ public class SqlLogRendererTest {
         long nanos = millis * 1_000_000L;
         long shapeId = (type.getName() + operation + "concurrent").hashCode();
         for (int i = 0; i < executions; i++) {
-            statements.add(new Statement(operation, type, StatementOrigin.DIRECT, "SQL " + type.getSimpleName(), 0,
+            statements.add(new Statement(operation, false, type, StatementOrigin.DIRECT, "SQL " + type.getSimpleName(), 0,
                     nanos, nanos, shapeId, null, 1, true, true, i + 1L));
         }
         return statements;

@@ -26,6 +26,7 @@ import java.util.concurrent.locks.ReentrantReadWriteLock;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
 import java.util.function.UnaryOperator;
+import org.jspecify.annotations.Nullable;
 import st.orm.core.template.Sql;
 import st.orm.core.template.SqlTemplate;
 import st.orm.spi.StatementOrigin;
@@ -141,7 +142,7 @@ public final class SqlInterceptorManager {
      * <p>Reading the count first keeps the common case, where nothing is scoped anywhere, to a single volatile read
      * rather than a thread-local lookup.</p>
      */
-    static Operator[] localOperators() {
+    static Operator @Nullable [] localOperators() {
         return LOCAL_SCOPES.get() == 0 ? null : LOCAL_OPERATORS.get();
     }
 
