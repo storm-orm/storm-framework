@@ -212,7 +212,15 @@ public sealed interface PredicateNode {
             case Term ignore -> false;
             case Search ignore -> true;
             case Scope(var inner, var ignore) -> holdsSearch(inner);
-            case Group(var ignore, var operands) -> operands.stream().anyMatch(PredicateNode::holdsSearch);
+            case Group(var ignore, var operands) -> {
+                // Asked for every predicate a query is built with, so a plain loop rather than a stream.
+                for (var operand : operands) {
+                    if (holdsSearch(operand)) {
+                        yield true;
+                    }
+                }
+                yield false;
+            }
         };
     }
 

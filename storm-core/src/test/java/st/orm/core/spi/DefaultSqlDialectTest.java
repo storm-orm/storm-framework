@@ -223,4 +223,14 @@ public class DefaultSqlDialectTest {
         assertEquals("MERGE", DefaultSqlDialect.statementKeyword(" /* a */ Merge into"));
         assertEquals("", DefaultSqlDialect.statementKeyword("/* never closed MERGE"));
     }
+
+    @Test
+    public void aKeywordIsFoundInAnyCaseAnywhereInTheStatement() {
+        assertTrue(DefaultSqlDialect.mentions("INSERT INTO t (id) VALUES (?) ON CONFLICT (id) DO UPDATE", "CONFLICT"));
+        assertTrue(DefaultSqlDialect.mentions("insert into t values (?) on conflict do nothing", "CONFLICT"));
+        assertTrue(DefaultSqlDialect.mentions("CONFLICT", "CONFLICT"));
+        assertFalse(DefaultSqlDialect.mentions("INSERT INTO t (id) VALUES (?), (?), (?)", "CONFLICT"));
+        assertFalse(DefaultSqlDialect.mentions("CONFLIC", "CONFLICT"));
+        assertFalse(DefaultSqlDialect.mentions("", "CONFLICT"));
+    }
 }

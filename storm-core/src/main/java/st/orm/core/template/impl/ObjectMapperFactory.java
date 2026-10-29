@@ -26,11 +26,10 @@ import java.lang.reflect.Constructor;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Parameter;
 import java.lang.reflect.RecordComponent;
+import java.util.Arrays;
 import java.util.BitSet;
 import java.util.Collection;
 import java.util.Optional;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ConcurrentMap;
 import java.util.function.Supplier;
 import org.jspecify.annotations.Nullable;
 import st.orm.Data;
@@ -209,8 +208,7 @@ public final class ObjectMapperFactory {
         try {
             // Constructor metadata is precomputed and cached: per-invocation getParameterTypes/getParameters calls
             // clone their arrays, which is measurable on the row mapping hot path.
-            ConstructorMeta meta = CONSTRUCTOR_META.get(constructor.getDeclaringClass())
-                    .computeIfAbsent(constructor, ObjectMapperFactory::constructorMeta);
+            ConstructorMeta meta = CONSTRUCTOR_META.get(constructor.getDeclaringClass()).get(constructor);
             boolean[] nonNull = meta.nonNull();
             boolean[] primitive = meta.primitive();
             for (int i = 0; i < nonNull.length; i++) {
@@ -262,13 +260,56 @@ public final class ObjectMapperFactory {
                                    @Nullable Instantiator<?> instantiator) {}
 
     /**
-     * Precomputed constructor metadata per declaring class, keyed by constructor. {@link ClassValue} ties each
-     * entry to the lifetime of the declaring class, so cached constructors never pin the class or its class loader.
+     * The metadata of a declaring class's constructors, looked up for every row. A caller passes the same
+     * {@link Constructor} instance row after row, so the instance a caller passed is kept with its metadata and
+     * found by identity, without the hashing and parameter-type comparison a map keyed by constructor costs; a class
+     * has few constructors, so the entries are a small array, replaced as a whole when one is added.
      */
-    private static final ClassValue<ConcurrentMap<Constructor<?>, ConstructorMeta>> CONSTRUCTOR_META = new ClassValue<>() {
+    private static final class ConstructorMetas {
+
+        /** A constructor instance a caller passed, with its metadata. */
+        private record Entry(Constructor<?> constructor, ConstructorMeta meta) {}
+
+        private volatile Entry[] entries = new Entry[0];
+
+        ConstructorMeta get(Constructor<?> constructor) {
+            for (var entry : entries) {
+                if (entry.constructor() == constructor) {
+                    return entry.meta();
+                }
+            }
+            return add(constructor);
+        }
+
+        private synchronized ConstructorMeta add(Constructor<?> constructor) {
+            ConstructorMeta meta = null;
+            for (var entry : entries) {
+                if (entry.constructor() == constructor) {
+                    return entry.meta();
+                }
+                if (meta == null && entry.constructor().equals(constructor)) {
+                    // Another instance of a constructor already seen: its metadata is shared.
+                    meta = entry.meta();
+                }
+            }
+            if (meta == null) {
+                meta = constructorMeta(constructor);
+            }
+            var grown = Arrays.copyOf(entries, entries.length + 1);
+            grown[entries.length] = new Entry(constructor, meta);
+            entries = grown;
+            return meta;
+        }
+    }
+
+    /**
+     * Precomputed constructor metadata per declaring class. {@link ClassValue} ties each entry to the lifetime of the
+     * declaring class, so cached constructors never pin the class or its class loader.
+     */
+    private static final ClassValue<ConstructorMetas> CONSTRUCTOR_META = new ClassValue<>() {
         @Override
-        protected ConcurrentMap<Constructor<?>, ConstructorMeta> computeValue(Class<?> type) {
-            return new ConcurrentHashMap<>();
+        protected ConstructorMetas computeValue(Class<?> type) {
+            return new ConstructorMetas();
         }
     };
 

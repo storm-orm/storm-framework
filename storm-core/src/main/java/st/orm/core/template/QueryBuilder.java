@@ -1216,8 +1216,9 @@ public abstract class QueryBuilder<T extends Data, R, ID> {
      * transaction, this avoids wrapping auto-commit queries in a transaction. The eager terminal
      * operations, such as {@link #getResultList()} and {@link #getSingleResult()}, consume this stream.</p>
      *
-     * <p>The same resource-handling rules as {@link #getResultStream()} apply: close the stream after usage,
-     * preferably with a {@code try-with-resources} block.</p>
+     * <p>The stream is consumed and closed by the terminal that asks for it, within the same call, in a
+     * {@code try-with-resources} block; it is never handed to the caller, so it is not watched for a missing
+     * close.</p>
      *
      * @return a stream of results for eager consumption.
      * @throws PersistenceException if the query operation fails due to underlying database issues, such as

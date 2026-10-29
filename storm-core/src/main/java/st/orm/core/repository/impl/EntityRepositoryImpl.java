@@ -68,6 +68,7 @@ import st.orm.core.template.QueryBuilder;
 import st.orm.core.template.QueryPlan;
 import st.orm.core.template.TemplateString;
 import st.orm.core.template.Templates;
+import st.orm.core.template.impl.ConsumedQueries;
 import st.orm.core.template.impl.Elements;
 import st.orm.core.template.impl.JoinedEntityHelper;
 import st.orm.core.template.impl.LazySupplier;
@@ -586,9 +587,9 @@ public class EntityRepositoryImpl<E extends Entity<ID>, ID>
             fireAfterInsert(entity, id);
             return id;
         }
-        try (var query = ormTemplate.query(TemplateString.raw("""
+        try (var query = ConsumedQueries.prepare(ormTemplate.query(TemplateString.raw("""
                 INSERT INTO \0
-                VALUES \0""", model.type(), entity)).managed().prepare()) {
+                VALUES \0""", model.type(), entity)).managed())) {
             if (query.executeUpdate() != 1) {
                 throw failure(INSERT, new PersistenceException("Insert of %s failed. 0 rows were affected, which may indicate a trigger, constraint, or BEFORE INSERT hook prevented the row from being written.".formatted(model.type().getSimpleName())));
             }
@@ -1411,11 +1412,11 @@ public class EntityRepositoryImpl<E extends Entity<ID>, ID>
      * {@code RETURNING} clause.
      */
     private List<ID> insertMultiRowGeneratedKeys(List<E> transformed) {
-        try (var query = ormTemplate.query(raw("""
+        try (var query = ConsumedQueries.prepare(ormTemplate.query(raw("""
                 INSERT INTO \0
                 VALUES \0""",
                 Templates.insert(model.type()),
-                Templates.values(transformed))).managed().prepare()) {
+                Templates.values(transformed))).managed())) {
             if (query.executeUpdate() != transformed.size()) {
                 throw failure(INSERT, new PersistenceException("Multi-row insert of %s failed. The number of affected rows does not match the batch size."
                         .formatted(model.type().getSimpleName())));
@@ -1753,7 +1754,8 @@ public class EntityRepositoryImpl<E extends Entity<ID>, ID>
     }
 
     protected PreparedQuery prepareInsertQuery(boolean ignoreAutoGenerate) {
-        return ormTemplate.query(insertStatement(ormTemplate.createBindVars(), ignoreAutoGenerate)).managed().prepare();
+        return ConsumedQueries.prepare(
+                ormTemplate.query(insertStatement(ormTemplate.createBindVars(), ignoreAutoGenerate)).managed());
     }
 
     protected void insert(List<E> batch, PreparedQuery query) {
@@ -2030,7 +2032,7 @@ public class EntityRepositoryImpl<E extends Entity<ID>, ID>
     }
 
     protected PreparedQuery prepareUpdateQuery(Set<Metamodel<?, ?>> fields) {
-        return ormTemplate.query(updateStatement(ormTemplate.createBindVars(), fields)).managed().prepare();
+        return ConsumedQueries.prepare(ormTemplate.query(updateStatement(ormTemplate.createBindVars(), fields)).managed());
     }
 
     protected void update(List<E> batch, PreparedQuery query, @Nullable EntityCache<E, ID> cache) {
@@ -2311,10 +2313,10 @@ public class EntityRepositoryImpl<E extends Entity<ID>, ID>
         assert primaryKeyColumns.size() == 1;
         var primaryKeyColumn = primaryKeyColumns.getFirst();
         String pkName = primaryKeyColumn.qualifiedName(ormTemplate.dialect());
-        try (var query = ormTemplate.query(TemplateString.raw("""
+        try (var query = ConsumedQueries.prepare(ormTemplate.query(TemplateString.raw("""
                 INSERT INTO \0
                 VALUES \0
-                RETURNING %s""".formatted(pkName), model.type(), entity)).managed().prepare()) {
+                RETURNING %s""".formatted(pkName), model.type(), entity)).managed())) {
             ID id = query.getSingleResult(model.primaryKeyType());
             fireAfterInsert(entity, id);
             return id;
@@ -2374,9 +2376,9 @@ public class EntityRepositoryImpl<E extends Entity<ID>, ID>
         }
         var bindVars = ormTemplate.createBindVars();
         var entityCache = entityCache();
-        try (var query = ormTemplate.query(TemplateString.raw("""
+        try (var query = ConsumedQueries.prepare(ormTemplate.query(TemplateString.raw("""
                 DELETE FROM \0
-                WHERE \0""", model.type(), bindVars)).managed().prepare()) {
+                WHERE \0""", model.type(), bindVars)).managed())) {
             chunked(entities, batchSize).forEach(chunk -> {
                 chunk.stream().map(this::validateDelete).forEach(e -> {
                     fireBeforeRemove(e);

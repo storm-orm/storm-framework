@@ -473,7 +473,7 @@ public final class SqlTemplateImpl implements SqlTemplate {
                 var templatePreparation = this.templatePreparation.get();
                 var cache = this.cache == null ? null : this.cache.get();
                 bindingContext = templatePreparation.preprocess(template);
-                compilationKey = cache == null ? null : withFacts(getCompilationKey(bindingContext), facts);
+                compilationKey = cache == null ? null : HashedKey.of(withFacts(getCompilationKey(bindingContext), facts));
                 processor = compilationKey == null ? null : cache.get(compilationKey);
                 if (processor == null) {
                     request.miss();
@@ -523,6 +523,29 @@ public final class SqlTemplateImpl implements SqlTemplate {
      */
     private static @Nullable Object withFacts(@Nullable Object key, StatementFacts facts) {
         return key == null || facts.isEmpty() ? key : List.of(key, facts);
+    }
+
+    /**
+     * A compilation key with its hash computed once. The key is a list of the template's fragments and element keys,
+     * which caches no hash, and a lookup hashes it twice, to choose the cache segment and to find the entry in it;
+     * an equal hash is also checked before the lists are compared element by element.
+     */
+    private record HashedKey(Object key, int hash) {
+
+        static @Nullable HashedKey of(@Nullable Object key) {
+            return key == null ? null : new HashedKey(key, key.hashCode());
+        }
+
+        @Override
+        public boolean equals(Object other) {
+            return other instanceof HashedKey(Object otherKey, int otherHash) && otherHash == hash
+                    && otherKey.equals(key);
+        }
+
+        @Override
+        public int hashCode() {
+            return hash;
+        }
     }
 
     private Object getShapeKey(BindingContext bindingContext) {

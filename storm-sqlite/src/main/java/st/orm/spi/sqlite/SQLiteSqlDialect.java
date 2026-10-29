@@ -303,7 +303,7 @@ public class SQLiteSqlDialect extends DefaultSqlDialect {
         if (super.isUpsert(sql)) {
             return true;
         }
-        if (!"INSERT".equals(statementKeyword(sql))) {
+        if (!"INSERT".equals(statementKeyword(sql)) || !mentions(sql, "CONFLICT")) {
             return false;
         }
         var conflict = ON_CONFLICT.matcher(sql);
