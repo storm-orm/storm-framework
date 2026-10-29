@@ -242,6 +242,47 @@ products.update {
 
 One statement that reads nothing first cannot lose a concurrent writer's change and never needs a retry. A read-and-write-back loses one of two concurrent changes, and `@Version` would only turn the loss into an exception to retry. `@Version` is for the other shape of lost update, a record edited across two requests (/storm-entity-kotlin).
 
+## Order, Rank and Group in the Query
+
+**A repository method returns rows in the order and the shape its caller needs, and the statement does that work.** A `sortedBy` after the read, a comparator ranking the list, or a `groupBy`/`groupingBy`/`associateBy` that counts or collects rows is work the query should have done: the database orders with its indexes and returns only what `limit`, `page` or `scroll` asks for, while a sort in code reads every row first, and a `take` before it returns the wrong rows.
+
+```kotlin
+// ❌ sorted in code: every user of the city is read, then the JVM sorts and cuts
+val firstPage = users.findAllBy(User_.city, city)
+    .sortedBy { it.name }
+    .take(20)
+
+// ✅ ordered by the database, through its index, 20 rows read
+val firstPage = users.select(User_.city eq city)
+    .orderBy(User_.name)
+    .limit(20)
+    .resultList
+
+// ❌ ranked in code: the users of one city first, then by name
+val ranked = cityUsers.sortedWith(compareBy<User> { it.city != city }.thenBy { it.name })
+
+// ✅ orderFirst puts the rows matching a condition first; the keys after it order each part
+val ranked = users.select(User_.email like "%@example.com")
+    .orderFirst(User_.city eq city)
+    .orderBy(User_.name)
+    .resultList
+
+// ❌ grouped in code: every user is read to count per city
+val perCity = users.findAll().groupingBy { it.city }.eachCount()
+
+// ✅ grouped by the database: one row per city
+data class UsersPerCity(val city: Ref<City>, val userCount: Long)
+
+val perCity = users.select(UsersPerCity::class) { "${User_.city}, COUNT(*)" }
+    .groupBy(User_.city)
+    .resultList
+```
+
+- `orderBy`, `orderByDescending` and `orderFirst` each append a sort key, so they apply in the order they are called. `orderFirst` takes any predicate `where` takes; keyset `scroll` follows it (see /storm-query-kotlin under **Search**).
+- A parent with its children in one row, an owner with their pets, is JSON aggregation (/storm-json-kotlin), not a read of the parents and a `groupBy` over a read of the children.
+- A count or another aggregate per group is `groupBy` with a plain result data class (/storm-query-kotlin under **Aggregation**).
+- Leave it in code only for a good reason, and state it in a comment: an order or grouping no column, `SqlFunction` or template can express, a result already in memory for another reason, or a shape one statement cannot give without a worse plan.
+
 ## CRUD Operations
 
 ```kotlin
@@ -696,6 +737,7 @@ val refSlice: Slice<Ref<User>> = users.sliceRef(0, 20)
 // Keyset scrolling (better for large tables: no COUNT, cursor-based)
 // Scrollable<T> takes a single type parameter (the entity type)
 // ⚠️ Scrollable manages ORDER BY internally: do NOT add orderBy() when using scroll(Scrollable)
+//    Rows a condition puts first go through orderFirst(), which scroll follows
 // ⚠️ The key must be a non-nullable unique key (e.g. @PK or @UK). A compound (inline record)
 //    key is read from the mapped record and needs the entity as the result type.
 val window = users.scroll(Scrollable.of(User_.id, 20))

@@ -201,6 +201,51 @@ products.update()
 
 One statement that reads nothing first cannot lose a concurrent writer's change and never needs a retry. A read-and-write-back loses one of two concurrent changes, and `@Version` would only turn the loss into an exception to retry. `@Version` is for the other shape of lost update, a record edited across two requests (/storm-entity-java).
 
+## Order, Rank and Group in the Query
+
+**A repository method returns rows in the order and the shape its caller needs, and the statement does that work.** A `sorted` after the read, a comparator ranking the list, or a `Collectors.groupingBy` that counts or collects rows is work the query should have done: the database orders with its indexes and returns only what `limit`, `page` or `scroll` asks for, while a sort in code reads every row first, and a `limit` before it returns the wrong rows.
+
+```java
+// ❌ sorted in code: every user of the city is read, then the JVM sorts and cuts
+List<User> firstPage = users.findAllBy(User_.city, city).stream()
+    .sorted(Comparator.comparing(User::name))
+    .limit(20)
+    .toList();
+
+// ✅ ordered by the database, through its index, 20 rows read
+List<User> firstPage = users.select()
+    .where(User_.city, EQUALS, city)
+    .orderBy(User_.name)
+    .limit(20)
+    .getResultList();
+
+// ❌ ranked in code: the users of one city first, then by name
+cityUsers.sort(Comparator.comparing((User user) -> !user.city().equals(city)).thenComparing(User::name));
+
+// ✅ orderFirst puts the rows matching a condition first; the keys after it order each part
+List<User> ranked = users.select()
+    .where(User_.email, LIKE, "%@example.com")
+    .orderFirst(it -> it.where(User_.city, EQUALS, city))
+    .orderBy(User_.name)
+    .getResultList();
+
+// ❌ grouped in code: every user is read to count per city
+var perCity = users.findAll().stream()
+    .collect(groupingBy(User::city, counting()));
+
+// ✅ grouped by the database: one row per city
+record UsersPerCity(Ref<City> city, long userCount) {}
+
+List<UsersPerCity> perCity = users.select(UsersPerCity.class, RAW."\{User_.city}, COUNT(*)")
+    .groupBy(User_.city)
+    .getResultList();
+```
+
+- `orderBy`, `orderByDescending` and `orderFirst` each append a sort key, so they apply in the order they are called. `orderFirst` takes any predicate `where` takes; keyset `scroll` follows it (see /storm-query-java under **Search**).
+- A parent with its children in one row, an owner with their pets, is JSON aggregation (/storm-json-java), not a read of the parents and a `groupingBy` over a read of the children.
+- A count or another aggregate per group is `groupBy` with a plain result record (/storm-query-java under **Aggregation**).
+- Leave it in code only for a good reason, and state it in a comment: an order or grouping no column, `SqlFunction` or template can express, a result already in memory for another reason, or a shape one statement cannot give without a worse plan.
+
 ## CRUD Operations
 
 ```java
@@ -582,6 +627,7 @@ Slice<Ref<User>> refSlice = users.sliceRef(0, 20);
 
 // Keyset scrolling (better for large tables: no COUNT, cursor-based)
 // ⚠️ The request owns ORDER BY: do NOT add orderBy() when using scroll(Scrollable)
+//    Rows a condition puts first go through orderFirst(), which scroll follows
 // ⚠️ The key must be a non-nullable unique key (Metamodel.Key, e.g. @PK or @UK). A compound
 //    (inline record) key is read from the mapped record and needs the entity as the result type.
 var window = users.scroll(Scrollable.of(User_.id, 20));    // prefer var: avoids Window<User> verbosity
