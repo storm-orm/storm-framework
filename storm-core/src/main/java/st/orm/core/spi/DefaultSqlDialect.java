@@ -485,10 +485,41 @@ public class DefaultSqlDialect implements SqlDialect {
         throw new PersistenceException("Sequences are not supported by this dialect.");
     }
 
-    /** A statement that starts with MERGE, after the whitespace and comments a hint or a template may lead with. */
-    private static final Pattern MERGE = Pattern.compile("^\\s*(?:/\\*.*?\\*/\\s*)*MERGE\\b", Pattern.CASE_INSENSITIVE | Pattern.DOTALL);
     private static final Pattern WHEN_MATCHED = Pattern.compile("\\bWHEN\\s+MATCHED\\b", Pattern.CASE_INSENSITIVE);
     private static final Pattern WHEN_NOT_MATCHED = Pattern.compile("\\bWHEN\\s+NOT\\s+MATCHED\\b", Pattern.CASE_INSENSITIVE);
+
+    /**
+     * Returns the keyword a statement starts with, upper-cased, past the whitespace and block comments a hint or a
+     * template may lead with; empty for a statement that starts with none, or whose leading comment never closes.
+     * One pass over the text, so a statement of any shape costs its length.
+     *
+     * @param sql the statement.
+     * @return the leading keyword, or {@code ""}.
+     * @since 1.16
+     */
+    protected static String statementKeyword(String sql) {
+        int length = sql.length();
+        int i = 0;
+        while (i < length) {
+            char ch = sql.charAt(i);
+            if (Character.isWhitespace(ch)) {
+                i++;
+            } else if (ch == '/' && i + 1 < length && sql.charAt(i + 1) == '*') {
+                int close = sql.indexOf("*/", i + 2);
+                if (close < 0) {
+                    return "";
+                }
+                i = close + 2;
+            } else {
+                break;
+            }
+        }
+        int start = i;
+        while (i < length && Character.isLetter(sql.charAt(i))) {
+            i++;
+        }
+        return sql.substring(start, i).toUpperCase(Locale.ROOT);
+    }
 
     /**
      * Returns whether the statement is a {@code MERGE} that both updates the row it matches and inserts the one it
@@ -500,6 +531,7 @@ public class DefaultSqlDialect implements SqlDialect {
      */
     @Override
     public boolean isUpsert(String sql) {
-        return MERGE.matcher(sql).find() && WHEN_MATCHED.matcher(sql).find() && WHEN_NOT_MATCHED.matcher(sql).find();
+        return "MERGE".equals(statementKeyword(sql))
+                && WHEN_MATCHED.matcher(sql).find() && WHEN_NOT_MATCHED.matcher(sql).find();
     }
 }

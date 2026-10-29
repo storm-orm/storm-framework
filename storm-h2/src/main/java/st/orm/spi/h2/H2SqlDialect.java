@@ -224,7 +224,7 @@ public class H2SqlDialect extends DefaultSqlDialect {
         return true;
     }
 
-    private static final Pattern MERGE_KEY = Pattern.compile("^\\s*(?:/\\*.*?\\*/\\s*)*MERGE\\s+INTO\\b.*\\bKEY\\s*\\(", Pattern.CASE_INSENSITIVE | Pattern.DOTALL);
+    private static final Pattern KEY_CLAUSE = Pattern.compile("\\bKEY\\s*\\(", Pattern.CASE_INSENSITIVE);
 
     /**
      * Returns whether the statement is an upsert: the database's short {@code MERGE INTO ... KEY (...) VALUES} form,
@@ -236,6 +236,6 @@ public class H2SqlDialect extends DefaultSqlDialect {
      */
     @Override
     public boolean isUpsert(String sql) {
-        return super.isUpsert(sql) || MERGE_KEY.matcher(sql).find();
+        return super.isUpsert(sql) || ("MERGE".equals(statementKeyword(sql)) && KEY_CLAUSE.matcher(sql).find());
     }
 }

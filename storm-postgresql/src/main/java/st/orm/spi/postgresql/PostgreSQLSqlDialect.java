@@ -391,7 +391,8 @@ public class PostgreSQLSqlDialect extends DefaultSqlDialect {
         return null;
     }
 
-    private static final Pattern ON_CONFLICT_DO_UPDATE = Pattern.compile("^\\s*(?:/\\*.*?\\*/\\s*)*INSERT\\b.*\\bON\\s+CONFLICT\\b.*\\bDO\\s+UPDATE\\b", Pattern.CASE_INSENSITIVE | Pattern.DOTALL);
+    private static final Pattern ON_CONFLICT = Pattern.compile("\\bON\\s+CONFLICT\\b", Pattern.CASE_INSENSITIVE);
+    private static final Pattern DO_UPDATE = Pattern.compile("\\bDO\\s+UPDATE\\b", Pattern.CASE_INSENSITIVE);
 
     /**
      * Returns whether the statement is an upsert: an {@code INSERT ... ON CONFLICT ... DO UPDATE}, the database's own
@@ -404,6 +405,13 @@ public class PostgreSQLSqlDialect extends DefaultSqlDialect {
      */
     @Override
     public boolean isUpsert(String sql) {
-        return super.isUpsert(sql) || ON_CONFLICT_DO_UPDATE.matcher(sql).find();
+        if (super.isUpsert(sql)) {
+            return true;
+        }
+        if (!"INSERT".equals(statementKeyword(sql))) {
+            return false;
+        }
+        var conflict = ON_CONFLICT.matcher(sql);
+        return conflict.find() && DO_UPDATE.matcher(sql).find(conflict.end());
     }
 }
