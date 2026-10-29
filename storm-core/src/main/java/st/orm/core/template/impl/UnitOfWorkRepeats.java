@@ -68,6 +68,17 @@ public final class UnitOfWorkRepeats {
     }
 
     /**
+     * Records when a statement of the unit of work ran and in which transaction, whether or not it can repeat.
+     *
+     * @param transactionId the identity of the transaction the statement ran in, or {@code 0} for none or unknown.
+     * @param startNanos when the execution was prepared.
+     * @param executedNanos when it returned from the database.
+     */
+    public synchronized void observed(long transactionId, long startNanos, long executedNanos) {
+        repeats.observed(transactionId, startNanos, executedNanos);
+    }
+
+    /**
      * Returns the advice on what the unit of work repeated across its transactions, heaviest first, leaving the
      * executions of a transaction that advised on a repeat to that transaction.
      *

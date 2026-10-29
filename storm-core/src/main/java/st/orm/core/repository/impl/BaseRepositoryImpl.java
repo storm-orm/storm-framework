@@ -48,6 +48,7 @@ import st.orm.core.template.QueryBuilder;
 import st.orm.core.template.QueryPlan;
 import st.orm.core.template.TemplateString;
 import st.orm.core.template.Templates;
+import st.orm.core.template.impl.RepositoryCall;
 import st.orm.core.template.impl.SqlInterceptorManager;
 import st.orm.spi.SqlOperation;
 
@@ -300,7 +301,7 @@ abstract class BaseRepositoryImpl<E extends Data, ID> implements Repository {
      * @throws PersistenceException if there is an underlying database issue during the count operation.
      */
     public boolean existsById(ID id) {
-        return countById(Stream.of(id)) > 0;
+        return RepositoryCall.in(RepositoryCall.EXISTS_BY_ID, () -> countById(Stream.of(id)) > 0);
     }
 
     /**
@@ -315,7 +316,7 @@ abstract class BaseRepositoryImpl<E extends Data, ID> implements Repository {
      * @throws PersistenceException if there is an underlying database issue during the count operation.
      */
     public boolean existsByRef(Ref<E> ref) {
-        return countByRef(Stream.of(ref)) > 0;
+        return RepositoryCall.in(RepositoryCall.EXISTS_BY_REF, () -> countByRef(Stream.of(ref)) > 0);
     }
 
     // Singular findBy methods.
@@ -332,11 +333,13 @@ abstract class BaseRepositoryImpl<E extends Data, ID> implements Repository {
      *                              connectivity problems or query execution errors.
      */
     public Optional<E> findById(ID id) {
-        var query = findByIdQuery(id);
-        if (query != null) {
-            return query.getOptionalResult(model.type());
-        }
-        return select().where(id).getOptionalResult();
+        return RepositoryCall.in(RepositoryCall.FIND_BY_ID, () -> {
+            var query = findByIdQuery(id);
+            if (query != null) {
+                return query.getOptionalResult(model.type());
+            }
+            return select().where(id).getOptionalResult();
+        });
     }
 
     /**
@@ -351,12 +354,14 @@ abstract class BaseRepositoryImpl<E extends Data, ID> implements Repository {
      *                              connectivity problems or query execution errors.
      */
     public Optional<E> findByRef(Ref<E> ref) {
-        //noinspection unchecked
-        var query = findByIdQuery((ID) ref.id());
-        if (query != null) {
-            return query.getOptionalResult(model.type());
-        }
-        return select().where(ref).getOptionalResult();
+        return RepositoryCall.in(RepositoryCall.FIND_BY_REF, () -> {
+            //noinspection unchecked
+            var query = findByIdQuery((ID) ref.id());
+            if (query != null) {
+                return query.getOptionalResult(model.type());
+            }
+            return select().where(ref).getOptionalResult();
+        });
     }
 
     /**
@@ -373,11 +378,13 @@ abstract class BaseRepositoryImpl<E extends Data, ID> implements Repository {
      *                              connectivity problems or query execution errors.
      */
     public E getById(ID id) {
-        var query = findByIdQuery(id);
-        if (query != null) {
-            return query.getSingleResult(model.type());
-        }
-        return select().where(id).getSingleResult();
+        return RepositoryCall.in(RepositoryCall.GET_BY_ID, () -> {
+            var query = findByIdQuery(id);
+            if (query != null) {
+                return query.getSingleResult(model.type());
+            }
+            return select().where(id).getSingleResult();
+        });
     }
 
     /**
@@ -419,12 +426,14 @@ abstract class BaseRepositoryImpl<E extends Data, ID> implements Repository {
      *                              connectivity problems or query execution errors.
      */
     public E getByRef(Ref<E> ref) {
-        //noinspection unchecked
-        var query = findByIdQuery((ID) ref.id());
-        if (query != null) {
-            return query.getSingleResult(model.type());
-        }
-        return select().where(ref).getSingleResult();
+        return RepositoryCall.in(RepositoryCall.GET_BY_REF, () -> {
+            //noinspection unchecked
+            var query = findByIdQuery((ID) ref.id());
+            if (query != null) {
+                return query.getSingleResult(model.type());
+            }
+            return select().where(ref).getSingleResult();
+        });
     }
 
     // Singular findBy / getBy methods for unique keys.

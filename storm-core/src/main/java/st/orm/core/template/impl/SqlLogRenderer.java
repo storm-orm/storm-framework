@@ -115,6 +115,9 @@ public final class SqlLogRenderer {
         Set<String> relatedWrites = new LinkedHashSet<>();
         var derived = summary.repeatAdvice() == null ? new Repeats(true) : null;
         for (var statement : summary.statements()) {
+            if (derived != null) {
+                derived.observed(statement.transactionId(), statement.startNanos(), statement.executedNanos());
+            }
             var dataType = statement.dataType();
             if (dataType == null) {
                 continue;

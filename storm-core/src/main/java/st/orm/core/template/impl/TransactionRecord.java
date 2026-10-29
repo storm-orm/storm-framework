@@ -169,6 +169,7 @@ public final class TransactionRecord {
         if (repeats == null) {
             return;
         }
+        repeats.observed(id(), startNanos, executedNanos);
         // A statement whose repetition carries no advice is not walked for.
         if (!UnitOfWorkRepeats.candidate(context)) {
             return;
