@@ -765,10 +765,14 @@ public class QueryBuilderTest {
         // data.sql: owner 1 (Betty Davis) has pet Leo; owner 4 (Harold Davis) has pet Iggy; owner 6 is Jean Coleman.
         var trigramOrm = ORMTemplate.of(dataSource,
                 st.orm.StormConfig.of(java.util.Map.of(st.orm.StormConfig.SEARCH_MIN_TERM_LENGTH, "3")));
-        assertEquals(List.of("Betty", "Harold"), semiJoinSuggestFirstNames(trigramOrm, "davis le"));
-        assertEquals(List.of(), semiJoinSuggestFirstNames(trigramOrm, "le"));
+        // A short word matches at the start of a word: pet Leo, not Coleman.
+        assertEquals(List.of("Betty"), semiJoinSuggestFirstNames(trigramOrm, "davis le"));
+        assertEquals(List.of("Betty"), semiJoinSuggestFirstNames(trigramOrm, "le"));
+        assertEquals(List.of(), semiJoinSuggestFirstNames(trigramOrm, "l"));
         assertEquals(List.of(), semiJoinSuggestFirstNames(trigramOrm, ""));
-        assertEquals(List.of("Betty", "Jean"), semiJoinSuggestFirstNames(orm, "le"));
+        // A dialect without a substring index matches the lowered word as a prefix of the bare column; these columns
+        // compare case-sensitively, so nothing matches: a suggestion column is one that compares ignoring case.
+        assertEquals(List.of(), semiJoinSuggestFirstNames(orm, "le"));
     }
 
     private static List<String> semiJoinSuggestFirstNames(ORMTemplate template, String input) {
@@ -780,16 +784,19 @@ public class QueryBuilderTest {
 
     @Test
     public void testSuggestIgnoresTheWordsTheSearchBoxNames() {
-        // data.sql: owner 1 (Betty Davis) has pet Leo; owner 4 (Harold Davis) has pet Iggy.
+        // data.sql: owner 1 (Betty Davis) has pet Leo; owner 4 (Harold Davis) has pet Iggy. Searched as a dialect
+        // with a substring index, whose words match anywhere, ignoring case.
+        var trigramOrm = ORMTemplate.of(dataSource,
+                st.orm.StormConfig.of(java.util.Map.of(st.orm.StormConfig.SEARCH_MIN_TERM_LENGTH, "3")));
         var ignore = Set.of("davis", "the");
-        Function<String, List<String>> firstNames = input -> orm.entity(Owner.class).select()
+        Function<String, List<String>> firstNames = input -> trigramOrm.entity(Owner.class).select()
                 .semiJoin(Pet.class).on(Owner.class)
                 .where(it -> it.suggest(input, ignore, Owner_.lastName, Pet_.name))
                 .getResultList().stream().map(Owner::firstName).sorted().toList();
         assertEquals(List.of("Betty"), firstNames.apply("The Davis leo"));
         assertEquals(List.of(), firstNames.apply("the davis"));
         assertEquals(List.of(), firstNames.apply(""));
-        assertEquals(List.of("Betty", "Harold"), semiJoinSuggestFirstNames(orm, "davis"));
+        assertEquals(List.of("Betty", "Harold"), semiJoinSuggestFirstNames(trigramOrm, "davis"));
     }
 
     private List<String> semiJoinSearchFirstNames(String input) {
