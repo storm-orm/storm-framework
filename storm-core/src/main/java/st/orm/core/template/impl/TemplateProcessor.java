@@ -202,6 +202,13 @@ class TemplateProcessor {
      * flagged as potentially unsafe whatever WHERE clause it renders.
      */
     private boolean unconditional;
+    /** What the builder asserts about the statement, applied as the statement compiles. */
+    private final StatementFacts facts;
+    /**
+     * Compile-time only: the operation the compiled statement reports, which the dialect refines from the parsed
+     * one where the statement is an upsert in the database's own form.
+     */
+    private SqlOperation statementOperation;
 
     /**
      * Compile-time only: the select list the query model generated, which a cursor element finds its columns in.
@@ -280,9 +287,10 @@ class TemplateProcessor {
             ModelBuilder modelBuilder,
             TableUse tableUse,
             AliasMapper aliasMapper,
-            @Nullable QueryModel queryModel
+            @Nullable QueryModel queryModel,
+            StatementFacts facts
     ) {
-        this(template, templatePreparation, operation, modelBuilder, tableUse, aliasMapper, queryModel,
+        this(template, templatePreparation, operation, modelBuilder, tableUse, aliasMapper, queryModel, facts,
                 new SqlDialectTemplate(template.dialect()),
                 new ArrayList<>(),
                 new AtomicInteger(),
@@ -303,14 +311,17 @@ class TemplateProcessor {
             TableUse tableUse,
             AliasMapper aliasMapper,
             @Nullable QueryModel queryModel,
+            StatementFacts facts,
             SqlDialectTemplate dialectTemplate,
             List<BindHint> bindHints,
             AtomicInteger positionalParameterCount,
             AtomicInteger nameIndex
     ) {
+        this.facts = facts;
         this.template = template;
         this.templatePreparation = templatePreparation;
         this.operation = operation;
+        this.statementOperation = operation;
         this.modelBuilder = modelBuilder;
         this.tableUse = tableUse;
         this.aliasMapper = aliasMapper;
@@ -368,6 +379,7 @@ class TemplateProcessor {
     ) {
         // Share compilation state across nested compilation.
         // Binding state is NOT shared; it is created per bind invocation in BindingSession.
+        // A subquery asserts nothing to the statement that embeds it.
         return new TemplateProcessor(
                 template,
                 templatePreparation,
@@ -376,6 +388,7 @@ class TemplateProcessor {
                 tableUse,
                 aliasMapper,
                 queryModel,
+                StatementFacts.NONE,
                 dialectTemplate,
                 bindHints,
                 positionalParameterCount,
@@ -625,10 +638,73 @@ class TemplateProcessor {
             sql = "\n" + sql.indent(2);
         }
         if (!subquery) {
+            applyFacts();
+            classify(sql, elements);
             demandDeleteCheck();
         }
         freeze(sql);
         return sql;
+    }
+
+    /**
+     * Refines the operation the statement reports: an INSERT or an undefined statement in the database's own upsert
+     * form is an upsert, which the dialect recognizes. An upsert written as a MERGE names its target table first,
+     * and no element records the type for it, so the first table named is taken as the type the statement writes.
+     */
+    private void classify(String sql, List<Element> elements) {
+        if (operation != SqlOperation.INSERT && operation != SqlOperation.UNDEFINED) {
+            return;
+        }
+        if (!template.dialect().isUpsert(sql)) {
+            return;
+        }
+        statementOperation = SqlOperation.UPSERT;
+        if (dataType == null) {
+            for (Element element : elements) {
+                var table = element instanceof Wrapped(var wrapped)
+                        ? wrapped.stream().map(SqlTemplateImpl.ElementNode::element).filter(Elements.Table.class::isInstance)
+                                .map(Elements.Table.class::cast).findFirst().orElse(null)
+                        : element instanceof Elements.Table it ? it : null;
+                if (table != null) {
+                    dataType = table.table();
+                    break;
+                }
+            }
+        }
+    }
+
+    /**
+     * Applies what the builder asserts about the statement: its advice, the type an upsert writes, that an UPDATE or
+     * DELETE holds no condition, and the columns an index serves a limited sorted result or a select list on.
+     */
+    private void applyFacts() throws SqlTemplateException {
+        if (facts.isEmpty()) {
+            return;
+        }
+        for (String advisory : facts.advisories()) {
+            addAdvisory(advisory);
+        }
+        if (facts.unconditional()) {
+            unconditional = true;
+        }
+        for (var field : facts.sortedBy()) {
+            var metamodel = MetamodelFactory.canonical(field);
+            ColumnDemands.demand(compiler.getModel(metamodel.tableType()).getColumns(metamodel),
+                    IndexDemands.Kind.ORDER, compiler);
+        }
+        var select = facts.select();
+        if (select != null) {
+            SelectDemands.record(select, compiler);
+        }
+    }
+
+    /** Adds a piece of advice the statement carries, once. */
+    private void addAdvisory(String advisory) {
+        if (!advisories.contains(advisory)) {
+            var copy = new ArrayList<>(advisories);
+            copy.add(advisory);
+            advisories = List.copyOf(copy);
+        }
     }
 
     /**
@@ -643,7 +719,7 @@ class TemplateProcessor {
             return;
         }
         var type = affectedType();
-        if (type == null || IndexDemandProcessor.inJoinedHierarchy(type)) {
+        if (type == null || ColumnDemands.inJoinedHierarchy(type)) {
             return;
         }
         var model = modelBuilder.build(type, false);
@@ -715,11 +791,12 @@ class TemplateProcessor {
             unsafeWarning = warning;
         }
         var advisories = this.advisories;
-        // A list that renders a placeholder per value is a statement per length to the database; the lengths are
-        // recorded while the advice log reports what they add up to, or while a statement threshold would show
-        // them on a slow line, and a shape that has run in enough of them carries the advice from then on. A list
-        // of more than two values compiles anew for each execution, so the advice is appended per binding.
-        if (session.inListLength > 0
+        // A list that renders a placeholder per value is a statement per length to a database that keeps a plan
+        // per statement text; the lengths are recorded while the advice log reports what they add up to, or while
+        // a statement threshold would show them on a slow line, and a shape that has run in enough of them carries
+        // the advice from then on. A list of more than two values compiles anew for each execution, so the advice
+        // is appended per binding.
+        if (session.inListLength > 0 && template.dialect().keepsPlanPerStatementText()
                 && (AdviceLog.reports(Advice.IN_LIST_SHAPES) || SlowStatementLog.timesStatements())) {
             var advisory = InListShapes.observe(shapeId, session.inListLength);
             if (advisory != null) {
@@ -729,7 +806,7 @@ class TemplateProcessor {
             }
         }
         return new SqlImpl(
-                operation,
+                statementOperation,
                 sql,
                 session.parameters,
                 ofNullable(session.bindVariables),
@@ -772,7 +849,7 @@ class TemplateProcessor {
      */
     private Optional<String> checkSafety(String sql, SqlOperation operation) {
         return switch (operation) {
-            case SELECT, INSERT, UNDEFINED -> empty();
+            case SELECT, INSERT, UPSERT, UNDEFINED -> empty();
             case UPDATE, DELETE -> {
                 if (unconditional || !hasWhereClause(sql, template.dialect())) {
                     yield Optional.of("%s without a WHERE clause is potentially unsafe.".formatted(operation));
@@ -1087,22 +1164,8 @@ class TemplateProcessor {
         }
 
         @Override
-        public void markUnconditional() {
-            unconditional = true;
-        }
-
-        @Override
         public void demandIndex(Model<?, ?> table, String column, IndexDemands.Kind kind) {
             TemplateProcessor.this.demandIndex(table, column, kind);
-        }
-
-        @Override
-        public void addAdvisory(String advisory) {
-            if (!advisories.contains(advisory)) {
-                var copy = new ArrayList<>(advisories);
-                copy.add(advisory);
-                advisories = List.copyOf(copy);
-            }
         }
 
         /**

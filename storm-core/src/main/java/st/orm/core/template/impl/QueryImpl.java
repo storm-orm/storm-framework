@@ -36,6 +36,7 @@ import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
 import java.time.ZonedDateTime;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Calendar;
 import java.util.List;
 import java.util.Optional;
@@ -64,6 +65,7 @@ import st.orm.core.spi.TransactionTemplateProvider;
 import st.orm.core.spi.WeakInterner;
 import st.orm.core.template.PreparedQuery;
 import st.orm.core.template.Query;
+import st.orm.core.template.SqlDialect;
 import st.orm.core.template.SqlTemplate.Parameter;
 import st.orm.spi.QueryContext;
 import st.orm.spi.QueryContext.ExecutionKind;
@@ -94,7 +96,8 @@ class QueryImpl implements Query, KeyedQuery {
                        @Nullable SqlCommenter sqlCommenter,
                        List<String> advisories,
                        @Nullable IndexDemands indexDemands,
-                       @Nullable DataSource dataSource) {
+                       @Nullable DataSource dataSource,
+                       SqlDialect dialect) {
 
         /**
          * Returns the references to resolve while mapping rows into the given type.
@@ -242,6 +245,14 @@ class QueryImpl implements Query, KeyedQuery {
      * Notifies the query observer of a starting execution. Observer failures never affect query execution.
      */
     private Observation observe(ExecutionKind kind) {
+        return observe(kind, null);
+    }
+
+    /**
+     * Notifies the query observer of a starting execution of a read that maps its rows to the given type, which
+     * says whether the read returns rows of an entity or projection, or computed values such as a count.
+     */
+    private Observation observe(ExecutionKind kind, @Nullable Class<?> resultType) {
         try {
             var queryObserver = environment.queryObserver();
             var operators = SqlInterceptorManager.localOperators();
@@ -253,19 +264,24 @@ class QueryImpl implements Query, KeyedQuery {
             boolean transactional = !observable
                     || TransactionScope.inTransaction(environment.transactionTemplateProvider());
             var advisories = environment.advisories();
+            StatementListener.Handle advice = null;
             if (!advisories.isEmpty() && AdviceLog.enabled(advisories)) {
                 // Advice is decided when the statement is built; a statement without any costs this test alone.
-                AdviceLog.onExecute(new QueryContextImpl(environment.operation(), environment.dataType(), kind,
-                        environment.statementText(), environment.origin(), environment.shapeId(), transactional),
-                        environment.statementText(), advisories);
+                // Advice that is reported now is reported when the execution closes, with what it cost.
+                advice = AdviceLog.onExecute(new QueryContextImpl(environment.operation(), environment.dataType(),
+                        kind, environment.statementText(), environment.origin(), environment.shapeId(),
+                        transactional, environment.transactionTemplateProvider(), readsRecords(resultType),
+                        managed, upsertTakesGeneratedKey()), environment.statementText(), advisories);
             }
             boolean slowLog = SlowStatementLog.observes(transactional);
-            if (queryObserver == QueryObserver.NOOP && operators == null && !slowLog) {
+            if (queryObserver == QueryObserver.NOOP && operators == null && !slowLog && advice == null) {
                 // Fast path: skip context creation when nothing is observing.
                 return Observation.NOOP;
             }
             var context = new QueryContextImpl(environment.operation(), environment.dataType(), kind,
-                    environment.statementText(), environment.origin(), environment.shapeId(), transactional);
+                    environment.statementText(), environment.origin(), environment.shapeId(), transactional,
+                    environment.transactionTemplateProvider(), readsRecords(resultType), managed,
+                    upsertTakesGeneratedKey());
             var observation = queryObserver == QueryObserver.NOOP
                     ? Observation.NOOP
                     : queryObserver.onExecute(context);
@@ -273,15 +289,12 @@ class QueryImpl implements Query, KeyedQuery {
             var handles = listen(operators, context, environment.parameters());
             if (slowLog) {
                 // The slow log listens the way a scope does, at the same point, for every execution.
-                var slow = SlowStatementLog.onExecute(context, environment.parameters(), environment.sqlCommenter(),
-                        environment.advisories(), environment.indexDemands(), environment.dataSource(),
-                        environment.transactionTemplateProvider());
-                if (handles == null) {
-                    handles = new StatementListener.Handle[] {slow};
-                } else {
-                    handles = java.util.Arrays.copyOf(handles, handles.length + 1);
-                    handles[handles.length - 1] = slow;
-                }
+                handles = append(handles, SlowStatementLog.onExecute(context, environment.parameters(),
+                        environment.sqlCommenter(), environment.advisories(), environment.indexDemands(),
+                        environment.dataSource(), environment.transactionTemplateProvider()));
+            }
+            if (advice != null) {
+                handles = append(handles, advice);
             }
             if (handles == null) {
                 return observation;
@@ -290,6 +303,32 @@ class QueryImpl implements Query, KeyedQuery {
         } catch (Throwable ignore) {
             return Observation.NOOP;
         }
+    }
+
+    /**
+     * Returns whether a read maps its rows to an entity or projection: one to a scalar or a plain record returns
+     * computed values, such as a count, or columns picked from the rows. Without a result type, as for a write or an
+     * untyped read, it is not known, and counts as a read of records, as the context's default has it.
+     */
+    /** Returns whether the statement is an upsert that draws a generated key value even where it updates. */
+    private boolean upsertTakesGeneratedKey() {
+        return environment.operation() == SqlOperation.UPSERT
+                && environment.dialect().upsertTakesGeneratedKeyOnUpdate();
+    }
+
+    private static boolean readsRecords(@Nullable Class<?> resultType) {
+        return resultType == null || Data.class.isAssignableFrom(resultType);
+    }
+
+    /** Returns the handles with one more, which may be the first. */
+    private static StatementListener.Handle[] append(StatementListener.Handle @Nullable [] handles,
+                                                     StatementListener.Handle handle) {
+        if (handles == null) {
+            return new StatementListener.Handle[] {handle};
+        }
+        var appended = Arrays.copyOf(handles, handles.length + 1);
+        appended[handles.length] = handle;
+        return appended;
     }
 
     /**
@@ -321,7 +360,7 @@ class QueryImpl implements Query, KeyedQuery {
         if (handles == null) {
             return null;
         }
-        return count == handles.length ? handles : java.util.Arrays.copyOf(handles, count);
+        return count == handles.length ? handles : Arrays.copyOf(handles, count);
     }
 
     /**
@@ -558,7 +597,7 @@ class QueryImpl implements Query, KeyedQuery {
      */
     @Override
     public <T> Stream<T> getResultStream(Class<T> type) {
-        var observation = observe(ExecutionKind.QUERY);
+        var observation = observe(ExecutionKind.QUERY, type);
         boolean handedOff = false;
         PreparedStatement statement = null;
         try {
@@ -657,7 +696,7 @@ class QueryImpl implements Query, KeyedQuery {
      * @throws NonUniqueResultException if the query returns more than one row.
      */
     private <T> SingleRow<T> readSingleRow(Class<T> type) {
-        var observation = observe(ExecutionKind.QUERY);
+        var observation = observe(ExecutionKind.QUERY, type);
         try {
             PreparedStatement statement = getStatement();
             boolean closeStatementHere = true;
@@ -732,7 +771,7 @@ class QueryImpl implements Query, KeyedQuery {
      * {@link #readSingleRow(Class)}.
      */
     private <T> List<KeyedQuery.Row<T>> readKeyedRows(Class<T> type, Class<?>[] cursorTypes) {
-        var observation = observe(ExecutionKind.QUERY);
+        var observation = observe(ExecutionKind.QUERY, type);
         try {
             PreparedStatement statement = getStatement();
             boolean closeStatementHere = true;
@@ -1320,16 +1359,37 @@ class QueryImpl implements Query, KeyedQuery {
     /**
      * Describes a statement execution for the query observer.
      */
+    /**
+     * The context of one execution. The transaction it runs in is identified on request, since a block that opens
+     * its transaction at its first statement has none to identify before that statement has run.
+     */
     record QueryContextImpl(SqlOperation operation,
                                     @Nullable Class<? extends Data> type,
                                     ExecutionKind kind,
                                     @Nullable String statementText,
                                     StatementOrigin origin,
                                     long shapeId,
-                                    boolean transactional) implements QueryContext {
+                                    boolean transactional,
+                                    @Nullable TransactionTemplateProvider transactionTemplateProvider,
+                                    boolean readsRecords,
+                                    boolean repositoryWrite,
+                                    boolean upsertTakesGeneratedKey)
+            implements QueryContext {
         @Override
         public Optional<Class<? extends Data>> dataType() {
             return ofNullable(type);
+        }
+
+        @Override
+        public long transactionId() {
+            if (transactionTemplateProvider == null) {
+                return 0L;
+            }
+            // Looked up without starting a transaction: the identity is that of the record the transaction keeps
+            // while transactions are recorded, and unknown otherwise.
+            var transactionContext = TransactionScope.peekContext(transactionTemplateProvider);
+            var record = transactionContext == null ? null : transactionContext.transactionRecord();
+            return record == null ? 0L : record.id();
         }
 
         @Override

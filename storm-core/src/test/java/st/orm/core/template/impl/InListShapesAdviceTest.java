@@ -41,7 +41,10 @@ import st.orm.Entity;
 import st.orm.Metamodel;
 import st.orm.PK;
 import st.orm.StormConfig;
+import st.orm.core.spi.NoPlanPerStatementSqlDialectProviderImpl;
+import st.orm.core.spi.SqlDialectProvider;
 import st.orm.core.template.ORMTemplate;
+import st.orm.core.template.PreparedStatementTemplate;
 
 /**
  * On H2, which binds no arrays, a statement whose IN list has rendered with eight different lengths as
@@ -133,6 +136,17 @@ class InListShapesAdviceTest {
         assertTrue(line.contains("WHERE c.id IN (?, ?, ?, ?, ?, ?, ?, ?)"), line);
         assertTrue(line.contains("the statement runs with varying lengths of its IN list"), line);
         assertTrue(line.contains("#in-list-shapes"), line);
+    }
+
+    @Test
+    void aDatabaseThatKeepsNoPlanPerStatementTextDrawsNoAdvice() {
+        AdviceLog.categories(List.of("performance"));
+        // The filter applies to every kind of provider, so only the dialect providers are narrowed.
+        var orm = ORMTemplate.of(dataSource, template -> ((PreparedStatementTemplate) template)
+                .withProviderFilter(provider -> !(provider instanceof SqlDialectProvider)
+                        || provider instanceof NoPlanPerStatementSqlDialectProviderImpl));
+        assertEquals("NoPlanPerStatementTest", orm.dialect().name());
+        assertEquals(List.of(), capture(() -> lookUpInEveryLengthTo(orm, 20)));
     }
 
     @Test

@@ -17,6 +17,7 @@ package st.orm.core;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static st.orm.core.template.SqlInterceptor.observe;
 
 import java.util.ArrayList;
@@ -30,7 +31,10 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.jdbc.JdbcTest;
 import org.springframework.test.context.ContextConfiguration;
 import org.springframework.test.context.junit.jupiter.SpringExtension;
+import st.orm.DbTable;
+import st.orm.Entity;
 import st.orm.Metamodel;
+import st.orm.PK;
 import st.orm.StormConfig;
 import st.orm.core.model.Owner;
 import st.orm.core.model.Owner_;
@@ -60,6 +64,35 @@ public class SearchIntegrationTest {
                 .getResultList()
                 .forEach(owner -> names.add(owner.firstName())));
         return names.stream().sorted().toList();
+    }
+
+    /** A table of titles stored lowered, as a column a suggestion box reads on a database without a substring index. */
+    @DbTable("suggestion")
+    public record Suggestion(@PK Integer id, String titleLower) implements Entity<Integer> {}
+
+    private static final Metamodel<Suggestion, String> TITLE_LOWER = Metamodel.of(Suggestion.class, "titleLower");
+
+    private List<String> suggestTitles(String input, int minimumLength) {
+        return suggestTitles(input, Set.of(), minimumLength);
+    }
+
+    private List<String> suggestTitles(String input, Set<String> ignore, int minimumLength) {
+        try (var connection = dataSource.getConnection(); var statement = connection.createStatement()) {
+            statement.execute("CREATE TABLE IF NOT EXISTS suggestion (id INTEGER PRIMARY KEY, title_lower VARCHAR(100) NOT NULL)");
+            statement.execute("DELETE FROM suggestion");
+            statement.execute("INSERT INTO suggestion (id, title_lower) VALUES (1, 'davis'), (2, 'dave'), (3, 'pick me up'), (4, 'upside down')");
+        } catch (java.sql.SQLException e) {
+            throw new IllegalStateException(e);
+        }
+        var orm = ORMTemplate.of(dataSource,
+                StormConfig.of(Map.of(StormConfig.SEARCH_MIN_TERM_LENGTH, String.valueOf(minimumLength))));
+        statements = new ArrayList<>();
+        List<String> titles = new ArrayList<>();
+        observe(sql -> statements.add(sql.statement()), () -> orm.entity(Suggestion.class).select()
+                .where(it -> PredicateBuilderFactory.<Suggestion, Suggestion, Integer>suggest(input, ignore, List.of(TITLE_LOWER)))
+                .getResultList()
+                .forEach(suggestion -> titles.add(suggestion.titleLower())));
+        return titles.stream().sorted().toList();
     }
 
     @SafeVarargs
@@ -119,15 +152,27 @@ public class SearchIntegrationTest {
 
     @Test
     public void suggestMatchesTheWordsTheIndexServes() {
-        assertEquals(List.of("Betty", "Harold"), suggest("dav is", 3, Owner_.lastName));
-        assertFalse(whereClause().contains("?) AND"), whereClause());
-        assertEquals(List.of(), suggest("da", 3, Owner_.lastName));
+        assertEquals(List.of("Betty", "Harold"), suggest("dav da", 3, Owner_.lastName));
+        // A short word matches at the start of a word: the column's start or the text after a space.
+        assertEquals(List.of("Betty", "Harold"), suggest("da", 3, Owner_.lastName));
+        assertTrue(whereClause().contains("LIKE LOWER(?) ESCAPE '!' OR LOWER("), whereClause());
+        assertEquals(List.of(), suggest("dav is", 3, Owner_.lastName));
+        assertEquals(List.of("David"), suggest("sc", 3, Owner_.lastName));
+        // A word the index cannot serve even at the start of a word is left out.
+        assertEquals(List.of(), suggest("d", 3, Owner_.lastName));
         assertEquals("1 <> 1", whereClause());
         assertEquals(List.of(), suggest("", 3, Owner_.lastName));
-        // A dialect that treats every word alike keeps the short ones.
-        assertEquals(List.of("Betty", "Harold"), suggest("da", 0, Owner_.lastName));
-        assertEquals(List.of(), suggest("dav xy", 0, Owner_.lastName));
-        assertEquals(List.of(), suggest("", 0, Owner_.lastName));
+        // A dialect without a substring index matches a prefix of the column, with no function around the column,
+        // so the column is one that compares case-insensitively on its own: here a stored lowered title.
+        assertEquals(List.of("dave", "davis"), suggestTitles("Da", 0));
+        assertTrue(whereClause().contains("title_lower LIKE ? ESCAPE '!'"), whereClause());
+        assertFalse(whereClause().contains("LOWER(s."), whereClause());
+        assertEquals(List.of("davis"), suggestTitles("DAVIS", 0));
+        assertEquals(List.of(), suggestTitles("avis", 0));
+        assertEquals(List.of(), suggestTitles("pick xy", 0));
+        assertEquals(List.of(), suggestTitles("d", 0));
+        assertEquals("1 <> 1", whereClause());
+        assertEquals(List.of(), suggestTitles("", 0));
     }
 
     @Test
@@ -143,9 +188,9 @@ public class SearchIntegrationTest {
         assertEquals(2, whereClause().split("LIKE").length - 1);
         // A quoted phrase is one word, ignored when it equals an ignored word.
         assertEquals(List.of(), suggest("\"Davis\"", ignore, 3, Owner_.lastName));
-        // Ignored on a dialect that treats every word alike as well.
-        assertEquals(List.of("Betty"), suggest("the betty", ignore, 0, Owner_.firstName));
-        assertEquals(List.of(), suggest("the", ignore, 0, Owner_.firstName));
+        // Ignored on a dialect without a substring index as well, where the other words match as prefixes.
+        assertEquals(List.of("pick me up"), suggestTitles("the pick", ignore, 0));
+        assertEquals(List.of(), suggestTitles("the", ignore, 0));
     }
 
     @Test

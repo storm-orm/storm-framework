@@ -167,8 +167,8 @@ public class OnConflictEntityRepositoryImpl<E extends Entity<ID>, ID>
         return intercept(sql -> sql.versionAware(versionAware.getPlain()), () ->
                 ormTemplate.query(flatten(raw("""
                     INSERT INTO \0
-                    VALUES \0\0""", model.type(), bindVars, onConflictClause(versionAware))))
-                        .managed().prepare());
+                    VALUES \0\0""", model.type(), bindVars, onConflictClause(versionAware)))).managed()
+                        .prepare());
     }
 
     @Override

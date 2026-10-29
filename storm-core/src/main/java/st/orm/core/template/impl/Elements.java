@@ -30,7 +30,6 @@ import st.orm.Metamodel;
 import st.orm.Operator;
 import st.orm.ResolveScope;
 import st.orm.SelectMode;
-import st.orm.core.template.Column;
 import st.orm.core.template.TemplateString;
 import st.orm.mapping.RecordField;
 
@@ -514,52 +513,6 @@ public final class Elements {
             this(inner, outer, foreignKey, innerHoldsKey, null);
         }
     }
-
-    /**
-     * Advice about the statement, which renders nothing. The statement carries it to the slow statement log, which
-     * reports it when an execution of the statement is slow.
-     *
-     * @param text the advice.
-     * @since 1.16
-     */
-    public record Advisory(String text) implements Element {
-        public Advisory {
-            requireNonNull(text, "text");
-        }
-    }
-
-    /**
-     * Records that the statement uses a column in a way an index can serve, which renders nothing. The query builder
-     * adds one where the use is not a predicate it compiles, such as the ordering of a limited result; the slow
-     * statement log checks it against the database's indexes when an execution of the statement is slow.
-     *
-     * @param field the column's path.
-     * @param kind how the statement uses the column.
-     * @since 1.16
-     */
-    public record IndexDemand(Metamodel<?, ?> field, IndexDemands.Kind kind) implements Element {
-        public IndexDemand {
-            requireNonNull(field, "field");
-            requireNonNull(kind, "kind");
-        }
-    }
-
-    /**
-     * Marks an ORDER BY key that ranks the rows by a condition, as {@code orderFirst} adds one. It renders nothing; the
-     * query builder reads it to refuse what such a key cannot follow, a keyset scroll and a distinct query.
-     *
-     * @since 1.16
-     */
-    public record OrderFirst() implements Element {}
-
-    /**
-     * Marks an UPDATE or DELETE whose query builder holds no condition. It renders nothing; the statement is flagged as
-     * potentially unsafe whatever WHERE clause it renders, since the form that matches its rows by primary key in a
-     * subquery carries a WHERE clause of its own. The query refuses to run unless it is marked unsafe.
-     *
-     * @since 1.16
-     */
-    public record Unconditional() implements Element {}
 
     /** Raw SQL rendered verbatim, bypassing the template's safety checks. */
     public record Unsafe(String sql) implements Element {

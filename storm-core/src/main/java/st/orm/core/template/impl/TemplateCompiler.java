@@ -239,15 +239,6 @@ interface TemplateCompiler {
     void setFetchPaths(List<String> fetchPaths);
 
     /**
-     * Records advice about the statement, which the slow statement log reports when an execution of the statement is
-     * slow. Advice recorded twice is kept once.
-     *
-     * @param advisory the advice.
-     * @since 1.16
-     */
-    void addAdvisory(String advisory);
-
-    /**
      * Records that the statement uses the given column of the given table in a way an index can serve, which the
      * slow statement log checks against the database's indexes when an execution is slow.
      *
@@ -257,14 +248,6 @@ interface TemplateCompiler {
      * @since 1.16
      */
     void demandIndex(Model<?, ?> table, String column, IndexDemands.Kind kind);
-
-    /**
-     * Flags the statement as potentially unsafe, as an UPDATE or DELETE without a condition, whatever WHERE clause it
-     * renders.
-     *
-     * @since 1.16
-     */
-    void markUnconditional();
 
     /**
      * Returns the fetch plan of the compilation in progress: the references the statement resolves as part of its

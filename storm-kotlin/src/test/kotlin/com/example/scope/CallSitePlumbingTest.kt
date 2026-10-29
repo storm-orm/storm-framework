@@ -3,7 +3,12 @@
 package com.example.scope
 
 import io.kotest.matchers.nulls.shouldNotBeNull
+import io.kotest.matchers.shouldBe
+import io.kotest.matchers.string.shouldEndWith
 import io.kotest.matchers.string.shouldStartWith
+import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.runBlocking
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.extension.ExtendWith
@@ -13,6 +18,7 @@ import org.springframework.test.context.jdbc.Sql
 import org.springframework.test.context.junit.jupiter.SpringExtension
 import st.orm.core.template.SqlLog.Summary
 import st.orm.core.template.impl.CallSiteCapture
+import st.orm.repository.exists
 import st.orm.template.DEFAULT_SQL_LOG_LIMIT
 import st.orm.template.IntegrationConfig
 import st.orm.template.InternalStormApi
@@ -62,5 +68,39 @@ internal open class CallSitePlumbingTest(
         // The dispatcher thread's stack is plumbing end to end; without the carried launch site this row would
         // name the plumbing's innermost frame.
         callSite shouldStartWith "CallSitePlumbingTest.kt:"
+    }
+
+    @Test
+    fun `a statement run inside a flow operator names the caller, not the library's inlined frame`(): Unit = runBlocking {
+        val summary = record("flow") {
+            flowOf(1, 2).map { orm.entity(PetOwnerRef::class).findById(it) }.toList()
+        }
+        val callSite = summary.byStatement().first().callSite()
+        callSite.shouldNotBeNull()
+        callSite shouldStartWith "CallSitePlumbingTest.kt:"
+    }
+
+    @Test
+    fun `a flow a repository method maps before returning names the caller through the repository`(): Unit = runBlocking {
+        val owners = orm.repository(PetOwnerRefs::class)
+        val summary = record("repository flow") {
+            owners.allRenamed().toList()
+        }
+        val callSite = summary.byStatement().first().callSite()
+        callSite.shouldNotBeNull()
+        callSite shouldStartWith "CallSitePlumbingTest.kt:"
+        callSite shouldEndWith " via PetOwnerRefs.allRenamed"
+    }
+
+    @Test
+    fun `a statement Storm's inline function runs names the line that called it`(): Unit = runBlocking {
+        var line = 0
+        val summary = record("inline") {
+            // The call follows on the next line.
+            line = Throwable().stackTrace[0].lineNumber + 1
+            orm.exists<PetOwnerRef>()
+        }
+        val callSite = summary.byStatement().first().callSite()
+        callSite shouldBe "CallSitePlumbingTest.kt:$line"
     }
 }

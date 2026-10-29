@@ -230,7 +230,19 @@ class TemplatePreparation {
      * @throws SqlTemplateException if preparation fails.
      */
     PreparedTemplate prepare(BindingContext bindingContext) throws SqlTemplateException {
-        return prepare(bindingContext, null, false);
+        return prepare(bindingContext, StatementFacts.NONE);
+    }
+
+    /**
+     * Prepares a statement's template with the facts its builder asserts, which the processor applies as it compiles.
+     *
+     * @param bindingContext the binding context.
+     * @param facts what the builder asserts about the statement.
+     * @return the prepared template.
+     * @throws SqlTemplateException if preparation fails.
+     */
+    PreparedTemplate prepare(BindingContext bindingContext, StatementFacts facts) throws SqlTemplateException {
+        return prepare(bindingContext, null, false, facts);
     }
 
     /**
@@ -250,6 +262,15 @@ class TemplatePreparation {
             @Nullable TemplateProcessor parentProcessor,
             boolean correlate
     ) throws SqlTemplateException {
+        return prepare(bindingContext, parentProcessor, correlate, StatementFacts.NONE);
+    }
+
+    private PreparedTemplate prepare(
+            BindingContext bindingContext,
+            @Nullable TemplateProcessor parentProcessor,
+            boolean correlate,
+            StatementFacts facts
+    ) throws SqlTemplateException {
         assert !correlate || parentProcessor != null;
         var tableUse = new TableUse();
         var tableMapper = new TableMapper();
@@ -267,7 +288,7 @@ class TemplatePreparation {
         var queryModel = queryModelFactory.getQueryModel(flattened, tableMapper, aliasMapper).orElse(null);
         TemplateProcessor processor;
         if (parentProcessor == null) {
-            processor = new TemplateProcessor(template, this, bindingContext.operation(), modelBuilder, tableUse, aliasMapper, queryModel);
+            processor = new TemplateProcessor(template, this, bindingContext.operation(), modelBuilder, tableUse, aliasMapper, queryModel, facts);
         } else {
             processor = parentProcessor.child(this, bindingContext.operation(), modelBuilder, tableUse, aliasMapper, queryModel);
         }
@@ -293,7 +314,7 @@ class TemplatePreparation {
     ) throws SqlTemplateException {
         String previous = removeComments(previousFragment, template.dialect()).stripTrailing().toUpperCase();
         return switch (operation) {
-            case SELECT, DELETE, UNDEFINED -> {
+            case SELECT, DELETE, UNDEFINED, UPSERT -> {
                 if (endsWithKeyword(previous, "WHERE")) {
                     yield where(bindVars);
                 }
@@ -339,7 +360,7 @@ class TemplatePreparation {
     ) throws SqlTemplateException {
         String previous = removeComments(previousFragment, template.dialect()).stripTrailing().toUpperCase();
         return switch (operation) {
-            case SELECT, DELETE, UNDEFINED -> whereOrParam(previous, o);
+            case SELECT, DELETE, UNDEFINED, UPSERT -> whereOrParam(previous, o);
             case INSERT -> {
                 if (endsWithKeyword(previous, "VALUES")) {
                     if (o instanceof Data r) {
@@ -415,7 +436,7 @@ class TemplatePreparation {
     ) throws SqlTemplateException {
         String previous = removeComments(previousFragment, template.dialect()).stripTrailing().toUpperCase();
         return switch (operation) {
-            case SELECT, UPDATE, DELETE, UNDEFINED -> {
+            case SELECT, UPDATE, DELETE, UNDEFINED, UPSERT -> {
                 if (endsWithKeyword(previous, "WHERE")) {
                     yield where(iterable);
                 }
@@ -494,7 +515,7 @@ class TemplatePreparation {
                 }
                 yield table(recordType);
             }
-            case UNDEFINED -> table(recordType);
+            case UNDEFINED, UPSERT -> table(recordType);
         };
     }
 

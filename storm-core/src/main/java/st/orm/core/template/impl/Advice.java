@@ -24,9 +24,10 @@ import org.jspecify.annotations.Nullable;
  * default, and advice on performance once the application asks for its category; advice on a deliberate choice, such as
  * a page that reports its total, holds only once the statement is slow, so only the slow statement log reports it, as
  * it reports advice that needs a slow execution as evidence, such as an index the statement lacks, or one the
- * database's check of a foreign key lacks when the statement deletes. The advice on what repeated in one unit of work
- * closes the performance log's summary. The page keeps an anchor for as long as Storm emits the advice, so the link in
- * a log line outlives any change to the rest of the documentation.
+ * database's check of a foreign key lacks when the statement deletes. The advice on what a transaction repeated is
+ * reported when the transaction completes, and the advice on what repeated across the transactions of one unit of
+ * work closes the performance log's summary. The page keeps an anchor for as long as Storm emits the advice, so the
+ * link in a log line outlives any change to the rest of the documentation.
  *
  * @since 1.16
  */
@@ -48,7 +49,7 @@ enum Advice {
      * index cannot be judged worth its cost in advance, so the advice waits for a slow execution to say it is.
      */
     MISSING_INDEX("missing-index", Category.PERFORMANCE, true,
-            "no index on %1$s starts with %2$s, %3$s; an index on %4$s %5$s."),
+            "no index on %1$s %2$s, %3$s; %4$s."),
 
     /**
      * A delete from a table that a foreign key references, with no index on the referencing table to serve the check
@@ -61,12 +62,13 @@ enum Advice {
                     + "serves the check."),
 
     /**
-     * A transaction that held its connection, and after a write its row locks, while the application did other work
-     * between its statements. Every statement may be fast, so only the time the connection was held shows it.
+     * A transaction that held its connection, and from its first write its row locks, while the application did
+     * other work between its statements. Every statement may be fast, so only the time the connection was held shows
+     * it; the locks are claimed for the part of that time that followed the first write.
      */
     IDLE_TRANSACTION("idle-transaction", Category.PERFORMANCE, true,
             "the transaction held its connection %1$s and its statements spent %2$s of it; for %3$s between them it "
-                    + "held the connection%4$s while the application did other work; move that work before the "
+                    + "held the connection while the application did other work%4$s; move that work before the "
                     + "transaction or after it commits."),
 
     /** The count query behind a page, a deliberate choice of page over slice, so advised only when slow. */
@@ -95,10 +97,14 @@ enum Advice {
                     + "repeating its last value, which changes no result and renders every length as one of a few "
                     + "statements."),
 
-    /** References of one type fetched one statement at a time, in one unit of work. */
+    /**
+     * References of one type fetched one statement at a time, in one transaction or across the transactions of one
+     * unit of work. The facts follow the count: what the statements cost, the transactions they ran in where they
+     * spanned several, and the call site of the fetch where it is known.
+     */
     REPEATED_FETCH("repeated-fetch", Category.DESIGN, false,
-            "%1$d statements each fetched one %2$s; an inline foreign key joins it into every read of the rows, or "
-                    + "a query that fetches the references, such as select().fetch(...), resolves them in the "
+            "%1$d statements each fetched one %2$s%3$s; %4$san inline foreign key joins it into every read of the "
+                    + "rows, or a query that fetches the references, such as select().fetch(...), resolves them in the "
                     + "statement that reads them."),
 
     /** An entity whose read exceeds the design budget. */
@@ -111,15 +117,24 @@ enum Advice {
             "every read of %1$s joins %2$d tables and selects %3$d columns beyond its own; where that width is what "
                     + "makes the read slow, %4$s."),
 
-    /** The same single-row read repeated, in one unit of work. */
+    /**
+     * The same single-row read repeated, in one transaction or across the transactions of one unit of work. The
+     * time the executions spent and the mean per execution follow the count, the transactions they ran in and the
+     * call site follow the rows, each where known, and the remedy fits the read: a lookup of the rows by key for a
+     * read of records, one grouped query for a read of computed values such as a count.
+     */
     REPEATED_SELECT("repeated-select", Category.PERFORMANCE, false,
-            "the same SELECT of %2$s ran %1$d times, one row each; one query for all of them, such as findAllById "
-                    + "or a where with IN, reads the rows in one round trip."),
+            "the same SELECT of %2$s ran %1$d times%3$s, %4$s%5$s; %6$s%7$s."),
 
-    /** The same single-row write repeated without a batch, in one unit of work. */
+    /**
+     * The same single-row write repeated without a batch, in one transaction or across the transactions of one unit
+     * of work. The remedy fits the write: the overloads that take a list for an insert or a write a repository made
+     * for given entities, one statement whose condition covers all of them for a write by condition. Where every
+     * write ran in a transaction of its own, the advice says that the combined write commits them together, which
+     * is what changes.
+     */
     REPEATED_WRITE("repeated-write", Category.PERFORMANCE, false,
-            "the same %1$s of %2$s ran %3$d times, one row each; the overloads that take a list send the rows as "
-                    + "one batch."),
+            "the same %1$s of %2$s ran %3$d times%4$s, %5$s%6$s; %7$s%8$s%9$s."),
 
     /**
      * A write outside any transaction to a type that references a type an earlier write outside any transaction
@@ -129,8 +144,18 @@ enum Advice {
             "the unit of work wrote %1$s and then %2$s, which references %1$s, each in a transaction of its own; "
                     + "when a later write fails, the earlier ones stay; run them in one transaction.");
 
-    /** The executions in one unit of work from which a repeated statement or fetch carries advice. */
+    /**
+     * The executions in one transaction, or across the transactions of one unit of work, from which a repeated
+     * statement or fetch carries advice.
+     */
     static final int REPEAT_THRESHOLD = 10;
+
+    /**
+     * The mean time per execution from which a repeat's advice says the statement itself is the cost: a round trip
+     * on a local network takes well under a millisecond, so at ten milliseconds per execution, combining the
+     * executions saves little next to what each one costs on its own.
+     */
+    static final long STATEMENT_COST_NANOS = 10_000_000L;
 
     /** The offset from which a statement carries {@link #DEEP_OFFSET}. */
     static final int DEEP_OFFSET_ROWS = 1_000;

@@ -26,6 +26,7 @@ import java.sql.SQLException;
 import java.util.Locale;
 import java.util.Set;
 import java.util.UUID;
+import java.util.regex.Pattern;
 import st.orm.Operator;
 import st.orm.StormConfig;
 import st.orm.core.spi.DefaultSqlDialect;
@@ -221,5 +222,20 @@ public class H2SqlDialect extends DefaultSqlDialect {
     @Override
     public boolean supportsMultiRowGeneratedKeys() {
         return true;
+    }
+
+    private static final Pattern MERGE_KEY = Pattern.compile("^\\s*(?:/\\*.*?\\*/\\s*)*MERGE\\s+INTO\\b.*\\bKEY\\s*\\(", Pattern.CASE_INSENSITIVE | Pattern.DOTALL);
+
+    /**
+     * Returns whether the statement is an upsert: the database's short {@code MERGE INTO ... KEY (...) VALUES} form,
+     * which updates the row the key names or inserts it, or a {@code MERGE} that both updates and inserts.
+     *
+     * @param sql the compiled statement.
+     * @return {@code true} when the statement is an upsert.
+     * @since 1.16
+     */
+    @Override
+    public boolean isUpsert(String sql) {
+        return super.isUpsert(sql) || MERGE_KEY.matcher(sql).find();
     }
 }

@@ -484,4 +484,22 @@ public class DefaultSqlDialect implements SqlDialect {
     public String sequenceNextVal(String sequenceName) {
         throw new PersistenceException("Sequences are not supported by this dialect.");
     }
+
+    /** A statement that starts with MERGE, after the whitespace and comments a hint or a template may lead with. */
+    private static final Pattern MERGE = Pattern.compile("^\\s*(?:/\\*.*?\\*/\\s*)*MERGE\\b", Pattern.CASE_INSENSITIVE | Pattern.DOTALL);
+    private static final Pattern WHEN_MATCHED = Pattern.compile("\\bWHEN\\s+MATCHED\\b", Pattern.CASE_INSENSITIVE);
+    private static final Pattern WHEN_NOT_MATCHED = Pattern.compile("\\bWHEN\\s+NOT\\s+MATCHED\\b", Pattern.CASE_INSENSITIVE);
+
+    /**
+     * Returns whether the statement is a {@code MERGE} that both updates the row it matches and inserts the one it
+     * does not, the standard form of an upsert. A {@code MERGE} that only inserts, or only deletes, is none.
+     *
+     * @param sql the compiled statement.
+     * @return {@code true} for a {@code MERGE} with a matched and a not-matched branch.
+     * @since 1.16
+     */
+    @Override
+    public boolean isUpsert(String sql) {
+        return MERGE.matcher(sql).find() && WHEN_MATCHED.matcher(sql).find() && WHEN_NOT_MATCHED.matcher(sql).find();
+    }
 }

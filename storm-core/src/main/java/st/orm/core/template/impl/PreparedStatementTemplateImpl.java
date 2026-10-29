@@ -57,7 +57,6 @@ import st.orm.core.spi.ConnectionProvider;
 import st.orm.core.spi.JsonString;
 import st.orm.core.spi.Provider;
 import st.orm.core.spi.Providers;
-import st.orm.core.spi.QueryFactory;
 import st.orm.core.spi.RefFactory;
 import st.orm.core.spi.RefFactoryImpl;
 import st.orm.core.spi.SqlDialectProvider;
@@ -86,7 +85,7 @@ import st.orm.spi.ExceptionMapper;
 import st.orm.spi.QueryObserver;
 import st.orm.spi.SqlCommenter;
 
-public final class PreparedStatementTemplateImpl implements PreparedStatementTemplate, QueryFactory {
+public final class PreparedStatementTemplateImpl implements PreparedStatementTemplate, FactsQueryFactory {
 
     @FunctionalInterface
     private interface TemplateProcessor {
@@ -325,7 +324,7 @@ public final class PreparedStatementTemplateImpl implements PreparedStatementTem
             return;
         }
         switch (sql.operation()) {
-            case INSERT, UPDATE, DELETE -> throw new ReadOnlyTransactionException(
+            case INSERT, UPDATE, DELETE, UPSERT -> throw new ReadOnlyTransactionException(
                     "Cannot execute %s in a read-only transaction; a write needs a transaction of its own, opened with REQUIRES_NEW, or a read-write enclosing transaction."
                             .formatted(sql.operation()));
             default -> {}
@@ -734,9 +733,16 @@ public final class PreparedStatementTemplateImpl implements PreparedStatementTem
      */
     @Override
     public Query create(TemplateString template) {
+        return create(template, StatementFacts.NONE);
+    }
+
+    @Override
+    public Query create(TemplateString template, StatementFacts facts) {
         try {
             var customizedTemplate = sqlTemplate();
-            var sql = customizedTemplate.process(template);
+            var sql = customizedTemplate instanceof SqlTemplateImpl sqlTemplateImpl
+                    ? sqlTemplateImpl.process(template, facts, true)
+                    : customizedTemplate.process(template);
             // The dialect of the template that generated the SQL; a provider lookup could select a different
             // dialect than the one the statement was generated with.
             return createQuery(sql, customizedTemplate.dialect());
@@ -760,13 +766,18 @@ public final class PreparedStatementTemplateImpl implements PreparedStatementTem
      */
     @Override
     public QueryPlan plan(TemplateString template) {
+        return plan(template, StatementFacts.NONE);
+    }
+
+    @Override
+    public QueryPlan plan(TemplateString template, StatementFacts facts) {
         try {
             var customizedTemplate = sqlTemplate();
             // The stored statement must not bake in Sql interceptor rewrites: binding applies the interceptor
             // chain, so every execution is intercepted exactly once, and interceptors scoped around plan
             // compilation do not leak into the cached plan.
             var sql = customizedTemplate instanceof SqlTemplateImpl sqlTemplateImpl
-                    ? sqlTemplateImpl.process(template, false)
+                    ? sqlTemplateImpl.process(template, facts, false)
                     : customizedTemplate.process(template);
             SqlDialect dialect = customizedTemplate.dialect();
             // Fixed parameter values are rejected rather than frozen, for constant and bind-vars plans alike:
@@ -808,7 +819,8 @@ public final class PreparedStatementTemplateImpl implements PreparedStatementTem
                 strategies.sqlCommenter(),
                 impl != null ? impl.advisories() : List.of(),
                 impl != null ? impl.indexDemands() : null,
-                dataSource);
+                dataSource,
+                dialect);
         return new QueryImpl(environment, unsafe -> {
             try {
                 return templateProcessor.process(sql, unsafe);

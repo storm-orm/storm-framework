@@ -450,6 +450,21 @@ public final class SqlTemplateImpl implements SqlTemplate {
      * @throws SqlTemplateException if an error occurs while processing the input.
      */
     Sql process(TemplateString template, boolean applyInterceptors) throws SqlTemplateException {
+        return process(template, StatementFacts.NONE, applyInterceptors);
+    }
+
+    /**
+     * Processes the specified {@code template} with the facts a builder asserts about the statement, which are
+     * compiled into it and keyed with it: a shape is compiled once per set of facts.
+     *
+     * @param template the string template to process.
+     * @param facts what the builder asserts about the statement.
+     * @param applyInterceptors whether to run the registered SQL interceptors on the result.
+     * @return the resulting SQL and parameters.
+     * @throws SqlTemplateException if an error occurs while processing the input.
+     */
+    Sql process(TemplateString template, StatementFacts facts, boolean applyInterceptors)
+            throws SqlTemplateException {
         BindingContext bindingContext;
         Object compilationKey;
         TemplateProcessor processor;
@@ -458,11 +473,11 @@ public final class SqlTemplateImpl implements SqlTemplate {
                 var templatePreparation = this.templatePreparation.get();
                 var cache = this.cache == null ? null : this.cache.get();
                 bindingContext = templatePreparation.preprocess(template);
-                compilationKey = cache == null ? null : getCompilationKey(bindingContext);
+                compilationKey = cache == null ? null : withFacts(getCompilationKey(bindingContext), facts);
                 processor = compilationKey == null ? null : cache.get(compilationKey);
                 if (processor == null) {
                     request.miss();
-                    var preparedTemplate = templatePreparation.prepare(bindingContext);
+                    var preparedTemplate = templatePreparation.prepare(bindingContext, facts);
                     preparedTemplate.processor().compile(preparedTemplate.context(), false);
                     processor = preparedTemplate.processor();
                     if (compilationKey != null) {
@@ -481,7 +496,7 @@ public final class SqlTemplateImpl implements SqlTemplate {
             // every binding of one compiled template shares its shape.
             long shapeId = processor.shapeId(() -> {
                 try {
-                    return ShapeHash.of(getShapeKey(bindingContext));
+                    return ShapeHash.of(withFacts(getShapeKey(bindingContext), facts));
                 } catch (UncheckedSqlTemplateException e) {
                     // A template whose shape cannot be derived groups by text instead.
                     return 0L;
@@ -502,6 +517,14 @@ public final class SqlTemplateImpl implements SqlTemplate {
      * Returns the shape key of the template: its compilation key with collection arity erased, so statements
      * that differ only in how far a collection expanded share it.
      */
+    /**
+     * Returns the key with the facts a builder asserts about the statement, which compile into it, so a shape is keyed
+     * per set of facts; the key alone where the statement asserts none.
+     */
+    private static @Nullable Object withFacts(@Nullable Object key, StatementFacts facts) {
+        return key == null || facts.isEmpty() ? key : List.of(key, facts);
+    }
+
     private Object getShapeKey(BindingContext bindingContext) {
         var shapeGenerator = shapeGenerator();
         return buildKey(bindingContext,

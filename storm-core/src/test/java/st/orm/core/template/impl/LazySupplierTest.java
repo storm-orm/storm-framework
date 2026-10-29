@@ -4,6 +4,10 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import java.util.ArrayList;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.Test;
 
@@ -101,5 +105,32 @@ public class LazySupplierTest {
     @Test
     public void testRequireNonNullElseGetThrowsWhenSupplierReturnsNull() {
         assertThrows(NullPointerException.class, () -> LazySupplier.requireNonNullElseGet(null, () -> null));
+    }
+
+    @Test
+    void concurrentFirstReadsAllSeeTheValue() throws Exception {
+        // Threads that find the value unresolved race the one that resolves it and clears the supplier; each must
+        // still see the value, never a cleared supplier.
+        int threads = 8;
+        var pool = Executors.newFixedThreadPool(threads);
+        try {
+            for (int round = 0; round < 2_000; round++) {
+                var lazy = new LazySupplier<>(() -> "value");
+                var start = new CountDownLatch(1);
+                var reads = new ArrayList<Future<String>>();
+                for (int i = 0; i < threads; i++) {
+                    reads.add(pool.submit(() -> {
+                        start.await();
+                        return lazy.get();
+                    }));
+                }
+                start.countDown();
+                for (var read : reads) {
+                    assertEquals("value", read.get());
+                }
+            }
+        } finally {
+            pool.shutdownNow();
+        }
     }
 }

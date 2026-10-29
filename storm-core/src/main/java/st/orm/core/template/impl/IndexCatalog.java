@@ -15,8 +15,10 @@
  */
 package st.orm.core.template.impl;
 
+import java.sql.Types;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
@@ -58,11 +60,37 @@ final class IndexCatalog {
      * @param leadingColumns the columns the table's indexes start with, its primary key included.
      * @param unindexedReferences the foreign keys that reference the table and that no index of their own table
      *                            starts with, which a delete from the table checks by reading their table in full.
+     * @param fewValuedColumns the columns whose type holds few distinct values, by how the type reads in advice.
+     * @param indexes the table's indexes with their columns in order, the primary key first.
+     * @param columnBytes the bytes a value of each column takes in an index key at most, by its declared size, for
+     *                    the columns whose type sizes that way.
      */
-    record TableIndexes(SortedSet<String> leadingColumns, List<UnindexedReference> unindexedReferences) {
+    record TableIndexes(SortedSet<String> leadingColumns, List<UnindexedReference> unindexedReferences,
+                        SortedMap<String, String> fewValuedColumns, List<IndexColumns> indexes,
+                        SortedMap<String, Integer> columnBytes) {
         TableIndexes {
             leadingColumns = Collections.unmodifiableSortedSet(leadingColumns);
             unindexedReferences = List.copyOf(unindexedReferences);
+            fewValuedColumns = Collections.unmodifiableSortedMap(fewValuedColumns);
+            indexes = List.copyOf(indexes);
+            columnBytes = Collections.unmodifiableSortedMap(columnBytes);
+        }
+
+        TableIndexes(SortedSet<String> leadingColumns, List<UnindexedReference> unindexedReferences) {
+            this(leadingColumns, unindexedReferences, new TreeMap<>(String.CASE_INSENSITIVE_ORDER), List.of(),
+                    new TreeMap<>(String.CASE_INSENSITIVE_ORDER));
+        }
+
+        /**
+         * Returns the bytes a key on the given columns takes at most, by their declared sizes; a column whose type
+         * is not sized that way counts nothing.
+         */
+        int keyBytes(List<String> columns) {
+            int bytes = 0;
+            for (var column : columns) {
+                bytes += columnBytes.getOrDefault(column, 0);
+            }
+            return bytes;
         }
 
         /**
@@ -70,6 +98,28 @@ final class IndexCatalog {
          */
         boolean leadsWith(String column) {
             return leadingColumns.contains(column);
+        }
+
+        /**
+         * Returns how the type of a column with few distinct values reads, such as {@code an ENUM}, or {@code null}
+         * for a column of any other type.
+         */
+        @Nullable String fewValued(String column) {
+            return fewValuedColumns.get(column);
+        }
+    }
+
+    /**
+     * The columns of one index, in their order, up to the first part that is an expression rather than a column: a
+     * comparison of a bare column cannot use the index past that part.
+     *
+     * @param name the index name, or {@code null} for the primary key.
+     * @param columns the columns, at least one.
+     * @param unique whether the index holds one row per value of its columns, as the primary key does.
+     */
+    record IndexColumns(@Nullable String name, List<String> columns, boolean unique) {
+        IndexColumns {
+            columns = List.copyOf(columns);
         }
     }
 
@@ -89,9 +139,11 @@ final class IndexCatalog {
 
     /** Schema as the models name it ({@code ""} for the connection's default schema) to table to its indexes. */
     private final SortedMap<String, SortedMap<String, TableIndexes>> tablesBySchema;
+    private final int maxKeyBytes;
 
-    private IndexCatalog(SortedMap<String, SortedMap<String, TableIndexes>> tablesBySchema) {
+    private IndexCatalog(SortedMap<String, SortedMap<String, TableIndexes>> tablesBySchema, int maxKeyBytes) {
         this.tablesBySchema = tablesBySchema;
+        this.maxKeyBytes = maxKeyBytes;
     }
 
     /**
@@ -103,6 +155,19 @@ final class IndexCatalog {
      * @return the catalog.
      */
     static IndexCatalog of(Map<String, DatabaseSchema> schemas) {
+        return of(schemas, 0);
+    }
+
+    /**
+     * Builds a catalog from the schemas a read found, for a database that checks the declared sizes of an index key's
+     * columns against a limit.
+     *
+     * @param schemas the schemas read, by the name the models use for them.
+     * @param maxKeyBytes the most bytes an index key may hold, {@code 0} where the database checks no declared size.
+     * @return the catalog.
+     * @see st.orm.core.template.SqlDialect#maxIndexKeyBytes()
+     */
+    static IndexCatalog of(Map<String, DatabaseSchema> schemas, int maxKeyBytes) {
         SortedMap<String, SortedMap<String, TableIndexes>> tablesBySchema = new TreeMap<>(String.CASE_INSENSITIVE_ORDER);
         schemas.forEach((schemaName, schema) -> {
             SortedMap<String, SortedSet<String>> leadingColumnsByTable = new TreeMap<>(String.CASE_INSENSITIVE_ORDER);
@@ -128,10 +193,124 @@ final class IndexCatalog {
             var unindexedReferences = unindexedReferences(schema, leadingColumnsByTable);
             SortedMap<String, TableIndexes> tables = new TreeMap<>(String.CASE_INSENSITIVE_ORDER);
             leadingColumnsByTable.forEach((tableName, leadingColumns) -> tables.put(tableName,
-                    new TableIndexes(leadingColumns, unindexedReferences.getOrDefault(tableName, List.of()))));
+                    new TableIndexes(leadingColumns, unindexedReferences.getOrDefault(tableName, List.of()),
+                            fewValuedColumns(schema, tableName), indexColumns(schema, tableName),
+                            columnBytes(schema, tableName))));
             tablesBySchema.put(schemaName, tables);
         });
-        return new IndexCatalog(tablesBySchema);
+        return new IndexCatalog(tablesBySchema, maxKeyBytes);
+    }
+
+    /**
+     * Returns the most bytes an index key may hold on the database, or {@code 0} where the database checks no
+     * declared size against a limit.
+     */
+    int maxKeyBytes() {
+        return maxKeyBytes;
+    }
+
+    /**
+     * Returns the bytes a value of each column of a table takes in an index key at most, by the column's declared
+     * size, as a database that limits the key by declared sizes counts them: a character column by the bytes its
+     * length takes in its character set, a binary column by its length, a number, date or time by its storage, and
+     * an enumeration by the one or two bytes it is stored as. A column of a type not sized that way is left out.
+     */
+    private static SortedMap<String, Integer> columnBytes(DatabaseSchema schema, String tableName) {
+        SortedMap<String, Integer> bytes = new TreeMap<>(String.CASE_INSENSITIVE_ORDER);
+        for (var column : schema.getColumns(tableName)) {
+            int size = keyBytes(column);
+            if (size > 0) {
+                bytes.put(column.columnName(), size);
+            }
+        }
+        return bytes;
+    }
+
+    /** Returns the bytes a value of the column takes in an index key at most, or {@code 0} where its type is not sized. */
+    private static int keyBytes(DatabaseSchema.DbColumn column) {
+        String typeName = column.typeName() == null ? "" : column.typeName().toUpperCase(Locale.ROOT);
+        if (typeName.startsWith("ENUM")) {
+            return 2;
+        }
+        if (typeName.startsWith("SET")) {
+            return 8;
+        }
+        if (typeName.equals("UUID") || typeName.equals("UNIQUEIDENTIFIER")) {
+            return 16;
+        }
+        return switch (column.dataType()) {
+            case Types.CHAR, Types.VARCHAR, Types.LONGVARCHAR, Types.NCHAR, Types.NVARCHAR, Types.LONGNVARCHAR,
+                 Types.CLOB, Types.NCLOB ->
+                    column.charOctetLength() > 0 ? column.charOctetLength() : column.columnSize() * 4;
+            case Types.BINARY, Types.VARBINARY, Types.LONGVARBINARY, Types.BLOB -> column.columnSize();
+            case Types.BIT, Types.BOOLEAN, Types.TINYINT -> 1;
+            case Types.SMALLINT -> 2;
+            case Types.INTEGER, Types.REAL, Types.DATE -> 4;
+            case Types.BIGINT, Types.FLOAT, Types.DOUBLE, Types.TIME, Types.TIME_WITH_TIMEZONE, Types.TIMESTAMP,
+                 Types.TIMESTAMP_WITH_TIMEZONE -> 8;
+            // Four bytes per nine digits, as a decimal is packed at most.
+            case Types.DECIMAL, Types.NUMERIC -> (column.columnSize() + 8) / 9 * 4;
+            default -> 0;
+        };
+    }
+
+    /**
+     * Returns the indexes of a table with their columns in order, the primary key first. An index's columns end at
+     * its first expression part, and an index that starts with one is left out, as it serves no comparison of a bare
+     * column.
+     */
+    private static List<IndexColumns> indexColumns(DatabaseSchema schema, String tableName) {
+        var indexes = new ArrayList<IndexColumns>();
+        var primaryKey = schema.getPrimaryKeys(tableName).stream()
+                .sorted(Comparator.comparingInt(DbPrimaryKey::keySeq))
+                .map(DbPrimaryKey::columnName)
+                .toList();
+        if (!primaryKey.isEmpty()) {
+            indexes.add(new IndexColumns(null, primaryKey, true));
+        }
+        Map<String, List<DbIndex>> byName = new LinkedHashMap<>();
+        for (DbIndex index : schema.getIndexes(tableName)) {
+            byName.computeIfAbsent(index.indexName(), ignore -> new ArrayList<>()).add(index);
+        }
+        byName.forEach((name, parts) -> {
+            parts.sort(Comparator.comparingInt(DbIndex::ordinalPosition));
+            var columns = new ArrayList<String>();
+            boolean complete = true;
+            for (var part : parts) {
+                if (part.columnName() == null) {
+                    complete = false;
+                    break;
+                }
+                columns.add(part.columnName());
+            }
+            if (!columns.isEmpty()) {
+                // A unique index identifies a row by all of its parts, so one cut short at an expression, or one that
+                // holds only some rows, does not.
+                boolean unique = complete && parts.getFirst().unique() && !parts.getFirst().partial();
+                indexes.add(new IndexColumns(name, columns, unique));
+            }
+        });
+        return indexes;
+    }
+
+    /**
+     * Returns the columns of a table whose type holds few distinct values, by how the type reads in advice: an enum,
+     * a boolean or a bit. A condition on such a column alone rarely selects few rows, which no row count is needed to
+     * say; a rare value can still be selective, so the advice says an index on it is often, not always, passed over.
+     */
+    private static SortedMap<String, String> fewValuedColumns(DatabaseSchema schema, String tableName) {
+        SortedMap<String, String> columns = new TreeMap<>(String.CASE_INSENSITIVE_ORDER);
+        for (var column : schema.getColumns(tableName)) {
+            String typeName = column.typeName() == null ? "" : column.typeName().toUpperCase(Locale.ROOT);
+            if (typeName.startsWith("ENUM")) {
+                columns.put(column.columnName(), "an ENUM");
+            } else if (column.dataType() == Types.BOOLEAN || typeName.equals("BOOLEAN") || typeName.equals("BOOL")) {
+                columns.put(column.columnName(), "a BOOLEAN");
+            } else if (column.dataType() == Types.BIT) {
+                columns.put(column.columnName(), "a BIT");
+            }
+        }
+        return columns;
     }
 
     /**
@@ -203,7 +382,7 @@ final class IndexCatalog {
             SortedMap<String, SortedMap<String, TableIndexes>> merged = new TreeMap<>(String.CASE_INSENSITIVE_ORDER);
             merged.putAll(previous.tablesBySchema);
             merged.putAll(next.tablesBySchema);
-            return new IndexCatalog(merged);
+            return new IndexCatalog(merged, next.maxKeyBytes);
         });
     }
 

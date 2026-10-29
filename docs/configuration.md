@@ -16,7 +16,7 @@ Storm can be configured through `StormConfig`, system properties, Spring Boot's 
 | `storm.update.max_shapes` | `5` | Maximum UPDATE shapes before fallback to full-row |
 | `storm.entity_cache.retention` | `default` | Cache retention mode: `default` or `light` |
 | `storm.template_cache.size` | `2048` | Maximum number of compiled templates to cache |
-| `storm.search.min_term_length` | dialect | Shortest word, in characters, that the database's substring index serves: `search` tests a shorter word only on the rows its longer words found, and `suggest` ignores it. `3` on PostgreSQL, whose trigram index needs three characters; `0`, every word alike, elsewhere (see [Indexing a Search](search.md#indexing-a-search)) |
+| `storm.search.min_term_length` | dialect | Shortest word, in characters, that the database's substring index serves: `search` tests a shorter word only on the rows its longer words found, and `suggest` matches it at the start of a word, which the index serves from one character less. `3` on PostgreSQL, whose trigram index needs three characters; `0` elsewhere, where no index serves a substring: `search` then treats every word alike, and `suggest` matches a prefix of the column, which an ordinary index over the column serves (see [Indexing a Search](search.md#indexing-a-search)) |
 | `storm.in_list` | `auto` | How an `IN` list renders: `auto` binds the list as one array parameter where the dialect does (PostgreSQL), one statement for every length, and renders a placeholder per value elsewhere; `padded` renders a placeholder per value everywhere, padded to the next power of two, for a database whose plan cache fills with the lengths; `exact` renders a placeholder per value everywhere (see [IN Lists](queries.md#in-lists)) |
 | `storm.validation.record_mode` | `fail` | Record validation mode: `fail`, `warn`, or `none` |
 | `storm.validation.schema_mode` | `fail` | Schema validation mode: `none`, `load`, `warn`, or `fail` (Spring Boot and Ktor) |
@@ -30,6 +30,7 @@ Storm can be configured through `StormConfig`, system properties, Spring Boot's 
 | `storm.advice.categories` | `correctness` (all three in development) | Categories of advice the advice log reports, comma-separated: `correctness`, `performance`, `design` |
 | `storm.advice.entity_budget.joins` | `10` | The most tables the [design budget](entity-design.md#the-budget) lets an entity's read join; at least 1 |
 | `storm.advice.entity_budget.columns` | `96` | The most columns the [design budget](entity-design.md#the-budget) lets an entity's read select beyond its own; at least 1 |
+| `storm.advice.repeat_floor` | `50ms` | Time a repeated statement must have taken on the clock before it carries [advice](advice.md#repeated-select); `0` advises on every repeat past ten executions |
 
 ### Setting Properties
 

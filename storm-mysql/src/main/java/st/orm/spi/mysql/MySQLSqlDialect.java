@@ -367,6 +367,48 @@ public class MySQLSqlDialect extends DefaultSqlDialect {
      * @return {@code 65535}.
      * @since 1.13
      */
+    /**
+     * MySQL plans every execution anew and keeps no plan cache keyed by statement text, and Connector/J emulates
+     * prepared statements on the client by default, sending each execution as text; an {@code IN} list rendered in
+     * one length then costs the server what a list of any other length costs, so padding lists gains nothing. MariaDB,
+     * whose dialect extends this one, does the same: its server keeps no plan per statement text either, and its own
+     * driver sends prepared statements as text unless {@code useServerPrepStmts} is set.
+     *
+     * @return {@code false}.
+     * @since 1.16
+     */
+    @Override
+    public boolean keepsPlanPerStatementText() {
+        return false;
+    }
+
+    /**
+     * Returns the most bytes an index key may hold: 3072, the limit of the default row format, which the database
+     * checks against the declared sizes of the key's columns when the index is created. A table in a legacy row
+     * format allows a quarter of it.
+     *
+     * @return {@code 3072}.
+     * @since 1.16
+     */
+    @Override
+    public int maxIndexKeyBytes() {
+        return 3_072;
+    }
+
+    /**
+     * Returns whether an upsert that leaves the key to the database and updates the row another unique key finds
+     * draws an auto-increment value all the same: it does, as the value is drawn for the insert before the duplicate
+     * key is found, so an upsert repeated on rows that exist advances the auto-increment counter by one per
+     * execution.
+     *
+     * @return {@code true}.
+     * @since 1.16
+     */
+    @Override
+    public boolean upsertTakesGeneratedKeyOnUpdate() {
+        return true;
+    }
+
     @Override
     public int maxBindParameters() {
         return 65_535;
@@ -383,5 +425,20 @@ public class MySQLSqlDialect extends DefaultSqlDialect {
     @Override
     public String optimizerHint(List<String> hints) {
         return "/*+ %s */".formatted(String.join(" ", hints));
+    }
+
+    private static final Pattern ON_DUPLICATE_KEY_UPDATE = Pattern.compile("^\\s*(?:/\\*.*?\\*/\\s*)*INSERT\\b.*\\bON\\s+DUPLICATE\\s+KEY\\s+UPDATE\\b", Pattern.CASE_INSENSITIVE | Pattern.DOTALL);
+
+    /**
+     * Returns whether the statement is an upsert: an {@code INSERT ... ON DUPLICATE KEY UPDATE}, the database's own
+     * form, or a {@code MERGE} that both updates and inserts.
+     *
+     * @param sql the compiled statement.
+     * @return {@code true} when the statement is an upsert.
+     * @since 1.16
+     */
+    @Override
+    public boolean isUpsert(String sql) {
+        return super.isUpsert(sql) || ON_DUPLICATE_KEY_UPDATE.matcher(sql).find();
     }
 }

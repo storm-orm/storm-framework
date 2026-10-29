@@ -2251,22 +2251,27 @@ internal open class QueryBuilderTest(
                 .where(predicate)
                 .resultList.map { it.firstName }.sorted()
         }
-        firstNames(trigramOrm, "davis le", suggest = true) shouldBe listOf("Betty", "Harold")
-        firstNames(trigramOrm, "le", suggest = true) shouldBe emptyList()
+        // A short word matches at the start of a word: pet Leo, not Coleman.
+        firstNames(trigramOrm, "davis le", suggest = true) shouldBe listOf("Betty")
+        firstNames(trigramOrm, "le", suggest = true) shouldBe listOf("Betty")
+        firstNames(trigramOrm, "l", suggest = true) shouldBe emptyList()
         firstNames(trigramOrm, "", suggest = true) shouldBe emptyList()
         // search keeps the short word, tested on the rows the long word found.
         firstNames(trigramOrm, "davis le", suggest = false) shouldBe listOf("Betty")
         firstNames(trigramOrm, "le", suggest = false) shouldBe listOf("Betty", "Jean")
-        // A dialect that treats every word alike keeps the short ones.
-        firstNames(orm, "le", suggest = true) shouldBe listOf("Betty", "Jean")
+        // A dialect without a substring index matches the lowered word as a prefix of the bare column; these columns
+        // compare case-sensitively, so nothing matches: a suggestion column is one that compares ignoring case.
+        firstNames(orm, "le", suggest = true) shouldBe emptyList()
     }
 
     @Test
     fun `suggest should ignore the words the search box names`() {
-        // data.sql: owner 1 (Betty Davis) has pet Leo; owner 4 (Harold Davis) has pet Iggy.
-        val ownerRepo = orm.entity(Owner::class)
+        // data.sql: owner 1 (Betty Davis) has pet Leo; owner 4 (Harold Davis) has pet Iggy. Searched as a dialect
+        // with a substring index, whose words match anywhere, ignoring case.
+        val trigramOrm = dataSource.orm(st.orm.StormConfig.of(mapOf(st.orm.StormConfig.SEARCH_MIN_TERM_LENGTH to "3")))
+        val ownerRepo = trigramOrm.entity(Owner::class)
         val lastName = metamodel<Owner, String>(ownerRepo.model, "last_name")
-        val petName = metamodel<Pet, String>(orm.entity(Pet::class).model, "name")
+        val petName = metamodel<Pet, String>(trigramOrm.entity(Pet::class).model, "name")
         val ignore = setOf("davis", "the")
         fun firstNames(input: String): List<String> = ownerRepo.select()
             .semiJoin<Pet>().on<Owner>()

@@ -13,28 +13,17 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package st.orm.core.template.impl;
+package clinic;
 
-import st.orm.core.template.impl.Elements.OrderFirst;
+import st.orm.core.repository.EntityRepository;
 
 /**
- * A processor for the mark of an ORDER BY key that ranks the rows by a condition: it renders nothing.
- *
- * @since 1.16
+ * A repository whose query lives in a default method, the way an application writes one: the line inside it runs
+ * for every caller, so a call site names the caller through it.
  */
-final class OrderFirstProcessor implements ElementProcessor<OrderFirst> {
+public interface CustomerRepository extends EntityRepository<Customer, Integer> {
 
-    @Override
-    public Object getCompilationKey(OrderFirst orderFirst) {
-        return orderFirst;
-    }
-
-    @Override
-    public CompiledElement compile(OrderFirst orderFirst, TemplateCompiler compiler) {
-        return new CompiledElement("");
-    }
-
-    @Override
-    public void bind(OrderFirst orderFirst, TemplateBinder binder, BindHint bindHint) {
+    default Customer lookUp(int id) {
+        return getById(id);
     }
 }

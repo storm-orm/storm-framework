@@ -27,8 +27,8 @@ import kotlin.time.Duration
  * log switchable through `application.conf` without a code change, mirroring the Spring starter's
  * `storm.sql-log.*` properties.
  *
- * [lineWidth], [slowThreshold], [slowLimit], [slowTransaction], [adviceCategories], [entityBudgetJoins] and
- * [entityBudgetColumns] are `null` when neither the DSL nor the configuration sets them, so installation leaves the
+ * [lineWidth], [slowThreshold], [slowLimit], [slowTransaction], [adviceCategories], [entityBudgetJoins],
+ * [entityBudgetColumns] and [repeatFloor] are `null` when neither the DSL nor the configuration sets them, so installation leaves the
  * JVM-wide settings (the `storm.sql_log.*` system properties, or another application's configuration in the same
  * JVM) untouched.
  */
@@ -43,6 +43,7 @@ internal class SqlLogSettings(
     val adviceCategories: List<String>?,
     val entityBudgetJoins: Int?,
     val entityBudgetColumns: Int?,
+    val repeatFloor: Duration?,
     val callSites: Boolean,
     val callSiteSkip: List<String>,
     val lineWidth: Int?,
@@ -68,6 +69,7 @@ internal fun resolveSqlLogSettings(application: Application, pluginConfig: Storm
     entityBudgetJoins = pluginConfig.adviceEntityBudgetJoins ?: intProperty(application, "entityBudget.joins", ADVICE),
     entityBudgetColumns = pluginConfig.adviceEntityBudgetColumns
         ?: intProperty(application, "entityBudget.columns", ADVICE),
+    repeatFloor = pluginConfig.adviceRepeatFloor ?: durationProperty(application, "repeatFloor", ADVICE),
     callSites = pluginConfig.sqlLogPerformanceCallSites
         ?: booleanProperty(application, "performance.callSites") ?: false,
     // Shared: both logs attribute a frame the same way, so the skip list sits above the two sections.

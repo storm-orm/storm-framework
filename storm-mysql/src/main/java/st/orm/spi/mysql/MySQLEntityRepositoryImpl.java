@@ -180,8 +180,8 @@ public class MySQLEntityRepositoryImpl<E extends Entity<ID>, ID>
         return intercept(sql -> sql.versionAware(versionAware.getPlain()), () ->
                 ormTemplate.query(flatten(raw("""
                     INSERT INTO \0
-                    VALUES \0\0""", model.type(), bindVars, onDuplicateKey(versionAware))))
-                        .managed().prepare());
+                    VALUES \0\0""", model.type(), bindVars, onDuplicateKey(versionAware)))).managed()
+                        .prepare());
     }
 
     @Override

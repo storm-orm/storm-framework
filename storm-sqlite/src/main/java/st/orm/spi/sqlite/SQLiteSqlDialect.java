@@ -285,4 +285,20 @@ public class SQLiteSqlDialect extends DefaultSqlDialect {
     public int maxBindParameters() {
         return 999;
     }
+
+    private static final Pattern ON_CONFLICT_DO_UPDATE = Pattern.compile("^\\s*(?:/\\*.*?\\*/\\s*)*INSERT\\b.*\\bON\\s+CONFLICT\\b.*\\bDO\\s+UPDATE\\b", Pattern.CASE_INSENSITIVE | Pattern.DOTALL);
+
+    /**
+     * Returns whether the statement is an upsert: an {@code INSERT ... ON CONFLICT ... DO UPDATE}, the database's own
+     * form, or a {@code MERGE} that both updates and inserts. An {@code INSERT ... ON CONFLICT DO NOTHING} inserts
+     * or leaves the row as it is, which updates nothing, so it is none.
+     *
+     * @param sql the compiled statement.
+     * @return {@code true} when the statement is an upsert.
+     * @since 1.16
+     */
+    @Override
+    public boolean isUpsert(String sql) {
+        return super.isUpsert(sql) || ON_CONFLICT_DO_UPDATE.matcher(sql).find();
+    }
 }

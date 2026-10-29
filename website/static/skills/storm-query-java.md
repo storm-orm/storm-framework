@@ -161,7 +161,7 @@ Operators (static constants of `st.orm.Operator`): `EQUALS`, `NOT_EQUALS`, `LESS
 - On a database that binds a list as one array parameter (`id = ANY(?)`), `IN`, `findAllById` and `whereId` render one statement whatever the list's length. The database plans and caches one statement for a varying number of keys, faster than a placeholder per value.
 - Elsewhere each value has a placeholder.
 - Where a database's plan cache fills with the different lengths, `storm.in_list` set to `padded` renders a placeholder per value, padded to the next power of two. It changes no result, and it forgoes the array parameter where the database has one, which is faster.
-- The `in-list-shapes` advice says when to set it. It is reported once a statement has run with eight different list lengths: in the advice log in development, on a slow line in production.
+- The `in-list-shapes` advice says when to set it. It is reported once a statement has run with eight different list lengths: in the advice log in development, on a slow line in production. A database that keeps no plan per statement text gets none, since every length costs it the same there.
 - `storm.in_list=exact` keeps a placeholder per value everywhere.
 
 **Search text goes through `CONTAINS`, `STARTS_WITH` or `ENDS_WITH`, never through `LIKE`.** Text a user typed can hold `%`, `_`, `[` or a backslash, which `LIKE` reads as wildcards or escapes, differently per database. The text operators escape it for the dialect and add the wildcards themselves, so `.where(User_.name, CONTAINS, query)` matches exactly what was typed.
@@ -186,8 +186,8 @@ Operators (static constants of `st.orm.Operator`): `EQUALS`, `NOT_EQUALS`, `LESS
 - To search the rows related to each row, such as an owner's pets, semi-join the related table and name its column: `.semiJoin(Pet.class).on(Owner.class).where(it -> it.search(input, Owner_.lastName, Pet_.name))`. Each word may then match a different related row, and every owner comes back once.
 
 **A search box that queries as the user types goes through `suggest`, not `search`.** An auto-complete, a typeahead or any box that fetches on every keystroke uses `.where(it -> it.suggest(input, Movie_.title, Movie_.director.name))`. It takes the same input and paths and matches the same way, on the words the database's substring index serves alone.
-- A word shorter than the index serves (three characters for a trigram index) is ignored.
-- An input without a longer word, an empty one included, matches no rows, so the index serves every statement it renders however the user types.
+- A word takes part from two characters, in the form the database's index serves: on PostgreSQL anywhere from three characters and at the start of a word below that; on every other database as a prefix of the bare column with the word lowered, `title LIKE ?`, which an ordinary index over the column serves. There the column must compare case-insensitively on its own: a case-insensitive collation (the default on MySQL, MariaDB and SQL Server), a `NOCASE` index on SQLite, or a stored lowered column declared as a query column (H2, Oracle). Never wrap the column in `LOWER()` in the schema's index for a suggestion box on those databases; index the column itself.
+- A one-character word takes no part. An input without a word that takes part, an empty one included, matches no rows, so an index serves every statement `suggest` renders however the user types.
 - The search page the box leads to keeps `search`, which matches every word.
 - Never filter short words or an empty input out in application code: `suggest` does it per dialect.
 - A word the index serves but which occurs in a large share of the rows, such as `the` in a catalog of titles, is the box's to name. `it.suggest(input, Set.of("the", "a", "of"), Movie_.title)` ignores those words as it ignores short ones, compared ignoring case: `the god` matches on `god` alone, and `the` alone matches no rows.

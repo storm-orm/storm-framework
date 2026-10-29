@@ -42,7 +42,6 @@ import st.orm.StormConfig;
 import st.orm.core.spi.JsonString;
 import st.orm.core.spi.Provider;
 import st.orm.core.spi.Providers;
-import st.orm.core.spi.QueryFactory;
 import st.orm.core.spi.RefFactory;
 import st.orm.core.spi.RefFactoryImpl;
 import st.orm.core.spi.WeakInterner;
@@ -64,7 +63,7 @@ import st.orm.mapping.TableNameResolver;
 import st.orm.spi.QueryContext.ExecutionKind;
 import st.orm.spi.QueryObserver.Observation;
 
-public final class JpaTemplateImpl implements JpaTemplate, QueryFactory {
+public final class JpaTemplateImpl implements JpaTemplate, FactsQueryFactory {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(JpaTemplateImpl.class);
 
@@ -282,7 +281,12 @@ public final class JpaTemplateImpl implements JpaTemplate, QueryFactory {
 
     @Override
     public Query create(TemplateString template) {
-        return new JpaPreparedQuery(template);
+        return new JpaPreparedQuery(template, StatementFacts.NONE);
+    }
+
+    @Override
+    public Query create(TemplateString template, StatementFacts facts) {
+        return new JpaPreparedQuery(template, facts);
     }
 
     /**
@@ -361,9 +365,11 @@ public final class JpaTemplateImpl implements JpaTemplate, QueryFactory {
 
     private class JpaPreparedQuery implements PreparedQuery {
         private final TemplateString template;
+        private final StatementFacts facts;
 
-        public JpaPreparedQuery(TemplateString template) {
+        public JpaPreparedQuery(TemplateString template, StatementFacts facts) {
             this.template = template;
+            this.facts = facts;
         }
 
         /** One processed template: the statement a scope's bracket describes, and the query that runs it. */
@@ -372,7 +378,10 @@ public final class JpaTemplateImpl implements JpaTemplate, QueryFactory {
 
         private Processed process(@Nullable Class<?> resultClass) {
             try {
-                var sql = sqlTemplate().process(template);
+                var sqlTemplate = sqlTemplate();
+                var sql = sqlTemplate instanceof SqlTemplateImpl impl
+                        ? impl.process(template, facts, true)
+                        : sqlTemplate.process(template);
                 // Unsafe queries are allowed in direct JPA mode.
                 return new Processed(sql, templateProcessor.process(sql, resultClass, true));
             } catch (SqlTemplateException e) {
@@ -399,7 +408,7 @@ public final class JpaTemplateImpl implements JpaTemplate, QueryFactory {
                         : null;
                 // A JPA statement runs in the entity manager's transaction.
                 var context = new QueryImpl.QueryContextImpl(sql.operation(), dataType, kind, sql.statement(),
-                        sql.origin(), sql.shapeId(), true);
+                        sql.origin(), sql.shapeId(), true, null, true, false, false);
                 var handles = QueryImpl.listen(operators, context, sql.parameters());
                 if (handles == null) {
                     return null;

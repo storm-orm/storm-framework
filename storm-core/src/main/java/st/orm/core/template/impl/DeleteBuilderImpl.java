@@ -34,7 +34,6 @@ import st.orm.core.template.QueryBuilder;
 import st.orm.core.template.QueryPlan;
 import st.orm.core.template.QueryTemplate;
 import st.orm.core.template.TemplateString;
-import st.orm.core.template.impl.Elements.Unconditional;
 import st.orm.core.template.impl.Elements.Where;
 
 /**
@@ -48,7 +47,7 @@ public class DeleteBuilderImpl<T extends Data, ID> extends QueryBuilderImpl<T, O
     private final boolean unsafe;
 
     public DeleteBuilderImpl(QueryTemplate queryTemplate, Class<T> fromType, Supplier<Model<T, ID>> modelSupplier) {
-        this(queryTemplate, fromType, List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), modelSupplier, false);
+        this(queryTemplate, fromType, List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), 0, modelSupplier, false);
     }
 
     private DeleteBuilderImpl(QueryTemplate queryTemplate,
@@ -59,9 +58,10 @@ public class DeleteBuilderImpl<T extends Data, ID> extends QueryBuilderImpl<T, O
                               List<TemplateString> having,
                               List<TemplateString> orderBy,
                               List<String> hints,
+                              int orderFirstKeys,
                               Supplier<Model<T, ID>> modelSupplier,
                               boolean unsafe) {
-        super(queryTemplate, fromType, join, where, groupBy, having, orderBy, hints, modelSupplier);
+        super(queryTemplate, fromType, join, where, groupBy, having, orderBy, hints, orderFirstKeys, modelSupplier);
         this.unsafe = unsafe;
     }
 
@@ -76,7 +76,7 @@ public class DeleteBuilderImpl<T extends Data, ID> extends QueryBuilderImpl<T, O
      */
     @Override
     public QueryBuilder<T, Object, ID> unsafe() {
-        return new DeleteBuilderImpl<>(queryTemplate, fromType, join, where, groupBy, having, orderBy, hints, modelSupplier, true);
+        return new DeleteBuilderImpl<>(queryTemplate, fromType, join, where, groupBy, having, orderBy, hints, orderFirstKeys, modelSupplier, true);
     }
 
     /**
@@ -96,8 +96,9 @@ public class DeleteBuilderImpl<T extends Data, ID> extends QueryBuilderImpl<T, O
                                          List<TemplateString> groupBy,
                                          List<TemplateString> having,
                                          List<TemplateString> orderBy,
-                                         List<String> hints) {
-        return new DeleteBuilderImpl<>(queryTemplate, fromType, join, where, groupBy, having, orderBy, hints, modelSupplier, unsafe);
+                                         List<String> hints,
+                                         int orderFirstKeys) {
+        return new DeleteBuilderImpl<>(queryTemplate, fromType, join, where, groupBy, having, orderBy, hints, orderFirstKeys, modelSupplier, unsafe);
     }
 
     /**
@@ -219,24 +220,24 @@ public class DeleteBuilderImpl<T extends Data, ID> extends QueryBuilderImpl<T, O
                 .orElseThrow(() -> new PersistenceException("No primary key found for table: %s.".formatted(fromType.getSimpleName())));
     }
 
-    private TemplateString toTemplateString() {
+    private TemplateString toTemplateString(StatementFacts.Collector facts) {
         refuseJoinedInheritance("DELETE");
         TemplateString template = switch (queryTemplate.dialect().writeJoinSyntax()) {
             // DELETE p FROM pet p INNER JOIN owner o ON ... WHERE o.last_name = ?.
             case MULTI_TABLE, FROM_CLAUSE -> appendJoinsAndWhere(TemplateString.combine(
                     TemplateString.of("DELETE" + hintAfterKeyword()),
-                    TemplateString.raw(" \0\nFROM \0", fromType, from(fromType, true))));
+                    TemplateString.raw(" \0\nFROM \0", fromType, from(fromType, true))), facts);
             // DELETE FROM pet WHERE (id) IN (SELECT p.id FROM pet p INNER JOIN owner o ON ... WHERE ...).
             case SUBQUERY -> {
                 var select = appendJoinsAndWhere(TemplateString.combine(TemplateString.of("SELECT "), getPrimaryKeyTemplate(true),
-                        TemplateString.raw("\nFROM \0", from(fromType, true))));
+                        TemplateString.raw("\nFROM \0", from(fromType, true))), facts);
                 yield TemplateString.combine(TemplateString.of("DELETE" + hintAfterKeyword()),
                         TemplateString.raw("\nFROM \0\nWHERE ", from(fromType, false)), discriminatorCondition(),
                         TemplateString.of("("), getPrimaryKeyTemplate(false), TemplateString.of(") IN ("), wrap(subquery(select, false)), TemplateString.of(")"));
             }
         };
         if (!hasCondition()) {
-            template = TemplateString.combine(template, wrap(new Unconditional()));
+            facts.unconditional();
         }
         String hint = hintAtEnd();
         return hint.isEmpty() ? template : TemplateString.combine(template, TemplateString.of(hint));
@@ -257,7 +258,9 @@ public class DeleteBuilderImpl<T extends Data, ID> extends QueryBuilderImpl<T, O
      */
     @Override
     public Query build() {
-        Query query = queryTemplate.query(toTemplateString());
+        var facts = new StatementFacts.Collector();
+        var template = toTemplateString(facts);
+        Query query = QueryTemplateImpl.query(queryTemplate, template, facts.build());
         if (unsafe || hasCondition()) {
             query = query.unsafe();
         }
@@ -274,7 +277,9 @@ public class DeleteBuilderImpl<T extends Data, ID> extends QueryBuilderImpl<T, O
      */
     @Override
     public QueryPlan plan() {
-        var plan = queryTemplate.plan(toTemplateString());
+        var facts = new StatementFacts.Collector();
+        var template = toTemplateString(facts);
+        var plan = QueryTemplateImpl.plan(queryTemplate, template, facts.build());
         if (!unsafe && !hasCondition()) {
             return plan;
         }

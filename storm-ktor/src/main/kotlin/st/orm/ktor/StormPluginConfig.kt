@@ -228,6 +228,17 @@ public class StormPluginConfig {
     public var adviceEntityBudgetColumns: Int? = null
 
     /**
+     * The time a repeated statement must have taken, on the clock, before it carries advice: the same single-row
+     * read or write run again and again, or references fetched one at a time, that took less is not advised on.
+     * Configuration key `storm.advice.repeatFloor`. Applied JVM-wide at installation; when unset, the
+     * `storm.advice.repeat_floor` system property's setting, or its default of 50 milliseconds, stays in effect;
+     * `0` advises on every repeat past ten executions.
+     *
+     * @since 1.16
+     */
+    public var adviceRepeatFloor: Duration? = null
+
+    /**
      * Whether each execution is attributed to the application frame that caused it, shown per row as
      * `@ File.ext:line`. Costs a stack walk per execution while a scope records; suited to development.
      * Configuration key `storm.sqlLog.performance.callSites`; defaults to false.

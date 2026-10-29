@@ -65,7 +65,7 @@ WHERE (LOWER(m.title) LIKE LOWER(?) ESCAPE '!' OR LOWER(d.name) LIKE LOWER(?) ES
 
 ## Suggestions as the User Types
 
-A type-ahead box queries as the user types and shows a handful of matches under the input: the user types `de n` on the way to `de niro`, and the box queries along the way. A debounce, which waits for a short pause in typing before it queries, keeps that to a few queries rather than one per keystroke, but the pauses still fall on unfinished words. Those queries run far more often than a search page's, on inputs such as `de` or `de n`, so each one must stay cheap however little has been typed. Such a box uses `suggest` instead of `search`. It takes the same input and paths and matches the same way, on the words the database's substring index serves alone: a word shorter than the index serves is ignored, and an input without such a word, an empty one included, matches no rows.
+A type-ahead box queries as the user types and shows a handful of matches under the input: the user types `de n` on the way to `de niro`, and the box queries along the way. A debounce, which waits for a short pause in typing before it queries, keeps that to a few queries rather than one per keystroke, but the pauses still fall on unfinished words. Those queries run far more often than a search page's, on inputs such as `de` or `de n`, so each one must stay cheap however little has been typed. Such a box uses `suggest` instead of `search`. It takes the same input and paths, and matches every word of two characters or more in the form the database's index serves, so that every statement it renders is served by an index: on a database with a substring index, a word anywhere from the length the index serves and at the start of a word below that; elsewhere, a word as a prefix of the column, which an ordinary index over the column serves. A one-character word takes no part, and an input without a word that takes part, an empty one included, matches no rows.
 
 <Tabs groupId="language">
 <TabItem value="kotlin" label="Kotlin" default>
@@ -92,13 +92,16 @@ List<Movie> suggestions = orm.entity(Movie.class)
 </TabItem>
 </Tabs>
 
-| Input, on PostgreSQL | `search` | `suggest` |
-|-------|----------|-----------|
-| `de niro` | every word: `de` and `niro` | `niro` |
-| `de` | `de`, reading every row | no rows |
-| empty or blank | every row | no rows |
+| Input | `search` | `suggest` on PostgreSQL, with a trigram index | `suggest` elsewhere, with an index over the column |
+|-------|----------|-----------|-----------|
+| `de niro` | every word, anywhere: `de` and `niro` | `niro` anywhere, `de` at the start of a word | `de` and `niro`, each a prefix of the column |
+| `de` | `de` anywhere, reading every row | `de` at the start of a word: "De Niro", not "Alfredo" | `de` as a prefix: "De Niro", not "Robert De Niro" |
+| `d` | `d` anywhere, reading every row | no rows | no rows |
+| empty or blank | every row | no rows | no rows |
 
-Every statement `suggest` renders is therefore served by the substring index, however the user types; the trade-off is that a short word does not narrow the suggestions. The search page the box leads to keeps `search`, which matches every word. Which words are short is the dialect's to say: three characters on PostgreSQL, whose trigram index needs three, and none on the other databases, where `suggest` matches as `search` does, except that an empty input matches no rows. The `storm.search.min_term_length` property sets another length, for an index of a different kind.
+Which form the database serves is the dialect's to say. PostgreSQL's trigram index serves a word anywhere from three characters, and at the start of a word below that, since the space before a word counts as a character to it; `storm.search.min_term_length` states another length for an index of a different kind. The other databases have no index that serves a substring, and an ordinary index over the column serves a prefix of it, so `suggest` matches a prefix there, with the column left bare and the word lowered: `title LIKE ?`, since `LOWER(title)` would lose the index. The column must then compare case-insensitively on its own: a case-insensitive collation, the default on MySQL, MariaDB and SQL Server, an index with the `NOCASE` collation on SQLite, or a stored lowered column declared as a [query column](entities.md#query-columns) on H2 and Oracle, which the lowered word matches as typed.
+
+A one-character word takes no part, whatever the index serves: it names a twenty-sixth of the rows, and the box orders what it finds, so the database would fetch and sort them all before the limit cut the list to a handful. A conformance test per database creates the index named here and reads the database's own plan to find the suggestion served by it. The search page the box leads to keeps `search`, which matches every word. Which words are short is the dialect's to say: three characters on PostgreSQL, whose trigram index needs three, and none on the other databases, where `suggest` matches as `search` does, except that an empty input matches no rows. The `storm.search.min_term_length` property sets another length, for an index of a different kind.
 
 ### Ignoring Words
 
@@ -234,7 +237,8 @@ What serves the statement is the database's index for substring matching, a trig
 
 - Index every column the search names, including the columns of a semi-joined table and of a table reached through a path. The statement matches each word against each column, and a column without the index keeps its table's scan.
 - Index the expression exactly as the statement renders it. An index on the plain column, or on another case function, does not match `LOWER(column)`, and the plan falls back to reading every row.
-- A word shorter than the index's gram, usually three characters, cannot use it. `search` tests such a word only on the rows its longer words found, as an `EXISTS` over the related rows of each, so it reads no table in full and the rows found are the same; a search of short words alone still reads every row. `suggest` ignores them. The dialect states the length, three on PostgreSQL, and `storm.search.min_term_length` overrides it.
+- A word shorter than the index's gram, usually three characters, cannot use it. `search` tests such a word only on the rows its longer words found, as an `EXISTS` over the related rows of each, so it reads no table in full and the rows found are the same; a search of short words alone still reads every row. `suggest` matches such a word at the start of a word, which the index serves from one character less. The dialect states the length, three on PostgreSQL, and `storm.search.min_term_length` overrides it.
+- Where the database has no substring index, `suggest` matches a prefix of the column, which an ordinary index over the column serves, and the column must compare case-insensitively on its own; see [Suggestions as the user types](#suggestions-as-the-user-types). `search` reads every row there, as the next point says.
 - Read the query plan on production-sized data to confirm that each table is read through its index. On a small table the planner may read every row regardless, because that is cheaper there.
 - Read the plan of the statement as the application sends it, with the word as a bind parameter, not with the word written into the SQL. A driver that prepares a statement once for many executions lets the database plan it once for every value, and that plan cannot see the word, so it cannot tell a rare word from a common one. A search that also orders by an indexed column and takes the first few rows, as a list of suggestions does, is then read in that column's order, testing every row until enough match, while the same statement planned for its word takes a few rows from the substring index. Where the plans differ, have the search planned for its values: most drivers and databases have a setting that stops a statement from being prepared, or that plans each execution for its parameters.
 - Refresh the table's statistics after creating the index on a table that already holds data; a planner without statistics for the indexed expression may keep reading every row. Where a rare word is still estimated to match many rows, a larger statistics sample for the indexed expression brings the estimate down.

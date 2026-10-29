@@ -520,6 +520,18 @@ public class StormProperties {
 
         /** Sets the design budget entities are checked against. */
         public void setEntityBudget(EntityBudget entityBudget) { this.entityBudget = entityBudget; }
+
+        /**
+         * The time a repeated statement must have taken, on the clock, before it carries advice. Defaults to
+         * 50 milliseconds; {@code 0} advises on every repeat past ten executions.
+         */
+        private @Nullable Duration repeatFloor;
+
+        /** Returns the time a repeated statement must have taken before it carries advice. */
+        public @Nullable Duration getRepeatFloor() { return repeatFloor; }
+
+        /** Sets the time a repeated statement must have taken before it carries advice. */
+        public void setRepeatFloor(@Nullable Duration repeatFloor) { this.repeatFloor = repeatFloor; }
     }
 
     /**

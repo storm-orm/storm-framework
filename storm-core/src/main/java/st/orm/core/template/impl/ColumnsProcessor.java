@@ -95,6 +95,12 @@ final class ColumnsProcessor implements ElementProcessor<Columns> {
             return FunctionCalls.render(metamodel, prefix + resolved.getFirst().qualifiedName(compiler.dialect())) + suffix;
         }
         var resolved = resolve(metamodel, compiler);
+        if (columns.clause() == GROUP_BY
+                && compiler.findQueryModel().map(model -> model.getTable().type() == metamodel.tableType()).orElse(false)) {
+            // Grouped rows read in the order of an index on the group columns come out grouped, without sorting them
+            // into groups first. Only the group columns of the query's own table can be read that way.
+            ColumnDemands.demand(resolved, IndexDemands.Kind.GROUP, compiler);
+        }
         if (columns.clause() == GROUP_BY && MetamodelFactory.identityPath(metamodel) != null) {
             // An identity grouping: the caller stated one row per row of this table, and the dialect states what it
             // takes to express that. A value grouping is emitted as written, because it names the rows itself.

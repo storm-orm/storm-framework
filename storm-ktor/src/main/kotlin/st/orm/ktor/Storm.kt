@@ -137,6 +137,7 @@ public val Storm: ApplicationPlugin<StormPluginConfig> = createApplicationPlugin
     if (sqlLogSettings.entityBudgetJoins != null || sqlLogSettings.entityBudgetColumns != null) {
         AdviceLog.entityBudget(sqlLogSettings.entityBudgetJoins, sqlLogSettings.entityBudgetColumns)
     }
+    sqlLogSettings.repeatFloor?.let { AdviceLog.repeatFloor(it.toJavaDuration()) }
     val adviceCategories = sqlLogSettings.adviceCategories
     if (adviceCategories != null) {
         AdviceLog.categories(adviceCategories)

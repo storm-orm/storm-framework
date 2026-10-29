@@ -261,7 +261,7 @@ public final class SchemaValidator {
          */
         void publish() {
             if (!byModelSchema.isEmpty()) {
-                IndexCatalog.publish(dataSource, IndexCatalog.of(byModelSchema));
+                IndexCatalog.publish(dataSource, IndexCatalog.of(byModelSchema, dialect.maxIndexKeyBytes()));
             }
         }
     }

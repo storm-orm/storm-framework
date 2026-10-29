@@ -18,13 +18,19 @@ package st.orm.core.template;
 import static java.util.Comparator.comparingLong;
 import static java.util.Objects.requireNonNull;
 
+import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Queue;
+import java.util.Set;
 import java.util.concurrent.Callable;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.LongAdder;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
 import org.jspecify.annotations.Nullable;
@@ -37,6 +43,7 @@ import st.orm.core.template.impl.CallSiteCapture;
 import st.orm.core.template.impl.SqlInterceptorManager;
 import st.orm.core.template.impl.SqlLogRenderer;
 import st.orm.core.template.impl.StatementListener;
+import st.orm.core.template.impl.UnitOfWorkRepeats;
 import st.orm.spi.QueryContext;
 import st.orm.spi.SqlOperation;
 import st.orm.spi.StatementOrigin;
@@ -125,6 +132,8 @@ public final class SqlLog {
      * @param rows the rows the execution produced or affected; a lower bound when not exact.
      * @param exactRows whether that count is exact.
      * @param transactional whether the execution ran in a transaction.
+     * @param transactionId the identity of that transaction, the same for every execution in it, or {@code 0} when
+     *                      the execution ran outside any transaction or the transaction is not recorded.
      */
     public record Statement(SqlOperation operation,
                             Class<? extends Data> dataType,
@@ -137,7 +146,8 @@ public final class SqlLog {
                             @Nullable String callSite,
                             long rows,
                             boolean exactRows,
-                            boolean transactional) {
+                            boolean transactional,
+                            long transactionId) {
 
         /** Returns the time the execution spent in the database: from prepare to the statement's return. */
         public long durationNanos() {
@@ -154,17 +164,72 @@ public final class SqlLog {
     }
 
     /**
+     * What the executions past a scope's recording limit cost the database: their time, and per operation and type
+     * how many there were and what they spent, so a summary whose table lists only the first executions still says
+     * where the rest of the time went.
+     *
+     * @param nanos the time the executions spent in the database.
+     * @param groups the executions per operation and type, heaviest first.
+     */
+    public record Unrecorded(long nanos, List<Group> groups) {
+
+        public Unrecorded {
+            groups = List.copyOf(groups);
+        }
+
+        /**
+         * The executions of one operation on one type past the recording limit.
+         *
+         * @param operation what the statements did.
+         * @param type the simple name of the type they read or wrote, or {@code null} for none or for other types.
+         * @param otherTypes whether the group holds the executions of the types counted past the most a scope counts
+         *                   apart, rather than of statements without a type.
+         * @param executions how many ran.
+         * @param nanos the time they spent in the database.
+         */
+        public record Group(SqlOperation operation, @Nullable String type, boolean otherTypes, int executions,
+                            long nanos) {}
+    }
+
+    /**
      * What a call cost the database.
+     *
+     * @param name what the scope covered.
+     * @param statements the recorded statements, up to the scope's limit.
+     * @param recorded the statements the call executed, including any beyond the recording limit.
+     * @param cacheHits the reads the transaction's entity cache served without a statement.
+     * @param durationNanos how long the scope was open.
+     * @param repeatAdvice the advice on what the call repeated, counted from every execution, past the recording
+     *                     limit too; {@code null} for a summary built from its statements alone, whose advice is
+     *                     derived from them.
+     * @param unrecorded what the executions past the recording limit cost the database; {@code null} for a summary
+     *                   built from its statements alone, which did not time them.
      */
     public record Summary(String name,
                           List<Statement> statements,
                           int recorded,
                           int cacheHits,
-                          long durationNanos) {
+                          long durationNanos,
+                          @Nullable List<String> repeatAdvice,
+                          @Nullable Unrecorded unrecorded) {
 
         public Summary {
             requireNonNull(name, "name");
             statements = List.copyOf(statements);
+            repeatAdvice = repeatAdvice == null ? null : List.copyOf(repeatAdvice);
+        }
+
+        /**
+         * Creates a summary of the given statements, whose advice on repeats is derived from them.
+         *
+         * @param name what the scope covered.
+         * @param statements the recorded statements.
+         * @param recorded the statements the call executed, including any beyond the recording limit.
+         * @param cacheHits the reads the transaction's entity cache served without a statement.
+         * @param durationNanos how long the scope was open.
+         */
+        public Summary(String name, List<Statement> statements, int recorded, int cacheHits, long durationNanos) {
+            this(name, statements, recorded, cacheHits, durationNanos, null, null);
         }
 
         /**
@@ -212,12 +277,14 @@ public final class SqlLog {
 
         /**
          * Returns the total time the executions spent in the database, which under concurrency exceeds the
-         * elapsed time.
+         * elapsed time: every execution where the scope timed the ones past its recording limit, the recorded ones
+         * otherwise.
          *
          * @return the summed statement duration, in nanoseconds.
          */
         public long databaseNanos() {
-            return statements.stream().mapToLong(Statement::durationNanos).sum();
+            long recordedNanos = statements.stream().mapToLong(Statement::durationNanos).sum();
+            return unrecorded == null ? recordedNanos : recordedNanos + unrecorded.nanos();
         }
 
         /**
@@ -305,8 +372,8 @@ public final class SqlLog {
         private static final class Group {
             final String text;
             final String dataTypeName;
-            final java.util.Set<String> texts = new java.util.HashSet<>();
-            final java.util.Set<String> sites = new java.util.LinkedHashSet<>();
+            final Set<String> texts = new HashSet<>();
+            final Set<String> sites = new LinkedHashSet<>();
             boolean fetch;
             int executions;
             long durationNanos;
@@ -440,7 +507,7 @@ public final class SqlLog {
             // A call that failed is worth summarizing too: the statements leading up to it are the evidence.
             long elapsed = System.nanoTime() - started;
             onSummary.accept(new Summary(name, recorder.statements(), recorder.recorded.get(),
-                    recorder.cacheHits.get(), elapsed));
+                    recorder.cacheHits.get(), elapsed, recorder.repeats.advice(), recorder.unrecorded()));
         }
     }
 
@@ -573,7 +640,7 @@ public final class SqlLog {
                 throw new PersistenceException(e);
             }
             summary = new Summary(name, recorder.statements(), recorder.recorded.get(),
-                    recorder.cacheHits.get(), elapsed);
+                    recorder.cacheHits.get(), elapsed, recorder.repeats.advice(), recorder.unrecorded());
         }
     }
 
@@ -609,7 +676,8 @@ public final class SqlLog {
      */
     public static Summary summary(String name, Recorder recorder, long durationNanos) {
         return new Summary(name, recorder.statements(), recorder.recorded.get(),
-                recorder.cacheHits.get(), durationNanos);
+                recorder.cacheHits.get(), durationNanos, recorder.repeats.advice(),
+                recorder.unrecorded());
     }
 
     /**
@@ -627,6 +695,53 @@ public final class SqlLog {
         private final boolean callSites;
         private final AtomicInteger recorded = new AtomicInteger();
         private final AtomicInteger cacheHits = new AtomicInteger();
+        /** What the scope repeated, counted from every execution, past the limit too. */
+        private final UnitOfWorkRepeats repeats = new UnitOfWorkRepeats();
+
+        /**
+         * The most operation and type pairs a scope counts apart past its limit; executions of further types count
+         * with the other types of their operation. An application's types bound the pairs, so this only guards
+         * against a pathological one. Settable for tests.
+         */
+        static volatile int maxGroups = 1_024;
+        /** The database time of the executions past the limit. */
+        private final LongAdder unrecordedNanos = new LongAdder();
+        /** The executions past the limit per operation and type, bounded by {@link #maxGroups}. */
+        private final ConcurrentHashMap<GroupKey, GroupCount> unrecordedGroups = new ConcurrentHashMap<>();
+
+        private record GroupKey(SqlOperation operation, @Nullable String type, boolean otherTypes) {}
+
+        private static final class GroupCount {
+            final LongAdder executions = new LongAdder();
+            final LongAdder nanos = new LongAdder();
+        }
+
+        /** Counts an execution past the limit, as the statement returns from the database. */
+        private void unrecorded(QueryContext context, long nanos) {
+            unrecordedNanos.add(nanos);
+            var key = new GroupKey(context.operation(), context.dataType().map(Class::getSimpleName).orElse(null),
+                    false);
+            var count = unrecordedGroups.get(key);
+            if (count == null) {
+                if (key.type() != null && unrecordedGroups.size() >= maxGroups) {
+                    // Past the pairs counted apart, a type's executions count with the other types of the operation,
+                    // apart from the statements without a type, which have one group per operation anyway.
+                    key = new GroupKey(context.operation(), null, true);
+                }
+                count = unrecordedGroups.computeIfAbsent(key, ignore -> new GroupCount());
+            }
+            count.executions.increment();
+            count.nanos.add(nanos);
+        }
+
+        /** Returns what the executions past the limit cost, heaviest group first. */
+        Unrecorded unrecorded() {
+            var groups = new ArrayList<Unrecorded.Group>();
+            unrecordedGroups.forEach((key, count) -> groups.add(new Unrecorded.Group(key.operation(), key.type(),
+                    key.otherTypes(), count.executions.intValue(), count.nanos.sum())));
+            groups.sort(comparingLong(Unrecorded.Group::nanos).reversed());
+            return new Unrecorded(unrecordedNanos.sum(), groups);
+        }
 
         Recorder(int limit, boolean callSites) {
             this.limit = limit;
@@ -635,7 +750,7 @@ public final class SqlLog {
 
         /** Returns the statements as they stand: completed ones as closed, open ones as of the database's return. */
         List<Statement> statements() {
-            var snapshot = new java.util.ArrayList<Statement>();
+            var snapshot = new ArrayList<Statement>();
             for (var slot : statements) {
                 var statement = slot.statement;
                 if (statement != null) {
@@ -648,6 +763,7 @@ public final class SqlLog {
         /** The statement of one execution; written at the database's return, rewritten at close. */
         private static final class Slot implements Handle {
             private final Recorder recorder;
+            private final QueryContext context;
             private final long start = System.nanoTime();
             private final SqlOperation operation;
             private final @Nullable Class<? extends Data> dataType;
@@ -656,11 +772,13 @@ public final class SqlLog {
             private final long shapeId;
             private final @Nullable String callSite;
             private final boolean transactional;
+            private long transactionId;
             private long executed;
             private volatile @Nullable Statement statement;
 
             Slot(Recorder recorder, QueryContext context, @Nullable String callSite) {
                 this.recorder = recorder;
+                this.context = context;
                 this.operation = context.operation();
                 this.dataType = context.dataType().orElse(null);
                 this.origin = context.origin();
@@ -673,23 +791,92 @@ public final class SqlLog {
             @Override
             public void executed() {
                 executed = System.nanoTime();
+                // The statement has run, so a block that was to open its transaction at its first statement has
+                // opened it by now, and the transaction can be identified.
+                transactionId = context.transactionId();
                 // Rows are not known yet; the count is a lower bound until the close reports it.
                 statement = new Statement(operation, dataType, origin, text, start, executed, executed, shapeId,
-                        callSite, 0, false, transactional);
+                        callSite, 0, false, transactional, transactionId);
                 recorder.statements.add(this);
             }
 
             @Override
             public void close(long rows, boolean exact) {
                 statement = new Statement(operation, dataType, origin, text, start, executed, System.nanoTime(),
-                        shapeId, callSite, rows, exact, transactional);
+                        shapeId, callSite, rows, exact, transactional, transactionId);
+                recorder.repeats.record(operation, dataType, origin, shapeId, text, start, executed, rows, exact,
+                        transactional, transactionId, callSite, context.readsRecords(), context.repositoryWrite(),
+                        UnitOfWorkRepeats.upsertTakesGeneratedKey(context));
+            }
+        }
+
+        /**
+         * An execution past the recording limit that cannot repeat: timed, so the summary's database time covers
+         * the whole unit of work, and counted per operation and type, keeping no statement.
+         */
+        private static final class Timed implements Handle {
+            private final Recorder recorder;
+            private final QueryContext context;
+            private final long start = System.nanoTime();
+
+            Timed(Recorder recorder, QueryContext context) {
+                this.recorder = recorder;
+                this.context = context;
+            }
+
+            @Override
+            public void executed() {
+                recorder.unrecorded(context, System.nanoTime() - start);
+            }
+
+            @Override
+            public void close(long rows, boolean exact) {
+            }
+        }
+
+        /**
+         * An execution past the recording limit, which the table does not keep, the summary's database time counts
+         * and the scope's repeats count: the repeat advice covers the whole unit of work. Its call site is walked, while the scope records call sites,
+         * only for an execution whose repetition can carry advice.
+         */
+        private static final class Counted implements Handle {
+            private final Recorder recorder;
+            private final QueryContext context;
+            private final @Nullable String callSite;
+            private final long start = System.nanoTime();
+            private long executed;
+            private long transactionId;
+
+            Counted(Recorder recorder, QueryContext context, @Nullable String callSite) {
+                this.recorder = recorder;
+                this.context = context;
+                this.callSite = callSite;
+            }
+
+            @Override
+            public void executed() {
+                executed = System.nanoTime();
+                transactionId = context.transactionId();
+                recorder.unrecorded(context, executed - start);
+            }
+
+            @Override
+            public void close(long rows, boolean exact) {
+                recorder.repeats.record(context.operation(), context.dataType().orElse(null), context.origin(),
+                        context.shapeId(), context.statement().orElse(""), start, executed, rows, exact,
+                        context.transactional(), transactionId, callSite, context.readsRecords(),
+                        context.repositoryWrite(), UnitOfWorkRepeats.upsertTakesGeneratedKey(context));
             }
         }
 
         @Override
         public Handle onExecute(QueryContext context, List<Parameter> parameters) {
             if (recorded.incrementAndGet() > limit) {
-                return Handle.NOOP;
+                var type = context.dataType().orElse(null);
+                if (!UnitOfWorkRepeats.candidate(context.operation(), type, context.origin())) {
+                    return new Timed(this, context);
+                }
+                return new Counted(this, context, callSites ? CallSiteCapture.callSite() : null);
             }
             return new Slot(this, context, callSites ? CallSiteCapture.callSite() : null);
         }

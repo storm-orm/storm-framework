@@ -31,6 +31,7 @@ import st.orm.Metamodel;
 import st.orm.PersistenceException;
 import st.orm.core.template.PreparedStatementTemplate;
 import st.orm.core.template.Sql;
+import st.orm.spi.SqlOperation;
 import st.orm.tck.model.Address;
 import st.orm.tck.model.ApiKey;
 import st.orm.tck.model.CycleA;
@@ -679,6 +680,9 @@ public abstract class AbstractEntityRepositoryConformanceTest {
         var specialties = PreparedStatementTemplate.ORM(dataSource).entity(Specialty.class);
         var sql = assertStatement(Statement.UPSERT_NON_AUTO_GENERATED,
                 () -> specialties.upsert(Specialty.builder().id(4).name("anaesthetics").build()));
+        // A key the entity supplies takes the SQL-level upsert on every dialect, and the dialect recognizes its own
+        // form of it, whatever keyword the statement starts with.
+        assertEquals(SqlOperation.UPSERT, sql.operation());
         assertFalse(sql.versionAware());
         assertEquals(4, sql.parameters().get(0).dbValue());
         assertEquals("anaesthetics", sql.parameters().get(1).dbValue());
@@ -1737,6 +1741,30 @@ public abstract class AbstractEntityRepositoryConformanceTest {
             // The database rejected it rather than Storm, which is what distinguishes this from a refusal.
             assertNotNull(exception.getCause());
         }
+    }
+
+    /**
+     * The dialect states whether an upsert that leaves the key to the database and updates the row another unique
+     * key finds draws a generated key value all the same: the key of the next inserted row then skips the values the
+     * upserts took. A dialect whose upsert finds the row to update by the primary key alone draws none, and says so.
+     */
+    @Test
+    public void theDialectSaysWhetherAnUpsertThatUpdatesTakesAGeneratedKey() {
+        var orm = PreparedStatementTemplate.ORM(dataSource);
+        if (!upsertMatchesAnyUniqueKey()) {
+            assertFalse(orm.dialect().upsertTakesGeneratedKeyOnUpdate());
+            return;
+        }
+        var petTypes = orm.entity(PetType.class);
+        var name = Metamodel.of(PetType.class, "name");
+        petTypes.upsert(PetType.builder().name("dragon").description("first").build());
+        int dragon = petTypes.select().where(name, EQUALS, "dragon").getSingleResult().id();
+        petTypes.upsert(PetType.builder().name("dragon").description("second").build());
+        petTypes.upsert(PetType.builder().name("dragon").description("third").build());
+        assertEquals("third", petTypes.select().where(name, EQUALS, "dragon").getSingleResult().description());
+        int griffin = petTypes.insertAndFetchId(PetType.builder().name("griffin").description("new").build());
+        assertEquals(orm.dialect().upsertTakesGeneratedKeyOnUpdate(), griffin > dragon + 1,
+                "dragon " + dragon + ", griffin " + griffin);
     }
 
     @Test
