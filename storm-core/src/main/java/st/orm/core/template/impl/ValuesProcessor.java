@@ -18,7 +18,7 @@ package st.orm.core.template.impl;
 import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
-import java.util.function.Function;
+import java.util.function.IntFunction;
 import org.jspecify.annotations.Nullable;
 import st.orm.Data;
 import st.orm.SqlTemplateException;
@@ -166,7 +166,10 @@ final class ValuesProcessor implements ElementProcessor<Values> {
         var model = (Model<Data, ?>) compiler.getModel(table.type());
         var columns = insertableColumns(model);
         var discriminator = SubtypeDiscriminator.of(table.type()).orElse(null);
-        List<String> rows = new ArrayList<>();
+        var rendered = rendered(columns, values.ignoreAutoGenerate(), compiler);
+        // The model emits one value per column, in the columns' order, so a row's values are read by position.
+        var row = new Object[columns.size()];
+        var sql = new StringBuilder();
         for (var record : values.records()) {
             if (record == null) {
                 throw new SqlTemplateException("Cannot generate VALUES clause: the record is null. Ensure a non-null entity is provided for insert operations.");
@@ -174,12 +177,16 @@ final class ValuesProcessor implements ElementProcessor<Values> {
             if (!table.type().isInstance(record)) {
                 throw new SqlTemplateException("Record type %s does not match the target entity type %s. Ensure the record passed to values() matches the entity type specified in the INSERT INTO clause.".formatted(record.getClass().getSimpleName(), table.type().getSimpleName()));
             }
-            var mapped = model.values(columns, record);
+            int[] next = {0};
+            model.forEachValue(columns, record, (column, value) -> row[next[0]++] = value);
+            if (!sql.isEmpty()) {
+                sql.append(", ");
+            }
             // The discriminator of a single-table subtype leads the row; its parameter precedes the columns' too.
             String lead = discriminator == null ? null : compiler.mapParameter(discriminator.value());
-            rows.add(renderRow(lead, columns, values.ignoreAutoGenerate(), compiler, column -> compiler.mapParameter(mapped.get(column))));
+            renderRow(sql, lead, rendered, i -> compiler.mapParameter(row[i]));
         }
-        return new CompiledElement(String.join(", ", rows), new ValuesBindHint(columns));
+        return new CompiledElement(sql.toString(), new ValuesBindHint(columns));
     }
 
     private CompiledElement compileValuesBindVars(Values values, TemplateCompiler compiler)
@@ -192,14 +199,12 @@ final class ValuesProcessor implements ElementProcessor<Values> {
             var model = (Model<Data, ?>) compiler.getModel(table.type());
             var columns = insertableColumns(model);
             boolean discriminator = SubtypeDiscriminator.of(table.type()).isPresent();
-            compiler.mapBindVars((int) columns.stream()
-                    .filter(column -> switch (column.generation()) {
-                        case NONE -> true;
-                        case IDENTITY, SEQUENCE -> values.ignoreAutoGenerate();
-                    })
-                    .count() + (discriminator ? 1 : 0));
-            return new CompiledElement(renderRow(discriminator ? "?" : null, columns, values.ignoreAutoGenerate(), compiler, column -> "?"),
-                    new ValuesBindHint(columns));
+            var rendered = rendered(columns, values.ignoreAutoGenerate(), compiler);
+            compiler.mapBindVars((int) rendered.stream().filter(RenderedColumn::bound).count()
+                    + (discriminator ? 1 : 0));
+            var sql = new StringBuilder();
+            renderRow(sql, discriminator ? "?" : null, rendered, i -> "?");
+            return new CompiledElement(sql.toString(), new ValuesBindHint(columns));
         }
         throw new SqlTemplateException("Unsupported BindVars type in VALUES clause. Expected a standard BindVars implementation.");
     }
@@ -209,45 +214,73 @@ final class ValuesProcessor implements ElementProcessor<Values> {
     }
 
     /**
-     * Renders one VALUES row once, regardless of parameter source. The generation switch and sequence-retrieval
-     * are produced here; {@code parameterSql} supplies each bound column's parameter fragment, either an immediately
-     * bound value or a deferred bind placeholder. Sharing this keeps the value and bindVars paths from drifting on
-     * dialect-specific rendering such as sequence next-value.
+     * A column a VALUES row renders: its position among the insertable columns, and the SQL it renders in place of a
+     * bound parameter, such as a sequence's next value, or {@code null} for a column whose value is bound.
+     */
+    private record RenderedColumn(int position, @Nullable String sql) {
+
+        boolean bound() {
+            return sql == null;
+        }
+    }
+
+    /**
+     * Returns the columns a VALUES row renders, worked out once per statement rather than per row: a column whose
+     * value is bound, a column a sequence fills with the dialect's sequence retrieval, and none for a column the
+     * database generates. Sharing this keeps the value and bindVars paths from drifting on dialect-specific
+     * rendering such as sequence next-value.
      *
-     * @param lead the parameter fragment of the discriminator a single-table subtype writes first, or {@code null}.
      * @param columns the insertable columns, in model order.
      * @param ignoreAutoGenerate whether database-generated columns are supplied explicitly.
      * @param compiler the active compiler context.
-     * @param parameterSql renders the parameter fragment for a bound column.
-     * @return the rendered row, parenthesized.
+     * @return the rendered columns, in order.
      */
-    private String renderRow(@Nullable String lead, List<Column> columns, boolean ignoreAutoGenerate,
-                             TemplateCompiler compiler, Function<Column, String> parameterSql) {
-        List<String> placeholders = new ArrayList<>();
-        if (lead != null) {
-            placeholders.add(lead);
-        }
-        for (var column : columns) {
+    private static List<RenderedColumn> rendered(List<Column> columns, boolean ignoreAutoGenerate,
+                                                 TemplateCompiler compiler) {
+        var rendered = new ArrayList<RenderedColumn>(columns.size());
+        for (int i = 0; i < columns.size(); i++) {
+            var column = columns.get(i);
             switch (column.generation()) {
-                case NONE -> placeholders.add(parameterSql.apply(column));
+                case NONE -> rendered.add(new RenderedColumn(i, null));
                 case IDENTITY -> {
                     if (ignoreAutoGenerate) {
-                        placeholders.add(parameterSql.apply(column));
+                        rendered.add(new RenderedColumn(i, null));
                     }
                 }
                 case SEQUENCE -> {
                     if (ignoreAutoGenerate) {
-                        placeholders.add(parameterSql.apply(column));
-                    } else {
-                        String sequenceName = column.sequence();
-                        if (!sequenceName.isEmpty()) {
-                            // Do NOT bind a value; emit sequence retrieval instead.
-                            placeholders.add(compiler.dialect().sequenceNextVal(sequenceName));
-                        }
+                        rendered.add(new RenderedColumn(i, null));
+                    } else if (!column.sequence().isEmpty()) {
+                        // Do NOT bind a value; emit sequence retrieval instead.
+                        rendered.add(new RenderedColumn(i, compiler.dialect().sequenceNextVal(column.sequence())));
                     }
                 }
             }
         }
-        return "(%s)".formatted(String.join(", ", placeholders));
+        return rendered;
+    }
+
+    /**
+     * Renders one VALUES row, parenthesized, into the statement.
+     *
+     * @param sql the statement the row is appended to.
+     * @param lead the parameter fragment of the discriminator a single-table subtype writes first, or {@code null}.
+     * @param rendered the columns the row renders, as {@link #rendered} works them out.
+     * @param parameterSql renders the parameter fragment of the bound column at the given position.
+     */
+    private static void renderRow(StringBuilder sql, @Nullable String lead, List<RenderedColumn> rendered,
+                                  IntFunction<String> parameterSql) {
+        sql.append('(');
+        if (lead != null) {
+            sql.append(lead);
+        }
+        for (int i = 0; i < rendered.size(); i++) {
+            if (i > 0 || lead != null) {
+                sql.append(", ");
+            }
+            var column = rendered.get(i);
+            sql.append(column.bound() ? parameterSql.apply(column.position()) : column.sql());
+        }
+        sql.append(')');
     }
 }

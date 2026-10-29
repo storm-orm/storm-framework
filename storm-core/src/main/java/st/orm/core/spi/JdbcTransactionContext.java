@@ -30,7 +30,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
-import java.util.UUID;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.locks.ReentrantLock;
 import javax.sql.DataSource;
 import org.jspecify.annotations.Nullable;
@@ -93,6 +93,9 @@ public final class JdbcTransactionContext implements TransactionContext {
 
     private static final long NANOS_PER_SECOND = 1_000_000_000L;
 
+    /** The source of the numbers that name transaction frames in log lines. */
+    private static final AtomicLong FRAME_IDS = new AtomicLong();
+
     /**
      * The state of one transaction frame.
      *
@@ -111,7 +114,9 @@ public final class JdbcTransactionContext implements TransactionContext {
         final int index;
         final int ownerIndex;
         final boolean transactional;
-        final String transactionId = UUID.randomUUID().toString();
+        // Names the frame in log lines; a counter is unique within the JVM, which is all a log line needs, and costs
+        // nothing where a random identifier would draw on the secure random source for every transaction.
+        final long transactionId = FRAME_IDS.incrementAndGet();
         // Guards lazy connection binding: two threads (e.g. a coroutine resumption racing a task) must not
         // assign different connections to the same state. A lock rather than synchronized, so JDBC calls do
         // not pin virtual threads.
@@ -901,7 +906,7 @@ public final class JdbcTransactionContext implements TransactionContext {
         }
     }
 
-    private static void closeQuietly(Connection connection, @Nullable String transactionId) {
+    private static void closeQuietly(Connection connection, @Nullable Long transactionId) {
         try {
             connection.close();
         } catch (SQLException e) {

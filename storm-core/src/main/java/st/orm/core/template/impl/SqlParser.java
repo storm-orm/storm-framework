@@ -15,7 +15,6 @@
  */
 package st.orm.core.template.impl;
 
-import static java.util.regex.Pattern.DOTALL;
 import static st.orm.spi.SqlOperation.DELETE;
 import static st.orm.spi.SqlOperation.INSERT;
 import static st.orm.spi.SqlOperation.SELECT;
@@ -33,8 +32,6 @@ import st.orm.spi.SqlOperation;
  * SQL parser for basic SQL processing.
  */
 final class SqlParser {
-
-    private static final Pattern WITH_PATTERN = Pattern.compile("^(?i:WITH)\\b.*", DOTALL);
 
     private SqlParser() {
     }
@@ -127,7 +124,7 @@ final class SqlParser {
         if (operation != UNDEFINED) {
             return operation;
         }
-        if (WITH_PATTERN.matcher(rawSql).matches()) {   // Remove potential WITH clause and retry.
+        if (startsWithKeyword(rawSql, "WITH")) {   // Remove potential WITH clause and retry.
             operation = getSqlOperation(removeWithClause(rawSql, dialect));
         }
         return operation;

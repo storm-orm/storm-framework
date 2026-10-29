@@ -522,6 +522,29 @@ public class DefaultSqlDialect implements SqlDialect {
     }
 
     /**
+     * Returns whether the statement mentions a keyword anywhere, ignoring case, as a word or as part of one. A plain
+     * scan that rejects the statements without it before a pattern that matches the clause exactly runs over them:
+     * every insert is asked whether it is an upsert, and a multi-row insert is long.
+     *
+     * @param sql the statement.
+     * @param keyword the keyword, in upper case.
+     * @return {@code true} if the text contains the keyword in any case.
+     * @since 1.16
+     */
+    protected static boolean mentions(String sql, String keyword) {
+        int length = keyword.length();
+        char upper = keyword.charAt(0);
+        char lower = Character.toLowerCase(upper);
+        for (int i = 0, last = sql.length() - length; i <= last; i++) {
+            char ch = sql.charAt(i);
+            if ((ch == upper || ch == lower) && sql.regionMatches(true, i, keyword, 0, length)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
      * Returns whether the statement is a {@code MERGE} that both updates the row it matches and inserts the one it
      * does not, the standard form of an upsert. A {@code MERGE} that only inserts, or only deletes, is none.
      *

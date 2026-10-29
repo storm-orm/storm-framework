@@ -440,6 +440,7 @@ public class MySQLSqlDialect extends DefaultSqlDialect {
     @Override
     public boolean isUpsert(String sql) {
         return super.isUpsert(sql)
-                || ("INSERT".equals(statementKeyword(sql)) && ON_DUPLICATE_KEY_UPDATE.matcher(sql).find());
+                || ("INSERT".equals(statementKeyword(sql)) && mentions(sql, "DUPLICATE")
+                        && ON_DUPLICATE_KEY_UPDATE.matcher(sql).find());
     }
 }

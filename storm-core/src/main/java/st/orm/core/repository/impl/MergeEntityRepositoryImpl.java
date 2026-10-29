@@ -47,6 +47,7 @@ import st.orm.core.template.Model;
 import st.orm.core.template.ORMTemplate;
 import st.orm.core.template.PreparedQuery;
 import st.orm.core.template.TemplateString;
+import st.orm.core.template.impl.ConsumedQueries;
 
 /**
  * Shared support for dialects that implement upsert with a SQL {@code MERGE} statement backed by a source query
@@ -305,7 +306,7 @@ public abstract class MergeEntityRepositoryImpl<E extends Entity<ID>, ID> extend
         var bindVars = ormTemplate.createBindVars();
         var versionAware = new AtomicBoolean();
         return intercept(sql -> sql.versionAware(versionAware.getPlain()), () ->
-                ormTemplate.query(mergeStatement(mergeSelect(bindVars), versionAware)).managed().prepare());
+                ConsumedQueries.prepare(ormTemplate.query(mergeStatement(mergeSelect(bindVars), versionAware)).managed()));
     }
 
     @Override

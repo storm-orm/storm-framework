@@ -719,7 +719,7 @@ public class SelectBuilderImpl<T extends Data, R, ID> extends QueryBuilderImpl<T
      */
     @Override
     public Stream<R> getResultStream() {
-        return getResultStream(build());
+        return getResultStream(build(), false);
     }
 
     /**
@@ -728,16 +728,26 @@ public class SelectBuilderImpl<T extends Data, R, ID> extends QueryBuilderImpl<T
      */
     @Override
     protected Stream<R> getMaterializedResultStream() {
-        return getResultStream(build().withoutFetchSize());
+        return getResultStream(build().withoutFetchSize(), true);
     }
 
-    private Stream<R> getResultStream(Query query) {
+    /**
+     * Returns the rows of the query as a stream. A stream handed to the caller is watched for a missing close; one an
+     * eager terminal consumes and closes in the same call is not, where the query is Storm's own.
+     *
+     * @param consumed whether the stream is consumed and closed in the call that asks for it.
+     */
+    @SuppressWarnings("unchecked")
+    private Stream<R> getResultStream(Query query, boolean consumed) {
         if (refType != null) {
             assert pkType != null : "Primary key type must be specified for ref queries.";
-            //noinspection unchecked
-            return (Stream<R>) query.getRefStream(refType, pkType);
+            return (Stream<R>) (consumed && query instanceof QueryImpl impl
+                    ? impl.consumedRefStream(refType, pkType)
+                    : query.getRefStream(refType, pkType));
         }
-        return query.getResultStream(selectType);
+        return consumed && query instanceof QueryImpl impl
+                ? impl.consumedResultStream(selectType)
+                : query.getResultStream(selectType);
     }
 
     @Override

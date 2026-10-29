@@ -36,6 +36,8 @@ final class PreparedQueryImpl extends QueryImpl implements PreparedQuery {
     private final RefFactory refFactory;
     private final PreparedStatement statement;
     private final BindVarsHandle bindVarsHandle;
+    /** Whether the caller uses and closes the query in the same call, so what it hands back is not watched. */
+    private final boolean consumed;
 
     public PreparedQueryImpl(Environment environment,
                              PreparedStatement statement,
@@ -45,11 +47,13 @@ final class PreparedQueryImpl extends QueryImpl implements PreparedQuery {
                              boolean managed,
                              int defaultFetchSize,
                              boolean streamOnlyFetchSize,
-                             boolean streamingRequiresTransaction) {
+                             boolean streamingRequiresTransaction,
+                             boolean consumed) {
         super(environment, ignore -> statement, bindVarsHandle, affectedType, versionAware, managed, false, defaultFetchSize, streamOnlyFetchSize, streamingRequiresTransaction);
         this.refFactory = environment.refFactory();
         this.statement = statement;
         this.bindVarsHandle = bindVarsHandle;
+        this.consumed = consumed;
     }
 
     @Override
@@ -98,9 +102,9 @@ final class PreparedQueryImpl extends QueryImpl implements PreparedQuery {
                 var mapper = getObjectMapper(columnCount, type, refFactory, environment.fetchPlanFor(type))
                         .orElseThrow(() -> new PersistenceException("No suitable constructor found for %s.".formatted(type.getName())));
                 close = false;
-                return MonitoredResource.wrap(
-                        StreamSupport.stream(rowSpliterator(resultSet, columnCount, mapper), false)
-                                .onClose(() -> close(resultSet, statement)));
+                var keys = StreamSupport.stream(rowSpliterator(resultSet, columnCount, mapper), false)
+                        .onClose(() -> close(resultSet, statement));
+                return consumed ? keys : MonitoredResource.wrap(keys);
             } finally {
                 if (close) {
                     resultSet.close();

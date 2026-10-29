@@ -163,7 +163,24 @@ class QueryImpl implements Query, KeyedQuery {
      */
     @Override
     public PreparedQuery prepare() {
-        return MonitoredResource.wrap(new PreparedQueryImpl(environment, statement.apply(unsafe), bindVarsHandle, affectedType, versionAware, managed, defaultFetchSize, streamOnlyFetchSize, streamingRequiresTransaction));
+        return MonitoredResource.wrap(prepared(false));
+    }
+
+    /**
+     * Prepares the query for a caller that uses and closes it in the same call, as a repository does with the
+     * statements it prepares for its own writes; neither the prepared query nor the keys it reads back are watched
+     * for a missing close.
+     *
+     * @return the prepared query.
+     * @see ConsumedQueries#prepare(Query)
+     */
+    PreparedQuery prepareConsumed() {
+        return prepared(true);
+    }
+
+    private PreparedQueryImpl prepared(boolean consumed) {
+        return new PreparedQueryImpl(environment, statement.apply(unsafe), bindVarsHandle, affectedType, versionAware,
+                managed, defaultFetchSize, streamOnlyFetchSize, streamingRequiresTransaction, consumed);
     }
 
     /**
@@ -531,6 +548,17 @@ class QueryImpl implements Query, KeyedQuery {
      */
     @Override
     public Stream<Object[]> getResultStream() {
+        return resultStream(false);
+    }
+
+    /**
+     * Executes the query and returns its rows as a stream. A stream handed to the caller is watched, so one the caller
+     * fails to close is reported and closed when it is collected; a stream that is consumed and closed in the same
+     * call, as an eager terminal does, needs no watch.
+     *
+     * @param consumed whether the stream is consumed and closed in the call that asks for it.
+     */
+    private Stream<Object[]> resultStream(boolean consumed) {
         var observation = observe(ExecutionKind.QUERY);
         boolean handedOff = false;
         try {
@@ -555,16 +583,16 @@ class QueryImpl implements Query, KeyedQuery {
                     // The stream leaves this call with rows unread; the guard holds the connection consume-only
                     // until the last row is read or the stream closes.
                     var guard = StreamGuard.open(statement, environment);
-                    return MonitoredResource.wrap(
-                            StreamSupport.stream(releasing(spliterator, guard), false)
-                                    .onClose(() -> {
-                                        try {
-                                            guard.close();
-                                            close(resultSet, statement, streamingCleanup);
-                                        } finally {
-                                            closeObservation(observation);
-                                        }
-                                    }));
+                    var stream = StreamSupport.stream(releasing(spliterator, guard), false)
+                            .onClose(() -> {
+                                try {
+                                    guard.close();
+                                    close(resultSet, statement, streamingCleanup);
+                                } finally {
+                                    closeObservation(observation);
+                                }
+                            });
+                    return consumed ? stream : MonitoredResource.wrap(stream);
                 } finally {
                     if (close) {
                         resultSet.close();
@@ -605,6 +633,16 @@ class QueryImpl implements Query, KeyedQuery {
      */
     @Override
     public <T> Stream<T> getResultStream(Class<T> type) {
+        return resultStream(type, false);
+    }
+
+    /**
+     * Executes the query and returns its rows as a stream of the given type, watched for a missing close unless it is
+     * consumed and closed in the call that asks for it; see {@link #resultStream(boolean)}.
+     *
+     * @param consumed whether the stream is consumed and closed in the call that asks for it.
+     */
+    private <T> Stream<T> resultStream(Class<T> type, boolean consumed) {
         var observation = observe(ExecutionKind.QUERY, type);
         boolean handedOff = false;
         PreparedStatement statement = null;
@@ -632,16 +670,16 @@ class QueryImpl implements Query, KeyedQuery {
                 // The stream leaves this call with rows unread; the guard holds the connection consume-only
                 // until the last row is read or the stream closes.
                 var guard = StreamGuard.open(statement, environment);
-                return MonitoredResource.wrap(
-                        StreamSupport.stream(releasing(spliterator, guard), false)
-                                .onClose(() -> {
-                                    try {
-                                        guard.close();
-                                        close(resultSet, closeableStatement, streamingCleanup);
-                                    } finally {
-                                        closeObservation(observation);
-                                    }
-                                }));
+                var stream = StreamSupport.stream(releasing(spliterator, guard), false)
+                        .onClose(() -> {
+                            try {
+                                guard.close();
+                                close(resultSet, closeableStatement, streamingCleanup);
+                            } finally {
+                                closeObservation(observation);
+                            }
+                        });
+                return consumed ? stream : MonitoredResource.wrap(stream);
             } finally {
                 if (close && closeStatement()) {
                     statement.close();
@@ -675,8 +713,37 @@ class QueryImpl implements Query, KeyedQuery {
      */
     @Override
     public <T extends Data> Stream<Ref<T>> getRefStream(Class<T> type, Class<?> pkType) {
+        return refStream(type, pkType, false);
+    }
+
+    /**
+     * Returns the rows of the given type as a stream the caller consumes and closes in the same call, as a builder's
+     * eager terminal does, which is not watched for a missing close.
+     *
+     * @param type the type of the rows.
+     * @return the rows.
+     * @param <T> the type of the rows.
+     */
+    <T> Stream<T> consumedResultStream(Class<T> type) {
+        return resultStream(type, true);
+    }
+
+    /**
+     * Returns the refs of the rows as a stream the caller consumes and closes in the same call, as a builder's eager
+     * terminal does, which is not watched for a missing close.
+     *
+     * @param type the type the refs point at.
+     * @param pkType the type of the primary key.
+     * @return the refs.
+     * @param <T> the type the refs point at.
+     */
+    <T extends Data> Stream<Ref<T>> consumedRefStream(Class<T> type, Class<?> pkType) {
+        return refStream(type, pkType, true);
+    }
+
+    private <T extends Data> Stream<Ref<T>> refStream(Class<T> type, Class<?> pkType, boolean consumed) {
         var interner = new WeakInterner();
-        return getResultStream(pkType)
+        return resultStream(pkType, consumed)
                 .map(pk -> {
                     if (pk == null) {
                         throw new PersistenceException(
@@ -916,16 +983,22 @@ class QueryImpl implements Query, KeyedQuery {
 
     @Override
     public List<Object[]> getResultList() {
-        return streamOnlyFetchSize && defaultFetchSize != 0
-                ? withoutFetchSize().getResultList()
-                : Query.super.getResultList();
+        if (streamOnlyFetchSize && defaultFetchSize != 0) {
+            return withoutFetchSize().getResultList();
+        }
+        try (var stream = resultStream(true)) {
+            return stream.toList();
+        }
     }
 
     @Override
     public <T> List<T> getResultList(Class<T> type) {
-        return streamOnlyFetchSize && defaultFetchSize != 0
-                ? withoutFetchSize().getResultList(type)
-                : Query.super.getResultList(type);
+        if (streamOnlyFetchSize && defaultFetchSize != 0) {
+            return withoutFetchSize().getResultList(type);
+        }
+        try (var stream = consumedResultStream(type)) {
+            return stream.toList();
+        }
     }
 
     @Override
