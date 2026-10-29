@@ -427,7 +427,7 @@ public class MySQLSqlDialect extends DefaultSqlDialect {
         return "/*+ %s */".formatted(String.join(" ", hints));
     }
 
-    private static final Pattern ON_DUPLICATE_KEY_UPDATE = Pattern.compile("^\\s*(?:/\\*.*?\\*/\\s*)*INSERT\\b.*\\bON\\s+DUPLICATE\\s+KEY\\s+UPDATE\\b", Pattern.CASE_INSENSITIVE | Pattern.DOTALL);
+    private static final Pattern ON_DUPLICATE_KEY_UPDATE = Pattern.compile("\\bON\\s+DUPLICATE\\s+KEY\\s+UPDATE\\b", Pattern.CASE_INSENSITIVE);
 
     /**
      * Returns whether the statement is an upsert: an {@code INSERT ... ON DUPLICATE KEY UPDATE}, the database's own
@@ -439,6 +439,7 @@ public class MySQLSqlDialect extends DefaultSqlDialect {
      */
     @Override
     public boolean isUpsert(String sql) {
-        return super.isUpsert(sql) || ON_DUPLICATE_KEY_UPDATE.matcher(sql).find();
+        return super.isUpsert(sql)
+                || ("INSERT".equals(statementKeyword(sql)) && ON_DUPLICATE_KEY_UPDATE.matcher(sql).find());
     }
 }

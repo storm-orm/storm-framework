@@ -207,4 +207,20 @@ public class DefaultSqlDialectTest {
     void unorderedOffsetNeedsNoOrdering() {
         assertNull(new DefaultSqlDialect().orderByForOffset());
     }
+
+    @Test
+    public void anUpsertIsRecognizedPastLeadingCommentsInOnePass() {
+        var dialect = new DefaultSqlDialect();
+        assertTrue(dialect.isUpsert("MERGE INTO t USING s ON (t.id = s.id) WHEN MATCHED THEN UPDATE SET a = s.a WHEN NOT MATCHED THEN INSERT (id) VALUES (s.id)"));
+        assertTrue(dialect.isUpsert("  /* hint */ /*+ x */\nmerge into t using s on (t.id = s.id) when matched then update set a = s.a when not matched then insert (id) values (s.id)"));
+        assertFalse(dialect.isUpsert("MERGE INTO t USING s ON (t.id = s.id) WHEN NOT MATCHED THEN INSERT (id) VALUES (s.id)"));
+        assertFalse(dialect.isUpsert("INSERT INTO t (id) VALUES (1)"));
+        // A leading comment that never closes starts no statement, and a text of comment openers costs its length.
+        String openers = "/*".repeat(100_000) + " MERGE WHEN MATCHED WHEN NOT MATCHED";
+        long start = System.nanoTime();
+        assertFalse(dialect.isUpsert(openers));
+        assertTrue(System.nanoTime() - start < 1_000_000_000L, "recognition must stay linear");
+        assertEquals("MERGE", DefaultSqlDialect.statementKeyword(" /* a */ Merge into"));
+        assertEquals("", DefaultSqlDialect.statementKeyword("/* never closed MERGE"));
+    }
 }
