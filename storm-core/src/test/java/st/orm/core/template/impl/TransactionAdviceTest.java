@@ -611,7 +611,7 @@ class TransactionAdviceTest {
         });
         assertTrue(line.startsWith("the same UPSERT of Customer ran 10 times, "), line);
         assertTrue(line.contains("; where the rows mostly exist and rarely change, reading them first and writing only "
-                + "the new or changed ones avoids the writes; otherwise the overloads that take a list send the rows "
+                + "the new or changed ones avoids the writes. Otherwise, the overloads that take a list send the rows "
                 + "as one batch. See"), line);
     }
 
@@ -702,7 +702,7 @@ class TransactionAdviceTest {
 
     @Test
     void anAdviceLineOfAFailedExecutionNamesTheFailure() {
-        var context = new QueryImpl.QueryContextImpl(st.orm.spi.SqlOperation.SELECT, Customer.class,
+        var context = new QueryImpl.QueryContextImpl(st.orm.spi.SqlOperation.SELECT, false, Customer.class,
                 st.orm.spi.QueryContext.ExecutionKind.QUERY, "SELECT c.id FROM customer c LIMIT 1",
                 st.orm.spi.StatementOrigin.DIRECT, 99, false, null, true, false, false);
         var events = capture(Level.TRACE, () -> {

@@ -519,11 +519,12 @@ The suspending entry point carries its own name: Kotlin resolves a call against 
 
 ### Inspecting Captured Statements
 
-Each captured statement is represented as a `CapturedSql` record with seven fields:
+Each captured statement is represented as a `CapturedSql` record with eight fields:
 
 | Field        | Type              | Description                                                                     |
 |--------------|-------------------|---------------------------------------------------------------------------------|
-| `operation`  | `Operation`       | The SQL operation type: `SELECT`, `INSERT`, `UPDATE`, `DELETE`, `UPSERT`, or `UNDEFINED`. |
+| `operation`  | `Operation`       | The SQL operation type: `SELECT`, `INSERT`, `UPDATE`, `DELETE`, or `UNDEFINED`, the keyword the statement starts with. |
+| `upsert`     | `boolean`         | Whether the statement is an upsert in the database's own form, whatever keyword it starts with. |
 | `statement`  | `String`          | The SQL text with `?` placeholders for bind variables.                          |
 | `parameters` | `List<Object>`    | The bound parameter values in order.                                            |
 | `origin`     | `Origin`          | What caused the statement: `DIRECT`, or `FETCH` for a statement resolving a reference. |
@@ -565,7 +566,8 @@ List<CapturedSql> selectStmts = capture.statements(Operation.SELECT);
 CapturedSql stmt = selectStmts.getFirst();
 String sql = stmt.statement();          // SQL with ? placeholders
 List<Object> params = stmt.parameters(); // Bound parameter values
-Operation op = stmt.operation();         // SELECT, INSERT, UPDATE, DELETE, UPSERT, or UNDEFINED
+Operation op = stmt.operation();         // SELECT, INSERT, UPDATE, DELETE, or UNDEFINED
+boolean upsert = stmt.upsert();          // an upsert in the database's own form, whatever the keyword
 ```
 
 ### Accumulation and Clearing

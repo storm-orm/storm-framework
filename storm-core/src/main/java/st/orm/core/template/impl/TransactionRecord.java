@@ -170,13 +170,11 @@ public final class TransactionRecord {
             return;
         }
         // A statement whose repetition carries no advice is not walked for.
-        if (Repeats.adviceOn(context.operation(), context.origin()) == null || context.dataType().isEmpty()) {
+        if (!UnitOfWorkRepeats.candidate(context)) {
             return;
         }
-        var repeat = repeats.record(context.operation(), context.dataType().orElse(null), context.origin(),
-                context.shapeId(), context.statement().orElse(""), startNanos, executedNanos, rows, exactRows,
-                true, id(), CallSiteCapture.callSite(), context.readsRecords(), context.repositoryWrite(),
-                UnitOfWorkRepeats.upsertTakesGeneratedKey(context));
+        var repeat = repeats.record(context, startNanos, executedNanos, rows, exactRows, true, id(),
+                CallSiteCapture.callSite());
         if (repeat != null && (!AdviceLog.reports(repeat.advice)
                 || AdviceAcceptance.accepts(repeat.advice, repeat.shapeId, repeat.type))) {
             repeat.accepted = true;

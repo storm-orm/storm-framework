@@ -22,12 +22,16 @@ import static st.orm.core.spi.StormConfigHelper.getInt;
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Optional;
+import java.util.OptionalInt;
 import java.util.Set;
 import org.jspecify.annotations.Nullable;
+import st.orm.Data;
 import st.orm.StormConfig;
 import st.orm.core.template.SqlLog;
 import st.orm.core.template.SqlLog.StatementLine;
 import st.orm.core.template.SqlLog.Summary;
+import st.orm.spi.QueryContext;
 import st.orm.spi.SqlOperation;
 import st.orm.spi.StatementOrigin;
 
@@ -88,10 +92,12 @@ public final class SqlLogRenderer {
         return rendered.toString();
     }
 
-    /** Returns whether the operation writes rows. */
-    private static boolean writes(SqlOperation operation) {
-        return operation == SqlOperation.INSERT || operation == SqlOperation.UPDATE
-                || operation == SqlOperation.DELETE || operation == SqlOperation.UPSERT;
+    /** Returns whether a statement of the operation writes rows; an upsert does whatever keyword it starts with. */
+    private static boolean writes(SqlOperation operation, boolean upsert) {
+        return upsert || switch (operation) {
+            case INSERT, UPDATE, DELETE -> true;
+            default -> false;
+        };
     }
 
     /**
@@ -113,7 +119,7 @@ public final class SqlLogRenderer {
             if (dataType == null) {
                 continue;
             }
-            if (!statement.transactional() && writes(statement.operation())) {
+            if (!statement.transactional() && writes(statement.operation(), statement.upsert())) {
                 for (var target : ForeignKeyTargets.of(dataType)) {
                     // Accepted on the type written second, or on the method or class running the unit of work.
                     if (writtenOutside.contains(target)
@@ -124,10 +130,9 @@ public final class SqlLogRenderer {
                 writtenOutside.add(dataType);
             }
             if (derived != null) {
-                derived.record(statement.operation(), dataType, statement.origin(), statement.shapeId(),
-                        statement.statement(), statement.startNanos(), statement.executedNanos(), statement.rows(),
-                        statement.exactRows(), statement.transactional(), statement.transactionId(),
-                        statement.callSite(), true, false, false);
+                derived.record(new Replayed(statement), statement.startNanos(), statement.executedNanos(),
+                        statement.rows(), statement.exactRows(), statement.transactional(), statement.transactionId(),
+                        statement.callSite());
             }
         }
         var advisories = new ArrayList<String>();
@@ -426,5 +431,62 @@ public final class SqlLogRenderer {
     // Placed after every field it touches, since static initialization runs in textual order.
     static {
         lineWidth(getInt(StormConfig.defaults(), StormConfig.SQL_LOG_LINE_WIDTH, 200));
+    }
+
+    /**
+     * A recorded statement replayed as the context of its execution, so a summary built from its statements alone
+     * derives the repeats the scope would have counted. What the record does not keep, how the statement was
+     * executed and what its result maps to, takes the context's defaults.
+     */
+    private record Replayed(SqlLog.Statement recorded) implements QueryContext {
+        @Override
+        public SqlOperation operation() {
+            return recorded.operation();
+        }
+
+        @Override
+        public boolean upsert() {
+            return recorded.upsert();
+        }
+
+        @Override
+        public Optional<Class<? extends Data>> dataType() {
+            return Optional.ofNullable(recorded.dataType());
+        }
+
+        @Override
+        public ExecutionKind kind() {
+            return recorded.operation() == SqlOperation.SELECT ? ExecutionKind.QUERY : ExecutionKind.UPDATE;
+        }
+
+        @Override
+        public StatementOrigin origin() {
+            return recorded.origin();
+        }
+
+        @Override
+        public long shapeId() {
+            return recorded.shapeId();
+        }
+
+        @Override
+        public OptionalInt batchSize() {
+            return OptionalInt.empty();
+        }
+
+        @Override
+        public boolean transactional() {
+            return recorded.transactional();
+        }
+
+        @Override
+        public long transactionId() {
+            return recorded.transactionId();
+        }
+
+        @Override
+        public Optional<String> statement() {
+            return Optional.of(recorded.statement());
+        }
     }
 }

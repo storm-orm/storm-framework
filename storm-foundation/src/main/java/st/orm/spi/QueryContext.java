@@ -39,6 +39,21 @@ public interface QueryContext {
     SqlOperation operation();
 
     /**
+     * Returns whether the statement is an upsert: an insert of the row that updates the one its key names where it
+     * exists, in the form the database upserts by, which the dialect recognizes. The {@link #operation()} stays
+     * the keyword the statement starts with, {@code INSERT} or {@link SqlOperation#UNDEFINED} for a {@code MERGE},
+     * so a tag that names it names what the database ran; this is the fact the keyword does not show.
+     *
+     * <p>An implementation that does not know says it is not.</p>
+     *
+     * @return {@code true} when the statement is an upsert.
+     * @since 1.16
+     */
+    default boolean upsert() {
+        return false;
+    }
+
+    /**
      * Returns the entity or projection type primarily targeted by the statement.
      *
      * @return the data type, or empty when the statement is not associated with a specific type.

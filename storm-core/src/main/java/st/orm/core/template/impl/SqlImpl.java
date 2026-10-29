@@ -34,6 +34,8 @@ import st.orm.spi.StatementOrigin;
  * A result record that contains the generated SQL and the parameters that were used to generate it.
  *
  * @param operation     classifies the kind of SQL statement.
+ * @param upsert        whether the statement is an upsert in the database's own form, whatever keyword it starts
+ *                      with.
  * @param statement     the generated SQL with all parameters replaced by '?' or named ':name' placeholders.
  * @param parameters    the parameters that were used to generate the SQL.
  * @param bindVariables a bind variables object that can be used to add bind variables to a batch.
@@ -52,6 +54,7 @@ import st.orm.spi.StatementOrigin;
  */
 record SqlImpl(
         SqlOperation operation,
+        boolean upsert,
         String statement,
         List<Parameter> parameters,
         Optional<BindVariables> bindVariables,
@@ -90,7 +93,7 @@ record SqlImpl(
      */
     @Override
     public Sql shapeId(long shapeId) {
-        return new SqlImpl(operation, statement, parameters, bindVariables, generatedKeys, affectedType, dataType, fetchPaths, cursorColumns, versionAware, unsafeWarning, origin, shapeId, advisories, indexDemands);
+        return new SqlImpl(operation, upsert, statement, parameters, bindVariables, generatedKeys, affectedType, dataType, fetchPaths, cursorColumns, versionAware, unsafeWarning, origin, shapeId, advisories, indexDemands);
     }
 
     /**
@@ -102,7 +105,7 @@ record SqlImpl(
      */
     @Override
     public Sql origin(StatementOrigin origin) {
-        return new SqlImpl(operation, statement, parameters, bindVariables, generatedKeys, affectedType, dataType, fetchPaths, cursorColumns, versionAware, unsafeWarning, origin, shapeId, advisories, indexDemands);
+        return new SqlImpl(operation, upsert, statement, parameters, bindVariables, generatedKeys, affectedType, dataType, fetchPaths, cursorColumns, versionAware, unsafeWarning, origin, shapeId, advisories, indexDemands);
     }
 
     /**
@@ -113,7 +116,7 @@ record SqlImpl(
      */
     @Override
     public Sql operation(SqlOperation operation) {
-        return new SqlImpl(operation, statement, parameters, bindVariables, generatedKeys, affectedType, dataType, fetchPaths, cursorColumns, versionAware, unsafeWarning, origin, shapeId, advisories, indexDemands);
+        return new SqlImpl(operation, upsert, statement, parameters, bindVariables, generatedKeys, affectedType, dataType, fetchPaths, cursorColumns, versionAware, unsafeWarning, origin, shapeId, advisories, indexDemands);
     }
 
     /**
@@ -124,7 +127,7 @@ record SqlImpl(
      */
     @Override
     public Sql statement(String statement) {
-        return new SqlImpl(operation, statement, parameters, bindVariables, generatedKeys, affectedType, dataType, fetchPaths, cursorColumns, versionAware, unsafeWarning, origin, shapeId, advisories, indexDemands);
+        return new SqlImpl(operation, upsert, statement, parameters, bindVariables, generatedKeys, affectedType, dataType, fetchPaths, cursorColumns, versionAware, unsafeWarning, origin, shapeId, advisories, indexDemands);
     }
 
     /**
@@ -135,7 +138,7 @@ record SqlImpl(
      */
     @Override
     public Sql parameters(List<Parameter> parameters) {
-        return new SqlImpl(operation, statement, parameters, bindVariables, generatedKeys, affectedType, dataType, fetchPaths, cursorColumns, versionAware, unsafeWarning, origin, shapeId, advisories, indexDemands);
+        return new SqlImpl(operation, upsert, statement, parameters, bindVariables, generatedKeys, affectedType, dataType, fetchPaths, cursorColumns, versionAware, unsafeWarning, origin, shapeId, advisories, indexDemands);
     }
 
     /**
@@ -146,7 +149,7 @@ record SqlImpl(
      */
     @Override
     public Sql bindVariables(SqlTemplate.@Nullable BindVariables bindVariables) {
-        return new SqlImpl(operation, statement, parameters, ofNullable(bindVariables), generatedKeys, affectedType, dataType, fetchPaths, cursorColumns, versionAware, unsafeWarning, origin, shapeId, advisories, indexDemands);
+        return new SqlImpl(operation, upsert, statement, parameters, ofNullable(bindVariables), generatedKeys, affectedType, dataType, fetchPaths, cursorColumns, versionAware, unsafeWarning, origin, shapeId, advisories, indexDemands);
     }
 
     /**
@@ -158,7 +161,7 @@ record SqlImpl(
      */
     @Override
     public Sql generatedKeys(List<String> generatedKeys) {
-        return new SqlImpl(operation, statement, parameters, bindVariables, generatedKeys, affectedType, dataType, fetchPaths, cursorColumns, versionAware, unsafeWarning, origin, shapeId, advisories, indexDemands);
+        return new SqlImpl(operation, upsert, statement, parameters, bindVariables, generatedKeys, affectedType, dataType, fetchPaths, cursorColumns, versionAware, unsafeWarning, origin, shapeId, advisories, indexDemands);
     }
 
     /**
@@ -170,7 +173,7 @@ record SqlImpl(
      */
     @Override
     public Sql affectedType(@Nullable Class<? extends Data> affectedType) {
-        return new SqlImpl(operation, statement, parameters, bindVariables, generatedKeys, ofNullable(affectedType), dataType, fetchPaths, cursorColumns, versionAware, unsafeWarning, origin, shapeId, advisories, indexDemands);
+        return new SqlImpl(operation, upsert, statement, parameters, bindVariables, generatedKeys, ofNullable(affectedType), dataType, fetchPaths, cursorColumns, versionAware, unsafeWarning, origin, shapeId, advisories, indexDemands);
     }
 
     /**
@@ -182,7 +185,7 @@ record SqlImpl(
      */
     @Override
     public Sql versionAware(boolean versionAware) {
-        return new SqlImpl(operation, statement, parameters, bindVariables, generatedKeys, affectedType, dataType, fetchPaths, cursorColumns, versionAware, unsafeWarning, origin, shapeId, advisories, indexDemands);
+        return new SqlImpl(operation, upsert, statement, parameters, bindVariables, generatedKeys, affectedType, dataType, fetchPaths, cursorColumns, versionAware, unsafeWarning, origin, shapeId, advisories, indexDemands);
     }
 
     /**
@@ -194,6 +197,6 @@ record SqlImpl(
      */
     @Override
     public Sql unsafeWarning(@Nullable String unsafeWarning) {
-        return new SqlImpl(operation, statement, parameters, bindVariables, generatedKeys, affectedType, dataType, fetchPaths, cursorColumns, versionAware, ofNullable(unsafeWarning), origin, shapeId, advisories, indexDemands);
+        return new SqlImpl(operation, upsert, statement, parameters, bindVariables, generatedKeys, affectedType, dataType, fetchPaths, cursorColumns, versionAware, ofNullable(unsafeWarning), origin, shapeId, advisories, indexDemands);
     }
 }

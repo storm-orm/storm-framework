@@ -59,15 +59,6 @@ public enum SqlOperation {
     DELETE,
 
     /**
-     * Represents an UPSERT operation: an insert of the row that updates the one its key names where it exists.
-     *
-     * <p>No leading keyword says so, as a database upserts by its own form of {@code INSERT} or by {@code MERGE}, so
-     * the dialect recognizes the statement, and a compiled statement reports it. Where the dialect's syntax is
-     * decided, the statement is prepared as the {@code INSERT} or the undefined statement it is written as.</p>
-     */
-    UPSERT,
-
-    /**
      * Represents an undefined operation.
      *
      * <p>This mode is used when the type of SQL operation cannot be determined. The SQL template processor may

@@ -80,6 +80,7 @@ public class FetchSizeTest {
                         ? persistenceException
                         : new PersistenceException(e),
                 st.orm.spi.SqlOperation.SELECT,
+                false,
                 null,
                 FetchPlan.NONE,
                 List.of(),

@@ -313,21 +313,25 @@ public final class PreparedStatementTemplateImpl implements PreparedStatementTem
     }
 
     /**
-     * Refuses a statement Storm recognises as a write, an {@code INSERT}, {@code UPDATE} or {@code DELETE}, when
-     * the transaction owning the connection is read-only. The refusal happens before a connection is acquired, so
-     * it is the same on every driver; a statement of undefined operation, such as a stored procedure call or a
-     * {@code MERGE}, is left to the database. The context is the transaction the statement runs in, Storm's own
-     * or one it joined, so a template outside any transaction is never refused.
+     * Refuses a statement Storm recognises as a write, an {@code INSERT}, {@code UPDATE} or {@code DELETE}, or an
+     * upsert in the database's own form, when the transaction owning the connection is read-only. The refusal
+     * happens before a connection is acquired, so it is the same on every driver; a statement of undefined
+     * operation that is no upsert, such as a stored procedure call, is left to the database. The context is the
+     * transaction the statement runs in, Storm's own or one it joined, so a template outside any transaction is
+     * never refused.
      */
     private static void refuseWriteInReadOnlyTransaction(Sql sql, @Nullable TransactionContext transactionContext) {
         if (transactionContext == null || !transactionContext.isReadOnly()) {
             return;
         }
-        switch (sql.operation()) {
-            case INSERT, UPDATE, DELETE, UPSERT -> throw new ReadOnlyTransactionException(
+        boolean write = sql.upsert() || switch (sql.operation()) {
+            case INSERT, UPDATE, DELETE -> true;
+            default -> false;
+        };
+        if (write) {
+            throw new ReadOnlyTransactionException(
                     "Cannot execute %s in a read-only transaction; a write needs a transaction of its own, opened with REQUIRES_NEW, or a read-write enclosing transaction."
-                            .formatted(sql.operation()));
-            default -> {}
+                            .formatted(sql.upsert() ? "UPSERT" : sql.operation()));
         }
     }
 
@@ -809,6 +813,7 @@ public final class PreparedStatementTemplateImpl implements PreparedStatementTem
                 strategies.queryObserver(),
                 getExceptionTransformer(sql, strategies.exceptionMapper(), strategies.transactionTemplateProvider()),
                 sql.operation(),
+                sql.upsert(),
                 sql.dataType().orElse(null),
                 FetchPlan.of(sql.fetchPaths()),
                 sql.cursorColumns(),
