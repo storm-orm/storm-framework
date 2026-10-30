@@ -20,13 +20,19 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import java.sql.SQLException;
 import java.util.List;
+import java.util.Map;
+import java.util.UUID;
+import javax.sql.DataSource;
 import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.springframework.jdbc.datasource.DriverManagerDataSource;
 import st.orm.Data;
 import st.orm.Entity;
+import st.orm.core.template.impl.IndexDemands.Kind;
 import st.orm.spi.QueryContext.ExecutionKind;
 import st.orm.spi.SqlOperation;
 import st.orm.spi.StatementOrigin;
@@ -54,7 +60,32 @@ class RepeatsTest {
                                                       @Nullable Class<? extends Data> type, long shapeId,
                                                       @Nullable RepositoryCall call, boolean upsertTakesGeneratedKey) {
         return new QueryImpl.QueryContextImpl(operation, upsert, type, ExecutionKind.QUERY, "SQL",
-                StatementOrigin.DIRECT, shapeId, true, null, true, call, upsertTakesGeneratedKey);
+                StatementOrigin.DIRECT, shapeId, true, null, true, call, upsertTakesGeneratedKey, null, null,
+                null);
+    }
+
+    private static QueryImpl.QueryContextImpl context(SqlOperation operation, @Nullable RepositoryCall call,
+                                                      @Nullable IndexDemands indexDemands,
+                                                      @Nullable DataSource dataSource) {
+        return new QueryImpl.QueryContextImpl(operation, false, Owner.class, ExecutionKind.QUERY, "SQL",
+                StatementOrigin.DIRECT, 13, true, null, true, call, false, null, indexDemands, dataSource);
+    }
+
+    /**
+     * Records ten executions of the statement, one in each of ten transactions, each taking the given time; where
+     * {@code alongside} is set, each transaction holds another statement too.
+     */
+    private static Repeats perTransaction(QueryImpl.QueryContextImpl context, long nanos, boolean alongside) {
+        var repeats = new Repeats(true);
+        for (int i = 0; i < Advice.REPEAT_THRESHOLD; i++) {
+            long start = i * 2 * nanos;
+            repeats.observed(i + 1, start, start + nanos);
+            repeats.record(context, start, start + nanos, 1, true, true, i + 1, null);
+            if (alongside) {
+                repeats.observed(i + 1, start + nanos, start + nanos + 1_000_000);
+            }
+        }
+        return repeats;
     }
 
     private static Repeats.Repeat record(Repeats repeats, SqlOperation operation, long shapeId, long transactionId) {
@@ -170,6 +201,48 @@ class RepeatsTest {
         assertTrue(text.startsWith("upsert of Owner ran 10 times, "), text);
         assertTrue(text.contains("avoids the writes, and the generated key value each upsert takes even where it "
                 + "updates. Otherwise, the overloads that take a list send the rows as one batch."), text);
+    }
+
+    @Test
+    void aWriteRunOnceInEachOfTransactionsThatHeldMoreIsNoRepeatWhileItIsCheap() {
+        var update = context(SqlOperation.UPDATE, RepositoryCall.UPDATE, null, null);
+        assertEquals(List.of(), perTransaction(update, 1_000_000, true).advisories(false));
+        // Held alone, the transactions are the loop, which the list form commits together.
+        var own = perTransaction(update, 1_000_000, false).advisories(false);
+        assertEquals(1, own.size(), own.toString());
+        assertTrue(own.getFirst().text().contains("transactions of their own"), own.toString());
+    }
+
+    @Test
+    void aCostlyWriteRunOnceInEachOfTransactionsThatHeldMoreIsTheStatementToLookAt() {
+        var update = context(SqlOperation.UPDATE, RepositoryCall.UPDATE, null, null);
+        var advisories = perTransaction(update, Advice.STATEMENT_COST_NANOS, true).advisories(false);
+        assertEquals(1, advisories.size(), advisories.toString());
+        var text = advisories.getFirst().text();
+        assertTrue(text.contains("costs more than its round trip, and it runs once per transaction, so look at it"),
+                text);
+        assertFalse(text.contains("as one batch"), text);
+    }
+
+    @Test
+    void aCostlyRepeatNamesTheIndexItLacksRightAfterIt() throws SQLException {
+        DataSource dataSource = new DriverManagerDataSource(
+                "jdbc:h2:mem:repeats_" + UUID.randomUUID() + ";DB_CLOSE_DELAY=-1");
+        try (var connection = dataSource.getConnection(); var statement = connection.createStatement()) {
+            statement.execute("CREATE TABLE owner (id INTEGER PRIMARY KEY, last_name VARCHAR(50))");
+            IndexCatalog.publish(dataSource, IndexCatalog.of(Map.of("", DatabaseSchema.read(connection))));
+        }
+        var builder = new IndexDemands.Builder();
+        builder.add("", "owner", "last_name", Kind.EQUALITY);
+        var select = context(SqlOperation.SELECT, null, builder.build(), dataSource);
+        var costly = perTransaction(select, Advice.STATEMENT_COST_NANOS, false).advisories(false);
+        assertEquals(2, costly.size(), costly.toString());
+        assertEquals(Advice.REPEATED_SELECT, costly.get(0).advice());
+        assertEquals(Advice.MISSING_INDEX, costly.get(1).advice());
+        assertTrue(costly.get(1).text().contains("last_name"), costly.toString());
+        // A cheap repeat is its round trips, which no index saves.
+        var cheap = perTransaction(select, 1_000_000, false).advisories(false);
+        assertEquals(1, cheap.size(), cheap.toString());
     }
 
     @Test

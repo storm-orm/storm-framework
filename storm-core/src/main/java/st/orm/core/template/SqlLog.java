@@ -880,9 +880,9 @@ public final class SqlLog {
                 if (!UnitOfWorkRepeats.candidate(context)) {
                     return new Timed(this, context);
                 }
-                return new Counted(this, context, callSites ? CallSiteCapture.callSite() : null);
+                return new Counted(this, context, callSites ? CallSiteCapture.callSite(context) : null);
             }
-            return new Slot(this, context, callSites ? CallSiteCapture.callSite() : null);
+            return new Slot(this, context, callSites ? CallSiteCapture.callSite(context) : null);
         }
 
         @Override

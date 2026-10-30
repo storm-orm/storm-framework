@@ -93,8 +93,10 @@ public class SlowStatementLogIntegrationTest {
         assertTrue(message.startsWith("SQL slow (SELECT City): "), message);
         assertTrue(message.contains(" ms in database, 1 rows"), message);
         // The call site is walked for the slow execution, on the executing thread; this test lives under st.orm,
-        // which the walker treats as framework, so the frame it finds is the test runner's.
-        assertTrue(Pattern.compile(", [A-Za-z0-9_$.]+:\\d+" + System.lineSeparator()).matcher(message).find(), message);
+        // which the walker treats as framework, so the frame it finds is the test runner's, and the built-in call
+        // made there is named after it.
+        assertTrue(Pattern.compile(", [A-Za-z0-9_$.]+:\\d+ -> getById" + System.lineSeparator()).matcher(message).find(),
+                message);
         assertTrue(message.contains("\tSELECT c.id, c.name"), message);
         assertTrue(message.contains("WHERE c.id = ?"), message);
         assertTrue(message.contains("\tshape: "), message);

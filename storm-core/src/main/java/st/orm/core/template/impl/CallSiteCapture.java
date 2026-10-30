@@ -21,13 +21,16 @@ import static java.util.Objects.requireNonNull;
 import java.io.BufferedInputStream;
 import java.io.DataInputStream;
 import java.io.IOException;
+import java.lang.reflect.Proxy;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Set;
+import java.util.function.Supplier;
 import org.jspecify.annotations.Nullable;
 import st.orm.StormConfig;
+import st.orm.spi.QueryContext;
 
 /**
  * Attributes a statement execution to the application frame that caused it: the innermost frame that is neither
@@ -38,7 +41,7 @@ import st.orm.StormConfig;
  * says, and not where. A frame whose class is a repository, or a Kotlin interface's default implementations of
  * one, is kept as the repository frame, and the walk continues to the first application frame beyond it; the site
  * then names both, the caller first and the repository by its method, which says at once which query repeated
- * and where a list variant would go: {@code ReminderService.kt:52 via VisitRepository.findByPet}. A repository
+ * and where a list variant would go: {@code ReminderService.kt:52 -> VisitRepository.findByPet}. A repository
  * called from plumbing end to end is named alone.</p>
  *
  * <p>Which frames count as plumbing is a property of the deployment, configured like one: the
@@ -143,7 +146,78 @@ public final class CallSiteCapture {
      */
     @Nullable
     public static String callSite() {
-        var walked = walkFrames();
+        return callSite((String) null);
+    }
+
+    /**
+     * Returns the call site of the execution the context describes: as {@link #callSite()}, naming the repository
+     * method that built the statement where the walk passes none, as for a flow a repository method returned that is
+     * collected after the method has returned.
+     *
+     * @param context the context of the execution, or {@code null}.
+     * @return the call site, or {@code null} when none is found.
+     */
+    @Nullable
+    public static String callSite(@Nullable QueryContext context) {
+        return callSite(context instanceof QueryImpl.QueryContextImpl impl ? impl.builtBy() : null);
+    }
+
+    /** The repository method that built the statement about to run, bound while a flow opens its stream. */
+    private static final ThreadLocal<String> BUILT_BY = new ThreadLocal<>();
+
+    /**
+     * Returns the repository method building a flow now, for the flow to carry to the execution it runs when it is
+     * collected, after the method has returned: the outermost repository frame on the stack, or a built-in
+     * repository call. Walks the stack only while call sites are recorded.
+     *
+     * @return the repository method, or {@code null} when none is on the stack or call sites are not recorded.
+     */
+    @Nullable
+    public static String captureRepository() {
+        if (!AdviceLog.recordsRepeats() && !SlowStatementLog.timesStatements()
+                && SqlInterceptorManager.localOperators() == null) {
+            return null;
+        }
+        return walkFrames().repository();
+    }
+
+    /**
+     * Runs work that opens a flow's statement with the repository method that built the flow bound, so the
+     * execution's context carries it.
+     *
+     * @param repository the repository method {@link #captureRepository()} returned, or {@code null}.
+     * @param work the work that opens the statement.
+     * @return what the work returns.
+     * @param <T> the type of what the work returns.
+     */
+    public static <T> T withRepository(@Nullable String repository, Supplier<T> work) {
+        if (repository == null) {
+            return work.get();
+        }
+        String previous = BUILT_BY.get();
+        BUILT_BY.set(repository);
+        try {
+            return work.get();
+        } finally {
+            if (previous == null) {
+                BUILT_BY.remove();
+            } else {
+                BUILT_BY.set(previous);
+            }
+        }
+    }
+
+    /** Returns the repository method bound for the statement about to run, or {@code null}. */
+    static @Nullable String builtBy() {
+        return BUILT_BY.get();
+    }
+
+    /**
+     * Returns the call site, naming the given repository method where the walk passes no repository of its own.
+     */
+    @Nullable
+    private static String callSite(@Nullable String builtBy) {
+        var walked = walkFrames().orRepository(builtBy);
         if (walked.application() != null) {
             return walked.site(walked.application());
         }
@@ -158,19 +232,28 @@ public final class CallSiteCapture {
     }
 
     /**
-     * The frames a walk can surface: the first application frame, the innermost repository frame before it, and
-     * the innermost plumbing frame.
+     * The frames a walk can surface: the first application frame, the outermost repository frame before it, or the
+     * built-in repository call where the walk passed no repository of the application's, and the innermost plumbing
+     * frame.
      */
     private record WalkedFrames(@Nullable String application,
                                 @Nullable String repository,
                                 @Nullable String plumbing) {
 
-        /** Returns the caller's site, through the repository frame where the walk passed one. */
+        /**
+         * Returns the caller's site, followed by the repository method it called where the walk passed one, in the
+         * direction of the call: {@code ReminderService.kt:52 -> VisitRepository.findByPet}.
+         */
         @Nullable String site(@Nullable String caller) {
             if (caller == null) {
                 return null;
             }
-            return repository == null ? caller : caller + " via " + repository;
+            return repository == null ? caller : caller + " -> " + repository;
+        }
+
+        /** Returns the walk with the given repository method where the walk passed none of its own. */
+        WalkedFrames orRepository(@Nullable String fallback) {
+            return repository != null || fallback == null ? this : new WalkedFrames(application, fallback, plumbing);
         }
     }
 
@@ -181,16 +264,27 @@ public final class CallSiteCapture {
     private static WalkedFrames walkFrames() {
         return CALL_SITE_WALKER.walk(frames -> {
             String repository = null;
+            String builtIn = null;
             String plumbing = null;
             for (var iterator = frames.iterator(); iterator.hasNext(); ) {
                 var frame = iterator.next();
                 if (isInfrastructure(frame.getClassName())) {
+                    // The outermost frame of Storm's own repository implementation names the built-in call the
+                    // application made, such as findById, where no repository of the application's is passed.
+                    if (isBuiltInRepositoryCall(frame)) {
+                        builtIn = frame.getMethodName();
+                    }
+                    continue;
+                }
+                // The proxy a repository is reached through dispatches the call; the method it dispatches to is
+                // the repository's frame, and the proxy's would shadow it as the outermost one.
+                if (Proxy.isProxyClass(frame.getDeclaringClass())) {
                     continue;
                 }
                 if (REPOSITORY.get(frame.getDeclaringClass())) {
-                    if (repository == null) {
-                        repository = repositoryMethod(frame);
-                    }
+                    // The outermost repository frame is the method the caller called; one it called in turn is
+                    // what the statement already shows.
+                    repository = repositoryMethod(frame);
                     continue;
                 }
                 // A library's inline function, such as a flow operator, has its lambda regenerated under the
@@ -207,16 +301,31 @@ public final class CallSiteCapture {
                     }
                     continue;
                 }
-                return new WalkedFrames(format(frame), repository, plumbing);
+                return new WalkedFrames(format(frame), repository != null ? repository : builtIn, plumbing);
             }
-            return new WalkedFrames(null, repository, plumbing);
+            return new WalkedFrames(null, repository != null ? repository : builtIn, plumbing);
         });
     }
 
     /**
-     * Names a repository frame by its method, {@code VisitRepository.findByPet}: the repository is the nest host
-     * of the frame's class, so a Kotlin default method run through the interface's default implementations reads as
-     * the method of the interface, as a Java default method does.
+     * Returns whether the frame is a method of Storm's own repository implementation that an application calls, such
+     * as {@code findById} or {@code insert}: a method of a {@code ...RepositoryImpl} class in one of Storm's repository
+     * packages, and no lambda or constructor of one.
+     */
+    private static boolean isBuiltInRepositoryCall(StackWalker.StackFrame frame) {
+        String className = frame.getClassName();
+        if (!(className.startsWith("st.orm.core.repository.impl.") || className.startsWith("st.orm.repository.impl."))
+                || !className.endsWith("RepositoryImpl")) {
+            return false;
+        }
+        String method = frame.getMethodName();
+        return method.indexOf('$') < 0 && !method.equals("<init>");
+    }
+
+    /**
+     * Names a repository frame by its method, {@code VisitRepository.findByPet}, on the repository its class belongs
+     * to, so a Kotlin default method run through the interface's default implementations reads as the method of the
+     * interface, as a Java default method does.
      */
     private static String repositoryMethod(StackWalker.StackFrame frame) {
         String className = frame.getClassName();
@@ -228,7 +337,21 @@ public final class CallSiteCapture {
             String method = copiedInto.substring(copiedInto.lastIndexOf('$') + 1);
             return simpleName(topLevel(className)) + "." + method;
         }
-        return frame.getDeclaringClass().getNestHost().getSimpleName() + "." + frame.getMethodName();
+        return repositoryOf(frame.getDeclaringClass()).getSimpleName() + "." + frame.getMethodName();
+    }
+
+    /**
+     * Returns the repository a repository frame's class belongs to: the class itself or the nearest class enclosing
+     * it that is a repository, as for the default implementations Kotlin compiles an interface's methods into, else
+     * its nest host.
+     */
+    private static Class<?> repositoryOf(Class<?> type) {
+        for (Class<?> candidate = type; candidate != null; candidate = candidate.getEnclosingClass()) {
+            if (implementsRepository(candidate)) {
+                return candidate;
+            }
+        }
+        return type.getNestHost();
     }
 
     /** The part of a class name Kotlin gives a class it copies for an inline function. */
