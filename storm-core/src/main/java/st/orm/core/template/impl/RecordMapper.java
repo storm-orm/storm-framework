@@ -516,6 +516,9 @@ final class RecordMapper {
         PkInfo pkInfo = compiled.pkInfo();
         ColumnSkipper columnSkipper = createColumnSkipper(type, compiled, cacheReadEnabled, entityCache,
                 interner, transactionContext);
+        // Resolved once for the query rather than for every row.
+        @SuppressWarnings("unchecked")
+        var construction = ObjectMapperFactory.construction((Constructor<T>) type.constructor());
         return new ObjectMapper<>() {
             @Override
             public Class<?>[] getParameterTypes() {
@@ -548,7 +551,7 @@ final class RecordMapper {
                         .adapt(args, 0, false, refFactory, interner, transactionContext)
                         .constructorArgs();
                 // Don't intern top level records.
-                var record = ObjectMapperFactory.construct((Constructor<T>) type.constructor(), adaptedArgs, 0);
+                var record = construction.construct(adaptedArgs, 0);
                 if (entityCache != null) {
                     // Intern for dirty tracking and/or identity preservation.
                     Entity<?> interned = entityCache.intern((Entity<?>) record);
@@ -779,10 +782,16 @@ final class RecordMapper {
         private final Step[] steps;
         /** True when every step is a one-column pass-through, so the flat args line up with the constructor params. */
         private final boolean trivial;
+        /** Whether each component is nullable on its own, read once rather than for every row. */
+        private final boolean[] nullable;
 
         private CompiledArgumentPlan(RecordType type, Step[] steps) {
             this.type = type;
             this.steps = steps;
+            this.nullable = new boolean[steps.length];
+            for (int p = 0; p < steps.length; p++) {
+                nullable[p] = type.fields().get(p).nullable();
+            }
             boolean allPlain = true;
             for (Step step : steps) {
                 if (!(step instanceof PlainStep)) {
@@ -805,8 +814,8 @@ final class RecordMapper {
                 // constructor parameters, so validate non-null components in place and reuse the array directly
                 // instead of allocating and copying into a second one.
                 for (int p = 0; p < steps.length; p++) {
-                    RecordField field = type.fields().get(p);
-                    if (!(parentNullable || field.nullable()) && isArgNull(flatArgs[p])) {
+                    if (!(parentNullable || nullable[p]) && isArgNull(flatArgs[p])) {
+                        RecordField field = type.fields().get(p);
                         throw new SqlTemplateException(
                                 "Database returned NULL for non-nullable component '%s.%s'. Either %s, or ensure the corresponding column is NOT NULL in the database."
                                         .formatted(type.type().getSimpleName(), field.name(), nullableHint(type.type()))
@@ -1043,6 +1052,8 @@ final class RecordMapper {
         private final int totalColumnCount;
         /** Constructor for composite PKs (null for simple single-column PKs). */
         private final Constructor<?> pkConstructor;
+        /** Constructs the nested record, its constructor's metadata resolved once for every row. */
+        private final ObjectMapperFactory.Construction<?> construction;
 
         private RecordStep(RecordField field,
                            RecordType subType,
@@ -1060,6 +1071,7 @@ final class RecordMapper {
             this.pkColumnCount = pkColumnCount;
             this.totalColumnCount = totalColumnCount;
             this.pkConstructor = pkConstructor;
+            this.construction = ObjectMapperFactory.construction(subType.constructor());
         }
 
         @Override
@@ -1140,7 +1152,7 @@ final class RecordMapper {
                 return null;
             }
             // Construct nested record.
-            Object record = ObjectMapperFactory.construct(subType.constructor(), childArgs, start);
+            Object record = construction.construct(childArgs, start);
             if (entityCache != null) {
                 // Intern for dirty tracking and/or identity preservation.
                 Entity<?> interned = entityCache.intern((Entity<?>) record);

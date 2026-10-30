@@ -160,38 +160,27 @@ public final class ObjectMapperFactory {
                 parameterTypes[i] = String.class;
             }
         }
+        @SuppressWarnings("unchecked")
+        Construction<T> construction = construction((Constructor<T>) constructor);
         if (stringBuilders.isEmpty()) {
             return new ObjectMapper<>() {
                 @Override public Class<?>[] getParameterTypes() { return parameterTypes; }
 
-                @SuppressWarnings("unchecked") @Override public T newInstance(Object[] args) throws SqlTemplateException {
-                    return construct((Constructor<T>) constructor, args);
+                @Override public T newInstance(Object[] args) throws SqlTemplateException {
+                    return construction.construct(args, 0);
                 }
             };
         }
         return new ObjectMapper<>() {
             @Override public Class<?>[] getParameterTypes() { return parameterTypes; }
 
-            @SuppressWarnings("unchecked") @Override public T newInstance(Object[] args) throws SqlTemplateException {
+            @Override public T newInstance(Object[] args) throws SqlTemplateException {
                 for (int i = stringBuilders.nextSetBit(0); i >= 0; i = stringBuilders.nextSetBit(i + 1)) {
                     args[i] = new StringBuilder(args[i].toString());
                 }
-                return construct((Constructor<T>) constructor, args);
+                return construction.construct(args, 0);
             }
         };
-    }
-
-    /**
-     * Constructs a new instance of the specified type using the specified constructor and arguments.
-     *
-     * @param constructor the constructor to use for creating the instance.
-     * @param args the arguments to pass to the constructor.
-     * @return a new instance of the specified type using the specified constructor and arguments.
-     * @param <T> the type of the instance to create.
-     * @throws SqlTemplateException if the instance could not be created.
-     */
-    private static <T> T construct(Constructor<T> constructor, Object[] args) throws SqlTemplateException {
-        return construct(constructor, args, 0);
     }
 
     /**
@@ -205,42 +194,78 @@ public final class ObjectMapperFactory {
      * @throws SqlTemplateException if the instance could not be created.
      */
     static <T> T construct(Constructor<T> constructor, Object[] args, int offset) throws SqlTemplateException {
-        try {
-            // Constructor metadata is precomputed and cached: per-invocation getParameterTypes/getParameters calls
-            // clone their arrays, which is measurable on the row mapping hot path.
-            ConstructorMeta meta = CONSTRUCTOR_META.get(constructor.getDeclaringClass()).get(constructor);
-            boolean[] nonNull = meta.nonNull();
-            boolean[] primitive = meta.primitive();
-            for (int i = 0; i < nonNull.length; i++) {
-                if (args[i] == null) {
-                    if (nonNull[i]) {
-                        throw new SqlTemplateException("Database returned NULL for non-nullable field '%s.%s' at column position %d. Either %s, ensure the column has a NOT NULL constraint with a default value, or verify the query returns the expected data."
-                                .formatted(constructor.getDeclaringClass().getSimpleName(), meta.parameterNames()[i], offset + i + 1, nullableHint(constructor.getDeclaringClass())));
-                    }
-                    if (primitive[i]) {
-                        throw new SqlTemplateException("Database returned NULL for primitive field '%s.%s' at column position %d. Primitive types cannot hold null values. Change the field type to its wrapper class (e.g., int to Integer) and %s, or ensure the column is NOT NULL."
-                                .formatted(constructor.getDeclaringClass().getSimpleName(), meta.parameterNames()[i], offset + i + 1, nullableHint(constructor.getDeclaringClass())));
+        return construction(constructor).construct(args, offset);
+    }
+
+    /**
+     * Returns the means to construct instances through the given constructor, with its metadata resolved now. A
+     * caller that constructs through the same constructor for every row holds it, so a row looks nothing up.
+     *
+     * @param constructor the constructor to construct instances through.
+     * @return the construction.
+     * @param <T> the type of the instances.
+     */
+    static <T> Construction<T> construction(Constructor<T> constructor) {
+        return new Construction<>(constructor, CONSTRUCTOR_META.get(constructor.getDeclaringClass()).get(constructor));
+    }
+
+    /**
+     * Constructs instances through one constructor, with its metadata resolved once.
+     *
+     * @param <T> the type of the instances.
+     */
+    static final class Construction<T> {
+        private final Constructor<T> constructor;
+        private final ConstructorMeta meta;
+
+        private Construction(Constructor<T> constructor, ConstructorMeta meta) {
+            this.constructor = constructor;
+            this.meta = meta;
+        }
+
+        /**
+         * Constructs a new instance from the given arguments.
+         *
+         * @param args the arguments to pass to the constructor.
+         * @param offset the parameter offset of the top-level input, for error messages.
+         * @return the new instance.
+         * @throws SqlTemplateException if the instance could not be created.
+         */
+        T construct(Object[] args, int offset) throws SqlTemplateException {
+            try {
+                boolean[] nonNull = meta.nonNull();
+                boolean[] primitive = meta.primitive();
+                for (int i = 0; i < nonNull.length; i++) {
+                    if (args[i] == null) {
+                        if (nonNull[i]) {
+                            throw new SqlTemplateException("Database returned NULL for non-nullable field '%s.%s' at column position %d. Either %s, ensure the column has a NOT NULL constraint with a default value, or verify the query returns the expected data."
+                                    .formatted(constructor.getDeclaringClass().getSimpleName(), meta.parameterNames()[i], offset + i + 1, nullableHint(constructor.getDeclaringClass())));
+                        }
+                        if (primitive[i]) {
+                            throw new SqlTemplateException("Database returned NULL for primitive field '%s.%s' at column position %d. Primitive types cannot hold null values. Change the field type to its wrapper class (e.g., int to Integer) and %s, or ensure the column is NOT NULL."
+                                    .formatted(constructor.getDeclaringClass().getSimpleName(), meta.parameterNames()[i], offset + i + 1, nullableHint(constructor.getDeclaringClass())));
+                        }
                     }
                 }
+                var instantiator = meta.instantiator();
+                if (instantiator != null) {
+                    // Generated instantiator: constructs through the canonical constructor without reflection.
+                    //noinspection unchecked
+                    return (T) instantiator.instantiate(args);
+                }
+                try {
+                    // The cached constructor instance: its accessible flag was set before the entry was published
+                    // through the cache's volatile array, which makes the flag visible to every thread.
+                    //noinspection unchecked
+                    return (T) meta.constructor().newInstance(args);
+                } catch (InvocationTargetException e) {
+                    throw e.getTargetException();
+                }
+            } catch (SqlTemplateException e) {
+                throw e;
+            } catch (Throwable t) {
+                throw new SqlTemplateException("Failed to create a new instance of %s.".formatted(constructor.getDeclaringClass().getSimpleName()), t);
             }
-            var instantiator = meta.instantiator();
-            if (instantiator != null) {
-                // Generated instantiator: constructs through the canonical constructor without reflection.
-                //noinspection unchecked
-                return (T) instantiator.instantiate(args);
-            }
-            try {
-                // Use the map's constructor instance: its accessible flag was set before publication, so the
-                // happens-before edge of the concurrent map makes the flag visible to all threads.
-                //noinspection unchecked
-                return (T) meta.constructor().newInstance(args);
-            } catch (InvocationTargetException e) {
-                throw e.getTargetException();
-            }
-        } catch (SqlTemplateException e) {
-            throw e;
-        } catch (Throwable t) {
-            throw new SqlTemplateException("Failed to create a new instance of %s.".formatted(constructor.getDeclaringClass().getSimpleName()), t);
         }
     }
 
