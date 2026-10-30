@@ -133,7 +133,7 @@ class RepeatsTest {
         assertEquals(1, advisories.size(), advisories.toString());
         assertTrue(advisories.getFirst().text().contains("ran " + transactions + " times, "), advisories.toString());
         // Past the transactions counted apart, whether each held the execution alone is not known, so not claimed.
-        assertTrue(advisories.getFirst().text().contains("in " + transactions + " transactions;"),
+        assertTrue(advisories.getFirst().text().contains("in " + transactions + " transactions.\n"),
                 advisories.toString());
         assertFalse(advisories.getFirst().text().contains("of their own"), advisories.toString());
     }
@@ -147,7 +147,7 @@ class RepeatsTest {
             repeats.observed(transaction, 2_000_000, 3_000_000);
         }
         var text = repeats.advisories(false).getFirst().text();
-        assertTrue(text.contains("in 10 transactions;"), text);
+        assertTrue(text.contains("in 10 transactions.\n"), text);
         assertFalse(text.contains("of their own"), text);
     }
 
@@ -168,9 +168,9 @@ class RepeatsTest {
         }
         var spreadText = spread.advisories(false).getFirst().text();
         assertTrue(spreadText.contains(", in 10 transactions of their own, spread over "), spreadText);
-        assertTrue(spreadText.contains(" with work outside the database between them; collect the rows"), spreadText);
+        assertTrue(spreadText.contains(" with work outside the database between them.\nfix: collect the rows"), spreadText);
         var filledText = filled.advisories(false).getFirst().text();
-        assertTrue(filledText.contains(", in 10 transactions of their own; the overloads"), filledText);
+        assertTrue(filledText.contains(", in 10 transactions of their own.\nfix: the overloads"), filledText);
         assertFalse(filledText.contains("outside the database"), filledText);
     }
 
@@ -185,7 +185,7 @@ class RepeatsTest {
         }
         var text = repeats.advisories(false).getFirst().text();
         assertTrue(text.startsWith("findById of Owner ran 10 times, "), text);
-        assertTrue(text.contains(", in 10 transactions of their own; findAllById over the keys reads the rows"), text);
+        assertTrue(text.contains(", in 10 transactions of their own.\nfix: findAllById over the keys reads the rows"), text);
         assertFalse(text.contains("outside the database"), text);
     }
 
@@ -200,7 +200,7 @@ class RepeatsTest {
         var text = repeats.advisories(true).getFirst().text();
         assertTrue(text.startsWith("upsert of Owner ran 10 times, "), text);
         assertTrue(text.contains("avoids the writes, and the generated key value each upsert takes even where it "
-                + "updates. Otherwise, the overloads that take a list send the rows as one batch."), text);
+                + "updates\nor: the overloads that take a list send the rows as one batch."), text);
     }
 
     @Test
@@ -219,7 +219,7 @@ class RepeatsTest {
         var advisories = perTransaction(update, Advice.STATEMENT_COST_NANOS, true).advisories(false);
         assertEquals(1, advisories.size(), advisories.toString());
         var text = advisories.getFirst().text();
-        assertTrue(text.contains("costs more than its round trip, and it runs once per transaction, so look at it"),
+        assertTrue(text.contains("\ncost: at 10 ms each the statement itself costs more than its round trip, and it runs once per transaction, so look at the statement."),
                 text);
         assertFalse(text.contains("as one batch"), text);
     }

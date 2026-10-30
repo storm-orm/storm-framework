@@ -154,8 +154,8 @@ public class IndexDemandsTest {
         assert demands != null;
         var advice = demands.advise(catalog());
         assertEquals(1, advice.size(), advice.toString());
-        assertTrue(advice.getFirst().contains("starts with last_name, which"), advice.getFirst());
-        assertTrue(advice.getFirst().contains("customer(last_name) finds"), advice.getFirst());
+        assertTrue(advice.getFirst().contains("starts with last_name, so"), advice.getFirst());
+        assertTrue(advice.getFirst().contains("\nindex: customer(last_name) finds"), advice.getFirst());
     }
 
     @Test
@@ -201,12 +201,13 @@ public class IndexDemandsTest {
     public void aGroupedReadOnAnEnumIsAdvisedTheIndexThatReadsInGroupOrderFirst() throws SQLException {
         var advice = adviceOf(demandsOn("owner", "source", Kind.EQUALITY, "city", Kind.GROUP, "last_name",
                 Kind.GROUP));
-        assertEquals("no index on owner starts with source, which the statement filters owner by and groups by city, "
-                + "last_name, so the database reads the table in full and sorts the matching rows into groups; source "
-                + "is an ENUM, with few distinct values, so an index on it alone is often not chosen. owner(source, "
-                + "city, last_name) finds the matching rows and reads them already grouped, without a temporary table "
-                + "or sort, and reads the index alone when it also holds the columns the select reads; owner(source) "
-                + "finds them directly where the condition selects few of them. See "
+        assertEquals("no index on owner starts with source, so the database reads the table in full and sorts the "
+                + "matching rows into groups.\n"
+                + "index: owner(source, city, last_name) finds the matching rows and reads them already grouped, "
+                + "without a temporary table or sort\n"
+                + "covering: it reads the index alone when it also holds the columns the select reads\n"
+                + "or: owner(source) finds them directly where the condition selects few of them; source is an ENUM, "
+                + "with few distinct values, so an index on it alone is often not chosen.\nsee: "
                 + "https://orm.st/docs/advice#missing-index", advice);
     }
 
@@ -215,14 +216,14 @@ public class IndexDemandsTest {
         // A count reads no column: the grouped index holds everything the select reads.
         var advice = adviceOf(demandsOn("owner", "source", Kind.EQUALITY, "city", Kind.GROUP, "", Kind.WHOLE_SELECT));
         assertTrue(advice.contains("owner(source, city) finds the matching rows and reads them already grouped, without "
-                + "a temporary table or sort, and reads the index alone, since it holds every column the select reads; "
-                + "owner(source)"), advice);
+                + "a temporary table or sort\ncovering: it reads the index alone, since it holds every column the "
+                + "select reads\nor: owner(source)"), advice);
         // A select of columns past the index names them apart, as an appendix the reader weighs.
         advice = adviceOf(demandsOn("owner", "source", Kind.EQUALITY, "city", Kind.GROUP, "first_name",
                 Kind.WHOLE_SELECT, "last_name", Kind.WHOLE_SELECT));
         assertTrue(advice.contains("owner(source, city) finds the matching rows and reads them already grouped, without "
-                + "a temporary table or sort; with first_name, last_name appended it reads the index alone, since it "
-                + "then holds every column the select reads; owner(source)"), advice);
+                + "a temporary table or sort\ncovering: with first_name, last_name appended it reads the index alone, "
+                + "since it then holds every column the select reads\nor: owner(source)"), advice);
     }
 
     @Test
@@ -230,12 +231,13 @@ public class IndexDemandsTest {
         var demands = demandsOn("note", "pet_id", Kind.EQUALITY, "title", Kind.GROUP, "body", Kind.WHOLE_SELECT);
         var unlimited = demands.advise(catalog(0)).getFirst();
         assertTrue(unlimited.contains("note(pet_id, title) finds the matching rows and reads them already grouped, "
-                + "without a temporary table or sort; with body appended it reads the index alone, since it then holds "
-                + "every column the select reads; note(pet_id)"), unlimited);
+                + "without a temporary table or sort\ncovering: with body appended it reads the index alone, since it "
+                + "then holds every column the select reads\nor: note(pet_id)"), unlimited);
         var limited = demands.advise(catalog(3_072)).getFirst();
         assertTrue(limited.matches("(?s).*note\\(pet_id, title\\) finds the matching rows and reads them already "
-                + "grouped, without a temporary table or sort; with body appended it would read the index alone, but a "
-                + "key of about \\d+ bytes passes the 3072 bytes the database allows a key; note\\(pet_id\\).*"), limited);
+                + "grouped, without a temporary table or sort\ncovering: with body appended it would read the index "
+                + "alone, but a key of about \\d+ bytes passes the 3072 bytes the database allows a key\n"
+                + "or: note\\(pet_id\\).*"), limited);
     }
 
     @Test
@@ -244,39 +246,41 @@ public class IndexDemandsTest {
         var limited = demands.advise(catalog(3_072)).getFirst();
         assertTrue(limited.matches("(?s).*note\\(pet_id, title, body\\) finds the matching rows and reads them already "
                 + "grouped, without a temporary table or sort, though its key of about \\d+ bytes passes the 3072 bytes "
-                + "the database allows a key, so a column must be shortened or left out; note\\(pet_id\\).*"), limited);
+                + "the database allows a key, so a column must be shortened or left out\nor: note\\(pet_id\\).*"), limited);
         assertFalse(demands.advise(catalog(0)).getFirst().contains("passes"));
     }
 
     @Test
     public void aGroupedReadOnItsEqualityColumnsAloneIsAdvisedOneIndex() throws SQLException {
         var advice = adviceOf(demandsOn("owner", "city", Kind.EQUALITY, "city", Kind.GROUP));
-        assertTrue(advice.contains("; an index on owner(city) finds them directly"), advice);
+        assertTrue(advice.contains("\nindex: owner(city) finds them directly"), advice);
     }
 
     @Test
     public void aGroupedReadWithoutAFilterIsAdvisedTheIndexThatReadsInGroupOrder() throws SQLException {
         var advice = adviceOf(demandsOn("owner", "city", Kind.GROUP, "last_name", Kind.GROUP));
-        assertTrue(advice.startsWith("no index on owner starts with city or last_name, which the statement groups "
-                + "owner by, so the database sorts every row into groups; an index on owner(city, last_name) reads "
-                + "the rows already grouped, without a temporary table or sort"), advice);
+        assertTrue(advice.startsWith("no index on owner starts with city or last_name, so the database sorts every row "
+                + "into groups.\nindex: owner(city, last_name) reads the rows already grouped, without a temporary "
+                + "table or sort"), advice);
     }
 
     @Test
     public void aRangeAndALimitedOrderOnAnotherColumnAreAdvisedBothIndexesWithWhenEachWins() throws SQLException {
         var advice = adviceOf(demandsOn("pet", "type_id", Kind.EQUALITY, "birth_date", Kind.RANGE, "name",
                 Kind.ORDER));
-        assertTrue(advice.contains("; pet(type_id, birth_date) finds the matching rows directly, then sorts them, "
-                + "which is best where the range selects few of them; pet(type_id, name) reads the rows in name order, "
+        assertTrue(advice.contains("\nindex: pet(type_id, birth_date) finds the matching rows directly, then sorts "
+                + "them, which is best where the range selects few of them\nor: pet(type_id, name) reads the rows in "
+                + "name order, "
                 + "checks the range on each and stops at the limit, which is best where the range selects many of "
-                + "them. See"), advice);
+                + "them.\nsee:"), advice);
     }
 
     @Test
     public void aBooleanConditionAloneSaysAnIndexOnItIsOftenNotChosen() throws SQLException {
         var advice = adviceOf(demandsOn("owner", "active", Kind.EQUALITY));
-        assertTrue(advice.contains("; active is a BOOLEAN, with few distinct values, so an index on it alone is often "
-                + "not chosen. an index on owner(active) finds them directly"), advice);
+        assertTrue(advice.contains("\nindex: owner(active) finds them directly where the condition selects few of "
+                + "them; active is a BOOLEAN, with few distinct values, so an index on it alone is often not chosen."),
+                advice);
     }
 
     @Test
@@ -298,10 +302,10 @@ public class IndexDemandsTest {
         index("CREATE INDEX owner_source ON owner (source)");
         var advice = adviceOf(demandsOn("owner", "source", Kind.EQUALITY, "city", Kind.GROUP, "last_name",
                 Kind.GROUP));
-        assertEquals("no index on owner continues source with city, last_name, which the statement groups owner by, so "
-                + "the database sorts the matching rows into groups; an index on owner(source, city, last_name), "
-                + "extending OWNER_SOURCE, finds the matching rows and reads them already grouped, without a temporary "
-                + "table or sort, and reads the index alone when it also holds the columns the select reads. See "
+        assertEquals("no index on owner continues source with city, last_name, so the database sorts the matching rows "
+                + "into groups.\nindex: owner(source, city, last_name), extending OWNER_SOURCE, finds the matching rows "
+                + "and reads them already grouped, without a temporary table or sort\ncovering: it reads the index "
+                + "alone when it also holds the columns the select reads.\nsee: "
                 + "https://orm.st/docs/advice#missing-index", advice);
     }
 
@@ -317,10 +321,9 @@ public class IndexDemandsTest {
         index("CREATE INDEX pet_type ON pet (type_id)");
         var advice = adviceOf(demandsOn("pet", "type_id", Kind.EQUALITY, "name", Kind.ORDER, "birth_date",
                 Kind.ORDER));
-        assertTrue(advice.startsWith("no index on pet continues type_id with name, birth_date, which the statement "
-                + "sorts its limited result by, so the database sorts every matching row before it returns the first "
-                + "ones; an index on pet(type_id, name, birth_date), extending PET_TYPE, reads the matching rows in "
-                + "order and stops at the limit."), advice);
+        assertTrue(advice.startsWith("no index on pet continues type_id with name, birth_date, so the database sorts "
+                + "every matching row before it returns the first ones.\nindex: pet(type_id, name, birth_date), "
+                + "extending PET_TYPE, reads the matching rows in order and stops at the limit."), advice);
         index("CREATE INDEX pet_type_reversed ON pet (type_id, birth_date, name)");
         assertEquals(1, demandsOn("pet", "type_id", Kind.EQUALITY, "name", Kind.ORDER, "birth_date", Kind.ORDER)
                 .advise(catalog()).size());
@@ -339,10 +342,10 @@ public class IndexDemandsTest {
     @Test
     public void aJoinOnTheTableIsNamedAsOne() throws SQLException {
         var advice = adviceOf(demandsOn("pet", "type_id", Kind.JOIN));
-        assertTrue(advice.startsWith("no index on pet starts with type_id, which the statement joins pet on, so the "
-                + "database reads the table in full to find the joined rows; an index on pet(type_id)"), advice);
+        assertTrue(advice.startsWith("no index on pet starts with type_id, so the database reads the table in full to "
+                + "find the joined rows.\nindex: pet(type_id)"), advice);
         var both = adviceOf(demandsOn("pet", "type_id", Kind.JOIN, "name", Kind.EQUALITY));
-        assertTrue(both.contains("which the statement filters or joins pet by"), both);
+        assertTrue(both.contains("so the database reads the table in full to find the matching rows"), both);
     }
 
     @Test
@@ -351,7 +354,7 @@ public class IndexDemandsTest {
         var advice = adviceOf(demandsOn("owner", "source", Kind.EQUALITY, "city", Kind.GROUP, "city", Kind.ORDER,
                 "first_name", Kind.SELECT));
         assertTrue(advice.contains("owner(source, city) finds the matching rows and reads them already grouped and in "
-                + "the order the ORDER BY names, without a temporary table or sort; with first_name appended it reads "
-                + "the index alone where the select reads no other columns"), advice);
+                + "the order the ORDER BY names, without a temporary table or sort\ncovering: with first_name appended "
+                + "it reads the index alone where the select reads no other columns"), advice);
     }
 }

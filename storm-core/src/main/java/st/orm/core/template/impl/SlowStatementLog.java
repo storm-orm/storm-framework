@@ -40,6 +40,7 @@ import st.orm.core.template.impl.StatementListener.Handle;
 import st.orm.spi.QueryContext;
 import st.orm.spi.QueryContext.ExecutionKind;
 import st.orm.spi.SqlCommenter;
+import st.orm.spi.SqlOperation;
 import st.orm.spi.StatementOrigin;
 
 /**
@@ -653,7 +654,7 @@ public final class SlowStatementLog {
             rendered.append(System.lineSeparator()).append('\t').append(facts);
         }
         for (var advisory : advisories) {
-            rendered.append(System.lineSeparator()).append("\tadvice: ").append(advisory);
+            rendered.append(Advice.lines(advisory));
         }
         return rendered.toString();
     }
@@ -675,14 +676,20 @@ public final class SlowStatementLog {
         // The method that runs the transaction is still on the stack while the transaction completes.
         boolean idle = threshold != 0 && idleNanos >= threshold
                 && !AdviceAcceptance.accepts(Advice.IDLE_TRANSACTION, 0, null);
-        String idleAdvisory = idle ? idleAdvisory(heldNanos, record.busyNanos(), idleNanos,
-                record.lockedIdleNanos(now), record.wrote()) : null;
+        long lockedIdleNanos = record.lockedIdleNanos(now);
+        // Idle time is worth acting on where it is a fair part of the hold, or where the row locks were held through
+        // enough of it to keep other transactions waiting; below that, the statements are the cost, and the
+        // transaction is reported at TRACE for a reader looking for it.
+        boolean worth = idle && worthActingOn(heldNanos, idleNanos, lockedIdleNanos);
+        var gaps = idle ? record.gaps(now) : TransactionRecord.Gaps.NONE;
+        String idleAdvisory = worth ? idleAdvisory(heldNanos, idleNanos, lockedIdleNanos,
+                record.wrote(), gaps) : null;
         // The advice log's block carries the idle advice beside what the transaction repeated, or alone.
         var advisories = record.advisories();
         if (!advisories.isEmpty() || idleAdvisory != null) {
             AdviceLog.onTransaction(advisories, idleAdvisory, record.beganAt());
         }
-        if (!idle || !LOGGER.isWarnEnabled()) {
+        if (!idle || !(worth ? LOGGER.isWarnEnabled() : LOGGER.isTraceEnabled())) {
             return;
         }
         var budget = transactions;
@@ -694,14 +701,143 @@ public final class SlowStatementLog {
         // The site that began the transaction where it was walked; otherwise the method that runs the transaction
         // is still on the stack while a blocking transaction completes.
         var callSite = record.beganAt() != null ? record.beganAt() : CallSiteCapture.callSite();
-        LOGGER.warn(renderTransaction(heldNanos, record.busyNanos(), idleNanos, record.lockedIdleNanos(now),
-                record.statements(), record.wrote(), record.fromFirstStatement(), callSite, suppressed));
+        String line = renderTransaction(heldNanos, record.busyNanos(), idleNanos, lockedIdleNanos,
+                record.statements(), record.wrote(), record.fromFirstStatement(), gaps, callSite, suppressed);
+        if (worth) {
+            LOGGER.warn(line);
+        } else {
+            LOGGER.trace(line);
+        }
     }
 
-    /** Renders the idle advice of a transaction, claiming the row locks of its writes for the idle time after the first. */
-    static String idleAdvisory(long heldNanos, long busyNanos, long idleNanos, long lockedIdleNanos, boolean wrote) {
-        return Advice.IDLE_TRANSACTION.format(millis(heldNanos), millis(busyNanos), millis(idleNanos),
-                wrote ? ", and the row locks of its writes for " + millis(lockedIdleNanos) + " of it" : "");
+    /**
+     * Returns whether a transaction's idle time is worth acting on: at least {@link #IDLE_SHARE_PERCENT} percent of
+     * the time it held its connection, or row locks held for at least {@link #LOCKED_IDLE_NANOS} of it, which other
+     * transactions pay for however small the share.
+     */
+    static boolean worthActingOn(long heldNanos, long idleNanos, long lockedIdleNanos) {
+        return idleNanos * 100 >= heldNanos * IDLE_SHARE_PERCENT || lockedIdleNanos >= LOCKED_IDLE_NANOS;
+    }
+
+    /** The share of the hold, in percent, from which idle time is worth acting on. */
+    static final long IDLE_SHARE_PERCENT = 25;
+
+    /** The time row locks are held while idle from which idle time is worth acting on, whatever its share. */
+    static final long LOCKED_IDLE_NANOS = 1_000_000_000L;
+
+    /**
+     * Renders the idle advice of a transaction, one fact per line: how long it held its connection and how much of
+     * that was idle, where, with the row locks held through it; the longest gap between the statements and how many
+     * there were; and the remedy that fits where the time went. Time at the edges, before the first statement or
+     * after the last, is work that can move out of the transaction; time between the statements is work the reads
+     * feed and the writes may depend on, which moves out only by splitting the transaction. A transaction that only
+     * reads is split by reading inside it and computing after it returns; reading without it is offered only where
+     * the statements are far enough apart, {@link #BORROW_WORTH_NANOS} on average, for a connection borrowed per
+     * statement to cost less than the one held between them.
+     */
+    static String idleAdvisory(long heldNanos,
+                               long idleNanos,
+                               long lockedIdleNanos,
+                               boolean wrote,
+                               TransactionRecord.Gaps gaps) {
+        String remedy;
+        if (gaps.betweenNanos() <= gaps.beforeNanos() + gaps.afterNanos()) {
+            remedy = "move that work before the transaction or after it commits";
+        } else if (wrote) {
+            remedy = "where the writes need not see the reads of this transaction, do the reads and that work first, "
+                    + "then write in a short transaction of its own";
+        } else if (gaps.betweenNanos() / Math.max(1, gaps.statements() - 1) >= BORROW_WORTH_NANOS) {
+            remedy = "read what the work needs inside the transaction and do the work after it returns; where the "
+                    + "reads need not see one state of the database, reading without the transaction holds a "
+                    + "connection only while each statement runs";
+        } else {
+            remedy = "read what the work needs inside the transaction and do the work after it returns";
+        }
+        long floor = Math.max(TransactionRecord.GAP_FLOOR_NANOS,
+                (gaps.beforeNanos() + gaps.betweenNanos() + gaps.afterNanos()) / PART_SHARE);
+        boolean before = gaps.beforeNanos() >= floor;
+        boolean between = gaps.betweenNanos() >= floor;
+        boolean after = gaps.afterNanos() >= floor;
+        int parts = (before ? 1 : 0) + (between ? 1 : 0) + (after ? 1 : 0);
+        String where = "";
+        var lines = new StringBuilder();
+        if (parts == 1) {
+            where = before ? " before its first statement" : after ? " after its last statement" : " between statements";
+        } else if (parts > 1) {
+            var named = new ArrayList<String>(3);
+            if (before) {
+                named.add(millis(gaps.beforeNanos()) + " before its first statement");
+            }
+            if (between) {
+                named.add(millis(gaps.betweenNanos()) + " between statements");
+            }
+            if (after) {
+                named.add(millis(gaps.afterNanos()) + " after its last statement");
+            }
+            lines.append("\nidle: ").append(String.join("; ", named));
+        }
+        if (between) {
+            String longest = longestGap(gaps);
+            if (!longest.isEmpty()) {
+                lines.append("\n").append(longest);
+            }
+        }
+        return Advice.IDLE_TRANSACTION.format(millis(heldNanos), millis(idleNanos), where,
+                wrote ? ", with its row locks held for " + millis(lockedIdleNanos) + " of that" : "", lines, remedy);
+    }
+
+    /**
+     * The mean time between a read-only transaction's statements from which reading without the transaction is
+     * advised: a connection borrowed from the pool per statement can cost a validation query and a reset of its
+     * settings, each a round trip, which a gap this long outweighs many times.
+     */
+    static final long BORROW_WORTH_NANOS = 10_000_000L;
+
+    /** The part of a transaction's idle time, one in this many, below which a part is not named. */
+    private static final long PART_SHARE = 10;
+
+    /**
+     * Describes the longest gap between the statements and how many reached the floor: one gap is one step to look
+     * at, many are a loop whose work adds up, and none, time spread over gaps too short to count, which is the work
+     * of reading the results. The gap is named from the statement before it, where the work began, to the one that
+     * ended it, so the reader has the range of code the work ran in.
+     */
+    private static String longestGap(TransactionRecord.Gaps gaps) {
+        String floor = millis(TransactionRecord.GAP_FLOOR_NANOS);
+        if (gaps.gaps() == 0) {
+            return "idle gaps: all under " + floor;
+        }
+        if (gaps.longestBefore() == null || gaps.longestAfter() == null) {
+            return "";
+        }
+        String before = end(gaps.longestBefore(), gaps.longestBeforeSite());
+        String after = end(gaps.longestAfter(), gaps.longestSite());
+        String range = "after " + before + ", before " + (after.equals(before) ? "another of the same" : after);
+        if (gaps.gaps() == 1) {
+            return "longest idle: " + millis(gaps.longestNanos()) + ", " + range + ", the only gap of " + floor
+                    + " or more";
+        }
+        return "longest idle: " + millis(gaps.longestNanos()) + ", " + range + ", of " + gaps.gaps() + " gaps of "
+                + floor + " or more";
+    }
+
+    /**
+     * Names one end of a gap: its call site where it names the repository method, which names the entity too;
+     * otherwise the statement, at its call site where it was walked.
+     */
+    private static String end(QueryContext context, @Nullable String site) {
+        if (site != null && site.contains(" -> ")) {
+            return site;
+        }
+        return statement(context) + (site != null ? " at " + site : "");
+    }
+
+    /** Names a statement around a gap: the SELECT of Slot, or the SELECT where it reads no entity. */
+    private static String statement(QueryContext context) {
+        String operation = context.operation() == SqlOperation.UNDEFINED ? "statement" : context.operation().name();
+        return context.dataType()
+                .map(type -> "the %s of %s".formatted(operation, type.getSimpleName()))
+                .orElseGet(() -> "the " + operation);
     }
 
     /**
@@ -717,6 +853,7 @@ public final class SlowStatementLog {
                                     int statements,
                                     boolean wrote,
                                     boolean fromFirstStatement,
+                                    TransactionRecord.Gaps gaps,
                                     @Nullable String callSite,
                                     int suppressed) {
         var rendered = new StringBuilder("SQL slow (transaction): held its connection ").append(millis(heldNanos));
@@ -732,8 +869,7 @@ public final class SlowStatementLog {
         if (suppressed > 0) {
             rendered.append(System.lineSeparator()).append("\t+").append(suppressed).append(" suppressed");
         }
-        rendered.append(System.lineSeparator()).append("\tadvice: ")
-                .append(idleAdvisory(heldNanos, busyNanos, idleNanos, lockedIdleNanos, wrote));
+        rendered.append(Advice.lines(idleAdvisory(heldNanos, idleNanos, lockedIdleNanos, wrote, gaps)));
         return rendered.toString();
     }
 

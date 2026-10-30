@@ -159,9 +159,53 @@ class IdleTransactionLogTest {
         // treats as framework, so the frame it finds is the test runner's.
         assertTrue(Pattern.compile(", [A-Za-z0-9_$.]+:\\d+" + System.lineSeparator()).matcher(line).find(), line);
         assertTrue(line.contains(System.lineSeparator() + "\tadvice: the transaction held its connection "), line);
-        assertTrue(line.contains(" between them it held the connection while the application did other work; "
-                + "move that work before the transaction or after it commits. See https://orm.st/docs/advice"
-                + "#idle-transaction"), line);
+        // The work sat between the reads, in one gap, which no move before or after the transaction takes out.
+        assertTrue(Pattern.compile(" ms of it idle between statements\\.\\R\t\tlongest idle: [0-9.]+ ms, after the "
+                + "SELECT, before the SELECT at [A-Za-z0-9_$.]+:\\d+, the only gap of 1\\.0 ms or more\\R\t\tfix: read "
+                + "what the work needs inside the transaction and do the work after it returns; where the reads need not "
+                + "see one state of the database, reading without the transaction holds a connection only while each "
+                + "statement runs\\.\\R\t\tsee: https://orm\\.st/docs/advice#idle-transaction").matcher(line).find(), line);
+    }
+
+    @Test
+    void workAfterTheLastStatementIsToMoveAfterTheCommit() {
+        var lines = capture(() -> transaction(REQUIRED_OPTIONS, () -> {
+            read();
+            otherWork();
+        }));
+        assertEquals(1, lines.size(), lines.toString());
+        var line = lines.getFirst();
+        assertTrue(Pattern.compile(" ms of it idle after its last statement\\.\\R\t\tfix: move that work before the "
+                + "transaction or after it commits\\.").matcher(line).find(), line);
+    }
+
+    @Test
+    void gapsSpreadBetweenWritesNameTheLongestAndHowManyThereWere() {
+        var lines = capture(() -> transaction(REQUIRED_OPTIONS, () -> {
+            read();
+            sleep(30);
+            write();
+            otherWork();
+            write();
+            sleep(30);
+            read();
+        }));
+        assertEquals(1, lines.size(), lines.toString());
+        var line = lines.getFirst();
+        assertTrue(Pattern.compile(" ms of it idle between statements, with its row locks held for [0-9.]+ ms of that\\."
+                + "\\R\t\tlongest idle: [0-9.]+ ms, after the INSERT, before the INSERT at [A-Za-z0-9_$.]+:\\d+, of 3 gaps "
+                + "of 1\\.0 ms or more\\R\t\tfix: where the writes need not see the reads of this transaction, do the "
+                + "reads and that work first, then write in a short transaction of its own\\.").matcher(line).find(),
+                line);
+    }
+
+    private static void sleep(long millis) {
+        try {
+            Thread.sleep(millis);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new IllegalStateException(e);
+        }
     }
 
     @Test
@@ -225,14 +269,64 @@ class IdleTransactionLogTest {
     @Test
     void theLineNamesEveryPartItCanCarry() {
         var line = SlowStatementLog.renderTransaction(2_300_000_000L, 120_000_000L, 2_180_000_000L,
-                2_000_000_000L, 1, true, true, null, 3);
+                2_000_000_000L, 1, true, true, TransactionRecord.Gaps.NONE, null, 3);
         assertEquals("SQL slow (transaction): held its connection 2300 ms from its first statement, 120 ms in its "
                 + "statement, wrote" + System.lineSeparator()
                 + "	+3 suppressed" + System.lineSeparator()
-                + "	advice: the transaction held its connection 2300 ms and its statements spent 120 ms of it; for "
-                + "2180 ms between them it held the connection while the application did other work, and the row "
-                + "locks of its writes for 2000 ms of it; move that work before the transaction or after it "
-                + "commits. See https://orm.st/docs/advice#idle-transaction", line);
+                + "	advice: the transaction held its connection 2300 ms, 2180 ms of it idle, with its row locks held "
+                + "for 2000 ms of that." + System.lineSeparator()
+                + "		fix: move that work before the transaction or after it commits." + System.lineSeparator() + "		see: "
+                + "https://orm.st/docs/advice#idle-transaction", line);
+    }
+
+    @Test
+    void everyPartOfTheIdleTimeIsNamedWithItsFigure() {
+        // A part under a tenth of the idle time would be left out.
+        var gaps = new TransactionRecord.Gaps(3, 300_000_000L, 800_000_000L, 165_000_000L, 412, 420_000_000L,
+                null, null, null, null);
+        var advisory = SlowStatementLog.idleAdvisory(1_400_000_000L, 1_265_000_000L, 0, false, gaps);
+        assertEquals("the transaction held its connection 1400 ms, 1265 ms of it idle.\n"
+                + "idle: 300 ms before its first statement; 800 ms between statements; 165 ms after its last statement\n"
+                + "fix: read what the work needs inside the transaction and do the work after it returns; where the "
+                + "reads need not see one state of the database, reading without the transaction holds a connection "
+                + "only while each statement runs.\nsee: https://orm.st/docs/advice#idle-transaction", advisory);
+    }
+
+    @Test
+    void idleTimeIsWorthActingOnFromAQuarterOfTheHoldOrASecondOfIdleRowLocks() {
+        // The production planner: 1.26 s idle of 9.0 s, 0.19 s of it with row locks.
+        assertFalse(SlowStatementLog.worthActingOn(9_000_000_000L, 1_260_000_000L, 190_000_000L));
+        // The cold start: 37.3 s idle of 96 s.
+        assertTrue(SlowStatementLog.worthActingOn(96_000_000_000L, 37_300_000_000L, 700_000_000L));
+        // A long write transaction whose idle share is small, but whose row locks were held idle for a second.
+        assertTrue(SlowStatementLog.worthActingOn(20_000_000_000L, 1_200_000_000L, 1_000_000_000L));
+    }
+
+    @Test
+    void idleTimeBelowTheFloorGoesToTrace() {
+        SlowStatementLog.transactionThreshold(Duration.ofMillis(50));
+        // 120 ms of other work against 600 ms in the database: a sixth of the hold, read only.
+        var lines = capture(() -> transaction(REQUIRED_OPTIONS, () -> {
+            read();
+            otherWork();
+            sleepInDatabase();
+            sleepInDatabase();
+            sleepInDatabase();
+            sleepInDatabase();
+            sleepInDatabase();
+        }));
+        assertEquals(List.of(), lines);
+    }
+
+    @Test
+    void statementsCloseTogetherAreNotAdvisedAConnectionBorrowedForEach() {
+        // 300 statements a millisecond apart: a borrow per statement would cost about what the held connection did.
+        var gaps = new TransactionRecord.Gaps(301, 0, 300_000_000L, 0, 0, 0, null, null, null, null);
+        var advisory = SlowStatementLog.idleAdvisory(400_000_000L, 300_000_000L, 0, false, gaps);
+        assertTrue(advisory.endsWith("idle between statements.\nidle gaps: all under 1.0 ms\nfix: read what the work "
+                + "needs inside the transaction and do the work after it returns.\n"
+                + "see: https://orm.st/docs/advice#idle-transaction"),
+                advisory);
     }
 
     @Test
@@ -244,8 +338,7 @@ class IdleTransactionLogTest {
         assertEquals(1, lines.size(), lines.toString());
         var line = lines.getFirst();
         assertTrue(line.contains(" ms in its statement, wrote, "), line);
-        assertTrue(line.contains("it held the connection while the application did other work, and the row locks "
-                + "of its writes for "), line);
+        assertTrue(line.contains(" ms of it idle after its last statement, with its row locks held for "), line);
         // The work followed the write, so the locks were held for all of it.
         assertTrue(lockedIdleMillis(line) >= 100, line);
     }
@@ -266,7 +359,7 @@ class IdleTransactionLogTest {
 
     /** Returns the idle time the line claims the row locks for, in milliseconds. */
     private static double lockedIdleMillis(String line) {
-        var matcher = Pattern.compile("the row locks of its writes for ([0-9.]+) ms of it").matcher(line);
+        var matcher = Pattern.compile("with its row locks held for ([0-9.]+) ms of that").matcher(line);
         assertTrue(matcher.find(), line);
         return Double.parseDouble(matcher.group(1));
     }

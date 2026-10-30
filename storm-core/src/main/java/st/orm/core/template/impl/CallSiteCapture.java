@@ -265,20 +265,27 @@ public final class CallSiteCapture {
         return CALL_SITE_WALKER.walk(frames -> {
             String repository = null;
             String builtIn = null;
+            String proxied = null;
             String plumbing = null;
             for (var iterator = frames.iterator(); iterator.hasNext(); ) {
                 var frame = iterator.next();
+                // The proxy a repository is reached through dispatches the call; the method it dispatches to is
+                // the repository's frame, and the proxy's would shadow it as the outermost one. The repository the
+                // proxy stands for names the built-in call it dispatched, PetRepository.findAllByRef.
+                if (Proxy.isProxyClass(frame.getDeclaringClass())) {
+                    String name = PROXIED_REPOSITORY.get(frame.getDeclaringClass());
+                    if (!name.isEmpty()) {
+                        proxied = name;
+                    }
+                    continue;
+                }
                 if (isInfrastructure(frame.getClassName())) {
                     // The outermost frame of Storm's own repository implementation names the built-in call the
                     // application made, such as findById, where no repository of the application's is passed.
                     if (isBuiltInRepositoryCall(frame)) {
                         builtIn = frame.getMethodName();
+                        proxied = null;
                     }
-                    continue;
-                }
-                // The proxy a repository is reached through dispatches the call; the method it dispatches to is
-                // the repository's frame, and the proxy's would shadow it as the outermost one.
-                if (Proxy.isProxyClass(frame.getDeclaringClass())) {
                     continue;
                 }
                 if (REPOSITORY.get(frame.getDeclaringClass())) {
@@ -301,11 +308,37 @@ public final class CallSiteCapture {
                     }
                     continue;
                 }
-                return new WalkedFrames(format(frame), repository != null ? repository : builtIn, plumbing);
+                return new WalkedFrames(format(frame), repository != null ? repository : builtIn(builtIn, proxied),
+                        plumbing);
             }
-            return new WalkedFrames(null, repository != null ? repository : builtIn, plumbing);
+            return new WalkedFrames(null, repository != null ? repository : builtIn(builtIn, proxied), plumbing);
         });
     }
+
+    /** Names a built-in call by the repository the application called it on where a proxy stood for one. */
+    private static @Nullable String builtIn(@Nullable String method, @Nullable String repository) {
+        return method == null || repository == null ? method : repository + "." + method;
+    }
+
+    /**
+     * The simple name of the repository a proxy class stands for, the first interface of it that is a repository,
+     * or the empty string for a proxy of anything else.
+     */
+    private static final ClassValue<String> PROXIED_REPOSITORY = new ClassValue<>() {
+        @Override
+        protected String computeValue(Class<?> type) {
+            try {
+                for (var implemented : type.getInterfaces()) {
+                    if (!isStorm(implemented.getName()) && implementsRepository(implemented)) {
+                        return implemented.getSimpleName();
+                    }
+                }
+            } catch (LinkageError | SecurityException e) {
+                // A proxy whose interfaces do not resolve stands for no repository the walk can name.
+            }
+            return "";
+        }
+    };
 
     /**
      * Returns whether the frame is a method of Storm's own repository implementation that an application calls, such
