@@ -97,7 +97,7 @@ public class FetchSizeTest {
                 environment,
                 unsafe -> {
                     try {
-                        return connection.prepareStatement(sql);
+                        return StatementLease.of(connection.prepareStatement(sql));
                     } catch (SQLException e) {
                         throw new PersistenceException(e);
                     }

@@ -87,8 +87,8 @@ public final class PreparedStatementTemplateImpl implements PreparedStatementTem
 
     @FunctionalInterface
     private interface TemplateProcessor {
-        PreparedStatement process(Sql sql,
-                                  boolean unsafe) throws SQLException;
+        StatementLease process(Sql sql,
+                               boolean unsafe) throws SQLException;
     }
 
     /**
@@ -411,8 +411,10 @@ public final class PreparedStatementTemplateImpl implements PreparedStatementTem
                     connectionProvider.releaseConnection(connection, dataSource, transactionContext);
                 }
             }
-            return new ReleasingPreparedStatement(preparedStatement, connection, dataSource, transactionContext,
-                    connectionProvider);
+            // The driver's statement itself: Storm closes the lease wherever it closes the statement, which returns
+            // the connection.
+            return StatementLease.releasing(preparedStatement,
+                    () -> connectionProvider.releaseConnection(connection, dataSource, transactionContext));
         };
     }
 
@@ -461,7 +463,7 @@ public final class PreparedStatementTemplateImpl implements PreparedStatementTem
                             getExceptionTransformer(sql, strategies.exceptionMapper(), transactionTemplateProvider)));
                 }
                 success = true;
-                return preparedStatement;
+                return StatementLease.of(preparedStatement);
             } finally {
                 if (!success && preparedStatement != null) {
                     try {
@@ -810,6 +812,8 @@ public final class PreparedStatementTemplateImpl implements PreparedStatementTem
     @Override
     public PreparedStatement query(TemplateString template) throws SQLException {
         var sql = sqlTemplate().process(template);
-        return templateProcessor.process(sql, true);    // We allow unsafe queries in direct JDBC mode.
+        // We allow unsafe queries in direct JDBC mode. The application closes the statement, which returns its
+        // connection.
+        return templateProcessor.process(sql, true).forApplication();
     }
 }
