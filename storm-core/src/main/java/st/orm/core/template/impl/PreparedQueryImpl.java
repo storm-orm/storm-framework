@@ -35,12 +35,14 @@ final class PreparedQueryImpl extends QueryImpl implements PreparedQuery {
 
     private final RefFactory refFactory;
     private final PreparedStatement statement;
+    /** The lease of the statement, closed with the prepared query. */
+    private final StatementLease lease;
     private final BindVarsHandle bindVarsHandle;
     /** Whether the caller uses and closes the query in the same call, so what it hands back is not watched. */
     private final boolean consumed;
 
     public PreparedQueryImpl(Environment environment,
-                             PreparedStatement statement,
+                             StatementLease lease,
                              @Nullable BindVarsHandle bindVarsHandle,
                              @Nullable Class<? extends Data> affectedType,
                              boolean versionAware,
@@ -49,9 +51,10 @@ final class PreparedQueryImpl extends QueryImpl implements PreparedQuery {
                              boolean streamOnlyFetchSize,
                              boolean streamingRequiresTransaction,
                              boolean consumed) {
-        super(environment, ignore -> statement, bindVarsHandle, affectedType, versionAware, managed, false, defaultFetchSize, streamOnlyFetchSize, streamingRequiresTransaction);
+        super(environment, ignore -> lease, bindVarsHandle, affectedType, versionAware, managed, false, defaultFetchSize, streamOnlyFetchSize, streamingRequiresTransaction);
         this.refFactory = environment.refFactory();
-        this.statement = statement;
+        this.lease = lease;
+        this.statement = lease.statement();
         this.bindVarsHandle = bindVarsHandle;
         this.consumed = consumed;
     }
@@ -103,7 +106,7 @@ final class PreparedQueryImpl extends QueryImpl implements PreparedQuery {
                         .orElseThrow(() -> new PersistenceException("No suitable constructor found for %s.".formatted(type.getName())));
                 close = false;
                 var keys = StreamSupport.stream(rowSpliterator(resultSet, columnCount, mapper), false)
-                        .onClose(() -> close(resultSet, statement));
+                        .onClose(() -> close(resultSet, lease));
                 return consumed ? keys : MonitoredResource.wrap(keys);
             } finally {
                 if (close) {
@@ -118,7 +121,7 @@ final class PreparedQueryImpl extends QueryImpl implements PreparedQuery {
     @Override
     public void close() {
         try {
-            statement.close();
+            lease.close();
         } catch (SQLException e) {
             throw new PersistenceException(e);
         }

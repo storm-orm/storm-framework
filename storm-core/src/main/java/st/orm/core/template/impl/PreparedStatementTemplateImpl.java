@@ -22,8 +22,6 @@ import static st.orm.core.template.impl.ExceptionHelper.getExceptionTransformer;
 import static st.orm.core.template.impl.LazySupplier.lazy;
 import static st.orm.core.template.impl.RecordValidation.validate;
 
-import java.lang.reflect.InvocationTargetException;
-import java.lang.reflect.Proxy;
 import java.math.BigDecimal;
 import java.nio.ByteBuffer;
 import java.sql.Connection;
@@ -89,8 +87,8 @@ public final class PreparedStatementTemplateImpl implements PreparedStatementTem
 
     @FunctionalInterface
     private interface TemplateProcessor {
-        PreparedStatement process(Sql sql,
-                                  boolean unsafe) throws SQLException;
+        StatementLease process(Sql sql,
+                               boolean unsafe) throws SQLException;
     }
 
     /**
@@ -413,7 +411,10 @@ public final class PreparedStatementTemplateImpl implements PreparedStatementTem
                     connectionProvider.releaseConnection(connection, dataSource, transactionContext);
                 }
             }
-            return createProxy(preparedStatement, connection, dataSource, transactionContext, connectionProvider);
+            // The driver's statement itself: Storm closes the lease wherever it closes the statement, which returns
+            // the connection.
+            return StatementLease.releasing(preparedStatement,
+                    () -> connectionProvider.releaseConnection(connection, dataSource, transactionContext));
         };
     }
 
@@ -462,7 +463,7 @@ public final class PreparedStatementTemplateImpl implements PreparedStatementTem
                             getExceptionTransformer(sql, strategies.exceptionMapper(), transactionTemplateProvider)));
                 }
                 success = true;
-                return preparedStatement;
+                return StatementLease.of(preparedStatement);
             } finally {
                 if (!success && preparedStatement != null) {
                     try {
@@ -696,39 +697,6 @@ public final class PreparedStatementTemplateImpl implements PreparedStatementTem
     }
 
     /**
-     * Creates a proxy for the PreparedStatement that closes the connection when the PreparedStatement is closed.
-     *
-     * @param statement the PreparedStatement to create a proxy for.
-     * @param connection the connection to close when the PreparedStatement is closed.
-     * @return a proxy for the PreparedStatement that closes the connection when the PreparedStatement is closed.
-     */
-    private static PreparedStatement createProxy(PreparedStatement statement, Connection connection,
-                                                 DataSource dataSource, @Nullable TransactionContext context,
-                                                 ConnectionProvider connectionProvider) {
-        return (PreparedStatement) Proxy.newProxyInstance(
-                PreparedStatement.class.getClassLoader(),
-                new Class<?>[] { PreparedStatement.class },
-                (ignore, method, args) -> {
-                    // Check if the close method is being called on the PreparedStatement.
-                    if (method.getName().equals("close")) {
-                        try {
-                            statement.close();
-                        } finally {
-                            connectionProvider.releaseConnection(connection, dataSource, context);
-                        }
-                        return null;
-                    }
-                    try {
-                        // For other methods, just invoke the method on the actual PreparedStatement.
-                        return method.invoke(statement, args);
-                    } catch (InvocationTargetException e) {
-                        throw e.getTargetException();
-                    }
-                }
-        );
-    }
-
-    /**
      * Create a new query for the specified {@code template}.
      *
      * @param template the template to process.
@@ -844,6 +812,8 @@ public final class PreparedStatementTemplateImpl implements PreparedStatementTem
     @Override
     public PreparedStatement query(TemplateString template) throws SQLException {
         var sql = sqlTemplate().process(template);
-        return templateProcessor.process(sql, true);    // We allow unsafe queries in direct JDBC mode.
+        // We allow unsafe queries in direct JDBC mode. The application closes the statement, which returns its
+        // connection.
+        return templateProcessor.process(sql, true).forApplication();
     }
 }

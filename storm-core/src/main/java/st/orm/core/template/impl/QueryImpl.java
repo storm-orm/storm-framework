@@ -114,7 +114,8 @@ class QueryImpl implements Query, KeyedQuery {
 
     final Environment environment;
     private final RefFactory refFactory;
-    private final Function<Boolean, PreparedStatement> statement;
+    /** Leases the statement the query executes, closed wherever the query closes its statement. */
+    private final Function<Boolean, StatementLease> statement;
     private final BindVarsHandle bindVarsHandle;
     private final boolean versionAware;
     private final Class<? extends Data> affectedType;
@@ -126,7 +127,7 @@ class QueryImpl implements Query, KeyedQuery {
     private final Function<Throwable, RuntimeException> exceptionTransformer;
 
     QueryImpl(Environment environment,
-              Function<Boolean, PreparedStatement> statement,
+              Function<Boolean, StatementLease> statement,
               @Nullable BindVarsHandle bindVarsHandle,
               @Nullable Class<? extends Data> affectedType,
               boolean versionAware,
@@ -213,7 +214,7 @@ class QueryImpl implements Query, KeyedQuery {
         return new QueryImpl(environment, statement, bindVarsHandle, affectedType, versionAware, managed, unsafe, 0, false, false);
     }
 
-    private PreparedStatement getStatement() {
+    private StatementLease getStatement() {
         return statement.apply(unsafe);
     }
 
@@ -562,7 +563,8 @@ class QueryImpl implements Query, KeyedQuery {
         var observation = observe(ExecutionKind.QUERY);
         boolean handedOff = false;
         try {
-            PreparedStatement statement = getStatement();
+            StatementLease lease = getStatement();
+            PreparedStatement statement = lease.statement();
             boolean close = true;
             try {
                 applyFetchSize(statement);
@@ -587,7 +589,7 @@ class QueryImpl implements Query, KeyedQuery {
                             .onClose(() -> {
                                 try {
                                     guard.close();
-                                    close(resultSet, statement, streamingCleanup);
+                                    close(resultSet, lease, streamingCleanup);
                                 } finally {
                                     closeObservation(observation);
                                 }
@@ -600,7 +602,7 @@ class QueryImpl implements Query, KeyedQuery {
                 }
             } finally {
                 if (close && closeStatement()) {
-                    statement.close();
+                    lease.close();
                 }
             }
         } catch (Exception e) {
@@ -645,9 +647,9 @@ class QueryImpl implements Query, KeyedQuery {
     private <T> Stream<T> resultStream(Class<T> type, boolean consumed) {
         var observation = observe(ExecutionKind.QUERY, type);
         boolean handedOff = false;
-        PreparedStatement statement = null;
         try {
-            statement = getStatement();
+            StatementLease lease = getStatement();
+            PreparedStatement statement = lease.statement();
             boolean close = true;
             try {
                 applyFetchSize(statement);
@@ -662,7 +664,6 @@ class QueryImpl implements Query, KeyedQuery {
                         .orElseThrow(() -> new SqlTemplateException("No suitable constructor found for %s.".formatted(type.getName())));
                 close = false;
                 handedOff = true;
-                var closeableStatement = statement;
                 var spliterator = rowSpliterator(resultSet, columnCount, mapper);
                 if (observation instanceof ListenedObservation listened) {
                     spliterator = counting(spliterator, listened);
@@ -674,7 +675,7 @@ class QueryImpl implements Query, KeyedQuery {
                         .onClose(() -> {
                             try {
                                 guard.close();
-                                close(resultSet, closeableStatement, streamingCleanup);
+                                close(resultSet, lease, streamingCleanup);
                             } finally {
                                 closeObservation(observation);
                             }
@@ -682,7 +683,7 @@ class QueryImpl implements Query, KeyedQuery {
                 return consumed ? stream : MonitoredResource.wrap(stream);
             } finally {
                 if (close && closeStatement()) {
-                    statement.close();
+                    lease.close();
                 }
             }
         } catch (Exception e) {
@@ -773,7 +774,8 @@ class QueryImpl implements Query, KeyedQuery {
     private <T> SingleRow<T> readSingleRow(Class<T> type) {
         var observation = observe(ExecutionKind.QUERY, type);
         try {
-            PreparedStatement statement = getStatement();
+            StatementLease lease = getStatement();
+            PreparedStatement statement = lease.statement();
             boolean closeStatementHere = true;
             try {
                 applyFetchSize(statement);
@@ -801,11 +803,11 @@ class QueryImpl implements Query, KeyedQuery {
                     //noinspection unchecked
                     return new SingleRow<>(present, (T) holder[0]);
                 } finally {
-                    close(resultSet, statement, streamingCleanup);
+                    close(resultSet, lease, streamingCleanup);
                 }
             } finally {
                 if (closeStatementHere && closeStatement()) {
-                    statement.close();
+                    lease.close();
                 }
             }
         } catch (Exception e) {
@@ -848,7 +850,8 @@ class QueryImpl implements Query, KeyedQuery {
     private <T> List<KeyedQuery.Row<T>> readKeyedRows(Class<T> type, Class<?>[] cursorTypes) {
         var observation = observe(ExecutionKind.QUERY, type);
         try {
-            PreparedStatement statement = getStatement();
+            StatementLease lease = getStatement();
+            PreparedStatement statement = lease.statement();
             boolean closeStatementHere = true;
             try {
                 applyFetchSize(statement);
@@ -883,11 +886,11 @@ class QueryImpl implements Query, KeyedQuery {
                     }
                     return rows;
                 } finally {
-                    close(resultSet, statement, streamingCleanup);
+                    close(resultSet, lease, streamingCleanup);
                 }
             } finally {
                 if (closeStatementHere && closeStatement()) {
-                    statement.close();
+                    lease.close();
                 }
             }
         } catch (Exception e) {
@@ -1015,11 +1018,11 @@ class QueryImpl implements Query, KeyedQuery {
                 : Query.super.getResultCount();
     }
 
-    protected void close(ResultSet resultSet, PreparedStatement statement) {
-        close(resultSet, statement, null);
+    protected void close(ResultSet resultSet, StatementLease lease) {
+        close(resultSet, lease, null);
     }
 
-    protected void close(ResultSet resultSet, PreparedStatement statement,
+    protected void close(ResultSet resultSet, StatementLease lease,
                           @Nullable Runnable streamingCleanup) {
         try {
             try {
@@ -1032,7 +1035,7 @@ class QueryImpl implements Query, KeyedQuery {
                 }
             } finally {
                 if (closeStatement()) {
-                    statement.close();
+                    lease.close();
                 }
             }
         } catch (SQLException e) {
@@ -1060,7 +1063,8 @@ class QueryImpl implements Query, KeyedQuery {
     public int executeUpdate() {
         var observation = observe(ExecutionKind.UPDATE);
         try {
-            PreparedStatement statement = getStatement();
+            StatementLease lease = getStatement();
+            PreparedStatement statement = lease.statement();
             try {
                 try {
                     StreamGuard.check(statement, environment);
@@ -1073,7 +1077,7 @@ class QueryImpl implements Query, KeyedQuery {
                     return result;
                 } finally {
                     if (closeStatement()) {
-                        statement.close();
+                        lease.close();
                     }
                 }
             } catch (SQLException e) {
@@ -1126,7 +1130,8 @@ class QueryImpl implements Query, KeyedQuery {
     public int[] executeBatch() {
         var observation = observe(ExecutionKind.BATCH);
         try {
-            PreparedStatement statement = getStatement();
+            StatementLease lease = getStatement();
+            PreparedStatement statement = lease.statement();
             try {
                 try {
                     StreamGuard.check(statement, environment);
@@ -1153,7 +1158,7 @@ class QueryImpl implements Query, KeyedQuery {
                     return result;
                 } finally {
                     if (closeStatement()) {
-                        statement.close();
+                        lease.close();
                     }
                 }
             } catch (SQLException e) {
@@ -1423,13 +1428,13 @@ class QueryImpl implements Query, KeyedQuery {
 
     @Override
     public String toString() {
-        var statement = getStatement();
+        var lease = getStatement();
         try {
             try {
-                return "Query@%s wrapping %s".formatted(toHexString(identityHashCode(this)), statement);
+                return "Query@%s wrapping %s".formatted(toHexString(identityHashCode(this)), lease.statement());
             } finally {
                 if (closeStatement()) {
-                    statement.close();
+                    lease.close();
                 }
             }
         } catch (SQLException e) {
