@@ -177,6 +177,7 @@ List<Owner> owners = orm.entity(Owner.class)
 
 - Each word is matched on its own, so the words may match different related rows: `leo max` finds the owner of both a Leo and a Max.
 - Each word renders as an `IN` over a `UNION` of a branch per table, so each table is read through its own indexes rather than through a join of both.
+- The columns may come from several semi-joined tables. With `semiJoin<Principal>().on<Movie>()` and `semiJoin<MovieCollectionItem>().on<Movie>()`, `search(input, Movie_.title, Principal_.person.name, MovieCollectionItem_.collection.name)` finds a movie by its title, by a person in it or by the series it belongs to, so `james bond` finds the Bond films although no title says so. Each word matches a row of any of the tables, each through an `EXISTS` of its own.
 - A condition on the join limits which related rows a word may match. `semiJoin<Principal>().on<Movie> { Principal_.ordering lessEq 3 }` with `search(input, Movie_.title, Principal_.person.name)` matches a word against the titles and the three leads of each movie, and an index limited to those rows serves it.
 
 See [Filtering by Related Rows](queries.md#filtering-by-related-rows) for how semi-joins answer conditions in general.

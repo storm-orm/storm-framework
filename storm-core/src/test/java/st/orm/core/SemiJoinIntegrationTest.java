@@ -41,6 +41,8 @@ import st.orm.core.model.Owner;
 import st.orm.core.model.OwnerPrimaryPet;
 import st.orm.core.model.Owner_;
 import st.orm.core.model.Pet;
+import st.orm.core.model.PetExtension;
+import st.orm.core.model.PetExtension_;
 import st.orm.core.model.PetType;
 import st.orm.core.model.PetVisitCount;
 import st.orm.core.model.Pet_;
@@ -433,6 +435,53 @@ public class SemiJoinIntegrationTest {
                         .and(it.where(Visit_.description, EQUALS, "neutered")))
                 .getResultList();
         assertEquals(List.of(), petNames(oneVisit));
+    }
+
+    /** Pets filtered by two semi-joined tables: their visits and their notes. */
+    private QueryBuilder<Data, Pet, Integer> petsWithVisitsAndNotes() {
+        return orm().entity(Pet.class).select()
+                .semiJoin(Visit.class).on(Pet.class)
+                .semiJoin(PetExtension.class).on(Pet.class);
+    }
+
+    @Test
+    public void searchMatchesEachWordOnEitherOfTwoSemiJoinedTables() {
+        // data.sql: Rosy (pet 3) was spayed and is noted as a friendly dog; Leo (pet 1) is noted as a good cat.
+        var pets = capture(() -> petsWithVisitsAndNotes()
+                .where(it -> PredicateBuilderFactory.<Data, Pet, Integer>search("spayed friendly",
+                        List.of(Pet_.name, Visit_.description, PetExtension_.notes)))
+                .getResultList());
+        assertEquals(List.of("Rosy"), petNames(pets));
+        // Each word is answered by a visit or a note of its own, each through its own subquery.
+        assertTrue(statement().contains("FROM visit"), statement());
+        assertTrue(statement().contains("FROM pet_extension"), statement());
+        assertEquals(List.of("Leo"), petNames(petsWithVisitsAndNotes()
+                .where(it -> PredicateBuilderFactory.<Data, Pet, Integer>search("leo good",
+                        List.of(Pet_.name, Visit_.description, PetExtension_.notes)))
+                .getResultList()));
+    }
+
+    @Test
+    public void orAcrossTwoSemiJoinedTablesHoldsWhereEitherArmHolds() {
+        // data.sql: Basil, Jewel and Max were neutered; Samantha is noted as an indoor cat.
+        var pets = capture(() -> petsWithVisitsAndNotes()
+                .where(it -> it.where(Visit_.description, EQUALS, "neutered")
+                        .or(it.where(PetExtension_.notes, EQUALS, "Indoor cat")))
+                .getResultList());
+        assertEquals(List.of("Basil", "Jewel", "Max", "Samantha"), petNames(pets));
+        assertTrue(statement().contains("EXISTS (SELECT 1 FROM visit v WHERE v.pet_id = p.id AND v.description = ?) "
+                + "OR EXISTS (SELECT 1 FROM pet_extension pe WHERE pe.pet_id = p.id AND pe.notes = ?)"), statement());
+    }
+
+    @Test
+    public void anArmJoinedByAndAcrossTwoSemiJoinedTablesHoldsEachOnItsOwnTable() {
+        // Rosy was spayed and is noted as a friendly dog; Iggy matches by name.
+        var pets = petsWithVisitsAndNotes()
+                .where(it -> it.where(Visit_.description, EQUALS, "spayed")
+                        .and(it.where(PetExtension_.notes, EQUALS, "Friendly dog"))
+                        .or(it.where(Pet_.name, EQUALS, "Iggy")))
+                .getResultList();
+        assertEquals(List.of("Iggy", "Rosy"), petNames(pets));
     }
 
     @Test

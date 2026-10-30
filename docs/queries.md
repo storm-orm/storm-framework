@@ -1053,7 +1053,8 @@ WHERE EXISTS (SELECT 1 FROM pet p WHERE p.owner_id = o.id AND p.name = ?)
 
 - Conditions joined by `and` hold for the same related row. `(Pet_.name eq "Leo") and (Pet_.birthDate gt date)` finds the owners of a Leo born after the date, not the owners of a Leo and of some other pet born after it.
 - A part of the condition that names only the query's own tables holds without a related row, so `(Owner_.lastName eq "Davis") or (Pet_.name eq "Leo")` also finds a Davis without pets.
-- `search` matches each word on its own, so its words may match different related rows; see [Searching Related Rows](search.md#searching-related-rows).
+- An `or` across two semi-joined tables holds where either side holds, each answered by a related row of its own table: with `semiJoin<Visit>().on<Pet>()` and `semiJoin<PetExtension>().on<Pet>()`, `(Visit_.description eq "neutered") or (PetExtension_.notes eq "Indoor cat")` finds the pets with either. A term comparing columns of two semi-joined tables is refused, since no row of either answers it.
+- `search` matches each word on its own, so its words may match different related rows, of one semi-joined table or of several; see [Searching Related Rows](search.md#searching-related-rows).
 
 The semi-joined table filters the query but adds no columns to it: ordering, grouping or selecting by its columns is refused when the query is built. Without a condition that names its table, a semi-join keeps the rows that have any related row: `semiJoin<Pet>().on<Owner>()` finds the owners with a pet, the complement of `antiJoin<Pet>().on<Owner>()`. A condition stated on the join keeps that symmetry, so a semi-join and an anti-join with the same condition on the join split the rows between them. It also states which related rows count at all: every condition that names the table, each word of a search included, is answered by a related row that matches it.
 
