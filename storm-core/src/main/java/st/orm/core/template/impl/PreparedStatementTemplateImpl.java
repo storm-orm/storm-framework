@@ -22,8 +22,6 @@ import static st.orm.core.template.impl.ExceptionHelper.getExceptionTransformer;
 import static st.orm.core.template.impl.LazySupplier.lazy;
 import static st.orm.core.template.impl.RecordValidation.validate;
 
-import java.lang.reflect.InvocationTargetException;
-import java.lang.reflect.Proxy;
 import java.math.BigDecimal;
 import java.nio.ByteBuffer;
 import java.sql.Connection;
@@ -413,7 +411,8 @@ public final class PreparedStatementTemplateImpl implements PreparedStatementTem
                     connectionProvider.releaseConnection(connection, dataSource, transactionContext);
                 }
             }
-            return createProxy(preparedStatement, connection, dataSource, transactionContext, connectionProvider);
+            return new ReleasingPreparedStatement(preparedStatement, connection, dataSource, transactionContext,
+                    connectionProvider);
         };
     }
 
@@ -693,39 +692,6 @@ public final class PreparedStatementTemplateImpl implements PreparedStatementTem
      */
     public StormConfig config() {
         return config;
-    }
-
-    /**
-     * Creates a proxy for the PreparedStatement that closes the connection when the PreparedStatement is closed.
-     *
-     * @param statement the PreparedStatement to create a proxy for.
-     * @param connection the connection to close when the PreparedStatement is closed.
-     * @return a proxy for the PreparedStatement that closes the connection when the PreparedStatement is closed.
-     */
-    private static PreparedStatement createProxy(PreparedStatement statement, Connection connection,
-                                                 DataSource dataSource, @Nullable TransactionContext context,
-                                                 ConnectionProvider connectionProvider) {
-        return (PreparedStatement) Proxy.newProxyInstance(
-                PreparedStatement.class.getClassLoader(),
-                new Class<?>[] { PreparedStatement.class },
-                (ignore, method, args) -> {
-                    // Check if the close method is being called on the PreparedStatement.
-                    if (method.getName().equals("close")) {
-                        try {
-                            statement.close();
-                        } finally {
-                            connectionProvider.releaseConnection(connection, dataSource, context);
-                        }
-                        return null;
-                    }
-                    try {
-                        // For other methods, just invoke the method on the actual PreparedStatement.
-                        return method.invoke(statement, args);
-                    } catch (InvocationTargetException e) {
-                        throw e.getTargetException();
-                    }
-                }
-        );
     }
 
     /**

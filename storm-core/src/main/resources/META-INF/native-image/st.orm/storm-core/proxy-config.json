@@ -1,9 +1,5 @@
 [
   {
-    "condition": { "typeReachable": "st.orm.core.template.impl.PreparedStatementTemplateImpl" },
-    "interfaces": ["java.sql.PreparedStatement"]
-  },
-  {
     "condition": { "typeReachable": "st.orm.core.template.impl.MonitoredResource" },
     "interfaces": ["st.orm.core.template.PreparedQuery", "st.orm.core.template.Query", "st.orm.core.template.impl.KeyedQuery"]
   },
