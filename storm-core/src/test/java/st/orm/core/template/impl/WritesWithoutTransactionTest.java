@@ -86,8 +86,9 @@ class WritesWithoutTransactionTest {
     void anOwnerAndThenItsPetOutsideATransactionAreAdvised() {
         var summary = summary(this::ownerThenPet);
         assertTrue(summary.contains("\tadvice: the unit of work wrote Owner and then Pet, which references Owner, "
-                + "each in a transaction of its own; when a later write fails, the earlier ones stay; run them in "
-                + "one transaction. See https://orm.st/docs/advice#writes-without-transaction"), summary);
+                + "each committing on its own, so when a later write fails, the earlier ones stay."
+                + System.lineSeparator() + "\t\tfix: run them in one transaction." + System.lineSeparator()
+                + "\t\tsee: https://orm.st/docs/advice#writes-without-transaction"), summary);
         var summary2 = summary(this::ownerThenPet);
         assertEquals(1, summary2.lines().filter(line -> line.contains("#writes-without-transaction")).count(),
                 summary2);

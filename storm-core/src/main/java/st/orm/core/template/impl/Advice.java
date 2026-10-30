@@ -36,20 +36,20 @@ enum Advice {
     /** A search whose terms are all shorter than the substring index serves. */
     UNINDEXED_SEARCH("unindexed-search", Category.PERFORMANCE, false,
             "every search term is shorter than the %d characters a substring index serves, so the search reads every "
-                    + "row; a search box that queries as the user types wants suggest, which matches no rows for such "
-                    + "input."),
+                    + "row.\nfix: for a search box that queries as the user types, use suggest, which returns no rows "
+                    + "for such input."),
 
     /** A distinct select over a join that repeats its rows. */
     DISTINCT_OVER_JOIN("distinct-over-join", Category.PERFORMANCE, false,
-            "DISTINCT removes the rows the join to %1$s repeats, one per related row; semiJoin(%1$s) filters by it "
-                    + "without repeating rows, so the query needs no DISTINCT."),
+            "the join to %1$s repeats each row once per related row, and DISTINCT removes the copies afterwards.\n"
+                    + "fix: semiJoin(%1$s) filters by %1$s without repeating rows, so the query needs no DISTINCT."),
 
     /**
      * A table none of whose indexes starts with a column the statement filters or sorts it by. Without row counts an
      * index cannot be judged worth its cost in advance, so the advice waits for a slow execution to say it is.
      */
     MISSING_INDEX("missing-index", Category.PERFORMANCE, true,
-            "no index on %1$s %2$s, %3$s; %4$s."),
+            "no index on %1$s %2$s, %3$s.\n%4$s."),
 
     /**
      * A delete from a table that a foreign key references, with no index on the referencing table to serve the check
@@ -57,45 +57,43 @@ enum Advice {
      * loaded schema shows the cost, and a slow execution that it matters.
      */
     UNINDEXED_FOREIGN_KEY("unindexed-foreign-key", Category.PERFORMANCE, true,
-            "deleting from %1$s checks the foreign key %2$s(%3$s) that references it, and no index on %2$s starts "
-                    + "with %4$s, so the database reads %2$s in full for every row it deletes; an index on %2$s(%3$s) "
-                    + "serves the check."),
+            "every row deleted from %1$s is checked against the foreign key %2$s(%3$s), and no index on %2$s "
+                    + "starts with %4$s, so the database reads %2$s in full for each deleted row.\n"
+                    + "fix: an index on %2$s(%3$s) serves the check."),
 
     /**
      * A transaction that held its connection, and from its first write its row locks, while the application did
-     * other work between its statements. Every statement may be fast, so only the time the connection was held shows
-     * it; the locks are claimed for the part of that time that followed the first write.
+     * other work. Every statement may be fast, so only the time the connection was held shows it; the locks are
+     * claimed for the part of that time that followed the first write. Where the time was spent, before the first
+     * statement, between the statements or after the last, decides the remedy.
      */
     IDLE_TRANSACTION("idle-transaction", Category.PERFORMANCE, true,
-            "the transaction held its connection %1$s and its statements spent %2$s of it; for %3$s between them it "
-                    + "held the connection while the application did other work%4$s; move that work before the "
-                    + "transaction or after it commits."),
+            "the transaction held its connection %1$s, %2$s of it idle%3$s%4$s.%5$s\nfix: %6$s."),
 
     /** The count query behind a page, a deliberate choice of page over slice, so advised only when slow. */
     PAGE_COUNT("page-count", Category.PERFORMANCE, true,
-            "page counts every matching row to report the total; slice reads the same page without the count, and "
-                    + "says whether a next page exists."),
+            "page counts every matching row to report the total.\n"
+                    + "fix: slice reads the same page without the count, and says whether a next page exists."),
 
     /** A limit or offset without an ORDER BY. */
     UNORDERED_LIMIT("unordered-limit", Category.CORRECTNESS, false,
-            "the statement takes part of the result without an ORDER BY, so which rows it returns is up to the "
-                    + "database and can change between executions, and consecutive pages can repeat or skip rows; "
-                    + "order by a unique key, or by sort fields that end in one."),
+            "the statement takes part of the result without an ORDER BY, so the database picks the rows, which can "
+                    + "change between executions, and pages can repeat or skip rows.\n"
+                    + "fix: order by a unique key, or by sort fields that end in one."),
 
     /** An offset of at least {@link #DEEP_OFFSET_ROWS} rows. */
     DEEP_OFFSET("deep-offset", Category.PERFORMANCE, false,
-            "the database reads and discards the %d rows the offset skips before it returns the first; scroll "
-                    + "continues from the last row read, at the same cost for every window."),
+            "the database reads and throws away the %d rows the offset skips before it returns the first.\n"
+                    + "fix: scroll continues from the last row read, at the same cost for every window."),
 
     /**
      * An {@code IN} list rendered with a placeholder per value in {@link #IN_LIST_LENGTHS} distinct lengths, each a
      * statement of its own to the database, where padding would render them as a few.
      */
     IN_LIST_SHAPES("in-list-shapes", Category.PERFORMANCE, false,
-            "the statement runs with varying lengths of its IN list, and each length is a statement of its own to "
-                    + "the database and its plan cache; storm.in_list=padded pads a list to the next power of two by "
-                    + "repeating its last value, which changes no result and renders every length as one of a few "
-                    + "statements."),
+            "the IN list runs in many lengths, and each length is a separate statement to the database and its plan "
+                    + "cache.\nfix: storm.in_list=padded pads each list to the next power of two by repeating its last "
+                    + "value, which changes no result and keeps the statements to a few."),
 
     /**
      * References of one type fetched one statement at a time, in one transaction or across the transactions of one
@@ -103,19 +101,19 @@ enum Advice {
      * spanned several, and the call site of the fetch where it is known.
      */
     REPEATED_FETCH("repeated-fetch", Category.DESIGN, false,
-            "%1$d statements each fetched one %2$s%3$s; %4$san inline foreign key joins it into every read of the "
-                    + "rows, or a query that fetches the references, such as select().fetch(...), resolves them in the "
-                    + "statement that reads them."),
+            "%1$d statements each fetched one %2$s%3$s.%4$s\nfix: an inline foreign key joins it into every read of "
+                    + "the rows\nor: a query that fetches the references, such as select().fetch(...), resolves them in "
+                    + "the statement that reads them."),
 
     /** An entity whose read exceeds the design budget. */
     ENTITY_BUDGET("entity-budget", Category.DESIGN, false,
             "every read of %1$s joins %2$d tables and selects %3$d columns beyond its own, past the design budget of "
-                    + "%5$d joins and %6$d columns; %4$s."),
+                    + "%5$d joins and %6$d columns.\nfix: %4$s."),
 
     /** A slow read of an entity whose read is at least half the design budget. */
     WIDE_ENTITY_READ("wide-entity-read", Category.DESIGN, true,
-            "every read of %1$s joins %2$d tables and selects %3$d columns beyond its own; where that width is what "
-                    + "makes the read slow, %4$s."),
+            "every read of %1$s joins %2$d tables and selects %3$d columns beyond its own.\n"
+                    + "fix, where that width makes the read slow: %4$s."),
 
     /**
      * The same single-row read repeated, in one transaction or across the transactions of one unit of work. The
@@ -125,7 +123,7 @@ enum Advice {
      * lookup of the rows by key for a read of records, the keys that exist for a read of computed values.
      */
     REPEATED_SELECT("repeated-select", Category.PERFORMANCE, false,
-            "%1$s of %2$s ran %3$d times%4$s, %5$s%6$s; %7$s%8$s."),
+            "%1$s of %2$s ran %3$d times%4$s, %5$s%6$s.%7$s."),
 
     /**
      * The same single-row write repeated without a batch, in one transaction or across the transactions of one unit
@@ -136,15 +134,15 @@ enum Advice {
      * together, which is what changes.
      */
     REPEATED_WRITE("repeated-write", Category.PERFORMANCE, false,
-            "%1$s of %2$s ran %3$d times%4$s, %5$s%6$s; %7$s%8$s%9$s."),
+            "%1$s of %2$s ran %3$d times%4$s, %5$s%6$s.%7$s."),
 
     /**
      * A write outside any transaction to a type that references a type an earlier write outside any transaction
      * wrote, in one unit of work: each committed on its own, so the first stays when the second fails.
      */
     WRITES_WITHOUT_TRANSACTION("writes-without-transaction", Category.CORRECTNESS, false,
-            "the unit of work wrote %1$s and then %2$s, which references %1$s, each in a transaction of its own; "
-                    + "when a later write fails, the earlier ones stay; run them in one transaction.");
+            "the unit of work wrote %1$s and then %2$s, which references %1$s, each committing on its own, so when a "
+                    + "later write fails, the earlier ones stay.\nfix: run them in one transaction.");
 
     /**
      * The executions in one transaction, or across the transactions of one unit of work, from which a repeated
@@ -195,7 +193,7 @@ enum Advice {
         this.category = category;
         this.slowOnly = slowOnly;
         this.text = text;
-        this.link = " See " + PAGE + "#" + anchor;
+        this.link = "\nsee: " + PAGE + "#" + anchor;
     }
 
     /**
@@ -242,12 +240,25 @@ enum Advice {
     }
 
     /**
-     * Returns the advice as a log line reports it: the text with its arguments, followed by the link to its section.
+     * Returns the advice as a log line reports it: the text with its arguments, and the link to its section on a
+     * line of its own.
      *
      * @param args the arguments the text is formatted with.
      * @return the advice.
      */
     String format(Object... args) {
         return text.formatted(args) + link;
+    }
+
+    /**
+     * Renders an advisory as the lines a log entry carries: the first after {@code advice:}, each further line of it,
+     * which an advisory separates with {@code \n}, one level deeper, so a reader tells the parts of one piece of advice
+     * from the next piece.
+     *
+     * @param advisory the advisory.
+     * @return the lines, starting with the line separator that puts them below what precedes them.
+     */
+    static String lines(String advisory) {
+        return System.lineSeparator() + "\tadvice: " + advisory.replace("\n", System.lineSeparator() + "\t\t");
     }
 }

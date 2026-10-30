@@ -20,6 +20,7 @@ import ch.qos.logback.classic.LoggerContext;
 import ch.qos.logback.classic.spi.ILoggingEvent;
 import ch.qos.logback.core.read.ListAppender;
 import java.time.Duration;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.function.Supplier;
 import org.slf4j.LoggerFactory;
@@ -30,7 +31,7 @@ import st.orm.core.template.impl.SlowStatementLog;
  * the action runs, and no line is held back, so each statement's line ends with every piece of advice it carries,
  * whatever the categories or acceptance.
  */
-final class AdviceCapture {
+public final class AdviceCapture {
 
     private static final String PREFIX = "\tadvice: ";
 
@@ -67,10 +68,39 @@ final class AdviceCapture {
             logger.setLevel(previousLevel);
             appender.stop();
         }
-        return appender.list.stream()
-                .flatMap(event -> event.getFormattedMessage().lines())
-                .filter(line -> line.startsWith(PREFIX) && !line.contains("#missing-index"))
-                .map(line -> line.substring(PREFIX.length()))
+        return advisoriesIn(appender.list.stream().map(ILoggingEvent::getFormattedMessage).toList()).stream()
+                .filter(advisory -> !advisory.contains("#missing-index"))
                 .toList();
+    }
+
+    /**
+     * Returns the advice the log entries carry, in order: each the text after {@code advice:}, with the lines that
+     * continue it, which a log entry indents one level deeper, joined by {@code \n} as the advice holds them.
+     *
+     * @param messages the formatted log entries.
+     * @return the advice.
+     */
+    public static List<String> advisoriesIn(List<String> messages) {
+        var advisories = new ArrayList<String>();
+        for (var message : messages) {
+            StringBuilder current = null;
+            for (var line : message.lines().toList()) {
+                if (line.startsWith(PREFIX)) {
+                    if (current != null) {
+                        advisories.add(current.toString());
+                    }
+                    current = new StringBuilder(line.substring(PREFIX.length()));
+                } else if (current != null && line.startsWith("\t\t")) {
+                    current.append('\n').append(line.substring(2));
+                } else if (current != null) {
+                    advisories.add(current.toString());
+                    current = null;
+                }
+            }
+            if (current != null) {
+                advisories.add(current.toString());
+            }
+        }
+        return advisories;
     }
 }

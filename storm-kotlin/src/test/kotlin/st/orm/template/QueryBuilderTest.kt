@@ -2801,9 +2801,10 @@ internal open class QueryBuilderTest(
             logger.level = previousLevel
             appender.stop()
         }
+        // Each piece of advice follows "advice:" and continues on the lines below it.
         val advisories = appender.list
-            .flatMap { it.formattedMessage.lines() }
-            .filter { it.startsWith("\tadvice: ") && !it.contains("#missing-index") }
+            .flatMap { it.formattedMessage.split(System.lineSeparator() + "\tadvice: ").drop(1) }
+            .filter { !it.contains("#missing-index") }
         advisories shouldHaveSize 1
         advisories.first() shouldContain "slice"
     }

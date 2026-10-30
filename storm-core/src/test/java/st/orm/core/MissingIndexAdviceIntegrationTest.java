@@ -153,9 +153,9 @@ public class MissingIndexAdviceIntegrationTest {
             logger.setLevel(previous);
             appender.stop();
         }
-        return appender.list.stream()
-                .flatMap(event -> event.getFormattedMessage().lines())
-                .filter(line -> line.contains("#missing-index"))
+        return AdviceCapture.advisoriesIn(appender.list.stream()
+                        .map(ILoggingEvent::getFormattedMessage).toList()).stream()
+                .filter(advisory -> advisory.contains("#missing-index"))
                 .toList();
     }
 
@@ -166,9 +166,9 @@ public class MissingIndexAdviceIntegrationTest {
         var advice = missingIndexAdvice(() -> orm.entity(Customer.class).select()
                 .where(LAST_NAME, EQUALS, "Davis").getResultList());
         assertEquals(1, advice.size(), advice.toString());
-        assertTrue(advice.getFirst().contains("no index on customer starts with last_name, which the statement "
-                + "filters customer by, so the database reads the table in full to find the matching rows; an index "
-                + "on customer(last_name) finds them directly where the condition selects few of them."),
+        assertTrue(advice.getFirst().contains("no index on customer starts with last_name, so the database reads the "
+                + "table in full to find the matching rows.\nindex: customer(last_name) finds them directly where the "
+                + "condition selects few of them."),
                 advice.getFirst());
     }
 
@@ -198,8 +198,8 @@ public class MissingIndexAdviceIntegrationTest {
         orm.loadSchema();
         var advice = missingIndexAdvice(() -> orm.entity(Customer.class).select().distinct()
                 .innerJoin(Purchase.class).on(Customer.class).getResultList());
-        assertTrue(advice.stream().anyMatch(line -> line.contains("no index on purchase starts with customer_id, which "
-                + "the statement joins purchase on")), advice.toString());
+        assertTrue(advice.stream().anyMatch(line -> line.contains("no index on purchase starts with customer_id, so the "
+                + "database reads the table in full to find the joined rows")), advice.toString());
     }
 
     @Test
@@ -211,8 +211,8 @@ public class MissingIndexAdviceIntegrationTest {
                 .where(JOINED_ON, EQUALS, LocalDate.of(2024, 1, 1)).groupBy(LAST_NAME).getResultList());
         assertEquals(1, advice.size(), advice.toString());
         assertTrue(advice.getFirst().contains("customer(joined_on, last_name) finds the matching rows and reads them "
-                + "already grouped, without a temporary table or sort; with email appended it reads the index alone, "
-                + "since it then holds every column the select reads"), advice.getFirst());
+                + "already grouped, without a temporary table or sort\ncovering: with email appended it reads the index "
+                + "alone, since it then holds every column the select reads"), advice.getFirst());
     }
 
     @Test
@@ -224,8 +224,8 @@ public class MissingIndexAdviceIntegrationTest {
                 .where(JOINED_ON, EQUALS, LocalDate.of(2024, 1, 1)).groupBy(LAST_NAME).getResultList());
         assertEquals(1, advice.size(), advice.toString());
         assertTrue(advice.getFirst().contains("customer(joined_on, last_name) finds the matching rows and reads them "
-                + "already grouped, without a temporary table or sort, and reads the index alone where the select reads "
-                + "no other columns"), advice.getFirst());
+                + "already grouped, without a temporary table or sort\ncovering: it reads the index alone where the "
+                + "select reads no other columns"), advice.getFirst());
     }
 
     @Test
@@ -236,8 +236,8 @@ public class MissingIndexAdviceIntegrationTest {
                 .where(JOINED_ON, EQUALS, LocalDate.of(2024, 1, 1)).groupBy(LAST_NAME).getResultList());
         assertEquals(1, advice.size(), advice.toString());
         assertTrue(advice.getFirst().contains("customer(joined_on, last_name) finds the matching rows and reads them "
-                + "already grouped, without a temporary table or sort, and reads the index alone, since it holds every "
-                + "column the select reads"), advice.getFirst());
+                + "already grouped, without a temporary table or sort\ncovering: it reads the index alone, since it "
+                + "holds every column the select reads"), advice.getFirst());
     }
 
     @Test
@@ -252,7 +252,7 @@ public class MissingIndexAdviceIntegrationTest {
         assertEquals(1, advice.size(), advice.toString());
         assertTrue(advice.getFirst().contains("no index on customer continues last_name with joined_on, email"),
                 advice.getFirst());
-        assertTrue(advice.getFirst().contains("an index on customer(last_name, joined_on, email), extending "
+        assertTrue(advice.getFirst().contains("\nindex: customer(last_name, joined_on, email), extending "
                 + "CUSTOMER_LAST_NAME, reads the matching rows in order and stops at the limit"), advice.getFirst());
         // An order in mixed directions is left alone: an index serves it only when declared in the same directions.
         assertEquals(List.of(), missingIndexAdvice(() -> orm.entity(Customer.class).select()
@@ -267,9 +267,9 @@ public class MissingIndexAdviceIntegrationTest {
         var advice = missingIndexAdvice(() -> orm.entity(Customer.class).selectCount()
                 .where(JOINED_ON, EQUALS, LocalDate.of(2024, 1, 1)).groupBy(LAST_NAME).getResultList());
         assertEquals(1, advice.size(), advice.toString());
-        assertTrue(advice.getFirst().contains("which the statement filters customer by and groups by last_name"),
-                advice.getFirst());
-        assertTrue(advice.getFirst().contains("; customer(joined_on, last_name) finds the matching rows and reads them "
+        assertTrue(advice.getFirst().contains("so the database reads the table in full and sorts the matching rows into "
+                + "groups"), advice.getFirst());
+        assertTrue(advice.getFirst().contains("\nindex: customer(joined_on, last_name) finds the matching rows and reads them "
                 + "already grouped"), advice.getFirst());
     }
 
@@ -281,17 +281,16 @@ public class MissingIndexAdviceIntegrationTest {
                 .where(JOINED_ON, GREATER_THAN, LocalDate.of(2020, 1, 1))
                 .orderBy(JOINED_ON).limit(10).getResultList());
         assertEquals(1, advice.size(), advice.toString());
-        assertTrue(advice.getFirst().contains("an index on customer(joined_on)"), advice.getFirst());
-        assertTrue(advice.getFirst().contains("which the statement filters or sorts customer by"), advice.getFirst());
+        assertTrue(advice.getFirst().contains("\nindex: customer(joined_on)"), advice.getFirst());
         // An index serves a descending order as it does an ascending one.
         assertEquals(1, missingIndexAdvice(() -> orm.entity(Customer.class).select()
                 .orderByDescending(JOINED_ON).limit(10).getResultList()).size());
         var sorted = missingIndexAdvice(() -> orm.entity(Customer.class).select()
                 .orderBy(JOINED_ON).limit(10).getResultList());
         assertEquals(1, sorted.size(), sorted.toString());
-        assertTrue(sorted.getFirst().contains("no index on customer starts with joined_on, which the statement sorts "
-                + "its limited result by, so the database sorts every row before it returns the first ones; an index "
-                + "on customer(joined_on) reads the rows in order and stops at the limit."), sorted.getFirst());
+        assertTrue(sorted.getFirst().contains("no index on customer starts with joined_on, so the database sorts every "
+                + "row before it returns the first ones.\nindex: customer(joined_on) reads the rows in order and stops "
+                + "at the limit."), sorted.getFirst());
     }
 
     @Test
@@ -314,7 +313,7 @@ public class MissingIndexAdviceIntegrationTest {
                 .where(LAST_NAME, EQUALS, "Davis").getResultList());
         assertEquals(1, advice.size(), advice.toString());
         assertTrue(advice.getFirst().contains("starts with last_name or joined_on"), advice.getFirst());
-        assertTrue(advice.getFirst().contains("an index on customer(last_name, joined_on)"), advice.getFirst());
+        assertTrue(advice.getFirst().contains("\nindex: customer(last_name, joined_on)"), advice.getFirst());
     }
 
     @Test
@@ -324,7 +323,7 @@ public class MissingIndexAdviceIntegrationTest {
         var advice = missingIndexAdvice(() -> orm.entity(Customer.class).select()
                 .semiJoin(Purchase.class).on(Customer.class)
                 .where(LAST_NAME, EQUALS, "Davis").getResultList());
-        assertTrue(advice.stream().anyMatch(line -> line.contains("an index on purchase(customer_id)")),
+        assertTrue(advice.stream().anyMatch(line -> line.contains("\nindex: purchase(customer_id)")),
                 advice.toString());
     }
 
@@ -428,7 +427,7 @@ public class MissingIndexAdviceIntegrationTest {
         SchemaValidator.of(dataSource).load(List.of(ArchivedCustomer.class));
         var advice = missingIndexAdvice(query);
         assertEquals(1, advice.size(), advice.toString());
-        assertTrue(advice.getFirst().contains("an index on sales.customer_archive(last_name)"), advice.getFirst());
+        assertTrue(advice.getFirst().contains("\nindex: sales.customer_archive(last_name)"), advice.getFirst());
     }
 
     @Test

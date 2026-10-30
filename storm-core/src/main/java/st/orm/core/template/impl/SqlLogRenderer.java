@@ -87,7 +87,7 @@ public final class SqlLogRenderer {
                 summary.peakConcurrency(), NANOSECONDS.toMillis(summary.durationNanos()), summary.byStatement(),
                 summary.recorded() - summary.statements().size(), summary.unrecorded()));
         for (var advisory : advisories(summary)) {
-            rendered.append(System.lineSeparator()).append("\tadvice: ").append(advisory);
+            rendered.append(Advice.lines(advisory));
         }
         return rendered.toString();
     }

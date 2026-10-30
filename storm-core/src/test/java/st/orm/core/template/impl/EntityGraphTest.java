@@ -70,9 +70,9 @@ public class EntityGraphTest {
         assertEquals(List.of("Chain9.next"), graph.withinBudget().stream().map(EntityGraph.Cut::field).toList());
         var advice = graph.budgetAdvice();
         assertTrue(advice.startsWith("every read of Chain0 joins 11 tables and selects 22 columns beyond its own, "
-                + "past the design budget of 10 joins and 96 columns; a Ref for Chain9.next removes 2 joins and 3 "
-                + "columns."), advice);
-        assertTrue(advice.endsWith(" See https://orm.st/docs/advice#entity-budget"), advice);
+                + "past the design budget of 10 joins and 96 columns.\nfix: a Ref for Chain9.next removes 2 joins and "
+                + "3 columns."), advice);
+        assertTrue(advice.endsWith("\nsee: https://orm.st/docs/advice#entity-budget"), advice);
     }
 
     @Test
@@ -80,7 +80,7 @@ public class EntityGraphTest {
         var advice = EntityGraph.wideReadAdvice(Chain0.class);
         assertNotNull(advice);
         // Below half the budget takes seven joins off; the deepest edge that does is the one into Chain5.
-        assertTrue(advice.contains("where that width is what makes the read slow, a Ref for Chain4.next removes 7 "
+        assertTrue(advice.contains("\nfix, where that width makes the read slow: a Ref for Chain4.next removes 7 "
                 + "joins and 13 columns."), advice);
         assertNull(EntityGraph.wideReadAdvice(Visit.class));
         assertNull(EntityGraph.wideReadAdvice(Pet.class));
@@ -97,7 +97,7 @@ public class EntityGraphTest {
             AdviceLog.entityBudget(6, 20);
             var graph = EntityGraph.of(Chain0.class);
             assertTrue(graph.overBudget());
-            assertTrue(graph.budgetAdvice().contains("past the design budget of 6 joins and 20 columns;"),
+            assertTrue(graph.budgetAdvice().contains("past the design budget of 6 joins and 20 columns.\nfix: "),
                     graph.budgetAdvice());
             // Half of six joins is three, so a read of Visit is wide now, and its advice is worked out again.
             assertNotNull(EntityGraph.wideReadAdvice(Visit.class));

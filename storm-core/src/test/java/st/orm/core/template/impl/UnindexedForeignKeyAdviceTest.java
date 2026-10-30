@@ -40,6 +40,7 @@ import org.springframework.jdbc.datasource.DriverManagerDataSource;
 import st.orm.Entity;
 import st.orm.Metamodel;
 import st.orm.PK;
+import st.orm.core.AdviceCapture;
 import st.orm.core.template.ORMTemplate;
 import st.orm.core.template.SqlDialect.ConstraintDiscoveryStrategy;
 import st.orm.core.template.SqlDialect.SequenceDiscoveryStrategy;
@@ -135,9 +136,9 @@ public class UnindexedForeignKeyAdviceTest {
         var advice = deleteAdvice("customer", catalog(PURCHASE_CUSTOMER));
         assertEquals(List.of(Advice.UNINDEXED_FOREIGN_KEY.format("customer", "PURCHASE", "CUSTOMER_ID", "CUSTOMER_ID")),
                 advice);
-        assertTrue(advice.getFirst().startsWith("deleting from customer checks the foreign key PURCHASE(CUSTOMER_ID) "
-                + "that references it, and no index on PURCHASE starts with CUSTOMER_ID, so the database reads "
-                + "PURCHASE in full for every row it deletes; an index on PURCHASE(CUSTOMER_ID) serves the check."),
+        assertTrue(advice.getFirst().startsWith("every row deleted from customer is checked against the foreign key "
+                + "PURCHASE(CUSTOMER_ID), and no index on PURCHASE starts with CUSTOMER_ID, so the database reads "
+                + "PURCHASE in full for each deleted row.\nfix: an index on PURCHASE(CUSTOMER_ID) serves the check."),
                 advice.getFirst());
     }
 
@@ -161,8 +162,8 @@ public class UnindexedForeignKeyAdviceTest {
         var orderVersion = new ForeignKey("LINE_ITEM", "FK_LINE_ITEM_ORDER", "ORDER_VERSION", "ORDERS", "VERSION");
         var advice = deleteAdvice("orders", catalog(orderId, orderVersion));
         assertEquals(1, advice.size(), advice::toString);
-        assertTrue(advice.getFirst().contains("the foreign key LINE_ITEM(ORDER_ID, ORDER_VERSION) that references "
-                + "it, and no index on LINE_ITEM starts with ORDER_ID or ORDER_VERSION"), advice.getFirst());
+        assertTrue(advice.getFirst().contains("the foreign key LINE_ITEM(ORDER_ID, ORDER_VERSION), and no index on "
+                + "LINE_ITEM starts with ORDER_ID or ORDER_VERSION"), advice.getFirst());
         try (var connection = dataSource.getConnection(); var statement = connection.createStatement()) {
             statement.execute("CREATE INDEX line_item_version ON line_item (order_version)");
         }
@@ -226,9 +227,9 @@ public class UnindexedForeignKeyAdviceTest {
             logger.setLevel(previous);
             appender.stop();
         }
-        return appender.list.stream()
-                .flatMap(event -> event.getFormattedMessage().lines())
-                .filter(line -> line.contains("#unindexed-foreign-key"))
+        return AdviceCapture.advisoriesIn(appender.list.stream()
+                        .map(ILoggingEvent::getFormattedMessage).toList()).stream()
+                .filter(advisory -> advisory.contains("#unindexed-foreign-key"))
                 .toList();
     }
 

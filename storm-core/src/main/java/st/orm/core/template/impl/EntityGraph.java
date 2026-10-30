@@ -162,7 +162,7 @@ record EntityGraph(Class<?> type, int ownColumns, int joins, int columns, String
                 return new WideRead(current, null);
             }
             return new WideRead(current, Advice.WIDE_ENTITY_READ.format(type.getSimpleName(), graph.joins(),
-                    graph.columns(), String.join(", and ", graph.belowWide(current).stream()
+                    graph.columns(), String.join("\nand: ", graph.belowWide(current).stream()
                             .map(Cut::describe).toList())));
         }
     };
@@ -291,9 +291,9 @@ record EntityGraph(Class<?> type, int ownColumns, int joins, int columns, String
         var current = budget;
         var within = cutsTo(current.joins(), current.columns());
         String remedy = within.isEmpty()
-                ? "every joined entity is part of an identifying key or a lookup table without foreign keys, so a "
-                        + "projection is the way to read less"
-                : String.join(", and ", within.stream().map(Cut::describe).toList());
+                ? "read through a projection, since every joined entity is part of an identifying key or a lookup "
+                        + "table without foreign keys, which a Ref cannot leave out"
+                : String.join("\nand: ", within.stream().map(Cut::describe).toList());
         return Advice.ENTITY_BUDGET.format(type.getSimpleName(), joins, columns, remedy, current.joins(),
                 current.columns());
     }

@@ -138,7 +138,7 @@ public class AdvisoryIntegrationTest {
         });
         assertEquals(1, advice.size(), advice.toString());
         assertTrue(advice.getFirst().contains("a Ref for Chain4.next"), advice.getFirst());
-        assertTrue(advice.getFirst().endsWith("See https://orm.st/docs/advice#wide-entity-read"), advice.getFirst());
+        assertTrue(advice.getFirst().endsWith("\nsee: https://orm.st/docs/advice#wide-entity-read"), advice.getFirst());
         // A read of an entity well within the budget carries none.
         assertEquals(List.of(), advisories(() -> owners().orderBy(Owner_.id).getResultList()));
     }

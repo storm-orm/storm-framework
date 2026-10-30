@@ -290,8 +290,8 @@ public class SqlLogRendererTest {
     public void relatedWritesOutsideATransactionCarryAdvice() {
         var advisories = SqlLogRenderer.advisories(writes(false, Owner.class, Pet.class));
         assertEquals(1, advisories.size(), advisories.toString());
-        assertEquals("the unit of work wrote Owner and then Pet, which references Owner, each in a transaction of "
-                + "its own; when a later write fails, the earlier ones stay; run them in one transaction. See "
+        assertEquals("the unit of work wrote Owner and then Pet, which references Owner, each committing on its own, so "
+                + "when a later write fails, the earlier ones stay.\nfix: run them in one transaction.\nsee: "
                 + "https://orm.st/docs/advice#writes-without-transaction", advisories.getFirst());
         // The reference through an inline record counts: an owner's address references its city.
         assertEquals(1, SqlLogRenderer.advisories(writes(false, City.class, Owner.class)).size());
@@ -327,19 +327,19 @@ public class SqlLogRendererTest {
         var summary = repeated(SqlOperation.SELECT, City.class, StatementOrigin.FETCH, 10, 1, true);
         assertEquals(1, SqlLogRenderer.advisories(summary).size());
         String rendered = SqlLogRenderer.render(summary);
-        assertTrue(rendered.contains(NL + "\tadvice: 10 statements each fetched one City, 10 ms, 1.0 ms each; an inline foreign key joins it"), rendered);
-        assertTrue(rendered.endsWith("See https://orm.st/docs/advice#repeated-fetch"), rendered);
+        assertTrue(rendered.contains(NL + "\tadvice: 10 statements each fetched one City, 10 ms, 1.0 ms each." + NL + "\t\tfix: an inline foreign key joins it"), rendered);
+        assertTrue(rendered.endsWith("\t\tsee: https://orm.st/docs/advice#repeated-fetch"), rendered);
     }
 
     @Test
     public void repeatedSingleRowReadsAndWritesCarryAdvice() {
         var read = SqlLogRenderer.advisories(repeated(SqlOperation.SELECT, Owner.class, StatementOrigin.DIRECT, 12, 1, true));
         assertEquals(1, read.size(), read.toString());
-        assertTrue(read.getFirst().startsWith("the same SELECT of Owner ran 12 times, 12 ms, 1.0 ms each, one row each; one query"), read.getFirst());
+        assertTrue(read.getFirst().startsWith("the same SELECT of Owner ran 12 times, 12 ms, 1.0 ms each, one row each.\nfix: one query"), read.getFirst());
         var write = SqlLogRenderer.advisories(repeated(SqlOperation.INSERT, Owner.class, StatementOrigin.DIRECT, 10, 1, true));
         assertEquals(1, write.size(), write.toString());
-        assertTrue(write.getFirst().startsWith("the same INSERT of Owner ran 10 times, 10 ms, 1.0 ms each, one row each; the overloads"), write.getFirst());
-        assertTrue(write.getFirst().endsWith("send the rows as one batch. See https://orm.st/docs/advice#repeated-write"), write.getFirst());
+        assertTrue(write.getFirst().startsWith("the same INSERT of Owner ran 10 times, 10 ms, 1.0 ms each, one row each.\nfix: the overloads"), write.getFirst());
+        assertTrue(write.getFirst().endsWith("send the rows as one batch.\nsee: https://orm.st/docs/advice#repeated-write"), write.getFirst());
     }
 
     @Test
@@ -348,13 +348,13 @@ public class SqlLogRendererTest {
                 "OwnerService.kt:52", execution -> UNKNOWN);
         var advisories = SqlLogRenderer.advisories(new Summary("call", statements, 12, 0, 36));
         assertEquals(1, advisories.size(), advisories.toString());
-        assertTrue(advisories.getFirst().startsWith("the same SELECT of Owner ran 12 times, 36 ms, 3.0 ms each, one row each, at "
-                + "OwnerService.kt:52; one query"), advisories.getFirst());
+        assertTrue(advisories.getFirst().startsWith("the same SELECT of Owner ran 12 times, 36 ms, 3.0 ms each, one row each.\nat: "
+                + "OwnerService.kt:52\nfix: one query"), advisories.getFirst());
         var fetches = repeated(SqlOperation.SELECT, City.class, StatementOrigin.FETCH, 10, 1, true, 2,
                 "OwnerView.kt:31", execution -> UNKNOWN);
         var fetched = SqlLogRenderer.advisories(new Summary("call", fetches, 10, 0, 20));
-        assertTrue(fetched.getFirst().startsWith("10 statements each fetched one City, 20 ms, 2.0 ms each, at OwnerView.kt:31; "
-                + "an inline foreign key"), fetched.getFirst());
+        assertTrue(fetched.getFirst().startsWith("10 statements each fetched one City, 20 ms, 2.0 ms each.\nat: OwnerView.kt:31\n"
+                + "fix: an inline foreign key"), fetched.getFirst());
     }
 
     @Test
@@ -366,10 +366,10 @@ public class SqlLogRendererTest {
                 "OwnerService.kt:91", execution -> UNKNOWN));
         var advisories = SqlLogRenderer.advisories(new Summary("call", statements, 22, 0, 34));
         assertEquals(2, advisories.size(), advisories.toString());
-        assertTrue(advisories.get(0).startsWith("the same SELECT of Owner ran 12 times, 24 ms, 2.0 ms each, one row each, at "
-                + "OwnerService.kt:52; "), advisories.get(0));
-        assertTrue(advisories.get(1).startsWith("the same SELECT of Owner ran 10 times, 10 ms, 1.0 ms each, one row each, at "
-                + "OwnerService.kt:91; "), advisories.get(1));
+        assertTrue(advisories.get(0).startsWith("the same SELECT of Owner ran 12 times, 24 ms, 2.0 ms each, one row each.\nat: "
+                + "OwnerService.kt:52\n"), advisories.get(0));
+        assertTrue(advisories.get(1).startsWith("the same SELECT of Owner ran 10 times, 10 ms, 1.0 ms each, one row each.\nat: "
+                + "OwnerService.kt:91\n"), advisories.get(1));
     }
 
     @Test
@@ -379,13 +379,13 @@ public class SqlLogRendererTest {
         var advisories = SqlLogRenderer.advisories(new Summary("call", statements, 12, 0, 2040));
         assertEquals(1, advisories.size(), advisories.toString());
         assertTrue(advisories.getFirst().startsWith("the same SELECT of Owner ran 12 times, 2040 ms, 170 ms each, one "
-                + "row each; at 170 ms each the statement itself costs more than its round trips, so look at it "
-                + "first; then one query for all of them"), advisories.getFirst());
+                + "row each.\ncost: at 170 ms each the statement itself costs more than its round trips, so look at it "
+                + "first\nfix: one query for all of them"), advisories.getFirst());
         // Below ten milliseconds per execution the round trips are the cost, so the advice goes straight to them.
         var cheap = SqlLogRenderer.advisories(repeated(SqlOperation.SELECT, Owner.class, StatementOrigin.DIRECT,
                 12, 1, true));
         assertTrue(cheap.getFirst().startsWith("the same SELECT of Owner ran 12 times, 12 ms, 1.0 ms each, one row "
-                + "each; one query"), cheap.getFirst());
+                + "each.\nfix: one query"), cheap.getFirst());
     }
 
     @Test
@@ -412,16 +412,16 @@ public class SqlLogRendererTest {
         var writes = repeated(SqlOperation.INSERT, Owner.class, StatementOrigin.DIRECT, 10, 1, true, 1, null,
                 execution -> OUTSIDE);
         var written = SqlLogRenderer.advisories(new Summary("call", writes, 10, 0, 10));
-        assertEquals("the same INSERT of Owner ran 10 times, 10 ms, 1.0 ms each, one row each, in 10 transactions of their own; "
-                + "the overloads that take a list send the rows as one batch, which commits them together. See "
+        assertEquals("the same INSERT of Owner ran 10 times, 10 ms, 1.0 ms each, one row each, in 10 transactions of their own.\n"
+                + "fix: the overloads that take a list send the rows as one batch, which commits them together.\nsee: "
                 + "https://orm.st/docs/advice#repeated-write", written.getFirst());
         // A transaction per execution says the same; a read commits nothing, so its remedy is unchanged.
         var reads = repeated(SqlOperation.SELECT, Owner.class, StatementOrigin.DIRECT, 12, 1, true, 1, null,
                 execution -> execution + 1L);
         var read = SqlLogRenderer.advisories(new Summary("call", reads, 12, 0, 12));
-        assertEquals("the same SELECT of Owner ran 12 times, 12 ms, 1.0 ms each, one row each, in 12 transactions of their own; "
-                + "one query for all of them, such as findAllById or a where with IN, reads the rows in one round "
-                + "trip. See https://orm.st/docs/advice#repeated-select", read.getFirst());
+        assertEquals("the same SELECT of Owner ran 12 times, 12 ms, 1.0 ms each, one row each, in 12 transactions of their own.\n"
+                + "fix: one query for all of them, such as findAllById or a where with IN, reads the rows in one round "
+                + "trip.\nsee: https://orm.st/docs/advice#repeated-select", read.getFirst());
     }
 
     /**
@@ -449,21 +449,21 @@ public class SqlLogRendererTest {
         var writes = spread(SqlOperation.INSERT, Owner.class, 29, 240, execution -> OUTSIDE);
         var advisories = SqlLogRenderer.advisories(new Summary("task", writes, 29, 0, 7_000));
         assertEquals("the same INSERT of Owner ran 29 times, 29 ms, 1.0 ms each, one row each, in 29 transactions of "
-                + "their own, spread over 6749 ms with work outside the database between them, at "
-                + "PetRegistryService.kt:60; collect the rows and write them after the loop through the overloads "
-                + "that take a list, which sends them as one batch and commits them together, rather than opening a "
-                + "transaction around the loop. See https://orm.st/docs/advice#repeated-write", advisories.getFirst());
+                + "their own, spread over 6749 ms with work outside the database between them.\nat: "
+                + "PetRegistryService.kt:60\nfix: collect the rows and write them after the loop through the overloads "
+                + "that take a list, which sends them as one batch and commits them together, rather than a "
+                + "transaction around the loop.\nsee: https://orm.st/docs/advice#repeated-write", advisories.getFirst());
         // Within one transaction, the fact is stated and the rows are still to be collected and written after it.
         var within = spread(SqlOperation.INSERT, Owner.class, 12, 240, execution -> 5L);
         var advice = SqlLogRenderer.advisories(new Summary("task", within, 12, 0, 3_000)).getFirst();
-        assertTrue(advice.contains("one row each, spread over 2652 ms with work outside the database between them, at "
-                + "PetRegistryService.kt:60; collect the rows and write them after the loop through the overloads "
-                + "that take a list, which sends them as one batch. See"), advice);
+        assertTrue(advice.contains("one row each, spread over 2652 ms with work outside the database between them.\nat: "
+                + "PetRegistryService.kt:60\nfix: collect the rows and write them after the loop through the overloads "
+                + "that take a list, which sends them as one batch.\nsee:"), advice);
         // Work that is a fraction of the writes is no spread: the executions follow one another.
         var dense = spread(SqlOperation.INSERT, Owner.class, 12, 5, execution -> OUTSIDE);
         var plain = SqlLogRenderer.advisories(new Summary("task", dense, 12, 0, 100)).getFirst();
         assertFalse(plain.contains("spread over"), plain);
-        assertTrue(plain.contains("in 12 transactions of their own, at PetRegistryService.kt:60; the overloads that "
+        assertTrue(plain.contains("in 12 transactions of their own.\nat: PetRegistryService.kt:60\nfix: the overloads that "
                 + "take a list send the rows as one batch, which commits them together."), plain);
     }
 
@@ -473,12 +473,12 @@ public class SqlLogRendererTest {
                 execution -> execution % 3 + 1L);
         var advisories = SqlLogRenderer.advisories(new Summary("call", statements, 12, 0, 12));
         assertTrue(advisories.getFirst().startsWith("the same SELECT of Owner ran 12 times, 12 ms, 1.0 ms each, one row each, in 3 "
-                + "transactions; one query"), advisories.getFirst());
+                + "transactions.\nfix: one query"), advisories.getFirst());
         // A transaction the record does not identify is not counted, so the summary states nothing about them.
         var mixed = repeated(SqlOperation.SELECT, Owner.class, StatementOrigin.DIRECT, 12, 1, true, 1, null,
                 execution -> execution % 2 == 0 ? UNKNOWN : 7L);
         var unstated = SqlLogRenderer.advisories(new Summary("call", mixed, 12, 0, 12));
-        assertTrue(unstated.getFirst().startsWith("the same SELECT of Owner ran 12 times, 12 ms, 1.0 ms each, one row each; one "
+        assertTrue(unstated.getFirst().startsWith("the same SELECT of Owner ran 12 times, 12 ms, 1.0 ms each, one row each.\nfix: one "
                 + "query"), unstated.getFirst());
     }
 
@@ -504,8 +504,8 @@ public class SqlLogRendererTest {
                 29, 25), 29, 0, 25));
         assertEquals(1, advisories.size(), advisories.toString());
         assertTrue(advisories.getFirst().startsWith("the same SELECT of Owner ran 29 times, 725 ms over 25 ms elapsed, "
-                + "25 ms each, one row each, in 29 transactions of their own; at 25 ms each the statement itself "
-                + "costs more than its round trips, so look at it first; then one query"), advisories.getFirst());
+                + "25 ms each, one row each, in 29 transactions of their own.\ncost: at 25 ms each the statement itself "
+                + "costs more than its round trips, so look at it first\nfix: one query"), advisories.getFirst());
         // Executions that ran one after another cost what they add up to, so the line states the sum alone.
         var sequential = SqlLogRenderer.advisories(repeated(SqlOperation.SELECT, Owner.class, StatementOrigin.DIRECT,
                 12, 1, true));
@@ -549,7 +549,7 @@ public class SqlLogRendererTest {
                 execution -> 7L);
         var advisories = SqlLogRenderer.advisories(new Summary("call", statements, 12, 0, 12));
         assertEquals(1, advisories.size(), advisories.toString());
-        assertTrue(advisories.getFirst().startsWith("the same SELECT of Owner ran 12 times, 12 ms, 1.0 ms each, one row each; one "
+        assertTrue(advisories.getFirst().startsWith("the same SELECT of Owner ran 12 times, 12 ms, 1.0 ms each, one row each.\nfix: one "
                 + "query"), advisories.getFirst());
     }
 
