@@ -16,14 +16,21 @@
 package st.orm.core.template.impl;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import clinic.Missing$Nested;
 import clinic.ReportRepository$DefaultImpls$lookUpAll$$inlined$map$1;
 import clinic.ReportService$run$$inlined$map$1;
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Supplier;
+import java.util.stream.Stream;
 import org.junit.jupiter.api.Test;
 
 /**
@@ -83,5 +90,59 @@ class CallSiteCaptureTest {
             }
         });
         assertEquals("Launcher.kt:12 via ReportRepository.lookUpAll", site);
+    }
+
+    @Test
+    void anApplicationPackageUnderStOrmIsTheApplicationsOwn() {
+        assertFalse(CallSiteCapture.isInfrastructure("st.orm.demo.imdb.MovieCollectionService"));
+        assertFalse(CallSiteCapture.isInfrastructure("st.orm.demo.imdb.RatingRepository$DefaultImpls"));
+        assertTrue(CallSiteCapture.isInfrastructure("st.orm.Ref"));
+        assertTrue(CallSiteCapture.isInfrastructure("st.orm.core.template.impl.QueryImpl"));
+        assertTrue(CallSiteCapture.isInfrastructure("st.orm.repository.impl.EntityRepositoryImpl"));
+        assertTrue(CallSiteCapture.isInfrastructure("st.orm.spi.postgresql.PostgreSQLSqlDialect"));
+    }
+
+    @Test
+    void aNativeImagesOwnClassesArePlatform() {
+        assertTrue(CallSiteCapture.isInfrastructure("com.oracle.svm.core.thread.PlatformThreads"));
+        assertTrue(CallSiteCapture.isInfrastructure(
+                "com.oracle.svm.core.methodhandles.Target_java_lang_invoke_MethodHandle"));
+    }
+
+    /**
+     * Every package a Storm module ships under {@code st.orm} counts as Storm's own, so a module that adds a package
+     * outside the known ones fails here rather than naming its frames as the application's.
+     */
+    @Test
+    void everyPackageStormShipsIsStormsOwn() throws IOException {
+        List<String> missing = new ArrayList<>();
+        int packages = 0;
+        try (Stream<Path> modules = Files.list(Path.of(".."))) {
+            for (var module : modules.filter(Files::isDirectory).toList()) {
+                var main = module.resolve("src/main");
+                if (!Files.isDirectory(main)) {
+                    continue;
+                }
+                try (Stream<Path> sources = Files.walk(main)) {
+                    for (var source : sources.filter(path -> {
+                        var name = path.getFileName().toString();
+                        return name.endsWith(".java") || name.endsWith(".kt");
+                    }).toList()) {
+                        var relative = source.toString().replace('\\', '/');
+                        int root = relative.indexOf("/st/orm/");
+                        if (root < 0) {
+                            continue;
+                        }
+                        var className = relative.substring(root + 1, relative.lastIndexOf('.')).replace('/', '.');
+                        packages++;
+                        if (!CallSiteCapture.isStorm(className)) {
+                            missing.add(className);
+                        }
+                    }
+                }
+            }
+        }
+        assertTrue(packages > 0, "no Storm sources found from " + Path.of("..").toAbsolutePath());
+        assertEquals(List.of(), missing);
     }
 }
