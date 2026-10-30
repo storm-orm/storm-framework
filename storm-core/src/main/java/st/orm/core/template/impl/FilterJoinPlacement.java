@@ -329,8 +329,7 @@ final class FilterJoinPlacement {
             if (named.isEmpty()) {
                 parts.add(conjunct);
             } else if (named.size() > 1) {
-                throw new PersistenceException("A condition names the semi-joined %s. Each condition on a semi-joined table is answered by a row of that table, so join conditions on different semi-joined tables with AND."
-                        .formatted(named.stream().map(join -> join.table().getSimpleName()).collect(joining(" and "))));
+                parts.add(placeAcross(level, conjunct, named, residual));
             } else {
                 groups.computeIfAbsent(named.iterator().next(), ignore -> new ArrayList<>()).add(conjunct);
             }
@@ -339,6 +338,49 @@ final class FilterJoinPlacement {
             parts.add(placeGroup(group.getKey(), group.getValue(), residual));
         }
         return PredicateNode.and(parts);
+    }
+
+    /**
+     * Places a condition that names several semi-joined tables. An OR holds where any of its arms holds, and each arm
+     * is answered on its own: the arms on one semi-joined table by a related row of that table, the arms on the
+     * query's own tables by the query's row, an arm joined by AND as any condition is. The arms on the query's tables
+     * go with the first semi-joined table's, so that pair renders as a lone semi-join's OR does; every other table's
+     * arms are an {@code EXISTS} of their own. One term that names two semi-joined tables has no row to answer it.
+     */
+    private PredicateNode placeAcross(@Nullable FilterJoin level,
+                                      PredicateNode condition,
+                                      Set<FilterJoin> named,
+                                      boolean residual) {
+        if (!(condition instanceof Group(var and, var operands)) || and) {
+            throw new PersistenceException("A condition compares the semi-joined %s with each other, but each is answered by a related row of its own, so no row of either answers it. Name one semi-joined table per term, or join the tables to compare their columns."
+                    .formatted(named.stream().map(join -> join.table().getSimpleName()).collect(joining(" and "))));
+        }
+        var own = new ArrayList<PredicateNode>();
+        var byJoin = new LinkedHashMap<FilterJoin, List<PredicateNode>>();
+        var arms = new ArrayList<PredicateNode>();
+        for (var operand : operands) {
+            var joins = semiJoinsOf(level, operand);
+            if (joins.isEmpty()) {
+                own.add(operand);
+            } else if (joins.size() == 1) {
+                byJoin.computeIfAbsent(joins.iterator().next(), ignore -> new ArrayList<>()).add(operand);
+            } else {
+                arms.add(place(level, operand, residual));
+            }
+        }
+        var placed = new ArrayList<PredicateNode>(byJoin.size() + arms.size() + 1);
+        for (var group : byJoin.entrySet()) {
+            var terms = new ArrayList<PredicateNode>();
+            if (placed.isEmpty()) {
+                terms.addAll(own);
+                own.clear();
+            }
+            terms.addAll(group.getValue());
+            placed.add(placeGroup(group.getKey(), List.of(PredicateNode.or(terms)), residual));
+        }
+        placed.addAll(own);
+        placed.addAll(arms);
+        return PredicateNode.or(placed);
     }
 
     /**

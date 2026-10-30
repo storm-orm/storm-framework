@@ -12,6 +12,7 @@ for the CLI, to [npm](https://www.npmjs.com/package/@storm-orm/cli)
 
 ## [Unreleased]
 
+- An `or` across two semi-joined tables, and a `search` or `suggest` over columns of several, is placed as one `EXISTS` per table, ORed with the query's own columns, rather than refused (#786). A term that compares columns of two semi-joined tables stays refused, since no row of either answers it.
 - A call site names an application frame whose package starts with `st.orm.`, as the example applications' do, rather than skipping it as Storm's own, and a native image names the application's frame rather than GraalVM's (#782).
 - A statement Storm executes is the driver's own rather than a JDK proxy that returns its connection when it closes, and a statement closed twice returns its connection once.
 - Reads and writes spend less time in Storm, most of all multi-row inserts and reads of many rows.
