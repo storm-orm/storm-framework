@@ -12,6 +12,7 @@ for the CLI, to [npm](https://www.npmjs.com/package/@storm-orm/cli)
 
 ## [Unreleased]
 
+- A call site names an application frame whose package starts with `st.orm.`, as the example applications' do, rather than skipping it as Storm's own, and a native image names the application's frame rather than GraalVM's (#782).
 - A statement no longer goes through a JDK proxy to return its connection when it closes, and a statement closed twice returns its connection once.
 - Reads and writes spend less time in Storm, most of all multi-row inserts and reads of many rows.
 - A lazily resolved template setting no longer fails with `NullPointerException: supplier` when several threads read it for the first time at once.
