@@ -284,7 +284,8 @@ public class SqlLogIntegrationTest {
         // This test lives under st.orm, which the walker treats as framework, so the frame it finds is the
         // test runner's; an application's own frame is the first outside the framework packages.
         assertNotNull(line.callSite());
-        assertTrue(line.callSite().matches(".+:\\d+"), line.callSite());
+        // The built-in call the frame made is named after it.
+        assertTrue(line.callSite().matches(".+:\\d+ -> getById"), line.callSite());
         assertEquals(1, line.sites());
     }
 

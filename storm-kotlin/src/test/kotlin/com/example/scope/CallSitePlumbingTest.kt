@@ -89,11 +89,25 @@ internal open class CallSitePlumbingTest(
         val callSite = summary.byStatement().first().callSite()
         callSite.shouldNotBeNull()
         callSite shouldStartWith "CallSitePlumbingTest.kt:"
-        callSite shouldEndWith " via PetOwnerRefs.allRenamed"
+        callSite shouldEndWith " -> PetOwnerRefs.allRenamed"
     }
 
     @Test
-    fun `a statement Storm's inline function runs names the line that called it`(): Unit = runBlocking {
+    fun `a flow a repository method returns as is names the repository method that built it`(): Unit = runBlocking {
+        val owners = orm.repository(PetOwnerRefs::class)
+        val summary = record("returned flow") {
+            val flow = owners.all()
+            // The flow runs here, after the repository method returned: its frame is no longer on the stack.
+            flow.toList()
+        }
+        val callSite = summary.byStatement().first().callSite()
+        callSite.shouldNotBeNull()
+        callSite shouldStartWith "CallSitePlumbingTest.kt:"
+        callSite shouldEndWith " -> PetOwnerRefs.all"
+    }
+
+    @Test
+    fun `a statement Storm's inline function runs names the line that called it and the built-in call`(): Unit = runBlocking {
         var line = 0
         val summary = record("inline") {
             // The call follows on the next line.
@@ -101,6 +115,6 @@ internal open class CallSitePlumbingTest(
             orm.exists<PetOwnerRef>()
         }
         val callSite = summary.byStatement().first().callSite()
-        callSite shouldBe "CallSitePlumbingTest.kt:$line"
+        callSite shouldBe "CallSitePlumbingTest.kt:$line -> exists"
     }
 }

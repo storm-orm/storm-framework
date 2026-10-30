@@ -408,7 +408,7 @@ public final class JpaTemplateImpl implements JpaTemplate, FactsQueryFactory {
                         : null;
                 // A JPA statement runs in the entity manager's transaction.
                 var context = new QueryImpl.QueryContextImpl(sql.operation(), sql.upsert(), dataType, kind, sql.statement(),
-                        sql.origin(), sql.shapeId(), true, null, true, null, false);
+                        sql.origin(), sql.shapeId(), true, null, true, null, false, null, null, null);
                 var handles = QueryImpl.listen(operators, context, sql.parameters());
                 return new QueryImpl.ListenedObservation(Observation.NOOP, handles);
             } catch (Throwable ignore) {

@@ -22,6 +22,7 @@ import java.util.Arrays;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import javax.sql.DataSource;
 import org.jspecify.annotations.Nullable;
 import st.orm.Data;
 import st.orm.spi.QueryContext;
@@ -122,6 +123,10 @@ final class Repeats {
         final @Nullable RepositoryCall call;
         /** Whether an upsert that updates draws a generated key value all the same, on the database it ran on. */
         final boolean upsertTakesGeneratedKey;
+        /** The columns the statement asks an index for, from its first execution; {@code null} for none. */
+        final @Nullable IndexDemands indexDemands;
+        /** The data source the statement ran on, whose index catalog the demands are checked against. */
+        final @Nullable DataSource dataSource;
         /** Every execution recorded, which decides when the threshold is reached. */
         int executions;
         /** The call site of the executions, part of the key where it is known. */
@@ -147,6 +152,9 @@ final class Repeats {
             this.readsRecords = context.readsRecords();
             this.call = context instanceof QueryImpl.QueryContextImpl impl ? impl.call() : null;
             this.upsertTakesGeneratedKey = upsertTakesGeneratedKey(context);
+            var impl = context instanceof QueryImpl.QueryContextImpl it ? it : null;
+            this.indexDemands = impl == null ? null : impl.indexDemands();
+            this.dataSource = impl == null ? null : impl.dataSource();
         }
 
         /** Whether a write was made for given entities or keys, rather than by condition. */
@@ -386,11 +394,31 @@ final class Repeats {
                     || counted.elapsedNanos() < floor) {
                 continue;
             }
-            advisories.add(new Advisory(repeat.advice, entry.getKey(), repeat.shapeId, counted.elapsedNanos(),
-                    text(repeat, counted)));
+            var text = text(repeat, counted);
+            if (text == null) {
+                continue;
+            }
+            advisories.add(new Advisory(repeat.advice, entry.getKey(), repeat.shapeId, counted.elapsedNanos(), text));
+            // A statement that costs more than its round trips is the thing to look at, and no single execution of
+            // it need reach the slow threshold that would name the index it lacks, so the repeat names it.
+            if (costly(counted) && repeat.indexDemands != null) {
+                for (var index : repeat.indexDemands.advise(IndexCatalog.published(repeat.dataSource))) {
+                    var advice = Advice.of(index);
+                    if (advice != null) {
+                        advisories.add(new Advisory(advice, entry.getKey(), repeat.shapeId, counted.elapsedNanos(),
+                                index));
+                    }
+                }
+            }
         }
+        // Stable, so the index a repeat lacks follows the repeat.
         advisories.sort(comparingLong(Advisory::elapsedNanos).reversed());
         return advisories;
+    }
+
+    /** Returns whether each execution costs more than its round trip, so the statement is the thing to look at. */
+    private static boolean costly(Counted counted) {
+        return counted.nanos() / Math.max(1, counted.executions()) >= Advice.STATEMENT_COST_NANOS;
     }
 
     /**
@@ -421,7 +449,7 @@ final class Repeats {
      * alone is told that the combined write commits the rows together; one whose transactions held more is the loop
      * over units of work, which no batch merges.
      */
-    private static String text(Repeat repeat, Counted counted) {
+    private static @Nullable String text(Repeat repeat, Counted counted) {
         long mean = counted.nanos() / Math.max(1, counted.executions());
         String time = ", " + SlowStatementLog.millis(counted.nanos());
         long elapsed = counted.elapsedNanos();
@@ -435,6 +463,14 @@ final class Repeats {
         boolean write = repeat.advice == Advice.REPEATED_WRITE;
         boolean spread = write && spread(counted);
         int transactions = counted.transactions();
+        // A write run once in each of several transactions that held more is the loop over units of work: one
+        // statement or one batch over all of them would take the writes out of the transactions they belong to, so
+        // only the statement itself is left to look at, and a write that costs no more than its round trip is no
+        // repeat to advise on.
+        boolean unitsOfWork = write && transactions > 1 && transactions == counted.executions() && !counted.own();
+        if (unitsOfWork && !costly(counted)) {
+            return null;
+        }
         if (transactions == counted.executions() && counted.own()) {
             facts.append(", in ").append(transactions).append(" transactions of their own");
             commits = spread
@@ -450,17 +486,18 @@ final class Repeats {
         if (repeat.callSite != null) {
             facts.append(", at ").append(repeat.callSite);
         }
-        String cost = mean >= Advice.STATEMENT_COST_NANOS
-                ? "at " + SlowStatementLog.millis(mean) + " each the statement itself costs more than its round "
-                        + "trips, so look at it first; then "
-                : "";
+        String cost = !costly(counted) ? ""
+                : "at " + SlowStatementLog.millis(mean) + " each the statement itself costs more than its round "
+                        + (unitsOfWork ? "trip, and it runs once per transaction, so look at it"
+                                : "trips, so look at it first; then ");
         String type = repeat.type.getSimpleName();
         return switch (repeat.advice) {
             case REPEATED_FETCH -> Advice.REPEATED_FETCH.format(counted.executions(), type, time + facts, cost);
             case REPEATED_SELECT -> Advice.REPEATED_SELECT.format(repeat.name(), type, counted.executions(), time,
                     rows, facts, cost, readRemedy(repeat));
             default -> Advice.REPEATED_WRITE.format(repeat.name(), type,
-                    counted.executions(), time, rows, facts, cost, writeRemedy(repeat, spread), commits);
+                    counted.executions(), time, rows, facts, cost, unitsOfWork ? "" : writeRemedy(repeat, spread),
+                    commits);
         };
     }
 

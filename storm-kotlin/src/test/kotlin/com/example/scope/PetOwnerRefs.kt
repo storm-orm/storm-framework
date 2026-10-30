@@ -21,10 +21,12 @@ import st.orm.repository.EntityRepository
 import st.orm.template.model.PetOwnerRef
 
 /**
- * A repository whose method builds a flow and maps it before returning it, the way an application writes one: the
+ * A repository whose methods build a flow, one returning it as is and one mapping it before returning it, the way an application writes one: the
  * flow runs when the caller collects it, after the method has returned.
  */
 internal interface PetOwnerRefs : EntityRepository<PetOwnerRef, Int> {
+
+    fun all(): Flow<PetOwnerRef> = select().resultFlow
 
     fun allRenamed(): Flow<PetOwnerRef> = select().resultFlow.map { it.copy(name = it.name.uppercase()) }
 }

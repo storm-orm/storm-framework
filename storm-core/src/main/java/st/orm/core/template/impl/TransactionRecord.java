@@ -175,7 +175,7 @@ public final class TransactionRecord {
             return;
         }
         var repeat = repeats.record(context, startNanos, executedNanos, rows, exactRows, true, id(),
-                CallSiteCapture.callSite());
+                CallSiteCapture.callSite(context));
         if (repeat != null && (!AdviceLog.reports(repeat.advice)
                 || AdviceAcceptance.accepts(repeat.advice, repeat.shapeId, repeat.type))) {
             repeat.accepted = true;

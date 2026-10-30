@@ -511,7 +511,7 @@ public final class SlowStatementLog {
             baseline = stats == null ? null : stats.baseline(databaseNanos, parameterCount);
             slow = true;
             // Only a slow execution pays for the stack walk, and it pays here, where the caller is still on it.
-            callSite = CallSiteCapture.callSite();
+            callSite = CallSiteCapture.callSite(context);
             comment = sqlCommenter == null ? null : sqlCommenter.comment().orElse(null);
         }
 

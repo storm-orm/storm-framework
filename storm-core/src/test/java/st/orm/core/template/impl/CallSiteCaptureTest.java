@@ -53,7 +53,7 @@ class CallSiteCaptureTest {
     @Test
     void aRepositoryCopyIsNamedByTheMethodItWasCopiedIntoThroughTheCaller() {
         var site = ReportRepository$DefaultImpls$lookUpAll$$inlined$map$1.emit(CallSiteCapture::callSite);
-        assertTrue(site != null && site.endsWith(" via ReportRepository.lookUpAll"), site);
+        assertTrue(site != null && site.endsWith(" -> ReportRepository.lookUpAll"), site);
     }
 
     @Test
@@ -89,7 +89,7 @@ class CallSiteCaptureTest {
                 CallSiteCapture.callSiteHint().remove();
             }
         });
-        assertEquals("Launcher.kt:12 via ReportRepository.lookUpAll", site);
+        assertEquals("Launcher.kt:12 -> ReportRepository.lookUpAll", site);
     }
 
     @Test

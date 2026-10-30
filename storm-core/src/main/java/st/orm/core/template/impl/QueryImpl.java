@@ -290,7 +290,8 @@ class QueryImpl implements Query, KeyedQuery {
                 advice = AdviceLog.onExecute(new QueryContextImpl(environment.operation(), environment.upsert(), environment.dataType(),
                         kind, environment.statementText(), environment.origin(), environment.shapeId(),
                         transactional, environment.transactionTemplateProvider(), readsRecords(resultType),
-                        repositoryCall(), upsertTakesGeneratedKey()), environment.statementText(), advisories);
+                        repositoryCall(), upsertTakesGeneratedKey(), CallSiteCapture.builtBy(),
+                        environment.indexDemands(), environment.dataSource()), environment.statementText(), advisories);
             }
             boolean slowLog = SlowStatementLog.observes(transactional);
             if (queryObserver == QueryObserver.NOOP && operators == null && !slowLog && advice == null) {
@@ -300,7 +301,8 @@ class QueryImpl implements Query, KeyedQuery {
             var context = new QueryContextImpl(environment.operation(), environment.upsert(), environment.dataType(), kind,
                     environment.statementText(), environment.origin(), environment.shapeId(), transactional,
                     environment.transactionTemplateProvider(), readsRecords(resultType), repositoryCall(),
-                    upsertTakesGeneratedKey());
+                    upsertTakesGeneratedKey(), CallSiteCapture.builtBy(), environment.indexDemands(),
+                    environment.dataSource());
             var observation = queryObserver == QueryObserver.NOOP
                     ? Observation.NOOP
                     : queryObserver.onExecute(context);
@@ -1457,7 +1459,10 @@ class QueryImpl implements Query, KeyedQuery {
                                     @Nullable TransactionTemplateProvider transactionTemplateProvider,
                                     boolean readsRecords,
                                     @Nullable RepositoryCall call,
-                                    boolean upsertTakesGeneratedKey)
+                                    boolean upsertTakesGeneratedKey,
+                                    @Nullable String builtBy,
+                                    @Nullable IndexDemands indexDemands,
+                                    @Nullable DataSource dataSource)
             implements QueryContext {
         @Override
         public Optional<Class<? extends Data>> dataType() {

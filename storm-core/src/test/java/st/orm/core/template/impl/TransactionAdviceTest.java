@@ -166,7 +166,7 @@ class TransactionAdviceTest {
         assertTrue(Pattern.compile("^SQL advice \\(transaction\\): [A-Za-z0-9_$.]+:\\d+" + System.lineSeparator())
                 .matcher(line).find(), line);
         assertTrue(Pattern.compile(System.lineSeparator() + "\tadvice: getById of Customer ran 10 times, "
-                + "[0-9.]+ ms, [0-9.]+ ms each, one row each, at [A-Za-z0-9_$.]+:\\d+; findAllById over the keys reads "
+                + "[0-9.]+ ms, [0-9.]+ ms each, one row each, at [A-Za-z0-9_$.]+:\\d+ -> getById; findAllById over the keys reads "
                 + "the rows in one round trip").matcher(line).find(), line);
         assertTrue(line.endsWith("See https://orm.st/docs/advice#repeated-select"), line);
         assertFalse(line.contains("transactions"), line);
@@ -253,7 +253,7 @@ class TransactionAdviceTest {
         assertEquals(1, events.size(), lines(events).toString());
         var line = events.getFirst().getFormattedMessage();
         // The line inside the repository says which query ran; the loop in the service is the line to change.
-        assertTrue(Pattern.compile("one row each, at ReminderService\\.java:\\d+ via CustomerRepository\\.lookUp; ")
+        assertTrue(Pattern.compile("one row each, at ReminderService\\.java:\\d+ -> CustomerRepository\\.lookUp; ")
                 .matcher(line).find(), line);
     }
 
@@ -266,7 +266,7 @@ class TransactionAdviceTest {
         }));
         assertEquals(1, events.size(), lines(events).toString());
         var line = events.getFirst().getFormattedMessage();
-        var sites = Pattern.compile("ran (\\d+) times, [0-9.]+ ms, [0-9.]+ ms each, one row each, at (ReminderService\\.java:\\d+) via")
+        var sites = Pattern.compile("ran (\\d+) times, [0-9.]+ ms, [0-9.]+ ms each, one row each, at (ReminderService\\.java:\\d+) ->")
                 .matcher(line);
         var counts = new HashMap<String, String>();
         while (sites.find()) {
@@ -733,7 +733,7 @@ class TransactionAdviceTest {
     void anAdviceLineOfAFailedExecutionNamesTheFailure() {
         var context = new QueryImpl.QueryContextImpl(st.orm.spi.SqlOperation.SELECT, false, Customer.class,
                 st.orm.spi.QueryContext.ExecutionKind.QUERY, "SELECT c.id FROM customer c LIMIT 1",
-                st.orm.spi.StatementOrigin.DIRECT, 99, false, null, true, null, false);
+                st.orm.spi.StatementOrigin.DIRECT, 99, false, null, true, null, false, null, null, null);
         var events = capture(Level.TRACE, () -> {
             var handle = AdviceLog.onExecute(context, "SELECT c.id FROM customer c LIMIT 1",
                     List.of(Advice.UNORDERED_LIMIT.format()));

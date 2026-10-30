@@ -354,7 +354,7 @@ public final class AdviceLog {
         if (reported == null) {
             return null;
         }
-        return new Report(context, CallSiteCapture.callSite(), statement, reported, level);
+        return new Report(context, CallSiteCapture.callSite(context), statement, reported, level);
     }
 
     /** Logs a line at the frequency's level, or at INFO where the advice's own logger is set to INFO. */
@@ -471,13 +471,16 @@ public final class AdviceLog {
 
     /**
      * Returns whether a transaction's block reports a piece of advice: as {@link #reports(Advice)} decides, except
-     * that the idle advice, which holds only once the transaction held its connection too long and is otherwise
-     * the slow statement log's, is reported while its category is and its logger is on.
+     * for advice that is otherwise the slow statement log's and holds here too, which is reported while its category
+     * is and its logger is on: the idle advice, once the transaction held its connection too long, and the index a
+     * repeated statement lacks, once the statement costs more than its round trips.
      */
     private static boolean reportsInTransaction(Advice advice) {
-        return advice == Advice.IDLE_TRANSACTION
-                ? categories.contains(advice.category()) && LOGGERS[advice.ordinal()].isInfoEnabled()
-                : reports(advice);
+        return switch (advice) {
+            case IDLE_TRANSACTION, MISSING_INDEX, UNINDEXED_FOREIGN_KEY ->
+                    categories.contains(advice.category()) && LOGGERS[advice.ordinal()].isInfoEnabled();
+            default -> reports(advice);
+        };
     }
 
     /**

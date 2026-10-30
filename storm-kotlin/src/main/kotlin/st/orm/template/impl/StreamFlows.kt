@@ -19,6 +19,7 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.emitAll
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.stream.consumeAsFlow
+import st.orm.core.template.impl.CallSiteCapture
 import java.util.stream.Stream
 
 /**
@@ -29,7 +30,14 @@ import java.util.stream.Stream
  * collected more than once. A result stream is one open statement that holds its connection consume-only until it
  * is read to its end or closed; opening it on collection keeps a flow that is built but not yet collected, or never
  * collected, off the connection, and lets a caller hold several flows and collect them one after the other.
+ *
+ * A flow a repository method returns runs its statement when it is collected, after the method has returned, so the
+ * repository method is no longer on the stack then. While call sites are recorded, the method building the flow is
+ * captured here and carried to the statement, so its call site names it.
  */
-internal fun <T> streamFlow(open: () -> Stream<T>): Flow<T> = flow {
-    emitAll(open().consumeAsFlow())
+internal fun <T> streamFlow(open: () -> Stream<T>): Flow<T> {
+    val builtBy = CallSiteCapture.captureRepository()
+    return flow {
+        emitAll(CallSiteCapture.withRepository(builtBy) { open() }.consumeAsFlow())
+    }
 }
