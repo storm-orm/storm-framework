@@ -62,7 +62,9 @@ SQL advice (SELECT Owner): 412 ms in database, 12 rows, OwnerService.kt:42
 	INNER JOIN pet p ON p.owner_id = o.id
 	WHERE p.name = ?
 	shape: 9b34305d1a7c4e02
-	advice: DISTINCT removes the rows the join to Pet repeats, one per related row; semiJoin(Pet) filters by it without repeating rows, so the query needs no DISTINCT. See https://orm.st/docs/advice#distinct-over-join
+	advice: the join to Pet repeats each row once per related row, and DISTINCT removes the copies afterwards.
+		fix: semiJoin(Pet) filters by Pet without repeating rows, so the query needs no DISTINCT.
+		see: https://orm.st/docs/advice#distinct-over-join
 ```
 
 ### Accepting advice
@@ -135,7 +137,10 @@ Loading the schema is optional. Storm works the same without it; what it adds is
 
 ## A search of short words alone {#unindexed-search}
 
-> every search term is shorter than the 3 characters a substring index serves, so the search reads every row
+```text
+every search term is shorter than the 3 characters a substring index serves, so the search reads every row.
+fix: for a search box that queries as the user types, use suggest, which returns no rows for such input.
+```
 
 Category: performance. Logger: `st.orm.sql.advice.unindexed-search`.
 
@@ -145,7 +150,10 @@ A search box that queries as the user types meets such input on almost every key
 
 ## DISTINCT over a join that repeats rows {#distinct-over-join}
 
-> DISTINCT removes the rows the join to Pet repeats, one per related row; semiJoin(Pet) filters by it without repeating rows
+```text
+the join to Pet repeats each row once per related row, and DISTINCT removes the copies afterwards.
+fix: semiJoin(Pet) filters by Pet without repeating rows, so the query needs no DISTINCT.
+```
 
 Category: performance. Logger: `st.orm.sql.advice.distinct-over-join`.
 
@@ -182,7 +190,10 @@ The advice is given for a `distinct` select of the query's own table over an inn
 
 ## A missing index {#missing-index}
 
-> no index on customer starts with last_name, which the statement filters customer by, so the database reads the table in full to find the matching rows; an index on customer(last_name) finds them directly where the condition selects few of them
+```text
+no index on customer starts with last_name, so the database reads the table in full to find the matching rows.
+index: customer(last_name) finds them directly where the condition selects few of them.
+```
 
 Category: performance, reported by the slow statement log, and right after a [repeat](#repeated-select) whose executions took 10 ms or more each, only once the schema is [loaded](#loading-the-schema). No single execution of such a repeat need reach the slow threshold, while together they are the cost to look at.
 
@@ -190,7 +201,12 @@ Storm records which columns a statement filters, joins, groups and sorts by, whe
 
 Where finding the matching rows and reading them in the order the statement needs differ, no single index is right for every table, so the advice names both, with when each wins:
 
-> no index on owner starts with source, which the statement filters owner by and groups by city, last_name, so the database reads the table in full and sorts the matching rows into groups; source is an ENUM, with few distinct values, so an index on it alone is often not chosen. owner(source, city, last_name) finds the matching rows and reads them already grouped, without a temporary table or sort; with first_name, address appended it reads the index alone, since it then holds every column the select reads; owner(source) finds them directly where the condition selects few of them
+```text
+no index on owner starts with source, so the database reads the table in full and sorts the matching rows into groups.
+index: owner(source, city, last_name) finds the matching rows and reads them already grouped, without a temporary table or sort
+covering: with first_name, address appended it reads the index alone, since it then holds every column the select reads
+or: owner(source) finds them directly where the condition selects few of them; source is an ENUM, with few distinct values, so an index on it alone is often not chosen.
+```
 
 - **A grouped read.** The equality columns followed by the group columns find the rows and read them already grouped, without a temporary table or sort, which helps even where the condition selects many rows. An index on the equality columns alone helps only where it selects few.
 - **A range and a limited order on another column.** The equality columns followed by the range column find the matching rows and sort them, which is best where the range selects few; followed by the sort column instead, they read in order, check the range on each row and stop at the limit, which is best where it selects many.
@@ -214,7 +230,10 @@ Storm stays quiet where it cannot tell:
 
 ## An unindexed foreign key behind a delete {#unindexed-foreign-key}
 
-> deleting from owner checks the foreign key pet(owner_id) that references it, and no index on pet starts with owner_id, so the database reads pet in full for every row it deletes; an index on pet(owner_id) serves the check
+```text
+every row deleted from owner is checked against the foreign key pet(owner_id), and no index on pet starts with owner_id, so the database reads pet in full for each deleted row.
+fix: an index on pet(owner_id) serves the check.
+```
 
 Category: performance, reported by the slow statement log, and right after a [repeat](#repeated-select) whose executions took 10 ms or more each, only once the schema is [loaded](#loading-the-schema). No single execution of such a repeat need reach the slow threshold, while together they are the cost to look at.
 
@@ -230,15 +249,31 @@ Storm stays quiet where it cannot tell:
 
 ## A transaction that holds its connection idle {#idle-transaction}
 
-> the transaction held its connection 2300 ms and its statements spent 120 ms of it; for 2180 ms between them it held the connection while the application did other work, and the row locks of its writes for 2100 ms of it; move that work before the transaction or after it commits
+```text
+the transaction held its connection 2300 ms, 2180 ms of it idle after its last statement, with its row locks held for 2100 ms of that.
+fix: move that work before the transaction or after it commits.
+```
 
-Category: performance, reported by the slow statement log only, against a threshold of its own: a transaction may hold its connection for one second beyond what its statements spent on it, and `storm.sql_log.slow.transaction` (Spring Boot `storm.sql-log.slow.transaction`, Ktor `sqlLogSlowTransaction`) retunes that, with `0` stopping the watch.
+Category: performance, reported by the slow statement log only, against a threshold of its own: a transaction may hold its connection for one second beyond what its statements spent on it, and `storm.sql_log.slow.transaction` (Spring Boot `storm.sql-log.slow.transaction`, Ktor `sqlLogSlowTransaction`) retunes that, with `0` stopping the watch. The transaction is reported only where acting on it pays: its idle time is at least a quarter of the time it held the connection, or its row locks were held for a second or more of that idle time, which other transactions wait on whatever the share. Below that its statements are the cost, and the transaction is reported at `TRACE`, where a reader looking for it still finds it.
 
 A transaction that calls another service, sends mail or renders a document between a write and its commit keeps its connection out of the pool for the whole of that work, and the row locks of its writes with it. Every statement in it is fast, so neither the statement log nor a slow statement line shows it; under load the pool runs dry and other transactions queue on the locks. Storm times both halves: when a transaction it runs or joins takes its connection and when it returns it, and what each statement spent on it. The difference is time the connection was held for nothing, and a transaction whose difference reaches the threshold is reported when it completes, with the call site that began it, how many statements it ran and whether they wrote. The row locks are held from the first write on, so the advice claims them for the idle time from that write to the completion: a transaction that reads, computes for a second and then writes held no locks during that second, and its line says the locks were held for the commit alone. See [A Transaction That Holds Its Connection](sql-logging.md#a-transaction-that-holds-its-connection).
 
 While the advice log reports performance advice, as it does in development, the transaction's block in the advice log carries this advice too, after what the transaction repeated or alone, so a reader working through that log sees everything a transaction has to be advised on in one place; the slow statement log reports the transaction on its own line regardless, in production too.
 
-Move the work out of the transaction: before it, where the work decides what to write, or after it commits, through an `onCommit` callback or a row the transaction writes and a worker acts on. Where the work has to stay inside, such as a batch job that holds its transaction by design, accept the advice on the method that runs the transaction with `@AcceptAdvice("idle-transaction")`, and the transaction is not reported there.
+The advice says where the time went: before the first statement, between the statements, or after the last until the commit, naming each part that holds a tenth of the time or more. The remedy follows the part that holds most of it.
+
+- **At the edges**, before the first statement or after the last, the work can move out of the transaction: before it, where the work decides what to write, or after it commits, through an `onCommit` callback or a row the transaction writes and a worker acts on.
+- **Between the statements**, the work uses what the reads returned and the writes may depend on it, so it cannot move before the transaction or after it. Where the writes need not see the reads under the same transaction, read and do the work first, then write in a short transaction of its own. A transaction that only reads is split the same way from the other side: read what the work needs inside it and do the work after it returns, which also fits a framework scope that always opens a transaction. That holds every row the work needs in memory at once, where the loop may have read and dropped them step by step. Where the reads need not see one state of the database and the statements are 10 ms or more apart on average, the advice also offers reading without the transaction, which holds a connection only while each statement runs; closer together, a connection borrowed per statement, with the validation and reset a pool may do on each borrow, costs about what the held connection did.
+
+Between the statements, the advice names the longest gap from the statement before it, where the work began, to the one that ended it, and counts the gaps of 1 ms or more. The statement that ended it carries its call site; the one before it carries its own where the advice log records what transactions repeat, as in development, since naming it otherwise would walk the stack for every statement. With both, the reader has the range of code the work ran in. One gap is one step to look at; hundreds are a loop whose work per row adds up:
+
+```text
+the transaction held its connection 92379 ms, 34736 ms of it idle between statements, with its row locks held for 780 ms of that.
+longest idle: 4210 ms, after SlotService.kt:88 -> SlotRepository.findOpenByClinic, before AppointmentService.kt:370 -> AppointmentRepository.insert, of 412 gaps of 1.0 ms or more
+fix: where the writes need not see the reads of this transaction, do the reads and that work first, then write in a short transaction of its own.
+```
+
+Where the locks were held for a small part of the time, as 780 ms of 34736 ms here, the cost is the pooled connection rather than other transactions waiting on the rows, which weighs against restructuring the job. Where the work has to stay inside, such as a batch job that holds its transaction by design, accept the advice on the method that runs the transaction with `@AcceptAdvice("idle-transaction")`, and the transaction is not reported there.
 
 What the measurement covers:
 
@@ -246,11 +281,15 @@ What the measurement covers:
 - **A Spring-managed transaction** is measured from Storm's first statement in it to its completion, since Spring opened the connection before Storm saw the transaction; the line says `from its first statement`.
 - **A joined block** is part of the transaction it joined, which is reported once, on the frame that owns the connection. A block that opens a transaction of its own, `REQUIRES_NEW`, is measured on its own.
 - **The threshold is on the idle time**, not on the transaction's length: a transaction that spends its whole time in its statements is never reported, however long it runs.
+- **The statements' time is the union of their intervals.** A statement run while another is open, such as one run while a stream is read, adds only the time past the other's close.
 - **The locks are claimed from the first write on.** The idle time the line states for the row locks runs from the first write to the moment the connection is returned, the commit included, less what the statements spent in it.
 
 ## The count behind a page {#page-count}
 
-> page counts every matching row to report the total; slice reads the same page without the count
+```text
+page counts every matching row to report the total.
+fix: slice reads the same page without the count, and says whether a next page exists.
+```
 
 Category: performance, reported by the slow statement log only: choosing `page` over `slice` is a decision about the screen, not a mistake in the statement, so the count is advised once it is slow.
 
@@ -260,7 +299,10 @@ A list that shows "next" rather than "page 3 of 120" needs no total. `slice` rea
 
 ## A limit or offset without an order {#unordered-limit}
 
-> the statement takes part of the result without an ORDER BY, so which rows it returns is up to the database
+```text
+the statement takes part of the result without an ORDER BY, so the database picks the rows, which can change between executions, and pages can repeat or skip rows.
+fix: order by a unique key, or by sort fields that end in one.
+```
 
 Category: correctness. Logger: `st.orm.sql.advice.unordered-limit`.
 
@@ -270,7 +312,10 @@ Order by a unique key, or by sort fields that end in one, so every row has one p
 
 ## A deep offset {#deep-offset}
 
-> the database reads and discards the 1000 rows the offset skips before it returns the first
+```text
+the database reads and throws away the 1000 rows the offset skips before it returns the first.
+fix: scroll continues from the last row read, at the same cost for every window.
+```
 
 Category: performance. Logger: `st.orm.sql.advice.deep-offset`.
 
@@ -280,7 +325,10 @@ An offset tells the database to skip rows, and it skips them by reading them: pa
 
 ## An IN list of many lengths {#in-list-shapes}
 
-> the statement runs with varying lengths of its IN list, and each length is a statement of its own to the database and its plan cache; storm.in_list=padded pads a list to the next power of two by repeating its last value, which changes no result and renders every length as one of a few statements
+```text
+the IN list runs in many lengths, and each length is a separate statement to the database and its plan cache.
+fix: storm.in_list=padded pads each list to the next power of two by repeating its last value, which changes no result and keeps the statements to a few.
+```
 
 Category: performance. Logger: `st.orm.sql.advice.in-list-shapes`. Reported by the advice log in development, and carried on a slow statement line wherever the slow statement log runs.
 
@@ -292,14 +340,19 @@ The advice fits the database it runs on. A database that plans every execution a
 
 ## An entity past the design budget {#entity-budget}
 
-> every read of Visit joins 12 tables and selects 140 columns beyond its own, past the design budget of 10 joins and 96 columns; a Ref for Clinic.organization removes 4 joins and 52 columns
+```text
+every read of Visit joins 12 tables and selects 140 columns beyond its own, past the design budget of 10 joins and 96 columns.
+fix: a Ref for Clinic.organization removes 4 joins and 52 columns.
+```
 
 Category: design. Logger: `st.orm.sql.advice.entity-budget`. Reported once per entity, at startup where the integration checks the model, or when the entity is first used:
 
 ```
 SQL advice (design Visit)
 	graph: Visit(Pet(Owner(City), PetType, Clinic(Address, Organization(Country))))  12 joins, 140 columns beyond its own
-	advice: every read of Visit joins 12 tables and selects 140 columns beyond its own, past the design budget of 10 joins and 96 columns; a Ref for Clinic.organization removes 4 joins and 52 columns. See https://orm.st/docs/advice#entity-budget
+	advice: every read of Visit joins 12 tables and selects 140 columns beyond its own, past the design budget of 10 joins and 96 columns.
+		fix: a Ref for Clinic.organization removes 4 joins and 52 columns.
+		see: https://orm.st/docs/advice#entity-budget
 ```
 
 An entity component joins its table into every read and brings that table's whole select list, along with every entity it declares in turn. The [design budget](entity-design.md#the-budget) bounds what a read adds beyond the entity's own columns: 10 joins and 96 columns, unless the application [sets its own](entity-design.md#the-budget). The advice states the budget in effect. The default is calibrated so ordinary schemas never reach it; an entity past it has a graph that grew, usually through entities nobody was editing.
@@ -310,7 +363,10 @@ Where you know the path is read constantly, an entity past the budget can stay a
 
 ## A slow read of a wide entity {#wide-entity-read}
 
-> every read of Visit joins 6 tables and selects 58 columns beyond its own; where that width is what makes the read slow, a Ref for Clinic.organization removes 3 joins and 31 columns
+```text
+every read of Visit joins 6 tables and selects 58 columns beyond its own.
+fix, where that width makes the read slow: a Ref for Clinic.organization removes 3 joins and 31 columns.
+```
 
 Category: design, reported by the slow statement log only: whether a read within the budget is too wide shows only in real use, so the advice comes with a read that turned out slow.
 
@@ -318,7 +374,12 @@ A read of an entity whose graph reaches half the design budget, 5 joins or 48 co
 
 ## References fetched one at a time {#repeated-fetch}
 
-> 24 statements each fetched one City, 28 ms, 1.2 ms each, at OwnerView.kt:31; an inline foreign key joins it into every read of the rows, or a query that fetches the references, such as select().fetch(...), resolves them in the statement that reads them
+```text
+24 statements each fetched one City, 28 ms, 1.2 ms each.
+at: OwnerView.kt:31
+fix: an inline foreign key joins it into every read of the rows
+or: a query that fetches the references, such as select().fetch(...), resolves them in the statement that reads them.
+```
 
 Category: design. Reported by the advice log when a transaction that fetched ten or more references of one type completes, and by the [performance log](sql-logging.md#the-performance-log) summary where the fetches spanned the transactions of its unit of work: a `Ref` the application fetches on every read is evidence from real use that it should be an inline entity.
 
@@ -330,11 +391,15 @@ Where only some readers need it, keep the `Ref` and read the rows with a query t
 
 ## The same row lookup, again and again {#repeated-select}
 
-> getById of Owner ran 12 times, 36 ms, 3.0 ms each, one row each, at OwnerService.kt:52 -> getById; findAllById over the keys reads the rows in one round trip
+```text
+getById of Owner ran 12 times, 36 ms, 3.0 ms each, one row each.
+at: OwnerService.kt:52 -> OwnerRepository.getById
+fix: findAllById over the keys reads the rows in one round trip.
+```
 
 Category: performance. Reported by the advice log when a transaction that ran the statement ten or more times completes, and by the [performance log](sql-logging.md#the-performance-log) summary where the executions spanned the transactions of its unit of work.
 
-A transaction, or a unit of work, that runs the same SELECT ten or more times from one call site, each returning at most one row, is looking rows up one at a time, typically by key inside a loop. Every lookup is a round trip to the database. A read a built-in repository method made, `findById`, `getById`, `existsById` or their `Ref` forms, is named by the method; a query of your own is named the same SELECT. The advice states the time the executions spent in the database and the call site of the statement; a shape repeated from two loops is two pieces of advice, each pointing at its own loop and weighed by its own cost. The call site names the caller and the repository method it called, in the direction of the call, `ReminderService.kt:52 -> VisitRepository.findByPet`: the loop that calls the method is the line to change, and the method is where a list variant such as `findByPets` would go. Where repository methods call each other, the one the caller called is named. A built-in call is named the same way, `OwnerService.kt:52 -> getById`, and so is a flow a repository method built, which runs after the method has returned.
+A transaction, or a unit of work, that runs the same SELECT ten or more times from one call site, each returning at most one row, is looking rows up one at a time, typically by key inside a loop. Every lookup is a round trip to the database. A read a built-in repository method made, `findById`, `getById`, `existsById` or their `Ref` forms, is named by the method; a query of your own is named the same SELECT. The advice states the time the executions spent in the database and the call site of the statement; a shape repeated from two loops is two pieces of advice, each pointing at its own loop and weighed by its own cost. The call site names the caller and the repository method it called, in the direction of the call, `ReminderService.kt:52 -> VisitRepository.findByPet`: the loop that calls the method is the line to change, and the method is where a list variant such as `findByPets` would go. Where repository methods call each other, the one the caller called is named. A built-in call is named the same way, by the repository interface it was called on, `OwnerService.kt:52 -> OwnerRepository.getById`, or by its method alone on a repository obtained without one, and so is a flow a repository method built, which runs after the method has returned.
 
 Executions that ran concurrently cost the caller the time they covered on the clock, not their sum. Where the sum is at least twice that, the line states both, `727 ms over 140 ms elapsed`, and the advice is ordered by the time on the clock. A repeat that took less than 50 ms on the clock carries no advice: in a larger application most repeats are correct and cost a few milliseconds, such as lookups of a few reference rows or a guard that keeps a task idempotent, and they would bury the few worth a change. `storm.advice.repeat_floor` (Spring Boot `storm.advice.repeat-floor`, Ktor `adviceRepeatFloor`) sets the floor, and `0` advises on every repeat past ten executions; the performance log's table lists every shape either way. One run is a rough judge of a repeat near the floor: the first run after startup reads on cold caches, so a loop advised at 188 ms then may cost 25 ms on every later run, and a concurrent repeat varies with how its executions overlap from run to run. The advice is for working through, and a repeat is reported once per call site however many runs cross the floor.
 
@@ -346,14 +411,20 @@ Within one transaction every execution sees the same data, so the advice is repo
 
 ```
 SQL advice (transaction): VisitReminderService.kt:41
-	advice: the same SELECT of Visit ran 40 times, 120 ms, 3.0 ms each, one row each, at VisitReminderService.kt:52; one query for all of them, such as findAllById or a where with IN, reads the rows in one round trip. See https://orm.st/docs/advice#repeated-select
+	advice: the same SELECT of Visit ran 40 times, 120 ms, 3.0 ms each, one row each.
+		at: VisitReminderService.kt:52
+		fix: one query for all of them, such as findAllById or a where with IN, reads the rows in one round trip.
+		see: https://orm.st/docs/advice#repeated-select
 ```
 
 The call site that heads the block is walked where the transaction's block is entered, so a suspending transaction, which completes on the dispatcher that ran its block, is named all the same; a transaction another manager opened is named by the method still on the stack when it completes. A joined block counts toward the transaction it joined; a `REQUIRES_NEW` block is a transaction of its own. The transaction records its statements only while the advice log reports the advice, which is development, and the record is discarded when it completes. A loop that opens a transaction per item repeats across transactions, which no single transaction sees; the performance log summary of the unit of work reports it, and says how many transactions the executions ran in. The summary leaves the executions a transaction advised on to that transaction, so one repeat never reads as two problems. Accept the advice on the method that runs the loop, or on the entity, with `@AcceptAdvice("repeated-select")`.
 
 ## Related writes that each commit on their own {#writes-without-transaction}
 
-> the unit of work wrote Owner and then Pet, which references Owner, each in a transaction of its own; when a later write fails, the earlier ones stay; run them in one transaction
+```text
+the unit of work wrote Owner and then Pet, which references Owner, each committing on its own, so when a later write fails, the earlier ones stay.
+fix: run them in one transaction.
+```
 
 Category: correctness, reported by the [performance log](sql-logging.md#the-performance-log) summary of the unit of work.
 
@@ -365,7 +436,10 @@ Run the writes in one transaction, `transaction { }` in Kotlin or `transaction(t
 
 ## The same single-row write, again and again {#repeated-write}
 
-> insert of Owner ran 10 times, 14 ms, 1.4 ms each, one row each, in 10 transactions of their own; the overloads that take a list send the rows as one batch, which commits them together
+```text
+insert of Owner ran 10 times, 14 ms, 1.4 ms each, one row each, in 10 transactions of their own.
+fix: the overloads that take a list send the rows as one batch, which commits them together.
+```
 
 Category: performance. Reported by the advice log when a transaction that ran the statement ten or more times completes, and by the [performance log](sql-logging.md#the-performance-log) summary where the executions spanned the transactions of its unit of work.
 
@@ -377,10 +451,18 @@ Within one transaction a batch changes nothing about what commits. Across transa
 
 Where the writes sit between work outside the database, as in that loop around a remote call, the advice says so and names the remedy that fits: collect the rows and write them after the loop, never a transaction around it, which would hold the connection across every call:
 
-> insert of PetRegistration ran 29 times, 96 ms, 3.3 ms each, one row each, in 29 transactions of their own, spread over 7157 ms with work outside the database between them, at PetRegistryService.kt:60; collect the rows and write them after the loop through the overloads that take a list, which sends them as one batch and commits them together, rather than opening a transaction around the loop
+```text
+insert of PetRegistration ran 29 times, 96 ms, 3.3 ms each, one row each, in 29 transactions of their own, spread over 7157 ms with work outside the database between them.
+at: PetRegistryService.kt:60
+fix: collect the rows and write them after the loop through the overloads that take a list, which sends them as one batch and commits them together, rather than a transaction around the loop.
+```
 
 Storm keeps when each execution began and returned, and when every other statement of the scope ran, so it sees the gaps: the executions are spread when the time between the first and the last that no statement spent in the database is at least ten times what they spent inside it. A loop that runs other queries between the writes is not spread by them. A read is never said to be spread: the clause is there for a write's remedy, which must not become a transaction around the loop.
 
 An upsert is named one, since the dialect recognizes the database's own upsert form, a `MERGE` that both updates and inserts included, and its remedy comes first: a sync that upserts the same rows every run writes back what the rows already hold, which a batch makes cheaper and a read first removes, leaving one select and no writes in the steady state. On a database whose upsert draws a generated key value for the insert before it finds the row to update, the advice adds that each upsert that leaves the key to the database takes one, which the dialect states through `SqlDialect.upsertTakesGeneratedKeyOnUpdate()`:
 
-> upsert of PetRegistration ran 29 times, ...; where the rows mostly exist and rarely change, reading them first and writing only the new or changed ones avoids the writes, and the generated key value each upsert takes even where it updates. Otherwise, the overloads that take a list send the rows as one batch, which commits them together
+```text
+upsert of PetRegistration ran 29 times, ...
+fix: where the rows mostly exist and rarely change, read them first and write only the new or changed ones, which avoids the writes, and the generated key value each upsert takes even where it updates
+or: the overloads that take a list send the rows as one batch, which commits them together.
+```

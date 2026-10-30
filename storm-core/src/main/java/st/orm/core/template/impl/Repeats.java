@@ -474,7 +474,7 @@ final class Repeats {
         if (transactions == counted.executions() && counted.own()) {
             facts.append(", in ").append(transactions).append(" transactions of their own");
             commits = spread
-                    ? " and commits them together, rather than opening a transaction around the loop"
+                    ? " and commits them together, rather than a transaction around the loop"
                     : ", which commits them together";
         } else if (transactions > 1) {
             facts.append(", in ").append(transactions).append(" transactions");
@@ -483,21 +483,26 @@ final class Repeats {
             facts.append(", spread over ").append(SlowStatementLog.millis(counted.spanNanos()))
                     .append(" with work outside the database between them");
         }
+        // One fact per line after the first: where it ran, what each execution costs where that is the thing to
+        // look at, and the remedy for the loop.
+        var lines = new StringBuilder();
         if (repeat.callSite != null) {
-            facts.append(", at ").append(repeat.callSite);
+            lines.append("\nat: ").append(repeat.callSite);
         }
-        String cost = !costly(counted) ? ""
-                : "at " + SlowStatementLog.millis(mean) + " each the statement itself costs more than its round "
-                        + (unitsOfWork ? "trip, and it runs once per transaction, so look at it"
-                                : "trips, so look at it first; then ");
+        if (costly(counted)) {
+            lines.append("\ncost: at ").append(SlowStatementLog.millis(mean))
+                    .append(unitsOfWork
+                            ? " each the statement itself costs more than its round trip, and it runs once per "
+                                    + "transaction, so look at the statement"
+                            : " each the statement itself costs more than its round trips, so look at it first");
+        }
         String type = repeat.type.getSimpleName();
         return switch (repeat.advice) {
-            case REPEATED_FETCH -> Advice.REPEATED_FETCH.format(counted.executions(), type, time + facts, cost);
+            case REPEATED_FETCH -> Advice.REPEATED_FETCH.format(counted.executions(), type, time + facts, lines);
             case REPEATED_SELECT -> Advice.REPEATED_SELECT.format(repeat.name(), type, counted.executions(), time,
-                    rows, facts, cost, readRemedy(repeat));
-            default -> Advice.REPEATED_WRITE.format(repeat.name(), type,
-                    counted.executions(), time, rows, facts, cost, unitsOfWork ? "" : writeRemedy(repeat, spread),
-                    commits);
+                    rows, facts, lines.append("\nfix: ").append(readRemedy(repeat)));
+            default -> Advice.REPEATED_WRITE.format(repeat.name(), type, counted.executions(), time, rows, facts,
+                    unitsOfWork ? lines : lines.append("\nfix: ").append(writeRemedy(repeat, spread, commits)));
         };
     }
 
@@ -524,24 +529,24 @@ final class Repeats {
      * take a list, collected and written after the loop where the executions were spread between work outside the
      * database; for a write by condition, one statement whose condition covers all of them.
      */
-    private static String writeRemedy(Repeat repeat, boolean spread) {
+    private static String writeRemedy(Repeat repeat, boolean spread, String commits) {
         boolean upsert = repeat.upsert;
         if (!upsert && repeat.operation != SqlOperation.INSERT && !repeat.repositoryWrite()) {
             return "one statement whose condition covers all of them, such as a where with IN over what the loop "
                     + "varies, writes them in one round trip";
         }
-        String batch = spread
+        String batch = (spread
                 ? "collect the rows and write them after the loop through the overloads that take a list, which "
                         + "sends them as one batch"
-                : "the overloads that take a list send the rows as one batch";
+                : "the overloads that take a list send the rows as one batch") + commits;
         if (!upsert) {
             return batch;
         }
-        return "where the rows mostly exist and rarely change, reading them first and writing only the new or "
-                + "changed ones avoids the writes"
+        return "where the rows mostly exist and rarely change, read them first and write only the new or changed "
+                + "ones, which avoids the writes"
                 + (repeat.upsertTakesGeneratedKey ? ", and the generated key value each upsert takes even where it "
                         + "updates" : "")
-                + ". Otherwise, " + batch;
+                + "\nor: " + batch;
     }
 
     /**

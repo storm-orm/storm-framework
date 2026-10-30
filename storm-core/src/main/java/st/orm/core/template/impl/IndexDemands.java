@@ -348,28 +348,25 @@ final class IndexDemands {
         if (asked.isEmpty()) {
             addAbsent(asked, demands.group());
         }
+        // The statement is in the log entry above the advice, so the advice names what the database does, not which
+        // columns the statement uses them for.
         String cost;
         if (!filters && groups) {
-            cost = "which the statement groups %s by, so the database sorts every row into groups".formatted(table);
+            cost = "so the database sorts every row into groups";
         } else if (!filters) {
-            cost = "which the statement sorts its limited result by, so the database sorts every row before it "
-                    + "returns the first ones";
+            cost = "so the database sorts every row before it returns the first ones";
         } else if (groups) {
-            cost = ("which the statement %s %s by and groups by %s, so the database reads the table in full and "
-                    + "sorts the matching rows into groups").formatted(verb(demands, false), table,
-                    String.join(", ", demands.group()));
+            cost = "so the database reads the table in full and sorts the matching rows into groups";
         } else if (demands.equality().isEmpty() && range.isEmpty() && !sorts) {
-            cost = "which the statement joins %s on, so the database reads the table in full to find the joined rows"
-                    .formatted(table);
+            cost = "so the database reads the table in full to find the joined rows";
         } else {
-            cost = "which the statement %s %s by, so the database reads the table in full to find the matching rows"
-                    .formatted(verb(demands, sorts), table);
+            cost = "so the database reads the table in full to find the matching rows";
         }
         String fewValued = null;
         for (var column : keys) {
             var type = sizing.indexes().fewValued(column);
             if (type != null) {
-                fewValued = "%s is %s, with few distinct values, so an index on it alone is often not chosen"
+                fewValued = "; %s is %s, with few distinct values, so an index on it alone is often not chosen"
                         .formatted(column, type);
                 break;
             }
@@ -377,9 +374,10 @@ final class IndexDemands {
         String options;
         if (inOrder.isEmpty()) {
             var single = suggested(keys, range, order);
-            options = "an index on %s(%s) %s%s".formatted(table, String.join(", ", single),
+            options = "index: %s(%s) %s%s%s".formatted(table, String.join(", ", single),
                     !filters ? "reads the rows in order and stops at the limit"
-                            : "finds them directly where the condition selects few of them", sizing.limit(single));
+                            : "finds them directly where the condition selects few of them", sizing.limit(single),
+                    fewValued == null ? "" : fewValued);
         } else {
             var ordered = inOrderIndex(demands, keys, inOrder);
             String readInOrder = groups
@@ -389,7 +387,7 @@ final class IndexDemands {
                             + sizing.limit(ordered);
             String inOrderOption = "%s(%s) %s".formatted(table, String.join(", ", ordered), readInOrder);
             if (!filters) {
-                options = "an index on " + inOrderOption;
+                options = "index: " + inOrderOption;
             } else {
                 var find = new ArrayList<String>(keys);
                 if (!range.isEmpty()) {
@@ -398,14 +396,13 @@ final class IndexDemands {
                 String findOption = "%s(%s) %s%s".formatted(table, String.join(", ", find), groups
                         ? "finds them directly where the condition selects few of them"
                         : "finds the matching rows directly, then sorts them, which is best where the range selects "
-                                + "few of them", sizing.limit(find));
+                                + "few of them", sizing.limit(find)) + (fewValued == null ? "" : fewValued);
                 options = fewValued != null || groups
-                        ? inOrderOption + "; " + findOption
-                        : findOption + "; " + inOrderOption;
+                        ? "index: " + inOrderOption + "\nor: " + findOption
+                        : "index: " + findOption + "\nor: " + inOrderOption;
             }
         }
-        return Advice.MISSING_INDEX.format(table, "starts with " + String.join(" or ", asked), cost,
-                fewValued == null ? options : fewValued + ". " + options);
+        return Advice.MISSING_INDEX.format(table, "starts with " + String.join(" or ", asked), cost, options);
     }
 
     /**
@@ -423,10 +420,8 @@ final class IndexDemands {
                 ? "starts with " + String.join(", ", inOrder)
                 : "continues %s with %s".formatted(String.join(", ", keys), String.join(", ", inOrder));
         String cost = groups
-                ? "which the statement groups %s by, so the database sorts the matching rows into groups"
-                        .formatted(table)
-                : "which the statement sorts its limited result by, so the database sorts every matching row before "
-                        + "it returns the first ones";
+                ? "so the database sorts the matching rows into groups"
+                : "so the database sorts every matching row before it returns the first ones";
         var ordered = inOrderIndex(demands, keys, inOrder);
         String extending = null;
         if (!keys.isEmpty()) {
@@ -441,7 +436,7 @@ final class IndexDemands {
         String read = groups
                 ? groupedRead(demands, sizing, ordered, true)
                 : "reads the matching rows in order and stops at the limit" + sizing.limit(ordered);
-        String option = "an index on %s(%s)%s %s".formatted(table, String.join(", ", ordered),
+        String option = "index: %s(%s)%s %s".formatted(table, String.join(", ", ordered),
                 extending == null ? "" : ", extending " + extending + ",", read);
         return Advice.MISSING_INDEX.format(table, which, cost, option);
     }
@@ -488,23 +483,24 @@ final class IndexDemands {
     private String covering(TableDemands demands, Sizing sizing, List<String> index) {
         var appended = without(demands.select(), index);
         if (demands.select().isEmpty() && !selectKnown) {
-            return ", and reads the index alone when it also holds the columns the select reads";
+            return "\ncovering: it reads the index alone when it also holds the columns the select reads";
         }
         if (appended.isEmpty()) {
-            return ", and reads the index alone" + (selectKnown
+            return "\ncovering: it reads the index alone" + (selectKnown
                     ? ", since it holds every column the select reads"
                     : " where the select reads no other columns");
         }
         var widened = new ArrayList<String>(index);
         widened.addAll(appended);
         if (sizing.passes(widened)) {
-            return ("; with %s appended it would read the index alone, but a key of about %d bytes passes the %d "
-                    + "bytes the database allows a key").formatted(String.join(", ", appended),
+            return ("\ncovering: with %s appended it would read the index alone, but a key of about %d bytes passes "
+                    + "the %d bytes the database allows a key").formatted(String.join(", ", appended),
                     sizing.keyBytes(widened), sizing.maxKeyBytes());
         }
-        return "; with %s appended it reads the index alone%s".formatted(String.join(", ", appended), selectKnown
-                ? ", since it then holds every column the select reads"
-                : " where the select reads no other columns");
+        return "\ncovering: with %s appended it reads the index alone%s".formatted(String.join(", ", appended),
+                selectKnown
+                        ? ", since it then holds every column the select reads"
+                        : " where the select reads no other columns");
     }
 
     /**
@@ -531,14 +527,6 @@ final class IndexDemands {
             }
         }
         return false;
-    }
-
-    /** Names how the statement uses the columns it filters on: by condition, by join, and by sort. */
-    private static String verb(TableDemands demands, boolean sorts) {
-        boolean condition = !demands.equality().isEmpty() || !demands.range().isEmpty();
-        boolean joins = !demands.join().isEmpty();
-        String verb = condition && joins ? "filters or joins" : joins ? "joins" : "filters";
-        return sorts ? verb + " or sorts" : verb;
     }
 
     /**

@@ -134,7 +134,7 @@ class InListShapesAdviceTest {
         var line = lines.getFirst();
         assertTrue(line.startsWith("SQL advice (SELECT Customer)"), line);
         assertTrue(line.contains("WHERE c.id IN (?, ?, ?, ?, ?, ?, ?, ?)"), line);
-        assertTrue(line.contains("the statement runs with varying lengths of its IN list"), line);
+        assertTrue(line.contains("the IN list runs in many lengths"), line);
         assertTrue(line.contains("#in-list-shapes"), line);
     }
 
@@ -179,7 +179,7 @@ class InListShapesAdviceTest {
                     assertTrue(!slow.get(i).contains("#in-list-shapes"), slow.get(i));
                 }
                 for (int i = 7; i < 10; i++) {
-                    assertTrue(slow.get(i).contains("the statement runs with varying lengths"), slow.get(i));
+                    assertTrue(slow.get(i).contains("the IN list runs in many lengths"), slow.get(i));
                 }
             });
             assertEquals(List.of(), advice);

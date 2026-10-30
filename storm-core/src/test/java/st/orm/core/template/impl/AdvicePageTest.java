@@ -51,7 +51,7 @@ public class AdvicePageTest {
     @Test
     public void adviceLinksToItsSection() {
         for (var advice : Advice.values()) {
-            assertTrue(advice.format(sample(advice)).endsWith(" See https://orm.st/docs/advice#" + advice.anchor()), advice.name());
+            assertTrue(advice.format(sample(advice)).endsWith("\nsee: https://orm.st/docs/advice#" + advice.anchor()), advice.name());
         }
     }
 
@@ -81,7 +81,8 @@ public class AdvicePageTest {
             case MISSING_INDEX -> new Object[] {"owner", "starts with last_name", "which the statement filters owner by",
                     "an index on owner(last_name) finds them directly"};
             case UNINDEXED_FOREIGN_KEY -> new Object[] {"owner", "pet", "owner_id", "owner_id"};
-            case IDLE_TRANSACTION -> new Object[] {"2300 ms", "120 ms", "2180 ms", ""};
+            case IDLE_TRANSACTION -> new Object[] {"2300 ms", "120 ms", "2180 ms", "", "", "",
+                    "move that work before the transaction or after it commits"};
             case WRITES_WITHOUT_TRANSACTION -> new Object[] {"Owner", "Pet"};
             default -> new Object[] {3, "Owner", 3};
         };

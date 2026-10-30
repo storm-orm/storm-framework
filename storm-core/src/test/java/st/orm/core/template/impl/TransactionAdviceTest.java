@@ -53,6 +53,7 @@ import st.orm.Metamodel;
 import st.orm.PK;
 import st.orm.PersistenceException;
 import st.orm.TransactionOptions;
+import st.orm.core.AdviceCapture;
 import st.orm.core.spi.JdbcConnectionProviderImpl;
 import st.orm.core.spi.JdbcTransactionTemplateProviderImpl;
 import st.orm.core.spi.TransactionRunner;
@@ -166,9 +167,10 @@ class TransactionAdviceTest {
         assertTrue(Pattern.compile("^SQL advice \\(transaction\\): [A-Za-z0-9_$.]+:\\d+" + System.lineSeparator())
                 .matcher(line).find(), line);
         assertTrue(Pattern.compile(System.lineSeparator() + "\tadvice: getById of Customer ran 10 times, "
-                + "[0-9.]+ ms, [0-9.]+ ms each, one row each, at [A-Za-z0-9_$.]+:\\d+ -> getById; findAllById over the keys reads "
-                + "the rows in one round trip").matcher(line).find(), line);
-        assertTrue(line.endsWith("See https://orm.st/docs/advice#repeated-select"), line);
+                + "[0-9.]+ ms, [0-9.]+ ms each, one row each\\." + System.lineSeparator() + "\t\tat: [A-Za-z0-9_$.]+:\\d+ "
+                + "-> getById" + System.lineSeparator() + "\t\tfix: findAllById over the keys reads the rows in one "
+                + "round trip").matcher(line).find(), line);
+        assertTrue(line.endsWith("\t\tsee: https://orm.st/docs/advice#repeated-select"), line);
         assertFalse(line.contains("transactions"), line);
     }
 
@@ -187,9 +189,10 @@ class TransactionAdviceTest {
         assertEquals(1, events.size(), lines(events).toString());
         var line = events.getFirst().getFormattedMessage();
         assertTrue(line.contains("\tadvice: insert of Customer ran 10 times, "), line);
-        assertTrue(line.contains("one row each, at "), line);
+        assertTrue(line.contains("one row each." + System.lineSeparator() + "\t\tat: "), line);
         // Within one transaction a batch changes nothing about what commits, so the advice does not say it does.
-        assertTrue(line.endsWith("send the rows as one batch. See https://orm.st/docs/advice#repeated-write"), line);
+        assertTrue(line.endsWith("send the rows as one batch." + System.lineSeparator()
+                + "\t\tsee: https://orm.st/docs/advice#repeated-write"), line);
     }
 
     @Test
@@ -253,7 +256,7 @@ class TransactionAdviceTest {
         assertEquals(1, events.size(), lines(events).toString());
         var line = events.getFirst().getFormattedMessage();
         // The line inside the repository says which query ran; the loop in the service is the line to change.
-        assertTrue(Pattern.compile("one row each, at ReminderService\\.java:\\d+ -> CustomerRepository\\.lookUp; ")
+        assertTrue(Pattern.compile("one row each\\.\\R\t\tat: ReminderService\\.java:\\d+ -> CustomerRepository\\.lookUp\\R")
                 .matcher(line).find(), line);
     }
 
@@ -266,7 +269,7 @@ class TransactionAdviceTest {
         }));
         assertEquals(1, events.size(), lines(events).toString());
         var line = events.getFirst().getFormattedMessage();
-        var sites = Pattern.compile("ran (\\d+) times, [0-9.]+ ms, [0-9.]+ ms each, one row each, at (ReminderService\\.java:\\d+) ->")
+        var sites = Pattern.compile("ran (\\d+) times, [0-9.]+ ms, [0-9.]+ ms each, one row each\\.\\R\t\tat: (ReminderService\\.java:\\d+) ->")
                 .matcher(line);
         var counts = new HashMap<String, String>();
         while (sites.find()) {
@@ -329,6 +332,38 @@ class TransactionAdviceTest {
         assertEquals(1, beside.size(), lines(beside).toString());
         line = beside.getFirst().getFormattedMessage();
         assertTrue(line.indexOf("#repeated-select") < line.indexOf("#idle-transaction"), line);
+    }
+
+    @Test
+    void theLongestGapNamesTheCallSitesAtBothEndsWhereTheRepeatsWalkedThem() {
+        SlowStatementLog.transactionThreshold(Duration.ofMillis(50));
+        var customers = orm.repository(CustomerRepository.class);
+        var events = capture(Level.INFO, () -> transaction(REQUIRED_OPTIONS, () -> {
+            ReminderService.lookUpOne(customers, 1);
+            otherWork();
+            ReminderService.lookUpOne(customers, 2);
+        }));
+        assertEquals(1, events.size(), lines(events).toString());
+        var line = events.getFirst().getFormattedMessage();
+        // Both ends name the repository method, which names the entity too, and the second is the same call.
+        assertTrue(Pattern.compile("longest idle: [0-9.]+ ms, after ReminderService\\.java:\\d+ -> "
+                + "CustomerRepository\\.lookUp, before another of the same, the only gap of 1\\.0 ms or more")
+                .matcher(line).find(), line);
+    }
+
+    @Test
+    void aBuiltInCallOnARepositoryInterfaceIsNamedByTheRepository() {
+        var customers = orm.repository(CustomerRepository.class);
+        var service = new ReminderService(() -> {
+            for (int i = 1; i <= 10; i++) {
+                customers.getById(i);
+            }
+        });
+        var events = capture(Level.INFO, service::remindOwners);
+        assertEquals(1, events.size(), lines(events).toString());
+        var line = events.getFirst().getFormattedMessage();
+        assertTrue(Pattern.compile("one row each\\.\\R\t\tat: ReminderService\\.java:\\d+ -> CustomerRepository\\.getById\\R")
+                .matcher(line).find(), line);
     }
 
     @Test
@@ -441,7 +476,7 @@ class TransactionAdviceTest {
             assertEquals(1, advisories.size(), advisories.toString());
             assertTrue(advisories.getFirst().startsWith("getById of Customer ran 10 times, "),
                     advisories.getFirst());
-            assertTrue(advisories.getFirst().contains("one row each, in 10 transactions of their own; findAllById "
+            assertTrue(advisories.getFirst().contains("one row each, in 10 transactions of their own.\nfix: findAllById "
                     + "over the keys reads the rows in one round trip"), advisories.getFirst());
         });
         // The four transactions that repeated the read each reported it; the ten single reads repeated nothing.
@@ -467,7 +502,7 @@ class TransactionAdviceTest {
             var advisories = SqlLogRenderer.advisories(summary);
             assertEquals(1, advisories.size(), advisories.toString());
             assertTrue(advisories.getFirst().contains("ran 10 times, "), advisories.getFirst());
-            assertTrue(advisories.getFirst().contains("in 10 transactions of their own, at ReminderService.java:"),
+            assertTrue(advisories.getFirst().contains("in 10 transactions of their own.\nat: ReminderService.java:"),
                     advisories.getFirst());
         });
         assertEquals(1, events.size(), lines(events).toString());
@@ -558,14 +593,13 @@ class TransactionAdviceTest {
 
     private static final Metamodel<Customer, Integer> CUSTOMER_ID = Metamodel.of(Customer.class, "id");
 
-    /** Returns the one advice line of the one block the action's transaction reported. */
+    /** Returns the one piece of advice of the one block the action's transaction reported. */
     private String adviceOf(Runnable work) {
         var events = capture(Level.INFO, () -> transaction(REQUIRED_OPTIONS, work));
         assertEquals(1, events.size(), lines(events).toString());
-        var line = events.getFirst().getFormattedMessage();
-        int advice = line.indexOf("\tadvice: ");
-        assertTrue(advice >= 0, line);
-        return line.substring(advice + "\tadvice: ".length());
+        var advisories = AdviceCapture.advisoriesIn(List.of(events.getFirst().getFormattedMessage()));
+        assertEquals(1, advisories.size(), advisories.toString());
+        return advisories.getFirst();
     }
 
     @Test
@@ -578,9 +612,9 @@ class TransactionAdviceTest {
             }
         });
         assertTrue(line.startsWith("the same DELETE of Customer ran 10 times, "), line);
-        assertTrue(Pattern.compile(", [0-9.]+ ms each, no rows, at ").matcher(line).find(), line);
-        assertTrue(line.contains("; one statement whose condition covers all of them, such as a where with IN over "
-                + "what the loop varies, writes them in one round trip. See"), line);
+        assertTrue(Pattern.compile(", [0-9.]+ ms each, no rows\\.\nat: ").matcher(line).find(), line);
+        assertTrue(line.contains("\nfix: one statement whose condition covers all of them, such as a where with IN over "
+                + "what the loop varies, writes them in one round trip.\nsee:"), line);
         assertFalse(line.contains("overloads that take a list"), line);
     }
 
@@ -592,8 +626,8 @@ class TransactionAdviceTest {
             }
         });
         assertTrue(line.startsWith("update of Customer ran 10 times, "), line);
-        assertTrue(line.contains(", one row each, at "), line);
-        assertTrue(line.contains("; the overloads that take a list send the rows as one batch. See"), line);
+        assertTrue(line.contains(", one row each.\nat: "), line);
+        assertTrue(line.contains("\nfix: the overloads that take a list send the rows as one batch.\nsee:"), line);
     }
 
     @Test
@@ -610,9 +644,9 @@ class TransactionAdviceTest {
             }
         });
         assertTrue(line.startsWith("the same UPSERT of Customer ran 10 times, "), line);
-        assertTrue(line.contains("; where the rows mostly exist and rarely change, reading them first and writing only "
-                + "the new or changed ones avoids the writes. Otherwise, the overloads that take a list send the rows "
-                + "as one batch. See"), line);
+        assertTrue(line.contains("\nfix: where the rows mostly exist and rarely change, read them first and write only "
+                + "the new or changed ones, which avoids the writes\nor: the overloads that take a list send the rows "
+                + "as one batch.\nsee:"), line);
     }
 
     @Test
@@ -624,9 +658,9 @@ class TransactionAdviceTest {
             }
         });
         assertTrue(line.startsWith("the same SELECT of Customer ran 10 times, "), line);
-        assertTrue(line.contains("; one query for all of them, with a where with IN over what the loop varies, "
+        assertTrue(line.contains("\nfix: one query for all of them, with a where with IN over what the loop varies, "
                 + "selects the keys that exist in one round trip, with a GROUP BY on it where the counts themselves "
-                + "are used. See"), line);
+                + "are used.\nsee:"), line);
         assertFalse(line.contains("findAllById"), line);
     }
 
@@ -639,7 +673,7 @@ class TransactionAdviceTest {
         });
         // existsById counts through the query builder, yet the advice names the call the application made.
         assertTrue(line.startsWith("existsById of Customer ran 10 times, "), line);
-        assertTrue(line.contains("; findAllById over the keys reads the ones that exist in one round trip. See"), line);
+        assertTrue(line.contains("\nfix: findAllById over the keys reads the ones that exist in one round trip.\nsee:"), line);
         assertFalse(line.contains("GROUP BY"), line);
     }
 
@@ -651,7 +685,7 @@ class TransactionAdviceTest {
             }
         });
         assertTrue(line.startsWith("findByRef of Customer ran 10 times, "), line);
-        assertTrue(line.contains("; findAllByRef over the keys reads the rows in one round trip. See"), line);
+        assertTrue(line.contains("\nfix: findAllByRef over the keys reads the rows in one round trip.\nsee:"), line);
     }
 
     @Test
@@ -700,7 +734,7 @@ class TransactionAdviceTest {
                     advisories.getFirst());
             // The first transaction held the reads beside its count, so the counts did not run in transactions of
             // their own, and the advice does not say they did.
-            assertTrue(advisories.getFirst().contains("one row each, in 10 transactions; one query"),
+            assertTrue(advisories.getFirst().contains("one row each, in 10 transactions.\nfix: one query"),
                     advisories.getFirst());
             assertFalse(advisories.getFirst().contains("of their own"), advisories.getFirst());
         });
@@ -722,7 +756,7 @@ class TransactionAdviceTest {
         var advisories = SqlLogRenderer.advisories(summary);
         assertEquals(1, advisories.size(), advisories.toString());
         assertTrue(advisories.getFirst().contains("ran 15 times, "), advisories.getFirst());
-        assertTrue(advisories.getFirst().contains(", at "), advisories.getFirst());
+        assertTrue(advisories.getFirst().contains("\nat: "), advisories.getFirst());
     }
 
     /** A customer read through a view whose column fails as it is computed. */

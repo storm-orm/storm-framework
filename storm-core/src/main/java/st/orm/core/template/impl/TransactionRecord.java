@@ -69,6 +69,23 @@ public final class TransactionRecord {
     private long firstWriteNanos;
     /** The time the statements spent on the connection from the first write on. */
     private long busyFromFirstWriteNanos;
+    /** When the first statement was prepared, or zero before it. */
+    private long firstStartNanos;
+    /** When the latest of the statements so far closed, or zero before the first. */
+    private long lastEndNanos;
+    /** The statement that closed last, which precedes the next gap. */
+    private @Nullable QueryContext previous;
+    /** The call site of {@link #previous} where the repeats walked it. */
+    private @Nullable String previousSite;
+    /** The time between the statements, from one closing to the next being prepared. */
+    private long betweenNanos;
+    /** The gaps between the statements of at least {@link #GAP_FLOOR_NANOS}. */
+    private int gaps;
+    private long longestGapNanos;
+    private @Nullable QueryContext longestGapBefore;
+    private @Nullable String longestGapBeforeSite;
+    private @Nullable QueryContext longestGapAfter;
+    private @Nullable String longestGapSite;
 
     private TransactionRecord(boolean fromFirstStatement, boolean recordRepeats) {
         this.fromFirstStatement = fromFirstStatement;
@@ -157,29 +174,127 @@ public final class TransactionRecord {
                          long endNanos,
                          long rows,
                          boolean exactRows) {
-        busyNanos += endNanos - startNanos;
         statements++;
+        long previousEndNanos = lastEndNanos;
+        boolean longest = gapClosed(context, startNanos, endNanos);
         // A SELECT reads; anything else, a call to a procedure included, may have written and taken locks.
         if (context.operation() != SqlOperation.SELECT && firstWriteNanos == 0) {
             firstWriteNanos = startNanos;
         }
-        if (firstWriteNanos != 0) {
-            busyFromFirstWriteNanos += endNanos - Math.max(startNanos, firstWriteNanos);
+        if (firstWriteNanos != 0 && endNanos > previousEndNanos) {
+            busyFromFirstWriteNanos += endNanos - Math.max(Math.max(startNanos, firstWriteNanos), previousEndNanos);
         }
-        if (repeats == null) {
-            return;
+        // The call site walked for the repeats, which the gaps around the statement reuse.
+        String site = null;
+        if (repeats != null) {
+            repeats.observed(id(), startNanos, executedNanos);
+            // A statement whose repetition carries no advice is not walked for.
+            if (UnitOfWorkRepeats.candidate(context)) {
+                site = CallSiteCapture.callSite(context);
+                var repeat = repeats.record(context, startNanos, executedNanos, rows, exactRows, true, id(), site);
+                if (repeat != null && (!AdviceLog.reports(repeat.advice)
+                        || AdviceAcceptance.accepts(repeat.advice, repeat.shapeId, repeat.type))) {
+                    repeat.accepted = true;
+                }
+            }
         }
-        repeats.observed(id(), startNanos, executedNanos);
-        // A statement whose repetition carries no advice is not walked for.
-        if (!UnitOfWorkRepeats.candidate(context)) {
-            return;
+        if (longest) {
+            longestGapSite = site != null || !SlowStatementLog.watchesTransactions()
+                    ? site
+                    : CallSiteCapture.callSite(context);
         }
-        var repeat = repeats.record(context, startNanos, executedNanos, rows, exactRows, true, id(),
-                CallSiteCapture.callSite(context));
-        if (repeat != null && (!AdviceLog.reports(repeat.advice)
-                || AdviceAcceptance.accepts(repeat.advice, repeat.shapeId, repeat.type))) {
-            repeat.accepted = true;
+        if (previous == context) {
+            previousSite = site;
         }
+    }
+
+    /**
+     * Credits the gap that ended where the statement was prepared, the time since the latest statement before it
+     * closed, which a statement prepared while another was open, such as one run while a stream is read, does not
+     * leave, and returns whether it is the longest so far. The longest gap keeps the statements around it, the call
+     * site of the one before it where the repeats walked it, and the call site of the one that ended it, walked
+     * while its caller is on the stack: only for a gap of at least {@link #GAP_FLOOR_NANOS} that is longer than
+     * every one before it, while the slow statement log watches transactions, so a walk costs a fraction of the time
+     * the application already spent. The site of the statement before a gap is never walked for the gap, which
+     * would cost a walk per statement; it is the one the repeats walked, which they do in development.
+     */
+    private boolean gapClosed(QueryContext context, long startNanos, long endNanos) {
+        boolean longest = false;
+        if (lastEndNanos == 0) {
+            firstStartNanos = startNanos;
+        } else if (startNanos > lastEndNanos) {
+            long gap = startNanos - lastEndNanos;
+            betweenNanos += gap;
+            if (gap >= GAP_FLOOR_NANOS) {
+                gaps++;
+                if (gap > longestGapNanos) {
+                    longestGapNanos = gap;
+                    longestGapBefore = previous;
+                    longestGapBeforeSite = previousSite;
+                    longestGapAfter = context;
+                    longest = true;
+                }
+            }
+        }
+        // The time on the connection is the union of the statements' intervals: a statement run while another was
+        // open, such as one run while a stream is read, adds only the part past the latest close so far.
+        if (endNanos > lastEndNanos) {
+            busyNanos += endNanos - Math.max(startNanos, lastEndNanos);
+            lastEndNanos = endNanos;
+            previous = context;
+            previousSite = null;
+        }
+        return longest;
+    }
+
+    /** The shortest gap between statements counted as the application's work rather than reading the results. */
+    static final long GAP_FLOOR_NANOS = 1_000_000L;
+
+    /**
+     * Where a transaction held its connection while the application did other work: before its first statement,
+     * between its statements, and after its last until the connection was returned; and of the gaps between the
+     * statements, how many took at least {@link #GAP_FLOOR_NANOS}, and the longest, with the statements around it
+     * and the call site of the one that ended it.
+     *
+     * @param statements the statements the transaction ran.
+     * @param beforeNanos the time before the first statement.
+     * @param betweenNanos the time between the statements.
+     * @param afterNanos the time after the last statement.
+     * @param gaps the gaps between the statements of at least {@link #GAP_FLOOR_NANOS}.
+     * @param longestNanos the longest gap between the statements.
+     * @param longestBefore the statement before the longest gap, or {@code null} without one.
+     * @param longestBeforeSite the call site of the statement before the longest gap, or {@code null} where not
+     *                          walked.
+     * @param longestAfter the statement after the longest gap, or {@code null} without one.
+     * @param longestSite the call site of the statement after the longest gap, or {@code null} where not walked.
+     */
+    record Gaps(int statements,
+                long beforeNanos,
+                long betweenNanos,
+                long afterNanos,
+                int gaps,
+                long longestNanos,
+                @Nullable QueryContext longestBefore,
+                @Nullable String longestBeforeSite,
+                @Nullable QueryContext longestAfter,
+                @Nullable String longestSite) {
+
+        /** No gaps: the idle time of a transaction known only by its total. */
+        static final Gaps NONE = new Gaps(0, 0, 0, 0, 0, 0, null, null, null, null);
+    }
+
+    /**
+     * Returns where the transaction held its connection idle, up to the given moment.
+     *
+     * @param now the moment the connection is returned.
+     * @return the gaps.
+     */
+    Gaps gaps(long now) {
+        if (lastEndNanos == 0) {
+            return new Gaps(statements, Math.max(0, now - takenNanos), 0, 0, 0, 0, null, null, null, null);
+        }
+        return new Gaps(statements, Math.max(0, firstStartNanos - takenNanos), betweenNanos, Math.max(0, now - lastEndNanos),
+                gaps, longestGapNanos, longestGapBefore, longestGapBeforeSite, longestGapAfter, longestGapSite);
     }
 
     /**
