@@ -480,10 +480,46 @@ public final class CallSiteCapture {
         ignoredCallSitePrefixes = merged.toArray(String[]::new);
     }
 
-    private static boolean isInfrastructure(String className) {
-        if (className.startsWith("st.orm.")
+    /**
+     * The packages Storm ships under {@code st.orm}, by their first segment. An application's package may start with
+     * {@code st.orm.} too, as the example applications' do, so Storm's frames are told apart by these rather than by
+     * the prefix; a guard test fails when a module ships a package outside them.
+     */
+    private static final String[] STORM_PACKAGES = {
+            "core.", "gradle.", "jackson.", "kotlin.", "ktor.", "mapping.", "metamodel.", "micrometer.", "repository.",
+            "serialization.", "spi.", "spring.", "tck.", "template.", "test."
+    };
+
+    private static final String ST_ORM = "st.orm.";
+
+    /**
+     * Returns whether the class is Storm's own: a class of the {@code st.orm} package itself, or of one of the
+     * packages Storm ships beneath it.
+     */
+    static boolean isStorm(String className) {
+        if (!className.startsWith(ST_ORM)) {
+            return false;
+        }
+        if (className.indexOf('.', ST_ORM.length()) < 0) {
+            return true;
+        }
+        for (var segment : STORM_PACKAGES) {
+            if (className.startsWith(segment, ST_ORM.length())) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * Returns whether a frame belongs to the platform, Storm or a framework the application runs on, which a call site
+     * never names. A native image's own classes count as the platform, as the JDK's do on the JVM.
+     */
+    static boolean isInfrastructure(String className) {
+        if (isStorm(className)
                 || className.startsWith("java.")
                 || className.startsWith("jdk.")
+                || className.startsWith("com.oracle.svm.")
                 || className.startsWith("sun.")
                 || className.startsWith("kotlin.")
                 || className.startsWith("kotlinx.")
