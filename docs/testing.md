@@ -134,7 +134,7 @@ class TransactionBehaviorTest {
 
 Typical reasons to opt out:
 
-1. **Writes that must be visible to other connections or threads.** With rollback enabled, everything a test does shares a single database connection, so a test that coordinates multiple concurrent transactions needs real connections.
+1. **Writes that must be visible to other connections or threads.** With rollback enabled, everything a test does shares a single database connection, so a test that coordinates multiple concurrent transactions needs real connections. A transaction that begins on one thread or coroutine while another one's is open fails, naming `rollback = false`. One thread or coroutine nesting transactions, and threads or coroutines taking turns, work with rollback enabled.
 2. **`REQUIRES_NEW` transactions whose independence is under test.** On the shared connection, an inner transaction nests in the test transaction instead of committing or locking independently.
 3. **DDL statements inside a test.** Most databases commit implicitly on DDL, which ends the test transaction. Schema scripts are unaffected: they run once per class, before any test transaction starts.
 

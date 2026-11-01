@@ -31,7 +31,9 @@ import java.sql.SQLException;
 import java.sql.SQLFeatureNotSupportedException;
 import java.sql.Savepoint;
 import java.util.ArrayList;
+import java.util.IdentityHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.logging.Logger;
 import javax.sql.DataSource;
 import org.jspecify.annotations.Nullable;
@@ -43,6 +45,7 @@ import org.junit.jupiter.api.extension.ExtensionContext;
 import org.junit.jupiter.api.extension.ParameterContext;
 import org.junit.jupiter.api.extension.ParameterResolutionException;
 import org.junit.jupiter.api.extension.ParameterResolver;
+import st.orm.core.spi.ConnectionGuard;
 import st.orm.core.template.impl.AdviceLog;
 
 /**
@@ -463,9 +466,11 @@ public class StormExtension implements BeforeAllCallback, BeforeEachCallback, Af
      * into savepoints: {@code setAutoCommit(false)} creates a savepoint, {@code commit()} abandons it, and
      * {@code rollback()} rolls back to it. Storm's transaction API therefore works unchanged inside a test (it
      * requires connections to arrive in auto-commit mode), while its commits keep all changes pending in the test
-     * transaction. The simulation is faithful for single-threaded tests; because every proxy shares one physical
-     * connection, {@code REQUIRES_NEW} loses its independence and concurrent transactions on separate threads are
-     * not supported — such tests should disable {@link StormTest#rollback()}.</p>
+     * transaction. Because every proxy shares one physical connection, {@code REQUIRES_NEW} loses its independence,
+     * and transactions of separate callers cannot run at once: a transaction that begins while another caller's
+     * transaction is open fails, naming {@link StormTest#rollback()} as the way out. The caller is the identity
+     * {@link ConnectionGuard#callerHolder()} holds, which a coroutine keeps when it resumes on another thread, or
+     * else the current thread. One caller nesting transactions, and callers taking turns, are supported.</p>
      *
      * <p>Implements both {@link ExtensionContext.Store.CloseableResource} and {@link AutoCloseable} as a safety net
      * (see {@link DatabaseShutdown}); the extension normally rolls back in {@code afterEach}.</p>
@@ -477,6 +482,8 @@ public class StormExtension implements BeforeAllCallback, BeforeEachCallback, Af
         private final Object lock = new Object();
         private Connection physical;
         private boolean completed;
+        /** The caller of each open simulated transaction, keyed by the proxy handler that runs it. */
+        private final Map<TransactionSimulatingConnection, Object> openTransactions = new IdentityHashMap<>();
 
         TestTransaction(DataSource delegate) {
             this.delegate = delegate;
@@ -496,7 +503,37 @@ public class StormExtension implements BeforeAllCallback, BeforeEachCallback, Af
                     physical = connection;
                 }
                 return (Connection) Proxy.newProxyInstance(Connection.class.getClassLoader(),
-                        new Class<?>[] {Connection.class}, new TransactionSimulatingConnection(physical));
+                        new Class<?>[] {Connection.class}, new TransactionSimulatingConnection(this, physical));
+            }
+        }
+
+        /**
+         * Registers a simulated transaction that begins for the current caller.
+         *
+         * @throws SQLException if another caller's transaction is open: both would run on the one physical connection.
+         */
+        void begin(TransactionSimulatingConnection transaction) throws SQLException {
+            Object caller = ConnectionGuard.callerHolder().get();
+            if (caller == null) {
+                caller = Thread.currentThread();
+            }
+            synchronized (lock) {
+                for (Object other : openTransactions.values()) {
+                    if (other != caller) {
+                        throw new SQLException("Two transactions run at once, on separate threads or coroutines, but "
+                                + "a test that rolls back runs every connection over one, so they share it: their "
+                                + "statements interleave and neither is independent. Use @StormTest(rollback = false) "
+                                + "for a test with concurrent transactions.");
+                    }
+                }
+                openTransactions.put(transaction, caller);
+            }
+        }
+
+        /** Deregisters a simulated transaction that ended. */
+        void end(TransactionSimulatingConnection transaction) {
+            synchronized (lock) {
+                openTransactions.remove(transaction);
             }
         }
 
@@ -579,17 +616,20 @@ public class StormExtension implements BeforeAllCallback, BeforeEachCallback, Af
      *     <li>{@code close()} only detaches the proxy; an open simulated transaction is rolled back, mirroring how
      *         drivers commonly treat a connection closed mid-transaction.</li>
      * </ul>
-     * Caller-created savepoints pass through and nest inside the simulated transaction. All methods are confined to
-     * the test's thread, like the connection a test would otherwise own.
+     * Caller-created savepoints pass through and nest inside the simulated transaction. Each proxy serves one caller
+     * at a time, like the connection it stands in for; the {@link TestTransaction} it reports its transactions to
+     * keeps the callers of separate proxies apart.
      */
     private static final class TransactionSimulatingConnection implements InvocationHandler {
 
+        private final TestTransaction transactions;
         private final Connection physical;
         private boolean autoCommit = true;
         private Savepoint savepoint;
         private boolean closed;
 
-        TransactionSimulatingConnection(Connection physical) {
+        TransactionSimulatingConnection(TestTransaction transactions, Connection physical) {
+            this.transactions = transactions;
             this.physical = physical;
         }
 
@@ -605,6 +645,7 @@ public class StormExtension implements BeforeAllCallback, BeforeEachCallback, Af
                 case "close":
                     if (!closed) {
                         closed = true;
+                        transactions.end(this);
                         if (savepoint != null) {
                             physical.rollback(savepoint);
                             savepoint = null;
@@ -630,7 +671,9 @@ public class StormExtension implements BeforeAllCallback, BeforeEachCallback, Af
                     if (requested) {
                         // Enabling auto-commit commits the active transaction; abandon its savepoint.
                         savepoint = null;
+                        transactions.end(this);
                     } else {
+                        transactions.begin(this);
                         savepoint = physical.setSavepoint();
                     }
                     autoCommit = requested;

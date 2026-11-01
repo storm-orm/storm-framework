@@ -138,6 +138,10 @@ public @interface StormTest {
      * statements (which implicitly commit on most databases). With rollback disabled, writes persist across the
      * tests of the class, so such tests must not depend on test execution order or clean up after themselves.</p>
      *
+     * <p>Transactions of separate threads or coroutines cannot run at once on the shared connection: a transaction
+     * that begins while another one's is open fails with an exception that names this setting. One thread or
+     * coroutine nesting transactions, and threads or coroutines taking turns, work with rollback enabled.</p>
+     *
      * @since 1.14
      */
     boolean rollback() default true;
