@@ -27,6 +27,8 @@ import org.jspecify.annotations.Nullable;
 import st.orm.Data;
 import st.orm.EntityCallbacks;
 import st.orm.core.spi.TypeDiscovery;
+import st.orm.core.template.impl.NativeProxies;
+import st.orm.core.template.impl.RepositoryClasses;
 
 /**
  * GraalVM native-image feature that registers the application's Storm types, driven by the compile-time
@@ -40,8 +42,10 @@ import st.orm.core.spi.TypeDiscovery;
  * <p>Per Data type (including compound primary keys and inline components, resolved through
  * {@link TypeDiscovery#getComponentTypes(Class)}), the declared constructors and public methods are
  * registered for reflection (model introspection), along with the generated metamodel companion classes.
- * Per repository interface, the JDK proxy shape Storm creates behind {@code ORMTemplate.repository(..)}
- * is registered, along with the Kotlin {@code $DefaultImpls} class that carries default method bodies.
+ * Per repository interface, the class Storm writes for it is written during the build and registered for its
+ * constructor, on a build JDK 24 and up; before, the JDK proxy shape Storm creates behind
+ * {@code ORMTemplate.repository(..)} is registered, along with the Kotlin {@code $DefaultImpls} class that carries
+ * default method bodies.
  * Converters are registered for reflective construction.</p>
  *
  * @since 1.13
@@ -70,12 +74,23 @@ public final class StormFeature implements Feature {
         /** Registers the permitted subclasses of the sealed type for reflection. */
         void registerAllPermittedSubclasses(Class<?> type);
 
-        /** Registers the interface for JDK proxy creation. */
-        void registerProxy(Class<?> type);
+        /** Registers the ordered interfaces of a JDK proxy class for proxy creation. */
+        void registerProxy(Class<?>... interfaces);
+
+        /**
+         * Writes and defines the class Storm writes for the repository interface, for the image to hold, or returns
+         * {@code null} where none is written, as on a build JDK before 24, so the image keeps the proxy.
+         */
+        @Nullable Class<?> defineRepositoryClass(Class<?> type);
     }
 
     /** The counts of what the feature registered, as the build output reports them. */
-    record Summary(int dataTypes, int resultTypes, int callbackTypes, int converterTypes, int repositoryTypes) {}
+    record Summary(int dataTypes,
+                   int resultTypes,
+                   int callbackTypes,
+                   int converterTypes,
+                   int repositoryTypes,
+                   int generatedRepositoryTypes) {}
 
     /** The data types registered so far: a sealed hierarchy is reached from each of its types and registered once. */
     private final Set<Class<?>> registered = new HashSet<>();
@@ -97,9 +112,9 @@ public final class StormFeature implements Feature {
         Summary summary = register(new ImageRegistrar(access));
         System.out.printf(
                 "Storm: registered %d data types, %d query result types, %d entity callbacks, %d converters, and "
-                        + "%d repositories from the type index.%n",
+                        + "%d repositories (%d as generated classes) from the type index.%n",
                 summary.dataTypes(), summary.resultTypes(), summary.callbackTypes(), summary.converterTypes(),
-                summary.repositoryTypes());
+                summary.repositoryTypes(), summary.generatedRepositoryTypes());
     }
 
     /**
@@ -131,17 +146,33 @@ public final class StormFeature implements Feature {
             converterTypes++;
         }
         int repositoryTypes = 0;
+        int generatedRepositoryTypes = 0;
         for (Class<?> type : TypeDiscovery.getRepositoryTypes()) {
+            repositoryTypes++;
+            // The class written for the interface calls the implementations and the Kotlin bodies directly, so the
+            // image holds the methods the application calls and registers only the constructor it looks up.
+            Class<?> repositoryClass = registrar.defineRepositoryClass(type);
+            if (repositoryClass != null) {
+                registrar.register(repositoryClass);
+                registrar.register(repositoryClass.getConstructors());
+                generatedRepositoryTypes++;
+                continue;
+            }
             registrar.registerProxy(type);
             Class<?> defaultImplementations = registrar.findClassByName(type.getName() + "$DefaultImpls");
             if (defaultImplementations != null) {
                 registrar.register(defaultImplementations);
                 registrar.register(defaultImplementations.getDeclaredMethods());
             }
-            repositoryTypes++;
+        }
+        // The proxies Storm creates for itself, registered here rather than in a proxy-config.json, which GraalVM for
+        // JDK 25 reads as deprecated and whose successor GraalVM for JDK 21 does not read.
+        for (Class<?>[] shape : NativeProxies.shapes()) {
+            registrar.registerProxy(shape);
         }
         registerKotlinCollections(registrar);
-        return new Summary(dataTypes, resultTypes, callbackTypes, converterTypes, repositoryTypes);
+        return new Summary(dataTypes, resultTypes, callbackTypes, converterTypes, repositoryTypes,
+                generatedRepositoryTypes);
     }
 
     /**
@@ -272,8 +303,13 @@ public final class StormFeature implements Feature {
         }
 
         @Override
-        public void registerProxy(Class<?> type) {
-            RuntimeProxyCreation.register(type);
+        public void registerProxy(Class<?>... interfaces) {
+            RuntimeProxyCreation.register(interfaces);
+        }
+
+        @Override
+        public @Nullable Class<?> defineRepositoryClass(Class<?> type) {
+            return RepositoryClasses.defineForImage(type);
         }
     }
 }

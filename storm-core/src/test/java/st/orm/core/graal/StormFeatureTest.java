@@ -6,6 +6,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.lang.reflect.Executable;
 import java.lang.reflect.Field;
+import java.sql.PreparedStatement;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -22,7 +23,9 @@ import st.orm.core.model.polymorphic.Checkup;
 import st.orm.core.model.polymorphic.OutcomeConverter;
 import st.orm.core.model.polymorphic.Surgery;
 import st.orm.core.model.polymorphic.Treatment;
+import st.orm.core.repository.Repository;
 import st.orm.core.spi.TypeDiscovery;
+import st.orm.core.template.impl.NativeProxies;
 
 /**
  * The feature registers what the type index of this module's test classes names: the data types with their members
@@ -39,8 +42,13 @@ class StormFeatureTest {
         final Set<Executable> executables = new HashSet<>();
         final Set<Field> fields = new HashSet<>();
         final Set<Class<?>> sealedTypes = new HashSet<>();
+        /** The repository interfaces registered as single-interface proxies. */
         final Set<Class<?>> proxies = new HashSet<>();
+        /** Every registered proxy shape, as its ordered interfaces. */
+        final Set<List<Class<?>>> proxyShapes = new HashSet<>();
         final Map<String, Class<?>> standIns = new HashMap<>();
+        /** The class the build writes for each repository interface, none where the build writes none. */
+        final Map<Class<?>, Class<?>> repositoryClasses = new HashMap<>();
 
         @Override
         public @Nullable Class<?> findClassByName(String name) {
@@ -76,8 +84,16 @@ class StormFeatureTest {
         }
 
         @Override
-        public void registerProxy(Class<?> type) {
-            proxies.add(type);
+        public void registerProxy(Class<?>... interfaces) {
+            proxyShapes.add(List.of(interfaces));
+            if (interfaces.length == 1 && Repository.class.isAssignableFrom(interfaces[0])) {
+                proxies.add(interfaces[0]);
+            }
+        }
+
+        @Override
+        public @Nullable Class<?> defineRepositoryClass(Class<?> type) {
+            return repositoryClasses.get(type);
         }
     }
 
@@ -139,6 +155,36 @@ class StormFeatureTest {
         new StormFeature().register(registrar);
         assertTrue(registrar.types.contains(AuditedCityRepositoryDefaultImpls.class));
         assertTrue(registrar.executables.containsAll(List.of(AuditedCityRepositoryDefaultImpls.class.getDeclaredMethods())));
+    }
+
+    /** Stands in for the class the build writes for a repository interface. */
+    public static final class AuditedCityRepositoryClass {
+        public AuditedCityRepositoryClass(Object repository, Object entity, Object projection) {}
+    }
+
+    @Test
+    void aRepositoryWhoseClassTheBuildWritesRegistersTheClassInsteadOfAProxy() {
+        var registrar = new RecordingRegistrar();
+        registrar.repositoryClasses.put(AuditedCityRepository.class, AuditedCityRepositoryClass.class);
+        registrar.standIns.put(AuditedCityRepository.class.getName() + "$DefaultImpls", AuditedCityRepositoryDefaultImpls.class);
+        var summary = new StormFeature().register(registrar);
+        assertEquals(Set.of(), registrar.proxies);
+        assertTrue(registrar.types.contains(AuditedCityRepositoryClass.class));
+        assertTrue(registrar.executables.containsAll(List.of(AuditedCityRepositoryClass.class.getConstructors())));
+        // The class calls the Kotlin bodies directly, so they need no reflection.
+        assertFalse(registrar.types.contains(AuditedCityRepositoryDefaultImpls.class));
+        assertEquals(1, summary.repositoryTypes());
+        assertEquals(1, summary.generatedRepositoryTypes());
+    }
+
+    @Test
+    void registersTheProxiesStormCreatesForItself() {
+        var registrar = new RecordingRegistrar();
+        new StormFeature().register(registrar);
+        for (var shape : NativeProxies.shapes()) {
+            assertTrue(registrar.proxyShapes.contains(List.of(shape)), List.of(shape).toString());
+        }
+        assertTrue(registrar.proxyShapes.contains(List.of(PreparedStatement.class)));
     }
 
     @Test

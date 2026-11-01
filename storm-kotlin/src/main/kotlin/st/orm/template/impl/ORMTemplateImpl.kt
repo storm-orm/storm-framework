@@ -22,6 +22,7 @@ import st.orm.Projection
 import st.orm.WriteSet
 import st.orm.core.spi.ORMReflection
 import st.orm.core.spi.Providers
+import st.orm.core.template.impl.RepositoryClasses
 import st.orm.repository.EntityRepository
 import st.orm.repository.ProjectionRepository
 import st.orm.repository.Repository
@@ -119,6 +120,10 @@ internal class ORMTemplateImpl(private val core: st.orm.core.template.ORMTemplat
         val entityRepository = createEntityRepository(type)
         val projectionRepository = createProjectionRepository(type)
         val repository = createRepository()
+        // A class written for the interface calls the implementations directly; the proxy serves where none is.
+        if (!EntityRepository::class.java.isAssignableFrom(type.java) || entityRepository != null) {
+            RepositoryClasses.create(type.java, repository, entityRepository, projectionRepository)?.let { return it }
+        }
         return Proxy.newProxyInstance(
             type.java.classLoader,
             arrayOf(type.java),

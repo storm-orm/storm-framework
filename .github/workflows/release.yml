@@ -56,11 +56,15 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v7
 
-      - name: Set up Java 21
+      - name: Set up Java 21 and 25
         uses: actions/setup-java@v6
         with:
           distribution: 'temurin'
-          java-version: '21'
+          # JDK 25 compiles and tests the multi-release part of storm-core (the repository class writer, Java 24
+          # and up) through a Maven toolchain; JDK 21 stays the default.
+          java-version: |
+            25
+            21
 
       # Signing and Central credentials are configured explicitly in the steps
       # below rather than through setup-java inputs: the action's server-username/

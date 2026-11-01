@@ -33,6 +33,7 @@ import st.orm.Projection;
 import st.orm.WriteSet;
 import st.orm.core.spi.ORMReflection;
 import st.orm.core.spi.Providers;
+import st.orm.core.template.impl.RepositoryClasses;
 import st.orm.repository.EntityRepository;
 import st.orm.repository.ProjectionRepository;
 import st.orm.repository.Repository;
@@ -146,6 +147,13 @@ public final class ORMTemplateImpl extends QueryTemplateImpl implements ORMTempl
                 ? createProjectionRepository(type).orElse(null)
                 : null;
         Repository repository = createRepository();
+        // A class written for the interface calls the implementations directly; the proxy serves where none is.
+        if (!EntityRepository.class.isAssignableFrom(type) || entityRepository != null) {
+            R generated = RepositoryClasses.create(type, repository, entityRepository, projectionRepository);
+            if (generated != null) {
+                return generated;
+            }
+        }
         //noinspection unchecked
         return (R) newProxyInstance(type.getClassLoader(), new Class<?>[]{type}, (proxy, method, args) -> {
             try {

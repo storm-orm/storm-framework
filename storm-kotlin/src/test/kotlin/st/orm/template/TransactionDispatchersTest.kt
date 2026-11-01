@@ -4,7 +4,7 @@ import io.kotest.matchers.shouldBe
 import io.kotest.matchers.shouldNotBe
 import io.kotest.matchers.types.shouldBeInstanceOf
 import kotlinx.coroutines.Dispatchers
-import org.junit.jupiter.api.AfterEach
+import kotlinx.coroutines.runBlocking
 import org.junit.jupiter.api.Test
 import st.orm.template.impl.VirtualThreadDispatcher
 
@@ -17,12 +17,6 @@ import st.orm.template.impl.VirtualThreadDispatcher
  * - shutdown()
  */
 internal class TransactionDispatchersTest {
-
-    @AfterEach
-    fun restoreDefault() {
-        // Clear any override set during tests
-        TransactionDispatchers.Default = TransactionDispatchers.Default
-    }
 
     @Test
     fun `Default dispatcher should not be null`() {
@@ -67,6 +61,8 @@ internal class TransactionDispatchersTest {
         virtual shouldNotBe null
         // Shutdown should not throw
         TransactionDispatchers.shutdown()
+        // The dispatcher stays usable: work dispatched after the shutdown runs on a new executor.
+        runBlocking(TransactionDispatchers.Virtual) { 1 + 1 } shouldBe 2
     }
 
     @Test

@@ -23,13 +23,24 @@ internal class VirtualThreadDispatcher(
         .name(threadNamePrefix, 0)
         .factory()
 
-    private val executor: ExecutorService = Executors.newThreadPerTaskExecutor(factory)
+    // The executor the dispatcher runs on, or null until the next dispatch starts one.
+    @Volatile
+    private var executor: ExecutorService? = null
 
-    override fun dispatch(context: CoroutineContext, block: Runnable) {
-        executor.execute(block)
+    private fun executor(): ExecutorService = executor ?: synchronized(this) {
+        executor ?: Executors.newThreadPerTaskExecutor(factory).also { executor = it }
     }
 
+    override fun dispatch(context: CoroutineContext, block: Runnable) {
+        executor().execute(block)
+    }
+
+    /**
+     * Shuts down the executor, letting the work it runs complete. The dispatcher stays usable: the next dispatch
+     * starts a new executor, so whoever holds the dispatcher, such as a context or a default that names it, keeps
+     * working after a shutdown.
+     */
     override fun close() {
-        executor.close()
+        synchronized(this) { executor.also { executor = null } }?.close()
     }
 }

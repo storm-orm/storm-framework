@@ -70,6 +70,70 @@
                         </path>
                     </annotationProcessorPaths>
                 </configuration>
+                <executions>
+                    <!-- The repository class writer uses the class-file API, final in Java 24 (JEP 484). It compiles
+                         with a JDK 24 or later toolchain into the multi-release part of the jar, so Java 24 and up
+                         load it while storm-core keeps Java 21 as its baseline. -->
+                    <execution>
+                        <id>compile-java24</id>
+                        <phase>compile</phase>
+                        <goals>
+                            <goal>compile</goal>
+                        </goals>
+                        <configuration>
+                            <source>24</source>
+                            <target>24</target>
+                            <release>24</release>
+                            <jdkToolchain>
+                                <version>[24,)</version>
+                            </jdkToolchain>
+                            <compileSourceRoots>
+                                <compileSourceRoot>${project.basedir}/src/main/java24</compileSourceRoot>
+                            </compileSourceRoots>
+                            <multiReleaseOutput>true</multiReleaseOutput>
+                            <proc>none</proc>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+            <plugin>
+                <!-- The repository classes are written by the multi-release part of the jar, which a test of
+                     target/classes does not load: their integration tests run against the packaged jar, on a Java
+                     24 or later toolchain. -->
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-failsafe-plugin</artifactId>
+                <version>3.5.2</version>
+                <executions>
+                    <execution>
+                        <id>java24-repositories</id>
+                        <goals>
+                            <goal>integration-test</goal>
+                            <goal>verify</goal>
+                        </goals>
+                        <configuration>
+                            <jdkToolchain>
+                                <version>[24,)</version>
+                            </jdkToolchain>
+                            <classesDirectory>${project.build.directory}/${project.build.finalName}.jar</classesDirectory>
+                            <useModulePath>false</useModulePath>
+                            <!-- Without the coverage agent: the report reads the base classes, which the Java 24
+                                 run does not execute. -->
+                            <argLine>-Xshare:off</argLine>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-jar-plugin</artifactId>
+                <version>3.5.1</version>
+                <configuration>
+                    <archive>
+                        <manifestEntries>
+                            <Multi-Release>true</Multi-Release>
+                        </manifestEntries>
+                    </archive>
+                </configuration>
             </plugin>
         </plugins>
     </build>

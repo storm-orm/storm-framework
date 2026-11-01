@@ -238,11 +238,12 @@ public final class ORMTemplateImpl extends QueryTemplateImpl implements ORMTempl
     }
 
     /**
-     * Returns a proxy for the repository of the given type.
+     * Returns the repository of the given type: an instance of the class written for the interface where one is, as on
+     * Java 24 and up, otherwise a proxy.
      *
      * @param type the repository type.
      * @param <R> the repository type.
-     * @return a proxy for the repository of the given type.
+     * @return the repository of the given type.
      */
     @SuppressWarnings("unchecked")
     @Override
@@ -251,6 +252,13 @@ public final class ORMTemplateImpl extends QueryTemplateImpl implements ORMTempl
             EntityRepository<?, ?> entityRepository = createEntityRepository(type).orElse(null);
             ProjectionRepository<?, ?> projectionRepository = createProjectionRepository(type).orElse(null);
             Repository repository = createRepository();
+            // A class written for the interface calls the implementations directly; the proxy serves where none is.
+            if (!EntityRepository.class.isAssignableFrom(type) || entityRepository != null) {
+                R generated = RepositoryClasses.create(type, repository, entityRepository, projectionRepository);
+                if (generated != null) {
+                    return generated;
+                }
+            }
             return (R) newProxyInstance(type.getClassLoader(), new Class<?>[]{type}, (proxy, method, args) -> {
                 try {
                     if (method.getName().equals("hashCode") && method.getParameterCount() == 0) {
