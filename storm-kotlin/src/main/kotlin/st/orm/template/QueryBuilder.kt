@@ -1761,11 +1761,11 @@ public fun <T : Data> search(
 
 /**
  * Creates a predicate that matches the words of a search box that queries as the user types, such as an auto-complete,
- * against one or more text columns. It matches as [search] does, on the words the database's substring index serves
- * alone: a word shorter than the index serves, such as the three characters of a trigram index on PostgreSQL, is
- * ignored, and an input without a word the index serves, an empty one included, matches no rows. Every statement it
- * renders is therefore served by the index, however the user types. On a database whose dialect treats every word
- * alike, it matches as [search] does, except that an input without words matches no rows.
+ * against one or more text columns. Every word of two characters or more matches in the form the database's index
+ * serves: on a database with a substring index, such as a trigram index on PostgreSQL, anywhere from the length the
+ * index serves and at the start of a word below that; elsewhere, as a prefix of the column, which an ordinary index
+ * over the column serves. A one-character word takes no part, and an input without a word that takes part, an empty one
+ * included, matches no rows. Every statement it renders is therefore served by an index, however the user types.
  *
  * @param input the search input, as a search box receives it.
  * @param path the first text column to search.
@@ -1781,7 +1781,7 @@ public fun <T : Data> suggest(
 /**
  * Creates a predicate that matches the words of a search box that queries as the user types against one or more text
  * columns, as [suggest] does, ignoring the given words as well. A word that equals one of them, ignoring case, takes
- * no part in the predicate, as a word the index does not serve takes none, so an input of ignored words alone matches
+ * no part in the predicate, as a one-character word takes none, so an input of ignored words alone matches
  * no rows. A search box names the words that occur in a large share of its rows, such as "the" in a catalog of
  * titles, which the index serves but which narrow nothing: `suggest("the god", setOf("the", "a", "of"), Movie_.title)`
  * matches on "god" alone.

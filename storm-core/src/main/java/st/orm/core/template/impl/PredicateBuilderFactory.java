@@ -150,7 +150,7 @@ public interface PredicateBuilderFactory {
 
     /**
      * Creates the predicate of {@link #suggest(String, List)}, ignoring the given terms as well: a term that equals
-     * one of them, ignoring case, takes no part in the predicate, as a term the index does not serve takes none, so an
+     * one of them, ignoring case, takes no part in the predicate, as a one-character term takes none, so an
      * input of ignored terms alone matches no rows. A search box names the words that occur in a large share of its
      * rows, such as "the" in a catalog of titles, which the index serves but which narrow nothing.
      *
