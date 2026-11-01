@@ -357,8 +357,8 @@ public abstract class AbstractSchemaValidatorConformanceTest {
                     assertEquals(List.of(), advice);
                 } else {
                     assertEquals(1, advice.size(), advice::toString);
-                    assertTrue(advice.getFirst().toLowerCase().contains("checks the foreign key "
-                            + "fk_probe_child(parent_id) that references it"), advice.getFirst());
+                    assertTrue(advice.getFirst().toLowerCase().contains("is checked against the foreign key "
+                            + "fk_probe_child(parent_id), and no index"), advice.getFirst());
                 }
             } finally {
                 statement.execute("DROP TABLE fk_probe_child");
@@ -391,8 +391,8 @@ public abstract class AbstractSchemaValidatorConformanceTest {
             appender.stop();
         }
         return appender.list.stream()
-                .flatMap(event -> event.getFormattedMessage().lines())
-                .filter(line -> line.contains("#unindexed-foreign-key"))
+                .flatMap(event -> LoggedAdvice.in(event.getFormattedMessage()).stream())
+                .filter(advice -> advice.contains("#unindexed-foreign-key"))
                 .toList();
     }
 }

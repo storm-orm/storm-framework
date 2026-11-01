@@ -195,17 +195,15 @@ public abstract class AbstractMissingIndexConformanceTest {
         var lines = new ArrayList<SlowLine>();
         for (var event : appender.list) {
             var sql = new StringBuilder();
-            var advice = new ArrayList<String>();
             var parts = event.getFormattedMessage().split("\\R");
             for (int i = 1; i < parts.length; i++) {
                 var part = parts[i];
-                if (part.startsWith("\tadvice: ")) {
-                    advice.add(part.substring("\tadvice: ".length()));
-                } else if (!part.startsWith("\tshape: ") && !part.startsWith("\tparameters: ")) {
+                if (!LoggedAdvice.isAdviceLine(part) && !part.startsWith("\tshape: ")
+                        && !part.startsWith("\tparameters: ")) {
                     sql.append(part.strip()).append(' ');
                 }
             }
-            lines.add(new SlowLine(sql.toString().strip(), advice));
+            lines.add(new SlowLine(sql.toString().strip(), LoggedAdvice.in(event.getFormattedMessage())));
         }
         return lines;
     }
@@ -293,7 +291,7 @@ public abstract class AbstractMissingIndexConformanceTest {
                         TemplateString.raw("MAX(\0)", BODY))
                 .where(PET_ID, EQUALS, 7).groupBy(TITLE).getResultList());
         assertTrue(advice.contains("advice_note(pet_id, title) finds the matching rows and reads them already grouped, "
-                + "without a temporary table or sort; with body appended it "), advice);
+                + "without a temporary table or sort\ncovering: with body appended it "), advice);
         assertKeyLimitIsTheDatabases(advice, "pet_id, title, body");
     }
 
