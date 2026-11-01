@@ -27,12 +27,21 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v7
 
-      - name: Set up JDK 21
+      - name: Set up JDK 21 and 25
         uses: actions/setup-java@v6
         with:
           distribution: 'temurin'
-          java-version: '21'
+          # JDK 25 compiles and tests the multi-release part of storm-core (the repository class writer, Java 24
+          # and up) through a Maven toolchain; JDK 21 stays the default.
+          java-version: |
+            25
+            21
           cache: 'maven'
+
+      - name: Require a JDK 24 or later toolchain
+        # Without one, storm-core builds without its repository class writer and repositories stay proxies, which
+        # is right for GitHub's default code scanning build but never for a tested or published one.
+        run: grep -Eq '<version>(2[4-9]|[3-9][0-9])' ~/.m2/toolchains.xml
 
       - name: Check formatting
         run: mvn spotless:check -B
@@ -90,11 +99,15 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v7
 
-      - name: Set up JDK 21
+      - name: Set up JDK 21 and 25
         uses: actions/setup-java@v6
         with:
           distribution: 'temurin'
-          java-version: '21'
+          # JDK 25 compiles and tests the multi-release part of storm-core (the repository class writer, Java 24
+          # and up) through a Maven toolchain; JDK 21 stays the default.
+          java-version: |
+            25
+            21
           cache: 'maven'
 
       - name: Write the bill of materials of the shipped dependency graph

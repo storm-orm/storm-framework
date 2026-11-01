@@ -4,10 +4,6 @@ import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-import com.jayway.jsonpath.JsonPath;
-import java.io.IOException;
-import java.io.InputStream;
-import java.util.Arrays;
 import java.util.List;
 import java.util.stream.BaseStream;
 import java.util.stream.IntStream;
@@ -18,7 +14,7 @@ import org.junit.jupiter.api.Test;
  * Tests for {@link MonitoredResource}.
  *
  * <p>JDK proxy classes are keyed by the ordered interface list, and the proxy shapes below are registered
- * as GraalVM native-image reachability metadata. These tests pin the exact shapes so a change in interface
+ * for GraalVM native images through {@link NativeProxies}. These tests pin the exact shapes so a change in interface
  * order fails here instead of at runtime in a native image.</p>
  */
 public class MonitoredResourceTest {
@@ -44,17 +40,16 @@ public class MonitoredResourceTest {
     }
 
     @Test
-    public void testPreparedQueryProxyShapeIsRegistered() throws IOException {
-        List<String> shape = Arrays.stream(MonitoredResource.proxyInterfaces(PreparedQueryImpl.class))
-                .map(Class::getName)
-                .toList();
-        List<List<String>> registered;
-        try (InputStream config = MonitoredResource.class.getResourceAsStream(
-                "/META-INF/native-image/st.orm/storm-core/proxy-config.json")) {
-            registered = JsonPath.read(config, "$[*].interfaces");
+    public void everyProxyShapeAMonitoredResourceCreatesIsRegisteredForNativeImages() {
+        var registered = NativeProxies.shapes().stream().map(List::of).toList();
+        try (Stream<String> stream = MonitoredResource.wrap(Stream.of("a", "b"));
+             IntStream mapped = MonitoredResource.wrap(Stream.of("a")).mapToInt(String::length)) {
+            for (var proxy : List.<Object>of(stream, mapped)) {
+                assertTrue(registered.contains(List.of(proxy.getClass().getInterfaces())),
+                        List.of(proxy.getClass().getInterfaces()).toString());
+            }
         }
-        assertTrue(registered.contains(shape),
-                "Prepared query proxy shape " + shape + " must be registered in proxy-config.json");
+        assertTrue(registered.contains(List.of(MonitoredResource.proxyInterfaces(PreparedQueryImpl.class))));
     }
 
     @Test

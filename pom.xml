@@ -22,7 +22,7 @@
         <micrometer-tracing.version>1.7.1</micrometer-tracing.version>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <spring-boot.version>3.5.16</spring-boot.version>
-        <jacoco.version>0.8.12</jacoco.version>
+        <jacoco.version>0.8.16</jacoco.version>
         <jspecify.version>1.0.1</jspecify.version>
         <spotless.version>2.43.0</spotless.version>
         <!-- Dokka is this project's javadoc, so the standard switch skips it too: a build that asked for
@@ -352,6 +352,13 @@
                         <goals>
                             <goal>report</goal>
                         </goals>
+                        <configuration>
+                            <!-- A multi-release jar holds a second version of a class under the same name, which
+                                 the report would read as a clash. -->
+                            <excludes>
+                                <exclude>META-INF/**</exclude>
+                            </excludes>
+                        </configuration>
                     </execution>
                 </executions>
             </plugin>

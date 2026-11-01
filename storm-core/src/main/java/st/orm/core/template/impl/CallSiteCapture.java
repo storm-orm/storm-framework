@@ -269,10 +269,10 @@ public final class CallSiteCapture {
             String plumbing = null;
             for (var iterator = frames.iterator(); iterator.hasNext(); ) {
                 var frame = iterator.next();
-                // The proxy a repository is reached through dispatches the call; the method it dispatches to is
-                // the repository's frame, and the proxy's would shadow it as the outermost one. The repository the
-                // proxy stands for names the built-in call it dispatched, PetRepository.findAllByRef.
-                if (Proxy.isProxyClass(frame.getDeclaringClass())) {
+                // The proxy or the class Storm wrote for a repository dispatches the call; the method it dispatches
+                // to is the repository's frame, and the dispatching one would shadow it as the outermost one. The
+                // repository it stands for names the built-in call it dispatched, PetRepository.findAllByRef.
+                if (dispatches(frame.getDeclaringClass())) {
                     String name = PROXIED_REPOSITORY.get(frame.getDeclaringClass());
                     if (!name.isEmpty()) {
                         proxied = name;
@@ -315,14 +315,19 @@ public final class CallSiteCapture {
         });
     }
 
+    /** Returns whether the class dispatches a repository's calls: a proxy, or the class Storm wrote for it. */
+    private static boolean dispatches(Class<?> type) {
+        return Proxy.isProxyClass(type) || type.getName().endsWith(RepositoryClasses.SUFFIX);
+    }
+
     /** Names a built-in call by the repository the application called it on where a proxy stood for one. */
     private static @Nullable String builtIn(@Nullable String method, @Nullable String repository) {
         return method == null || repository == null ? method : repository + "." + method;
     }
 
     /**
-     * The simple name of the repository a proxy class stands for, the first interface of it that is a repository,
-     * or the empty string for a proxy of anything else.
+     * The simple name of the repository a dispatching class stands for, the first interface of it that is a
+     * repository, or the empty string for a proxy of anything else.
      */
     private static final ClassValue<String> PROXIED_REPOSITORY = new ClassValue<>() {
         @Override

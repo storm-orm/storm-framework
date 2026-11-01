@@ -630,6 +630,8 @@ UserRepository userRepository = orm.repository(UserRepository.class);
 </TabItem>
 </Tabs>
 
+On Java 24 and up, `repository()` returns an instance of a class Storm writes for the interface the first time it is asked for, named after it with `$$Storm` and placed in its package. Each method calls the built-in repository or the interface's own method body directly, so stack traces show the interface's methods and no proxy frames, and in a [native image](graalvm.md) the class is written during the build. Nothing is written to your sources or build output. On Java 21 to 23 the repository is a JDK proxy, and the two behave the same. In a modular application, Storm writes the class only where the interface's package is open to it, `opens com.example.repository to storm.core;`; otherwise the repository stays a proxy.
+
 ---
 
 ## Repository with Spring

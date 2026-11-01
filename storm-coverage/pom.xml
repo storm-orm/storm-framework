@@ -164,6 +164,13 @@
                         <goals>
                             <goal>report-aggregate</goal>
                         </goals>
+                        <configuration>
+                            <!-- A multi-release jar holds a second version of a class under the same name, which
+                                 the report would read as a clash. -->
+                            <excludes>
+                                <exclude>META-INF/**</exclude>
+                            </excludes>
+                        </configuration>
                     </execution>
                 </executions>
             </plugin>

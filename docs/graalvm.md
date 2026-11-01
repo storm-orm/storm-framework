@@ -39,13 +39,15 @@ converters, and repositories of your application without configuration:
   image build it reports what it registered:
 
 ```text
-Storm: registered 11 data types, 2 query result types, 0 entity callbacks, 0 converters, and 11 repositories from the type index.
+Storm: registered 11 data types, 2 query result types, 0 entity callbacks, 0 converters, and 11 repositories (11 as generated classes) from the type index.
 ```
 
 Both paths register the same set of types: every Data type with its constructors, accessors, and
 generated metamodel companions, compound primary keys and inline components reached through
 constructor signatures, the types of `@Json` columns with their kotlinx.serialization companions
-and serializers, entity callbacks, and every repository interface as a JDK proxy shape.
+and serializers, entity callbacks, and every repository interface.
+
+On GraalVM for JDK 24 and up, the feature writes the class Storm uses for each repository interface during the build, as `repository()` does on the JVM (see [Custom Repositories](repositories.md#custom-repositories)). Each method calls the built-in repository or the interface's own method body directly, so the image keeps only the methods the application calls and registers only each class's constructor for reflection, where a proxy keeps and registers every method of the interface and of `EntityRepository`. On an older GraalVM, each repository is a JDK proxy, registered with its methods, and the build output reports no generated classes.
 
 A record outside the entity graph that a query constructs, such as the result row of a custom
 `select`, is registered when it carries `@GenerateMetamodel`, which also gives it an instantiator

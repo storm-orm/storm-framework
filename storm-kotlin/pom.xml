@@ -75,6 +75,8 @@
                         --add-opens storm.kotlin/st.orm.template=kotlin.reflect
                         --add-opens storm.kotlin/st.orm.template.model=storm.foundation
                         --add-opens storm.kotlin/st.orm.template.model=storm.core
+                        --add-opens storm.kotlin/st.orm.template=storm.core
+                        --add-opens storm.kotlin/com.example.scope=storm.core
                         -Dstorm.ansi_escaping=true
                     </argLine>
                 </configuration>
