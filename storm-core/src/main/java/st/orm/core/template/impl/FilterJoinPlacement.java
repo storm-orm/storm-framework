@@ -15,6 +15,7 @@
  */
 package st.orm.core.template.impl;
 
+import static java.util.Collections.nCopies;
 import static java.util.stream.Collectors.joining;
 import static st.orm.ResolveScope.INNER;
 import static st.orm.core.template.TemplateString.wrap;
@@ -343,9 +344,11 @@ final class FilterJoinPlacement {
     /**
      * Places a condition that names several semi-joined tables. An OR holds where any of its arms holds, and each arm
      * is answered on its own: the arms on one semi-joined table by a related row of that table, the arms on the
-     * query's own tables by the query's row, an arm joined by AND as any condition is. The arms on the query's tables
-     * go with the first semi-joined table's, so that pair renders as a lone semi-join's OR does; every other table's
-     * arms are an {@code EXISTS} of their own. One term that names two semi-joined tables has no row to answer it.
+     * query's own tables by the query's row, an arm joined by AND as any condition is. Where every arm names at most
+     * one table and each table can be a branch, the arms render as one {@code IN} over a {@code UNION} of a branch per
+     * table, so the database starts from the keys the branches find. Otherwise the arms on the query's tables go with
+     * the first semi-joined table's, so that pair renders as a lone semi-join's OR does, and every other table's arms
+     * are an {@code EXISTS} of their own. One term that names two semi-joined tables has no row to answer it.
      */
     private PredicateNode placeAcross(@Nullable FilterJoin level,
                                       PredicateNode condition,
@@ -366,6 +369,13 @@ final class FilterJoinPlacement {
                 byJoin.computeIfAbsent(joins.iterator().next(), ignore -> new ArrayList<>()).add(operand);
             } else {
                 arms.add(place(level, operand, residual));
+            }
+        }
+        // Every arm a branch of one UNION, where each can be one: only the keys the branches find meet the anchor.
+        if (!residual && arms.isEmpty()) {
+            var union = union(own, byJoin);
+            if (union != null) {
+                return new Term(union, true);
             }
         }
         var placed = new ArrayList<PredicateNode>(byJoin.size() + arms.size() + 1);
@@ -447,10 +457,6 @@ final class FilterJoinPlacement {
      * or {@code null} when the operands or the relation do not take that shape.
      */
     private @Nullable TemplateString union(FilterJoin semiJoin, List<PredicateNode> operands) {
-        var relation = semiJoin.relation();
-        if (!branchOnAnchor || !relation.tableHoldsKey() || relation.composite()) {
-            return null;
-        }
         var anchorTerms = new ArrayList<PredicateNode>();
         var tableTerms = new ArrayList<PredicateNode>();
         for (var operand : operands) {
@@ -465,14 +471,54 @@ final class FilterJoinPlacement {
         if (anchorTerms.isEmpty() || tableTerms.isEmpty()) {
             return null;
         }
-        var foreignKey = relation.foreignKey();
-        var anchorBranch = branch(semiJoin.anchor(), new RelationKey(semiJoin.anchor(), foreignKey, false, INNER), PredicateNode.or(anchorTerms));
-        var tableBranch = branch(semiJoin.table(), new RelationKey(semiJoin.table(), foreignKey, true, INNER),
-                restricted(semiJoin, PredicateNode.or(tableTerms)));
-        return TemplateString.raw("\0 IN (\0\nUNION\n\0)",
-                new RelationKey(semiJoin.anchor(), foreignKey, false, INNER),
-                new Subquery(anchorBranch, false),
-                new Subquery(tableBranch, false));
+        return union(anchorTerms, Map.of(semiJoin, tableTerms));
+    }
+
+    /**
+     * Returns the OR of terms on the anchor and terms on semi-joined tables as an {@code IN} over a {@code UNION} of a
+     * branch for the anchor's terms and one per semi-joined table, or {@code null} when the terms or the relations do
+     * not take that shape. Each branch reads its own table through its own indexes, and only the keys it finds meet
+     * the anchor: an {@code OR} beside an {@code EXISTS} would test every row of the anchor instead. The semi-joined
+     * tables must each hold a single-column key to the same anchor, and each branch's terms name only its table.
+     *
+     * @param anchorTerms the terms on the anchor, none for no branch of its own.
+     * @param tableTerms the terms per semi-joined table, in the order the branches render.
+     */
+    private @Nullable TemplateString union(List<PredicateNode> anchorTerms,
+                                           Map<FilterJoin, List<PredicateNode>> tableTerms) {
+        // A lone branch is one subquery, which EXISTS states as well.
+        if (!branchOnAnchor || tableTerms.isEmpty() || (anchorTerms.isEmpty() ? 0 : 1) + tableTerms.size() < 2) {
+            return null;
+        }
+        // Every branch's key references the anchor the first table's does.
+        var first = tableTerms.keySet().iterator().next();
+        for (var entry : tableTerms.entrySet()) {
+            var semiJoin = entry.getKey();
+            var relation = semiJoin.relation();
+            if (!relation.tableHoldsKey() || relation.composite() || semiJoin.anchorKey() != null
+                    || semiJoin.anchor() != first.anchor()
+                    || !entry.getValue().stream().allMatch(term -> onlyNames(term, Set.of(semiJoin.table())))) {
+                return null;
+            }
+        }
+        var anchor = first.anchor();
+        if (!anchorTerms.stream().allMatch(term -> onlyNames(term, Set.of(anchor)))) {
+            return null;
+        }
+        var key = new RelationKey(anchor, first.relation().foreignKey(), false, INNER);
+        var branches = new ArrayList<Object>(tableTerms.size() + 2);
+        branches.add(key);
+        if (!anchorTerms.isEmpty()) {
+            branches.add(new Subquery(branch(anchor, key, PredicateNode.or(anchorTerms)), false));
+        }
+        for (var entry : tableTerms.entrySet()) {
+            var semiJoin = entry.getKey();
+            branches.add(new Subquery(branch(semiJoin.table(),
+                    new RelationKey(semiJoin.table(), semiJoin.relation().foreignKey(), true, INNER),
+                    restricted(semiJoin, PredicateNode.or(entry.getValue()))), false));
+        }
+        return TemplateString.raw("\0 IN (" + String.join("\nUNION\n", nCopies(branches.size() - 1, "\0")) + ")",
+                branches.toArray());
     }
 
     /**

@@ -452,9 +452,10 @@ public class SemiJoinIntegrationTest {
                         List.of(Pet_.name, Visit_.description, PetExtension_.notes)))
                 .getResultList());
         assertEquals(List.of("Rosy"), petNames(pets));
-        // Each word is answered by a visit or a note of its own, each through its own subquery.
-        assertTrue(statement().contains("FROM visit"), statement());
-        assertTrue(statement().contains("FROM pet_extension"), statement());
+        // Each word is one UNION with a branch for the pet's name, its visits and its notes.
+        assertEquals(2, statement().split(" IN \\(SELECT ").length - 1, statement());
+        assertEquals(4, statement().split(" UNION ").length - 1, statement());
+        assertFalse(statement().contains("EXISTS"), statement());
         assertEquals(List.of("Leo"), petNames(petsWithVisitsAndNotes()
                 .where(it -> PredicateBuilderFactory.<Data, Pet, Integer>search("leo good",
                         List.of(Pet_.name, Visit_.description, PetExtension_.notes)))
@@ -469,8 +470,10 @@ public class SemiJoinIntegrationTest {
                         .or(it.where(PetExtension_.notes, EQUALS, "Indoor cat")))
                 .getResultList());
         assertEquals(List.of("Basil", "Jewel", "Max", "Samantha"), petNames(pets));
-        assertTrue(statement().contains("EXISTS (SELECT 1 FROM visit v WHERE v.pet_id = p.id AND v.description = ?) "
-                + "OR EXISTS (SELECT 1 FROM pet_extension pe WHERE pe.pet_id = p.id AND pe.notes = ?)"), statement());
+        // Each table is a branch of one UNION, so only the keys the branches find meet the pets.
+        assertTrue(statement().contains("WHERE p.id IN (SELECT v.pet_id FROM visit v WHERE v.description = ? UNION "
+                + "SELECT pe.pet_id FROM pet_extension pe WHERE pe.notes = ?)"), statement());
+        assertFalse(statement().contains("EXISTS"), statement());
     }
 
     @Test
