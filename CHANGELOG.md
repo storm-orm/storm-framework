@@ -45,7 +45,7 @@ for the CLI, to [npm](https://www.npmjs.com/package/@storm-orm/cli)
 - Fixed `@Json(failOnUnknown = true)` on Jackson 3 and `failOnMissing = true` on Jackson 2 and 3, which accepted JSON they should refuse (#409).
 - Fixed a keyset scroll whose key is reached through one of two foreign keys to the same table, which reported the path as ambiguous (#748).
 - Fixed a Spring Boot native image failing at startup when the performance log wraps a `@Scheduled` or listener entry point: its proxy class is written by the AOT build.
-- Fixed schema validation reporting `TABLE_NOT_FOUND` for a relation the driver reports under a type other than `TABLE` or `VIEW`, such as a partitioned table, a materialized view or a foreign table (#801). Every relation type is read except system objects, sequences, indexes, types and temporary tables; a materialized view validates as a view, and its indexes are read.
+- Fixed schema validation reporting `TABLE_NOT_FOUND` for a relation the driver reports under a type other than `TABLE` or `VIEW`, such as a partitioned table, a materialized view or a foreign table (#801). Every relation type is read except system objects, sequences, indexes, types and temporary tables; a materialized view validates as a view, and its indexes are read. A foreign key a partitioned table copies onto its partitions is read once.
 - Fixed `SqlCapture` dropping a statement that binds a `NULL` value (#752).
 - Fixed the metamodel processors rendering a `@Convert` record component as an inline record (#756).
 - Fixed a `where` condition and an `update().set` on a converted field, which bound the value without its converter (#760).

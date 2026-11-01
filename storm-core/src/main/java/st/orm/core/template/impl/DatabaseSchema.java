@@ -683,8 +683,11 @@ public final class DatabaseSchema {
         // Foreign keys: join REFERENTIAL_CONSTRAINTS with KEY_COLUMN_USAGE on both sides, matching columns by
         // POSITION_IN_UNIQUE_CONSTRAINT.
         try {
+            // A constraint name may be unique per table only, as for the copies of a partitioned table's foreign key
+            // on its partitions. REFERENTIAL_CONSTRAINTS carries no table, so its join on the name repeats a foreign
+            // key once per table with a constraint of that name; DISTINCT keeps one.
             StringBuilder sql = new StringBuilder("""
-                    SELECT kcu.TABLE_NAME AS FK_TABLE, rc.CONSTRAINT_NAME AS FK_NAME, kcu.COLUMN_NAME AS FK_COLUMN,
+                    SELECT DISTINCT kcu.TABLE_NAME AS FK_TABLE, rc.CONSTRAINT_NAME AS FK_NAME, kcu.COLUMN_NAME AS FK_COLUMN,
                            kcu2.TABLE_NAME AS PK_TABLE, kcu2.COLUMN_NAME AS PK_COLUMN
                     FROM INFORMATION_SCHEMA.REFERENTIAL_CONSTRAINTS rc
                     JOIN INFORMATION_SCHEMA.KEY_COLUMN_USAGE kcu
