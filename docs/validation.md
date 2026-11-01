@@ -87,6 +87,8 @@ Schema validation compares your entity and projection definitions against the ac
 
 **Warnings** indicate situations where the mapping works at runtime but may involve subtle differences, such as precision loss when mapping a Kotlin `Int` to an Oracle `NUMBER` column. Warnings are logged but do not cause validation to fail (unless strict mode is enabled).
 
+An entity can map to any relation the database reports, whatever type name its driver gives it: a table, a view, a materialized view, a partitioned table or a foreign table. System objects, sequences, indexes, types and temporary tables are not looked up. A view declares no column `NOT NULL`, so a non-nullable field on a view column is not reported as a nullability mismatch.
+
 #### Constraint Validation
 
 Schema validation checks that the database has the constraints your entity model declares. There are two categories of constraint findings:
