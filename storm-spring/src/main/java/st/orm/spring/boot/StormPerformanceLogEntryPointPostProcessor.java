@@ -26,13 +26,15 @@ import org.aopalliance.intercept.MethodInterceptor;
 import org.aopalliance.intercept.MethodInvocation;
 import org.jspecify.annotations.Nullable;
 import org.slf4j.Logger;
+import org.springframework.aop.SpringProxy;
 import org.springframework.aop.framework.Advised;
 import org.springframework.aop.framework.ProxyFactory;
 import org.springframework.aop.support.AopUtils;
 import org.springframework.aop.support.DefaultPointcutAdvisor;
 import org.springframework.aop.support.StaticMethodMatcherPointcut;
-import org.springframework.beans.factory.config.BeanPostProcessor;
+import org.springframework.beans.factory.config.SmartInstantiationAwareBeanPostProcessor;
 import org.springframework.core.Ordered;
+import org.springframework.util.ClassUtils;
 import org.springframework.util.ReflectionUtils;
 import st.orm.core.template.SqlLog;
 
@@ -53,10 +55,14 @@ import st.orm.core.template.SqlLog;
  * <p>The scope follows the invoking thread, which is where a blocking task or listener does its work. Work the
  * method hands to another thread falls outside it.</p>
  *
+ * <p>The proxy is a subclass of the bean's class. Its class is also built when Spring determines the bean types
+ * during AOT processing, so the AOT build writes it out and a native image, which cannot write a class at runtime,
+ * holds it.</p>
+ *
  * @since 1.13
  */
 public class StormPerformanceLogEntryPointPostProcessor
-        implements BeanPostProcessor, Ordered, PerformanceLog.Boundary {
+        implements SmartInstantiationAwareBeanPostProcessor, Ordered, PerformanceLog.Boundary {
 
     private static final Logger LOGGER = PerformanceLog.LOGGER;
 
@@ -107,18 +113,31 @@ public class StormPerformanceLogEntryPointPostProcessor
         return Ordered.LOWEST_PRECEDENCE - 100;
     }
 
+    /**
+     * Returns the class of the proxy that wraps a bean of the type, building it the way
+     * {@link #postProcessAfterInitialization} does. Spring calls this during AOT processing, which writes out the
+     * proxy classes built in it.
+     */
+    @Override
+    public Class<?> determineBeanType(Class<?> beanClass, String beanName) {
+        if (SpringProxy.class.isAssignableFrom(beanClass) || Modifier.isFinal(beanClass.getModifiers())
+                || entryPoints(beanClass).isEmpty()) {
+            // A Spring proxy is advised already, so the scope joins it and no class of its own is built.
+            return beanClass;
+        }
+        var proxyFactory = new ProxyFactory();
+        proxyFactory.setTargetClass(beanClass);
+        // The interfaces the proxy of the bean instance implements, as the image looks the class up by name only.
+        proxyFactory.setInterfaces(ClassUtils.getAllInterfacesForClass(beanClass, beanClass.getClassLoader()));
+        proxyFactory.setProxyTargetClass(true);
+        proxyFactory.addAdvisor(advisor(beanClass));
+        return proxyFactory.getProxyClass(beanClass.getClassLoader());
+    }
+
     @Override
     public Object postProcessAfterInitialization(Object bean, String beanName) {
-        if (entryPointAnnotations.isEmpty()) {
-            return bean;
-        }
         Class<?> targetClass = AopUtils.getTargetClass(bean);
-        List<Method> entryPoints = new ArrayList<>();
-        ReflectionUtils.doWithMethods(targetClass, method -> {
-            if (isEntryPoint(method)) {
-                entryPoints.add(method);
-            }
-        });
+        List<Method> entryPoints = entryPoints(targetClass);
         if (entryPoints.isEmpty()) {
             return bean;
         }
@@ -129,7 +148,7 @@ public class StormPerformanceLogEntryPointPostProcessor
                         targetClass.getSimpleName(), method.getName());
             }
         }
-        var advisor = new DefaultPointcutAdvisor(new EntryPointPointcut(), new EntryPointInterceptor(targetClass));
+        var advisor = advisor(targetClass);
         if (bean instanceof Advised advised && !advised.isFrozen()) {
             // The bean is proxied already; the scope joins that proxy, outermost so it covers the other advice.
             advised.addAdvisor(0, advisor);
@@ -146,6 +165,23 @@ public class StormPerformanceLogEntryPointPostProcessor
         proxyFactory.setProxyTargetClass(true);
         proxyFactory.addAdvisor(advisor);
         return proxyFactory.getProxy(targetClass.getClassLoader());
+    }
+
+    /** Returns the entry points of the class, none when no entry point annotations are configured. */
+    private List<Method> entryPoints(Class<?> targetClass) {
+        List<Method> entryPoints = new ArrayList<>();
+        if (!entryPointAnnotations.isEmpty()) {
+            ReflectionUtils.doWithMethods(targetClass, method -> {
+                if (isEntryPoint(method)) {
+                    entryPoints.add(method);
+                }
+            });
+        }
+        return entryPoints;
+    }
+
+    private DefaultPointcutAdvisor advisor(Class<?> targetClass) {
+        return new DefaultPointcutAdvisor(new EntryPointPointcut(), new EntryPointInterceptor(targetClass));
     }
 
     private boolean isEntryPoint(Method method) {
