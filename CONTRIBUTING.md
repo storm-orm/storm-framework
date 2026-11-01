@@ -14,7 +14,7 @@ Thank you for your interest in contributing to Storm! This document provides gui
 ### Prerequisites
 
 - JDK 21, which runs the build
-- JDK 24 or later, registered as a Maven toolchain: storm-core compiles its repository class writer, which uses the class-file API, into the multi-release part of its jar, and tests it on that JDK
+- JDK 24 or later, registered as a Maven toolchain: storm-core compiles its repository class writer, which uses the class-file API, into the multi-release part of its jar, and tests it on that JDK. Without a toolchains file the build skips the writer, and repositories stay proxies; CI and releases require it
 - Kotlin 2.0 or later (for Kotlin modules)
 - Maven 3.9+
 

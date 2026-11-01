@@ -200,4 +200,46 @@
             <scope>test</scope>
         </dependency>
     </dependencies>
+    <profiles>
+        <!-- Without a toolchains file there is no JDK 24 or later to compile the repository class writer, as in
+             GitHub's default code scanning build: the jar then holds no multi-release part and repositories stay
+             proxies on every Java version. CI and releases register their JDKs in a toolchains file, and the
+             release workflow checks that the jar holds the writer. -->
+        <profile>
+            <id>without-toolchains</id>
+            <activation>
+                <file>
+                    <missing>${user.home}/.m2/toolchains.xml</missing>
+                </file>
+            </activation>
+            <build>
+                <plugins>
+                    <plugin>
+                        <groupId>org.apache.maven.plugins</groupId>
+                        <artifactId>maven-compiler-plugin</artifactId>
+                        <executions>
+                            <execution>
+                                <id>compile-java24</id>
+                                <configuration>
+                                    <skipMain>true</skipMain>
+                                </configuration>
+                            </execution>
+                        </executions>
+                    </plugin>
+                    <plugin>
+                        <groupId>org.apache.maven.plugins</groupId>
+                        <artifactId>maven-failsafe-plugin</artifactId>
+                        <executions>
+                            <execution>
+                                <id>java24-repositories</id>
+                                <configuration>
+                                    <skip>true</skip>
+                                </configuration>
+                            </execution>
+                        </executions>
+                    </plugin>
+                </plugins>
+            </build>
+        </profile>
+    </profiles>
 </project>

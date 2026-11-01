@@ -38,6 +38,11 @@ jobs:
             21
           cache: 'maven'
 
+      - name: Require a JDK 24 or later toolchain
+        # Without one, storm-core builds without its repository class writer and repositories stay proxies, which
+        # is right for GitHub's default code scanning build but never for a tested or published one.
+        run: grep -Eq '<version>(2[4-9]|[3-9][0-9])' ~/.m2/toolchains.xml
+
       - name: Check formatting
         run: mvn spotless:check -B
 
