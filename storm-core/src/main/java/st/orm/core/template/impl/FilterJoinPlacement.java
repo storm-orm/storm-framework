@@ -490,17 +490,15 @@ final class FilterJoinPlacement {
         if (!branchOnAnchor || tableTerms.isEmpty() || (anchorTerms.isEmpty() ? 0 : 1) + tableTerms.size() < 2) {
             return null;
         }
-        FilterJoin first = null;
+        // Every branch's key references the anchor the first table's does.
+        var first = tableTerms.keySet().iterator().next();
         for (var entry : tableTerms.entrySet()) {
             var semiJoin = entry.getKey();
             var relation = semiJoin.relation();
             if (!relation.tableHoldsKey() || relation.composite() || semiJoin.anchorKey() != null
-                    || (first != null && semiJoin.anchor() != first.anchor())
+                    || semiJoin.anchor() != first.anchor()
                     || !entry.getValue().stream().allMatch(term -> onlyNames(term, Set.of(semiJoin.table())))) {
                 return null;
-            }
-            if (first == null) {
-                first = semiJoin;
             }
         }
         var anchor = first.anchor();
