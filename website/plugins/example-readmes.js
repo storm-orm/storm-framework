@@ -101,7 +101,7 @@ const EXAMPLES = [
     chips: ['Kotlin', 'Ktor 3', 'GraalVM'],
     // Deployed from this repository; the detail page links to it and credits
     // the host.
-    live: {url: 'https://movies.orm.st', host: 'freepod'},
+    live: {url: 'https://moviedome.org', host: 'freepod'},
   },
 ];
 
