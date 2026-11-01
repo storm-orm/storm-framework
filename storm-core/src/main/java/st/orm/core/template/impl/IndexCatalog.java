@@ -172,7 +172,10 @@ final class IndexCatalog {
         schemas.forEach((schemaName, schema) -> {
             SortedMap<String, SortedSet<String>> leadingColumnsByTable = new TreeMap<>(String.CASE_INSENSITIVE_ORDER);
             for (String tableName : schema.tableNames()) {
-                if (!schema.isDiscovered(tableName, ConstraintKind.INDEX) || schema.isView(tableName)) {
+                // A relation other than a plain table, such as a view, enters the catalog only when the read found an
+                // index on it: the database may not index it at all.
+                if (!schema.isDiscovered(tableName, ConstraintKind.INDEX)
+                        || (!schema.isBaseTable(tableName) && schema.getIndexes(tableName).isEmpty())) {
                     continue;
                 }
                 SortedSet<String> leadingColumns = new TreeSet<>(String.CASE_INSENSITIVE_ORDER);

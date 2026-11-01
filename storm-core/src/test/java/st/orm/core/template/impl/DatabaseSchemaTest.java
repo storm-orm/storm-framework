@@ -421,6 +421,48 @@ class DatabaseSchemaTest {
         }
     }
 
+    @Test
+    void testEveryRelationTypeIsReadExceptSystemObjectsSequencesIndexesTypesAndTemporaryTables() {
+        for (String type : List.of("TABLE", "BASE TABLE", "VIEW", "MATERIALIZED VIEW", "PARTITIONED TABLE",
+                "FOREIGN TABLE", "EXTERNAL", "SYNONYM", "ALIAS")) {
+            assertTrue(DatabaseSchema.isRelationType(type), type);
+        }
+        for (String type : List.of("SYSTEM TABLE", "SYSTEM VIEW", "SYSTEM TOAST TABLE", "SEQUENCE", "INDEX",
+                "PARTITIONED INDEX", "TYPE", "TEMPORARY TABLE", "LOCAL TEMPORARY", "GLOBAL TEMPORARY")) {
+            assertFalse(DatabaseSchema.isRelationType(type), type);
+        }
+    }
+
+    @Test
+    void testAViewTypeIsAnyTypeNamingAView() {
+        assertTrue(DatabaseSchema.isViewType("VIEW"));
+        assertTrue(DatabaseSchema.isViewType("MATERIALIZED VIEW"));
+        assertFalse(DatabaseSchema.isViewType("PARTITIONED TABLE"));
+        assertFalse(DatabaseSchema.isViewType("REVIEWS"));
+    }
+
+    @Test
+    void testABaseTableTypeIsThePlainTableOnly() {
+        assertTrue(DatabaseSchema.isBaseTableType("TABLE"));
+        assertTrue(DatabaseSchema.isBaseTableType("BASE TABLE"));
+        assertFalse(DatabaseSchema.isBaseTableType("PARTITIONED TABLE"));
+        assertFalse(DatabaseSchema.isBaseTableType("VIEW"));
+    }
+
+    @Test
+    void testATableAndAViewAreReadWithTheirKind() throws SQLException {
+        execute("CREATE TABLE kind_base (id INTEGER AUTO_INCREMENT, PRIMARY KEY (id))");
+        execute("CREATE VIEW kind_view AS SELECT * FROM kind_base");
+
+        try (Connection connection = getConnection()) {
+            DatabaseSchema schema = DatabaseSchema.read(connection);
+            assertTrue(schema.isBaseTable("kind_base"));
+            assertFalse(schema.isView("kind_base"));
+            assertTrue(schema.isView("kind_view"));
+            assertFalse(schema.isBaseTable("kind_view"));
+        }
+    }
+
     // Table with no columns case
 
     @Test

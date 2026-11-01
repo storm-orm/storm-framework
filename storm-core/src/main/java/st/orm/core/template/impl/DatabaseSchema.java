@@ -26,8 +26,10 @@ import java.util.Collection;
 import java.util.Collections;
 import java.util.EnumMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.SortedMap;
 import java.util.SortedSet;
 import java.util.TreeMap;
@@ -238,6 +240,7 @@ public final class DatabaseSchema {
     private final boolean sequencesDiscovered;
     private final Map<ConstraintKind, SortedSet<String>> discoveredByKind;
     private final SortedSet<String> views;
+    private final SortedSet<String> baseTables;
 
     private DatabaseSchema(
             SortedMap<String, List<DbColumn>> columnsByTable,
@@ -248,7 +251,8 @@ public final class DatabaseSchema {
             SortedMap<String, Boolean> sequences,
             boolean sequencesDiscovered,
             Map<ConstraintKind, SortedSet<String>> discoveredByKind,
-            SortedSet<String> views
+            SortedSet<String> views,
+            SortedSet<String> baseTables
     ) {
         this.columnsByTable = columnsByTable;
         this.primaryKeysByTable = primaryKeysByTable;
@@ -259,6 +263,7 @@ public final class DatabaseSchema {
         this.sequencesDiscovered = sequencesDiscovered;
         this.discoveredByKind = discoveredByKind;
         this.views = views;
+        this.baseTables = baseTables;
     }
 
     /**
@@ -336,14 +341,22 @@ public final class DatabaseSchema {
         SortedMap<String, List<DbIndex>> indexesByTable = new TreeMap<>(String.CASE_INSENSITIVE_ORDER);
         SortedMap<String, Boolean> sequences = new TreeMap<>(String.CASE_INSENSITIVE_ORDER);
         SortedSet<String> views = new TreeSet<>(String.CASE_INSENSITIVE_ORDER);
-        // Discover tables and views.
-        try (ResultSet tables = metadata.getTables(catalog, schemaPattern, "%", new String[]{"TABLE", "VIEW"})) {
+        SortedSet<String> baseTables = new TreeSet<>(String.CASE_INSENSITIVE_ORDER);
+        // Discover the relations an entity can map to, whatever type name the driver gives them.
+        try (ResultSet tables = metadata.getTables(catalog, schemaPattern, "%", null)) {
             while (tables.next()) {
+                String tableType = tables.getString("TABLE_TYPE");
+                if (!isRelationType(tableType)) {
+                    continue;
+                }
                 String tableName = tables.getString("TABLE_NAME");
                 // Initialize entries so tableExists() works even for tables with no columns.
                 columnsByTable.putIfAbsent(tableName, new ArrayList<>());
-                if ("VIEW".equalsIgnoreCase(tables.getString("TABLE_TYPE"))) {
+                if (isViewType(tableType)) {
                     views.add(tableName);
+                }
+                if (isBaseTableType(tableType)) {
+                    baseTables.add(tableName);
                 }
             }
         }
@@ -416,7 +429,33 @@ public final class DatabaseSchema {
                 ? readSequences(connection, sequenceQuery, List.of(schema), sequences)
                 : readSequences(connection, catalog, schemaPattern, sequences, discovery.sequences());
         return new DatabaseSchema(columnsByTable, primaryKeysByTable, uniqueKeysByTable, foreignKeysByTable,
-                indexesByTable, sequences, sequencesDiscovered, discoveredByKind, views);
+                indexesByTable, sequences, sequencesDiscovered, discoveredByKind, views, baseTables);
+    }
+
+    /** The words of a table type that mark an object no entity maps to. */
+    private static final Set<String> NON_RELATION_TYPE_WORDS = Set.of("SYSTEM", "SEQUENCE", "INDEX", "TYPE", "TEMPORARY");
+
+    /**
+     * Returns whether a table type names a relation an entity can map to: every type except system objects,
+     * sequences, indexes, types, and temporary tables. A driver that reports no type is taken at its word that
+     * the object is a table.
+     */
+    static boolean isRelationType(@Nullable String tableType) {
+        return tableType == null || typeWords(tableType).stream().noneMatch(NON_RELATION_TYPE_WORDS::contains);
+    }
+
+    /** Returns whether a table type names a view, a materialized one included. */
+    static boolean isViewType(@Nullable String tableType) {
+        return tableType != null && typeWords(tableType).contains("VIEW");
+    }
+
+    /** Returns whether a table type names a plain table: the JDBC {@code TABLE}, or the SQL {@code BASE TABLE}. */
+    static boolean isBaseTableType(@Nullable String tableType) {
+        return tableType == null || tableType.equalsIgnoreCase("TABLE") || tableType.equalsIgnoreCase("BASE TABLE");
+    }
+
+    private static List<String> typeWords(String tableType) {
+        return List.of(tableType.trim().toUpperCase(Locale.ROOT).split("[\\s_]+"));
     }
 
     // ------------------------------------------------------------------------------------------------------------------
@@ -644,8 +683,11 @@ public final class DatabaseSchema {
         // Foreign keys: join REFERENTIAL_CONSTRAINTS with KEY_COLUMN_USAGE on both sides, matching columns by
         // POSITION_IN_UNIQUE_CONSTRAINT.
         try {
+            // A constraint name may be unique per table only, as for the copies of a partitioned table's foreign key
+            // on its partitions. REFERENTIAL_CONSTRAINTS carries no table, so its join on the name repeats a foreign
+            // key once per table with a constraint of that name; DISTINCT keeps one.
             StringBuilder sql = new StringBuilder("""
-                    SELECT kcu.TABLE_NAME AS FK_TABLE, rc.CONSTRAINT_NAME AS FK_NAME, kcu.COLUMN_NAME AS FK_COLUMN,
+                    SELECT DISTINCT kcu.TABLE_NAME AS FK_TABLE, rc.CONSTRAINT_NAME AS FK_NAME, kcu.COLUMN_NAME AS FK_COLUMN,
                            kcu2.TABLE_NAME AS PK_TABLE, kcu2.COLUMN_NAME AS PK_COLUMN
                     FROM INFORMATION_SCHEMA.REFERENTIAL_CONSTRAINTS rc
                     JOIN INFORMATION_SCHEMA.KEY_COLUMN_USAGE kcu
@@ -1013,6 +1055,21 @@ public final class DatabaseSchema {
      */
     public boolean isView(String tableName) {
         return views.contains(tableName);
+    }
+
+    /**
+     * Returns whether the given name is a plain table, rather than a view or another relation the driver reports
+     * under a type of its own, such as a partitioned or a foreign table.
+     *
+     * <p>A plain table can always be indexed. Whether another relation can is known only from the indexes the read
+     * found on it.</p>
+     *
+     * @param tableName the table name (case-insensitive).
+     * @return {@code true} if the name is a plain table.
+     * @since 1.16
+     */
+    public boolean isBaseTable(String tableName) {
+        return baseTables.contains(tableName);
     }
 
     /**
