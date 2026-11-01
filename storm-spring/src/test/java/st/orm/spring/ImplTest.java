@@ -8,11 +8,14 @@ import java.lang.reflect.Proxy;
 import java.sql.SQLException;
 import javax.sql.DataSource;
 import org.junit.jupiter.api.Test;
+import org.springframework.aop.SpringProxy;
+import org.springframework.aop.framework.Advised;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.config.BeanDefinitionHolder;
 import org.springframework.beans.factory.config.DependencyDescriptor;
 import org.springframework.beans.factory.support.AutowireCandidateResolver;
 import org.springframework.beans.factory.support.GenericBeanDefinition;
+import org.springframework.core.DecoratingProxy;
 import st.orm.PersistenceException;
 import st.orm.repository.Repository;
 import st.orm.spring.impl.RepositoryAopAutoConfiguration;
@@ -52,6 +55,41 @@ public class ImplTest {
         Object result = postProcessor.postProcessAfterInitialization(repo, "testRepo");
         assertNotNull(result);
         assertInstanceOf(Repository.class, result);
+    }
+
+    interface CityRepository extends Repository {}
+
+    static final class GeneratedCityRepository implements CityRepository {
+        @Override
+        public st.orm.template.ORMTemplate orm() {
+            return null;
+        }
+    }
+
+    @Test
+    public void repositoryProxyingPostProcessorShouldProxyGeneratedClassByInterface() {
+        // A repository class Storm generates is wrapped in a JDK proxy of its interface, never a CGLIB subclass,
+        // which a native image cannot write at runtime.
+        var postProcessor = new RepositoryProxyingPostProcessor();
+        Object result = postProcessor.postProcessAfterInitialization(new GeneratedCityRepository(), "cities");
+        assertTrue(Proxy.isProxyClass(result.getClass()));
+        assertArrayEquals(new Class<?>[]{ CityRepository.class, SpringProxy.class, Advised.class, DecoratingProxy.class },
+                result.getClass().getInterfaces());
+    }
+
+    @Test
+    public void repositoryProxyingPostProcessorShouldProxyJdkProxyInTheSameShape() {
+        // A repository Storm serves with a JDK proxy gets the same Spring proxy shape as a generated class, so one
+        // native proxy hint covers both.
+        var postProcessor = new RepositoryProxyingPostProcessor();
+        var cities = (CityRepository) Proxy.newProxyInstance(
+                CityRepository.class.getClassLoader(),
+                new Class<?>[]{ CityRepository.class },
+                (proxy, method, args) -> null
+        );
+        Object result = postProcessor.postProcessAfterInitialization(cities, "cities");
+        assertArrayEquals(new Class<?>[]{ CityRepository.class, SpringProxy.class, Advised.class, DecoratingProxy.class },
+                result.getClass().getInterfaces());
     }
 
     @Test
