@@ -49,6 +49,12 @@ and serializers, entity callbacks, and every repository interface.
 
 On GraalVM for JDK 24 and up, the feature writes the class Storm uses for each repository interface during the build, as `repository()` does on the JVM (see [Custom Repositories](repositories.md#custom-repositories)). Each method calls the built-in repository or the interface's own method body directly, so the image keeps only the methods the application calls and registers only each class's constructor for reflection, where a proxy keeps and registers every method of the interface and of `EntityRepository`. On an older GraalVM, each repository is a JDK proxy, registered with its methods, and the build output reports no generated classes.
 
+### Build memory and optimization level
+
+A proxy reaches a repository's methods through reflection, which the image's compiler cannot see through, so every method body is compiled on its own. The generated classes are plain calls, so the compiler may inline repository code into its callers, including the calls one method body makes to another. That makes the code faster, and the image smaller, since the proxies are gone. It can also make the build hold more at once while it compiles and lays out methods, most of all at `-O2` on Oracle GraalVM, whose inliner goes further than the Community Edition's.
+
+On a builder whose memory the build comes close to filling, build with `-Os`: it optimizes for size, inlines far less, and builds a smaller image with less memory than `-O2`. Where the builder has memory to spare, `-O2` keeps the extra inlining and the speed that comes with it.
+
 A record outside the entity graph that a query constructs, such as the result row of a custom
 `select`, is registered when it carries `@GenerateMetamodel`, which also gives it an instantiator
 so the row is built without reflection; see [the metamodel page](metamodel.md#generatemetamodel-annotation).
