@@ -129,7 +129,6 @@ public class StormRuntimeHintsTest {
                 "Storm's own repository proxy shape must be registered");
         assertTrue(proxyShapes.contains(List.of(
                         "com.example.CityRepository",
-                        "java.io.Serializable",
                         "org.springframework.aop.SpringProxy",
                         "org.springframework.aop.framework.Advised",
                         "org.springframework.core.DecoratingProxy")),

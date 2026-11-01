@@ -20,7 +20,6 @@ import static java.nio.charset.StandardCharsets.UTF_8;
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
-import java.io.Serializable;
 import java.io.UncheckedIOException;
 import java.net.URL;
 import java.util.Enumeration;
@@ -57,10 +56,11 @@ import st.orm.core.spi.TypeDiscovery;
  *       silently falls back to the slower runtime-built metamodel.</li>
  *   <li><strong>Converters</strong>: converter implementations are instantiated through their declared
  *       constructor.</li>
- *   <li><strong>Repositories</strong>: Storm implements repository interfaces as JDK dynamic proxies, and
- *       {@link RepositoryProxyingPostProcessor} wraps each repository bean in a Spring AOP proxy, which is
- *       a JDK proxy as well. A native image only supports proxies whose exact ordered interface list is
- *       registered ahead of time, so both shapes are registered per repository. Kotlin repositories
+ *   <li><strong>Repositories</strong>: Storm implements a repository interface with a class it generates, or
+ *       with a JDK dynamic proxy where it generates none, and {@link RepositoryProxyingPostProcessor} wraps
+ *       each repository bean in a Spring AOP proxy, which is a JDK proxy of the repository interface. A
+ *       native image only supports proxies whose exact ordered interface list is registered ahead of time,
+ *       so both proxy shapes are registered per repository. Kotlin repositories
  *       additionally dispatch default methods through the compiler-generated {@code $DefaultImpls}
  *       class, which is looked up and invoked reflectively.</li>
  * </ul>
@@ -156,7 +156,6 @@ public class StormRuntimeHints implements RuntimeHintsRegistrar {
             TypeReference repository = TypeReference.of(typeName);
             hints.proxies().registerJdkProxy(repository);
             hints.proxies().registerJdkProxy(repository,
-                    TypeReference.of(Serializable.class),
                     TypeReference.of(SpringProxy.class),
                     TypeReference.of(Advised.class),
                     TypeReference.of(DecoratingProxy.class));

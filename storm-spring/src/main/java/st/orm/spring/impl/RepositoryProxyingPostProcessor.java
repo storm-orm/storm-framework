@@ -50,8 +50,13 @@ public class RepositoryProxyingPostProcessor implements BeanPostProcessor {
     @Override
     public Object postProcessAfterInitialization(Object bean, String beanName) {
         if (repositoryType != null && repositoryType.isInstance(bean)) {
-            ProxyFactory factory = new ProxyFactory(bean);
-            factory.setProxyTargetClass(true);
+            // The repository interfaces the bean's class implements directly, which leaves out Serializable for a JDK
+            // proxy target: the Spring proxy is a JDK proxy of the same interfaces whether Storm served the repository
+            // with a JDK proxy or a generated class. A class-based proxy would need a CGLIB subclass written at
+            // runtime, which a native image cannot do.
+            ProxyFactory factory = new ProxyFactory();
+            factory.setTarget(bean);
+            factory.setInterfaces(bean.getClass().getInterfaces());
             return factory.getProxy();
         }
         return bean;
