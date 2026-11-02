@@ -1423,6 +1423,21 @@ public abstract class QueryBuilder<T : Data, R : Any, ID : Any> {
             }
         }
 
+    /**
+     * Returns whether this query has a result.
+     *
+     * Select queries execute a statement derived from this builder that stops at the first matching row: the select
+     * clause is replaced by a constant and the result is limited to one row, or the query is tested as a derived table
+     * when its shape decides whether a row comes back (GROUP BY, HAVING, limit, offset or a custom select clause).
+     * Queries that lock rows read the first result instead, so the requested locks are acquired.
+     *
+     * @return `true` if the query has at least one result.
+     * @throws PersistenceException if the query operation fails due to underlying database issues, such as
+     * connectivity.
+     * @since 1.16
+     */
+    public open fun exists(): Boolean = resultStream.use { stream -> stream.findAny().isPresent }
+
     public open val resultList: List<R>
         /**
          * Executes the query and returns a list of results.

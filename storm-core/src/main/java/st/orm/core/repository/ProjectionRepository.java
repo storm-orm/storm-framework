@@ -160,33 +160,29 @@ public interface ProjectionRepository<P extends Projection<ID>, ID> extends Repo
      * Checks if any projection of the type managed by this repository exists in the database.
      *
      * @return true if at least one projection exists, false otherwise.
-     * @throws PersistenceException if there is an underlying database issue during the count operation.
+     * @throws PersistenceException if there is an underlying database issue during the operation.
      */
     boolean exists();
 
     /**
      * Checks if a projection with the specified primary key exists in the database.
      *
-     * <p>This method determines the presence of a projection by checking if the count of projections with the given primary
-     * key is greater than zero. It leverages the {@code selectCount} method, which performs a count operation on the
-     * database.</p>
+     * <p>The statement stops at the first matching row.</p>
      *
      * @param id the primary key of the projection to check for existence.
      * @return true if a projection with the specified primary key exists, false otherwise.
-     * @throws PersistenceException if there is an underlying database issue during the count operation.
+     * @throws PersistenceException if there is an underlying database issue during the operation.
      */
     boolean existsById(ID id);
 
     /**
      * Checks if a projection with the specified primary key exists in the database.
      *
-     * <p>This method determines the presence of a projection by checking if the count of projections with the given primary
-     * key is greater than zero. It leverages the {@code selectCount} method, which performs a count operation on the
-     * database.</p>
+     * <p>The statement stops at the first matching row.</p>
      *
      * @param ref the primary key of the projection to check for existence.
      * @return true if a projection with the specified primary key exists, false otherwise.
-     * @throws PersistenceException if there is an underlying database issue during the count operation.
+     * @throws PersistenceException if there is an underlying database issue during the operation.
      */
     boolean existsByRef(Ref<P> ref);
 

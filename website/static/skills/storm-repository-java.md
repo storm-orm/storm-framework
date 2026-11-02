@@ -130,7 +130,7 @@ Unlike Kotlin, Java has no `select(predicate)` / `delete(predicate)` shorthand a
 **Level 1: convenience methods** execute immediately and return results directly:
 - **Read:** `findById()`, `findByRef()`, `findAll()`, `findAllRef()`, `findAllById()`, `findAllByRef()`, `findBy(key, value)`, `findAllBy(field, value)`, `findRefBy(...)`, `findAllRefBy(...)`
 - **Read (throw):** `getById()`, `getByRef()`, `getBy(key, value)`
-- **Exists/Count:** `count()`, `exists()`, `existsById()`, `existsByRef()`, `countBy(field, value)`
+- **Exists/Count:** `count()`, `exists()`, `existsById()`, `existsByRef()`, `existsBy(field, value)`, `countBy(field, value)`. Prefer the `exists` forms over a count for a yes/no question: `exists` stops at the first matching row, a count visits every match, so `exists` is faster and never slower. Never write `countBy(...) > 0` or `getResultCount() > 0`.
 - **Write:** `insert()`, `insertAndFetch()`, `update()`, `updateAndFetch()`, `upsert()`, `upsertAndFetch()`
 - **Remove:** `remove(entity)`, `removeById(id)`, `removeByRef(ref)`, `removeAll()`, `removeAllBy(field, value)`, `remove(Iterable)`, `removeByRef(Iterable)`, `remove(Stream)`, `removeByRef(Stream)`
 - **Pagination:** `page()`, `pageRef()`, `scroll()`, `windows()`
@@ -141,7 +141,7 @@ users.select().where(User_.city, EQUALS, city)
     .orderBy(User_.name).getResultList();
 ```
 
-Terminal operations: `.getResultList()`, `.getSingleResult()`, `.getOptionalResult()`, `.getResultStream()`, `.windows(size)`, `.getResultCount()`, `.page()`, `.scroll()`, `.executeUpdate()`
+Terminal operations: `.getResultList()`, `.getSingleResult()`, `.getOptionalResult()`, `.getResultStream()`, `.windows(size)`, `.getResultCount()`, `.exists()`, `.page()`, `.scroll()`, `.executeUpdate()`
 
 **`find` returns `Optional`, `get` throws.** No result gives an empty `Optional` from `find` and a `NoResultException` from `get`.
 

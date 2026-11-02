@@ -323,7 +323,7 @@ userRepository.select()
 </TabItem>
 </Tabs>
 
-**No total count.** A `COUNT(*)` over a large filtered set costs what scrolling exists to avoid, and the number drifts while a user navigates. Scrolling is for "load more" and infinite-scroll patterns where a total is rarely needed. If you need one, call `count` (Kotlin) or `getCount()` (Java) on the query builder separately.
+**No total count.** A `COUNT(*)` over a large filtered set costs what scrolling exists to avoid, and the number drifts while a user navigates. Scrolling is for "load more" and infinite-scroll patterns where a total is rarely needed. If you need one, call `resultCount` (Kotlin) or `getResultCount()` (Java) on the query builder separately.
 
 ### Sorting by Non-Unique Columns
 

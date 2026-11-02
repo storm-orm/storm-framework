@@ -54,7 +54,7 @@ Repository/entity methods fall into two categories.
 - `update()`, `update { }`: build UPDATE queries that `set` columns on the rows a condition selects
 - `delete()`, `delete(predicate)`, `delete { }`: build DELETE queries
 
-Terminal operations: `.resultList`, `.singleResult`, `.optionalResult`, `.resultFlow`, `.resultStream`, `.windows(size)`, `.resultCount`, `.resultGroupedBy(path)`, `.resultGroupedByRef(path)`, `.page()`, `.scroll()`, `.executeUpdate()`
+Terminal operations: `.resultList`, `.singleResult`, `.optionalResult`, `.resultFlow`, `.resultStream`, `.windows(size)`, `.resultCount`, `.exists()`, `.resultGroupedBy(path)`, `.resultGroupedByRef(path)`, `.page()`, `.scroll()`, `.executeUpdate()`
 
 **Load one-to-many with `resultGroupedBy(path)`.** It groups results by a related record, typically the parent entity of a foreign key, into an unmodifiable, insertion-ordered `Map<Parent, List<T>>`.
 - The same select runs (single query, no SQL change); the grouping happens during hydration.
@@ -1059,6 +1059,7 @@ QueryBuilder terminals:
 - `.singleResult` → `R` (throws `NoResultException` if empty, `NonUniqueResultException` if multiple)
 - `.optionalResult` → `R?` (null if empty, throws if multiple)
 - `.resultCount` → `Long`
+- `.exists()` → `Boolean`: stops at the first matching row, so it is faster than any count. Prefer it, or `exists(...)`/`existsBy(...)` on a repository, for every existence check; never `resultCount > 0`, which visits every matching row.
 - `.resultFlow` → `Flow<R>` (cold; consume-only while collecting, see **Flows and the Connection**)
 - `.resultStream` → `Stream<R>` (lazy, must close after use; same connection rule)
 - `.windows(size)` / `.windows(scrollable)` → `Flow<Window<R>>` (one closed statement per window; the loop may query, fetch refs and write between windows; nothing to close)

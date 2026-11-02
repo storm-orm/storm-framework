@@ -23,6 +23,7 @@ import static st.orm.ResolveScope.INNER;
 import static st.orm.ResolveScope.OUTER;
 import static st.orm.template.Templates.column;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
@@ -44,6 +45,7 @@ import st.orm.Ref;
 import st.orm.Scrollable;
 import st.orm.Slice;
 import st.orm.Window;
+import st.orm.core.template.SqlInterceptor;
 import st.orm.template.model.City;
 import st.orm.template.model.City_;
 import st.orm.template.model.Owner;
@@ -1357,5 +1359,24 @@ public class QueryBuilderTest {
         assertEquals("lower", model.queryColumns().getFirst().function());
         List<Owner> upperCased = orm.entity(Owner.class).select().where(Owner_.lastNameFolded, EQUALS, "DAVIS").getResultList();
         assertEquals(List.of("Betty", "Harold"), upperCased.stream().map(Owner::firstName).sorted().toList());
+    }
+
+    @Test
+    public void existsShouldTestForARowWithoutCounting() {
+        var owners = orm.entity(Owner.class);
+        var statements = new ArrayList<String>();
+        SqlInterceptor.observe(sql -> statements.add(sql.statement()), () -> {
+            assertTrue(owners.select().where(Owner_.lastName, EQUALS, "Davis").exists());
+            assertFalse(owners.select().where(Owner_.lastName, EQUALS, "Nobody").exists());
+            assertTrue(owners.existsBy(Owner_.lastName, "Davis"));
+            assertTrue(orm.entity(Pet.class).existsBy(Pet_.owner, Ref.of(Owner.class, 1)));
+            assertTrue(owners.existsById(1));
+            assertTrue(owners.exists());
+        });
+        assertEquals(6, statements.size());
+        for (String statement : statements) {
+            assertTrue(statement.startsWith("SELECT 1\n"), statement);
+            assertFalse(statement.contains("COUNT"), statement);
+        }
     }
 }

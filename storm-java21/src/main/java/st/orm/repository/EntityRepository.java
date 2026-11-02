@@ -331,33 +331,29 @@ public interface EntityRepository<E extends Entity<ID>, ID> extends Repository {
      * Checks if any entity of the type managed by this repository exists in the database.
      *
      * @return true if at least one entity exists, false otherwise.
-     * @throws PersistenceException if there is an underlying database issue during the count operation.
+     * @throws PersistenceException if there is an underlying database issue during the operation.
      */
     boolean exists();
 
     /**
      * Checks if an entity with the specified primary key exists in the database.
      *
-     * <p>This method determines the presence of an entity by checking if the count of entities with the given primary
-     * key is greater than zero. It leverages the {@code selectCount} method, which performs a count operation on the
-     * database.</p>
+     * <p>The statement stops at the first matching row.</p>
      *
      * @param id the primary key of the entity to check for existence.
      * @return true if an entity with the specified primary key exists, false otherwise.
-     * @throws PersistenceException if there is an underlying database issue during the count operation.
+     * @throws PersistenceException if there is an underlying database issue during the operation.
      */
     boolean existsById(ID id);
 
     /**
      * Checks if an entity with the specified primary key exists in the database.
      *
-     * <p>This method determines the presence of an entity by checking if the count of entities with the given primary
-     * key is greater than zero. It leverages the {@code selectCount} method, which performs a count operation on the
-     * database.</p>
+     * <p>The statement stops at the first matching row.</p>
      *
      * @param ref the primary key of the entity to check for existence, expressed as a ref.
      * @return true if an entity with the specified primary key exists, false otherwise.
-     * @throws PersistenceException if there is an underlying database issue during the count operation.
+     * @throws PersistenceException if there is an underlying database issue during the operation.
      */
     boolean existsByRef(Ref<E> ref);
 
@@ -930,11 +926,11 @@ public interface EntityRepository<E extends Entity<ID>, ID> extends Repository {
      * @param value the value to match against.
      * @return true if any matching entities exist, false otherwise.
      * @param <V> the type of the field.
-     * @throws PersistenceException if the count operation fails due to underlying database issues.
+     * @throws PersistenceException if the operation fails due to underlying database issues.
      * @since 1.12
      */
     default <V> boolean existsBy(Metamodel<E, V> field, V value) {
-        return countBy(field, value) > 0;
+        return select().where(field, EQUALS, value).exists();
     }
 
     /**
@@ -944,11 +940,11 @@ public interface EntityRepository<E extends Entity<ID>, ID> extends Repository {
      * @param value the referenced value to match against.
      * @return true if any matching entities exist, false otherwise.
      * @param <V> the type of the referenced entity.
-     * @throws PersistenceException if the count operation fails due to underlying database issues.
+     * @throws PersistenceException if the operation fails due to underlying database issues.
      * @since 1.12
      */
     default <V extends Data> boolean existsBy(Metamodel<E, V> field, Ref<V> value) {
-        return countBy(field, value) > 0;
+        return select().where(field, value).exists();
     }
 
     /**

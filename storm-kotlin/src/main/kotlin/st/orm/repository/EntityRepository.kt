@@ -413,35 +413,29 @@ public interface EntityRepository<E, ID : Any> : Repository where E : Entity<ID>
      * Checks if any entity of the type managed by this repository exists in the database.
      *
      * @return true if at least one entity exists, false otherwise.
-     * @throws st.orm.PersistenceException if there is an underlying database issue during the count operation.
+     * @throws st.orm.PersistenceException if there is an underlying database issue during the operation.
      */
     public fun exists(): Boolean
 
     /**
      * Checks if an entity with the specified primary key exists in the database.
      *
-     *
-     * This method determines the presence of an entity by checking if the count of entities with the given primary
-     * key is greater than zero. It leverages the `selectCount` method, which performs a count operation on the
-     * database.
+     * The statement stops at the first matching row.
      *
      * @param id the primary key of the entity to check for existence.
      * @return true if an entity with the specified primary key exists, false otherwise.
-     * @throws st.orm.PersistenceException if there is an underlying database issue during the count operation.
+     * @throws st.orm.PersistenceException if there is an underlying database issue during the operation.
      */
     public fun existsById(id: ID): Boolean
 
     /**
      * Checks if an entity with the specified primary key exists in the database.
      *
-     *
-     * This method determines the presence of an entity by checking if the count of entities with the given primary
-     * key is greater than zero. It leverages the `selectCount` method, which performs a count operation on the
-     * database.
+     * The statement stops at the first matching row.
      *
      * @param ref the primary key of the entity to check for existence, expressed as a ref.
      * @return true if an entity with the specified primary key exists, false otherwise.
-     * @throws st.orm.PersistenceException if there is an underlying database issue during the count operation.
+     * @throws st.orm.PersistenceException if there is an underlying database issue during the operation.
      */
     public fun existsByRef(ref: Ref<E>): Boolean
 
@@ -1675,7 +1669,7 @@ public interface EntityRepository<E, ID : Any> : Repository where E : Entity<ID>
     public fun <V : Any> existsBy(
         field: Metamodel<E, V>,
         value: V,
-    ): Boolean = selectCount().where(field eq value).singleResult > 0
+    ): Boolean = select().where(field eq value).exists()
 
     /**
      * Checks if entities of type [E] matching the specified field and referenced value exists.
@@ -1687,7 +1681,7 @@ public interface EntityRepository<E, ID : Any> : Repository where E : Entity<ID>
     public fun <V : Data> existsBy(
         field: Metamodel<E, V>,
         value: Ref<V>,
-    ): Boolean = selectCount().where(field, value).singleResult > 0
+    ): Boolean = select().where(field, value).exists()
 
     /**
      * Checks if entities of type [E] matching the specified predicate exists.
@@ -1697,7 +1691,7 @@ public interface EntityRepository<E, ID : Any> : Repository where E : Entity<ID>
      */
     public fun exists(
         predicate: PredicateBuilder<E, *, *>,
-    ): Boolean = selectCount().where(predicate).singleResult > 0
+    ): Boolean = select().where(predicate).exists()
 
     /**
      * Removes entities of type [E] matching the specified predicate.

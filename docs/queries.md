@@ -1523,31 +1523,42 @@ Several calls add several hints to the same comment or clause. A hint never chan
 
 ### Checking Existence
 
-Use `existsBy` (Kotlin) or `.exists()` on the query builder (Java) to check whether a matching row exists without loading the full entity.
+Use `existsBy`, `exists(...)` on a repository, or `exists()` on the query builder to check whether a matching row exists. The statement stops at the first matching row: it selects a constant, limited to one row, so the database reads no row beyond the first and may answer from an index alone. A count would visit every matching row. A query whose shape decides whether a row comes back (`GROUP BY`, `HAVING`, a limit or an offset, or a select clause of your own) is tested as a derived table.
 
 <Tabs groupId="language">
 <TabItem value="kotlin" label="Kotlin" default>
 
 ```kotlin
-val exists: Boolean = orm.existsBy(User_.email, email)
+val taken: Boolean = orm.existsBy(User_.email, email)
+
+val vaccinated: Boolean = orm.entity(Pet::class)
+    .select()
+    .where(Pet_.owner eq owner)
+    .semiJoin<Visit>().on<Pet> { Visit_.description eq "rabies shot" }
+    .exists()
 ```
 
 </TabItem>
 <TabItem value="java" label="Java">
 
 ```java
-boolean exists = orm.entity(User.class)
+boolean taken = orm.entity(User.class).existsBy(User_.email, email);
+
+boolean vaccinated = orm.entity(Pet.class)
     .select()
-    .where(User_.email, EQUALS, email)
+    .where(Pet_.owner, EQUALS, owner)
+    .semiJoin(Visit.class).on(Pet.class, it -> it.where(Visit_.description, EQUALS, "rabies shot"))
     .exists();
 ```
 
 </TabItem>
 </Tabs>
 
+Use `exists()` rather than comparing `resultCount` with zero.
+
 ### Count with Filter
 
-Combine `where` with `count` to count rows matching a condition without loading the entities themselves. Storm translates this to a `SELECT COUNT(*)` query.
+Combine `where` with `resultCount` (Kotlin) or `getResultCount()` (Java) to count rows matching a condition without loading the entities themselves. Storm translates this to a `SELECT COUNT(*)` query.
 
 <Tabs groupId="language">
 <TabItem value="kotlin" label="Kotlin" default>
@@ -1556,7 +1567,7 @@ Combine `where` with `count` to count rows matching a condition without loading 
 val count: Long = orm.entity(User::class)
     .select()
     .where(User_.city eq city)
-    .count
+    .resultCount
 ```
 
 </TabItem>
@@ -1566,7 +1577,7 @@ val count: Long = orm.entity(User::class)
 long count = orm.entity(User.class)
     .select()
     .where(User_.city, EQUALS, city)
-    .getCount();
+    .getResultCount();
 ```
 
 </TabItem>

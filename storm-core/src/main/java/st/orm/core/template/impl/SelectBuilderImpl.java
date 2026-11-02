@@ -652,6 +652,60 @@ public class SelectBuilderImpl<T extends Data, R, ID> extends QueryBuilderImpl<T
     }
 
     /**
+     * Returns whether this query has a result by executing a statement derived from this builder that stops at the
+     * first matching row.
+     *
+     * <p>A select of a record's column set selects a constant instead, limited to one row, so the database stops at
+     * the first matching row and may answer from an index alone. DISTINCT does not decide whether a row exists and is
+     * left out. GROUP BY, HAVING, limit, offset and a custom select clause do, so those queries are tested as a
+     * derived table, limited to one row. Queries that lock rows read the first result instead, so the requested locks
+     * are acquired.</p>
+     *
+     * @return {@code true} if the query has at least one result.
+     * @throws PersistenceException if the query operation fails due to underlying database issues, such as
+     * connectivity.
+     */
+    @Override
+    public boolean exists() {
+        if (subquery) {
+            throw new PersistenceException("Cannot build a query from a subquery.");
+        }
+        if (hasLockHint()) {
+            return super.exists();
+        }
+        var facts = new StatementFacts.Collector();
+        TemplateString existsTemplate = toExistsTemplateString(facts);
+        // Read to its end, which the one-row limit makes the first row, so the execution reports how many rows it
+        // produced.
+        return QueryTemplateImpl.query(queryTemplate, existsTemplate, facts.build()).withoutFetchSize()
+                .getOptionalResult().isPresent();
+    }
+
+    /**
+     * Returns the statement that tests whether this query has a result: the query itself selecting a constant,
+     * limited to one row, or the query as a derived table when its shape decides whether a row comes back.
+     */
+    private TemplateString toExistsTemplateString(StatementFacts.Collector facts) {
+        boolean rowShape = limit != null || offset != null || !groupBy.isEmpty() || !having.isEmpty();
+        if (selectedRecordType() != null && !rowShape) {
+            var first = new SelectBuilderImpl<>(queryTemplate, fromType, selectType, false, join, where, 1, null,
+                    forLock, selectTemplate, groupBy, having, orderBy, hints, orderFirstKeys, subquery, refType, pkType,
+                    fetchPaths, modelSupplier);
+            return statement(first.toTemplateString(TemplateString.of("1"), false, facts));
+        }
+        // Named, since SQL Server refuses a derived table column without a name.
+        TemplateString innerSelect = selectedRecordType() == null ? selectTemplate : TemplateString.of("1 AS one");
+        boolean withOrderBy = limit != null || offset != null;
+        var dialect = queryTemplate.dialect();
+        String limitAfterSelect = dialect.applyLimitAfterSelect() ? dialect.limit(1) + " " : "";
+        String limitAtEnd = dialect.applyLimitAfterSelect() ? "" : "\n" + dialect.limit(1);
+        return statement(TemplateString.combine(
+                TemplateString.of("SELECT " + limitAfterSelect + "1\nFROM (\n"),
+                toTemplateString(innerSelect, withOrderBy, facts),
+                TemplateString.of("\n) e" + limitAtEnd)));
+    }
+
+    /**
      * Counts the results for a page, as {@link #getResultCount()} does, with advice for the slow statement log that
      * the count serves a page, and that a slice reads the same page without one.
      */

@@ -671,7 +671,7 @@ class TransactionAdviceTest {
                 orm.entity(Customer.class).existsById(i);
             }
         });
-        // existsById counts through the query builder, yet the advice names the call the application made.
+        // existsById reads through the query builder, yet the advice names the call the application made.
         assertTrue(line.startsWith("existsById of Customer ran 10 times, "), line);
         assertTrue(line.contains("\nfix: findAllById over the keys reads the ones that exist in one round trip.\nsee:"), line);
         assertFalse(line.contains("GROUP BY"), line);

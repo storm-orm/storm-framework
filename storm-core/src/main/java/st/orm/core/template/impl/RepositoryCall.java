@@ -67,7 +67,7 @@ public enum RepositoryCall {
 
     /**
      * Runs a built-in read with its statements tagged as serving the call. The outermost call wins where one runs
-     * another, as {@code existsById} runs {@code countById}, since the outermost is the one the application made.
+     * another, since the outermost is the one the application made.
      *
      * @param call the call the repository makes.
      * @param body the call.

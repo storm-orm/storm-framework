@@ -321,6 +321,15 @@ public final class QueryBuilderImpl<T extends Data, R, ID> extends QueryBuilder<
     }
 
     /**
+     * Delegates to the core builder, which executes a statement derived from the builder's shape that stops at the
+     * first matching row.
+     */
+    @Override
+    public boolean exists() {
+        return core.exists();
+    }
+
+    /**
      * Eager terminals delegate to the core builder, which executes them without the fetch-size hint, avoiding
      * transaction wrapping for eagerly consumed results.
      */

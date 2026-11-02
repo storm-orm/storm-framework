@@ -1248,6 +1248,25 @@ public abstract class QueryBuilder<T extends Data, R, ID> {
     }
 
     /**
+     * Returns whether this query has a result.
+     *
+     * <p>Select queries execute a statement derived from this builder that stops at the first matching row: the select
+     * clause is replaced by a constant and the result is limited to one row, or the query is tested as a derived table
+     * when its shape decides whether a row comes back (GROUP BY, HAVING, limit, offset or a custom select clause).
+     * Queries that lock rows read the first result instead, so the requested locks are acquired.</p>
+     *
+     * @return {@code true} if the query has at least one result.
+     * @throws PersistenceException if the query operation fails due to underlying database issues, such as
+     *                              connectivity.
+     * @since 1.16
+     */
+    public boolean exists() {
+        try (var stream = getResultStream()) {
+            return stream.findAny().isPresent();
+        }
+    }
+
+    /**
      * Executes the query and returns a list of results.
      *
      * @return the list of results.
