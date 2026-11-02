@@ -193,35 +193,29 @@ public interface ProjectionRepository<P, ID : Any> : Repository where P : Projec
      * Checks if any projection of the type managed by this repository exists in the database.
      *
      * @return true if at least one projection exists, false otherwise.
-     * @throws st.orm.PersistenceException if there is an underlying database issue during the count operation.
+     * @throws st.orm.PersistenceException if there is an underlying database issue during the operation.
      */
     public fun exists(): Boolean
 
     /**
      * Checks if a projection with the specified primary key exists in the database.
      *
-     *
-     * This method determines the presence of a projection by checking if the count of projections with the given primary
-     * key is greater than zero. It leverages the `selectCount` method, which performs a count operation on the
-     * database.
+     * The statement stops at the first matching row.
      *
      * @param id the primary key of the projection to check for existence.
      * @return true if a projection with the specified primary key exists, false otherwise.
-     * @throws st.orm.PersistenceException if there is an underlying database issue during the count operation.
+     * @throws st.orm.PersistenceException if there is an underlying database issue during the operation.
      */
     public fun existsById(id: ID): Boolean
 
     /**
      * Checks if a projection with the specified primary key exists in the database.
      *
-     *
-     * This method determines the presence of a projection by checking if the count of projections with the given primary
-     * key is greater than zero. It leverages the `selectCount` method, which performs a count operation on the
-     * database.
+     * The statement stops at the first matching row.
      *
      * @param ref the primary key of the projection to check for existence.
      * @return true if a projection with the specified primary key exists, false otherwise.
-     * @throws st.orm.PersistenceException if there is an underlying database issue during the count operation.
+     * @throws st.orm.PersistenceException if there is an underlying database issue during the operation.
      */
     public fun existsByRef(ref: Ref<P>): Boolean
 
@@ -733,7 +727,7 @@ public interface ProjectionRepository<P, ID : Any> : Repository where P : Projec
     public fun <V : Any> existsBy(
         field: Metamodel<P, V>,
         value: V,
-    ): Boolean = selectCount().where(field eq value).singleResult > 0
+    ): Boolean = select().where(field eq value).exists()
 
     /**
      * Checks if entities of type [P] matching the specified field and referenced value exists.
@@ -745,7 +739,7 @@ public interface ProjectionRepository<P, ID : Any> : Repository where P : Projec
     public fun <V : Data> existsBy(
         field: Metamodel<P, V>,
         value: Ref<V>,
-    ): Boolean = selectCount().where(field, value).singleResult > 0
+    ): Boolean = select().where(field, value).exists()
 
     /**
      * Checks if entities of type [P] matching the specified predicate exists.
@@ -755,7 +749,7 @@ public interface ProjectionRepository<P, ID : Any> : Repository where P : Projec
      */
     public fun exists(
         predicate: PredicateBuilder<P, *, *>,
-    ): Boolean = selectCount().where(predicate).singleResult > 0
+    ): Boolean = select().where(predicate).exists()
 
     /**
      * Returns a page of projections using offset-based pagination.

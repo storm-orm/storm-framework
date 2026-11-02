@@ -282,41 +282,39 @@ abstract class BaseRepositoryImpl<E extends Data, ID> implements Repository {
     /**
      * Checks if any entity of the type managed by this repository exists in the database.
      *
+     * <p>The statement stops at the first row, see {@link QueryBuilder#exists()}.</p>
+     *
      * @return true if at least one entity exists, false otherwise.
-     * @throws PersistenceException if there is an underlying database issue during the count operation.
+     * @throws PersistenceException if there is an underlying database issue during the operation.
      */
     public boolean exists() {
-        return count() > 0;
+        return select().exists();
     }
 
     /**
      * Checks if an entity with the specified primary key exists in the database.
      *
-     * <p>This method determines the presence of an entity by checking if the count of entities with the given primary
-     * key is greater than zero. It leverages the {@code selectCount} method, which performs a count operation on the
-     * database.</p>
+     * <p>The statement stops at the first row, see {@link QueryBuilder#exists()}.</p>
      *
      * @param id the primary key of the entity to check for existence.
      * @return true if an entity with the specified primary key exists, false otherwise.
-     * @throws PersistenceException if there is an underlying database issue during the count operation.
+     * @throws PersistenceException if there is an underlying database issue during the operation.
      */
     public boolean existsById(ID id) {
-        return RepositoryCall.in(RepositoryCall.EXISTS_BY_ID, () -> countById(Stream.of(id)) > 0);
+        return RepositoryCall.in(RepositoryCall.EXISTS_BY_ID, () -> select().where(id).exists());
     }
 
     /**
      * Checks if an entity with the specified primary key exists in the database.
      *
-     * <p>This method determines the presence of an entity by checking if the count of entities with the given primary
-     * key is greater than zero. It leverages the {@code selectCount} method, which performs a count operation on the
-     * database.</p>
+     * <p>The statement stops at the first row, see {@link QueryBuilder#exists()}.</p>
      *
      * @param ref the primary key of the entity to check for existence.
      * @return true if an entity with the specified primary key exists, false otherwise.
-     * @throws PersistenceException if there is an underlying database issue during the count operation.
+     * @throws PersistenceException if there is an underlying database issue during the operation.
      */
     public boolean existsByRef(Ref<E> ref) {
-        return RepositoryCall.in(RepositoryCall.EXISTS_BY_REF, () -> countByRef(Stream.of(ref)) > 0);
+        return RepositoryCall.in(RepositoryCall.EXISTS_BY_REF, () -> select().where(ref).exists());
     }
 
     // Singular findBy methods.

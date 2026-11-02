@@ -296,7 +296,7 @@ Schema validation catches entity-to-database mismatches early, before they surfa
 
 ### Using getSingleResult() Without a WHERE Clause
 
-Calling `getSingleResult()` on a query that returns all rows will throw `NonUniqueResultException` unless the table contains exactly one row. If you want to check whether results exist, use `getResultCount()` or `getResultStream()`.
+Calling `getSingleResult()` on a query that returns all rows will throw `NonUniqueResultException` unless the table contains exactly one row. If you want to check whether results exist, use `exists()`, which stops at the first matching row.
 
 ### Catching PersistenceException Too Broadly
 

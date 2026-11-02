@@ -571,7 +571,7 @@ public inline fun <reified T : Data> RepositoryLookup.count(predicate: Predicate
  * @param value the value to match against.
  * @return true if any matching entities exist, false otherwise.
  */
-public inline fun <reified T : Data, V : Any> RepositoryLookup.existsBy(field: Metamodel<T, V>, value: V): Boolean = selectCount<T>().where(field eq value).singleResult > 0
+public inline fun <reified T : Data, V : Any> RepositoryLookup.existsBy(field: Metamodel<T, V>, value: V): Boolean = select<T>().where(field eq value).exists()
 
 /**
  * Checks if entities of type [T] matching the specified field and referenced value exists.
@@ -580,7 +580,7 @@ public inline fun <reified T : Data, V : Any> RepositoryLookup.existsBy(field: M
  * @param value the referenced value to match against.
  * @return true if any matching entities exist, false otherwise.
  */
-public inline fun <reified T : Data, V : Data> RepositoryLookup.existsBy(field: Metamodel<T, V>, value: Ref<V>): Boolean = selectCount<T>().where(field, value).singleResult > 0
+public inline fun <reified T : Data, V : Data> RepositoryLookup.existsBy(field: Metamodel<T, V>, value: Ref<V>): Boolean = select<T>().where(field, value).exists()
 
 /**
  * Checks if any entities of type [T] exist.
@@ -600,7 +600,7 @@ public inline fun <reified T : Data> RepositoryLookup.exists(): Boolean = if (T:
  * @param predicate Lambda to build the WHERE clause.
  * @return true if any matching entities exist, false otherwise.
  */
-public inline fun <reified T : Data> RepositoryLookup.exists(predicate: PredicateBuilder<T, *, *>): Boolean = selectCount<T>().where(predicate).singleResult > 0
+public inline fun <reified T : Data> RepositoryLookup.exists(predicate: PredicateBuilder<T, *, *>): Boolean = select<T>().where(predicate).exists()
 
 /**
  * Inserts an entity of type [T] into the repository.

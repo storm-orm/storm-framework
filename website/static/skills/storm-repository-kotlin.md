@@ -143,7 +143,7 @@ Four levels, from simplest to most powerful. Always prefer the simplest that wor
 **Level 1: convenience methods** execute immediately and return results directly:
 - **Read:** `findById()`, `findByRef()`, `findAll()`, `findAllRef()`, `findAll(predicate)`, `findAllById()`, `findAllByRef()`, `findBy(key, value)`, `findAllBy(field, value)`, `findRefBy(...)`, `findAllRefBy(...)`
 - **Read (throw):** `getById()`, `getByRef()`, `getBy(key, value)`
-- **Exists/Count:** `count()`, `count(predicate)`, `exists()`, `exists(predicate)`, `existsById()`, `existsByRef()`, `countBy(field, value)`
+- **Exists/Count:** `count()`, `count(predicate)`, `exists()`, `exists(predicate)`, `existsById()`, `existsByRef()`, `existsBy(field, value)`, `countBy(field, value)`. Prefer the `exists` forms over a count for a yes/no question: `exists` stops at the first matching row, a count visits every match, so `exists` is faster and never slower. Never write `count(...) > 0` or `resultCount > 0`.
 - **Write:** `insert()`, `insertAndFetch()`, `update()`, `updateAndFetch()`, `upsert()`, `upsertAndFetch()`
 - **Remove:** `remove(entity)`, `removeById(id)`, `removeByRef(ref)`, `removeAll()`, `removeAll(predicate)`, `removeAllBy(field, value)`, `remove(Iterable)`, `removeByRef(Iterable)`, `remove(Flow)`, `removeByRef(Flow)`
 - **Pagination:** `page()`, `pageRef()`, `scroll()`, `windows()`
@@ -178,7 +178,7 @@ users.delete {
 }.executeUpdate()
 ```
 
-Terminal operations: `.resultList`, `.singleResult`, `.optionalResult`, `.resultFlow`, `.resultStream`, `.windows(size)`, `.resultCount`, `.page()`, `.scroll()`, `.executeUpdate()`
+Terminal operations: `.resultList`, `.singleResult`, `.optionalResult`, `.resultFlow`, `.resultStream`, `.windows(size)`, `.resultCount`, `.exists()`, `.page()`, `.scroll()`, `.executeUpdate()`
 
 **`find` returns nullable, `get` throws.** No result gives `null` from `find` and a `NoResultException` from `get`.
 
@@ -914,7 +914,7 @@ interface UserRepository : EntityRepository<User, Int> {
 }
 ```
 
-Pick the terminal: `.resultList`, `.singleResult`, `.optionalResult`, `.scroll(scrollable)`, `.page(0, 20)`, `.resultFlow`, `.resultCount` (for select), or `.executeUpdate()` (for delete). **Do NOT combine `orderBy()` with `.scroll(Scrollable)`** (see Pagination and Scrolling).
+Pick the terminal: `.resultList`, `.singleResult`, `.optionalResult`, `.scroll(scrollable)`, `.page(0, 20)`, `.resultFlow`, `.resultCount` or `.exists()` (for select), or `.executeUpdate()` (for delete). **Do NOT combine `orderBy()` with `.scroll(Scrollable)`** (see Pagination and Scrolling).
 
 **There is no `select(ResultType::class) { block }` form.** The block DSL always returns the root entity type; in `select(ResultType::class) { ... }` the trailing lambda is a SQL template for the SELECT clause, not a block DSL. To select a different result type, use the chained API:
 ```kotlin

@@ -184,6 +184,12 @@ internal class QueryBuilderImpl<T : Data, R : Any, ID : Any>(
         get() = core.resultCount
 
     /**
+     * Delegates to the core builder, which executes a statement derived from the builder's shape that stops at the
+     * first matching row.
+     */
+    override fun exists(): Boolean = core.exists()
+
+    /**
      * Delegates to the core builder, whose count query for the total tells the slow statement log that it serves a
      * page.
      */

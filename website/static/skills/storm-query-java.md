@@ -45,7 +45,7 @@ Repository/entity methods fall into two categories.
 
 The `select(predicate)` / `delete(predicate)` shorthands are Kotlin-only. In Java, chain `.where(...)` on the builder.
 
-Terminal operations: `.getResultList()`, `.getSingleResult()`, `.getOptionalResult()`, `.getResultStream()`, `.windows(size)`, `.getResultCount()`, `.getResultGroupedBy(path)`, `.getResultGroupedByRef(path)`, `.page()`, `.scroll()`, `.executeUpdate()`
+Terminal operations: `.getResultList()`, `.getSingleResult()`, `.getOptionalResult()`, `.getResultStream()`, `.windows(size)`, `.getResultCount()`, `.exists()`, `.getResultGroupedBy(path)`, `.getResultGroupedByRef(path)`, `.page()`, `.scroll()`, `.executeUpdate()`
 
 **Load one-to-many with `getResultGroupedBy(path)`.** It groups results by a related record, typically the parent entity of a foreign key, into an unmodifiable, insertion-ordered `Map<Parent, List<T>>`.
 - The same select runs (single query, no SQL change); the grouping happens during hydration.
@@ -834,6 +834,7 @@ QueryBuilder terminals:
 - `.getSingleResult()` → `R` (throws `NoResultException` if empty, `NonUniqueResultException` if multiple)
 - `.getOptionalResult()` → `Optional<R>`
 - `.getResultCount()` → `long`
+- `.exists()` → `boolean`: stops at the first matching row, so it is faster than any count. Prefer it, or `existsBy(...)` on a repository, for every existence check; never `getResultCount() > 0`, which visits every matching row.
 - `.getResultStream()` → `Stream<R>` (lazy, **must** close with try-with-resources)
 - `.page(pageNumber, pageSize)` → `Page<R>` (offset-based pagination)
 - `.scroll(scrollable)` → `Window<R>` (keyset scrolling, see **Keyset Scrolling**). Use `next()` / `previous()` for programmatic navigation, or `nextCursor()` / `previousCursor()` for REST APIs.

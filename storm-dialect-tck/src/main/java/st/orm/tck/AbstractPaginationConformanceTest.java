@@ -20,6 +20,7 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static st.orm.Operator.EQUALS;
 
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -327,5 +328,31 @@ public abstract class AbstractPaginationConformanceTest {
         assertFalse(rest.hasNext());
         assertEquals(2, vets.select().offset(2).limit(2).getResultList().size());
         assertEquals(4, vets.select().offset(2).getResultList().size());
+    }
+
+    @Test
+    public void existsStopsAtTheFirstRowInEveryShape() {
+        // The existence test rides the dialect's first-row clause, after SELECT or at the end, and its derived table
+        // carries the dialect's ordering for an offset.
+        var orm = ORMTemplate.of(dataSource);
+        var vets = orm.entity(Vet.class);
+        List<String> statements = new ArrayList<>();
+        SqlInterceptor.observe(sql -> statements.add(sql.statement()), () -> {
+            assertTrue(vets.select().exists());
+            assertTrue(vets.select().where(VET_ID, EQUALS, 1).exists());
+            assertFalse(vets.select().where(VET_ID, EQUALS, -1).exists());
+        });
+        assertTrue(statements.stream().noneMatch(sql -> sql.contains("COUNT")), statements::toString);
+        assertTrue(vets.select().orderBy(VET_ID).distinct().exists());
+        assertTrue(vets.select().offset(5).exists());
+        assertFalse(vets.select().offset(6).exists());
+        assertTrue(vets.select().offset(4).limit(3).exists());
+        assertFalse(vets.select().limit(0).exists());
+        var pets = orm.entity(Pet.class);
+        assertTrue(pets.select().groupBy(PET_TYPE).having(TemplateString.of("COUNT(*) > 0")).exists());
+        assertFalse(pets.select().groupBy(PET_TYPE).having(TemplateString.of("COUNT(*) > 1000")).exists());
+        assertTrue(vets.existsById(1));
+        assertFalse(vets.existsById(-1));
+        assertTrue(vets.exists());
     }
 }
