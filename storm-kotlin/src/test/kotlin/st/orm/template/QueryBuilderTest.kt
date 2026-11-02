@@ -2921,7 +2921,7 @@ internal open class QueryBuilderTest(
     }
 
     @Test
-    fun `base result terminals stream and count`() {
+    fun `base result terminals stream, count and test for a row`() {
         val repo = orm.entity(City::class)
         val all = ForwardingQueryBuilder(repo.select())
         all.resultCount shouldBe 6L
@@ -2934,6 +2934,8 @@ internal open class QueryBuilderTest(
         val none = ForwardingQueryBuilder(repo.select().where(999))
         assertThrows<NoResultException> { none.singleResult }
         none.optionalResult shouldBe null
+        all.exists() shouldBe true
+        none.exists() shouldBe false
     }
 
     // isTrue / isFalse predicates

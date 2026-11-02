@@ -17,6 +17,7 @@ package st.orm.core;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static st.orm.Operator.EQUALS;
 import static st.orm.core.template.SqlInterceptor.observe;
@@ -31,6 +32,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.jdbc.JdbcTest;
 import org.springframework.test.context.ContextConfiguration;
 import org.springframework.test.context.junit.jupiter.SpringExtension;
+import st.orm.PersistenceException;
 import st.orm.Ref;
 import st.orm.core.model.City;
 import st.orm.core.model.Owner;
@@ -110,6 +112,22 @@ public class ExistsIntegrationTest {
         String statement = single(() -> assertFalse(orm.selectFrom(Pet.class)
                 .groupBy(Pet_.owner).having(raw("COUNT(*) > 100")).exists()));
         assertTrue(statement.contains("FROM ("), statement);
+    }
+
+    @Test
+    public void testHavingWithoutGroupByDecidesWhetherARowComesBack() {
+        var orm = ORMTemplate.of(dataSource);
+        // The whole table is one group, which HAVING keeps or drops.
+        assertTrue(orm.selectFrom(Pet.class).having(raw("COUNT(*) > 1")).exists());
+        String statement = single(() -> assertFalse(orm.selectFrom(Pet.class).having(raw("COUNT(*) > 100")).exists()));
+        assertTrue(statement.contains("FROM ("), statement);
+    }
+
+    @Test
+    public void testASubqueryIsRefused() {
+        var orm = ORMTemplate.of(dataSource);
+        var failure = assertThrows(PersistenceException.class, () -> orm.subquery(Visit.class).exists());
+        assertEquals("Cannot build a query from a subquery.", failure.getMessage());
     }
 
     @Test
