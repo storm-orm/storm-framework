@@ -19,7 +19,7 @@
     "@easyops-cn/docusaurus-search-local": "0.55.3",
     "marked": "^18.1.2",
     "prism-react-renderer": "^2.4.1",
-    "react": "^19.3.0",
+    "react": "^19.3.1",
     "react-dom": "^19.3.1"
   },
   "devDependencies": {

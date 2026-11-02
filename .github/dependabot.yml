@@ -29,6 +29,11 @@ updates:
         update-types: ["version-update:semver-major", "version-update:semver-minor"]
       - dependency-name: "com.google.devtools.ksp:*"
         update-types: ["version-update:semver-major", "version-update:semver-minor"]
+      # The kotest assertions the Kotlin tests use are built for a Kotlin line too: kotest 6 carries Kotlin 2.2
+      # metadata, which the 2.0 compiler cannot read. A new major moves with the Kotlin floor; patches and minors
+      # within the line are still proposed.
+      - dependency-name: "io.kotest:*"
+        update-types: ["version-update:semver-major"]
       # storm-ktor compiles against the oldest Ktor line it supports. A newer line brings its own kotlinx-coroutines
       # requirement to every application, so the Ktor floor moves as a decision of its own.
       - dependency-name: "io.ktor:*"
@@ -64,6 +69,11 @@ updates:
       docusaurus:
         patterns:
           - "@docusaurus/*"
+      # Docusaurus refuses to build unless react and react-dom are at exactly the same version.
+      react:
+        patterns:
+          - "react"
+          - "react-dom"
     ignore:
       # Nothing in the site build runs the TypeScript compiler, so a new major line is taken deliberately.
       - dependency-name: "typescript"
