@@ -166,7 +166,7 @@
                  creators of Kotlin data classes. -->
             <groupId>tools.jackson.module</groupId>
             <artifactId>jackson-module-kotlin</artifactId>
-            <version>3.0.4</version>
+            <version>3.2.4</version>
             <scope>test</scope>
         </dependency>
         <dependency>
