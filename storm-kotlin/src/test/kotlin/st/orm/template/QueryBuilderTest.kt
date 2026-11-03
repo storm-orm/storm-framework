@@ -2467,6 +2467,28 @@ internal open class QueryBuilderTest(
     }
 
     @Test
+    fun `semiJoin on a table sharing a foreign key with the semi-joined table should match on that key`() {
+        // data.sql: pets 1, 2, 3, 4, 6 and 7 have a 'spayed' visit; pets 1 (Leo) and 3 (Rosy) had a surgery.
+        val description = metamodel<Visit, String>(orm.entity(Visit::class).model, "description")
+        val capture = SqlCapture()
+        val pets = capture.execute {
+            orm.entity(Pet::class).select()
+                .semiJoin<Visit>().on<Pet>()
+                .semiJoin<Surgery>().on<Visit>()
+                .where(description eq "spayed")
+                .resultList
+        }
+        pets.map { it.name }.sorted() shouldBe listOf("Leo", "Rosy")
+        // Neither table references the other: the surgery relates to the visit through the pet both reference.
+        capture.statements().single().statement().replace(Regex("\\s+"), " ") shouldContain ".pet_id = v.pet_id"
+        orm.entity(Pet::class).select {
+            semiJoin<Visit, Pet>()
+            antiJoin<Surgery, Visit>()
+            where(description eq "spayed")
+        }.resultList.map { it.name }.sorted() shouldBe listOf("Basil", "George", "Jewel", "Samantha")
+    }
+
+    @Test
     fun `antiJoin on a semi-joined table should nest as not exists`() {
         // data.sql: Lucky (Jeff and Carlos), Mulligan (Maria) and Freddy (David) have no visits.
         val owners = orm.entity(Owner::class).select()

@@ -1150,6 +1150,50 @@ WHERE EXISTS (
 
 A table the query reaches itself, as its own table, a joined table or a table its foreign keys join, stays the query's.
 
+`on` also names a table that neither references nor is referenced by the semi-joined table, when both hold a foreign key to the same table. With `PetNickname(pet: Pet, nickname: String)` and `Vaccination(pet: Pet, vaccine: String)`, the pets found by their own name, or by a nickname when the pet is vaccinated:
+
+<Tabs groupId="language">
+<TabItem value="kotlin" label="Kotlin" default>
+
+```kotlin
+val pets = orm.entity(Pet::class)
+    .select()
+    .semiJoin<PetNickname>().on<Pet>()
+    .semiJoin<Vaccination>().on<PetNickname>()
+    .where((Pet_.name like "$input%") or (PetNickname_.nickname like "$input%"))
+    .resultList
+```
+
+</TabItem>
+<TabItem value="java" label="Java">
+
+```java
+List<Pet> pets = orm.entity(Pet.class)
+    .select()
+    .semiJoin(PetNickname.class).on(Pet.class)
+    .semiJoin(Vaccination.class).on(PetNickname.class)
+    .where(it -> it.where(Pet_.name, LIKE, input + "%").or(it.where(PetNickname_.nickname, LIKE, input + "%")))
+    .getResultList();
+```
+
+</TabItem>
+</Tabs>
+
+```sql
+SELECT ...
+FROM pet p
+WHERE p.id IN (
+    SELECT p.id FROM pet p WHERE p.name LIKE ?
+    UNION
+    SELECT n.pet_id FROM pet_nickname n
+    WHERE n.nickname LIKE ?
+      AND EXISTS (SELECT 1 FROM vaccination v WHERE v.pet_id = n.pet_id))
+```
+
+The vaccination relates to the nickname through the pet both reference, `v.pet_id = n.pet_id`, without reading the pet table, and its subquery sits inside the nickname's: a pet found by its own name needs no vaccination. `semiJoin<Vaccination>().on<Pet>()` would relate the vaccination to the query's pet instead and require one on every branch. When the two tables reference the same table through more than one pair of foreign keys, the key to relate them on is ambiguous and the join is refused.
+
+The same rule relates a semi-joined table to the query's own table. With `Tenant(owner: Owner)` and `Pet(owner: Owner)`, `semiJoin<Pet>().on<Tenant>()` finds the tenants whose owner has a matching pet, `p.owner_id = t.owner_id`, and an `or` across `Tenant_.name` and `Pet_.name` branches as a `UNION` like any other: the pets found by name give owner keys, through which the tenants are read.
+
 ### Filtering by Other Rows of the Same Table
 
 A semi-join on the query's own table finds the rows that reference the same row of another table as the query's row, and `on` names that table. The visits since a date of the pets that had a rabies shot:

@@ -531,6 +531,7 @@ Pick the form by the direction of the relation and by whether the related rows b
 **Through two to-many relations, chain the semi-joins.** `on` names a semi-joined table, so `.semiJoin(Pet.class).on(Owner.class).semiJoin(Visit.class).on(Pet.class).where(Visit_.visitDate, GREATER_THAN_OR_EQUAL, date)` finds the owners with a pet that had a visit since the date, each once.
 - The visit's `EXISTS` nests in the pet's, and conditions joined by `and` on `Pet` and `Visit` hold for the same pet.
 - Through a link table, `on` names the table the link row points at: `.semiJoin(PetSitting.class).on(Owner.class).semiJoin(Visit.class).on(Pet.class)` relates the visit to the link's `pet_id` without reading the pet table.
+- Two tables that both reference one table relate through that key when neither references the other: `.semiJoin(PetNickname.class).on(Pet.class).semiJoin(Vaccination.class).on(PetNickname.class)` matches `vaccination.pet_id = pet_nickname.pet_id` inside the nickname's subquery, so the vaccination counts for the nickname branch only and a pet found by its own name needs none. `on(Pet.class)` would correlate the vaccination to the query's pet and filter every branch.
 - An `antiJoin` on a semi-joined table nests as `NOT EXISTS` (owners with a pet that never had a visit).
 - A semi-join on an anti-joined table takes its condition on the join.
 

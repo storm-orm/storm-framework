@@ -16,6 +16,7 @@
 package st.orm.core.template.impl;
 
 import static java.util.Collections.nCopies;
+import static java.util.Objects.requireNonNull;
 import static java.util.stream.Collectors.joining;
 import static st.orm.ResolveScope.INNER;
 import static st.orm.core.template.TemplateString.wrap;
@@ -83,7 +84,10 @@ import st.orm.mapping.RecordField;
  * inner table goes into the inner subquery, and conditions joined by AND on the outer filtered table and the tables
  * inside its subquery hold for the same outer related row. A table reached through a foreign key is correlated on that
  * foreign key's columns, so the subquery does not read the table in between. A table the query reaches itself, as its
- * own table, a table it joins, or a table its own foreign keys join, stays the query's.</p>
+ * own table, a table it joins, or a table its own foreign keys join, stays the query's. Where neither the filtered
+ * table nor the table it is joined on references the other, the two relate through the foreign keys both hold to one
+ * table, and the subquery's row is matched with the other row on that key, so the table both reference is not read
+ * either.</p>
  *
  * <p>A table filtered inside an anti-join's subquery decides which related rows exclude a row, so, like the anti-joined
  * table, it takes its condition on the join and not in the WHERE clause.</p>
@@ -112,9 +116,13 @@ final class FilterJoinPlacement {
      * @param type the join type.
      * @param parent the semi-join or anti-join whose subquery holds this one's, or {@code null} when the anchor is a
      *               table of the query.
-     * @param anchorKey the foreign key field of the parent's table that references the anchor, or of the query's table
-     *                  for a join on the query's own table; {@code null} when the anchor is the parent's table itself
-     *                  or a table of the query.
+     * @param correlated the table whose row the subquery's row is matched with: the anchor, or the table holding the
+     *                   foreign key through which the anchor is reached.
+     * @param anchorKey the foreign key field of the correlated table that the subquery's row is matched on: the
+     *                  parent's key referencing the anchor, the query's table's key for a join on the query's own
+     *                  table, or the anchor's key referencing the table both the anchor and the filtered table
+     *                  reference; {@code null} when the subquery's row is matched on the foreign key between the
+     *                  filtered table and the anchor.
      */
     private record FilterJoin(Class<? extends Data> table,
                               Class<? extends Data> anchor,
@@ -122,6 +130,7 @@ final class FilterJoinPlacement {
                               @Nullable PredicateNode condition,
                               FilterJoinType type,
                               @Nullable FilterJoin parent,
+                              Class<? extends Data> correlated,
                               @Nullable RecordField anchorKey) {
 
         @Override
@@ -139,6 +148,15 @@ final class FilterJoinPlacement {
      * A foreign key of a filtered table through which a semi-join or anti-join reaches the table it is joined on.
      */
     private record Hop(FilterJoin filterJoin, RecordField foreignKey) {}
+
+    /**
+     * How a filtered table relates to the table it is joined on when neither references the other: through the
+     * foreign keys both hold to one table.
+     *
+     * @param relation the filtered table's key to the table both reference.
+     * @param anchorKey the anchor's key to that table.
+     */
+    private record Sibling(Relation relation, RecordField anchorKey) {}
 
     private final QueryTemplate queryTemplate;
     private final Class<? extends Data> fromType;
@@ -479,7 +497,9 @@ final class FilterJoinPlacement {
      * branch for the anchor's terms and one per semi-joined table, or {@code null} when the terms or the relations do
      * not take that shape. Each branch reads its own table through its own indexes, and only the keys it finds meet
      * the anchor: an {@code OR} beside an {@code EXISTS} would test every row of the anchor instead. The semi-joined
-     * tables must each hold a single-column key to the same anchor, and each branch's terms name only its table.
+     * tables must each hold a single-column key to the same anchor, or to a table the anchor holds a single-column key
+     * to, and each branch's terms name only its table. The branch of a table related through the table both reference
+     * reads the anchor's rows through that key, so it yields the anchor's own key like the other branches.
      *
      * @param anchorTerms the terms on the anchor, none for no branch of its own.
      * @param tableTerms the terms per semi-joined table, in the order the branches render.
@@ -490,18 +510,22 @@ final class FilterJoinPlacement {
         if (!branchOnAnchor || tableTerms.isEmpty() || (anchorTerms.isEmpty() ? 0 : 1) + tableTerms.size() < 2) {
             return null;
         }
-        // Every branch's key references the anchor the first table's does.
+        // Every branch finds the single-column key of the anchor the first table is joined on, through a
+        // single-column key of its own.
         var first = tableTerms.keySet().iterator().next();
+        var anchor = first.anchor();
+        if (composite(queryTemplate, anchor)) {
+            return null;
+        }
         for (var entry : tableTerms.entrySet()) {
             var semiJoin = entry.getKey();
             var relation = semiJoin.relation();
-            if (!relation.tableHoldsKey() || relation.composite() || semiJoin.anchorKey() != null
-                    || semiJoin.anchor() != first.anchor()
+            if (!relation.tableHoldsKey() || relation.composite() || semiJoin.parent() != null
+                    || semiJoin.anchor() != anchor || semiJoin.correlated() != anchor
                     || !entry.getValue().stream().allMatch(term -> onlyNames(term, Set.of(semiJoin.table())))) {
                 return null;
             }
         }
-        var anchor = first.anchor();
         if (!anchorTerms.stream().allMatch(term -> onlyNames(term, Set.of(anchor)))) {
             return null;
         }
@@ -513,9 +537,19 @@ final class FilterJoinPlacement {
         }
         for (var entry : tableTerms.entrySet()) {
             var semiJoin = entry.getKey();
-            branches.add(new Subquery(branch(semiJoin.table(),
-                    new RelationKey(semiJoin.table(), semiJoin.relation().foreignKey(), true, INNER),
-                    restricted(semiJoin, PredicateNode.or(entry.getValue()))), false));
+            // The branch holds the subqueries of the joins hanging off the semi-join, as its EXISTS would.
+            var condition = requireNonNull(condition(semiJoin, List.of(restricted(semiJoin, PredicateNode.or(entry.getValue()))), true));
+            var tableKey = new RelationKey(semiJoin.table(), semiJoin.relation().foreignKey(), true, INNER);
+            var tableBranch = new Subquery(branch(semiJoin.table(), tableKey, condition), false);
+            var anchorKey = semiJoin.anchorKey();
+            if (anchorKey == null) {
+                branches.add(tableBranch);
+            } else {
+                // The table's key references the table the anchor's key does: the anchor's rows holding a key the
+                // table's branch finds are read through that key, so the branch yields the anchor's own key.
+                var held = new Term(TemplateString.raw("\0 IN (\0)", new RelationKey(anchor, anchorKey, true, INNER), tableBranch), true);
+                branches.add(new Subquery(branch(anchor, key, held), false));
+            }
         }
         return TemplateString.raw("\0 IN (" + String.join("\nUNION\n", nCopies(branches.size() - 1, "\0")) + ")",
                 branches.toArray());
@@ -547,11 +581,8 @@ final class FilterJoinPlacement {
      */
     private TemplateString exists(FilterJoin filterJoin, @Nullable PredicateNode condition) {
         var relation = filterJoin.relation();
-        var parent = filterJoin.parent();
-        // A join on the query's own table correlates the foreign key of the subquery's row with the query's row's.
-        var correlation = filterJoin.anchorKey() == null
-                ? new Correlation(filterJoin.table(), filterJoin.anchor(), relation.foreignKey(), relation.tableHoldsKey())
-                : new Correlation(filterJoin.table(), parent == null ? fromType : parent.table(), relation.foreignKey(), true, filterJoin.anchorKey());
+        var correlation = new Correlation(filterJoin.table(), filterJoin.correlated(), relation.foreignKey(),
+                relation.tableHoldsKey(), filterJoin.anchorKey());
         var parts = new ArrayList<PredicateNode>(2);
         parts.add(new Term(wrap(correlation), true));
         var inner = condition(filterJoin, condition == null ? List.of() : List.of(condition), true);
@@ -785,7 +816,8 @@ final class FilterJoinPlacement {
      * <p>A join is joined on a table of the query when the anchor is the query's table, a table the query joins, or a
      * table its own foreign keys join. Otherwise it is joined on a semi-joined or anti-joined table named as the
      * anchor, or on a table one of them holds a foreign key to. An anchor neither reaches stays the query's, which
-     * resolves it as it resolves any table, including the tables of an enclosing query.</p>
+     * resolves it as it resolves any table, including the tables of an enclosing query. Where neither the filtered
+     * table nor the anchor references the other, they relate through the foreign keys both hold to one table.</p>
      *
      * <p>A join on the query's own table finds the rows that reference the same row of the anchor as the query's row:
      * the visits of the pets another visit was for. Both occurrences hold the foreign key, so the subquery's row
@@ -828,21 +860,75 @@ final class FilterJoinPlacement {
                     .formatted(type.method(), table.getSimpleName(), anchor.getSimpleName(), describe(parents)));
         }
         var parent = parents.isEmpty() ? null : parents.getFirst();
-        RecordField anchorKey = null;
-        if (parent == null && anchor != fromType && !joined.contains(anchor) && !joinedThroughForeignKeys(fromType, anchor)) {
-            var hop = hop(queryTemplate, type, table, anchor, resolved);
-            if (hop != null) {
-                parent = hop.filterJoin();
-                anchorKey = hop.foreignKey();
-            }
-        }
+        var hop = parent == null && anchor != fromType && !joined.contains(anchor) && !joinedThroughForeignKeys(fromType, anchor)
+                ? hop(queryTemplate, type, table, anchor, resolved)
+                : null;
         var relation = relation(queryTemplate, type, table, anchor);
-        if (parent != null && anchorKey != null && !relation.tableHoldsKey()) {
-            throw new PersistenceException("%1$s(%2$s).on(%3$s): %3$s is reached through the foreign key %4$s.%5$s, but %3$s holds the foreign key to %2$s, so the subquery of %4$s would have to read %3$s. Filter by %3$s itself first: semiJoin(%3$s).on(%4$s), then %1$s(%2$s).on(%3$s)."
-                    .formatted(type.method(), table.getSimpleName(), anchor.getSimpleName(),
-                            parent.table().getSimpleName(), anchorKey.name()));
+        if (hop != null) {
+            if (relation == null) {
+                throw noRelation(type, table, anchor);
+            }
+            if (!relation.tableHoldsKey()) {
+                throw new PersistenceException("%1$s(%2$s).on(%3$s): %3$s is reached through the foreign key %4$s.%5$s, but %3$s holds the foreign key to %2$s, so the subquery of %4$s would have to read %3$s. Filter by %3$s itself first: semiJoin(%3$s).on(%4$s), then %1$s(%2$s).on(%3$s)."
+                        .formatted(type.method(), table.getSimpleName(), anchor.getSimpleName(),
+                                hop.filterJoin().table().getSimpleName(), hop.foreignKey().name()));
+            }
+            return new FilterJoin(table, anchor, relation, condition, type, hop.filterJoin(), hop.filterJoin().table(), hop.foreignKey());
         }
-        return new FilterJoin(table, anchor, relation, condition, type, parent, anchorKey);
+        if (relation != null) {
+            return new FilterJoin(table, anchor, relation, condition, type, parent, anchor, null);
+        }
+        var sibling = sibling(queryTemplate, type, table, anchor);
+        if (sibling != null) {
+            return new FilterJoin(table, anchor, sibling.relation(), condition, type, parent, anchor, sibling.anchorKey());
+        }
+        throw noRelation(type, table, anchor);
+    }
+
+    private static PersistenceException noRelation(FilterJoinType type, Class<? extends Data> table, Class<? extends Data> anchor) {
+        return new PersistenceException("%1$s(%2$s).on(%3$s): no foreign key relates %2$s and %3$s. A %1$s needs one of them to hold a @FK field referencing the other, or both to hold one referencing the same table."
+                .formatted(type.method(), table.getSimpleName(), anchor.getSimpleName()));
+    }
+
+    /**
+     * Resolves how the filtered table relates to the anchor when neither references the other: through the foreign
+     * keys both hold to one table, so the subquery's row is matched with the anchor's row on that key, and the table
+     * both reference is not read.
+     *
+     * @return the relation and the anchor's key, or {@code null} when the two reference no table in common.
+     * @throws PersistenceException if the two reference a table in common through more than one pair of keys.
+     */
+    private static @Nullable Sibling sibling(QueryTemplate queryTemplate,
+                                             FilterJoinType type,
+                                             Class<? extends Data> table,
+                                             Class<? extends Data> anchor) {
+        var siblings = new ArrayList<Sibling>(1);
+        try {
+            var anchorKeys = getFkFields(anchor).toList();
+            for (var tableKey : getFkFields(table).toList()) {
+                var referenced = referenced(tableKey);
+                if (referenced == null) {
+                    continue;
+                }
+                var matches = findRecordFields(anchorKeys, referenced);
+                if (matches.isEmpty()) {
+                    matches = byTable(queryTemplate, anchorKeys, referenced);
+                }
+                for (var anchorKey : matches) {
+                    siblings.add(new Sibling(relation(queryTemplate, tableKey, true, referenced), anchorKey));
+                }
+            }
+        } catch (SqlTemplateException e) {
+            throw new PersistenceException(e);
+        }
+        if (siblings.size() > 1) {
+            throw new PersistenceException("%1$s(%2$s).on(%3$s): %2$s and %3$s reference the same table through more than one pair of foreign keys (%4$s), so the key to relate them on is ambiguous."
+                    .formatted(type.method(), table.getSimpleName(), anchor.getSimpleName(),
+                            siblings.stream()
+                                    .map(sibling -> "%s.%s and %s.%s".formatted(table.getSimpleName(), sibling.relation().foreignKey().name(), anchor.getSimpleName(), sibling.anchorKey().name()))
+                                    .collect(joining(", "))));
+        }
+        return siblings.isEmpty() ? null : siblings.getFirst();
     }
 
     /**
@@ -861,11 +947,14 @@ final class FilterJoinPlacement {
                     .formatted(type.method(), table.getSimpleName()));
         }
         var relation = relation(queryTemplate, type, table, anchor);
+        if (relation == null) {
+            throw noRelation(type, table, anchor);
+        }
         if (!relation.tableHoldsKey()) {
             throw new PersistenceException("%1$s(%2$s).on(%3$s): a %1$s on the query's own table finds the %2$s rows that reference the same %3$s as the query's row, which takes a foreign key of %2$s referencing %3$s; %3$s references %2$s instead."
                     .formatted(type.method(), table.getSimpleName(), anchor.getSimpleName()));
         }
-        return new FilterJoin(table, anchor, relation, condition, type, null, relation.foreignKey());
+        return new FilterJoin(table, anchor, relation, condition, type, null, table, relation.foreignKey());
     }
 
     /**
@@ -990,11 +1079,13 @@ final class FilterJoinPlacement {
     /**
      * Resolves how the filtered table relates to the table it is joined on, the way a join between them resolves its
      * ON clause: a foreign key referencing the other type, then one referencing the other type's table.
+     *
+     * @return the relation, or {@code null} when neither references the other.
      */
-    private static Relation relation(QueryTemplate queryTemplate,
-                                     FilterJoinType type,
-                                     Class<? extends Data> table,
-                                     Class<? extends Data> anchor) {
+    private static @Nullable Relation relation(QueryTemplate queryTemplate,
+                                               FilterJoinType type,
+                                               Class<? extends Data> table,
+                                               Class<? extends Data> anchor) {
         try {
             var anchorKey = single(type, anchor, table, findRecordFields(getFkFields(anchor).toList(), table));
             if (anchorKey != null) {
@@ -1015,15 +1106,20 @@ final class FilterJoinPlacement {
         } catch (SqlTemplateException e) {
             throw new PersistenceException(e);
         }
-        throw new PersistenceException("%1$s(%2$s).on(%3$s): no foreign key relates %2$s and %3$s. A %1$s needs one of them to hold a @FK field referencing the other."
-                .formatted(type.method(), table.getSimpleName(), anchor.getSimpleName()));
+        return null;
     }
 
     private static Relation relation(QueryTemplate queryTemplate, RecordField foreignKey, boolean tableHoldsKey, Class<? extends Data> referenced) {
-        var composite = queryTemplate.model(referenced, false).getPrimaryKeyMetamodel()
+        return new Relation(foreignKey, tableHoldsKey, composite(queryTemplate, referenced));
+    }
+
+    /**
+     * Returns whether the table's primary key spans several columns.
+     */
+    private static boolean composite(QueryTemplate queryTemplate, Class<? extends Data> table) {
+        return queryTemplate.model(table, false).getPrimaryKeyMetamodel()
                 .map(Metamodel::isInline)
                 .orElse(false);
-        return new Relation(foreignKey, tableHoldsKey, composite);
     }
 
     private static @Nullable RecordField single(FilterJoinType type,
@@ -1031,7 +1127,7 @@ final class FilterJoinPlacement {
                                                 Class<? extends Data> referenced,
                                                 List<RecordField> matches) {
         if (matches.size() > 1) {
-            throw new PersistenceException("%s: %s references %s through more than one foreign key (fields: %s), so the relation to filter by is ambiguous. Use an explicit subquery with exists to choose one."
+            throw new PersistenceException("%s: %s references %s through more than one foreign key (fields: %s), so the relation to filter by is ambiguous."
                     .formatted(type.method(), holder.getSimpleName(), referenced.getSimpleName(), matches.stream().map(RecordField::name).collect(joining(", "))));
         }
         return matches.isEmpty() ? null : matches.getFirst();

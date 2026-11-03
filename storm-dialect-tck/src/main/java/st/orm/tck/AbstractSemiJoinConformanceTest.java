@@ -69,11 +69,16 @@ public abstract class AbstractSemiJoinConformanceTest {
     public record Printing(@PK(generation = NONE) Integer id, @FK Edition edition, int copies)
             implements Entity<Integer> {}
 
+    /** A sibling of {@link Book}: both reference the author, neither references the other. */
+    public record Review(@PK(generation = NONE) Integer id, @FK Ref<Author> author, int stars)
+            implements Entity<Integer> {}
+
     private static final Metamodel<Author, String> AUTHOR_NAME = Metamodel.of(Author.class, "name");
     private static final Metamodel<Book, String> BOOK_TITLE = Metamodel.of(Book.class, "title");
     private static final Metamodel<Printing, Integer> PRINTING_COPIES = Metamodel.of(Printing.class, "copies");
+    private static final Metamodel<Review, Integer> REVIEW_STARS = Metamodel.of(Review.class, "stars");
 
-    private static final List<String> TABLES = List.of("printing", "edition", "book", "author");
+    private static final List<String> TABLES = List.of("review", "printing", "edition", "book", "author");
 
     private DataSource dataSource;
     private ORMTemplate orm;
@@ -92,6 +97,7 @@ public abstract class AbstractSemiJoinConformanceTest {
             statement.execute("CREATE TABLE book (id INT PRIMARY KEY, title VARCHAR(100) NOT NULL, author_id INT)");
             statement.execute("CREATE TABLE edition (publisher_id INT NOT NULL, edition_number INT NOT NULL, label VARCHAR(100) NOT NULL, PRIMARY KEY (publisher_id, edition_number))");
             statement.execute("CREATE TABLE printing (id INT PRIMARY KEY, publisher_id INT NOT NULL, edition_number INT NOT NULL, copies INT NOT NULL)");
+            statement.execute("CREATE TABLE review (id INT PRIMARY KEY, author_id INT NOT NULL, stars INT NOT NULL)");
         }
         orm = PreparedStatementTemplate.ORM(dataSource);
         var authors = orm.entity(Author.class);
@@ -113,6 +119,9 @@ public abstract class AbstractSemiJoinConformanceTest {
                 new Printing(1, first, 500),
                 new Printing(2, first, 5000),
                 new Printing(3, second, 800)));
+        orm.entity(Review.class).insert(List.of(
+                new Review(1, Ref.of(Author.class, 1), 5),
+                new Review(2, Ref.of(Author.class, 2), 3)));
     }
 
     @AfterEach
@@ -138,6 +147,10 @@ public abstract class AbstractSemiJoinConformanceTest {
 
     private static List<String> labels(List<Edition> editions) {
         return editions.stream().map(Edition::label).sorted().toList();
+    }
+
+    private static List<String> titles(List<Book> books) {
+        return books.stream().map(Book::title).sorted().toList();
     }
 
     private List<String> search(String input) {
@@ -238,6 +251,39 @@ public abstract class AbstractSemiJoinConformanceTest {
                 .getResultList()));
         assertEquals(List.of("other"), labels(orm.entity(Edition.class).select()
                 .antiJoin(Printing.class).on(Edition.class)
+                .getResultList()));
+    }
+
+    @Test
+    public void semiJoinOnATableSharingAForeignKeyMatchesOnThatKey() {
+        // The review relates to the book through the author both reference: Tolkien and Austen are reviewed.
+        assertEquals(List.of("Austen"), names(authorsByBooks()
+                .semiJoin(Review.class).on(Book.class)
+                .where(it -> it.where(BOOK_TITLE, EQUALS, "Emma").or(it.where(BOOK_TITLE, EQUALS, "Dune")))
+                .getResultList()));
+        // A book's branch of the union holds the review's subquery; an author found by name needs no review.
+        assertEquals(List.of("Orwell"), names(authorsByBooks()
+                .semiJoin(Review.class).on(Book.class)
+                .where(it -> it.where(AUTHOR_NAME, EQUALS, "Orwell").or(it.where(BOOK_TITLE, EQUALS, "Dune")))
+                .getResultList()));
+        assertEquals(List.of("Austen", "Orwell"), names(authorsByBooks()
+                .semiJoin(Review.class).on(Book.class)
+                .where(it -> it.where(AUTHOR_NAME, EQUALS, "Orwell").or(it.where(BOOK_TITLE, EQUALS, "Emma")))
+                .getResultList()));
+    }
+
+    @Test
+    public void semiJoinOnTheQueryTableSharingAForeignKeyMatchesOnThatKey() {
+        var booksByReviews = orm.entity(Book.class).select().semiJoin(Review.class).on(Book.class);
+        assertEquals(List.of("Emma", "Persuasion"), titles(booksByReviews
+                .where(it -> it.where(REVIEW_STARS, EQUALS, 3))
+                .getResultList()));
+        // The reviews found give author keys, through which the books are read, in a union with the books found by title.
+        assertEquals(List.of("Dune", "The Hobbit", "The Silmarillion"), titles(booksByReviews
+                .where(it -> it.where(BOOK_TITLE, EQUALS, "Dune").or(it.where(REVIEW_STARS, EQUALS, 5)))
+                .getResultList()));
+        assertEquals(List.of("Anonymous Verses", "Dune"), titles(orm.entity(Book.class).select()
+                .antiJoin(Review.class).on(Book.class)
                 .getResultList()));
     }
 
