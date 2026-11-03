@@ -190,6 +190,7 @@ Operators (static constants of `st.orm.Operator`): `EQUALS`, `NOT_EQUALS`, `LESS
 - A one-character word takes no part. An input without a word that takes part, an empty one included, matches no rows, so an index serves every statement `suggest` renders however the user types.
 - The search page the box leads to keeps `search`, which matches every word.
 - Never filter short words or an empty input out in application code: `suggest` does it per dialect.
+- A query the client may abort, as a box that fetches on every keystroke does, runs inside `transaction(tx -> ...)`, and the block hands `tx` to whoever decides the result is no longer wanted: `tx.cancel()`, from any thread, stops the statement on the database and releases the connection, and the block fails with `PersistenceException`. Outside a transaction block, or on a thread that is merely interrupted, a running statement runs to its end.
 - A word the index serves but which occurs in a large share of the rows, such as `the` in a catalog of titles, is the box's to name. `it.suggest(input, Set.of("the", "a", "of"), Movie_.title)` ignores those words as it ignores short ones, compared ignoring case: `the god` matches on `god` alone, and `the` alone matches no rows.
 - Keep that set a constant next to the box. Never strip the words from the input in application code, and never pass the set to `search`, which takes none.
 

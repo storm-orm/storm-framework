@@ -639,6 +639,20 @@ get("/api/users/suggestions") {
 
 A cancellation states no further interest in the block's work, not an outcome: a block whose statements all completed before it arrived commits as usual. A joined block that fails this way dooms the transaction it joined, as any failing joined block does. Outside a `transaction { }` block a statement runs to its end whatever happens to the coroutine, so a query a client may abort belongs in one. Whether a server engine cancels a handler when the client aborts its request is the engine's choice; `withTimeout` cancels on its own.
 
+The handle a block receives cancels the transaction the same way with `cancel()`, from any thread or coroutine, which is how a blocking block is cancelled and how a suspending block is cancelled by a party that holds no reference to its coroutine, such as a watchdog or a stop action. The block hands its handle out and fails at the statement the cancellation stops, or at its next one, with a `PersistenceException`:
+
+```java
+var handle = new CompletableFuture<Transaction>();
+executor.submit(() -> transaction(tx -> {
+    handle.complete(tx);
+    return reports.select().where(...).getResultList();
+}));
+// Once the result is no longer wanted:
+handle.join().cancel();
+```
+
+A blocking block whose thread is interrupted is refused its next statement as well. The interrupt does not reach a statement that is already running, since a driver does not observe it, and on a virtual thread it closes the connection instead, so a running statement is stopped through the handle.
+
 ### Read-Only Transactions
 
 JDBC defines the read-only flag as a hint, and drivers treat it as one: some carry it to the server, some keep it to themselves. Storm makes read-only mean the same thing on every database, in two layers. An `INSERT`, `UPDATE` or `DELETE` issued inside a read-only transaction, through a repository or as a template, is refused with `ReadOnlyTransactionException` before it reaches the database. A write in a form Storm does not recognise, such as a stored procedure call or a `MERGE`, reaches the database, and where the driver does not carry the flag, the dialect opens the transaction read-only on the server itself: on Oracle and MariaDB, Storm sends `SET TRANSACTION READ ONLY` as the transaction's first statement. PostgreSQL, MySQL and MariaDB refuse such a write with SQL state 25006 or the driver's own state, Oracle with ORA-01456; H2, SQL Server and SQLite have no server-side mode and execute it. Marking a transaction read-only also lets the database take lighter locks, and on Oracle it reads the whole transaction from one snapshot. That snapshot is taken when the transaction opens, and Oracle refuses to read a table from it whose definition changed in the same second, with ORA-01466; a read-only transaction opened in the second a migration altered the table it reads therefore fails, and succeeds on the retry.

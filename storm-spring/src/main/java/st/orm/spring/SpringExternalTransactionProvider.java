@@ -99,6 +99,14 @@ public class SpringExternalTransactionProvider implements ExternalTransactionPro
         }
 
         @Override
+        public void cancel() {
+            // Spring holds the statements of a transaction it manages, so Storm has nothing to stop here.
+            throw new UnsupportedOperationException(
+                    "A transaction Spring manages cannot be cancelled through Storm. Cancel the work through Spring, "
+                            + "or open the transaction with Storm's transaction API.");
+        }
+
+        @Override
         public void onCommit(Runnable callback) {
             requireNonNull(callback, "callback");
             register(committed -> {

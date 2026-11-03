@@ -25,6 +25,7 @@ import st.orm.repository.countAll
 import st.orm.repository.exists
 import st.orm.repository.removeAll
 import st.orm.template.model.Visit
+import java.util.concurrent.CompletableFuture
 
 @ExtendWith(SpringExtension::class)
 @ContextConfiguration(classes = [IntegrationConfig::class])
@@ -569,6 +570,67 @@ internal open class TransactionTest(
         // The joined block failed at the statement the cancellation stopped, which it reports as the cancellation
         // rather than as the driver's error.
         failure.await().shouldBeInstanceOf<CancellationException>()
+    }
+
+    @Test
+    fun `suspend transaction cancelled through its handle fails at its statement and rolls back`(): Unit = runBlocking {
+        val handle = CompletableDeferred<Transaction>()
+        val started = System.nanoTime()
+        val work = async {
+            runCatching {
+                transaction {
+                    orm.removeAll<Visit>()
+                    handle.complete(this)
+                    orm.query(SLOW_STATEMENT).singleResult
+                }
+            }
+        }
+        handle.await()
+        delay(200)
+        handle.await().cancel()
+        work.await().exceptionOrNull().shouldBeInstanceOf<PersistenceException>()
+        (System.nanoTime() - started).shouldBeLessThan(10_000_000_000L)
+        orm.exists<Visit>().shouldBeTrue()
+    }
+
+    @Test
+    fun `blocking transaction cancelled through its handle fails at its statement and rolls back`() {
+        val handle = CompletableFuture<Transaction>()
+        val canceller = Thread {
+            Thread.sleep(200)
+            handle.join().cancel()
+        }
+        canceller.start()
+        val started = System.nanoTime()
+        assertThrows<PersistenceException> {
+            transactionBlocking {
+                orm.removeAll<Visit>()
+                handle.complete(this)
+                orm.query(SLOW_STATEMENT).singleResult
+            }
+        }
+        canceller.join()
+        (System.nanoTime() - started).shouldBeLessThan(10_000_000_000L)
+        orm.exists<Visit>().shouldBeTrue()
+    }
+
+    @Test
+    fun `interrupted thread is refused its next statement and the transaction rolls back`() {
+        try {
+            val refused = assertThrows<PersistenceException> {
+                transactionBlocking {
+                    orm.removeAll<Visit>()
+                    Thread.currentThread().interrupt()
+                    orm.exists<Visit>()
+                }
+            }
+            refused.message.shouldContain("interrupted")
+            // The flag is read, not cleared.
+            Thread.currentThread().isInterrupted.shouldBeTrue()
+        } finally {
+            Thread.interrupted()
+        }
+        orm.exists<Visit>().shouldBeTrue()
     }
 
     /**

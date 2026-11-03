@@ -518,6 +518,11 @@ public final class SpringTransactionContext implements TransactionContext {
             if (cancelled(state)) {
                 throw new PersistenceException("Transaction was cancelled, so no further statement runs in it.");
             }
+            // An interrupted thread states the same lack of interest; the flag is read, not cleared, so the
+            // thread's own handling of the interrupt is unaffected.
+            if (Thread.currentThread().isInterrupted()) {
+                throw new PersistenceException("The thread running the transaction was interrupted, so no further statement runs in it.");
+            }
             // The statement may take the time left until the deadline, or the static definition timeout without
             // one.
             Integer seconds = remaining != null ? remaining : state.timeoutSeconds;

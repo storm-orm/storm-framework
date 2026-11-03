@@ -15,7 +15,6 @@
  */
 package st.orm.tck;
 
-import static java.util.Objects.requireNonNull;
 import static java.util.concurrent.TimeUnit.NANOSECONDS;
 import static java.util.concurrent.TimeUnit.SECONDS;
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -44,11 +43,11 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import st.orm.PersistenceException;
 import st.orm.ReadOnlyTransactionException;
+import st.orm.Transaction;
 import st.orm.TransactionOptions;
 import st.orm.core.spi.JdbcConnectionProviderImpl;
 import st.orm.core.spi.JdbcTransactionTemplateProviderImpl;
 import st.orm.core.spi.TransactionRunner;
-import st.orm.core.spi.TransactionScope;
 import st.orm.core.template.ORMTemplate;
 import st.orm.core.template.TemplateString;
 import st.orm.tck.model.Vet;
@@ -71,9 +70,10 @@ import st.orm.tck.model.Vet;
  * enclosing frame's mode, while a joined {@code REQUIRED} frame runs on the enclosing frame's connection and cannot
  * lift its mode.</p>
  *
- * <p>The cancellation case cancels a transaction from another thread while it is blocked on the statement the
- * dialect supplies through {@link #slowStatement()}, and asserts that the driver stops the statement, so the block
- * fails long before the statement would have completed, and that the transaction rolls back.</p>
+ * <p>The cancellation case cancels a transaction through its handle from another thread while it is blocked on
+ * the statement the dialect supplies through {@link #slowStatement()}, and asserts that the driver stops the
+ * statement, so the block fails long before the statement would have completed, and that the transaction rolls
+ * back.</p>
  *
  * <p>The suite commits, so a dialect module runs it with {@code rollback = false} and the suite removes the rows it
  * inserts. The shared seed data holds six vets; the rows the suite inserts carry the last name
@@ -300,21 +300,21 @@ public abstract class AbstractTransactionConformanceTest {
         assumeTrue(statement.isPresent());
         var orm = template(dataSource);
         long seeded = orm.entity(Vet.class).count();
-        var scope = new CompletableFuture<TransactionScope>();
+        var handle = new CompletableFuture<Transaction>();
         var canceller = new Thread(() -> {
             try {
-                var current = scope.get(30, SECONDS);
+                var transaction = handle.get(30, SECONDS);
                 Thread.sleep(1000); // Lets the statement reach the database.
-                current.cancel();
+                transaction.cancel();
             } catch (Exception e) {
                 throw new IllegalStateException(e);
             }
         });
         canceller.start();
         long started = System.nanoTime();
-        assertThrows(PersistenceException.class, () -> transaction(CANCELLABLE, () -> {
+        assertThrows(PersistenceException.class, () -> TransactionRunner.<Object, RuntimeException>execute(CANCELLABLE, transaction -> {
             insertVet(orm);
-            scope.complete(requireNonNull(TransactionScope.current()));
+            handle.complete(transaction);
             return orm.query(TemplateString.of(statement.get())).getResultList();
         }));
         canceller.join();
