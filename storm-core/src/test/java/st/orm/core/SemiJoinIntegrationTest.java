@@ -43,9 +43,12 @@ import st.orm.core.model.Owner_;
 import st.orm.core.model.Pet;
 import st.orm.core.model.PetExtension;
 import st.orm.core.model.PetExtension_;
+import st.orm.core.model.PetPair;
 import st.orm.core.model.PetType;
 import st.orm.core.model.PetVisitCount;
 import st.orm.core.model.Pet_;
+import st.orm.core.model.Tenant;
+import st.orm.core.model.Tenant_;
 import st.orm.core.model.VetSpecialty;
 import st.orm.core.model.Visit;
 import st.orm.core.model.VisitWithCompoundFK;
@@ -651,6 +654,97 @@ public class SemiJoinIntegrationTest {
                 .getResultList());
         assertEquals(List.of(), petNames(pets));
         assertTrue(statement().contains("EXISTS (SELECT 1 FROM owner_primary_pet opp WHERE opp.owner_id = o.id)"), statement());
+    }
+
+    @Test
+    public void semiJoinOnATableSharingAForeignKeyWithTheSemiJoinedTableMatchesOnThatKey() {
+        // data.sql: pets 1, 2, 3, 4, 6 and 7 have a 'spayed' visit; pets 1 (Leo), 3 (Rosy) and 7 (Samantha) have an extension.
+        var pets = capture(() -> orm().entity(Pet.class).select()
+                .semiJoin(Visit.class).on(Pet.class)
+                .semiJoin(PetExtension.class).on(Visit.class)
+                .where(it -> it.where(Visit_.description, EQUALS, "spayed"))
+                .getResultList());
+        assertEquals(List.of("Leo", "Rosy", "Samantha"), petNames(pets));
+        // Neither table references the other: the extension relates to the visit through the pet both reference.
+        assertTrue(statement().contains("WHERE EXISTS (SELECT 1 FROM visit v WHERE v.pet_id = p.id AND v.description = ? AND EXISTS (SELECT 1 FROM pet_extension pe WHERE pe.pet_id = v.pet_id))"), statement());
+        assertEquals(List.of("Leo"), petNames(orm().entity(Pet.class).select()
+                .semiJoin(Visit.class).on(Pet.class)
+                .semiJoin(PetExtension.class).on(Visit.class)
+                .where(it -> it.where(Visit_.description, EQUALS, "spayed").and(it.where(PetExtension_.notes, EQUALS, "Good cat")))
+                .getResultList()));
+        assertEquals(List.of("Basil", "George", "Jewel"), petNames(orm().entity(Pet.class).select()
+                .semiJoin(Visit.class).on(Pet.class)
+                .antiJoin(PetExtension.class).on(Visit.class)
+                .where(it -> it.where(Visit_.description, EQUALS, "spayed"))
+                .getResultList()));
+    }
+
+    @Test
+    public void semiJoinSharingAForeignKeyFiltersTheBranchOfTheSemiJoinedTableAlone() {
+        // The pets named Max, or with a spayed visit and an extension: Max has no extension and is still found by name.
+        var pets = capture(() -> orm().entity(Pet.class).select()
+                .semiJoin(Visit.class).on(Pet.class)
+                .semiJoin(PetExtension.class).on(Visit.class)
+                .where(it -> it.where(Pet_.name, EQUALS, "Max").or(it.where(Visit_.description, EQUALS, "spayed")))
+                .getResultList());
+        assertEquals(List.of("Leo", "Max", "Rosy", "Samantha"), petNames(pets));
+        assertTrue(statement().contains("UNION SELECT v.pet_id FROM visit v WHERE v.description = ? AND EXISTS (SELECT 1 FROM pet_extension pe WHERE pe.pet_id = v.pet_id))"), statement());
+        // A search word matching a visit counts for a pet with an extension; a word matching the pet's own name for any pet.
+        assertEquals(List.of("Leo", "Rosy", "Samantha"), petNames(orm().entity(Pet.class).select()
+                .semiJoin(Visit.class).on(Pet.class)
+                .semiJoin(PetExtension.class).on(Visit.class)
+                .where(it -> PredicateBuilderFactory.<Data, Pet, Integer>search("spayed", List.of(Pet_.name, Visit_.description)))
+                .getResultList()));
+        assertEquals(List.of("Max"), petNames(orm().entity(Pet.class).select()
+                .semiJoin(Visit.class).on(Pet.class)
+                .semiJoin(PetExtension.class).on(Visit.class)
+                .where(it -> PredicateBuilderFactory.<Data, Pet, Integer>search("Max", List.of(Pet_.name, Visit_.description)))
+                .getResultList()));
+    }
+
+    @Test
+    public void semiJoinOnTheQueryTableSharingAForeignKeyMatchesOnThatKey() {
+        // data.sql: the tenant Alpha has the owner Betty, whose pet Leo was spayed.
+        var tenants = capture(() -> orm().entity(Tenant.class).select()
+                .semiJoin(Pet.class).on(Tenant.class)
+                .where(it -> it.where(Pet_.name, EQUALS, "Leo"))
+                .getResultList());
+        assertEquals(1, tenants.size());
+        assertTrue(statement().contains("EXISTS (SELECT 1 FROM pet p WHERE p.owner_id = t.owner_id AND p.name = ?)"), statement());
+    }
+
+    @Test
+    public void semiJoinOnTheQueryTableSharingAForeignKeyBranchesAsAUnion() {
+        // data.sql: the tenant Alpha has the owner Betty, whose pet is Leo, and Beta the owner George.
+        var tenants = orm().entity(Tenant.class);
+        var found = capture(() -> tenants.select()
+                .semiJoin(Pet.class).on(Tenant.class)
+                .where(it -> it.where(Tenant_.name, EQUALS, "Beta").or(it.where(Pet_.name, EQUALS, "Leo")))
+                .getResultList());
+        assertEquals(List.of("Alpha", "Beta"), found.stream().map(Tenant::name).sorted().toList());
+        // The pets found by name give owner keys, through which the tenants are read; the branches meet on the tenant's key.
+        assertTrue(statement().contains("WHERE t.id IN (SELECT t.id FROM tenant t WHERE t.name = ? UNION SELECT t.id FROM tenant t WHERE t.owner_id IN (SELECT p.owner_id FROM pet p WHERE p.name = ?))"), statement());
+        assertEquals(List.of("Alpha"), capture(() -> tenants.select()
+                .semiJoin(Pet.class).on(Tenant.class)
+                .where(it -> PredicateBuilderFactory.<Data, Tenant, Integer>search("Leo", List.of(Tenant_.name, Pet_.name)))
+                .getResultList()).stream().map(Tenant::name).toList());
+        assertTrue(statement().contains(" UNION "), statement());
+    }
+
+    @Test
+    public void semiJoinSharingMoreThanOneForeignKeyIsRefused() {
+        var e = assertThrows(PersistenceException.class, () -> orm().entity(Pet.class).select()
+                .semiJoin(Visit.class).on(Pet.class)
+                .semiJoin(PetPair.class).on(Visit.class));
+        assertTrue(e.getMessage().contains("semiJoin(PetPair).on(Visit): PetPair and Visit reference the same table through more than one pair of foreign keys (PetPair.first and Visit.pet, PetPair.second and Visit.pet)"), e.getMessage());
+    }
+
+    @Test
+    public void semiJoinSharingNoForeignKeyIsRefused() {
+        var e = assertThrows(PersistenceException.class, () -> orm().entity(Pet.class).select()
+                .semiJoin(Visit.class).on(Pet.class)
+                .semiJoin(Tenant.class).on(Visit.class));
+        assertTrue(e.getMessage().contains("semiJoin(Tenant).on(Visit): no foreign key relates Tenant and Visit"), e.getMessage());
     }
 
     @Test
