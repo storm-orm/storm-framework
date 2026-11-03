@@ -740,10 +740,11 @@ public class SelectBuilderImpl<T extends Data, R, ID> extends QueryBuilderImpl<T
             for (var candidate : join) {
                 if (candidate.autoJoin() || candidate.type() != DefaultJoinType.INNER
                         || !(candidate.source() instanceof TableSource(var table))
-                        || !(candidate.target() instanceof TableTarget(var anchor, var sourceKey, var targetKey, var ignore))
-                        || sourceKey != null || targetKey != null) {
+                        || !(candidate.target() instanceof TableTarget target)
+                        || target.sourceKey() != null || target.targetKey() != null) {
                     continue;
                 }
+                var anchor = target.table();
                 if (findRecordFields(getFkFields(anchor).toList(), table).isEmpty()
                         && !findRecordFields(getFkFields(table).toList(), anchor).isEmpty()) {
                     return table;

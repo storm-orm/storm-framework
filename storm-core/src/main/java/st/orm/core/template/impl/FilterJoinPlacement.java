@@ -919,7 +919,7 @@ final class FilterJoinPlacement {
             if (table == fromType) {
                 if (sourceKey == null) {
                     throw new PersistenceException("%1$s(%2$s).on(%3$s_.%4$s): a %1$s on the query's own table finds the %2$s rows that reference the same row as the query's row, which takes a key of %2$s: on(%2$s_.<key>)."
-                            .formatted(type.method(), table.getSimpleName(), anchor.getSimpleName(), targetKey.name()));
+                            .formatted(type.method(), table.getSimpleName(), anchor.getSimpleName(), requireNonNull(targetKey).name()));
                 }
                 var referenced = targetKey == null ? anchor : requireNonNull(referenced(sourceKey));
                 var relation = relation(queryTemplate, sourceKey, true, referenced);
