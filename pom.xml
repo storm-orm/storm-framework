@@ -272,7 +272,7 @@
                          mvn package org.cyclonedx:cyclonedx-maven-plugin:makeAggregateBom. -->
                     <groupId>org.cyclonedx</groupId>
                     <artifactId>cyclonedx-maven-plugin</artifactId>
-                    <version>2.9.1</version>
+                    <version>2.9.3</version>
                     <configuration>
                         <includeTestScope>false</includeTestScope>
                         <includeProvidedScope>false</includeProvidedScope>
