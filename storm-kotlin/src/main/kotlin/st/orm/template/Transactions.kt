@@ -15,13 +15,21 @@
  */
 package st.orm.template
 
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CopyableThreadContextElement
 import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.DelicateCoroutinesApi
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.asContextElement
 import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.job
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
 import st.orm.TransactionIsolation
 import st.orm.TransactionOptions
@@ -109,6 +117,16 @@ public fun <T> transactionBlocking(
  * coroutine bridged from a thread with `runBlocking` inherits what that thread declared; otherwise the global defaults
  * of [setGlobalTransactionOptions].
  *
+ * ## Cancellation
+ *
+ * Cancelling the coroutine cancels the transaction: the statement the block is blocked on is stopped through the
+ * driver, no further statement runs in the block, and the block fails at that statement, so the transaction rolls
+ * back and releases its connection. The block then completes with the coroutine's [CancellationException], as any
+ * cancelled coroutine does, never with the driver's error for the stopped statement. A cancellation states no
+ * further interest in the block's work, not an outcome: a block whose statements all completed before it arrived
+ * commits as usual. A joined block that fails this way dooms the transaction it joined, as a failing joined block
+ * does: the outer block rolls back and fails with [st.orm.UnexpectedRollbackException].
+ *
  * ## Propagation behavior matrix
  *
  * | Propagation       | Inner commit                                     | Inner rollback                                                   | Outer commit                                         | Outer rollback                                                      |
@@ -166,10 +184,10 @@ public suspend fun <T> transaction(
             (currentContext[TransactionCaller] ?: TransactionCaller())
         val result = try {
             withContext(currentContext + elements) {
-                block(scopeTransaction(scope, parentCallbacks))
+                cancelling(scope) { block(scopeTransaction(scope, parentCallbacks)) }
             }
         } catch (e: Throwable) {
-            throw TransactionRunner.completeAfterFailure(scope, e)
+            throw cancellationOr(TransactionRunner.completeAfterFailure(scope, e))
         }
         scope.complete(false)
         TransactionRunner.afterSuccessfulCompletion(scope)
@@ -192,29 +210,31 @@ public suspend fun <T> transaction(
     // Callbacks fire AFTER withContext returns, so CallbacksKey and ThreadLocals are restored.
     val outcome = try {
         withContext(context) {
-            val value = try {
-                block(scopeTransaction(scope, callbacks))
-            } catch (e: Throwable) {
-                // Read while the scope still holds its transaction state, which completing releases.
+            cancelling(scope) {
+                val value = try {
+                    block(scopeTransaction(scope, callbacks))
+                } catch (e: Throwable) {
+                    // Read while the scope still holds its transaction state, which completing releases.
+                    val mayDefer = TransactionRunner.mayDeferToExternal(scope)
+                    val mayMark = TransactionRunner.mayMarkExternalRollbackOnly(scope)
+                    val wrapped = try {
+                        TransactionRunner.completeAfterFailure(scope, e)
+                    } catch (completionException: Throwable) {
+                        completionException
+                    }
+                    return@cancelling TransactionOutcome<T>(null, false, mayDefer, mayMark, cancellationOr(wrapped))
+                }
+                val rollbackOnly = scope.isRollbackOnly
                 val mayDefer = TransactionRunner.mayDeferToExternal(scope)
                 val mayMark = TransactionRunner.mayMarkExternalRollbackOnly(scope)
-                val wrapped = try {
-                    TransactionRunner.completeAfterFailure(scope, e)
+                try {
+                    scope.complete(false)
+                    TransactionRunner.afterSuccessfulCompletion(scope)
                 } catch (completionException: Throwable) {
-                    completionException
+                    return@cancelling TransactionOutcome<T>(null, rollbackOnly, mayDefer, mayMark, cancellationOr(completionException))
                 }
-                return@withContext TransactionOutcome<T>(null, false, mayDefer, mayMark, wrapped)
+                TransactionOutcome(value, rollbackOnly, mayDefer, mayMark, null)
             }
-            val rollbackOnly = scope.isRollbackOnly
-            val mayDefer = TransactionRunner.mayDeferToExternal(scope)
-            val mayMark = TransactionRunner.mayMarkExternalRollbackOnly(scope)
-            try {
-                scope.complete(false)
-                TransactionRunner.afterSuccessfulCompletion(scope)
-            } catch (completionException: Throwable) {
-                return@withContext TransactionOutcome<T>(null, rollbackOnly, mayDefer, mayMark, completionException)
-            }
-            TransactionOutcome(value, rollbackOnly, mayDefer, mayMark, null)
         }
     } catch (e: Throwable) {
         // withContext itself failed before the block could complete the scope, as when the coroutine is cancelled
@@ -252,6 +272,53 @@ public suspend fun <T> transaction(
  */
 private class CallbacksKey(val callbacks: TransactionCallbacks) : AbstractCoroutineContextElement(Key) {
     companion object Key : CoroutineContext.Key<CallbacksKey>
+}
+
+/**
+ * Runs [block] with the transaction of [scope] cancelled when this coroutine is cancelled, which stops the statement
+ * the block is blocked on.
+ *
+ * The block observes cancellation only at a suspension point, and a blocking statement is none, so a watcher
+ * coroutine suspends on a cancellable continuation whose cancellation handler is invoked synchronously on the
+ * cancelling thread, which is the public hook for that moment. The watcher is unconfined, so neither its start nor
+ * its own cancellation, once the block is done, waits on a dispatcher; the handler then finds this coroutine alive
+ * and does nothing.
+ */
+private suspend fun <T> CoroutineScope.cancelling(scope: TransactionScope, block: suspend () -> T): T {
+    val job = coroutineContext.job
+    val watcher = launch(Dispatchers.Unconfined, CoroutineStart.UNDISPATCHED) {
+        suspendCancellableCoroutine<Nothing> { continuation ->
+            continuation.invokeOnCancellation {
+                if (job.isCancelled) {
+                    scope.cancel()
+                }
+            }
+        }
+    }
+    try {
+        return block()
+    } finally {
+        watcher.cancel()
+    }
+}
+
+/**
+ * Returns the failure a block reports: the coroutine's own cancellation when the coroutine is cancelled, so what
+ * reaches the caller is that cancellation, such as the timeout of a `withTimeout`, rather than the driver's error for
+ * the statement the cancellation stopped or refused; [failure] itself otherwise. A dispatched `withContext` reports
+ * a cancelled coroutine's result this way on its own; a block that joined its enclosing transaction runs in place
+ * and would report the driver's error instead.
+ */
+private suspend fun cancellationOr(failure: Throwable): Throwable {
+    if (failure is CancellationException) {
+        return failure
+    }
+    try {
+        currentCoroutineContext().ensureActive()
+    } catch (cancellation: CancellationException) {
+        return cancellation
+    }
+    return failure
 }
 
 /**

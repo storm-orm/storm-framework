@@ -15,6 +15,7 @@
  */
 package st.orm.spi.h2;
 
+import java.util.Optional;
 import st.orm.tck.AbstractTransactionConformanceTest;
 import st.orm.test.StormTest;
 
@@ -32,5 +33,13 @@ public class H2TransactionConformanceTest extends AbstractTransactionConformance
     @Override
     protected boolean enforcesReadOnly() {
         return false;
+    }
+
+    /**
+     * A count over a cross join of a million rows squared, which runs until it is stopped.
+     */
+    @Override
+    protected Optional<String> slowStatement() {
+        return Optional.of("SELECT COUNT(*) FROM SYSTEM_RANGE(1, 1000000) AS a CROSS JOIN SYSTEM_RANGE(1, 1000000) AS b");
     }
 }

@@ -74,6 +74,11 @@ import st.orm.core.template.impl.TransactionRecord;
  * Storm's side, so a joined frame that declares read-only has its own writes refused whatever the owner's
  * mode, while a read-write frame inside a read-only owner joins it and is refused on write.</p>
  *
+ * <p>A frame is cancelled through the {@link Frame} its handle holds, from any thread: the statement running on the
+ * context's connection is stopped, and the frame and the frames above it, which run in its block, refuse every
+ * further statement. The block then fails at that statement and rolls back, as a failing block does; a block whose
+ * statements all completed before the cancellation arrived completes as usual.</p>
+ *
  * <p>What a frame joins, and which frames share a connection, follows from the frame structure alone, decided
  * when the frame begins and independent of what is bound at the time. A frame is transactional by its
  * propagation, with {@code SUPPORTS} taking after its enclosing frame, and a joining propagation joins the
@@ -103,7 +108,7 @@ public final class JdbcTransactionContext implements TransactionContext {
      * stability. NESTED also shares the map (same connection), but on savepoint rollback the map is cleared to
      * avoid stale state.</p>
      */
-    private static final class TransactionState {
+    private final class TransactionState implements Frame {
         final TransactionPropagation propagation;
         final @Nullable Integer isolationLevel;
         final @Nullable Integer timeoutSeconds;
@@ -133,6 +138,8 @@ public final class JdbcTransactionContext implements TransactionContext {
         @Nullable Savepoint savepoint;
         boolean rollbackOnly;
         boolean rollbackInherited;
+        // Set from any thread; read by the frame's own thread before a statement runs and when the frame completes.
+        volatile boolean cancelled;
         @Nullable Long deadlineNanos;
         // The record of this frame's transaction, taken with the connection while transactions are recorded and
         // released with it.
@@ -157,6 +164,12 @@ public final class JdbcTransactionContext implements TransactionContext {
 
         boolean ownsRange() {
             return index == ownerIndex;
+        }
+
+        @Override
+        public void cancel() {
+            cancelled = true;
+            connectionGuard.cancel();
         }
 
         String timeoutDescription() {
@@ -248,6 +261,19 @@ public final class JdbcTransactionContext implements TransactionContext {
     @Nullable
     private TransactionState lastOrNull() {
         return stack.isEmpty() ? null : stack.getLast();
+    }
+
+    /**
+     * Whether the given frame or a frame enclosing it was cancelled. The frames above a cancelled frame run in its
+     * block, so they are cancelled with it. Read before a statement runs, on the frame's own thread.
+     */
+    private boolean cancelled(TransactionState state) {
+        for (int i = state.index; i >= 0; i--) {
+            if (stack.get(i).cancelled) {
+                return true;
+            }
+        }
+        return false;
     }
 
     @Override
@@ -413,6 +439,11 @@ public final class JdbcTransactionContext implements TransactionContext {
                 throw new TransactionTimedOutException(
                         "Did not complete within timeout [" + state.timeoutDescription() + "].");
             }
+            // A cancelled frame has no further interest in its work, so a statement it issues now is refused the
+            // same way.
+            if (cancelled(state)) {
+                throw new PersistenceException("Transaction was cancelled, so no further statement runs in it.");
+            }
             // The statement may take the time left until the deadline, or the static seconds without one.
             Integer seconds = remaining != null ? remaining : state.timeoutSeconds;
             if (seconds != null && seconds > 0) {
@@ -422,6 +453,7 @@ public final class JdbcTransactionContext implements TransactionContext {
                     throw new PersistenceException("Failed to set query timeout.", e);
                 }
             }
+            connectionGuard.running(preparedStatement);
             return resource;
         };
     }
@@ -436,14 +468,15 @@ public final class JdbcTransactionContext implements TransactionContext {
      * decided here from the enclosing frame, so {@code MANDATORY} and {@code NEVER} are checked against the
      * transaction the enclosing block declares rather than against whatever it has bound so far.</p>
      *
+     * @return the frame, through which the handle that began it cancels it.
      * @throws IllegalTransactionStateException if the propagation is {@code MANDATORY} and no enclosing transaction
      * exists, {@code NEVER} and one does, or the frame joins a transaction and states a stricter isolation level than
      * that transaction runs at.
      */
-    public void begin(TransactionPropagation propagation,
-               @Nullable Integer isolation,
-               @Nullable Integer timeoutSeconds,
-               @Nullable Boolean readOnly) {
+    public Frame begin(TransactionPropagation propagation,
+                       @Nullable Integer isolation,
+                       @Nullable Integer timeoutSeconds,
+                       @Nullable Boolean readOnly) {
         var enclosing = lastOrNull();
         boolean enclosingTransactional = enclosing != null && enclosing.transactional;
         int index = stack.size();
@@ -488,6 +521,7 @@ public final class JdbcTransactionContext implements TransactionContext {
         }
         state.deadlineNanos = timeoutSeconds == null ? null : deadlineFromNow(timeoutSeconds);
         stack.add(state);
+        return state;
     }
 
     /**

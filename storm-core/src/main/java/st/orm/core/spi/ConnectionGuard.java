@@ -18,6 +18,8 @@ package st.orm.core.spi;
 import java.lang.invoke.MethodHandles;
 import java.lang.invoke.VarHandle;
 import java.sql.Connection;
+import java.sql.SQLException;
+import java.sql.Statement;
 import org.jspecify.annotations.Nullable;
 import st.orm.PersistenceException;
 
@@ -33,6 +35,9 @@ import st.orm.PersistenceException;
  *
  * <p>Each transaction context keeps one guard, so the check costs a volatile read and, for the first access, an
  * uncontended compare-and-set.</p>
+ *
+ * <p>The guard also knows the statements running on the connection, which {@link #cancel()} asks the driver to stop
+ * from any thread, as a cancelled coroutine does with the statement its transaction block is blocked on.</p>
  *
  * @see TransactionContext#connectionGuard()
  * @since 1.15
@@ -55,6 +60,14 @@ public final class ConnectionGuard {
     // the next owner. An access that ends on another thread is handed there with synchronization of its own, which
     // carries the depth along.
     private int depth;
+
+    /**
+     * The statements running on the connection, innermost first. A statement that runs while another one is open,
+     * as a fetch inside a stream does, is the one the driver is executing; the outer one resumes when it is released.
+     */
+    private record Running(int depth, Statement statement, @Nullable Running outer) {}
+
+    private volatile @Nullable Running running;
 
     /**
      * Returns the thread local that holds the identity of the current caller.
@@ -95,12 +108,49 @@ public final class ConnectionGuard {
     }
 
     /**
+     * Records the statement the current access is about to run on the connection, so {@link #cancel()} can stop it.
+     *
+     * @param statement the statement about to run.
+     * @since 1.16
+     */
+    public void running(Statement statement) {
+        var current = running;
+        // An access runs one statement at a time: a statement at the depth of the current one replaces it.
+        var outer = current != null && current.depth == depth ? current.outer : current;
+        running = new Running(depth, statement, outer);
+    }
+
+    /**
      * Ends an access registered by {@link #acquire(Connection)}. The access may end on another thread than the one
      * that registered it, as when a stream is closed elsewhere.
      */
     public void release() {
-        if (owner != null && --depth == 0) {
-            owner = null;
+        if (owner != null) {
+            var current = running;
+            if (current != null && current.depth == depth) {
+                running = current.outer;
+            }
+            if (--depth == 0) {
+                owner = null;
+            }
+        }
+    }
+
+    /**
+     * Asks the driver to stop the statements running on the connection. May be called from any thread, and waits
+     * on the driver, which stops the statement it is executing and ignores the request on a statement it is not, so
+     * a statement that completed meanwhile is unaffected. A driver that cannot stop statements leaves the statement
+     * running to its end.
+     *
+     * @since 1.16
+     */
+    public void cancel() {
+        for (var current = running; current != null; current = current.outer) {
+            try {
+                current.statement.cancel();
+            } catch (SQLException ignore) {
+                // Closed meanwhile, or the driver does not stop statements.
+            }
         }
     }
 }

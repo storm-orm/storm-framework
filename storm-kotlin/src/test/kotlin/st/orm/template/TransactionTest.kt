@@ -2,8 +2,11 @@ package st.orm.template
 
 import io.kotest.matchers.booleans.shouldBeFalse
 import io.kotest.matchers.booleans.shouldBeTrue
+import io.kotest.matchers.longs.shouldBeLessThan
 import io.kotest.matchers.shouldNotBe
+import io.kotest.matchers.string.shouldContain
 import io.kotest.matchers.string.shouldStartWith
+import io.kotest.matchers.types.shouldBeInstanceOf
 import kotlinx.coroutines.*
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.Test
@@ -480,6 +483,92 @@ internal open class TransactionTest(
             }
         }
         orm.exists<Visit>().shouldBeTrue()
+    }
+
+    /**
+     * Transaction cancellation.
+     */
+
+    @Test
+    fun `cancelled suspend transaction stops its running statement and rolls back`(): Unit = runBlocking {
+        val started = System.nanoTime()
+        assertThrows<TimeoutCancellationException> {
+            withTimeout(500) {
+                transaction {
+                    orm.removeAll<Visit>()
+                    orm.query(SLOW_STATEMENT).singleResult
+                }
+            }
+        }
+        // The statement was stopped long before it would have completed, and the delete rolled back with it.
+        (System.nanoTime() - started).shouldBeLessThan(10_000_000_000L)
+        orm.exists<Visit>().shouldBeTrue()
+    }
+
+    @Test
+    fun `cancelled suspend transaction refuses its next statement and rolls back`(): Unit = runBlocking {
+        val deleted = CompletableDeferred<Unit>()
+        val refused = CompletableDeferred<Throwable?>()
+        val job = launch {
+            transaction {
+                orm.removeAll<Visit>()
+                deleted.complete(Unit)
+                // Blocked without a suspension point, so the cancellation is not observed before the next statement.
+                Thread.sleep(500)
+                try {
+                    orm.exists<Visit>()
+                    refused.complete(null)
+                } catch (e: Throwable) {
+                    refused.complete(e)
+                    throw e
+                }
+            }
+        }
+        deleted.await()
+        job.cancelAndJoin()
+        refused.await().shouldBeInstanceOf<PersistenceException>().message.shouldContain("cancelled")
+        orm.exists<Visit>().shouldBeTrue()
+    }
+
+    @Test
+    fun `cancelled joined block dooms the outer transaction`(): Unit = runBlocking {
+        assertThrows<UnexpectedRollbackException> {
+            transaction {
+                orm.removeAll<Visit>()
+                try {
+                    withTimeout(500) {
+                        transaction {
+                            orm.query(SLOW_STATEMENT).singleResult
+                        }
+                    }
+                } catch (ignore: TimeoutCancellationException) {
+                    // The joined block was cancelled; this block goes on and tries to commit.
+                }
+            }
+        }
+        orm.exists<Visit>().shouldBeTrue()
+    }
+
+    @Test
+    fun `stopped statement in a joined block surfaces as a cancellation inside the cancelled coroutine`(): Unit = runBlocking {
+        val failure = CompletableDeferred<Throwable>()
+        val job = launch {
+            transaction {
+                try {
+                    transaction {
+                        orm.query(SLOW_STATEMENT).singleResult
+                    }
+                } catch (e: Throwable) {
+                    failure.complete(e)
+                    throw e
+                }
+            }
+        }
+        delay(200)
+        job.cancelAndJoin()
+        // The joined block failed at the statement the cancellation stopped, which it reports as the cancellation
+        // rather than as the driver's error.
+        failure.await().shouldBeInstanceOf<CancellationException>()
     }
 
     /**
@@ -1102,3 +1191,12 @@ internal open class TransactionTest(
         orm.exists<Visit>().shouldBeFalse()
     }
 }
+
+/**
+ * A statement that runs for far longer than any test waits, so a test that stops it early proves the cancellation.
+ */
+private const val SLOW_STATEMENT = """
+    SELECT COUNT(*)
+    FROM SYSTEM_RANGE(1, 1_000_000) AS A
+    CROSS JOIN SYSTEM_RANGE(1, 1_000_000) AS B
+"""

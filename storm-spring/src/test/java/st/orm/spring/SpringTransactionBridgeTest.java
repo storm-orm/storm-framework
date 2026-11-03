@@ -34,6 +34,8 @@ import java.io.IOException;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.util.List;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.TimeUnit;
 import javax.sql.DataSource;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -46,6 +48,7 @@ import st.orm.IllegalTransactionStateException;
 import st.orm.PersistenceException;
 import st.orm.ReadOnlyTransactionException;
 import st.orm.TransactionOptions;
+import st.orm.core.spi.TransactionScope;
 import st.orm.repository.EntityRepository;
 import st.orm.spring.model.Pet;
 import st.orm.spring.model.Visit;
@@ -449,5 +452,33 @@ class SpringTransactionBridgeTest {
                     return null;
                 }));
         assertTrue(exception.getMessage().contains("PlatformTransactionManager supplier"));
+    }
+
+    @Test
+    void cancellingTheTransactionStopsItsStatementAndRollsBack() throws InterruptedException {
+        long seeded = visits.count();
+        var scope = new CompletableFuture<TransactionScope>();
+        var canceller = new Thread(() -> {
+            try {
+                var current = scope.get(30, TimeUnit.SECONDS);
+                Thread.sleep(500); // Lets the statement reach the database.
+                current.cancel();
+            } catch (Exception e) {
+                throw new IllegalStateException(e);
+            }
+        });
+        canceller.start();
+        long started = System.nanoTime();
+        assertThrows(PersistenceException.class, () -> transaction(tx -> {
+            visits.removeAll();
+            scope.complete(TransactionScope.current());
+            // A count over a cross join of a million rows squared, which runs until it is stopped.
+            return orm.query("SELECT COUNT(*) FROM SYSTEM_RANGE(1, 1000000) AS a CROSS JOIN SYSTEM_RANGE(1, 1000000) AS b")
+                    .getSingleResult(Long.class);
+        }));
+        canceller.join();
+        // The block failed long before the statement would have completed, and the delete rolled back with it.
+        assertTrue(TimeUnit.NANOSECONDS.toSeconds(System.nanoTime() - started) < 20);
+        assertEquals(seeded, visits.count());
     }
 }

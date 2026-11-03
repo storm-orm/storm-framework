@@ -183,6 +183,7 @@ public final class TransactionScope {
     private QueryObserver.@Nullable TransactionObservation observation;
     private boolean rollbackOnly;       // Buffered until materialization; guarded by this.
     private boolean rollbackInherited;  // Set when the mark came from a joined inner scope; guarded by this.
+    private volatile boolean cancelled;
 
     private TransactionScope(TransactionOptions options, boolean suspendMode, @Nullable TransactionScope parent) {
         this.options = options;
@@ -353,6 +354,11 @@ public final class TransactionScope {
         }
         this.owner = provider;
         this.handle = newHandle;
+        if (cancelled) {
+            // Cancelled before its first statement: the frame refuses it. Nothing runs yet, so nothing waits on the
+            // driver here.
+            newHandle.cancel();
+        }
         if (queryObserver != null && isPhysicalTransaction(outerContext)) {
             try {
                 this.observation = queryObserver.onTransaction(options);
@@ -391,6 +397,38 @@ public final class TransactionScope {
             return 0;
         }
         return (int) Math.min(Integer.MAX_VALUE, (remainingNanos + 999_999_999L) / 1_000_000_000L);
+    }
+
+    /**
+     * Cancels the transaction of this scope: the statement running in it is stopped, and no further statement runs
+     * in it. The block running in the scope then fails at the statement that was stopped, or at its next one, with
+     * a {@link PersistenceException} naming the cancellation, and rolls back as a failing block does. A cancellation
+     * states no further interest in the block's work, not an outcome: a block whose statements all completed before
+     * it arrived completes as usual.
+     *
+     * <p>May be called from any thread, as a coroutine's cancellation handler does, and returns at once: the driver
+     * is asked to stop the statement on a thread of its own, since a cancellation handler runs on the cancelling
+     * thread, which may be a timer or an event loop that cannot wait on a round trip to the database. A scope that
+     * has not been materialized yet refuses its first statement.</p>
+     *
+     * @since 1.16
+     */
+    public void cancel() {
+        cancelled = true;
+        var currentHandle = handle;
+        if (currentHandle != null) {
+            Thread.ofVirtual().name("storm-cancel").start(currentHandle::cancel);
+        }
+    }
+
+    /**
+     * Returns whether this scope was {@linkplain #cancel() cancelled}.
+     *
+     * @return {@code true} if the scope was cancelled.
+     * @since 1.16
+     */
+    public boolean isCancelled() {
+        return cancelled;
     }
 
     /**

@@ -129,6 +129,10 @@ class ORMConfiguration {
 }
 ```
 
+A Spring-wired template runs `transactionBlocking` only: the suspending `transaction { }` is refused, since a Spring-managed transaction is bound to its thread, see [Suspend Functions and @Transactional](transactions.md#suspend-functions-and-transactional). An application written with suspending functions, in Spring MVC as much as in WebFlux, keeps a template that manages its own transactions instead and uses the suspending `transaction { }` throughout: a template built with `dataSource.orm`, or the starter's template with `StormTransactionAutoConfiguration` excluded, which is what takes Spring's transaction manager out of the picture. Such a template does not join a `@Transactional` method, so the transaction boundaries are Storm's blocks alone.
+
+In that setup a cancelled coroutine cancels its transaction with it: the statement the block is blocked on is stopped and the connection released, see [Transaction Cancellation](transactions.md#transaction-cancellation). `withTimeout` around a block cancels on its own; whether the web layer cancels a suspending handler when a request times out or its client goes away is Spring's and the container's choice.
+
 This allows combining Spring's `@Transactional` with Storm's programmatic `transaction` blocks:
 
 ```kotlin

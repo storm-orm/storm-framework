@@ -620,6 +620,25 @@ Storm holds a block to its deadline at every statement and again when the block 
 
 The timeout is optional, so leaving it unset is how a block runs without one, and `timeoutSeconds = 0` means no time is left: the block's first statement is refused. Spring's `DataSourceTransactionManager` reads a zero timeout the same way, and marks `TIMEOUT_DEFAULT` (`-1`) as having none, since its timeout is a plain `int`.
 
+### Transaction Cancellation
+
+Cancelling the coroutine of a suspend `transaction { }` cancels the transaction. The statement the block is blocked on is stopped through the driver, which asks the database to abandon it, no further statement runs in the block, and the block fails at that statement, so the transaction rolls back and releases its connection. The block completes with the coroutine's `CancellationException`, as any cancelled coroutine does, never with the driver's error for the stopped statement. A search box that suggests as the user types is the typical case: every keystroke aborts the previous request, and the query that request was running stops with it instead of running to its end on the database.
+
+```kotlin
+get("/api/users/suggestions") {
+    val input = call.request.queryParameters.getOrFail("query")
+    val users = transaction(readOnly = true) {
+        orm.selectFrom<User>()
+            .where(suggest(input, User_.email))
+            .limit(6)
+            .resultList
+    }
+    call.respond(users)
+}
+```
+
+A cancellation states no further interest in the block's work, not an outcome: a block whose statements all completed before it arrived commits as usual. A joined block that fails this way dooms the transaction it joined, as any failing joined block does. Outside a `transaction { }` block a statement runs to its end whatever happens to the coroutine, so a query a client may abort belongs in one. Whether a server engine cancels a handler when the client aborts its request is the engine's choice; `withTimeout` cancels on its own.
+
 ### Read-Only Transactions
 
 JDBC defines the read-only flag as a hint, and drivers treat it as one: some carry it to the server, some keep it to themselves. Storm makes read-only mean the same thing on every database, in two layers. An `INSERT`, `UPDATE` or `DELETE` issued inside a read-only transaction, through a repository or as a template, is refused with `ReadOnlyTransactionException` before it reaches the database. A write in a form Storm does not recognise, such as a stored procedure call or a `MERGE`, reaches the database, and where the driver does not carry the flag, the dialect opens the transaction read-only on the server itself: on Oracle and MariaDB, Storm sends `SET TRANSACTION READ ONLY` as the transaction's first statement. PostgreSQL, MySQL and MariaDB refuse such a write with SQL state 25006 or the driver's own state, Oracle with ORA-01456; H2, SQL Server and SQLite have no server-side mode and execute it. Marking a transaction read-only also lets the database take lighter locks, and on Oracle it reads the whole transaction from one snapshot. That snapshot is taken when the transaction opens, and Oracle refuses to read a table from it whose definition changed in the same second, with ORA-01466; a read-only transaction opened in the second a migration altered the table it reads therefore fails, and succeeds on the retry.
@@ -1231,8 +1250,10 @@ val saved = withContext(Dispatchers.IO) { orderService.placeOrder(order) }
 ```
 
 Dispatcher freedom inside a transaction, switching with `withContext` while staying in the same transaction,
-is a property of Storm-managed [suspend transactions](#suspend-transactions); a Spring-managed transaction stays
-on the thread that started it.
+is a property of Storm-managed [suspend transactions](#suspend-transactions), as is their
+[cancellation](#transaction-cancellation); a Spring-managed transaction stays on the thread that started it. An
+application written with suspending functions keeps a Storm-managed template for that reason, see
+[Transaction Integration](spring-integration.md#transaction-integration).
 
 #### Using Storm Without @Transactional
 

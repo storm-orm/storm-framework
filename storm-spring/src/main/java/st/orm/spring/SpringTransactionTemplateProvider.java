@@ -162,7 +162,7 @@ public class SpringTransactionTemplateProvider implements TransactionTemplatePro
                 } else {
                     throw new PersistenceException("Transaction context must be of type SpringTransactionContext.");
                 }
-                context.begin(definition);
+                var frame = context.begin(definition);
                 return new TransactionHandle() {
                     @Override
                     public TransactionContext context() {
@@ -199,6 +199,11 @@ public class SpringTransactionTemplateProvider implements TransactionTemplatePro
                                 callback.accept(status == TransactionSynchronization.STATUS_COMMITTED);
                             }
                         });
+                    }
+
+                    @Override
+                    public void cancel() {
+                        frame.cancel();
                     }
 
                     @Override

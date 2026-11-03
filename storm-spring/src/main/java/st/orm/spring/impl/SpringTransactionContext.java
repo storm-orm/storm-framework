@@ -110,7 +110,7 @@ public final class SpringTransactionContext implements TransactionContext {
      * map is cleared. A frame that owns its range keeps its own map (separate physical transaction or
      * non-transactional boundary).</p>
      */
-    private static final class TransactionState {
+    private final class TransactionState implements Frame {
         // Position on the stack, the frame that owns this frame's physical transaction range (this frame when it
         // starts its own Spring transaction), and whether the frame runs inside a transaction. All three follow
         // from the frame structure and are fixed when the frame begins.
@@ -125,6 +125,8 @@ public final class SpringTransactionContext implements TransactionContext {
         // dialect's transaction-opening statements.
         boolean freshTransaction;
         boolean rollbackOnly;
+        // Set from any thread; read by the frame's own thread before a statement runs and when the frame completes.
+        volatile boolean cancelled;
         @Nullable Integer timeoutSeconds;
         @Nullable Long deadlineNanos;
         // The record of this frame's transaction, taken at its first statement and released when the Spring
@@ -140,6 +142,12 @@ public final class SpringTransactionContext implements TransactionContext {
 
         boolean ownsRange() {
             return index == ownerIndex;
+        }
+
+        @Override
+        public void cancel() {
+            cancelled = true;
+            connectionGuard.cancel();
         }
 
         String timeoutDescription() {
@@ -505,6 +513,11 @@ public final class SpringTransactionContext implements TransactionContext {
                 throw new TransactionTimedOutException(
                         "Did not complete within timeout [" + state.timeoutDescription() + "].");
             }
+            // A cancelled frame has no further interest in its work, so a statement it issues now is refused the
+            // same way.
+            if (cancelled(state)) {
+                throw new PersistenceException("Transaction was cancelled, so no further statement runs in it.");
+            }
             // The statement may take the time left until the deadline, or the static definition timeout without
             // one.
             Integer seconds = remaining != null ? remaining : state.timeoutSeconds;
@@ -515,8 +528,22 @@ public final class SpringTransactionContext implements TransactionContext {
                     throw new PersistenceException("Failed to set query timeout.", e);
                 }
             }
+            connectionGuard.running(preparedStatement);
             return resource;
         };
+    }
+
+    /**
+     * Whether the given frame or a frame enclosing it was cancelled. The frames above a cancelled frame run in its
+     * block, so they are cancelled with it. Read before a statement runs, on the frame's own thread.
+     */
+    private boolean cancelled(TransactionState state) {
+        for (int i = state.index; i >= 0; i--) {
+            if (stack.get(i).cancelled) {
+                return true;
+            }
+        }
+        return false;
     }
 
     /**
@@ -530,11 +557,12 @@ public final class SpringTransactionContext implements TransactionContext {
      * transaction the enclosing block declares rather than against whatever Spring has started so far. The
      * outermost frame's enclosing transaction is the Spring transaction active on the thread, if any.</p>
      *
+     * @return the frame, through which the handle that began it cancels it.
      * @throws IllegalTransactionStateException if the propagation is {@code MANDATORY} and no enclosing transaction
      * exists, {@code NEVER} and one does, or the frame joins a transaction and states a stricter isolation level than
      * that transaction runs at.
      */
-    public void begin(TransactionDefinition definition) {
+    public Frame begin(TransactionDefinition definition) {
         var enclosing = lastOrNull();
         boolean enclosingTransactional = enclosing != null
                 ? enclosing.transactional
@@ -593,6 +621,7 @@ public final class SpringTransactionContext implements TransactionContext {
                     definition.isReadOnly());
         }
         stack.add(state);
+        return state;
     }
 
     /**

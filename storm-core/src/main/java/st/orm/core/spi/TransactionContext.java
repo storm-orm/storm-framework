@@ -171,6 +171,22 @@ public interface TransactionContext {
     <T> Decorator<T> getDecorator(Class<T> resourceType);
 
     /**
+     * A frame of a context: the transaction block the context began for a transaction handle, as that handle holds
+     * it.
+     *
+     * @since 1.16
+     */
+    interface Frame {
+
+        /**
+         * Cancels the frame: the statement running on its connection is stopped, and no further statement runs in
+         * the frame or in the frames it encloses. May be called from any thread while the frame runs, and waits on
+         * the driver to stop the statement.
+         */
+        void cancel();
+    }
+
+    /**
      * Returns the guard that lets this transaction's connection serve one caller at a time, or {@code null} when the
      * context does not check concurrent access.
      *

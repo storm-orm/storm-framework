@@ -120,4 +120,12 @@ public class OracleTransactionConformanceTest extends AbstractTransactionConform
                 MERGE INTO vet USING (SELECT 1 AS one FROM dual) source ON (1 = 0)
                 WHEN NOT MATCHED THEN INSERT (first_name, last_name) VALUES ('Read', '""" + INSERTED_LAST_NAME + "')");
     }
+
+    /**
+     * A count over a cross join of the catalog with itself twice, which runs until it is stopped.
+     */
+    @Override
+    protected Optional<String> slowStatement() {
+        return Optional.of("SELECT COUNT(*) FROM all_objects a CROSS JOIN all_objects b CROSS JOIN all_objects c");
+    }
 }

@@ -15,6 +15,7 @@
  */
 package st.orm.spi.sqlite;
 
+import java.util.Optional;
 import st.orm.tck.AbstractTransactionConformanceTest;
 import st.orm.test.StormTest;
 
@@ -32,5 +33,13 @@ public class SQLiteTransactionConformanceTest extends AbstractTransactionConform
     @Override
     protected boolean supportsReadOnlyTransactions() {
         return false;
+    }
+
+    /**
+     * A count over a recursive sequence of ten billion rows, which runs until it is stopped.
+     */
+    @Override
+    protected Optional<String> slowStatement() {
+        return Optional.of("WITH RECURSIVE sequence(n) AS (SELECT 1 UNION ALL SELECT n + 1 FROM sequence WHERE n < 10000000000) SELECT COUNT(*) FROM sequence");
     }
 }
