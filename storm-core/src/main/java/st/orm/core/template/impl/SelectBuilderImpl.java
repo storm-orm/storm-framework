@@ -740,8 +740,8 @@ public class SelectBuilderImpl<T extends Data, R, ID> extends QueryBuilderImpl<T
             for (var candidate : join) {
                 if (candidate.autoJoin() || candidate.type() != DefaultJoinType.INNER
                         || !(candidate.source() instanceof TableSource(var table))
-                        || !(candidate.target() instanceof TableTarget(var anchor, var field, var ignore))
-                        || field != null) {
+                        || !(candidate.target() instanceof TableTarget(var anchor, var sourceKey, var targetKey, var ignore))
+                        || sourceKey != null || targetKey != null) {
                     continue;
                 }
                 if (findRecordFields(getFkFields(anchor).toList(), table).isEmpty()

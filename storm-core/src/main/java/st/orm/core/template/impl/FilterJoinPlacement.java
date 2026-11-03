@@ -851,15 +851,13 @@ final class FilterJoinPlacement {
         if (condition != null) {
             condition = PredicateNode.resolve(condition, queryTemplate.dialect().minimumSearchTermLength());
         }
+        if (target.sourceKey() != null || target.targetKey() != null) {
+            return keyedFilterJoin(queryTemplate, fromType, resolved, type, table, anchor, target.sourceKey(), target.targetKey(), condition);
+        }
         if (table == fromType) {
             return selfFilterJoin(queryTemplate, type, table, anchor, condition);
         }
-        var parents = filterJoinsOf(resolved, anchor);
-        if (parents.size() > 1) {
-            throw new PersistenceException("%1$s(%2$s).on(%3$s): the query filters by %3$s more than once (%4$s), so the subquery to place the join in is ambiguous."
-                    .formatted(type.method(), table.getSimpleName(), anchor.getSimpleName(), describe(parents)));
-        }
-        var parent = parents.isEmpty() ? null : parents.getFirst();
+        var parent = parentOf(resolved, type, table, anchor);
         var hop = parent == null && anchor != fromType && !joined.contains(anchor) && !joinedThroughForeignKeys(fromType, anchor)
                 ? hop(queryTemplate, type, table, anchor, resolved)
                 : null;
@@ -883,6 +881,64 @@ final class FilterJoinPlacement {
             return new FilterJoin(table, anchor, sibling.relation(), condition, type, parent, anchor, sibling.anchorKey());
         }
         throw noRelation(type, table, anchor);
+    }
+
+    /**
+     * Returns the semi-join or anti-join on the anchor, whose subquery holds the join, or {@code null} when the anchor
+     * is not a filtered table.
+     *
+     * @throws PersistenceException if the query filters by the anchor more than once.
+     */
+    private static @Nullable FilterJoin parentOf(List<FilterJoin> resolved,
+                                                 FilterJoinType type,
+                                                 Class<? extends Data> table,
+                                                 Class<? extends Data> anchor) {
+        var parents = filterJoinsOf(resolved, anchor);
+        if (parents.size() > 1) {
+            throw new PersistenceException("%1$s(%2$s).on(%3$s): the query filters by %3$s more than once (%4$s), so the subquery to place the join in is ambiguous."
+                    .formatted(type.method(), table.getSimpleName(), anchor.getSimpleName(), describe(parents)));
+        }
+        return parents.isEmpty() ? null : parents.getFirst();
+    }
+
+    /**
+     * Resolves a semi-join or anti-join on the keys it names: a key of the filtered table referencing the anchor, a
+     * key of the anchor referencing the filtered table, or a key of each referencing one table, which the subquery's
+     * row is matched on. On the query's own table, the key of the table is matched with the query's row's.
+     */
+    private static FilterJoin keyedFilterJoin(QueryTemplate queryTemplate,
+                                              Class<? extends Data> fromType,
+                                              List<FilterJoin> resolved,
+                                              FilterJoinType type,
+                                              Class<? extends Data> table,
+                                              Class<? extends Data> anchor,
+                                              @Nullable RecordField sourceKey,
+                                              @Nullable RecordField targetKey,
+                                              @Nullable PredicateNode condition) {
+        try {
+            if (table == fromType) {
+                if (sourceKey == null) {
+                    throw new PersistenceException("%1$s(%2$s).on(%3$s_.%4$s): a %1$s on the query's own table finds the %2$s rows that reference the same row as the query's row, which takes a key of %2$s: on(%2$s_.<key>)."
+                            .formatted(type.method(), table.getSimpleName(), anchor.getSimpleName(), targetKey.name()));
+                }
+                var referenced = targetKey == null ? anchor : requireNonNull(referenced(sourceKey));
+                var relation = relation(queryTemplate, sourceKey, true, referenced);
+                return targetKey == null
+                        ? new FilterJoin(table, anchor, relation, condition, type, null, table, sourceKey)
+                        : new FilterJoin(table, anchor, relation, condition, type, null, anchor, targetKey);
+            }
+            var parent = parentOf(resolved, type, table, anchor);
+            if (sourceKey != null && targetKey != null) {
+                var relation = relation(queryTemplate, sourceKey, true, requireNonNull(referenced(sourceKey)));
+                return new FilterJoin(table, anchor, relation, condition, type, parent, anchor, targetKey);
+            }
+            var relation = sourceKey != null
+                    ? relation(queryTemplate, sourceKey, true, anchor)
+                    : relation(queryTemplate, requireNonNull(targetKey), false, table);
+            return new FilterJoin(table, anchor, relation, condition, type, parent, anchor, null);
+        } catch (SqlTemplateException e) {
+            throw new PersistenceException(e);
+        }
     }
 
     private static PersistenceException noRelation(FilterJoinType type, Class<? extends Data> table, Class<? extends Data> anchor) {

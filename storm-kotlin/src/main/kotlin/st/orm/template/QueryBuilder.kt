@@ -2143,6 +2143,132 @@ public class SqlScope<T : Data, R : Any, ID : Any> @PublishedApi internal constr
         builder = builder.rightJoin(J::class).on(O::class, condition)
     }
 
+    /**
+     * Adds an INNER JOIN of [relation] on the foreign key [key], of [relation] or of the table joined on, where the table holds more
+     * than one key to it. With [anchorKey], a key of the table joined on, both keys reference one table and the join matches
+     * them with each other. A [condition] is added to the keys the join joins by.
+     */
+    public fun innerJoin(
+        relation: KClass<out Data>,
+        key: Metamodel<out Data, *>,
+        anchorKey: Metamodel<out Data, *>? = null,
+        condition: (WhereBuilder<Data, R, ID>.() -> PredicateBuilder<out Data, *, *>)? = null,
+    ) {
+        builder = builder.innerJoin(relation).onKeys(key, anchorKey, condition)
+    }
+
+    /** Adds an INNER JOIN of [J] on the foreign key [key] (e.g., `innerJoin<Transfer>(Transfer_.to)`), with an optional [anchorKey] and [condition]. */
+    public inline fun <reified J : Data> innerJoin(
+        key: Metamodel<out Data, *>,
+        anchorKey: Metamodel<out Data, *>? = null,
+        noinline condition: (WhereBuilder<Data, R, ID>.() -> PredicateBuilder<out Data, *, *>)? = null,
+    ) {
+        innerJoin(J::class, key, anchorKey, condition)
+    }
+
+    /**
+     * Adds a LEFT JOIN of [relation] on the foreign key [key], of [relation] or of the table joined on, where the table holds more
+     * than one key to it. With [anchorKey], a key of the table joined on, both keys reference one table and the join matches
+     * them with each other. A [condition] is added to the keys the join joins by.
+     */
+    public fun leftJoin(
+        relation: KClass<out Data>,
+        key: Metamodel<out Data, *>,
+        anchorKey: Metamodel<out Data, *>? = null,
+        condition: (WhereBuilder<Data, R, ID>.() -> PredicateBuilder<out Data, *, *>)? = null,
+    ) {
+        builder = builder.leftJoin(relation).onKeys(key, anchorKey, condition)
+    }
+
+    /** Adds a LEFT JOIN of [J] on the foreign key [key] (e.g., `leftJoin<Transfer>(Transfer_.to)`), with an optional [anchorKey] and [condition]. */
+    public inline fun <reified J : Data> leftJoin(
+        key: Metamodel<out Data, *>,
+        anchorKey: Metamodel<out Data, *>? = null,
+        noinline condition: (WhereBuilder<Data, R, ID>.() -> PredicateBuilder<out Data, *, *>)? = null,
+    ) {
+        leftJoin(J::class, key, anchorKey, condition)
+    }
+
+    /**
+     * Adds a RIGHT JOIN of [relation] on the foreign key [key], of [relation] or of the table joined on, where the table holds more
+     * than one key to it. With [anchorKey], a key of the table joined on, both keys reference one table and the join matches
+     * them with each other. A [condition] is added to the keys the join joins by.
+     */
+    public fun rightJoin(
+        relation: KClass<out Data>,
+        key: Metamodel<out Data, *>,
+        anchorKey: Metamodel<out Data, *>? = null,
+        condition: (WhereBuilder<Data, R, ID>.() -> PredicateBuilder<out Data, *, *>)? = null,
+    ) {
+        builder = builder.rightJoin(relation).onKeys(key, anchorKey, condition)
+    }
+
+    /** Adds a RIGHT JOIN of [J] on the foreign key [key] (e.g., `rightJoin<Transfer>(Transfer_.to)`), with an optional [anchorKey] and [condition]. */
+    public inline fun <reified J : Data> rightJoin(
+        key: Metamodel<out Data, *>,
+        anchorKey: Metamodel<out Data, *>? = null,
+        noinline condition: (WhereBuilder<Data, R, ID>.() -> PredicateBuilder<out Data, *, *>)? = null,
+    ) {
+        rightJoin(J::class, key, anchorKey, condition)
+    }
+
+    /**
+     * Adds a semi-join of [relation] on the foreign key [key], of [relation] or of the table joined on, where the table holds more
+     * than one key to it. With [anchorKey], a key of the table joined on, both keys reference one table and the join matches
+     * them with each other. A [condition] is added to the keys the join joins by.
+     */
+    public fun semiJoin(
+        relation: KClass<out Data>,
+        key: Metamodel<out Data, *>,
+        anchorKey: Metamodel<out Data, *>? = null,
+        condition: (WhereBuilder<Data, R, ID>.() -> PredicateBuilder<out Data, *, *>)? = null,
+    ) {
+        builder = builder.semiJoin(relation).onKeys(key, anchorKey, condition)
+    }
+
+    /** Adds a semi-join of [J] on the foreign key [key] (e.g., `semiJoin<Transfer>(Transfer_.to)`), with an optional [anchorKey] and [condition]. */
+    public inline fun <reified J : Data> semiJoin(
+        key: Metamodel<out Data, *>,
+        anchorKey: Metamodel<out Data, *>? = null,
+        noinline condition: (WhereBuilder<Data, R, ID>.() -> PredicateBuilder<out Data, *, *>)? = null,
+    ) {
+        semiJoin(J::class, key, anchorKey, condition)
+    }
+
+    /**
+     * Adds an anti-join of [relation] on the foreign key [key], of [relation] or of the table joined on, where the table holds more
+     * than one key to it. With [anchorKey], a key of the table joined on, both keys reference one table and the join matches
+     * them with each other. A [condition] is added to the keys the join joins by.
+     */
+    public fun antiJoin(
+        relation: KClass<out Data>,
+        key: Metamodel<out Data, *>,
+        anchorKey: Metamodel<out Data, *>? = null,
+        condition: (WhereBuilder<Data, R, ID>.() -> PredicateBuilder<out Data, *, *>)? = null,
+    ) {
+        builder = builder.antiJoin(relation).onKeys(key, anchorKey, condition)
+    }
+
+    /** Adds an anti-join of [J] on the foreign key [key] (e.g., `antiJoin<Transfer>(Transfer_.to)`), with an optional [anchorKey] and [condition]. */
+    public inline fun <reified J : Data> antiJoin(
+        key: Metamodel<out Data, *>,
+        anchorKey: Metamodel<out Data, *>? = null,
+        noinline condition: (WhereBuilder<Data, R, ID>.() -> PredicateBuilder<out Data, *, *>)? = null,
+    ) {
+        antiJoin(J::class, key, anchorKey, condition)
+    }
+
+    private fun TypedJoinBuilder<Data, R, ID>.onKeys(
+        key: Metamodel<out Data, *>,
+        anchorKey: Metamodel<out Data, *>?,
+        condition: (WhereBuilder<Data, R, ID>.() -> PredicateBuilder<out Data, *, *>)?,
+    ): QueryBuilder<Data, R, ID> = when {
+        anchorKey != null && condition != null -> on(key, anchorKey, condition)
+        anchorKey != null -> on(key, anchorKey)
+        condition != null -> on(key, condition)
+        else -> on(key)
+    }
+
     /** Adds a semi-join of [relation] on [on]: the query keeps the rows with a related row matching the conditions that name it. */
     public fun semiJoin(relation: KClass<out Data>, on: KClass<out Data>) {
         builder = builder.semiJoin(relation).on(on)

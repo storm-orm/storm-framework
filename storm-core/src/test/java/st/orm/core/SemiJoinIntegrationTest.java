@@ -44,6 +44,7 @@ import st.orm.core.model.Pet;
 import st.orm.core.model.PetExtension;
 import st.orm.core.model.PetExtension_;
 import st.orm.core.model.PetPair;
+import st.orm.core.model.PetPair_;
 import st.orm.core.model.PetType;
 import st.orm.core.model.PetVisitCount;
 import st.orm.core.model.Pet_;
@@ -737,6 +738,66 @@ public class SemiJoinIntegrationTest {
                 .semiJoin(Visit.class).on(Pet.class)
                 .semiJoin(PetPair.class).on(Visit.class));
         assertTrue(e.getMessage().contains("semiJoin(PetPair).on(Visit): PetPair and Visit reference the same table through more than one pair of foreign keys (PetPair.first and Visit.pet, PetPair.second and Visit.pet)"), e.getMessage());
+    }
+
+    @Test
+    public void semiJoinOnANamedKeyFollowsThatKey() {
+        // data.sql: the pairs are (1, 2), (3, 4) and (5, 6).
+        var pets = capture(() -> orm().entity(Pet.class).select()
+                .semiJoin(PetPair.class).on(PetPair_.first)
+                .getResultList());
+        assertEquals(List.of("Iggy", "Leo", "Rosy"), petNames(pets));
+        assertTrue(statement().contains("WHERE EXISTS (SELECT 1 FROM pet_pair pp WHERE pp.first_id = p.id)"), statement());
+        assertEquals(List.of("Basil", "George", "Jewel"), petNames(orm().entity(Pet.class).select()
+                .semiJoin(PetPair.class).on(PetPair_.second)
+                .getResultList()));
+        // A key of the table joined on, referencing the filtered table.
+        var owned = capture(() -> orm().entity(Pet.class).select()
+                .semiJoin(Owner.class).on(Pet_.owner, it -> it.where(Owner_.lastName, EQUALS, "Davis"))
+                .getResultList());
+        assertEquals(List.of("Iggy", "Leo"), petNames(owned));
+        assertTrue(statement().contains("WHERE EXISTS (SELECT 1 FROM owner o1 WHERE o1.id = p.owner_id AND o1.last_name = ?)"), statement());
+    }
+
+    @Test
+    public void semiJoinOnTwoNamedKeysMatchesThemWithEachOther() {
+        // The pairs whose second member is the pet of a spayed visit: Basil (2), Jewel (4) and George (6).
+        var pets = capture(() -> orm().entity(Pet.class).select()
+                .semiJoin(Visit.class).on(Pet.class)
+                .semiJoin(PetPair.class).on(PetPair_.second, Visit_.pet)
+                .where(it -> it.where(Visit_.description, EQUALS, "spayed"))
+                .getResultList());
+        assertEquals(List.of("Basil", "George", "Jewel"), petNames(pets));
+        assertTrue(statement().contains("AND EXISTS (SELECT 1 FROM pet_pair pp WHERE pp.second_id = v.pet_id))"), statement());
+        assertEquals(List.of("Leo", "Rosy", "Samantha"), petNames(orm().entity(Pet.class).select()
+                .semiJoin(Visit.class).on(Pet.class)
+                .antiJoin(PetPair.class).on(PetPair_.second, Visit_.pet)
+                .where(it -> it.where(Visit_.description, EQUALS, "spayed"))
+                .getResultList()));
+    }
+
+    @Test
+    public void semiJoinOnTheQueryTableOnANamedKey() {
+        // The pairs sharing their first member with another pair: each pair matches itself.
+        var pairs = capture(() -> orm().entity(PetPair.class).select()
+                .semiJoin(PetPair.class).on(PetPair_.first)
+                .getResultList());
+        assertEquals(3, pairs.size());
+        assertTrue(statement().contains(".first_id = pp.first_id)"), statement());
+    }
+
+    @Test
+    public void semiJoinOnNamedKeysRefusesKeysThatDoNotRelate() {
+        var e = assertThrows(PersistenceException.class, () -> orm().entity(Pet.class).select()
+                .semiJoin(PetPair.class).on(PetPair_.first, Pet_.owner));
+        assertTrue(e.getMessage().contains("on(PetPair_.first, Pet_.owner): the keys reference Pet and Owner"), e.getMessage());
+        var swapped = assertThrows(PersistenceException.class, () -> orm().entity(Pet.class).select()
+                .semiJoin(Visit.class).on(Pet.class)
+                .semiJoin(PetPair.class).on(Visit_.pet, PetPair_.first));
+        assertTrue(swapped.getMessage().contains("on(Visit_.pet, PetPair_.first): the first key is a key of the joined PetPair, and Visit_.pet is a key of Visit"), swapped.getMessage());
+        var notAKey = assertThrows(PersistenceException.class, () -> orm().entity(Pet.class).select()
+                .semiJoin(PetPair.class).on(Pet_.name));
+        assertTrue(notAKey.getMessage().contains("Pet_.name is not a foreign key"), notAKey.getMessage());
     }
 
     @Test

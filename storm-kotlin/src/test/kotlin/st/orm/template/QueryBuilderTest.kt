@@ -2489,6 +2489,32 @@ internal open class QueryBuilderTest(
     }
 
     @Test
+    fun `semiJoin on named keys should match the keys with each other`() {
+        // data.sql: Leo (1) and Basil (2) had a checkup; Rosy (3) and Leo had a surgery. Both reference Pet and Vet.
+        val surgeryPet = Metamodel.of<Surgery, Pet>(Surgery::class.java, "pet")
+        val checkupPet = Metamodel.of<Checkup, Pet>(Checkup::class.java, "pet")
+        val e = shouldThrow<PersistenceException> {
+            orm.entity(Pet::class).select()
+                .semiJoin<Checkup>().on<Pet>()
+                .semiJoin<Surgery>().on<Checkup>()
+                .resultList
+        }
+        e.message shouldContain "Surgery and Checkup reference the same table through more than one pair of foreign keys"
+        orm.entity(Pet::class).select()
+            .semiJoin<Checkup>().on<Pet>()
+            .semiJoin<Surgery>().on(surgeryPet, checkupPet)
+            .resultList.map { it.name } shouldBe listOf("Leo")
+        orm.entity(Pet::class).select {
+            semiJoin<Checkup, Pet>()
+            antiJoin<Surgery>(surgeryPet, checkupPet)
+        }.resultList.map { it.name } shouldBe listOf("Basil")
+        // One key names which of a table's keys the join follows.
+        orm.entity(Pet::class).select {
+            semiJoin<Surgery>(surgeryPet) { Metamodel.of<Surgery, Int>(Surgery::class.java, "duration") eq 90 }
+        }.resultList.map { it.name } shouldBe listOf("Rosy")
+    }
+
+    @Test
     fun `antiJoin on a semi-joined table should nest as not exists`() {
         // data.sql: Lucky (Jeff and Carlos), Mulligan (Maria) and Freddy (David) have no visits.
         val owners = orm.entity(Owner::class).select()

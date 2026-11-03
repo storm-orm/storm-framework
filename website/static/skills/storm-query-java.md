@@ -145,7 +145,7 @@ Write template strings as `RAW."""..."""` (Java string templates with `--enable-
 
 **Template joins are a code smell: fix the entity.** A template ON clause (`.innerJoin(T.class).on(RAW."...")`) or a full `orm.query(RAW."...")` for a join that follows a database FK constraint means the entity model is missing an `@FK` annotation. Add `@FK` (with `Ref<T>` for PK fields, full entity for non-PK fields); the join becomes `.innerJoin(Entity.class).on(OtherEntity.class)`, pure code. A template join is justified only when the database has no FK constraint.
 
-**Projections join like entities.** `.on(ProjectionType.class)` resolves the foreign key by matching the referenced entity's table against the projection's table. When several foreign keys reference that table the join is ambiguous: Storm fails with an error naming the candidate fields. Disambiguate with a template ON clause.
+**Projections join like entities.** `.on(ProjectionType.class)` resolves the foreign key by matching the referenced entity's table against the projection's table. When several foreign keys reference that table the join is ambiguous: Storm fails with an error naming the candidate fields. Name the key to join on: `.innerJoin(Transfer.class).on(Transfer_.to)`.
 
 ## Predicate Operators
 
@@ -532,6 +532,7 @@ Pick the form by the direction of the relation and by whether the related rows b
 - The visit's `EXISTS` nests in the pet's, and conditions joined by `and` on `Pet` and `Visit` hold for the same pet.
 - Through a link table, `on` names the table the link row points at: `.semiJoin(PetSitting.class).on(Owner.class).semiJoin(Visit.class).on(Pet.class)` relates the visit to the link's `pet_id` without reading the pet table.
 - Two tables that both reference one table relate through that key when neither references the other: `.semiJoin(PetNickname.class).on(Pet.class).semiJoin(Vaccination.class).on(PetNickname.class)` matches `vaccination.pet_id = pet_nickname.pet_id` inside the nickname's subquery, so the vaccination counts for the nickname branch only and a pet found by its own name needs none. `on(Pet.class)` would correlate the vaccination to the query's pet and filter every branch.
+- Where a table holds more than one key to the table joined on, or two tables share more than one pair of keys, `on` is refused as ambiguous and takes the key instead: `.semiJoin(Transfer.class).on(Transfer_.to)` for the owners who received a pet, `.semiJoin(Transfer.class).on(Transfer_.pet, Visit_.pet)` to match two keys with each other. A condition follows the key: `on(Transfer_.to, it -> ...)`. The same forms serve `innerJoin` and `leftJoin`.
 - An `antiJoin` on a semi-joined table nests as `NOT EXISTS` (owners with a pet that never had a visit).
 - A semi-join on an anti-joined table takes its condition on the join.
 

@@ -302,6 +302,28 @@ internal class QueryBuilderImpl<T : Data, R : Any, ID : Any>(
         )
 
         override fun on(template: TemplateString): QueryBuilder<Data, R, ID> = QueryBuilderImpl<Data, R, ID>(joinBuilder.on(template.unwrap))
+
+        override fun on(key: Metamodel<out Data, *>): QueryBuilder<Data, R, ID> = QueryBuilderImpl(joinBuilder.on(key))
+
+        override fun on(
+            key: Metamodel<out Data, *>,
+            condition: WhereBuilder<Data, R, ID>.() -> PredicateBuilder<out Data, *, *>,
+        ): QueryBuilder<Data, R, ID> = QueryBuilderImpl(joinBuilder.on(key, core(condition)))
+
+        override fun on(key: Metamodel<out Data, *>, anchorKey: Metamodel<out Data, *>): QueryBuilder<Data, R, ID> = QueryBuilderImpl(joinBuilder.on(key, anchorKey))
+
+        override fun on(
+            key: Metamodel<out Data, *>,
+            anchorKey: Metamodel<out Data, *>,
+            condition: WhereBuilder<Data, R, ID>.() -> PredicateBuilder<out Data, *, *>,
+        ): QueryBuilder<Data, R, ID> = QueryBuilderImpl(joinBuilder.on(key, anchorKey, core(condition)))
+
+        private fun core(
+            condition: WhereBuilder<Data, R, ID>.() -> PredicateBuilder<out Data, *, *>,
+        ): java.util.function.Function<st.orm.core.template.WhereBuilder<Data, R, ID>, st.orm.core.template.PredicateBuilder<Data, *, *>> = java.util.function.Function { whereBuilder ->
+            @Suppress("UNCHECKED_CAST")
+            (condition(WhereBuilderImpl(whereBuilder)) as PredicateBuilderImpl<Data, *, *>).core as st.orm.core.template.PredicateBuilder<Data, *, *>
+        }
     }
 
     /**

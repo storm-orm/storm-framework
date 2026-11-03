@@ -284,16 +284,23 @@ public final class Elements {
 
     /**
      * @param table the table to join against.
-     * @param field the resolved foreign key field for graph-derived joins, or {@code null} when
-     *              the field must be resolved from the table types.
+     * @param sourceKey the foreign key of the joined table the join matches, or {@code null} when the table joined on
+     *                  holds the key, or the key is resolved from the table types.
+     * @param targetKey the foreign key of the table joined on the join matches, resolved for a graph-derived join or
+     *                  named by the join, or {@code null} when the joined table holds the key, or the key is resolved
+     *                  from the table types. With {@code sourceKey}, both keys reference one table and the join
+     *                  matches them with each other.
      * @param condition a condition the ON clause adds to the derived one, or {@code null} for none.
      */
-    public record TableTarget(Class<? extends Data> table, @Nullable RecordField field, @Nullable PredicateNode condition) implements Target {
-        public TableTarget(Class<? extends Data> table) {
-            this(table, null, null);
+    public record TableTarget(Class<? extends Data> table,
+                              @Nullable RecordField sourceKey,
+                              @Nullable RecordField targetKey,
+                              @Nullable PredicateNode condition) implements Target {
+        public TableTarget {
+            requireNonNull(table, "table");
         }
-        public TableTarget(Class<? extends Data> table, @Nullable RecordField field) {
-            this(table, field, null);
+        public TableTarget(Class<? extends Data> table) {
+            this(table, null, null, null);
         }
     }
     /** An ON condition supplied as a template fragment. */
