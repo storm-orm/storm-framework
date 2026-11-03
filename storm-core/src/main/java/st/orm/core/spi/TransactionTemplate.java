@@ -175,6 +175,19 @@ public interface TransactionTemplate {
         }
 
         /**
+         * Cancels the transaction block this handle began: the statement running in it is stopped, and no further
+         * statement runs in it. May be called from any thread while the block runs, and waits on the driver to stop
+         * the statement.
+         *
+         * <p>A handle that cannot cancel leaves the statement running to its end, as a block that is not cancelled
+         * does.</p>
+         *
+         * @since 1.16
+         */
+        default void cancel() {
+        }
+
+        /**
          * Completes the opened transaction.
          *
          * <p>The transaction rolls back when {@code rollback} is {@code true} or the transaction has been marked

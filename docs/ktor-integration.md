@@ -213,7 +213,7 @@ post("/users") {
 }
 ```
 
-Because `transaction { }` is a suspend function, it integrates naturally with Ktor's coroutine-based request handling. You can call it from any route handler without blocking the event loop.
+Because `transaction { }` is a suspend function, it integrates naturally with Ktor's coroutine-based request handling. You can call it from any route handler without blocking the event loop. A cancelled call cancels the transaction with it: the statement the block is blocked on is stopped and the connection is released, see [Transaction Cancellation](transactions.md#transaction-cancellation). Whether the engine cancels a handler when the client aborts the request is the engine's choice.
 
 ### Route-Scoped Transactions
 

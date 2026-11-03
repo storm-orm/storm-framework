@@ -77,7 +77,7 @@ public final class JdbcTransactionTemplateProviderImpl implements TransactionTem
                 } else {
                     throw new PersistenceException("Transaction context must be of type JdbcTransactionContext.");
                 }
-                context.begin(propagation, isolation == null ? null : isolation.jdbcLevel(), timeoutSeconds, readOnly);
+                var frame = context.begin(propagation, isolation == null ? null : isolation.jdbcLevel(), timeoutSeconds, readOnly);
                 return new TransactionHandle() {
                     @Override
                     public TransactionContext context() {
@@ -97,6 +97,11 @@ public final class JdbcTransactionTemplateProviderImpl implements TransactionTem
                                 return context.isRollbackOnly();
                             }
                         };
+                    }
+
+                    @Override
+                    public void cancel() {
+                        frame.cancel();
                     }
 
                     @Override

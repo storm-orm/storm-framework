@@ -15,6 +15,7 @@
  */
 package st.orm.spi.mssqlserver;
 
+import java.util.Optional;
 import javax.sql.DataSource;
 import org.testcontainers.containers.MSSQLServerContainer;
 import st.orm.tck.AbstractTransactionConformanceTest;
@@ -46,5 +47,13 @@ public class MSSQLServerTransactionConformanceTest extends AbstractTransactionCo
     @Override
     protected boolean enforcesReadOnly() {
         return false;
+    }
+
+    /**
+     * A count over a cross join of the catalog with itself twice, which runs until it is stopped.
+     */
+    @Override
+    protected Optional<String> slowStatement() {
+        return Optional.of("SELECT COUNT(*) FROM sys.all_objects a CROSS JOIN sys.all_objects b CROSS JOIN sys.all_objects c");
     }
 }

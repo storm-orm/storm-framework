@@ -49,4 +49,9 @@ public class PostgreSQLTransactionConformanceTest extends AbstractTransactionCon
                 MERGE INTO vet USING (SELECT 1 AS one) AS source ON FALSE
                 WHEN NOT MATCHED THEN INSERT (first_name, last_name) VALUES ('Read', '""" + INSERTED_LAST_NAME + "')");
     }
+
+    @Override
+    protected Optional<String> slowStatement() {
+        return Optional.of("SELECT pg_sleep(120)");
+    }
 }

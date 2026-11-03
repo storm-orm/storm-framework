@@ -47,4 +47,13 @@ public class MariaDBTransactionConformanceTest extends AbstractTransactionConfor
     protected Optional<String> unrecognisedWriteStatement() {
         return Optional.of("REPLACE INTO vet (first_name, last_name) VALUES ('Read', '" + INSERTED_LAST_NAME + "')");
     }
+
+    /**
+     * A count over a cross join of the catalog with itself twice, which runs until it is stopped. A sleep would not
+     * do: a sleep that is the whole query returns without an error when it is stopped.
+     */
+    @Override
+    protected Optional<String> slowStatement() {
+        return Optional.of("SELECT COUNT(*) FROM information_schema.columns a CROSS JOIN information_schema.columns b CROSS JOIN information_schema.columns c");
+    }
 }
