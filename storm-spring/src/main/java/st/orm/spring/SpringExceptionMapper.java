@@ -21,15 +21,21 @@ import org.jspecify.annotations.Nullable;
 import org.springframework.dao.DataAccessException;
 import org.springframework.dao.EmptyResultDataAccessException;
 import org.springframework.dao.IncorrectResultSizeDataAccessException;
+import org.springframework.dao.IncorrectUpdateSemanticsDataAccessException;
 import org.springframework.dao.OptimisticLockingFailureException;
 import org.springframework.jdbc.UncategorizedSQLException;
 import org.springframework.jdbc.support.SQLErrorCodeSQLExceptionTranslator;
 import org.springframework.jdbc.support.SQLExceptionSubclassTranslator;
 import org.springframework.jdbc.support.SQLExceptionTranslator;
+import st.orm.IllegalTransactionStateException;
 import st.orm.NoResultException;
 import st.orm.NonUniqueResultException;
 import st.orm.OptimisticLockException;
-import st.orm.PersistenceException;
+import st.orm.ReadOnlyTransactionException;
+import st.orm.TransactionCallbackException;
+import st.orm.TransactionTimedOutException;
+import st.orm.UnexpectedRollbackException;
+import st.orm.UnexpectedRowCountException;
 import st.orm.spi.ExceptionContext;
 import st.orm.spi.ExceptionMapper;
 
@@ -43,13 +49,19 @@ import st.orm.spi.ExceptionMapper;
  * {@code TransientDataAccessException} subtypes (enabling retry setups), constraint violations as
  * {@code DataIntegrityViolationException} subtypes, and so on.</p>
  *
- * <p>The failures Storm's own logic detects translate as Spring's JPA integration translates their
- * counterparts: an {@link OptimisticLockException} to {@link OptimisticLockingFailureException}, which keeps the
- * Storm exception, and the entity it carries, as its cause; a {@link NoResultException} to
- * {@link EmptyResultDataAccessException}; a {@link NonUniqueResultException} to
- * {@link IncorrectResultSizeDataAccessException}. A retry setup keyed on
- * {@code OptimisticLockingFailureException} therefore sees Storm's optimistic lock conflicts. Any other
- * {@link PersistenceException} passes through unchanged.</p>
+ * <p>The failures Storm's own logic detects translate to the types Spring's other data access integrations use
+ * for them: an {@link OptimisticLockException} to {@link OptimisticLockingFailureException}; a
+ * {@link NoResultException} to {@link EmptyResultDataAccessException}; a {@link NonUniqueResultException} to
+ * {@link IncorrectResultSizeDataAccessException}; an {@link UnexpectedRowCountException}, a write that affected
+ * another number of rows than it expected, to {@link IncorrectUpdateSemanticsDataAccessException}. Each keeps the
+ * Storm exception, and what it carries, such as the entity or the row counts, as its cause. A retry setup keyed on
+ * {@code OptimisticLockingFailureException} therefore sees Storm's optimistic lock conflicts. Any other failure
+ * translates to {@link StormSystemException}, so a caller catches one {@code DataAccessException} hierarchy.</p>
+ *
+ * <p>The exceptions of Storm's transaction API pass through unchanged: {@link TransactionTimedOutException},
+ * {@link IllegalTransactionStateException}, {@link UnexpectedRollbackException},
+ * {@link ReadOnlyTransactionException} and {@link TransactionCallbackException}. A transaction block raises them
+ * itself, where no exception mapper applies, so a statement that detects one raises the same type.</p>
  *
  * <p>The Spring Boot starters apply this mapper automatically to the template they auto-configure; disable with
  * {@code storm.exception-translation.enabled=false} or by defining your own {@code ExceptionMapper} bean.</p>
@@ -87,8 +99,14 @@ public class SpringExceptionMapper implements ExceptionMapper {
                         new EmptyResultDataAccessException(missing.getMessage(), 1, missing);
                 case NonUniqueResultException ambiguous ->
                         new IncorrectResultSizeDataAccessException(ambiguous.getMessage(), 1, ambiguous);
-                case PersistenceException persistenceException -> persistenceException;
-                default -> new PersistenceException(cause);
+                case UnexpectedRowCountException rowCount ->
+                        new IncorrectUpdateSemanticsDataAccessException(rowCount.getMessage(), rowCount);
+                case TransactionTimedOutException timedOut -> timedOut;
+                case IllegalTransactionStateException illegalState -> illegalState;
+                case UnexpectedRollbackException rollback -> rollback;
+                case ReadOnlyTransactionException readOnly -> readOnly;
+                case TransactionCallbackException callback -> callback;
+                default -> new StormSystemException(String.valueOf(cause.getMessage()), cause);
             };
         }
         String task = "Storm " + context.operation()

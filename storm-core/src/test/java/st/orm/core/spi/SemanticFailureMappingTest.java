@@ -33,23 +33,29 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.jdbc.datasource.DriverManagerDataSource;
 import st.orm.Entity;
+import st.orm.GenerationStrategy;
 import st.orm.NoResultException;
 import st.orm.NonUniqueResultException;
 import st.orm.OptimisticLockException;
 import st.orm.PK;
+import st.orm.UnexpectedRowCountException;
 import st.orm.Version;
+import st.orm.core.model.polymorphic.JoinedAnimal;
+import st.orm.core.model.polymorphic.JoinedCat;
 import st.orm.core.template.ORMTemplate;
 import st.orm.spi.ExceptionContext;
 import st.orm.spi.SqlOperation;
 
 /**
- * The failures Storm's own logic detects after a statement ran, an optimistic lock conflict and a single result
- * that is missing or not unique, pass through the template's exception mapper with the operation and the type as
+ * The failures Storm's own logic detects after a statement ran, an optimistic lock conflict, a single result
+ * that is missing or not unique and a write that affected another number of rows than it expected, pass through the template's exception mapper with the operation and the type as
  * context, from the query, the query builder and the repository alike. The default mapper keeps them Storm-typed.
  */
 class SemanticFailureMappingTest {
 
     public record Owner(@PK @Nullable Integer id, String name, @Version int version) implements Entity<Integer> {}
+
+    public record Tag(@PK(generation = GenerationStrategy.NONE) Integer id, String name) implements Entity<Integer> {}
 
     /** The exception the mapper under test returns for every failure. */
     static final class MappedException extends RuntimeException {
@@ -68,6 +74,11 @@ class SemanticFailureMappingTest {
         try (var connection = dataSource.getConnection(); var statement = connection.createStatement()) {
             statement.execute("CREATE TABLE owner (id INTEGER AUTO_INCREMENT PRIMARY KEY, name VARCHAR(50) NOT NULL, "
                     + "version INTEGER NOT NULL)");
+            statement.execute("CREATE TABLE tag (id INTEGER PRIMARY KEY, name VARCHAR(50) NOT NULL)");
+            statement.execute("CREATE TABLE joined_animal (id INTEGER AUTO_INCREMENT PRIMARY KEY, "
+                    + "dtype VARCHAR(50) NOT NULL, name VARCHAR(50))");
+            statement.execute("CREATE TABLE joined_cat (id INTEGER PRIMARY KEY, indoor BOOLEAN NOT NULL)");
+            statement.execute("CREATE TABLE joined_dog (id INTEGER PRIMARY KEY, weight INTEGER NOT NULL)");
         }
         contexts = new ArrayList<>();
         orm = ORMTemplate.builder(dataSource)
@@ -110,6 +121,52 @@ class SemanticFailureMappingTest {
         var mapped = assertThrows(MappedException.class, () -> owners.update(List.of(renamed)));
         assertInstanceOf(OptimisticLockException.class, mapped.getCause());
         assertEquals(SqlOperation.UPDATE, onlyContext().operation());
+    }
+
+    @Test
+    void aWriteToAMissingRowIsMappedWithItsRowCounts() {
+        var tags = orm.entity(Tag.class);
+        var missing = new Tag(-1, "missing");
+        var update = assertThrows(MappedException.class, () -> tags.update(missing));
+        var updateRowCount = assertInstanceOf(UnexpectedRowCountException.class, update.getCause());
+        assertEquals(1, updateRowCount.getExpectedRowCount());
+        assertEquals(0, updateRowCount.getActualRowCount());
+        var context = onlyContext();
+        assertEquals(SqlOperation.UPDATE, context.operation());
+        assertEquals(Optional.of(Tag.class), context.dataType());
+        var remove = assertThrows(MappedException.class, () -> tags.remove(missing));
+        assertInstanceOf(UnexpectedRowCountException.class, remove.getCause());
+        assertEquals(SqlOperation.DELETE, contexts.getLast().operation());
+    }
+
+    @Test
+    void aBatchWithAMissingRowIsMappedWithItsRowCounts() {
+        var tags = orm.entity(Tag.class);
+        tags.insert(new Tag(1, "first"));
+        var batch = List.of(new Tag(1, "renamed"), new Tag(-1, "missing"));
+        var update = assertThrows(MappedException.class, () -> tags.update(batch));
+        var rowCount = assertInstanceOf(UnexpectedRowCountException.class, update.getCause());
+        assertEquals(2, rowCount.getExpectedRowCount());
+        assertEquals(1, rowCount.getActualRowCount());
+        assertEquals(SqlOperation.UPDATE, onlyContext().operation());
+        var remove = assertThrows(MappedException.class, () -> tags.remove(batch));
+        assertInstanceOf(UnexpectedRowCountException.class, remove.getCause());
+    }
+
+    @Test
+    void aJoinedWriteToAMissingRowIsMapped() {
+        var animals = orm.entity(JoinedAnimal.class);
+        var missing = new JoinedCat(-1, "missing", true);
+        var update = assertThrows(MappedException.class, () -> animals.update(missing));
+        var rowCount = assertInstanceOf(UnexpectedRowCountException.class, update.getCause());
+        assertEquals(0, rowCount.getActualRowCount());
+        var context = onlyContext();
+        assertEquals(SqlOperation.UPDATE, context.operation());
+        assertEquals(Optional.of(JoinedAnimal.class), context.dataType());
+        var batch = assertThrows(MappedException.class, () -> animals.update(List.of(missing)));
+        assertInstanceOf(UnexpectedRowCountException.class, batch.getCause());
+        var remove = assertThrows(MappedException.class, () -> animals.remove(missing));
+        assertInstanceOf(UnexpectedRowCountException.class, remove.getCause());
     }
 
     @Test
@@ -191,6 +248,7 @@ class SemanticFailureMappingTest {
         assertSame(renamed, conflict.getEntity());
         owners.insert(new Owner(null, "George", 0));
         assertThrows(NonUniqueResultException.class, () -> owners.select().getSingleResult());
+        assertThrows(UnexpectedRowCountException.class, () -> plain.entity(Tag.class).update(new Tag(-1, "missing")));
         assertTrue(contexts.isEmpty(), "the recording mapper belongs to the other template");
     }
 }
