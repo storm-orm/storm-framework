@@ -134,6 +134,29 @@ internal open class TransactionBeginSiteTest(
     }
 
     @Test
+    fun `the idle advice names the last statement's line and the fix refers to it`() {
+        SlowStatementLog.transactionThreshold(Duration.ofMillis(50))
+        SlowStatementLog.limit(0)
+        try {
+            val lines = capture {
+                runBlocking {
+                    transaction(Dispatchers.IO) {
+                        orm.entity(PetOwnerRef::class).findById(1)
+                        delay(120)
+                    }
+                }
+            }
+            lines shouldHaveSize 1
+            lines.first() shouldStartWith "SQL advice (transaction): TransactionBeginSiteTest.kt:"
+            lines.first() shouldContain "\t\tlast statement: TransactionBeginSiteTest.kt:"
+            lines.first() shouldContain "\t\tfix: the work after TransactionBeginSiteTest.kt:"
+        } finally {
+            SlowStatementLog.transactionThreshold(SlowStatementLog.DEFAULT_TRANSACTION_THRESHOLD)
+            SlowStatementLog.limit(SlowStatementLog.DEFAULT_LIMIT)
+        }
+    }
+
+    @Test
     fun `a suspending transaction's slow line names the site that began it in production too`() {
         // No repeats recorded, as in production: the slow statement log alone watches the transaction.
         AdviceLog.categories(listOf("correctness"))

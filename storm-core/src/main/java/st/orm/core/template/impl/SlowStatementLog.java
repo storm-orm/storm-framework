@@ -744,7 +744,7 @@ public final class SlowStatementLog {
                                TransactionRecord.Gaps gaps) {
         String remedy;
         if (gaps.betweenNanos() <= gaps.beforeNanos() + gaps.afterNanos()) {
-            remedy = "move that work before the transaction or after it commits";
+            remedy = edgeRemedy(gaps);
         } else if (wrote) {
             remedy = "where the writes need not see the reads of this transaction, do the reads and that work first, "
                     + "then write in a short transaction of its own";
@@ -792,6 +792,32 @@ public final class SlowStatementLog {
         }
         return Advice.IDLE_TRANSACTION.format(millis(heldNanos), millis(idleNanos), where,
                 wrote ? ", with its row locks held for " + millis(lockedIdleNanos) + " of that" : "", lines, remedy);
+    }
+
+    /**
+     * The remedy for time at the edges, which names the line the work sits beyond: the work after the last
+     * statement can follow the commit, the work before the first can precede the transaction, whichever edge holds
+     * more of the time. Without the statement at that edge, as for a transaction that ran none, the move is named
+     * alone.
+     */
+    private static String edgeRemedy(TransactionRecord.Gaps gaps) {
+        if (gaps.afterNanos() >= gaps.beforeNanos() && gaps.last() != null) {
+            return "the work after " + where(gaps.last(), gaps.lastSite())
+                    + " can run after the commit; an onCommit callback runs it there";
+        }
+        if (gaps.beforeNanos() > gaps.afterNanos() && gaps.first() != null) {
+            return "the work before " + where(gaps.first(), gaps.firstSite()) + " can run before the transaction";
+        }
+        return "move that work before the transaction or after it commits";
+    }
+
+    /** Names the line a statement ran from where its call site was walked, otherwise the statement. */
+    private static String where(QueryContext context, @Nullable String site) {
+        if (site == null) {
+            return statement(context);
+        }
+        int arrow = site.indexOf(" -> ");
+        return arrow < 0 ? site : site.substring(0, arrow);
     }
 
     /**

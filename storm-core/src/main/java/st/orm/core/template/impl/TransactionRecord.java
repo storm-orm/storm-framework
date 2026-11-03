@@ -168,8 +168,8 @@ public final class TransactionRecord {
      * kept as the one that ended the time before the first statement, with its call site where the repeats walked
      * it or, while the slow statement log watches transactions, walked here where that time reached
      * {@link #GAP_FLOOR_NANOS}, as the longest gap is; the latest to close is kept as the one the time after the
-     * last statement followed, with the call site the repeats walked, since walking it for every statement would
-     * cost a walk per statement.
+     * last statement followed, with its call site where the repeats are recorded, which walks every statement,
+     * since which statement is the last is known only once the transaction completes.
      *
      * @param context the execution.
      * @param startNanos when the statement was prepared.
@@ -195,13 +195,14 @@ public final class TransactionRecord {
         if (firstWriteNanos != 0 && endNanos > previousEndNanos) {
             busyFromFirstWriteNanos += endNanos - Math.max(Math.max(startNanos, firstWriteNanos), previousEndNanos);
         }
-        // The call site walked for the repeats, which the gaps around the statement reuse.
+        // The call site, walked for every statement while the repeats are recorded, as in development: the repeats
+        // key on it, the gaps around the statement reuse it, and the last statement, which the idle advice names
+        // once the transaction completes, is known only then.
         String site = null;
         if (repeats != null) {
             repeats.observed(id(), startNanos, executedNanos);
-            // A statement whose repetition carries no advice is not walked for.
+            site = CallSiteCapture.callSite(context);
             if (UnitOfWorkRepeats.candidate(context)) {
-                site = CallSiteCapture.callSite(context);
                 var repeat = repeats.record(context, startNanos, executedNanos, rows, exactRows, true, id(), site);
                 if (repeat != null && (!AdviceLog.reports(repeat.advice)
                         || AdviceAcceptance.accepts(repeat.advice, repeat.shapeId, repeat.type))) {

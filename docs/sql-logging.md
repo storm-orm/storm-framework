@@ -372,7 +372,7 @@ Or from `application.conf`, under `storm.sqlLog.slow.transaction`.
 SQL slow (transaction): held its connection 2300 ms, 120 ms in its 3 statements, wrote, OrderService.java:42
 	advice: the transaction held its connection 2300 ms, 2180 ms of it idle after its last statement, with its row locks held for 2100 ms of that.
 		last statement: the UPDATE of Order
-		fix: move that work before the transaction or after it commits.
+		fix: the work after the UPDATE of Order can run after the commit; an onCommit callback runs it there.
 		see: https://orm.st/docs/advice#idle-transaction
 ```
 

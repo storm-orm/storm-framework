@@ -178,7 +178,8 @@ class IdleTransactionLogTest {
         // The statement the time followed is named; a COUNT reads no entity and, with the repeats unrecorded, its
         // call site was not walked.
         assertTrue(Pattern.compile(" ms of it idle after its last statement\\.\\R\t\tlast statement: the SELECT\\R"
-                + "\t\tfix: move that work before the transaction or after it commits\\.").matcher(line).find(), line);
+                + "\t\tfix: the work after the SELECT can run after the commit; an onCommit callback runs it there\\.")
+                .matcher(line).find(), line);
     }
 
     @Test

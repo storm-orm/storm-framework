@@ -5,6 +5,7 @@ import com.zaxxer.hikari.HikariDataSource
 import io.kotest.matchers.shouldBe
 import io.ktor.client.request.get
 import io.ktor.client.request.post
+import io.ktor.client.statement.bodyAsText
 import io.ktor.http.HttpStatusCode
 import io.ktor.server.application.install
 import io.ktor.server.plugins.statuspages.StatusPages
@@ -18,6 +19,7 @@ import org.junit.jupiter.api.Test
 import st.orm.NoResultException
 import st.orm.OptimisticLockException
 import st.orm.PersistenceException
+import st.orm.core.spi.TransactionScope
 import st.orm.ktor.model.Pet
 import st.orm.ktor.model.PetRepository
 import st.orm.ktor.model.PetType
@@ -83,6 +85,32 @@ internal class TransactionalRouteTest {
                 }
                 client.post("/pets").status shouldBe HttpStatusCode.Created
                 countPets(dataSource) shouldBe 4
+            }
+        } finally {
+            dataSource.close()
+        }
+    }
+
+    @Test
+    fun `transactional route names the route as the site that began the transaction`() {
+        val dataSource = createTestDataSource()
+        try {
+            testApplication {
+                application {
+                    install(Storm) {
+                        this.dataSource = dataSource
+                    }
+                    routing {
+                        transactional {
+                            get("/pets/{id}") {
+                                // The plugin begins the transaction from the call pipeline, where nothing of the
+                                // application is on the stack; the route stands in, as declared, not as requested.
+                                call.respondText(TransactionScope.current()?.beganAt() ?: "none")
+                            }
+                        }
+                    }
+                }
+                client.get("/pets/7").bodyAsText() shouldBe "GET /pets/{id}"
             }
         } finally {
             dataSource.close()

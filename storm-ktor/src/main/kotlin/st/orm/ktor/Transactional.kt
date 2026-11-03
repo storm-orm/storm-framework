@@ -17,14 +17,27 @@ package st.orm.ktor
 
 import io.ktor.server.application.ApplicationCallPipeline
 import io.ktor.server.application.Hook
+import io.ktor.server.application.PipelineCall
 import io.ktor.server.application.createRouteScopedPlugin
+import io.ktor.server.request.httpMethod
+import io.ktor.server.request.path
+import io.ktor.server.routing.HttpMethodRouteSelector
 import io.ktor.server.routing.Route
+import io.ktor.server.routing.RoutePathComponent
 import io.ktor.server.routing.RouteSelector
 import io.ktor.server.routing.RouteSelectorEvaluation
+import io.ktor.server.routing.RoutingNode
+import io.ktor.server.routing.RoutingPipelineCall
 import io.ktor.server.routing.RoutingResolveContext
+import io.ktor.server.routing.TrailingSlashRouteSelector
 import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.asContextElement
+import kotlinx.coroutines.withContext
 import st.orm.TransactionIsolation
 import st.orm.TransactionPropagation
+import st.orm.core.template.impl.AdviceLog
+import st.orm.core.template.impl.CallSiteCapture
+import st.orm.core.template.impl.SlowStatementLog
 import st.orm.template.TransactionDispatchers
 import st.orm.template.transaction
 
@@ -115,9 +128,19 @@ internal val StormTransaction = createRouteScopedPlugin("StormTransaction", ::St
     val isolation = pluginConfig.isolation
     val timeoutSeconds = pluginConfig.timeoutSeconds
     val readOnly = pluginConfig.readOnly
-    on(TransactionHook) { proceedWithCall ->
-        transaction(dispatcher, propagation, isolation, timeoutSeconds, readOnly) {
-            proceedWithCall()
+    on(TransactionHook) { call, proceedWithCall ->
+        if (AdviceLog.recordsRepeats() || SlowStatementLog.watchesTransactions()) {
+            // The transaction is begun here, from the call pipeline, where every frame is Ktor's, the coroutine
+            // machinery's or Storm's: the route stands in as the site that began it, carried as the launch site.
+            withContext(CallSiteCapture.callSiteHint().asContextElement(routeSite(call))) {
+                transaction(dispatcher, propagation, isolation, timeoutSeconds, readOnly) {
+                    proceedWithCall()
+                }
+            }
+        } else {
+            transaction(dispatcher, propagation, isolation, timeoutSeconds, readOnly) {
+                proceedWithCall()
+            }
         }
     }
 }
@@ -126,12 +149,43 @@ internal val StormTransaction = createRouteScopedPlugin("StormTransaction", ::St
  * Hook that wraps the remainder of the call pipeline, so the transaction spans the route handler and commits
  * or rolls back after it finishes.
  */
-private object TransactionHook : Hook<suspend (suspend () -> Unit) -> Unit> {
-    override fun install(pipeline: ApplicationCallPipeline, handler: suspend (suspend () -> Unit) -> Unit) {
+private object TransactionHook : Hook<suspend (PipelineCall, suspend () -> Unit) -> Unit> {
+    override fun install(
+        pipeline: ApplicationCallPipeline,
+        handler: suspend (PipelineCall, suspend () -> Unit) -> Unit,
+    ) {
         pipeline.intercept(ApplicationCallPipeline.Plugins) {
-            handler { proceed() }
+            handler(context) { proceed() }
         }
     }
+}
+
+/**
+ * Names the route a call resolved to, as the site that began its transaction: the method and the path as
+ * declared, `GET /owners/{id}`, so every call to the route is one site, which the advice log reports once. A
+ * call outside routing is named by its method and the path it requested.
+ */
+internal fun routeSite(call: PipelineCall): String {
+    val route = (call as? RoutingPipelineCall)?.route
+        ?: return call.request.httpMethod.value + " " + call.request.path()
+    var method: String? = null
+    val segments = ArrayDeque<String>()
+    var node: RoutingNode? = route
+    while (node != null) {
+        val selector = node.selector
+        if (selector is HttpMethodRouteSelector) {
+            method = selector.method.value
+        } else if (selector is RoutePathComponent && selector !is TrailingSlashRouteSelector) {
+            // The root renders as nothing.
+            val segment = selector.toString()
+            if (segment.isNotEmpty()) {
+                segments.addFirst(segment)
+            }
+        }
+        node = node.parent
+    }
+    val path = segments.joinToString("/", prefix = "/")
+    return if (method == null) path else "$method $path"
 }
 
 /**

@@ -58,8 +58,19 @@ public class SlowStatementLogTest {
                 + "idle: 300 ms before its first statement; 165 ms after its last statement\n"
                 + "first statement: the SELECT of City at OrderService.kt:40\n"
                 + "last statement: OrderService.kt:52 -> OrderRepository.findById\n"
-                + "fix: move that work before the transaction or after it commits.\n"
+                + "fix: the work before OrderService.kt:40 can run before the transaction.\n"
                 + "see: https://orm.st/docs/advice#idle-transaction", advisory);
+    }
+
+    @Test
+    public void theFixNamesTheLineTheWorkAfterTheLastStatementSitsBeyond() {
+        var gaps = new TransactionRecord.Gaps(2, 0, 0, 465_000_000L, 0, 0, null, null, null, null,
+                select(1), null, select(2), "OrderService.kt:52 -> OrderRepository.findById");
+        var advisory = SlowStatementLog.idleAdvisory(600_000_000L, 465_000_000L, 0, false, gaps);
+        assertEquals("the transaction held its connection 600 ms, 465 ms of it idle after its last statement.\n"
+                + "last statement: OrderService.kt:52 -> OrderRepository.findById\n"
+                + "fix: the work after OrderService.kt:52 can run after the commit; an onCommit callback runs it "
+                + "there.\nsee: https://orm.st/docs/advice#idle-transaction", advisory);
     }
 
     @Test
