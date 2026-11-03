@@ -25,7 +25,6 @@ import java.util.stream.Stream
 import kotlin.reflect.KClass
 import st.orm.core.template.PredicateBuilder as CorePredicateBuilder
 import st.orm.core.template.QueryBuilder as CoreQueryBuilder
-import st.orm.core.template.TemplateString as CoreTemplateString
 import st.orm.core.template.TypedJoinBuilder as CoreTypedJoinBuilder
 import st.orm.core.template.WhereBuilder as CoreWhereBuilder
 
@@ -546,5 +545,5 @@ internal class QueryBuilderImpl<T : Data, R : Any, ID : Any>(
 
     override fun windows(scrollable: Scrollable<T>): Flow<Window<R>> = core.windows(scrollable).consumeAsFlow()
 
-    override fun getSubquery(): CoreTemplateString = (core as Subqueryable).subquery
+    override fun getSubquery() = (core as Subqueryable).subquery
 }
