@@ -2154,7 +2154,7 @@ public class SqlScope<T : Data, R : Any, ID : Any> @PublishedApi internal constr
         anchorKey: Metamodel<out Data, *>? = null,
         condition: (WhereBuilder<Data, R, ID>.() -> PredicateBuilder<out Data, *, *>)? = null,
     ) {
-        builder = builder.innerJoin(relation).onKeys(key, anchorKey, condition)
+        builder = builder.innerJoin(relation).on(key, anchorKey, condition)
     }
 
     /** Adds an INNER JOIN of [J] on the foreign key [key] (e.g., `innerJoin<Transfer>(Transfer_.to)`), with an optional [anchorKey] and [condition]. */
@@ -2177,7 +2177,7 @@ public class SqlScope<T : Data, R : Any, ID : Any> @PublishedApi internal constr
         anchorKey: Metamodel<out Data, *>? = null,
         condition: (WhereBuilder<Data, R, ID>.() -> PredicateBuilder<out Data, *, *>)? = null,
     ) {
-        builder = builder.leftJoin(relation).onKeys(key, anchorKey, condition)
+        builder = builder.leftJoin(relation).on(key, anchorKey, condition)
     }
 
     /** Adds a LEFT JOIN of [J] on the foreign key [key] (e.g., `leftJoin<Transfer>(Transfer_.to)`), with an optional [anchorKey] and [condition]. */
@@ -2200,7 +2200,7 @@ public class SqlScope<T : Data, R : Any, ID : Any> @PublishedApi internal constr
         anchorKey: Metamodel<out Data, *>? = null,
         condition: (WhereBuilder<Data, R, ID>.() -> PredicateBuilder<out Data, *, *>)? = null,
     ) {
-        builder = builder.rightJoin(relation).onKeys(key, anchorKey, condition)
+        builder = builder.rightJoin(relation).on(key, anchorKey, condition)
     }
 
     /** Adds a RIGHT JOIN of [J] on the foreign key [key] (e.g., `rightJoin<Transfer>(Transfer_.to)`), with an optional [anchorKey] and [condition]. */
@@ -2223,7 +2223,7 @@ public class SqlScope<T : Data, R : Any, ID : Any> @PublishedApi internal constr
         anchorKey: Metamodel<out Data, *>? = null,
         condition: (WhereBuilder<Data, R, ID>.() -> PredicateBuilder<out Data, *, *>)? = null,
     ) {
-        builder = builder.semiJoin(relation).onKeys(key, anchorKey, condition)
+        builder = builder.semiJoin(relation).on(key, anchorKey, condition)
     }
 
     /** Adds a semi-join of [J] on the foreign key [key] (e.g., `semiJoin<Transfer>(Transfer_.to)`), with an optional [anchorKey] and [condition]. */
@@ -2246,7 +2246,7 @@ public class SqlScope<T : Data, R : Any, ID : Any> @PublishedApi internal constr
         anchorKey: Metamodel<out Data, *>? = null,
         condition: (WhereBuilder<Data, R, ID>.() -> PredicateBuilder<out Data, *, *>)? = null,
     ) {
-        builder = builder.antiJoin(relation).onKeys(key, anchorKey, condition)
+        builder = builder.antiJoin(relation).on(key, anchorKey, condition)
     }
 
     /** Adds an anti-join of [J] on the foreign key [key] (e.g., `antiJoin<Transfer>(Transfer_.to)`), with an optional [anchorKey] and [condition]. */
@@ -2258,7 +2258,7 @@ public class SqlScope<T : Data, R : Any, ID : Any> @PublishedApi internal constr
         antiJoin(J::class, key, anchorKey, condition)
     }
 
-    private fun TypedJoinBuilder<Data, R, ID>.onKeys(
+    private fun TypedJoinBuilder<Data, R, ID>.on(
         key: Metamodel<out Data, *>,
         anchorKey: Metamodel<out Data, *>?,
         condition: (WhereBuilder<Data, R, ID>.() -> PredicateBuilder<out Data, *, *>)?,
