@@ -124,7 +124,7 @@
                 <plugin>
                     <groupId>org.apache.maven.plugins</groupId>
                     <artifactId>maven-compiler-plugin</artifactId>
-                    <version>3.14.0</version>
+                    <version>3.16.0</version>
                     <configuration>
                         <!-- The build runs the annotation processors it finds on the classpath, such as Lombok and
                              Storm's own; stating it keeps javac from announcing that it might stop. -->
