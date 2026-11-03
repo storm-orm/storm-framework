@@ -21,8 +21,10 @@ import ch.qos.logback.classic.spi.ILoggingEvent
 import ch.qos.logback.core.read.ListAppender
 import io.kotest.matchers.collections.shouldHaveSize
 import io.kotest.matchers.shouldBe
+import io.kotest.matchers.string.shouldContain
 import io.kotest.matchers.string.shouldStartWith
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.BeforeEach
@@ -35,6 +37,7 @@ import org.springframework.test.context.jdbc.Sql
 import org.springframework.test.context.junit.jupiter.SpringExtension
 import st.orm.core.template.SqlLog.Summary
 import st.orm.core.template.impl.AdviceLog
+import st.orm.core.template.impl.SlowStatementLog
 import st.orm.core.template.impl.SqlLogRenderer
 import st.orm.template.IntegrationConfig
 import st.orm.template.InternalStormApi
@@ -42,6 +45,7 @@ import st.orm.template.ORMTemplate
 import st.orm.template.model.PetOwnerRef
 import st.orm.template.recordSqlLog
 import st.orm.template.transaction
+import java.time.Duration
 
 /**
  * A suspending transaction completes on the dispatcher that ran its block, where no caller is on the stack, so the
@@ -70,15 +74,19 @@ internal open class TransactionBeginSiteTest(
         AdviceLog.repeatFloor(AdviceLog.DEFAULT_REPEAT_FLOOR)
     }
 
-    private fun capture(action: () -> Unit): List<String> {
+    private fun capture(
+        name: String = "st.orm.sql.advice",
+        level: Level = Level.INFO,
+        action: () -> Unit,
+    ): List<String> {
         val context = LoggerFactory.getILoggerFactory() as LoggerContext
-        val logger = context.getLogger("st.orm.sql.advice")
+        val logger = context.getLogger(name)
         val appender = ListAppender<ILoggingEvent>().apply {
             setContext(context)
             start()
         }
         val previous = logger.level
-        logger.level = Level.INFO
+        logger.level = level
         logger.addAppender(appender)
         logger.isAdditive = false
         try {
@@ -123,5 +131,30 @@ internal open class TransactionBeginSiteTest(
         lines shouldHaveSize 1
         // The block completed on the IO dispatcher; the header still names this file.
         lines.first() shouldStartWith "SQL advice (transaction): TransactionBeginSiteTest.kt:"
+    }
+
+    @Test
+    fun `a suspending transaction's slow line names the site that began it in production too`() {
+        // No repeats recorded, as in production: the slow statement log alone watches the transaction.
+        AdviceLog.categories(listOf("correctness"))
+        SlowStatementLog.transactionThreshold(Duration.ofMillis(50))
+        SlowStatementLog.limit(0)
+        try {
+            val lines = capture("st.orm.sql.slow", Level.WARN) {
+                runBlocking {
+                    transaction(Dispatchers.IO) {
+                        orm.entity(PetOwnerRef::class).findById(1)
+                        delay(120)
+                    }
+                }
+            }
+            lines shouldHaveSize 1
+            lines.first() shouldStartWith "SQL slow (transaction): held its connection "
+            lines.first() shouldContain ", TransactionBeginSiteTest.kt:"
+            lines.first() shouldContain "last statement: the SELECT of PetOwnerRef"
+        } finally {
+            SlowStatementLog.transactionThreshold(SlowStatementLog.DEFAULT_TRANSACTION_THRESHOLD)
+            SlowStatementLog.limit(SlowStatementLog.DEFAULT_LIMIT)
+        }
     }
 }

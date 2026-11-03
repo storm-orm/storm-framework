@@ -23,6 +23,7 @@ import st.orm.TransactionPropagation;
 import st.orm.core.spi.TransactionTemplate.TransactionHandle;
 import st.orm.core.template.impl.AdviceLog;
 import st.orm.core.template.impl.CallSiteCapture;
+import st.orm.core.template.impl.SlowStatementLog;
 import st.orm.spi.QueryObserver;
 
 /**
@@ -190,15 +191,23 @@ public final class TransactionScope {
         this.deadlineNanos = options.timeoutSeconds() != null
                 ? System.nanoTime() + options.timeoutSeconds() * 1_000_000_000L
                 : null;
-        // The caller is on the stack where the scope is created, which a suspending block's completion is not;
-        // walked only while the advice log reports what a transaction repeats, so production pays nothing.
-        this.beganAt = AdviceLog.recordsRepeats() ? CallSiteCapture.captureCallSite() : null;
+        // The caller is on the stack where the scope is created, which a suspending block's completion is not.
+        // Walked while the advice log reports what a transaction repeats and, for a suspending block, while the
+        // slow statement log watches transactions, since nothing of the caller is on the stack when such a block
+        // completes: one walk per suspending transaction, which the gap walks of a transaction already cost. A
+        // blocking transaction completes with the method running it on the stack, where the slow statement log
+        // walks it only once the transaction was idle too long, so production pays nothing for one.
+        this.beganAt = AdviceLog.recordsRepeats() || suspendMode && SlowStatementLog.watchesTransactions()
+                ? CallSiteCapture.captureCallSite()
+                : null;
     }
 
     /**
-     * Returns the application frame that began this scope, walked where the scope was created while the advice
-     * log reports what a transaction repeats, or {@code null} when it was not walked or no application frame was
-     * on the stack.
+     * Returns the call site that began this scope, walked where the scope was created while the advice log reports
+     * what a transaction repeats or, for a scope in suspend mode, while the slow statement log watches
+     * transactions: the application frame, the launch site carried onto this thread, or the innermost plumbing
+     * frame where the stack holds nothing else. {@code null} when it was not walked or the stack held no frame
+     * to name.
      *
      * @return the call site that began the scope, or {@code null}.
      * @since 1.16

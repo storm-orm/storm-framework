@@ -323,6 +323,7 @@ class TransactionAdviceTest {
         assertTrue(line.startsWith("SQL advice (transaction)"), line);
         assertTrue(line.contains("\tadvice: the transaction held its connection "), line);
         assertTrue(line.contains("#idle-transaction"), line);
+        assertTrue(line.contains("\t\tlast statement: "), line);
         assertFalse(line.contains("#repeated-select"), line);
         // Beside a repeat: one block, the repeat first and the idle advice after it.
         var beside = capture(Level.TRACE, () -> transaction(REQUIRED_OPTIONS, () -> {

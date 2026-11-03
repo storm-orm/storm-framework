@@ -50,6 +50,19 @@ public class SlowStatementLogTest {
     }
 
     @Test
+    public void theStatementsAtTheEdgesOfTheIdleTimeAreNamedAtTheirSites() {
+        var gaps = new TransactionRecord.Gaps(2, 300_000_000L, 0, 165_000_000L, 0, 0, null, null, null, null,
+                select(1), "OrderService.kt:40", select(2), "OrderService.kt:52 -> OrderRepository.findById");
+        var advisory = SlowStatementLog.idleAdvisory(600_000_000L, 465_000_000L, 0, false, gaps);
+        assertEquals("the transaction held its connection 600 ms, 465 ms of it idle.\n"
+                + "idle: 300 ms before its first statement; 165 ms after its last statement\n"
+                + "first statement: the SELECT of City at OrderService.kt:40\n"
+                + "last statement: OrderService.kt:52 -> OrderRepository.findById\n"
+                + "fix: move that work before the transaction or after it commits.\n"
+                + "see: https://orm.st/docs/advice#idle-transaction", advisory);
+    }
+
+    @Test
     public void theHeadlineNamesTheExecutionAndWhatItCost() {
         String line = SlowStatementLog.render(select(0x3f9a2cL), 1_840_000_000L, 0, 3, true, null, "PetService.kt:42",
                 "SELECT c.id\nFROM city c\nWHERE c.id = ?", null, 1, null, 0);

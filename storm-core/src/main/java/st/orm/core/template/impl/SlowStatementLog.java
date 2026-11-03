@@ -170,7 +170,7 @@ public final class SlowStatementLog {
      *
      * @return {@code true} while a transaction threshold is configured.
      */
-    static boolean watchesTransactions() {
+    public static boolean watchesTransactions() {
         return transactionThresholdNanos != 0;
     }
 
@@ -727,8 +727,10 @@ public final class SlowStatementLog {
 
     /**
      * Renders the idle advice of a transaction, one fact per line: how long it held its connection and how much of
-     * that was idle, where, with the row locks held through it; the longest gap between the statements and how many
-     * there were; and the remedy that fits where the time went. Time at the edges, before the first statement or
+     * that was idle, where, with the row locks held through it; the statement that ended the time before the first
+     * or began the time after the last, the longest gap between the statements and how many there were; and the
+     * remedy that fits where the time went. Each statement named is named at its call site where it was walked, so
+     * the reader has a line of code whatever the header names. Time at the edges, before the first statement or
      * after the last, is work that can move out of the transaction; time between the statements is work the reads
      * feed and the writes may depend on, which moves out only by splitting the transaction. A transaction that only
      * reads is split by reading inside it and computing after it returns; reading without it is offered only where
@@ -776,11 +778,17 @@ public final class SlowStatementLog {
             }
             lines.append("\nidle: ").append(String.join("; ", named));
         }
+        if (before && gaps.first() != null) {
+            lines.append("\nfirst statement: ").append(end(gaps.first(), gaps.firstSite()));
+        }
         if (between) {
             String longest = longestGap(gaps);
             if (!longest.isEmpty()) {
                 lines.append("\n").append(longest);
             }
+        }
+        if (after && gaps.last() != null) {
+            lines.append("\nlast statement: ").append(end(gaps.last(), gaps.lastSite()));
         }
         return Advice.IDLE_TRANSACTION.format(millis(heldNanos), millis(idleNanos), where,
                 wrote ? ", with its row locks held for " + millis(lockedIdleNanos) + " of that" : "", lines, remedy);
@@ -822,8 +830,8 @@ public final class SlowStatementLog {
     }
 
     /**
-     * Names one end of a gap: its call site where it names the repository method, which names the entity too;
-     * otherwise the statement, at its call site where it was walked.
+     * Names one end of a gap, or a statement at the edge of the transaction: its call site where it names the
+     * repository method, which names the entity too; otherwise the statement, at its call site where it was walked.
      */
     private static String end(QueryContext context, @Nullable String site) {
         if (site != null && site.contains(" -> ")) {

@@ -73,6 +73,10 @@ public final class TransactionRecord {
     private long firstStartNanos;
     /** When the latest of the statements so far closed, or zero before the first. */
     private long lastEndNanos;
+    /** The statement that closed first, which ended the time before the first statement. */
+    private @Nullable QueryContext firstStatement;
+    /** The call site of {@link #firstStatement} where it was walked. */
+    private @Nullable String firstStatementSite;
     /** The statement that closed last, which precedes the next gap. */
     private @Nullable QueryContext previous;
     /** The call site of {@link #previous} where the repeats walked it. */
@@ -89,7 +93,8 @@ public final class TransactionRecord {
 
     private TransactionRecord(boolean fromFirstStatement, boolean recordRepeats) {
         this.fromFirstStatement = fromFirstStatement;
-        this.beganAt = recordRepeats ? beganAt(TransactionScope.current()) : null;
+        // Read from the scope, which walked it where the block was entered; no walk of its own.
+        this.beganAt = beganAt(TransactionScope.current());
         this.repeats = recordRepeats ? new Repeats(false) : null;
     }
 
@@ -159,7 +164,12 @@ public final class TransactionRecord {
      * its execution and the reading of its rows, and the statement itself for the repeats, keyed by its shape and
      * the call site it ran from, walked here while the caller is on the stack. The execution that makes a statement
      * a repeat is where whether the application accepts the advice is decided, once per repeat, with both the
-     * statement's call path and the method running the transaction on the stack.
+     * statement's call path and the method running the transaction on the stack. The first statement to close is
+     * kept as the one that ended the time before the first statement, with its call site where the repeats walked
+     * it or, while the slow statement log watches transactions, walked here where that time reached
+     * {@link #GAP_FLOOR_NANOS}, as the longest gap is; the latest to close is kept as the one the time after the
+     * last statement followed, with the call site the repeats walked, since walking it for every statement would
+     * cost a walk per statement.
      *
      * @param context the execution.
      * @param startNanos when the statement was prepared.
@@ -176,6 +186,7 @@ public final class TransactionRecord {
                          boolean exactRows) {
         statements++;
         long previousEndNanos = lastEndNanos;
+        boolean first = lastEndNanos == 0;
         boolean longest = gapClosed(context, startNanos, endNanos);
         // A SELECT reads; anything else, a call to a procedure included, may have written and taken locks.
         if (context.operation() != SqlOperation.SELECT && firstWriteNanos == 0) {
@@ -200,6 +211,13 @@ public final class TransactionRecord {
         }
         if (longest) {
             longestGapSite = site != null || !SlowStatementLog.watchesTransactions()
+                    ? site
+                    : CallSiteCapture.callSite(context);
+        }
+        if (first) {
+            firstStatement = context;
+            firstStatementSite = site != null || !SlowStatementLog.watchesTransactions()
+                    || startNanos - takenNanos < GAP_FLOOR_NANOS
                     ? site
                     : CallSiteCapture.callSite(context);
         }
@@ -252,9 +270,10 @@ public final class TransactionRecord {
 
     /**
      * Where a transaction held its connection while the application did other work: before its first statement,
-     * between its statements, and after its last until the connection was returned; and of the gaps between the
-     * statements, how many took at least {@link #GAP_FLOOR_NANOS}, and the longest, with the statements around it
-     * and the call site of the one that ended it.
+     * between its statements, and after its last until the connection was returned; the statements at the edges,
+     * the first and the last; and of the gaps between the statements, how many took at least
+     * {@link #GAP_FLOOR_NANOS}, and the longest, with the statements around it and the call site of the one that
+     * ended it.
      *
      * @param statements the statements the transaction ran.
      * @param beforeNanos the time before the first statement.
@@ -267,6 +286,10 @@ public final class TransactionRecord {
      *                          walked.
      * @param longestAfter the statement after the longest gap, or {@code null} without one.
      * @param longestSite the call site of the statement after the longest gap, or {@code null} where not walked.
+     * @param first the first statement, which ended the time before it, or {@code null} without one.
+     * @param firstSite the call site of the first statement, or {@code null} where not walked.
+     * @param last the last statement, which the time after it followed, or {@code null} without one.
+     * @param lastSite the call site of the last statement, or {@code null} where not walked.
      */
     record Gaps(int statements,
                 long beforeNanos,
@@ -277,10 +300,14 @@ public final class TransactionRecord {
                 @Nullable QueryContext longestBefore,
                 @Nullable String longestBeforeSite,
                 @Nullable QueryContext longestAfter,
-                @Nullable String longestSite) {
+                @Nullable String longestSite,
+                @Nullable QueryContext first,
+                @Nullable String firstSite,
+                @Nullable QueryContext last,
+                @Nullable String lastSite) {
 
         /** No gaps: the idle time of a transaction known only by its total. */
-        static final Gaps NONE = new Gaps(0, 0, 0, 0, 0, 0, null, null, null, null);
+        static final Gaps NONE = new Gaps(0, 0, 0, 0, 0, 0, null, null, null, null, null, null, null, null);
     }
 
     /**
@@ -291,10 +318,12 @@ public final class TransactionRecord {
      */
     Gaps gaps(long now) {
         if (lastEndNanos == 0) {
-            return new Gaps(statements, Math.max(0, now - takenNanos), 0, 0, 0, 0, null, null, null, null);
+            return new Gaps(statements, Math.max(0, now - takenNanos), 0, 0, 0, 0, null, null, null, null, null, null,
+                    null, null);
         }
         return new Gaps(statements, Math.max(0, firstStartNanos - takenNanos), betweenNanos, Math.max(0, now - lastEndNanos),
-                gaps, longestGapNanos, longestGapBefore, longestGapBeforeSite, longestGapAfter, longestGapSite);
+                gaps, longestGapNanos, longestGapBefore, longestGapBeforeSite, longestGapAfter, longestGapSite,
+                firstStatement, firstStatementSite, previous, previousSite);
     }
 
     /**
@@ -346,8 +375,9 @@ public final class TransactionRecord {
 
     /**
      * Returns the call site that began the transaction, walked where its block was entered while the advice log
-     * reports what a transaction repeats, or {@code null} when it was not walked: for a transaction another manager
-     * opened, or in production.
+     * reports what a transaction repeats or, for a suspending block, while the slow statement log watches
+     * transactions; {@code null} when it was not walked: for a transaction another manager opened, or a blocking
+     * one in production, which completes with the method running it on the stack.
      *
      * @return the call site, or {@code null}.
      */
