@@ -20,7 +20,11 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static st.orm.Operator.EQUALS;
+import static st.orm.ResolveScope.INNER;
+import static st.orm.ResolveScope.OUTER;
 import static st.orm.core.template.SqlInterceptor.observe;
+import static st.orm.core.template.TemplateString.raw;
+import static st.orm.core.template.Templates.column;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -774,6 +778,41 @@ public class SemiJoinIntegrationTest {
                 .antiJoin(PetPair.class).on(PetPair_.second, Visit_.pet)
                 .where(it -> it.where(Visit_.description, EQUALS, "spayed"))
                 .getResultList()));
+    }
+
+    @Test
+    public void filterJoinOnATableHoldingTwoKeysToTheAnchorNamesTheKeyForm() {
+        var e = assertThrows(PersistenceException.class, () -> orm().entity(Pet.class).select()
+                .antiJoin(PetPair.class).on(Pet.class));
+        assertTrue(e.getMessage().contains("antiJoin: PetPair references Pet through more than one foreign key (first, second), so the key to follow is ambiguous. Name it: on(PetPair_.first), with one antiJoin per key to follow each of them."), e.getMessage());
+    }
+
+    @Test
+    public void antiJoinPerKeyKeepsTheRowsNoKeyRefersTo() {
+        // data.sql: the pairs are (1, 2), (3, 4) and (5, 6), so the pets from 7 on are in no pair.
+        var pets = capture(() -> orm().entity(Pet.class).select()
+                .antiJoin(PetPair.class).on(PetPair_.first)
+                .antiJoin(PetPair.class).on(PetPair_.second)
+                .getResultList());
+        assertEquals(List.of("Freddy", "Lucky", "Lucky", "Max", "Mulligan", "Samantha", "Sly"), petNames(pets));
+        assertTrue(statement().contains("WHERE NOT EXISTS (SELECT 1 FROM pet_pair pp WHERE pp.first_id = p.id) AND NOT EXISTS (SELECT 1 FROM pet_pair pp WHERE pp.second_id = p.id)"), statement());
+        // A semi-join per key keeps the rows both keys refer to, which no pair does.
+        assertEquals(List.of(), petNames(orm().entity(Pet.class).select()
+                .semiJoin(PetPair.class).on(PetPair_.first)
+                .semiJoin(PetPair.class).on(PetPair_.second)
+                .getResultList()));
+    }
+
+    @Test
+    public void correlatedSubqueryNamesTheQueryTableThroughTheOuterScope() {
+        // The rows either key refers to take a subquery that names the pet of the query, which the subquery's own
+        // pets would otherwise make ambiguous, through the outer scope.
+        var pets = orm().entity(Pet.class).select()
+                .whereExists(orm().entity(PetPair.class).select()
+                        .where(raw("\0 = \0 OR \0 = \0", column(PetPair_.first, INNER), column(Pet_.id, OUTER),
+                                column(PetPair_.second, INNER), column(Pet_.id, OUTER))))
+                .getResultList();
+        assertEquals(List.of("Basil", "George", "Iggy", "Jewel", "Leo", "Rosy"), petNames(pets));
     }
 
     @Test

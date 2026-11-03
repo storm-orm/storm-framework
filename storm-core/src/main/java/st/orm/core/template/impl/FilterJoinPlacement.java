@@ -1183,8 +1183,9 @@ final class FilterJoinPlacement {
                                                 Class<? extends Data> referenced,
                                                 List<RecordField> matches) {
         if (matches.size() > 1) {
-            throw new PersistenceException("%s: %s references %s through more than one foreign key (fields: %s), so the relation to filter by is ambiguous."
-                    .formatted(type.method(), holder.getSimpleName(), referenced.getSimpleName(), matches.stream().map(RecordField::name).collect(joining(", "))));
+            throw new PersistenceException("%1$s: %2$s references %3$s through more than one foreign key (%4$s), so the key to follow is ambiguous. Name it: on(%2$s_.%5$s), with one %1$s per key to follow each of them."
+                    .formatted(type.method(), holder.getSimpleName(), referenced.getSimpleName(),
+                            matches.stream().map(RecordField::name).collect(joining(", ")), matches.getFirst().name()));
         }
         return matches.isEmpty() ? null : matches.getFirst();
     }

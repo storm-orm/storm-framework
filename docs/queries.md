@@ -1047,6 +1047,16 @@ INNER JOIN transfer t ON t.to_id = o.id
 
 The key names both the table it belongs to and the column, so nothing is left to resolve: a key of the joined table joins the table it references, and a key of another table in the query, `innerJoin<Owner>().on(Transfer_.to)` from a query on transfers, joins that table. A condition follows the key as it follows the table, `on(Transfer_.to) { ... }`. Where neither table references the other and both hold a key to one table, `on` takes both keys and matches them with each other: `innerJoin<Transfer>().on(Transfer_.pet, Visit_.pet)` joins the transfers of the pet a visit was for. The block DSL takes the same keys: `innerJoin<Transfer>(Transfer_.to)` and `innerJoin<Transfer>(Transfer_.pet, Visit_.pet)`.
 
+A filter join follows one key, so a table that holds two keys to the query's table is filtered by both with a join per key. The owners no transfer names, as sender or as receiver, are the rows neither key refers to:
+
+```kotlin
+orm.selectFrom<Owner>()
+    .antiJoin<Transfer>().on(Transfer_.from)
+    .antiJoin<Transfer>().on(Transfer_.to)
+```
+
+Two semi-joins keep the rows both keys refer to, the owners who sent a pet and received one. The rows either key refers to are a correlated subquery, whose condition names the query's own table through the outer scope, since the transfer's own owners would make `Owner_.id` ambiguous inside it: `whereExists { subquery(Transfer::class).where { "${column(Transfer_.from, INNER)} = ${column(Owner_.id, OUTER)} OR ${column(Transfer_.to, INNER)} = ${column(Owner_.id, OUTER)}" } }`. See [ResolveScope](sql-templates.md#resolvescope).
+
 ### Filtering by Related Rows
 
 A join to the many side of a relation returns a row per related row: an owner of two pets that match the condition comes back twice, and returning each owner once takes `distinct`. `semiJoin` filters by the related table without joining its rows. The query keeps the rows that have a related row matching the conditions that name the table, and returns each of them once:
