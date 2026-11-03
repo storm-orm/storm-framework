@@ -182,6 +182,8 @@ Terminal operations: `.resultList`, `.singleResult`, `.optionalResult`, `.result
 
 **`find` returns nullable, `get` throws.** No result gives `null` from `find` and a `NoResultException` from `get`.
 
+**A write expects one row per entity.** An `insert`, `update` or `remove` that affects another count throws `UnexpectedRowCountException` with both counts; a `@Version` update that affects none throws `OptimisticLockException`. Under the Spring Boot starters these surface as `IncorrectUpdateSemanticsDataAccessException` and `OptimisticLockingFailureException`, and every other statement failure as a `DataAccessException`.
+
 **`remove` acts on what you hold, `delete` builds a query.** `remove` operates on entities or ids you already have and executes immediately. `delete` builds a query that deletes rows by criteria and returns `QueryBuilder`:
 ```kotlin
 // remove: you have the entity/id, execute immediately

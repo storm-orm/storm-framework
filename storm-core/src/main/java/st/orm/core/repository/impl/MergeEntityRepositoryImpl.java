@@ -24,6 +24,7 @@ import static st.orm.core.template.TemplateString.wrap;
 import static st.orm.core.template.Templates.bindVar;
 import static st.orm.core.template.Templates.table;
 import static st.orm.core.template.impl.StringTemplates.flatten;
+import static st.orm.spi.SqlOperation.INSERT;
 
 import java.math.BigInteger;
 import java.sql.Timestamp;
@@ -329,7 +330,7 @@ public abstract class MergeEntityRepositoryImpl<E extends Entity<ID>, ID> extend
         }
         int[] result = query.executeBatch();
         if (IntStream.of(result).anyMatch(r -> r != 0 && r != 1 && r != 2)) {
-            throw new PersistenceException(upsertFailureMessage(batch.size()));
+            throw failure(INSERT, new PersistenceException(upsertFailureMessage(batch.size())));
         }
         // Entities on the MERGE path always carry their primary key: auto-generated keys are routed to insert or
         // update before reaching this point, and validateUpsert rejects default keys for the rest.

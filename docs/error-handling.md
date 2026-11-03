@@ -19,6 +19,7 @@ Storm uses unchecked exceptions for most error conditions. The root type is `Per
 | `NoResultException` | `PersistenceException` | `getSingleResult()` returns no rows. |
 | `NonUniqueResultException` | `PersistenceException` | `getSingleResult()` or `getOptionalResult()` returns more than one row. |
 | `OptimisticLockException` | `PersistenceException` | An update or delete detects a version conflict (the row was modified by another transaction). |
+| `UnexpectedRowCountException` | `PersistenceException` | An insert, update or remove affects another number of rows than it expects, such as an update of an entity whose row does not exist. Carries the expected and actual row counts. |
 | `SchemaValidationException` | `PersistenceException` | Schema validation finds mismatches between entity definitions and the database schema. |
 | `IllegalTransactionStateException` | `PersistenceException` | A transaction block cannot open against the transaction state it finds: `MANDATORY` without a transaction, `NEVER` inside one, or a joined block stating a stricter isolation level than the transaction it joins. |
 | `TransactionTimedOutException` | `PersistenceException` | A transaction exceeds its configured timeout. |
@@ -36,6 +37,7 @@ RuntimeException
       ├── NoResultException
       ├── NonUniqueResultException
       ├── OptimisticLockException
+      ├── UnexpectedRowCountException
       ├── SchemaValidationException
       ├── IllegalTransactionStateException
       ├── TransactionTimedOutException
@@ -148,9 +150,13 @@ try {
 </TabItem>
 </Tabs>
 
-With the Spring Boot starter, exception translation turns this into Spring's `OptimisticLockingFailureException`, and a missing or non-unique single result into `EmptyResultDataAccessException` or `IncorrectResultSizeDataAccessException`, with the Storm exception as the cause. See [Exception Translation](spring-integration.md#exception-translation).
+With the Spring Boot starter, exception translation turns this into Spring's `OptimisticLockingFailureException`, a missing or non-unique single result into `EmptyResultDataAccessException` or `IncorrectResultSizeDataAccessException`, and an unexpected row count into `IncorrectUpdateSemanticsDataAccessException`, with the Storm exception as the cause. See [Exception Translation](spring-integration.md#exception-translation).
 
 The exception includes a reference to the entity that caused the conflict, accessible via `getEntity()`.
+
+### Writes That Affect No Row
+
+An insert, update or remove of an entity expects to affect exactly one row, and a batch one row per entity. When the database reports another count, Storm throws `UnexpectedRowCountException`, with the counts on `getExpectedRowCount()` and `getActualRowCount()`. The usual cause is an update or remove of an entity whose row does not exist, or a trigger that suppressed the write. For an entity with a `@Version` field, an update that affects no row is an `OptimisticLockException` instead.
 
 ### Constraint Violations
 

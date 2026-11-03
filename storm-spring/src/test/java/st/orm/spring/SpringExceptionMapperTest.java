@@ -20,6 +20,7 @@ import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
+import java.sql.SQLException;
 import java.util.List;
 import javax.sql.DataSource;
 import org.junit.jupiter.api.BeforeEach;
@@ -30,13 +31,20 @@ import org.springframework.dao.DataAccessException;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.dao.EmptyResultDataAccessException;
 import org.springframework.dao.IncorrectResultSizeDataAccessException;
+import org.springframework.dao.IncorrectUpdateSemanticsDataAccessException;
 import org.springframework.dao.OptimisticLockingFailureException;
 import org.springframework.jdbc.datasource.DataSourceTransactionManager;
 import org.springframework.jdbc.datasource.init.ResourceDatabasePopulator;
+import st.orm.IllegalTransactionStateException;
 import st.orm.NoResultException;
 import st.orm.NonUniqueResultException;
 import st.orm.OptimisticLockException;
 import st.orm.PersistenceException;
+import st.orm.ReadOnlyTransactionException;
+import st.orm.TransactionCallbackException;
+import st.orm.TransactionTimedOutException;
+import st.orm.UnexpectedRollbackException;
+import st.orm.UnexpectedRowCountException;
 import st.orm.spi.ExceptionContext;
 import st.orm.spring.model.Owner;
 import st.orm.spring.model.PetType;
@@ -96,15 +104,32 @@ class SpringExceptionMapperTest {
     }
 
     @Test
-    void failuresWithoutSqlExceptionPassThroughUnchanged() {
+    void failuresWithoutSpringCounterpartTranslateToStormSystemException() {
         SpringExceptionMapper mapper = new SpringExceptionMapper(dataSource);
         PersistenceException storm = new PersistenceException("model constraint violated");
-        assertSame(storm, mapper.map(storm, emptyContext()));
-        assertInstanceOf(PersistenceException.class, mapper.map(new IllegalStateException("no sql"), emptyContext()));
+        var translatedStorm = assertInstanceOf(StormSystemException.class, mapper.map(storm, emptyContext()));
+        assertSame(storm, translatedStorm.getCause());
+        var other = new IllegalStateException("no sql");
+        var translatedOther = assertInstanceOf(StormSystemException.class, mapper.map(other, emptyContext()));
+        assertSame(other, translatedOther.getCause());
     }
 
     @Test
-    void stormDetectedFailuresTranslateAsSpringsJpaIntegrationTranslatesTheirCounterparts() {
+    void transactionApiFailuresPassThroughUnchanged() {
+        SpringExceptionMapper mapper = new SpringExceptionMapper(dataSource);
+        List<RuntimeException> failures = List.of(
+                new TransactionTimedOutException("late"),
+                new IllegalTransactionStateException("refused"),
+                new UnexpectedRollbackException("rolled back"),
+                new ReadOnlyTransactionException("read-only"),
+                new TransactionCallbackException("callback", new IllegalStateException("callback failed"), true));
+        for (RuntimeException failure : failures) {
+            assertSame(failure, mapper.map(failure, emptyContext()));
+        }
+    }
+
+    @Test
+    void stormDetectedFailuresTranslateToSpringsDataAccessTypes() {
         SpringExceptionMapper mapper = new SpringExceptionMapper(dataSource);
         var conflict = new OptimisticLockException("stale");
         var translatedConflict = assertInstanceOf(OptimisticLockingFailureException.class,
@@ -120,6 +145,30 @@ class SpringExceptionMapperTest {
                 mapper.map(ambiguous, emptyContext()));
         assertSame(ambiguous, translatedAmbiguous.getCause());
         assertEquals(1, translatedAmbiguous.getExpectedSize());
+        var rowCount = new UnexpectedRowCountException("none affected", 1, 0);
+        var translatedRowCount = assertInstanceOf(IncorrectUpdateSemanticsDataAccessException.class,
+                mapper.map(rowCount, emptyContext()));
+        assertSame(rowCount, translatedRowCount.getCause());
+    }
+
+    @Test
+    void aWriteToAMissingRowThroughTheComposedTemplateFailsWithSpringsIncorrectUpdateSemantics() {
+        ORMTemplate orm = SpringOrmTemplate.of(dataSource, () -> List.of(new DataSourceTransactionManager(dataSource)));
+        var petTypes = orm.entity(PetType.class);
+        var missing = new PetType(-1, "missing");
+        var updateFailure = assertThrows(IncorrectUpdateSemanticsDataAccessException.class,
+                () -> petTypes.update(missing));
+        var updateRowCount = assertInstanceOf(UnexpectedRowCountException.class, updateFailure.getCause());
+        assertEquals(1, updateRowCount.getExpectedRowCount());
+        assertEquals(0, updateRowCount.getActualRowCount());
+        var removeFailure = assertThrows(IncorrectUpdateSemanticsDataAccessException.class,
+                () -> petTypes.remove(missing));
+        assertInstanceOf(UnexpectedRowCountException.class, removeFailure.getCause());
+        var batchFailure = assertThrows(IncorrectUpdateSemanticsDataAccessException.class,
+                () -> petTypes.update(List.of(new PetType(1, "renamed"), missing)));
+        var batchRowCount = assertInstanceOf(UnexpectedRowCountException.class, batchFailure.getCause());
+        assertEquals(2, batchRowCount.getExpectedRowCount());
+        assertEquals(1, batchRowCount.getActualRowCount());
     }
 
     @Test
@@ -142,7 +191,7 @@ class SpringExceptionMapperTest {
         SpringExceptionMapper mapper = new SpringExceptionMapper(dataSource);
         // The framework attaches SQL diagnostics as a suppressed exception on the reported failure, which
         // may wrap the SQLException. Translation drops the wrapper but must keep its suppressed exceptions.
-        java.sql.SQLException sqlException = new java.sql.SQLException("Unique index violation", "23505", 23505);
+        SQLException sqlException = new SQLException("Unique index violation", "23505", 23505);
         PersistenceException wrapper = new PersistenceException(sqlException);
         RuntimeException diagnostics = new RuntimeException("SQL:\nINSERT INTO pet_type ...");
         wrapper.addSuppressed(diagnostics);
