@@ -1250,8 +1250,10 @@ val saved = withContext(Dispatchers.IO) { orderService.placeOrder(order) }
 ```
 
 Dispatcher freedom inside a transaction, switching with `withContext` while staying in the same transaction,
-is a property of Storm-managed [suspend transactions](#suspend-transactions); a Spring-managed transaction stays
-on the thread that started it.
+is a property of Storm-managed [suspend transactions](#suspend-transactions), as is their
+[cancellation](#transaction-cancellation); a Spring-managed transaction stays on the thread that started it. An
+application written with suspending functions keeps a Storm-managed template for that reason, see
+[Transaction Integration](spring-integration.md#transaction-integration).
 
 #### Using Storm Without @Transactional
 
