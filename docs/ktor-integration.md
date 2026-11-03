@@ -217,7 +217,7 @@ Because `transaction { }` is a suspend function, it integrates naturally with Kt
 
 ### Route-Scoped Transactions
 
-To remove the per-handler boilerplate, wrap a group of routes in `transactional { }`: every call to a route inside the block runs in its own transaction, opened before the handler, committed when it completes, and rolled back when it throws. The handlers contain no transaction code at all:
+To remove the per-handler boilerplate, wrap a group of routes in `transactional { }`: every call to a route inside the block runs in its own transaction, opened before the handler, committed when it completes, and rolled back when it throws. The handlers contain no transaction code at all. In the [statement advice](advice.md#idle-transaction) and the slow statement log such a transaction is named by its route as declared, `SQL advice (transaction): GET /owners/{id}`, since the plugin begins it before the handler is on the stack:
 
 ```kotlin
 routing {

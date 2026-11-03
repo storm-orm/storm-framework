@@ -124,16 +124,25 @@ public final class CallSiteCapture {
      * it no longer is. Carrying what this returns, bound through {@link #callSiteHint()}, is what lets a
      * statement whose stack is plumbing end to end name the frame that launched the work. When the launch
      * itself has no application frame on its stack, the fallback already carried is returned, so chained
-     * launches preserve the original caller.</p>
+     * launches preserve the original caller; with nothing carried, the innermost plumbing frame is returned, as
+     * {@link #callSite()} returns it, since a plumbing site still says more than none.</p>
      *
      * <p>Costs a stack walk; callers gate on whether an observing scope records call sites.</p>
      *
-     * @return the launching application frame, or {@code null} when there is none to carry.
+     * @return the launching application frame, the carried fallback or the innermost plumbing frame, or
+     *         {@code null} when there is none to carry.
      */
     @Nullable
     public static String captureCallSite() {
         var walked = walkFrames();
-        return walked.site(walked.application() != null ? walked.application() : CALL_SITE_HINT.get());
+        if (walked.application() != null) {
+            return walked.site(walked.application());
+        }
+        String hint = CALL_SITE_HINT.get();
+        if (hint != null) {
+            return walked.site(hint);
+        }
+        return walked.plumbing();
     }
 
     /**

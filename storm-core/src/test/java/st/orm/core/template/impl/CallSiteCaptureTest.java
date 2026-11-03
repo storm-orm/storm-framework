@@ -78,6 +78,14 @@ class CallSiteCaptureTest {
     }
 
     @Test
+    void aLaunchFromPlumbingEndToEndCarriesTheInnermostPlumbingFrame() throws InterruptedException {
+        // A transaction begun from a declared database layer, with nothing of the application beyond it, still
+        // carries a site: the plumbing's innermost frame, as a statement on such a stack is named.
+        var site = onBareThread(() -> ReportService$run$$inlined$map$1.emit(CallSiteCapture::captureCallSite));
+        assertTrue(site != null && site.startsWith("ReportService$run$$inlined$map$1.java:"), site);
+    }
+
+    @Test
     void theCarriedLaunchSiteStandsInForACallerTheStackLost() throws InterruptedException {
         // Nothing to carry: a launch with no application frame on its stack carries none.
         assertNull(onBareThread(CallSiteCapture::captureCallSite));

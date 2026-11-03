@@ -170,7 +170,7 @@ public final class SlowStatementLog {
      *
      * @return {@code true} while a transaction threshold is configured.
      */
-    static boolean watchesTransactions() {
+    public static boolean watchesTransactions() {
         return transactionThresholdNanos != 0;
     }
 
@@ -727,8 +727,10 @@ public final class SlowStatementLog {
 
     /**
      * Renders the idle advice of a transaction, one fact per line: how long it held its connection and how much of
-     * that was idle, where, with the row locks held through it; the longest gap between the statements and how many
-     * there were; and the remedy that fits where the time went. Time at the edges, before the first statement or
+     * that was idle, where, with the row locks held through it; the statement that ended the time before the first
+     * or began the time after the last, the longest gap between the statements and how many there were; and the
+     * remedy that fits where the time went. Each statement named is named at its call site where it was walked, so
+     * the reader has a line of code whatever the header names. Time at the edges, before the first statement or
      * after the last, is work that can move out of the transaction; time between the statements is work the reads
      * feed and the writes may depend on, which moves out only by splitting the transaction. A transaction that only
      * reads is split by reading inside it and computing after it returns; reading without it is offered only where
@@ -742,7 +744,7 @@ public final class SlowStatementLog {
                                TransactionRecord.Gaps gaps) {
         String remedy;
         if (gaps.betweenNanos() <= gaps.beforeNanos() + gaps.afterNanos()) {
-            remedy = "move that work before the transaction or after it commits";
+            remedy = edgeRemedy(gaps);
         } else if (wrote) {
             remedy = "where the writes need not see the reads of this transaction, do the reads and that work first, "
                     + "then write in a short transaction of its own";
@@ -776,14 +778,46 @@ public final class SlowStatementLog {
             }
             lines.append("\nidle: ").append(String.join("; ", named));
         }
+        if (before && gaps.first() != null) {
+            lines.append("\nfirst statement: ").append(end(gaps.first(), gaps.firstSite()));
+        }
         if (between) {
             String longest = longestGap(gaps);
             if (!longest.isEmpty()) {
                 lines.append("\n").append(longest);
             }
         }
+        if (after && gaps.last() != null) {
+            lines.append("\nlast statement: ").append(end(gaps.last(), gaps.lastSite()));
+        }
         return Advice.IDLE_TRANSACTION.format(millis(heldNanos), millis(idleNanos), where,
                 wrote ? ", with its row locks held for " + millis(lockedIdleNanos) + " of that" : "", lines, remedy);
+    }
+
+    /**
+     * The remedy for time at the edges, which names the line the work sits beyond: the work after the last
+     * statement can follow the commit, the work before the first can precede the transaction, whichever edge holds
+     * more of the time. Without the statement at that edge, as for a transaction that ran none, the move is named
+     * alone.
+     */
+    private static String edgeRemedy(TransactionRecord.Gaps gaps) {
+        if (gaps.afterNanos() >= gaps.beforeNanos() && gaps.last() != null) {
+            return "the work after " + where(gaps.last(), gaps.lastSite())
+                    + " can run after the commit; an onCommit callback runs it there";
+        }
+        if (gaps.beforeNanos() > gaps.afterNanos() && gaps.first() != null) {
+            return "the work before " + where(gaps.first(), gaps.firstSite()) + " can run before the transaction";
+        }
+        return "move that work before the transaction or after it commits";
+    }
+
+    /** Names the line a statement ran from where its call site was walked, otherwise the statement. */
+    private static String where(QueryContext context, @Nullable String site) {
+        if (site == null) {
+            return statement(context);
+        }
+        int arrow = site.indexOf(" -> ");
+        return arrow < 0 ? site : site.substring(0, arrow);
     }
 
     /**
@@ -822,8 +856,8 @@ public final class SlowStatementLog {
     }
 
     /**
-     * Names one end of a gap: its call site where it names the repository method, which names the entity too;
-     * otherwise the statement, at its call site where it was walked.
+     * Names one end of a gap, or a statement at the edge of the transaction: its call site where it names the
+     * repository method, which names the entity too; otherwise the statement, at its call site where it was walked.
      */
     private static String end(QueryContext context, @Nullable String site) {
         if (site != null && site.contains(" -> ")) {

@@ -175,8 +175,22 @@ class IdleTransactionLogTest {
         }));
         assertEquals(1, lines.size(), lines.toString());
         var line = lines.getFirst();
-        assertTrue(Pattern.compile(" ms of it idle after its last statement\\.\\R\t\tfix: move that work before the "
-                + "transaction or after it commits\\.").matcher(line).find(), line);
+        // The statement the time followed is named; a COUNT reads no entity and, with the repeats unrecorded, its
+        // call site was not walked.
+        assertTrue(Pattern.compile(" ms of it idle after its last statement\\.\\R\t\tlast statement: the SELECT\\R"
+                + "\t\tfix: the work after the SELECT can run after the commit; an onCommit callback runs it there\\.")
+                .matcher(line).find(), line);
+    }
+
+    @Test
+    void aSuspendingScopeWalksTheSiteThatBeganItWhileTransactionsAreWatched() {
+        // A suspending block completes on its dispatcher, with nothing of the caller on the stack, so the site is
+        // walked where the block is entered; a blocking one completes with the method running it on the stack.
+        AdviceLog.reset();
+        assertNotNull(TransactionScope.create(REQUIRED_OPTIONS, true, null).beganAt());
+        assertNull(TransactionScope.create(REQUIRED_OPTIONS, false, null).beganAt());
+        SlowStatementLog.transactionThreshold(null);
+        assertNull(TransactionScope.create(REQUIRED_OPTIONS, true, null).beganAt());
     }
 
     @Test
@@ -283,7 +297,7 @@ class IdleTransactionLogTest {
     void everyPartOfTheIdleTimeIsNamedWithItsFigure() {
         // A part under a tenth of the idle time would be left out.
         var gaps = new TransactionRecord.Gaps(3, 300_000_000L, 800_000_000L, 165_000_000L, 412, 420_000_000L,
-                null, null, null, null);
+                null, null, null, null, null, null, null, null);
         var advisory = SlowStatementLog.idleAdvisory(1_400_000_000L, 1_265_000_000L, 0, false, gaps);
         assertEquals("the transaction held its connection 1400 ms, 1265 ms of it idle.\n"
                 + "idle: 300 ms before its first statement; 800 ms between statements; 165 ms after its last statement\n"
@@ -321,7 +335,8 @@ class IdleTransactionLogTest {
     @Test
     void statementsCloseTogetherAreNotAdvisedAConnectionBorrowedForEach() {
         // 300 statements a millisecond apart: a borrow per statement would cost about what the held connection did.
-        var gaps = new TransactionRecord.Gaps(301, 0, 300_000_000L, 0, 0, 0, null, null, null, null);
+        var gaps = new TransactionRecord.Gaps(301, 0, 300_000_000L, 0, 0, 0, null, null, null, null, null, null, null,
+                null);
         var advisory = SlowStatementLog.idleAdvisory(400_000_000L, 300_000_000L, 0, false, gaps);
         assertTrue(advisory.endsWith("idle between statements.\nidle gaps: all under 1.0 ms\nfix: read what the work "
                 + "needs inside the transaction and do the work after it returns.\n"
@@ -339,6 +354,8 @@ class IdleTransactionLogTest {
         var line = lines.getFirst();
         assertTrue(line.contains(" ms in its statement, wrote, "), line);
         assertTrue(line.contains(" ms of it idle after its last statement, with its row locks held for "), line);
+        assertTrue(line.contains(System.lineSeparator() + "\t\tlast statement: the INSERT" + System.lineSeparator()
+                + "\t\tfix: "), line);
         // The work followed the write, so the locks were held for all of it.
         assertTrue(lockedIdleMillis(line) >= 100, line);
     }
