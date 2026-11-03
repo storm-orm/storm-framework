@@ -44,6 +44,11 @@ updates:
       # storm-jackson3 likewise supports Jackson 3.0 and later and compiles against 3.0.
       - dependency-name: "tools.jackson.core:*"
         update-types: ["version-update:semver-major", "version-update:semver-minor"]
+      # The Kotlin module the Jackson 3 tests use is built for a Kotlin line too: a newer minor references
+      # kotlin.time.Instant, which the 2.0 standard library lacks. It moves with the Kotlin floor; patches within
+      # the line are still proposed.
+      - dependency-name: "tools.jackson.module:jackson-module-kotlin"
+        update-types: ["version-update:semver-major", "version-update:semver-minor"]
       # Storm's GraalVM Feature runs inside the application's native-image builder, so it compiles against the
       # oldest GraalVM line Storm supports.
       - dependency-name: "org.graalvm.sdk:*"
