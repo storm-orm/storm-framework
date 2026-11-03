@@ -16,6 +16,7 @@
 package st.orm.template
 
 import st.orm.Data
+import st.orm.Metamodel
 import kotlin.reflect.KClass
 
 /**
@@ -100,4 +101,69 @@ public abstract class TypedJoinBuilder<T : Data, R : Any, ID : Any> : JoinBuilde
     public inline fun <reified O : Data> on(
         noinline condition: WhereBuilder<Data, R, ID>.() -> PredicateBuilder<out Data, *, *>,
     ): QueryBuilder<Data, R, ID> = on(O::class, condition)
+
+    /**
+     * Specifies the foreign key to join on, where the table holds more than one key to the table joined on. A key
+     * of the joined table joins the table it references; a key of another table joins that table, and must reference
+     * the joined table.
+     *
+     * ```kotlin
+     * orm.entity(Owner::class)
+     *     .select()
+     *     .semiJoin<Transfer>().on(Transfer_.to)
+     *     .resultList
+     * ```
+     *
+     * @param key a foreign key of the joined table, or of the table to join on.
+     * @return the query builder.
+     * @since 1.16
+     */
+    public abstract fun on(key: Metamodel<out Data, *>): QueryBuilder<Data, R, ID>
+
+    /**
+     * Specifies the foreign key to join on, with a condition the join adds to the key it joins by.
+     *
+     * @param key a foreign key of the joined table, or of the table to join on.
+     * @param condition the condition on the joined rows.
+     * @return the query builder.
+     * @since 1.16
+     */
+    public abstract fun on(
+        key: Metamodel<out Data, *>,
+        condition: WhereBuilder<Data, R, ID>.() -> PredicateBuilder<out Data, *, *>,
+    ): QueryBuilder<Data, R, ID>
+
+    /**
+     * Specifies the foreign keys to join on, where neither table references the other and both hold a key to one
+     * table: the join matches the two keys with each other.
+     *
+     * ```kotlin
+     * orm.entity(Pet::class)
+     *     .select()
+     *     .semiJoin<Visit>().on<Pet>()
+     *     .semiJoin<Transfer>().on(Transfer_.pet, Visit_.pet)
+     *     .resultList
+     * ```
+     *
+     * @param key a foreign key of the joined table.
+     * @param anchorKey a foreign key of the table to join on, referencing the table [key] references.
+     * @return the query builder.
+     * @since 1.16
+     */
+    public abstract fun on(key: Metamodel<out Data, *>, anchorKey: Metamodel<out Data, *>): QueryBuilder<Data, R, ID>
+
+    /**
+     * Specifies the foreign keys to join on, with a condition the join adds to the keys it joins by.
+     *
+     * @param key a foreign key of the joined table.
+     * @param anchorKey a foreign key of the table to join on, referencing the table [key] references.
+     * @param condition the condition on the joined rows.
+     * @return the query builder.
+     * @since 1.16
+     */
+    public abstract fun on(
+        key: Metamodel<out Data, *>,
+        anchorKey: Metamodel<out Data, *>,
+        condition: WhereBuilder<Data, R, ID>.() -> PredicateBuilder<out Data, *, *>,
+    ): QueryBuilder<Data, R, ID>
 }

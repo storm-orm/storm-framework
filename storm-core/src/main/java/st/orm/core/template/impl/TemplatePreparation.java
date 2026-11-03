@@ -1388,7 +1388,7 @@ class TemplatePreparation {
                 ? new TableSource(fieldType.requireDataType())
                 : new Elements.TemplateSource(TemplateString.of(query.value()));
         Elements.Target target = query == null
-                ? new Elements.TableTarget(table, field)
+                ? new Elements.TableTarget(table, null, field, null)
                 : getTemplateTarget(
                 fromAlias,
                 alias,
@@ -1461,8 +1461,8 @@ class TemplatePreparation {
         // occurrence carries its own alias, so a type reference to it is already satisfied and deriving a second
         // occurrence would make the type ambiguous.
         for (Join join : customJoins) {
-            if (join.target() instanceof Elements.TableTarget(var table, var ignore, var ignoreCondition)) {
-                tables.add(table);
+            if (join.target() instanceof Elements.TableTarget target) {
+                tables.add(target.table());
             }
             if (join.source() instanceof TableSource(var table)) {
                 explicitTables.add(table);

@@ -80,12 +80,12 @@ final class JoinProcessor implements ElementProcessor<Join> {
     @Override
     public Object getCompilationKey(Join join, Function<TemplateString, Object> keyGenerator) {
         if (join.source() instanceof TableSource
-                && join.target() instanceof TableTarget(var table, var field, var condition) && condition != null) {
+                && join.target() instanceof TableTarget(var table, var sourceKey, var targetKey, var condition) && condition != null) {
             var conditionKey = keyGenerator.apply(condition.toTemplate());
             if (conditionKey == null) {
                 return null;
             }
-            var withoutCondition = new Join(join.source(), join.sourceAlias(), new TableTarget(table, field),
+            var withoutCondition = new Join(join.source(), join.sourceAlias(), new TableTarget(table, sourceKey, targetKey, null),
                     join.targetAlias(), join.type(), join.autoJoin());
             return List.of(withoutCondition, conditionKey);
         }
@@ -151,8 +151,8 @@ final class JoinProcessor implements ElementProcessor<Join> {
             throw new SqlTemplateException("%s has no ON clause, so it cannot take a join condition. Use a join type with an ON clause, such as an inner or left join, to join on a condition.".formatted(joinType));
         }
         String onClause = join.type().hasOnClause() ? switch (join.target()) {
-            case TableTarget(var toTable, var toField, var condition) when join.source() instanceof TableSource(var fromTable) -> {
-                var derived = compileJoinCondition(fromTable, join.sourceAlias(), toTable, join.targetAlias(), toField, compiler);
+            case TableTarget(var toTable, var sourceKey, var targetKey, var condition) when join.source() instanceof TableSource(var fromTable) -> {
+                var derived = compileDerivedCondition(fromTable, join.sourceAlias(), toTable, join.targetAlias(), sourceKey, targetKey, compiler);
                 yield condition == null
                         ? derived
                         : "%s AND (%s)".formatted(derived, compiler.getQueryModel().compileExpression(new TemplateExpression(condition.toTemplate()), compiler));
@@ -195,21 +195,34 @@ final class JoinProcessor implements ElementProcessor<Join> {
                 || template.fragments().stream().anyMatch(fragment -> !fragment.isBlank());
     }
 
-    private String compileJoinCondition(
+    private String compileDerivedCondition(
             Class<? extends Data> fromTable,
             String alias,
             Class<? extends Data> toTable,
             @Nullable String toAlias,
-            @Nullable RecordField toField,
+            @Nullable RecordField sourceKey,
+            @Nullable RecordField targetKey,
             TemplateCompiler compiler
     ) throws SqlTemplateException {
-        if (toField != null) {
-            // Graph-derived joins carry the resolved foreign key field of the target table; no
-            // type-based resolution is needed, so multiple foreign keys of the same type stay
-            // unambiguous.
+        if (sourceKey != null && targetKey != null) {
+            // Both tables hold a key to one table: the joined rows are read by their key, which the key of the table
+            // joined on matches.
+            demandJoinedKey(fromTable, sourceKey, compiler);
+            return compileKeyCondition(fromTable, alias, toTable, toAlias, sourceKey, targetKey, compiler);
+        }
+        if (targetKey != null) {
+            // A key of the table joined on, resolved for a graph-derived join or named by the join, references the
+            // joined table; no type-based resolution is needed, so several keys of one type stay unambiguous.
             validateDataType(fromTable, true);
-            return compileJoinCondition(fromTable, alias, toTable, toAlias, toField,
+            return compileJoinCondition(fromTable, alias, toTable, toAlias, targetKey,
                     findPkField(fromTable).orElseThrow(), compiler);
+        }
+        if (sourceKey != null) {
+            // A key of the joined table, named by the join, references the table joined on.
+            validateDataType(toTable, true);
+            demandJoinedKey(fromTable, sourceKey, compiler);
+            return compileJoinCondition(toTable, toAlias, fromTable, alias, sourceKey,
+                    findPkField(toTable).orElseThrow(), compiler);
         }
         var rightComponent = findExactJoinField(toTable, fromTable);
         if (rightComponent.isPresent()) {
@@ -243,7 +256,7 @@ final class JoinProcessor implements ElementProcessor<Join> {
                     findPkField(toTable).orElseThrow(), compiler);
         }
         throw new SqlTemplateException(
-                "Failed to join %s with %s: no matching foreign key relationship found. Ensure one of the types has an @FK-annotated field referencing the other, or use an explicit ON clause with a template-based join.".formatted(fromTable.getSimpleName(), toTable.getSimpleName()));
+                "Failed to join %1$s with %2$s: no matching foreign key relationship found. Ensure one of the types has an @FK-annotated field referencing the other, name the keys both hold to one table, on(%1$s_.<key>, %2$s_.<key>), or use an explicit ON clause with a template-based join.".formatted(fromTable.getSimpleName(), toTable.getSimpleName()));
     }
 
     /**
@@ -277,11 +290,11 @@ final class JoinProcessor implements ElementProcessor<Join> {
         var matches = findRecordFields(getFkFields(fkSide).toList(), targetSide);
         if (matches.size() > 1) {
             throw new SqlTemplateException(
-                    "Failed to join %s with %s: multiple foreign keys reference %s (fields: %s). Use an explicit ON clause with a template-based join to select the intended foreign key.".formatted(
+                    "Failed to join %1$s with %2$s: multiple foreign keys reference %2$s (fields: %3$s). Name the one to join on: on(%1$s_.%4$s).".formatted(
                             fkSide.getSimpleName(),
                             targetSide.getSimpleName(),
-                            targetSide.getSimpleName(),
-                            matches.stream().map(RecordField::name).collect(joining(", "))));
+                            matches.stream().map(RecordField::name).collect(joining(", ")),
+                            matches.getFirst().name()));
         }
         return matches.stream().findFirst();
     }
@@ -305,13 +318,47 @@ final class JoinProcessor implements ElementProcessor<Join> {
         var matches = findRecordFieldsByTable(getFkFields(fkSide).toList(), tableSide, tableNameResolver);
         if (matches.size() > 1) {
             throw new SqlTemplateException(
-                    "Failed to join %s with %s: multiple foreign keys reference table '%s' (fields: %s). Use an explicit ON clause with a template-based join to select the intended foreign key.".formatted(
+                    "Failed to join %1$s with %2$s: multiple foreign keys reference table '%3$s' (fields: %4$s). Name the one to join on: on(%1$s_.%5$s).".formatted(
                             fkSide.getSimpleName(),
                             tableSide.getSimpleName(),
                             getTableName(tableSide, tableNameResolver).table(),
-                            matches.stream().map(RecordField::name).collect(joining(", "))));
+                            matches.stream().map(RecordField::name).collect(joining(", ")),
+                            matches.getFirst().name()));
         }
         return matches.stream().findFirst();
+    }
+
+    /**
+     * Renders the condition matching a foreign key of the joined table with a foreign key of the table joined on,
+     * where both reference one table.
+     */
+    private String compileKeyCondition(
+            Class<? extends Data> fromTable,
+            @Nullable String fromAlias,
+            Class<? extends Data> toTable,
+            @Nullable String toAlias,
+            RecordField fromKey,
+            RecordField toKey,
+            TemplateCompiler compiler
+    ) throws SqlTemplateException {
+        fromAlias = fromAlias == null ? compiler.getAlias(Metamodel.root(fromTable), INNER) : fromAlias;
+        toAlias = toAlias == null ? compiler.getAlias(Metamodel.root(toTable), INNER) : toAlias;
+        var foreignKeyResolver = compiler.template().foreignKeyResolver();
+        var columnNameResolver = compiler.template().columnNameResolver();
+        var fromColumns = getForeignKeys(fromKey, foreignKeyResolver, columnNameResolver);
+        var toColumns = getForeignKeys(toKey, foreignKeyResolver, columnNameResolver);
+        if (fromColumns.size() != toColumns.size()) {
+            throw new SqlTemplateException("Mismatch in foreign key column count between %s.%s and %s.%s: found %d and %d column(s). Ensure both keys reference the same primary key structure.".formatted(fromTable.getSimpleName(), fromKey.name(), toTable.getSimpleName(), toKey.name(), fromColumns.size(), toColumns.size()));
+        }
+        StringBuilder joinCondition = new StringBuilder();
+        for (int i = 0; i < fromColumns.size(); i++) {
+            if (i > 0) {
+                joinCondition.append(" AND ");
+            }
+            joinCondition.append(compiler.dialectTemplate()
+                    .process("\0.\0 = \0.\0", fromAlias, fromColumns.get(i), toAlias, toColumns.get(i)));
+        }
+        return joinCondition.toString();
     }
 
     @SuppressWarnings("DuplicatedCode")

@@ -9,9 +9,11 @@ import static st.orm.JoinType.cross;
 import static st.orm.Operator.EQUALS;
 import static st.orm.ResolveScope.INNER;
 import static st.orm.ResolveScope.OUTER;
+import static st.orm.core.template.SqlInterceptor.observe;
 import static st.orm.core.template.TemplateString.raw;
 import static st.orm.core.template.Templates.alias;
 
+import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 import javax.sql.DataSource;
@@ -33,6 +35,8 @@ import st.orm.core.model.City_;
 import st.orm.core.model.Owner;
 import st.orm.core.model.Owner_;
 import st.orm.core.model.Pet;
+import st.orm.core.model.PetPair;
+import st.orm.core.model.PetPair_;
 import st.orm.core.model.PetSummary;
 import st.orm.core.model.PetType;
 import st.orm.core.model.PetType_;
@@ -118,6 +122,49 @@ public class BuilderIntegrationTest {
         assertTrue(exception.getMessage().contains("multiple foreign keys reference Pet"), exception.getMessage());
         assertTrue(exception.getMessage().contains("first"), exception.getMessage());
         assertTrue(exception.getMessage().contains("second"), exception.getMessage());
+    }
+
+    @Test
+    public void innerJoinOnANamedKeyOfTheJoinedTable() {
+        // data.sql: the pairs are (1, 2), (3, 4) and (5, 6); the key names which member the join follows.
+        var statements = new ArrayList<String>();
+        var first = new ArrayList<Pet>();
+        observe(sql -> statements.add(sql.statement()), () -> first.addAll(ORMTemplate.of(dataSource)
+                .selectFrom(Pet.class)
+                .innerJoin(PetPair.class).on(PetPair_.first)
+                .getResultList()));
+        assertEquals(List.of("Iggy", "Leo", "Rosy"), first.stream().map(Pet::name).sorted().toList());
+        assertTrue(statements.getFirst().contains("INNER JOIN pet_pair pp ON pp.first_id = p.id"), statements.getFirst());
+        var second = ORMTemplate.of(dataSource)
+                .selectFrom(Pet.class)
+                .innerJoin(PetPair.class).on(PetPair_.second, it -> it.where(Pet_.name, EQUALS, "Basil"))
+                .getResultList();
+        assertEquals(List.of("Basil"), second.stream().map(Pet::name).toList());
+    }
+
+    @Test
+    public void innerJoinOnANamedKeyOfTheTableJoinedOn() {
+        // Pet holds the key: the join follows it from the pet to its owner.
+        var statements = new ArrayList<String>();
+        var pets = new ArrayList<Pet>();
+        observe(sql -> statements.add(sql.statement()), () -> pets.addAll(ORMTemplate.of(dataSource)
+                .selectFrom(Pet.class)
+                .innerJoin(Owner.class).on(Pet_.owner)
+                .getResultList()));
+        assertEquals(12, pets.size());
+        assertTrue(statements.getFirst().contains("INNER JOIN owner o ON p.owner_id = o.id"), statements.getFirst());
+    }
+
+    @Test
+    public void innerJoinOnANamedKeyRefusesAKeyThatIsNotOne() {
+        var e = assertThrows(PersistenceException.class, () -> ORMTemplate.of(dataSource)
+                .selectFrom(Pet.class)
+                .innerJoin(PetPair.class).on(Pet_.name));
+        assertTrue(e.getMessage().contains("on(Pet_.name): Pet_.name is not a foreign key"), e.getMessage());
+        var other = assertThrows(PersistenceException.class, () -> ORMTemplate.of(dataSource)
+                .selectFrom(Pet.class)
+                .innerJoin(PetPair.class).on(Pet_.owner));
+        assertTrue(other.getMessage().contains("on(Pet_.owner): Pet_.owner references Owner, not the joined PetPair"), other.getMessage());
     }
 
     @Test

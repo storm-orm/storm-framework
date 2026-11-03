@@ -20,11 +20,16 @@ import kotlinx.coroutines.stream.consumeAsFlow
 import st.orm.*
 import st.orm.core.template.impl.Subqueryable
 import st.orm.template.*
+import java.util.function.Function
 import java.util.stream.Stream
 import kotlin.reflect.KClass
+import st.orm.core.template.PredicateBuilder as CorePredicateBuilder
+import st.orm.core.template.QueryBuilder as CoreQueryBuilder
+import st.orm.core.template.TypedJoinBuilder as CoreTypedJoinBuilder
+import st.orm.core.template.WhereBuilder as CoreWhereBuilder
 
 internal class QueryBuilderImpl<T : Data, R : Any, ID : Any>(
-    private val core: st.orm.core.template.QueryBuilder<T, R, ID>,
+    private val core: CoreQueryBuilder<T, R, ID>,
 ) : QueryBuilder<T, R, ID>(),
     Subqueryable {
 
@@ -288,20 +293,37 @@ internal class QueryBuilderImpl<T : Data, R : Any, ID : Any>(
         alias: String,
     ): TypedJoinBuilder<T, R, ID> = typedJoin(core.join(type, relation.java, alias))
 
-    private fun typedJoin(joinBuilder: st.orm.core.template.TypedJoinBuilder<T, R, ID>): TypedJoinBuilder<T, R, ID> = object : TypedJoinBuilder<T, R, ID>() {
+    private fun typedJoin(joinBuilder: CoreTypedJoinBuilder<T, R, ID>): TypedJoinBuilder<T, R, ID> = object : TypedJoinBuilder<T, R, ID>() {
         override fun on(relation: KClass<out Data>): QueryBuilder<Data, R, ID> = QueryBuilderImpl(joinBuilder.on(relation.java))
 
         override fun on(
             relation: KClass<out Data>,
             condition: WhereBuilder<Data, R, ID>.() -> PredicateBuilder<out Data, *, *>,
-        ): QueryBuilder<Data, R, ID> = QueryBuilderImpl(
-            joinBuilder.on(relation.java) { whereBuilder ->
-                @Suppress("UNCHECKED_CAST")
-                (condition(WhereBuilderImpl(whereBuilder)) as PredicateBuilderImpl<Data, *, *>).core as st.orm.core.template.PredicateBuilder<Data, *, *>
-            },
-        )
+        ): QueryBuilder<Data, R, ID> = QueryBuilderImpl(joinBuilder.on(relation.java, core(condition)))
 
         override fun on(template: TemplateString): QueryBuilder<Data, R, ID> = QueryBuilderImpl<Data, R, ID>(joinBuilder.on(template.unwrap))
+
+        override fun on(key: Metamodel<out Data, *>): QueryBuilder<Data, R, ID> = QueryBuilderImpl(joinBuilder.on(key))
+
+        override fun on(
+            key: Metamodel<out Data, *>,
+            condition: WhereBuilder<Data, R, ID>.() -> PredicateBuilder<out Data, *, *>,
+        ): QueryBuilder<Data, R, ID> = QueryBuilderImpl(joinBuilder.on(key, core(condition)))
+
+        override fun on(key: Metamodel<out Data, *>, anchorKey: Metamodel<out Data, *>): QueryBuilder<Data, R, ID> = QueryBuilderImpl(joinBuilder.on(key, anchorKey))
+
+        override fun on(
+            key: Metamodel<out Data, *>,
+            anchorKey: Metamodel<out Data, *>,
+            condition: WhereBuilder<Data, R, ID>.() -> PredicateBuilder<out Data, *, *>,
+        ): QueryBuilder<Data, R, ID> = QueryBuilderImpl(joinBuilder.on(key, anchorKey, core(condition)))
+
+        private fun core(
+            condition: WhereBuilder<Data, R, ID>.() -> PredicateBuilder<out Data, *, *>,
+        ): Function<CoreWhereBuilder<Data, R, ID>, CorePredicateBuilder<Data, *, *>> = Function { whereBuilder ->
+            @Suppress("UNCHECKED_CAST")
+            (condition(WhereBuilderImpl(whereBuilder)) as PredicateBuilderImpl<Data, *, *>).core as CorePredicateBuilder<Data, *, *>
+        }
     }
 
     /**
@@ -378,7 +400,7 @@ internal class QueryBuilderImpl<T : Data, R : Any, ID : Any>(
     }
 
     internal class PredicateBuilderImpl<TX : Data, RX : Any, IDX : Any>(
-        val core: st.orm.core.template.PredicateBuilder<TX, RX, IDX>,
+        val core: CorePredicateBuilder<TX, RX, IDX>,
     ) : PredicateBuilder<TX, RX, IDX> {
         override fun and(template: TemplateString): PredicateBuilder<TX, RX, IDX> = PredicateBuilderImpl<TX, RX, IDX>(core.and(template.unwrap))
 
@@ -386,7 +408,7 @@ internal class QueryBuilderImpl<T : Data, R : Any, ID : Any>(
     }
 
     internal class WhereBuilderImpl<TX : Data, RX : Any, IDX : Any>(
-        val core: st.orm.core.template.WhereBuilder<TX, RX, IDX>,
+        val core: CoreWhereBuilder<TX, RX, IDX>,
     ) : WhereBuilder<TX, RX, IDX> {
         override fun <T : Data> subquery(fromType: KClass<T>, template: TemplateString): QueryBuilder<T, *, *> = QueryBuilderImpl(core.subquery(fromType.java, template.unwrap))
 
@@ -523,5 +545,5 @@ internal class QueryBuilderImpl<T : Data, R : Any, ID : Any>(
 
     override fun windows(scrollable: Scrollable<T>): Flow<Window<R>> = core.windows(scrollable).consumeAsFlow()
 
-    override fun getSubquery(): st.orm.core.template.TemplateString = (core as Subqueryable).subquery
+    override fun getSubquery() = (core as Subqueryable).subquery
 }

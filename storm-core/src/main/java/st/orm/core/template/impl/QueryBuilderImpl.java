@@ -919,14 +919,49 @@ abstract class QueryBuilderImpl<T extends Data, R, ID> extends QueryBuilder<T, R
             }
 
             @Override
-            @SuppressWarnings("unchecked")
             public QueryBuilder<Data, R, ID> on(Class<? extends Data> onRelation,
                                                 Function<WhereBuilder<Data, R, ID>, PredicateBuilder<Data, ?, ?>> condition) {
                 requireNonNull(onRelation, "onRelation");
                 requireNonNull(condition, "condition");
+                return addJoin(new Join(new TableSource(relation), alias, new TableTarget(onRelation, null, null, node(condition)), type, false));
+            }
+
+            @Override
+            public QueryBuilder<Data, R, ID> on(Metamodel<? extends Data, ?> key) {
+                return keyed(key, null, null);
+            }
+
+            @Override
+            public QueryBuilder<Data, R, ID> on(Metamodel<? extends Data, ?> key,
+                                                Function<WhereBuilder<Data, R, ID>, PredicateBuilder<Data, ?, ?>> condition) {
+                return keyed(key, null, requireNonNull(condition, "condition"));
+            }
+
+            @Override
+            public QueryBuilder<Data, R, ID> on(Metamodel<? extends Data, ?> key, Metamodel<? extends Data, ?> anchorKey) {
+                return keyed(key, requireNonNull(anchorKey, "anchorKey"), null);
+            }
+
+            @Override
+            public QueryBuilder<Data, R, ID> on(Metamodel<? extends Data, ?> key,
+                                                Metamodel<? extends Data, ?> anchorKey,
+                                                Function<WhereBuilder<Data, R, ID>, PredicateBuilder<Data, ?, ?>> condition) {
+                return keyed(key, requireNonNull(anchorKey, "anchorKey"), requireNonNull(condition, "condition"));
+            }
+
+            private QueryBuilder<Data, R, ID> keyed(Metamodel<? extends Data, ?> key,
+                                                    @Nullable Metamodel<? extends Data, ?> anchorKey,
+                                                    @Nullable Function<WhereBuilder<Data, R, ID>, PredicateBuilder<Data, ?, ?>> condition) {
+                requireNonNull(key, "key");
+                var keys = JoinKeys.resolve(queryTemplate, relation, key, anchorKey);
+                var target = new TableTarget(keys.table(), keys.sourceKey(), keys.targetKey(), condition == null ? null : node(condition));
+                return addJoin(new Join(new TableSource(relation), alias, target, type, false));
+            }
+
+            @SuppressWarnings("unchecked")
+            private PredicateNode node(Function<WhereBuilder<Data, R, ID>, PredicateBuilder<Data, ?, ?>> condition) {
                 var whereBuilder = new WhereBuilderImpl<>((QueryBuilderImpl<Data, R, ID>) widen());
-                var predicate = (PredicateBuilderImpl<?, ?, ?>) condition.apply(whereBuilder);
-                return addJoin(new Join(new TableSource(relation), alias, new TableTarget(onRelation, null, predicate.node()), type, false));
+                return ((PredicateBuilderImpl<?, ?, ?>) condition.apply(whereBuilder)).node();
             }
 
             @Override

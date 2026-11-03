@@ -1014,6 +1014,39 @@ FROM owner o
 LEFT JOIN pet p ON p.owner_id = o.id AND (p.name = ?)
 ```
 
+When a table holds more than one foreign key to the table it is joined on, `on` cannot tell which one the join follows and refuses the join, naming the keys. `on` then takes the key instead of the table. With a `Transfer(pet: Pet, from: Owner, to: Owner)` that records a pet changing owners, the owners who received a pet:
+
+<Tabs groupId="language">
+<TabItem value="kotlin" label="Kotlin" default>
+
+```kotlin
+val owners = orm.entity(Owner::class)
+    .select()
+    .innerJoin<Transfer>().on(Transfer_.to)
+    .resultList
+```
+
+</TabItem>
+<TabItem value="java" label="Java">
+
+```java
+List<Owner> owners = orm.entity(Owner.class)
+    .select()
+    .innerJoin(Transfer.class).on(Transfer_.to)
+    .getResultList();
+```
+
+</TabItem>
+</Tabs>
+
+```sql
+SELECT ...
+FROM owner o
+INNER JOIN transfer t ON t.to_id = o.id
+```
+
+The key names both the table it belongs to and the column, so nothing is left to resolve: a key of the joined table joins the table it references, and a key of another table in the query, `innerJoin<Owner>().on(Transfer_.to)` from a query on transfers, joins that table. A condition follows the key as it follows the table, `on(Transfer_.to) { ... }`. Where neither table references the other and both hold a key to one table, `on` takes both keys and matches them with each other: `innerJoin<Transfer>().on(Transfer_.pet, Visit_.pet)` joins the transfers of the pet a visit was for. The block DSL takes the same keys: `innerJoin<Transfer>(Transfer_.to)` and `innerJoin<Transfer>(Transfer_.pet, Visit_.pet)`.
+
 ### Filtering by Related Rows
 
 A join to the many side of a relation returns a row per related row: an owner of two pets that match the condition comes back twice, and returning each owner once takes `distinct`. `semiJoin` filters by the related table without joining its rows. The query keeps the rows that have a related row matching the conditions that name the table, and returns each of them once:
@@ -1190,7 +1223,7 @@ WHERE p.id IN (
       AND EXISTS (SELECT 1 FROM vaccination v WHERE v.pet_id = n.pet_id))
 ```
 
-The vaccination relates to the nickname through the pet both reference, `v.pet_id = n.pet_id`, without reading the pet table, and its subquery sits inside the nickname's: a pet found by its own name needs no vaccination. `semiJoin<Vaccination>().on<Pet>()` would relate the vaccination to the query's pet instead and require one on every branch. When the two tables reference the same table through more than one pair of foreign keys, the key to relate them on is ambiguous and the join is refused.
+The vaccination relates to the nickname through the pet both reference, `v.pet_id = n.pet_id`, without reading the pet table, and its subquery sits inside the nickname's: a pet found by its own name needs no vaccination. `semiJoin<Vaccination>().on<Pet>()` would relate the vaccination to the query's pet instead and require one on every branch. When the two tables reference the same table through more than one pair of foreign keys, the key to relate them on is ambiguous and the join is refused; `on` then takes the two keys, `semiJoin<Vaccination>().on(Vaccination_.pet, PetNickname_.pet)`, as it takes one key where a table holds more than one key to the table it is joined on, `semiJoin<Transfer>().on(Transfer_.to)`. See [Join Conditions](#join-conditions).
 
 The same rule relates a semi-joined table to the query's own table. With `Tenant(owner: Owner)` and `Pet(owner: Owner)`, `semiJoin<Pet>().on<Tenant>()` finds the tenants whose owner has a matching pet, `p.owner_id = t.owner_id`, and an `or` across `Tenant_.name` and `Pet_.name` branches as a `UNION` like any other: the pets found by name give owner keys, through which the tenants are read.
 
