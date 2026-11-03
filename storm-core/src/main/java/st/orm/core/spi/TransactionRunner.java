@@ -355,6 +355,11 @@ public final class TransactionRunner {
             }
 
             @Override
+            public void cancel() {
+                scope.cancel();
+            }
+
+            @Override
             public void onCommit(Runnable callback) {
                 callbacks.addOnCommit(callback);
             }

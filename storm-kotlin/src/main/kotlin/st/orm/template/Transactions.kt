@@ -407,6 +407,10 @@ private fun scopeTransaction(scope: TransactionScope, callbacks: TransactionCall
         scope.setRollbackOnly()
     }
 
+    override fun cancel() {
+        scope.cancel()
+    }
+
     override fun onCommit(callback: suspend () -> Unit) {
         callbacks.addOnCommit(callback)
     }

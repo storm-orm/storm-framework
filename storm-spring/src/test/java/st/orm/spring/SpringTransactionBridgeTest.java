@@ -47,8 +47,8 @@ import org.springframework.transaction.support.TransactionTemplate;
 import st.orm.IllegalTransactionStateException;
 import st.orm.PersistenceException;
 import st.orm.ReadOnlyTransactionException;
+import st.orm.Transaction;
 import st.orm.TransactionOptions;
-import st.orm.core.spi.TransactionScope;
 import st.orm.repository.EntityRepository;
 import st.orm.spring.model.Pet;
 import st.orm.spring.model.Visit;
@@ -457,12 +457,12 @@ class SpringTransactionBridgeTest {
     @Test
     void cancellingTheTransactionStopsItsStatementAndRollsBack() throws InterruptedException {
         long seeded = visits.count();
-        var scope = new CompletableFuture<TransactionScope>();
+        var handle = new CompletableFuture<Transaction>();
         var canceller = new Thread(() -> {
             try {
-                var current = scope.get(30, TimeUnit.SECONDS);
+                var transaction = handle.get(30, TimeUnit.SECONDS);
                 Thread.sleep(500); // Lets the statement reach the database.
-                current.cancel();
+                transaction.cancel();
             } catch (Exception e) {
                 throw new IllegalStateException(e);
             }
@@ -471,7 +471,7 @@ class SpringTransactionBridgeTest {
         long started = System.nanoTime();
         assertThrows(PersistenceException.class, () -> transaction(tx -> {
             visits.removeAll();
-            scope.complete(TransactionScope.current());
+            handle.complete(tx);
             // A count over a cross join of a million rows squared, which runs until it is stopped.
             return orm.query("SELECT COUNT(*) FROM SYSTEM_RANGE(1, 1000000) AS a CROSS JOIN SYSTEM_RANGE(1, 1000000) AS b")
                     .getSingleResult(Long.class);

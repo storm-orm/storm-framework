@@ -39,6 +39,21 @@ public interface Transaction {
     void setRollbackOnly();
 
     /**
+     * Cancels the transaction: the statement the block is blocked on is stopped through the driver, and no further
+     * statement runs in the block. The block then fails at that statement, or at its next one, and rolls back as a
+     * failing block does. A cancellation states no further interest in the block's work, not an outcome: a block
+     * whose statements all completed before it arrived completes as usual.
+     *
+     * <p>Meant to be called from another thread or coroutine, by whoever decides the work is no longer wanted:
+     * the block hands its handle out, and the caller returns at once while the driver is asked to stop the
+     * statement on a thread of its own. The block may also call it on itself, which refuses its next statement.
+     * A suspending block is cancelled the same way when its coroutine is cancelled.</p>
+     *
+     * @since 1.16
+     */
+    void cancel();
+
+    /**
      * Registers a callback invoked after the physical transaction commits successfully.
      *
      * <p>If this scope is joined to an outer transaction (for example via {@link TransactionPropagation#REQUIRED}
