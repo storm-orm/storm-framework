@@ -1580,10 +1580,12 @@ public abstract class QueryBuilder<T : Data, R : Any, ID : Any> {
         }
 
     /**
-     * Execute a DELETE statement.
+     * Executes the UPDATE or DELETE statement this builder builds, from `update()` or `delete()`.
      *
-     * @return the number of rows impacted as result of the statement.
-     * @throws PersistenceException if the statement fails.
+     * A statement without a WHERE clause is refused unless [unsafe] was called.
+     *
+     * @return the number of rows the statement updated or deleted.
+     * @throws PersistenceException if the statement fails, or has no WHERE clause and [unsafe] was not called.
      */
     public fun executeUpdate(): Int = build().executeUpdate()
 }

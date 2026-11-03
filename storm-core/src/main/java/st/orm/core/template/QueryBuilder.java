@@ -1522,10 +1522,13 @@ public abstract class QueryBuilder<T extends Data, R, ID> {
     }
 
     /**
-     * Execute a DELETE statement.
+     * Executes the UPDATE or DELETE statement this builder builds, from {@code update()} or {@code delete()}.
      *
-     * @return the number of rows impacted as result of the statement.
-     * @throws PersistenceException if the statement fails.
+     * <p>A statement without a WHERE clause is refused unless {@link #unsafe()} was called.</p>
+     *
+     * @return the number of rows the statement updated or deleted.
+     * @throws PersistenceException if the statement fails, or has no WHERE clause and {@link #unsafe()} was not
+     *                              called.
      */
     public final int executeUpdate() {
         return build().executeUpdate();
