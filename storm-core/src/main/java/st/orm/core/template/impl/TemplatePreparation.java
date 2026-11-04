@@ -1725,6 +1725,10 @@ class TemplatePreparation {
                     addReferencedTablePath(rootTable, objectExpression.metamodel(), paths);
                 }
             }
+            case Elements.PathExpression pathExpression -> {
+                addReferencedTablePath(rootTable, pathExpression.path(), paths);
+                addReferencedTablePath(rootTable, pathExpression.other(), paths);
+            }
             case Elements.TemplateExpression templateExpression ->
                     collectReferencedTablePaths(rootTable, templateExpression.template(), paths, tables, hydratedTables, hydratedPaths);
         }

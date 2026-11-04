@@ -286,6 +286,26 @@ public interface WhereBuilder<T : Data, R : Any, ID : Any> : SubqueryTemplate {
     ): PredicateBuilder<T, R, ID> = where(path, operator, o.toList())
 
     /**
+     * Adds a condition to the WHERE clause that compares the column at the specified path with the column at another
+     * path of the query, such as a foreign key with a foreign key to the same table. Both paths resolve as they do
+     * in a value comparison: to a table of the query, or to a path joined on demand; a path on a table outside the
+     * query is refused when the query is built. A multi-column path compares component-wise with a path of as many
+     * columns.
+     *
+     * @param path the path to the column on the left of the operator.
+     * @param operator the operator to use for the comparison.
+     * @param other the path to the column on the right of the operator.
+     * @param <V> the type of the value both columns hold.
+     * @return the predicate builder.
+     * @since 1.16
+     */
+    public fun <V : Any> where(
+        path: Navigable<out T, V>,
+        operator: Operator,
+        other: Navigable<*, V>,
+    ): PredicateBuilder<T, R, ID>
+
+    /**
      * Appends a custom expression to the WHERE clause.
      *
      * @param builder the expression to add.

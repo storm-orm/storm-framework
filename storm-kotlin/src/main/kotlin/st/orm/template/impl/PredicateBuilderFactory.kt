@@ -58,6 +58,20 @@ internal fun <T : Data, R : Any, V : Data> createRef(
 ): PredicateBuilder<T, R, *> = PredicateBuilderImpl(PredicateBuilderFactory.createRef(path, operator, o))
 
 /**
+ * Creates a predicate comparing the column at a path with the column at another path of the query.
+ *
+ * @param path the path to the column on the left of the operator.
+ * @param operator the operator.
+ * @param other the path to the column on the right of the operator.
+ * @return a new instance of [PredicateBuilder]
+ */
+internal fun <T : Data, R : Any, V : Any> compare(
+    path: Metamodel<*, V>,
+    operator: Operator,
+    other: Metamodel<*, V>,
+): PredicateBuilder<T, R, *> = PredicateBuilderImpl(PredicateBuilderFactory.compare(path, operator, other))
+
+/**
  * Creates a predicate that matches every term of a search input in at least one of the paths, ignoring case.
  *
  * @param input the search input.

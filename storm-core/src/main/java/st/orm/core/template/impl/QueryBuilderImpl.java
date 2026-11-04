@@ -58,6 +58,7 @@ import st.orm.core.template.TypedJoinBuilder;
 import st.orm.core.template.WhereBuilder;
 import st.orm.core.template.impl.Elements.Expression;
 import st.orm.core.template.impl.Elements.ObjectExpression;
+import st.orm.core.template.impl.Elements.PathExpression;
 import st.orm.core.template.impl.Elements.Subquery;
 import st.orm.core.template.impl.Elements.TableSource;
 import st.orm.core.template.impl.Elements.TableTarget;
@@ -1210,6 +1211,11 @@ abstract class QueryBuilderImpl<T extends Data, R, ID> extends QueryBuilder<T, R
         @Override
         public <V> PredicateBuilder<TX, RX, IDX> where(Navigable<? extends TX, V> path, Operator operator, Iterable<? extends V> it) {
             return new PredicateBuilderImpl<>(wrap(new ObjectExpression(path.asMetamodel(), operator, it)));
+        }
+
+        @Override
+        public <V> PredicateBuilder<TX, RX, IDX> where(Navigable<? extends TX, V> path, Operator operator, Navigable<?, V> other) {
+            return new PredicateBuilderImpl<>(wrap(new PathExpression(path.asMetamodel(), operator, other.asMetamodel())));
         }
 
         @Override

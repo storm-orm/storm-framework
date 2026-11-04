@@ -54,6 +54,7 @@ import st.orm.core.template.SqlTemplate;
 import st.orm.core.template.TemplateString;
 import st.orm.core.template.impl.Elements.Expression;
 import st.orm.core.template.impl.Elements.ObjectExpression;
+import st.orm.core.template.impl.Elements.PathExpression;
 import st.orm.core.template.impl.Elements.Subquery;
 import st.orm.core.template.impl.Elements.TemplateExpression;
 import st.orm.mapping.RecordField;
@@ -254,6 +255,7 @@ final class QueryModelImpl implements QueryModel {
             return switch (expression) {
                 case TemplateExpression it -> compileTemplateExpression(it.template(), compiler);
                 case ObjectExpression it -> compileObjectExpression(getMetamodel(it), it.operator(), it.object(), it.indexable(), it.fromRow(), compiler);
+                case PathExpression it -> compilePathExpression(it.path(), it.operator(), it.other());
             };
         } catch (SqlTemplateException e) {
             throw new UncheckedSqlTemplateException(e);
@@ -275,10 +277,54 @@ final class QueryModelImpl implements QueryModel {
             switch (expression) {
                 case TemplateExpression it -> bindTemplateExpression(it.template(), binder);
                 case ObjectExpression it -> bindObjectExpression(getMetamodel(it), it.operator(), it.object(), it.fromRow(), binder);
+                case PathExpression ignore -> { }  // Two columns of the query; nothing to bind.
             }
         } catch (SqlTemplateException e) {
             throw new UncheckedSqlTemplateException(e);
         }
+    }
+
+    /**
+     * Compiles a comparison of two columns of the query: each path resolves to its columns, which are compared
+     * pairwise. A single column renders through the operator; several render through the dialect's multi-column
+     * expression, with the columns of the other path in place of the values.
+     *
+     * @param path the path on the left of the operator.
+     * @param operator the operator.
+     * @param other the path on the right of the operator.
+     * @return the compiled SQL fragment.
+     * @throws SqlTemplateException if a path is not part of the query, or the paths resolve to a different number of
+     *                              columns.
+     */
+    private String compilePathExpression(Metamodel<?, ?> path, Operator operator, Metamodel<?, ?> other)
+            throws SqlTemplateException {
+        var columns = qualifiedColumns(path);
+        var otherColumns = qualifiedColumns(other);
+        if (columns.size() != otherColumns.size()) {
+            throw new SqlTemplateException("Cannot compare %s with %s: %s resolves to %d column(s), %s to %d. Compare a key with a key of the same table, or a column with a column.".formatted(
+                    path, other, path, columns.size(), other, otherColumns.size()));
+        }
+        if (columns.size() == 1) {
+            return operator.format(columns.getFirst(), otherColumns.getFirst());
+        }
+        SequencedMap<String, Object> pairs = new LinkedHashMap<>();
+        for (int i = 0; i < columns.size(); i++) {
+            pairs.put(columns.get(i), otherColumns.get(i));
+        }
+        return template.dialect().multiColumnExpression(operator, List.of(pairs), String.class::cast);
+    }
+
+    /**
+     * Returns the qualified columns of the path, resolved at the occurrence the path reaches.
+     */
+    private List<String> qualifiedColumns(Metamodel<?, ?> metamodel) throws SqlTemplateException {
+        var model = getModel(metamodel);
+        Metamodel<?, ?> navigated = isOwnModel(metamodel) ? null : metamodel;
+        List<String> columns = new ArrayList<>();
+        for (var column : model.getColumns(metamodel)) {
+            columns.add(toFullyQualifiedColumn(column, navigated));
+        }
+        return columns;
     }
 
     /**

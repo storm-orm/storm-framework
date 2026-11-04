@@ -128,6 +128,7 @@ Builder quick reference:
 - Streaming: `.getResultStream()` is consume-only while rows remain; a loop that queries or writes per row uses `.windows(size)` (see **Streams and the Connection**).
 - Explicit joins: `.innerJoin(Entity.class).on(OtherEntity.class)`, `.leftJoin(Entity.class).on(OtherEntity.class)`, `.rightJoin(Entity.class).on(OtherEntity.class)`.
 - A condition on the join: `.leftJoin(Pet.class).on(Owner.class, it -> it.where(Pet_.name, EQUALS, "Leo"))` adds the condition to the resolved foreign key. On a left join it keeps the rows without a match, which the same condition in `where` would drop.
+- Compare a column with a column of the query by passing a path in place of the value: `.where(Visit_.vet, EQUALS, Visit_.pet.regularVet)`, in `where`, `having` and a join condition. A key compares with a key to the same table; never write such a comparison as a template.
 - Filtering by related rows: `.semiJoin(Pet.class).on(Owner.class)` keeps the rows with a related row matching the conditions that name it, each once; `.antiJoin(Visit.class).on(Pet.class, it -> it.where(Visit_.description, EQUALS, "rabies shot"))` keeps the rows without one.
 - Result type: `.select(ResultType.class)` returns a different type than the root entity.
 

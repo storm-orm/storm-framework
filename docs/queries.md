@@ -285,6 +285,73 @@ List<User> found = orm.entity(User.class)
 </TabItem>
 </Tabs>
 
+### Comparing Two Columns
+
+A predicate compares a column with a value. It compares a column with another column of the query the same way: the other side is a path instead of a value, and both resolve as any path does, to a table of the query or to a path joined on demand. A path on a table outside the query is refused when the query is built. A foreign key compares with a foreign key to the same table, by its key columns, so a compound key compares column by column. The visits where the treating vet is the pet's regular vet:
+
+<Tabs groupId="language">
+<TabItem value="kotlin" label="Kotlin" default>
+
+```kotlin
+val visits = orm.entity(Visit::class)
+    .select()
+    .where(Visit_.vet eq Visit_.pet.regularVet)
+    .resultList
+```
+
+`neq`, `less`, `lessEq`, `greater` and `greaterEq` take a path the same way.
+
+</TabItem>
+<TabItem value="java" label="Java">
+
+```java
+List<Visit> visits = orm.entity(Visit.class)
+    .select()
+    .where(Visit_.vet, EQUALS, Visit_.pet.regularVet)
+    .getResultList();
+```
+
+</TabItem>
+</Tabs>
+
+```sql
+SELECT ...
+FROM visit v
+INNER JOIN pet p ON v.pet_id = p.id
+WHERE v.vet_id = p.regular_vet_id
+```
+
+The same comparison goes in `having` and in a join condition. An invoice per pet and vet, read next to the visits, is the one sharing both keys with the visit: the join matches the first pair of keys, and the condition the second.
+
+<Tabs groupId="language">
+<TabItem value="kotlin" label="Kotlin" default>
+
+```kotlin
+val visits = orm.entity(Visit::class)
+    .select()
+    .leftJoin<Invoice>().on(Invoice_.pet, Visit_.pet) { Invoice_.vet eq Visit_.vet }
+    .resultList
+```
+
+</TabItem>
+<TabItem value="java" label="Java">
+
+```java
+List<Visit> visits = orm.entity(Visit.class)
+    .select()
+    .leftJoin(Invoice.class).on(Invoice_.pet, Visit_.pet, it -> it.where(Invoice_.vet, EQUALS, Visit_.vet))
+    .getResultList();
+```
+
+</TabItem>
+</Tabs>
+
+```sql
+SELECT ...
+FROM visit v
+LEFT JOIN invoice i ON i.pet_id = v.pet_id AND (i.vet_id = v.vet_id)
+```
+
 ### IN Lists {#in-lists}
 
 An `IN` list, from `inList` and `IN`, `findAllById` or `whereId`, binds as one array parameter on PostgreSQL, `id = ANY(?)`: one statement for every length of the list, so the database parses, plans and caches one statement for a lookup that takes a varying number of keys rather than one per length, and a long list binds one parameter rather than one per value, which is also faster. Measured on a lookup of 1 to 200 ids in turn, the array form ran 13% faster than a placeholder per value. Elsewhere the list renders a placeholder per value. A list compared through a [SQL function](search.md#ignoring-accents) renders placeholders on every database, since the function is applied to each value.

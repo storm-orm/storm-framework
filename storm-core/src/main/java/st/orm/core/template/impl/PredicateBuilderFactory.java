@@ -32,6 +32,7 @@ import st.orm.Operator;
 import st.orm.Ref;
 import st.orm.core.template.PredicateBuilder;
 import st.orm.core.template.impl.Elements.ObjectExpression;
+import st.orm.core.template.impl.Elements.PathExpression;
 import st.orm.core.template.impl.QueryBuilderImpl.PredicateBuilderImpl;
 
 /**
@@ -78,6 +79,28 @@ public interface PredicateBuilderFactory {
             Operator operator,
             Iterable<Ref<V>> o) {
         return new PredicateBuilderImpl<>(wrap(new ObjectExpression(path, operator, o)));
+    }
+
+    /**
+     * Creates a predicate comparing the column at a path with the column at another path of the query, such as a
+     * foreign key with a foreign key to the same table. Each path resolves as it does in a value comparison: to a
+     * table of the query, or to a path joined on demand. A multi-column path compares component-wise with a path of
+     * as many columns.
+     *
+     * @param path the path to the column on the left of the operator.
+     * @param operator the operator.
+     * @param other the path to the column on the right of the operator.
+     * @param <T> the type of the record.
+     * @param <R> the type of the result.
+     * @param <V> the type of the value both columns hold.
+     * @return the predicate.
+     * @since 1.16
+     */
+    static <T extends Data, R, V> PredicateBuilder<T, R, ?> compare(
+            Metamodel<?, V> path,
+            Operator operator,
+            Metamodel<?, V> other) {
+        return new PredicateBuilderImpl<>(wrap(new PathExpression(path, operator, other)));
     }
 
     /**

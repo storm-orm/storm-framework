@@ -135,6 +135,7 @@ val users = orm.entity(User::class)
 Builder quick reference:
 - Compound filters: `(A eq x) and (B eq y)`, `(A eq x) or (B eq y)`.
 - Nested paths: `User_.city.country.code eq "US"`.
+- Compare a column with a column of the query by putting a path on the right: `Visit_.vet eq Visit_.pet.regularVet`, in `where`, `having` and a join condition `on(Invoice_.pet, Visit_.pet) { Invoice_.vet eq Visit_.vet }`. `neq`, `less`, `lessEq`, `greater` and `greaterEq` take a path too. A key compares with a key to the same table; never write such a comparison as a template.
 - Ordering: `.orderBy(User_.name)`, `.orderByDescending(User_.createdAt)`.
 - Pagination: `.page(0, 20)` or `.page(Pageable.ofSize(20).sortBy(User_.name))`. Page API methods are Java record accessors, so always call them with `()`: `page.content()`, `page.totalPages()`, `page.totalCount()`, `page.pageNumber()`, `page.pageSize()`, `page.hasNext()`, `page.hasPrevious()`, `page.next()`.
 - Scrolling (keyset, better for large tables): `.scroll(Scrollable.of(User_.id, 20))`. Never combine it with `orderBy()`: the `Scrollable` manages ORDER BY (see **Keyset Scrolling**).

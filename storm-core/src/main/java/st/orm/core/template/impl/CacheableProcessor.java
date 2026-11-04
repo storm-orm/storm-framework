@@ -25,6 +25,7 @@ import st.orm.SqlTemplateException;
 import st.orm.core.template.TemplateString;
 import st.orm.core.template.impl.BindHint.NoBindHint;
 import st.orm.core.template.impl.Elements.ObjectExpression;
+import st.orm.core.template.impl.Elements.PathExpression;
 import st.orm.core.template.impl.Elements.TemplateExpression;
 
 final class CacheableProcessor implements ElementProcessor<Cacheable> {
@@ -74,6 +75,8 @@ final class CacheableProcessor implements ElementProcessor<Cacheable> {
     ) throws SqlTemplateException {
         return switch(cacheable.expression()) {
             case TemplateExpression it -> keyGenerator.apply(it.template());
+            // Two columns of the query compile the same whenever the paths and the operator are the same.
+            case PathExpression(var path, var operator, var other) -> List.of(path, operator, other);
             case ObjectExpression(var metamodel, var operator, var object, var indexable, var fromRow) -> {
                 var objectShape = getObjectShape(object, ignoreArity);
                 if (objectShape == null) {
