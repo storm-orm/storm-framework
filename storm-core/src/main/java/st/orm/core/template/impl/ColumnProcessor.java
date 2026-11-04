@@ -15,6 +15,8 @@
  */
 package st.orm.core.template.impl;
 
+import static st.orm.ResolveScope.OUTER;
+
 import st.orm.Metamodel;
 import st.orm.ResolveScope;
 import st.orm.SqlTemplateException;
@@ -63,14 +65,17 @@ final class ColumnProcessor implements ElementProcessor<Column> {
 
     /**
      * Returns the alias prefix of the table occurrence the metamodel's columns belong to: the query's own table for
-     * a path on the root, the occurrence the path reaches otherwise; empty when that occurrence has no alias.
+     * a path on the root, unless the column resolves in the enclosing queries only, the occurrence the path reaches
+     * otherwise; empty when that occurrence has no alias.
      */
     static String aliasPrefix(Metamodel<?, ?> metamodel, ResolveScope scope, TemplateCompiler compiler) {
-        String alias = compiler.findQueryModel()
-                .map(QueryModel::getTable)
-                .filter(table -> table.type() == metamodel.root() && metamodel.path().isEmpty())
-                .map(AliasedTable::alias)
-                .orElseGet(() -> compiler.getAlias(metamodel, scope));
+        String alias = scope == OUTER
+                ? compiler.getAlias(metamodel, scope)
+                : compiler.findQueryModel()
+                        .map(QueryModel::getTable)
+                        .filter(table -> table.type() == metamodel.root() && metamodel.path().isEmpty())
+                        .map(AliasedTable::alias)
+                        .orElseGet(() -> compiler.getAlias(metamodel, scope));
         return alias.isEmpty() ? "" : alias + ".";
     }
 

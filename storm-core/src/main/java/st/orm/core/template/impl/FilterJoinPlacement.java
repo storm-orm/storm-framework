@@ -263,7 +263,9 @@ final class FilterJoinPlacement {
                                 filterJoin.type().method(), filterJoin.anchor().getSimpleName()));
             }
         }
-        var condition = condition(null, conjuncts, false);
+        // A database that runs an IN over a UNION once per row tests the condition on the rows it found, as it does
+        // a residual one, so the condition renders as the EXISTS per table a residual scope renders.
+        var condition = condition(null, conjuncts, !queryTemplate.dialect().flattensInOverUnion());
         return condition == null ? null : condition.toTemplate();
     }
 

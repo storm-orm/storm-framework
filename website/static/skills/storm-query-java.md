@@ -591,19 +591,22 @@ pets.select()
 
 ## Subqueries (EXISTS / NOT EXISTS)
 
-**Use `whereExists(subquery)` / `whereNotExists(subquery)` for an EXISTS condition of its own.** Inside the where-lambda, `WhereBuilder.exists(subquery)` / `notExists(subquery)` combine it with other conditions. Build the subquery with `orm.selectFrom(...)`; it is automatically correlated with the outer query. For a condition on the related rows, `semiJoin` and `antiJoin` are the typed form (see **Filtering by Related Rows**).
+**Use `whereExists(subquery)` / `whereNotExists(subquery)` for an EXISTS condition a foreign key does not express.** Inside the where-lambda, `WhereBuilder.exists(subquery)` / `notExists(subquery)` combine it with other conditions. Build the subquery with `orm.selectFrom(...)`. The subquery is not correlated by itself: `whereExists(orm.selectFrom(User.class))` holds for every city once any user exists. Correlate it in its condition, naming the subquery's column with `column(..., INNER)` and the outer query's with `column(..., OUTER)`. For "the rows with (or without) a related row", use `semiJoin` / `antiJoin` instead, which correlate through the foreign key (see **Filtering by Related Rows**).
 
 ```java
-// WHERE EXISTS: filter entities that have related data
+// WHERE EXISTS, correlated in the condition: the cities with a user
 List<City> citiesWithUsers = orm.entity(City.class)
     .select()
-    .whereExists(orm.selectFrom(User.class))
+    .whereExists(orm.selectFrom(User.class)
+        .where(raw("\0 = \0", column(User_.city, INNER), column(City_.id, OUTER))))
     .getResultList();
 
 // WHERE NOT EXISTS, combined with another condition
 List<City> citiesWithoutUsers = orm.entity(City.class)
     .select()
-    .where(it -> it.notExists(orm.selectFrom(User.class)).and(it.where(City_.name, LIKE, "M%")))
+    .where(it -> it.notExists(orm.selectFrom(User.class)
+            .where(raw("\0 = \0", column(User_.city, INNER), column(City_.id, OUTER))))
+        .and(it.where(City_.name, LIKE, "M%")))
     .getResultList();
 ```
 
@@ -846,7 +849,7 @@ QueryBuilder terminals:
 Critical rules:
 - **QueryBuilder is IMMUTABLE.** Every method returns a new instance. Always use the return value.
 - **Streaming:** ALWAYS close a `getResultStream()` with try-with-resources to avoid connection leaks. There are no `selectBy` methods that return Stream directly: use `select()` and then `.getResultStream()`.
-- **Metamodel navigation depth**: Multiple levels of navigation are allowed on the root entity. Joined (non-root) entities can only navigate one level deep. For deeper navigation, explicitly join the intermediate entity.
+- **Metamodel navigation depth**: Multiple levels of navigation are allowed on the root entity and on an explicitly joined entity alike: a path from a joined table joins the tables it reaches on demand, after the join, at any depth. A path from a table joined twice is refused: reach the table through a path from the root, or join it once. A path a semi-joined or anti-joined table reaches is joined inside its subquery.
 - **Use `Ref` for map keys and set membership**: Prefer `Ref<Entity>` (via `.ref()`) for map keys, set membership, and identity-based lookups. `Ref` provides identity-based `equals`/`hashCode` on the primary key.
 - **Typed ID from `Ref`:** Use `Ref.entityId(ref)` to extract a type-safe ID. For projections, use `Ref.projectionId(ref)`. Avoid `ref.id()`: it returns `Object` and requires an unsafe cast.
 

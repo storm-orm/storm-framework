@@ -680,19 +680,19 @@ pets.select()
 
 ## Subqueries (EXISTS / NOT EXISTS)
 
-**Use `whereExists { }` / `whereNotExists { }` for an EXISTS condition of its own.** The lambdas receive a `SubqueryTemplate` that provides the `subquery()` method. The subquery is automatically correlated with the outer query. For a condition on the related rows, `semiJoin` and `antiJoin` are the typed form (see **Filtering by Related Rows**).
+**Use `whereExists { }` / `whereNotExists { }` for an EXISTS condition a foreign key does not express.** The lambdas receive a `SubqueryTemplate` that provides the `subquery()` method. The subquery is not correlated by itself: `whereExists { subquery<User>() }` holds for every city once any user exists. Correlate it in its condition, naming the subquery's column with `column(..., INNER)` and the outer query's with `column(..., OUTER)`. For "the rows with (or without) a related row", use `semiJoin` / `antiJoin` instead, which correlate through the foreign key (see **Filtering by Related Rows**).
 
 ```kotlin
-// WHERE EXISTS: filter entities that have related data
+// WHERE EXISTS, correlated in the condition: the cities with a user
 val citiesWithUsers = orm.entity(City::class)
     .select()
-    .whereExists { subquery<User>() }
+    .whereExists { subquery<User>().where { "${column(User_.city, INNER)} = ${column(City_.id, OUTER)}" } }
     .resultList
 
 // WHERE NOT EXISTS
 val citiesWithoutUsers = orm.entity(City::class)
     .select()
-    .whereNotExists { subquery<User>() }
+    .whereNotExists { subquery<User>().where { "${column(User_.city, INNER)} = ${column(City_.id, OUTER)}" } }
     .resultList
 ```
 
@@ -1074,7 +1074,7 @@ QueryBuilder terminals:
 Critical rules:
 - **QueryBuilder is IMMUTABLE.** Every method returns a new instance. Always use the return value (or use the `select { }` DSL, which handles this automatically).
 - **Streaming:** `select().resultFlow` returns a Flow with automatic cleanup. There are no `selectBy` methods that return Flow/Stream directly: use `select()` (optionally with predicate or block DSL) and then `.resultFlow`, `.resultStream` or `.windows(size)`.
-- **Metamodel navigation depth**: Multiple levels of navigation are allowed on the root entity. Joined (non-root) entities can only navigate one level deep. For deeper navigation, explicitly join the intermediate entity.
+- **Metamodel navigation depth**: Multiple levels of navigation are allowed on the root entity and on an explicitly joined entity alike: a path from a joined table joins the tables it reaches on demand, after the join, at any depth. A path from a table joined twice is refused: reach the table through a path from the root, or join it once. A path a semi-joined or anti-joined table reaches is joined inside its subquery.
 - **Use `Ref` for map keys and set membership**: Prefer `Ref<Entity>` (via `.ref()`) for map keys, set membership, and identity-based lookups. `Ref` provides identity-based `equals`/`hashCode` on the primary key:
   ```kotlin
   val countMap: MutableMap<Ref<Cell>, MutableMap<String, Int>> = mutableMapOf()

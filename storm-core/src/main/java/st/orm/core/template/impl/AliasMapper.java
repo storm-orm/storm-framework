@@ -19,8 +19,10 @@ import static java.util.Objects.requireNonNull;
 import static java.util.Optional.empty;
 import static st.orm.ResolveScope.CASCADE;
 import static st.orm.ResolveScope.INNER;
+import static st.orm.ResolveScope.OUTER;
 import static st.orm.core.template.impl.RecordReflection.getTableName;
 
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashSet;
@@ -46,17 +48,44 @@ final class AliasMapper {
 
     private final TableUse tableUse;
     private final Map<Class<? extends Data>, SequencedCollection<TableAlias>> aliasMap;
+    private final Map<Class<? extends Data>, SequencedCollection<String>> joinAliases;
+    private final List<Redirect> redirects;
     private final AliasMapper parent;
     private final TableAliasResolver tableAliasResolver;
     private final TableNameResolver tableNameResolver;
     private final SchemaResolver schemaResolver;
 
-    record TableAlias(Class<? extends Data> table, String path, String alias) {}
+    /**
+     * A registered occurrence of a table. The path is the record field path the occurrence was reached by from the
+     * table it was derived from: the query's own table, or, when the occurrence has an origin, the explicitly joined
+     * table whose alias the origin names. An occurrence registered without a path is addressed by its type.
+     */
+    record TableAlias(Class<? extends Data> table, @Nullable String path, String alias, @Nullable String origin) {}
 
     /**
-     * Alias entry with the path it was registered under and its nesting level: 0=current, 1=parent, etc.
+     * Alias entry with the path and origin it was registered under and its nesting level: 0=current, 1=parent, etc.
      */
-    private record AliasEntry(String alias, @Nullable String path, int level) {}
+    private record AliasEntry(String alias, @Nullable String path, @Nullable String origin, int level) {}
+
+    /**
+     * Where a path rooted at a table starts among the registrations: the path prefix that reaches the table from the
+     * query's own table, or the origin of the occurrences derived from the explicit join of the table.
+     */
+    private record Placement(String prefix, @Nullable String origin) {
+        static final Placement ROOT = new Placement("", null);
+    }
+
+    /**
+     * A path from an explicitly joined table that reaches the query's own table: the join equates the foreign key
+     * the path starts with to the query's own table, so the path names that table's occurrence, and the paths
+     * beneath it name the occurrences the query's own paths reach.
+     *
+     * @param origin the alias of the explicitly joined table.
+     * @param prefix the name of the foreign key the join equates to the query's own table.
+     * @param table the query's own table.
+     * @param alias the alias of the query's own table.
+     */
+    private record Redirect(String origin, String prefix, Class<? extends Data> table, String alias) {}
 
     AliasMapper(TableUse tableUse,
                 TableAliasResolver tableAliasResolver,
@@ -69,6 +98,8 @@ final class AliasMapper {
         this.schemaResolver = requireNonNull(schemaResolver);
         this.parent = parent;
         this.aliasMap = new HashMap<>();
+        this.joinAliases = new HashMap<>();
+        this.redirects = new ArrayList<>();
     }
 
     /**
@@ -89,7 +120,7 @@ final class AliasMapper {
      *
      * <p>At each level it will:</p>
      * <ol>
-     *   <li>Include any locally registered aliases whose path matches (or all if {@code path} is null)</li>
+     *   <li>Include any locally registered aliases whose path and origin match (or all if {@code path} is null)</li>
      *   <li>Recurse into the parent mapper (incrementing {@code level} by 1)</li>
      * </ol></p>
      *
@@ -98,20 +129,54 @@ final class AliasMapper {
      *
      * @param table the record type whose aliases are being collected.
      * @param path optional component path; if <code>null</code>, matches all aliases.
+     * @param origin the alias of the explicitly joined table the path starts from, or {@code null} for a path from
+     *               the query's own table; ignored when {@code path} is null.
      * @param level the current nesting depth: 0=current, 1=parent, etc.
      */
     private Stream<AliasEntry> collectAliasEntries(Class<? extends Data> table,
                                                    @Nullable String path,
+                                                   @Nullable String origin,
                                                    int level) {
         // Current level matches.
-        var local = aliasMap.getOrDefault(table, List.of()).stream()
-                .filter(ta -> path == null || Objects.equals(path, ta.path()))
-                .map(ta -> new AliasEntry(ta.alias(), ta.path(), level));
+        var local = Stream.concat(
+                aliasMap.getOrDefault(table, List.of()).stream()
+                        .filter(ta -> path == null || (Objects.equals(path, ta.path()) && Objects.equals(origin, ta.origin())))
+                        .map(ta -> new AliasEntry(ta.alias(), ta.path(), ta.origin(), level)),
+                redirectedAliasEntries(table, path, origin, level));
         // Recurse to parent if present.
         var parentStream = parent == null
                 ? Stream.<AliasEntry>empty()
-                : parent.collectAliasEntries(table, path, level + 1);
+                : parent.collectAliasEntries(table, path, origin, level + 1);
         return Stream.concat(local, parentStream);
+    }
+
+    /**
+     * Returns the entries a redirect at this level yields for the path from the explicitly joined table: the query's
+     * own table for the foreign key the join equates, and the occurrences the query's own paths reach beneath it.
+     */
+    private Stream<AliasEntry> redirectedAliasEntries(Class<? extends Data> table,
+                                                      @Nullable String path,
+                                                      @Nullable String origin,
+                                                      int level) {
+        if (path == null || origin == null) {
+            return Stream.empty();
+        }
+        return redirects.stream()
+                .filter(redirect -> redirect.origin().equals(origin))
+                .flatMap(redirect -> {
+                    if (path.equals(redirect.prefix())) {
+                        return redirect.table() == table
+                                ? Stream.of(new AliasEntry(redirect.alias(), path, origin, level))
+                                : Stream.empty();
+                    }
+                    if (!path.startsWith(redirect.prefix() + ".")) {
+                        return Stream.empty();
+                    }
+                    var rest = path.substring(redirect.prefix().length() + 1);
+                    return aliasMap.getOrDefault(table, List.of()).stream()
+                            .filter(ta -> rest.equals(ta.path()) && ta.origin() == null)
+                            .map(ta -> new AliasEntry(ta.alias(), path, origin, level));
+                });
     }
 
     private SqlTemplateException multipleFoundException(Class<? extends Data> table,
@@ -121,7 +186,7 @@ final class AliasMapper {
             if (path != null) {
                 return new SqlTemplateException("Multiple aliases found for: %s at path: '%s'. Use INNER scope to limit alias resolution to the current scope.".formatted(table.getSimpleName(), path));
             }
-            var paths = collectAliasEntries(table, null, 0).map(AliasEntry::path).toList();
+            var paths = collectAliasEntries(table, null, null, 0).map(AliasEntry::path).toList();
             return multiplePathsFoundException(table, paths);
         }
         var paths = aliasMap.get(table).stream()
@@ -132,7 +197,7 @@ final class AliasMapper {
 
     public String useAlias(Class<? extends Data> table,
                            String alias) throws SqlTemplateException {
-        if (collectAliasEntries(table, null, 0)
+        if (collectAliasEntries(table, null, null, 0)
                 .filter(e -> e.alias().equals(alias))
                 .findAny()
                 .isEmpty()) {
@@ -195,7 +260,73 @@ final class AliasMapper {
         if (!Data.class.isAssignableFrom(table.fieldType())) {
             throw new SqlTemplateException("Component type of table %s not a Data type: %s.".formatted(table, table.fieldType().getSimpleName()));
         }
-        return getAlias(table.fieldType(), path.isEmpty() ? null : path, scope, dialect, exceptionSupplier);
+        if (path.isEmpty()) {
+            return getAlias(table.fieldType(), null, null, scope, dialect, exceptionSupplier);
+        }
+        var placement = placement(metamodel.root(), scope);
+        return getAlias(table.fieldType(), placement.prefix().isEmpty() ? path : placement.prefix() + "." + path,
+                placement.origin(), scope, dialect, exceptionSupplier);
+    }
+
+    /**
+     * Returns where a path rooted at {@code root} starts: at the query's own table, at the path the root is reached by
+     * from it, or at the explicit join of the root, whose alias is then the origin of the occurrences the path reaches.
+     * The nearest level the scope admits that registers the root decides; a root no level registers starts at the
+     * query's own table, which leaves the path to resolve by itself or to be reported.
+     *
+     * @param root the table the path is rooted at.
+     * @param scope the scope the path resolves in.
+     * @throws SqlTemplateException if the root is joined explicitly more than once, so the path cannot tell the joins
+     *                              apart.
+     */
+    private Placement placement(Class<? extends Data> root, ResolveScope scope) throws SqlTemplateException {
+        for (var mapper = scope == OUTER ? parent : this; mapper != null; mapper = mapper.parent) {
+            var entries = mapper.aliasMap.getOrDefault(root, List.of());
+            if (entries.isEmpty()) {
+                if (scope == INNER) {
+                    break;
+                }
+                continue;
+            }
+            if (entries.stream().anyMatch(entry -> "".equals(entry.path()))) {
+                return Placement.ROOT;
+            }
+            var registered = mapper.findRegisteredPath(root);
+            if (registered.isPresent()) {
+                return new Placement(registered.get(), null);
+            }
+            var joined = mapper.joinAliases.getOrDefault(root, List.of());
+            if (joined.size() > 1) {
+                throw new SqlTemplateException("Multiple joins found for %s: %s. Reference the table through a path from the query root or join it once.".formatted(root.getSimpleName(), String.join(", ", joined)));
+            }
+            return new Placement("", joined.isEmpty() ? null : joined.getFirst());
+        }
+        return Placement.ROOT;
+    }
+
+    /**
+     * Returns the alias of the table at the path of a metamodel rooted at {@code root}, resolved at the current
+     * nesting level: a path from the query's own table, from the path the root is reached by from it, or from the
+     * explicit join of the root. An empty path names the root itself: the occurrence at the path the root is reached
+     * by, or the root's only occurrence.
+     *
+     * @param root the table the path is rooted at.
+     * @param table the table at the end of the path.
+     * @param path the path from the root to the table.
+     * @return the alias, or empty when the table is not registered at the path.
+     * @throws SqlTemplateException if the alias is ambiguous.
+     */
+    public Optional<String> findAlias(Class<? extends Data> root,
+                                      Class<? extends Data> table,
+                                      String path) throws SqlTemplateException {
+        var placement = placement(root, INNER);
+        if (path.isEmpty()) {
+            return placement.prefix().isEmpty()
+                    ? findAlias(table, null, INNER)
+                    : findAlias(table, placement.prefix(), null, INNER);
+        }
+        return findAlias(table, placement.prefix().isEmpty() ? path : placement.prefix() + "." + path,
+                placement.origin(), INNER);
     }
 
     /**
@@ -216,7 +347,32 @@ final class AliasMapper {
                            ResolveScope scope,
                            SqlDialect dialect,
                            Supplier<SqlTemplateException> exceptionSupplier) throws SqlTemplateException {
-        var alias = findAlias(table, path, scope).orElse("");
+        return getAlias(table, path, null, scope, dialect, exceptionSupplier);
+    }
+
+    /**
+     * Returns the alias for the table at the specified path from the query's own table, or from the explicitly
+     * joined table {@code origin} names.
+     *
+     * <p><strong>Note:</strong> The alias returned is safe for use in SQL and does not require escaping.</p>
+     *
+     * @param table the table to get the alias for.
+     * @param path the path of the table (optional).
+     * @param origin the alias of the explicitly joined table the path starts from, or {@code null} for a path from
+     *               the query's own table.
+     * @param scope the scope to resolve the alias in.
+     * @param dialect the SQL dialect to use in case the alias is based on table name and potentially requires escaping.
+     * @param exceptionSupplier the exception supplier to use in case the alias could not be resolved.
+     * @return the alias for the table at the specified path.
+     * @throws SqlTemplateException if the alias could not be resolved.
+     */
+    private String getAlias(Class<? extends Data> table,
+                            @Nullable String path,
+                            @Nullable String origin,
+                            ResolveScope scope,
+                            SqlDialect dialect,
+                            Supplier<SqlTemplateException> exceptionSupplier) throws SqlTemplateException {
+        var alias = findAlias(table, path, origin, scope).orElse("");
         if (!alias.isEmpty()) {
             return alias;
         }
@@ -252,7 +408,8 @@ final class AliasMapper {
         String selected = null;
         for (var entry : entries) {
             var entryPath = entry.path();
-            if (entryPath == null) {
+            // An occurrence derived from an explicit join is reached from that join, not from the query's own table.
+            if (entryPath == null || entry.origin() != null) {
                 continue;
             }
             if (selected == null) {
@@ -337,7 +494,7 @@ final class AliasMapper {
         for (var entry : aliasMap.entrySet()) {
             for (var tableAlias : entry.getValue()) {
                 var registeredPath = tableAlias.path();
-                if (registeredPath == null) {
+                if (registeredPath == null || tableAlias.origin() != null) {
                     continue;
                 }
                 var existing = tablesByPath.putIfAbsent(registeredPath, entry.getKey());
@@ -362,7 +519,27 @@ final class AliasMapper {
     public Optional<String> findAlias(Class<? extends Data> table,
                                       @Nullable String path,
                                       ResolveScope scope) throws SqlTemplateException {
-        var entries = collectAliasEntries(table, path, 0).toList();
+        return findAlias(table, path, null, scope);
+    }
+
+    /**
+     * Returns the alias of the table at the path from the query's own table, or from the explicitly joined table
+     * {@code origin} names. The table the alias belongs to is marked as referenced at the level it was found, so
+     * an enclosing query renders the join a correlated subquery names through it.
+     *
+     * @param table the table to get the alias for.
+     * @param path the path of the table, or {@code null} to resolve the table by type.
+     * @param origin the alias of the explicitly joined table the path starts from, or {@code null} for a path from
+     *               the query's own table; ignored when {@code path} is null.
+     * @param scope the scope to resolve the alias in.
+     * @return the alias, or empty when the table is not registered at the path.
+     * @throws SqlTemplateException if the alias is ambiguous.
+     */
+    private Optional<String> findAlias(Class<? extends Data> table,
+                                       @Nullable String path,
+                                       @Nullable String origin,
+                                       ResolveScope scope) throws SqlTemplateException {
+        var entries = collectAliasEntries(table, path, origin, 0).toList();
         var filtered = entries.stream()
                 .filter(e -> switch (scope) {
                     case INNER   -> e.level() == 0;
@@ -376,21 +553,28 @@ final class AliasMapper {
         var entry = filtered.getFirst();
         if (filtered.size() > 1) {
             if (filtered.get(1).level() == entry.level()) {
+                // An occurrence a path from an explicitly joined table reaches is named by that path alone: a table
+                // named by type is the query's own, one of its graph, or one joined explicitly, when there is one.
+                var level = entry.level();
+                var candidates = filtered.stream()
+                        .filter(candidate -> candidate.level() == level && candidate.origin() == null)
+                        .toList();
+                if (candidates.isEmpty()) {
+                    candidates = filtered;
+                }
                 // A table reachable from itself registers one occurrence per hop around the cycle, for instance an
                 // entity holding a foreign key on a record that refers back to that entity. Resolving by type then
                 // yields the occurrence that was navigated to, since every other one is only reachable by passing
                 // that same table again. Occurrences that are genuinely distinct, such as two foreign keys onto the
                 // same table from different branches, pass nothing twice and stay ambiguous.
-                var withoutRepeat = findOccurrenceWithoutRepeatedTable(filtered, entry.level());
+                var withoutRepeat = findOccurrenceWithoutRepeatedTable(candidates, level);
                 if (withoutRepeat == null) {
                     throw multipleFoundException(table, path, scope == INNER ? CASCADE : scope);
                 }
                 entry = withoutRepeat;
             }
         }
-        if (entry.level() == 0) {
-            tableUse.addReferencedTable(table, entry.alias());
-        }
+        mapperAtLevel(entry.level()).tableUse.addReferencedTable(table, entry.alias());
         return Optional.of(entry.alias());
     }
 
@@ -405,6 +589,29 @@ final class AliasMapper {
                                 @Nullable Class<? extends Data> autoJoinTable,
                                 @Nullable String autoJoinAlias,
                                 SqlDialect dialect) throws SqlTemplateException {
+        return generateAlias(table, path, null, autoJoinTable, autoJoinAlias, dialect);
+    }
+
+    /**
+     * Generates and registers the alias of an occurrence of a table.
+     *
+     * @param table the table.
+     * @param path the path the occurrence is reached by, or {@code null} for an occurrence addressed by type.
+     * @param origin the alias of the explicitly joined table the path starts from, or {@code null} for a path from
+     *               the query's own table.
+     * @param autoJoinTable the table the occurrence is joined from, when the join is derived and pruned unless
+     *                      referenced; {@code null} for an occurrence that is always rendered.
+     * @param autoJoinAlias the alias of the table the occurrence is joined from, or {@code null}.
+     * @param dialect the SQL dialect, which makes the alias safe to render.
+     * @return the generated alias.
+     * @throws SqlTemplateException if no alias could be generated.
+     */
+    public String generateAlias(Class<? extends Data> table,
+                                @Nullable String path,
+                                @Nullable String origin,
+                                @Nullable Class<? extends Data> autoJoinTable,
+                                @Nullable String autoJoinAlias,
+                                SqlDialect dialect) throws SqlTemplateException {
         String alias = generateAlias(table,
                 proposedAlias -> aliases().noneMatch(proposedAlias::equals), dialect);    // Take all aliases into account to prevent unnecessary shadowing.
         if (alias.isEmpty()) {
@@ -415,15 +622,40 @@ final class AliasMapper {
         } else {
             tableUse.addReferencedTable(table, alias);
         }
-        aliasMap.computeIfAbsent(table, ignore -> new LinkedHashSet<>()).add(new TableAlias(table, path, alias));
+        aliasMap.computeIfAbsent(table, ignore -> new LinkedHashSet<>()).add(new TableAlias(table, path, alias, origin));
         return alias;
     }
 
     public void setAlias(Class<? extends Data> table, String alias, @Nullable String path) throws SqlTemplateException {
-        if (!aliasMap.computeIfAbsent(table, ignore -> new LinkedHashSet<>()).add(new TableAlias(table, path, alias))) {
+        if (!aliasMap.computeIfAbsent(table, ignore -> new LinkedHashSet<>()).add(new TableAlias(table, path, alias, null))) {
             // Only detect duplicated aliases at the same level.
             throw new SqlTemplateException("Alias already exists for table %s.".formatted(table.getSimpleName()));
         }
+    }
+
+    /**
+     * Records that the table is joined explicitly under the alias, which a path rooted at the table then starts
+     * from: the occurrences the path reaches are derived from the join and registered with the alias as their origin.
+     *
+     * @param table the explicitly joined table.
+     * @param alias the alias of the join, registered for the table already.
+     */
+    public void addJoinAlias(Class<? extends Data> table, String alias) {
+        joinAliases.computeIfAbsent(table, ignore -> new LinkedHashSet<>()).add(alias);
+    }
+
+    /**
+     * Records that the explicit join under {@code origin} equates the foreign key {@code prefix} of the joined table
+     * to the query's own table, so a path from the joined table through that key names the query's own table and,
+     * beneath it, the occurrences the query's own paths reach, instead of occurrences of their own.
+     *
+     * @param origin the alias of the explicitly joined table.
+     * @param prefix the name of the foreign key the join equates to the query's own table.
+     * @param table the query's own table.
+     * @param alias the alias of the query's own table.
+     */
+    public void addRedirect(String origin, String prefix, Class<? extends Data> table, String alias) {
+        redirects.add(new Redirect(origin, prefix, table, alias));
     }
 
     private String generateAlias(Class<? extends Data> table,

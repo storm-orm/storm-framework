@@ -33,7 +33,9 @@ import static st.orm.core.template.Templates.where;
 import static st.orm.core.template.impl.Elements.Clause.GROUP_BY;
 import static st.orm.core.template.impl.RecordReflection.findJoinedSealedParent;
 import static st.orm.core.template.impl.RecordReflection.findPkField;
+import static st.orm.core.template.impl.RecordReflection.findRecordFields;
 import static st.orm.core.template.impl.RecordReflection.findSingleTableSealedParent;
+import static st.orm.core.template.impl.RecordReflection.getFkFields;
 import static st.orm.core.template.impl.RecordReflection.getForeignKeys;
 import static st.orm.core.template.impl.RecordReflection.getPrimaryKeys;
 import static st.orm.core.template.impl.RecordReflection.getRecordType;
@@ -962,6 +964,7 @@ class TemplatePreparation {
                         alias = j.sourceAlias();
                         aliasMapper.setAlias(ts.table(), j.sourceAlias(), null);
                     }
+                    aliasMapper.addJoinAlias(ts.table(), alias);
                     var projectionQuery = getRecordType(ts.table()).getAnnotation(ProjectionQuery.class);
                     Source source = projectionQuery != null
                             ? new Elements.TemplateSource(TemplateString.of(projectionQuery.value()))
@@ -986,11 +989,14 @@ class TemplatePreparation {
         }
         List<Join> joins = new ArrayList<>();
         ReferencedPaths referenced = collectReferencedTablePaths(fromTable, mutableElements, customJoins);
+        var joinedPaths = collectJoinedPaths(fromTable, mutableElements, customJoins, from.autoJoin());
         // Always ensure joins exist for referenced metamodel paths (in SELECT, WHERE, ORDER BY, ...). With auto-join the
         // whole hydrated entity graph is joined eagerly; without it only the referenced foreign keys are joined on
         // demand, so a selected or filtered column beyond the root's own columns (in particular beyond a reference)
         // still resolves. Unreferenced auto-joins are pruned by JoinProcessor.
-        addAutoJoins(fromTable, fromTable, customJoins, aliasMapper, tableMapper, joins, referenced, !from.autoJoin());
+        addAutoJoins(fromTable, fromTable, customJoins, aliasMapper, tableMapper, joins,
+                referenced.withJoined(redirectedPaths(joinedPaths)), !from.autoJoin());
+        addJoinedPathJoins(fromTable, joinedPaths, aliasMapper, tableMapper, joins);
         if (!joins.isEmpty()) {
             mutableElements.stream()
                 .filter(Select.class::isInstance)
@@ -1008,6 +1014,157 @@ class TemplatePreparation {
             elementNodes.add(new ElementNode(from, false));
             elementNodes.addAll(orderJoins(joins).stream().map(it -> new ElementNode(it, it.autoJoin())).toList());
             mutableElements.replaceAll(element -> element instanceof From ? new Wrapped(elementNodes) : element);
+        }
+    }
+
+    /**
+     * The demand the query puts on an explicitly joined table: the paths from the joined table the query names,
+     * whether the query selects the joined table as a record, and the foreign key the join equates to the query's
+     * own table, when it does, so the paths through that key name the occurrence the query's own paths reach.
+     *
+     * @param join the explicit join.
+     * @param table the joined table.
+     * @param paths the paths from the joined table the query names.
+     * @param hydrated whether the query selects the joined table as a record, which joins its eager foreign keys.
+     * @param reused the foreign key of the joined table the join equates to the query's own table, or {@code null}
+     *               when the join matches the tables otherwise.
+     */
+    private record JoinedPaths(Join join,
+                               Class<? extends Data> table,
+                               Set<String> paths,
+                               boolean hydrated,
+                               @Nullable RecordField reused) {}
+
+    /**
+     * Collects the demand the query puts on each explicitly joined table: see {@link JoinedPaths}. A foreign key the
+     * join equates to the query's own table is reused when the root's graph is derived in full, which registers the
+     * occurrences the paths through the key name.
+     *
+     * @param fromTable the root FROM table.
+     * @param elements the statement elements, whose metamodels rooted at a joined table name the paths.
+     * @param customJoins the explicit joins, with their aliases assigned.
+     * @param autoJoin whether the root's foreign key graph is derived in full.
+     * @return the demand per explicitly joined table the query names a path from or selects.
+     * @throws SqlTemplateException if the keys of a join cannot be resolved.
+     */
+    private List<JoinedPaths> collectJoinedPaths(
+            Class<? extends Data> fromTable,
+            List<Element> elements,
+            List<Join> customJoins,
+            boolean autoJoin
+    ) throws SqlTemplateException {
+        var joinedPaths = new ArrayList<JoinedPaths>();
+        for (Join join : customJoins) {
+            if (!(join.source() instanceof TableSource(var table)) || isSealedEntity(table)) {
+                continue;
+            }
+            Set<String> paths = new HashSet<>();
+            Set<Class<? extends Data>> hydratedTables = new HashSet<>();
+            for (Element element : elements) {
+                collectReferencedTablePaths(table, element, paths, new HashSet<>(), hydratedTables, new HashSet<>());
+            }
+            boolean hydrated = hydratedTables.contains(table);
+            if (paths.isEmpty() && !hydrated) {
+                continue;
+            }
+            joinedPaths.add(new JoinedPaths(join, table, paths, hydrated, autoJoin ? reusedKey(table, fromTable, join) : null));
+        }
+        return joinedPaths;
+    }
+
+    /**
+     * Returns the foreign key of the joined table the join equates to the query's own table: the key the join names,
+     * or the one key of the joined table referencing the query's own table when the join resolves its keys from the
+     * types and the query's own table holds no key referencing the joined table, which the join would match first.
+     * Only a key the joined table declares itself is returned: a key of an inline record is reached by a longer path.
+     *
+     * @param table the joined table.
+     * @param fromTable the root FROM table.
+     * @param join the explicit join.
+     * @return the key, or {@code null} when the join matches the tables otherwise.
+     * @throws SqlTemplateException if the keys of the join cannot be resolved.
+     */
+    private static @Nullable RecordField reusedKey(Class<? extends Data> table,
+                                                   Class<? extends Data> fromTable,
+                                                   Join join) throws SqlTemplateException {
+        if (!(join.target() instanceof Elements.TableTarget(var target, var sourceKey, var targetKey, var ignore))
+                || target != fromTable || targetKey != null) {
+            return null;
+        }
+        RecordField key = sourceKey;
+        if (key == null) {
+            if (!findRecordFields(getFkFields(fromTable).toList(), table).isEmpty()) {
+                return null;
+            }
+            var keys = findRecordFields(getFkFields(table).toList(), fromTable);
+            if (keys.size() != 1) {
+                return null;
+            }
+            key = keys.getFirst();
+        }
+        return getRecordType(table).fields().contains(key) ? key : null;
+    }
+
+    /**
+     * Returns the paths from the query's own table the paths through a reused key name, so the root's derivation
+     * registers the occurrences they reach, beyond a reference included.
+     */
+    private static Set<String> redirectedPaths(List<JoinedPaths> joinedPaths) {
+        Set<String> paths = new HashSet<>();
+        for (var joined : joinedPaths) {
+            if (joined.reused() == null) {
+                continue;
+            }
+            String prefix = joined.reused().name() + ".";
+            for (String path : joined.paths()) {
+                if (path.startsWith(prefix)) {
+                    paths.add(path.substring(prefix.length()));
+                }
+            }
+        }
+        return paths;
+    }
+
+    /**
+     * Derives the joins the paths from the explicitly joined tables need, so a path from a joined table resolves as
+     * a path from the root does: the tables it reaches are joined on demand, after the join the path starts from.
+     * A joined table the query selects as a record is hydrated as the root is, so its eager foreign keys are joined
+     * with it. The joins derived from a left join are left joins, since the joined row may be absent. The derived
+     * joins are registered with the join's alias as their origin, which keeps them apart from the occurrences the
+     * root's own paths reach. A foreign key the join equates to the query's own table is not joined again: the paths
+     * through it name the query's own table and the occurrences its paths reach.
+     *
+     * @param fromTable       the root FROM table, which the mappings are registered against.
+     * @param joinedPaths     the demand per explicitly joined table.
+     * @param aliasMapper     alias mapper used for alias registration and generation.
+     * @param tableMapper     table mapper used for mapping foreign keys.
+     * @param joins           output list that receives the derived joins, after the joins they start from.
+     * @throws SqlTemplateException if derivation fails.
+     */
+    private void addJoinedPathJoins(
+            Class<? extends Data> fromTable,
+            List<JoinedPaths> joinedPaths,
+            AliasMapper aliasMapper,
+            TableMapper tableMapper,
+            List<Join> joins
+    ) throws SqlTemplateException {
+        for (var joined : joinedPaths) {
+            var join = joined.join();
+            var table = joined.table();
+            Set<String> reused = Set.of();
+            var key = joined.reused();
+            if (key != null) {
+                var fromAlias = aliasMapper.findAlias(fromTable, "", INNER).orElse(null);
+                if (fromAlias != null) {
+                    aliasMapper.addRedirect(join.sourceAlias(), key.name(), fromTable, fromAlias);
+                    tableMapper.mapForeignKey(table, fromTable, join.sourceAlias(), key, fromTable, "");
+                    reused = Set.of(key.name());
+                }
+            }
+            var context = new AutoJoinContext(fromTable, aliasMapper, tableMapper, joins,
+                    new ReferencedPaths(joined.paths(), Set.of()), join.sourceAlias(), reused);
+            deriveAutoJoins(getRecordType(table), table, List.of(), join.sourceAlias(), join.type().isOuter(),
+                    !joined.hydrated(), context);
         }
     }
 
@@ -1070,7 +1227,7 @@ class TemplatePreparation {
     ) throws SqlTemplateException {
         // When demandOnly is set, only referenced foreign keys are joined (the hydrated graph is not expanded), so
         // the recursion starts already beyond the eager region.
-        var context = new AutoJoinContext(rootTable, aliasMapper, tableMapper, joins, referenced);
+        var context = new AutoJoinContext(rootTable, aliasMapper, tableMapper, joins, referenced, null, Set.of());
         if (!isSealedEntity(table)) {
             deriveAutoJoins(getRecordType(table), table, List.of(), null, false, demandOnly, context);
         } else {
@@ -1182,15 +1339,20 @@ class TemplatePreparation {
 
     /**
      * The arguments of an auto-join derivation that stay fixed across the recursion: the root the mappings are
-     * registered against, the mappers that receive them, the output join list, and the query's referenced paths.
-     * Bundling them leaves the genuinely varying traversal state visible in the recursive signature.
+     * registered against, the mappers that receive them, the output join list, the referenced paths the derivation
+     * serves, the origin of the derived occurrences: the alias of the explicitly joined table the paths start
+     * from, or {@code null} for the paths from the root, and the paths of the foreign keys the join equates to the
+     * query's own table, which are not joined again. Bundling them leaves the genuinely varying traversal state
+     * visible in the recursive signature.
      */
     private record AutoJoinContext(
             Class<? extends Data> rootTable,
             AliasMapper aliasMapper,
             TableMapper tableMapper,
             List<Join> joins,
-            ReferencedPaths referenced) {
+            ReferencedPaths referenced,
+            @Nullable String origin,
+            Set<String> reused) {
     }
 
     /**
@@ -1259,6 +1421,10 @@ class TemplatePreparation {
         var copy = copyOf(list);
         String pkPath = toPathString(copy);
         if (field.isAnnotationPresent(FK.class)) {
+            if (context.reused().contains(pkPath)) {
+                // The join equates the key to the query's own table, whose occurrence the paths through it name.
+                return;
+            }
             if (Ref.class.isAssignableFrom(field.type())) {
                 boolean navigated = isReferencedBeyond(referenced.joined(), pkPath);
                 // A reference is never hydrated, so it contributes no eager join: it is selected as its foreign
@@ -1282,7 +1448,7 @@ class TemplatePreparation {
                         RecordType fieldType = getRecordType(getRefDataType(field));
                         boolean effectiveOuterJoin = outerJoin || field.nullable();
                         String alias = addForeignKeyJoin(table, rootTable, field, fieldType, fromAlias, fkPath,
-                                pkPath, effectiveOuterJoin, aliasMapper, tableMapper, joins);
+                                pkPath, effectiveOuterJoin, context);
                         deriveAutoJoins(fieldType, fieldType.requireDataType(), copy, alias,
                                 effectiveOuterJoin, !referenced.hydrated().contains(pkPath), context);
                     }
@@ -1308,7 +1474,7 @@ class TemplatePreparation {
             RecordType fieldType = getRecordType(field.type());
             boolean effectiveOuterJoin = outerJoin || field.nullable();
             String alias = addForeignKeyJoin(table, rootTable, field, fieldType, fromAlias, fkPath,
-                    pkPath, effectiveOuterJoin, aliasMapper, tableMapper, joins);
+                    pkPath, effectiveOuterJoin, context);
             deriveAutoJoins(fieldType, fieldType.requireDataType(), copy, alias, effectiveOuterJoin,
                     beyondRef && !referenced.hydrated().contains(pkPath), context);
         } else if (isRecord(field.type())) {
@@ -1351,8 +1517,8 @@ class TemplatePreparation {
 
     /**
      * Generates a foreign key join from {@code fromAlias} on {@code table} to the table backing {@code fieldType},
-     * registers the new alias and foreign key mapping, and appends the join to {@code joins}. The join is marked as an
-     * auto-join so {@link JoinProcessor} prunes it when the target table is not referenced by the query.
+     * registers the new alias and foreign key mapping, and appends the join to the context's joins. The join is
+     * marked as an auto-join so {@link JoinProcessor} prunes it when the target table is not referenced by the query.
      *
      * @return the alias generated for the joined table.
      */
@@ -1365,11 +1531,13 @@ class TemplatePreparation {
             String fkPath,
             String pkPath,
             boolean effectiveOuterJoin,
-            AliasMapper aliasMapper,
-            TableMapper tableMapper,
-            List<Join> joins
+            AutoJoinContext context
     ) throws SqlTemplateException {
-        String alias = aliasMapper.generateAlias(fieldType.requireDataType(), pkPath, table, fromAlias, template.dialect());
+        var aliasMapper = context.aliasMapper();
+        var tableMapper = context.tableMapper();
+        var joins = context.joins();
+        String alias = aliasMapper.generateAlias(fieldType.requireDataType(), pkPath, context.origin(), table, fromAlias,
+                template.dialect());
         tableMapper.mapForeignKey(table, fieldType.requireDataType(), fromAlias, field, rootTable, fkPath);
         // The join type encodes the declared cardinality of the foreign key. A non-null foreign key asserts that the
         // relationship always resolves, so it is joined with INNER; a nullable foreign key, or any foreign key beneath
@@ -1428,7 +1596,18 @@ class TemplatePreparation {
      * @param joined   every path whose table the query needs, hydrated paths included.
      * @param hydrated the paths whose table is materialized as a record.
      */
-    private record ReferencedPaths(Set<String> joined, Set<String> hydrated) { }
+    private record ReferencedPaths(Set<String> joined, Set<String> hydrated) {
+
+        /** Returns the paths with the specified paths joined as well. */
+        ReferencedPaths withJoined(Set<String> paths) {
+            if (paths.isEmpty()) {
+                return this;
+            }
+            Set<String> union = new HashSet<>(joined);
+            union.addAll(paths);
+            return new ReferencedPaths(union, hydrated);
+        }
+    }
 
     /**
      * Collects the table paths, relative to the FROM {@code rootTable}, that the query's elements reference beyond the

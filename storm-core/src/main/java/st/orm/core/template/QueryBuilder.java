@@ -665,9 +665,7 @@ public abstract class QueryBuilder<T extends Data, R, ID> {
      * @return the query builder.
      * @since 1.13
      */
-    public final QueryBuilder<T, R, ID> havingExists(QueryBuilder<?, ?, ?> subquery) {
-        return having(TemplateString.raw("EXISTS (\0)", subquery));
-    }
+    public abstract QueryBuilder<T, R, ID> havingExists(QueryBuilder<?, ?, ?> subquery);
 
     /**
      * Adds a HAVING clause that keeps the groups for which the specified subquery returns no rows.
@@ -676,9 +674,7 @@ public abstract class QueryBuilder<T extends Data, R, ID> {
      * @return the query builder.
      * @since 1.13
      */
-    public final QueryBuilder<T, R, ID> havingNotExists(QueryBuilder<?, ?, ?> subquery) {
-        return having(TemplateString.raw("NOT EXISTS (\0)", subquery));
-    }
+    public abstract QueryBuilder<T, R, ID> havingNotExists(QueryBuilder<?, ?, ?> subquery);
 
     /**
      * Adds an ORDER BY clause to the query for the field at the specified path in the table graph.

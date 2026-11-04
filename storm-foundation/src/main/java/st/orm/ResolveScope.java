@@ -32,7 +32,7 @@ public enum ResolveScope {
     INNER,
 
     /**
-     * Resolve the alias from the outer scope(s) only.e
+     * Resolve the alias from the outer scope(s) only.
      */
     OUTER
 }
