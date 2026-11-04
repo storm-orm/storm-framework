@@ -59,8 +59,11 @@ import st.orm.core.model.Visit;
 import st.orm.core.model.VisitWithCompoundFK;
 import st.orm.core.model.VisitWithCompoundFK_;
 import st.orm.core.model.Visit_;
+import st.orm.core.spi.NoInOverUnionSqlDialectProviderImpl;
+import st.orm.core.spi.SqlDialectProvider;
 import st.orm.core.template.ORMTemplate;
 import st.orm.core.template.PredicateBuilder;
+import st.orm.core.template.PreparedStatementTemplate;
 import st.orm.core.template.QueryBuilder;
 import st.orm.core.template.TemplateString;
 import st.orm.core.template.impl.PredicateBuilderFactory;
@@ -447,7 +450,11 @@ public class SemiJoinIntegrationTest {
 
     /** Pets filtered by two semi-joined tables: their visits and their notes. */
     private QueryBuilder<Data, Pet, Integer> petsWithVisitsAndNotes() {
-        return orm().entity(Pet.class).select()
+        return petsWithVisitsAndNotes(orm());
+    }
+
+    private static QueryBuilder<Data, Pet, Integer> petsWithVisitsAndNotes(ORMTemplate orm) {
+        return orm.entity(Pet.class).select()
                 .semiJoin(Visit.class).on(Pet.class)
                 .semiJoin(PetExtension.class).on(Pet.class);
     }
@@ -482,6 +489,38 @@ public class SemiJoinIntegrationTest {
         assertTrue(statement().contains("WHERE p.id IN (SELECT v.pet_id FROM visit v WHERE v.description = ? UNION "
                 + "SELECT pe.pet_id FROM pet_extension pe WHERE pe.notes = ?)"), statement());
         assertFalse(statement().contains("EXISTS"), statement());
+    }
+
+    @Test
+    public void orAcrossSemiJoinedTablesRendersAnExistsPerTableWhereTheDatabaseRunsAUnionPerRow() {
+        var pets = capture(() -> petsWithVisitsAndNotes(noInOverUnionOrm())
+                .where(it -> it.where(Visit_.description, EQUALS, "neutered")
+                        .or(it.where(PetExtension_.notes, EQUALS, "Indoor cat")))
+                .getResultList());
+        assertEquals(List.of("Basil", "Jewel", "Max", "Samantha"), petNames(pets));
+        // Each table is an EXISTS of its own, correlated through its foreign key, which the database tests per row.
+        assertTrue(statement().contains("WHERE EXISTS (SELECT 1 FROM visit v WHERE v.pet_id = p.id AND v.description = ?) "
+                + "OR EXISTS (SELECT 1 FROM pet_extension pe WHERE pe.pet_id = p.id AND pe.notes = ?)"), statement());
+        assertFalse(statement().contains(" UNION "), statement());
+    }
+
+    @Test
+    public void searchAcrossSemiJoinedTablesRendersAnExistsPerTableWhereTheDatabaseRunsAUnionPerRow() {
+        var owners = capture(() -> ownersWithPets(noInOverUnionOrm())
+                .where(it -> search("davis leo", Owner_.lastName, Pet_.name))
+                .getResultList());
+        assertEquals(List.of("Betty"), firstNames(owners));
+        assertFalse(statement().contains(" UNION "), statement());
+        // The owner's own column stays outside the subquery, which reads the pets of each owner alone.
+        assertTrue(statement().contains("OR EXISTS (SELECT 1 FROM pet p WHERE p.owner_id = o.id AND"), statement());
+    }
+
+    /** A template whose dialect's database runs an {@code IN} over a {@code UNION} once per row of the outer query. */
+    private ORMTemplate noInOverUnionOrm() {
+        // The filter applies to every kind of provider, so only the dialect providers are narrowed.
+        return ORMTemplate.of(dataSource, template -> ((PreparedStatementTemplate) template)
+                .withProviderFilter(provider -> !(provider instanceof SqlDialectProvider)
+                        || provider instanceof NoInOverUnionSqlDialectProviderImpl));
     }
 
     @Test

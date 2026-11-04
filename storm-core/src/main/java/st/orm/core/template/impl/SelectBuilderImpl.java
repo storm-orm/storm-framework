@@ -450,12 +450,23 @@ public class SelectBuilderImpl<T extends Data, R, ID> extends QueryBuilderImpl<T
 
     @Override
     public TemplateString getSubquery() {
+        return subquery(selectClause());
+    }
+
+    @Override
+    public TemplateString getExistsSubquery() {
+        // The database only tests for a row, so the record's columns are replaced by a constant, which lets it answer
+        // from an index on the joining key; a select list of the query's own is kept.
+        return subquery(selectedRecordType() == null ? selectClause() : TemplateString.of("1"));
+    }
+
+    private TemplateString subquery(TemplateString selectClause) {
         if (!hintAtEnd().isEmpty()) {
             throw new PersistenceException("%s takes optimizer hints once per statement, at its end, so a subquery cannot carry one. Put the hint on the outer query."
                     .formatted(queryTemplate.dialect().name()));
         }
         // A subquery asserts nothing to the statement that embeds it.
-        return toTemplateString(new StatementFacts.Collector());
+        return toTemplateString(selectClause, true, new StatementFacts.Collector());
     }
 
     /**

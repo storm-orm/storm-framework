@@ -30,4 +30,16 @@ public interface Subqueryable {
      * @return the template.
      */
     TemplateString getSubquery();
+
+    /**
+     * Returns the template for the query as the subquery of an existence test. The test ignores the select list,
+     * which the database does not always, so a query that selects a record's columns selects a constant instead; a
+     * query with a select list of its own keeps it.
+     *
+     * @return the template for the subquery of an existence test.
+     * @since 1.16
+     */
+    default TemplateString getExistsSubquery() {
+        return getSubquery();
+    }
 }

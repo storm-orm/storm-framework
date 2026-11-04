@@ -1586,7 +1586,7 @@ public class RepositoryPreparedStatementIntegrationTest {
             FROM owner o
             LEFT JOIN city c ON o.city_id = c.id
             WHERE (o.id = ?) AND EXISTS (
-              SELECT o1.id, o1.first_name, o1.last_name, o1.address, o1.city_id, o1.telephone, o1.version
+              SELECT 1
               FROM owner o1
               WHERE o1.id = ?
             ) AND (3 = ?)""";

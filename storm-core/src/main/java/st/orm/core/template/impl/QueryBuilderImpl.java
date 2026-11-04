@@ -58,6 +58,7 @@ import st.orm.core.template.TypedJoinBuilder;
 import st.orm.core.template.WhereBuilder;
 import st.orm.core.template.impl.Elements.Expression;
 import st.orm.core.template.impl.Elements.ObjectExpression;
+import st.orm.core.template.impl.Elements.Subquery;
 import st.orm.core.template.impl.Elements.TableSource;
 import st.orm.core.template.impl.Elements.TableTarget;
 import st.orm.core.template.impl.Elements.TemplateExpression;
@@ -736,6 +737,29 @@ abstract class QueryBuilderImpl<T extends Data, R, ID> extends QueryBuilder<T, R
         return copyWith(queryTemplate, fromType, join, where, groupBy, copy, orderBy, hints, orderFirstKeys);
     }
 
+    @Override
+    public QueryBuilder<T, R, ID> havingExists(QueryBuilder<?, ?, ?> subquery) {
+        return having(TemplateString.raw("EXISTS (\0)", existsSubquery(subquery)));
+    }
+
+    @Override
+    public QueryBuilder<T, R, ID> havingNotExists(QueryBuilder<?, ?, ?> subquery) {
+        return having(TemplateString.raw("NOT EXISTS (\0)", existsSubquery(subquery)));
+    }
+
+    /**
+     * Returns the subquery of an existence test as a correlated subquery element, selecting a constant where the
+     * query selects a record's columns.
+     *
+     * @param subquery the query to test for existence.
+     * @return the subquery element, or the query itself when it does not render as a subquery.
+     */
+    static Object existsSubquery(QueryBuilder<?, ?, ?> subquery) {
+        return subquery instanceof Subqueryable subqueryable
+                ? new Subquery(subqueryable.getExistsSubquery(), true)
+                : subquery;
+    }
+
     /**
      * Returns {@code true} if any ORDER BY columns have been added to this query builder.
      *
@@ -1120,12 +1144,12 @@ abstract class QueryBuilderImpl<T extends Data, R, ID> extends QueryBuilder<T, R
 
         @Override
         public PredicateBuilder<TX, RX, IDX> exists(QueryBuilder<?, ?, ?> subquery) {
-            return new PredicateBuilderImpl<>(TemplateString.raw("EXISTS (\0)", subquery));
+            return new PredicateBuilderImpl<>(TemplateString.raw("EXISTS (\0)", existsSubquery(subquery)));
         }
 
         @Override
         public PredicateBuilder<TX, RX, IDX> notExists(QueryBuilder<?, ?, ?> subquery) {
-            return new PredicateBuilderImpl<>(TemplateString.raw("NOT EXISTS (\0)", subquery));
+            return new PredicateBuilderImpl<>(TemplateString.raw("NOT EXISTS (\0)", existsSubquery(subquery)));
         }
 
         /**

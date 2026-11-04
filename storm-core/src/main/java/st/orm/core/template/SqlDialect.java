@@ -923,6 +923,23 @@ public interface SqlDialect {
     }
 
     /**
+     * Returns whether the database plans an {@code IN} over a {@code UNION} subquery as a semi-join, computing each
+     * branch of the union once, rather than as a dependent subquery that runs the union once per row of the outer
+     * query.
+     *
+     * <p>The default is {@code true}. A dialect whose database runs the union per row returns {@code false}: an
+     * {@code OR} across semi-joined tables, and each word of a search over them, then renders as an {@code EXISTS}
+     * per table, each correlated through its foreign key, which the database tests on the rows the rest of the
+     * condition found.</p>
+     *
+     * @return {@code true} when an {@code IN} over a {@code UNION} is planned as a semi-join.
+     * @since 1.16
+     */
+    default boolean flattensInOverUnion() {
+        return true;
+    }
+
+    /**
      * Returns the most bytes the key of an ordinary index may hold, where the database checks the declared sizes of
      * the key's columns against a limit when the index is created, so that an index on columns too wide for it cannot
      * be created, or takes no value past it.

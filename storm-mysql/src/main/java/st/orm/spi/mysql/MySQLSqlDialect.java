@@ -383,6 +383,19 @@ public class MySQLSqlDialect extends DefaultSqlDialect {
     }
 
     /**
+     * The semi-join transformations of this database exclude a {@code UNION} subquery, so an {@code IN} over a
+     * {@code UNION} is planned as a dependent subquery, run once per row of the outer query. MariaDB, whose dialect
+     * extends this one, plans it the same way.
+     *
+     * @return {@code false}.
+     * @since 1.16
+     */
+    @Override
+    public boolean flattensInOverUnion() {
+        return false;
+    }
+
+    /**
      * Returns the most bytes an index key may hold: 3072, the limit of the default row format, which the database
      * checks against the declared sizes of the key's columns when the index is created. A table in a legacy row
      * format allows a quarter of it.
