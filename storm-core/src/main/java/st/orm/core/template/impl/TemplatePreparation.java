@@ -1087,11 +1087,11 @@ class TemplatePreparation {
     private static @Nullable RecordField reusedKey(Class<? extends Data> table,
                                                    Class<? extends Data> fromTable,
                                                    Join join) throws SqlTemplateException {
-        if (!(join.target() instanceof Elements.TableTarget(var target, var sourceKey, var targetKey, var ignore))
-                || target != fromTable || targetKey != null) {
+        if (!(join.target() instanceof Elements.TableTarget target)
+                || target.table() != fromTable || target.targetKey() != null) {
             return null;
         }
-        RecordField key = sourceKey;
+        RecordField key = target.sourceKey();
         if (key == null) {
             if (!findRecordFields(getFkFields(fromTable).toList(), table).isEmpty()) {
                 return null;

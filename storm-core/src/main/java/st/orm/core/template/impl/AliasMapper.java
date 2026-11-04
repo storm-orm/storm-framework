@@ -288,7 +288,7 @@ final class AliasMapper {
                 }
                 continue;
             }
-            if (entries.stream().anyMatch(entry -> "".equals(entry.path()))) {
+            if (entries.stream().anyMatch(entry -> entry.path() != null && entry.path().isEmpty())) {
                 return Placement.ROOT;
             }
             var registered = mapper.findRegisteredPath(root);
