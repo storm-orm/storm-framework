@@ -57,6 +57,7 @@ import st.orm.TypedMetamodel;
 import st.orm.Window;
 import st.orm.core.template.impl.Elements.Columns;
 import st.orm.core.template.impl.Elements.ObjectExpression;
+import st.orm.core.template.impl.Elements.PathExpression;
 
 /**
  * A query builder that constructs a query from a template.
@@ -530,6 +531,25 @@ public abstract class QueryBuilder<T extends Data, R, ID> {
     }
 
     /**
+     * Adds a WHERE clause that compares the column at the specified path with the column at another path of the
+     * query, such as a foreign key with a foreign key to the same table. Both paths resolve as they do in a value
+     * comparison: to a table of the query, or to a path joined on demand; a path on a table outside the query is
+     * refused when the query is built. A multi-column path compares component-wise with a path of as many columns.
+     *
+     * @param path the path to the column on the left of the operator.
+     * @param operator the operator to use for the comparison.
+     * @param other the path to the column on the right of the operator.
+     * @return the query builder.
+     * @param <V> the type of the value both columns hold.
+     * @since 1.16
+     */
+    public final <V> QueryBuilder<T, R, ID> where(Navigable<? extends T, V> path,
+                                                  Operator operator,
+                                                  Navigable<?, V> other) {
+        return where(predicate -> predicate.where(path, operator, other));
+    }
+
+    /**
      * Adds a WHERE clause to the query for the specified expression.
      *
      * @param template the expression.
@@ -632,6 +652,24 @@ public abstract class QueryBuilder<T extends Data, R, ID> {
                                                    Operator operator,
                                                    V... o) {
         return having(wrap(new ObjectExpression(path.asMetamodel(), operator, o)));
+    }
+
+    /**
+     * Adds a HAVING clause that compares the column at the specified path with the column at another path of the
+     * query. Both paths resolve as they do in a value comparison, and a multi-column path compares component-wise
+     * with a path of as many columns.
+     *
+     * @param path the path to the column on the left of the operator.
+     * @param operator the operator to use for the comparison.
+     * @param other the path to the column on the right of the operator.
+     * @return the query builder.
+     * @param <V> the type of the value both columns hold.
+     * @since 1.16
+     */
+    public final <V> QueryBuilder<T, R, ID> having(Navigable<? extends T, V> path,
+                                                   Operator operator,
+                                                   Navigable<?, V> other) {
+        return having(wrap(new PathExpression(path.asMetamodel(), operator, other.asMetamodel())));
     }
 
     /**

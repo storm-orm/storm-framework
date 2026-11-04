@@ -454,6 +454,12 @@ internal class QueryBuilderImpl<T : Data, R : Any, ID : Any>(
             it: Iterable<V>,
         ): PredicateBuilder<TX, RX, IDX> = PredicateBuilderImpl<TX, RX, IDX>(core.where<V>(path.asMetamodel(), operator, it))
 
+        override fun <V : Any> where(
+            path: Navigable<out TX, V>,
+            operator: Operator,
+            other: Navigable<*, V>,
+        ): PredicateBuilder<TX, RX, IDX> = PredicateBuilderImpl<TX, RX, IDX>(core.where<V>(path, operator, other))
+
         override fun where(template: TemplateString): PredicateBuilder<TX, RX, IDX> = PredicateBuilderImpl<TX, RX, IDX>(core.where((template as TemplateStringHolder).templateString))
 
         override infix fun PredicateBuilder<out TX, *, *>.and(predicate: PredicateBuilder<out TX, *, *>): PredicateBuilder<TX, RX, IDX> {

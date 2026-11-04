@@ -25,11 +25,13 @@ import st.orm.core.template.impl.Elements.Clause.ORDER_BY_ASCENDING
 import st.orm.core.template.impl.Elements.Clause.ORDER_BY_DESCENDING
 import st.orm.core.template.impl.Elements.Columns
 import st.orm.core.template.impl.Elements.ObjectExpression
+import st.orm.core.template.impl.Elements.PathExpression
 import st.orm.template.TemplateString.Companion.combine
 import st.orm.template.TemplateString.Companion.raw
 import st.orm.template.TemplateString.Companion.wrap
 import st.orm.template.impl.combineAnd
 import st.orm.template.impl.combineOr
+import st.orm.template.impl.compare
 import st.orm.template.impl.create
 import st.orm.template.impl.createRef
 import st.orm.template.impl.createSearch
@@ -720,6 +722,25 @@ public abstract class QueryBuilder<T : Data, R : Any, ID : Any> {
     ): QueryBuilder<T, R, ID> = whereBuilder { where(path, operator, *o) }
 
     /**
+     * Adds a WHERE clause that compares the column at the specified path with the column at another path of the
+     * query, such as a foreign key with a foreign key to the same table. Both paths resolve as they do in a value
+     * comparison: to a table of the query, or to a path joined on demand; a path on a table outside the query is
+     * refused when the query is built. A multi-column path compares component-wise with a path of as many columns.
+     *
+     * @param path the path to the column on the left of the operator.
+     * @param operator the operator to use for the comparison.
+     * @param other the path to the column on the right of the operator.
+     * @return the query builder.
+     * @param <V> the type of the value both columns hold.
+     * @since 1.16
+     */
+    public fun <V : Any> where(
+        path: Navigable<out T, V>,
+        operator: Operator,
+        other: Navigable<*, V>,
+    ): QueryBuilder<T, R, ID> = whereBuilder { where(path, operator, other) }
+
+    /**
      * Adds a WHERE clause to the query for the specified expression.
      *
      * @param builder the expression.
@@ -871,6 +892,24 @@ public abstract class QueryBuilder<T : Data, R : Any, ID : Any> {
         operator: Operator,
         vararg o: V,
     ): QueryBuilder<T, R, ID> = having(wrap(ObjectExpression(path.asMetamodel(), operator, o)))
+
+    /**
+     * Adds a HAVING clause that compares the column at the specified path with the column at another path of the
+     * query. Both paths resolve as they do in a value comparison, and a multi-column path compares component-wise
+     * with a path of as many columns.
+     *
+     * @param path the path to the column on the left of the operator.
+     * @param operator the operator to use for the comparison.
+     * @param other the path to the column on the right of the operator.
+     * @return the query builder.
+     * @param <V> the type of the value both columns hold.
+     * @since 1.16
+     */
+    public fun <V : Any> having(
+        path: Navigable<out T, V>,
+        operator: Operator,
+        other: Navigable<*, V>,
+    ): QueryBuilder<T, R, ID> = having(wrap(PathExpression(path.asMetamodel(), operator, other.asMetamodel())))
 
     /**
      * Adds a HAVING clause to the query using the specified expression.
@@ -1858,6 +1897,50 @@ public infix fun <T : Data, V : Any> Navigable<T, V>.greaterEq(value: V): Predic
 public infix fun <T : Data, V : Any> Navigable<T, V>.lessEq(value: V): PredicateBuilder<T, T, *> = create(this.asMetamodel(), LESS_THAN_OR_EQUAL, listOf(value))
 
 /**
+ * Infix function to create a predicate comparing a field with another field of the query for equality, such as a
+ * foreign key with a foreign key to the same table: `Invoice_.vet eq Visit_.vet`. Both fields resolve as a path
+ * does, to a table of the query or to a path joined on demand.
+ *
+ * @since 1.16
+ */
+public infix fun <T : Data, V : Any> Navigable<T, V>.eq(other: Navigable<*, V>): PredicateBuilder<T, T, *> = compare(this.asMetamodel(), EQUALS, other.asMetamodel())
+
+/**
+ * Infix function to create a predicate comparing a field with another field of the query for inequality.
+ *
+ * @since 1.16
+ */
+public infix fun <T : Data, V : Any> Navigable<T, V>.neq(other: Navigable<*, V>): PredicateBuilder<T, T, *> = compare(this.asMetamodel(), NOT_EQUALS, other.asMetamodel())
+
+/**
+ * Infix function to create a predicate checking that a field is greater than another field of the query.
+ *
+ * @since 1.16
+ */
+public infix fun <T : Data, V : Any> Navigable<T, V>.greater(other: Navigable<*, V>): PredicateBuilder<T, T, *> = compare(this.asMetamodel(), GREATER_THAN, other.asMetamodel())
+
+/**
+ * Infix function to create a predicate checking that a field is greater than or equal to another field of the query.
+ *
+ * @since 1.16
+ */
+public infix fun <T : Data, V : Any> Navigable<T, V>.greaterEq(other: Navigable<*, V>): PredicateBuilder<T, T, *> = compare(this.asMetamodel(), GREATER_THAN_OR_EQUAL, other.asMetamodel())
+
+/**
+ * Infix function to create a predicate checking that a field is less than another field of the query.
+ *
+ * @since 1.16
+ */
+public infix fun <T : Data, V : Any> Navigable<T, V>.less(other: Navigable<*, V>): PredicateBuilder<T, T, *> = compare(this.asMetamodel(), LESS_THAN, other.asMetamodel())
+
+/**
+ * Infix function to create a predicate checking that a field is less than or equal to another field of the query.
+ *
+ * @since 1.16
+ */
+public infix fun <T : Data, V : Any> Navigable<T, V>.lessEq(other: Navigable<*, V>): PredicateBuilder<T, T, *> = compare(this.asMetamodel(), LESS_THAN_OR_EQUAL, other.asMetamodel())
+
+/**
  * Infix functions to create a predicate to check if a field is between two values.
  */
 public fun <T : Data, V : Any> Navigable<T, V>.between(left: V, right: V): PredicateBuilder<T, T, *> = create(this.asMetamodel(), BETWEEN, listOf(left, right))
@@ -1951,6 +2034,11 @@ public class SqlScope<T : Data, R : Any, ID : Any> @PublishedApi internal constr
     /** Adds a WHERE clause matching a metamodel path to value(s) using an [Operator]. */
     public fun <V : Any> where(path: Navigable<*, V>, operator: Operator, vararg value: V) {
         builder = builder.where(path, operator, *value)
+    }
+
+    /** Adds a WHERE clause comparing a metamodel path with another path of the query using an [Operator]. */
+    public fun <V : Any> where(path: Navigable<*, V>, operator: Operator, other: Navigable<*, V>) {
+        builder = builder.where(path, operator, other)
     }
 
     /** Adds a WHERE clause matching a metamodel path to a data record. */
@@ -2369,6 +2457,11 @@ public class SqlScope<T : Data, R : Any, ID : Any> @PublishedApi internal constr
     /** Adds a HAVING clause matching a metamodel path to value(s) using an [Operator]. */
     public fun <V : Any> having(path: Navigable<*, V>, operator: Operator, vararg value: V) {
         builder = builder.having(path, operator, *value)
+    }
+
+    /** Adds a HAVING clause comparing a metamodel path with another path of the query using an [Operator]. */
+    public fun <V : Any> having(path: Navigable<*, V>, operator: Operator, other: Navigable<*, V>) {
+        builder = builder.having(path, operator, other)
     }
 
     /** Adds a HAVING clause using a SQL template expression (e.g., `having { "COUNT(*) > ${t(5)}" }`). */

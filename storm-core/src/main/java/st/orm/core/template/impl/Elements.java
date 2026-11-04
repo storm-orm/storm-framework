@@ -223,6 +223,24 @@ public final class Elements {
         }
     }
     /**
+     * A comparison of two columns of the query: the path compared against the other path using the operator. Each
+     * path resolves as it does in a value comparison, to a table of the query or to a path joined on demand. A
+     * multi-column path compares component-wise with a path of as many columns, as a value comparison does.
+     *
+     * @param path the path to the column, or columns, on the left of the operator.
+     * @param operator the operator.
+     * @param other the path to the column, or columns, on the right of the operator.
+     * @since 1.16
+     */
+    public record PathExpression(Metamodel<?, ?> path, Operator operator, Metamodel<?, ?> other) implements Expression {
+        public PathExpression {
+            requireNonNull(path, "path");
+            requireNonNull(operator, "operator");
+            requireNonNull(other, "other");
+        }
+    }
+
+    /**
      * A condition written as a template fragment, rendered with its interpolations in place.
      *
      * @param template the condition.

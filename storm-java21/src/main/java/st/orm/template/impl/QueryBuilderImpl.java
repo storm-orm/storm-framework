@@ -629,6 +629,11 @@ public final class QueryBuilderImpl<T extends Data, R, ID> extends QueryBuilder<
         }
 
         @Override
+        public <V> PredicateBuilder<TX, RX, IDX> where(Navigable<? extends TX, V> path, Operator operator, Navigable<?, V> other) {
+            return new PredicateBuilderImpl<>(core.where(path, operator, other));
+        }
+
+        @Override
         public PredicateBuilder<TX, RX, IDX> where(StringTemplate template) throws PersistenceException {
             return new PredicateBuilderImpl<>(core.where(convert(template)));
         }
