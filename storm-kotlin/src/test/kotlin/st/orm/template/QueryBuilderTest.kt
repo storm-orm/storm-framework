@@ -33,6 +33,7 @@ import st.orm.Pageable
 import st.orm.PersistenceException
 import st.orm.Ref
 import st.orm.Scrollable
+import st.orm.StormConfig
 import st.orm.TypedMetamodel
 import st.orm.Window
 import st.orm.core.template.impl.SlowStatementLog
@@ -2241,7 +2242,7 @@ internal open class QueryBuilderTest(
     @Test
     fun `suggest should match a word at the start of a word on every dialect`() {
         // data.sql: owner 1 (Betty Davis) has pet Leo; owner 4 (Harold Davis) has pet Iggy; owner 6 is Jean Coleman.
-        val trigramOrm = dataSource.orm(st.orm.StormConfig.of(mapOf(st.orm.StormConfig.SEARCH_MIN_TERM_LENGTH to "3")))
+        val trigramOrm = dataSource.orm(StormConfig.of(mapOf(StormConfig.SEARCH_MIN_TERM_LENGTH to "3")))
         val petName = metamodel<Pet, String>(orm.entity(Pet::class).model, "name")
         fun firstNames(template: ORMTemplate, input: String, suggest: Boolean): List<String> {
             val ownerRepo = template.entity(Owner::class)
@@ -2254,10 +2255,12 @@ internal open class QueryBuilderTest(
         }
         // A word matches at the start of a word: pet Leo, not Coleman, whatever the dialect's index serves.
         firstNames(orm, "davis le", suggest = true) shouldBe listOf("Betty")
-        firstNames(orm, "le", suggest = true) shouldBe listOf("Betty")
+        firstNames(orm, "leo", suggest = true) shouldBe listOf("Betty")
+        firstNames(trigramOrm, "leo", suggest = true) shouldBe listOf("Betty")
+        // Without a word of three characters, no rows match.
+        firstNames(orm, "le", suggest = true) shouldBe emptyList()
         firstNames(orm, "l", suggest = true) shouldBe emptyList()
         firstNames(orm, "", suggest = true) shouldBe emptyList()
-        firstNames(trigramOrm, "le", suggest = true) shouldBe listOf("Betty")
         // search keeps the short word, anywhere, tested on the rows the long word found where the index serves one.
         firstNames(trigramOrm, "davis le", suggest = false) shouldBe listOf("Betty")
         firstNames(trigramOrm, "le", suggest = false) shouldBe listOf("Betty", "Jean")
@@ -2286,7 +2289,7 @@ internal open class QueryBuilderTest(
             .resultList.map { it.firstName } shouldBe listOf("Betty")
         ownerRepo.select()
             .semiJoin<Pet>().on<Owner>()
-            .where(suggest("le", wordStart(petName)))
+            .where(suggest("davis le", wordStart(lastName), wordStart(petName)))
             .resultList.map { it.firstName } shouldBe listOf("Betty")
     }
 
@@ -2294,7 +2297,7 @@ internal open class QueryBuilderTest(
     fun `suggest should ignore the words the search box names`() {
         // data.sql: owner 1 (Betty Davis) has pet Leo; owner 4 (Harold Davis) has pet Iggy. Searched as a dialect
         // with a substring index, whose words match anywhere, ignoring case.
-        val trigramOrm = dataSource.orm(st.orm.StormConfig.of(mapOf(st.orm.StormConfig.SEARCH_MIN_TERM_LENGTH to "3")))
+        val trigramOrm = dataSource.orm(StormConfig.of(mapOf(StormConfig.SEARCH_MIN_TERM_LENGTH to "3")))
         val ownerRepo = trigramOrm.entity(Owner::class)
         val lastName = metamodel<Owner, String>(ownerRepo.model, "last_name")
         val petName = metamodel<Pet, String>(trigramOrm.entity(Pet::class).model, "name")

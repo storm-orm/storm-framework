@@ -58,7 +58,9 @@ import st.orm.core.template.WhereBuilder;
 import st.orm.core.template.impl.Elements.Expression;
 import st.orm.core.template.impl.Elements.ObjectExpression;
 import st.orm.core.template.impl.Elements.PathExpression;
+import st.orm.core.template.impl.Elements.PositionExpression;
 import st.orm.core.template.impl.Elements.PredicateTarget;
+import st.orm.core.template.impl.Elements.RankingExpression;
 import st.orm.core.template.impl.Elements.Subquery;
 import st.orm.core.template.impl.Elements.TableSource;
 import st.orm.core.template.impl.Elements.TableTarget;
@@ -247,7 +249,7 @@ abstract class QueryBuilderImpl<T extends Data, R, ID> extends QueryBuilder<T, R
         int field = index - ranks.size();
         // The value was read from a row, so it is in the column's form already and is compared as it is, without the
         // function a query column names for the values a caller supplies.
-        return new PredicateBuilderImpl<>(wrap(new ObjectExpression(orders.get(field).field(), operator, new Object[] {values.get(field)}, true, true)));
+        return new PredicateBuilderImpl<>(wrap(new PositionExpression(new ObjectExpression(orders.get(field).field(), operator, new Object[] {values.get(field)}))));
     }
 
     /**
@@ -490,7 +492,8 @@ abstract class QueryBuilderImpl<T extends Data, R, ID> extends QueryBuilder<T, R
      */
     protected final TemplateString appendJoinsAndWhere(TemplateString template, StatementFacts.Collector facts) {
         // Which search terms a substring index serves depends on the dialect, so a search resolves its words here.
-        var where = resolveSearches(this.where, queryTemplate.dialect().minimumSearchTermLength());
+        var where = resolveSearches(this.where, queryTemplate.dialect().minimumSearchTermLength(),
+                MatchForm.suggestMinimumWordLength(queryTemplate.config()));
         var filterJoins = join.stream().filter(FilterJoinPlacement::isFilterJoin).toList();
         var joins = filterJoins.isEmpty() ? join : join.stream().filter(it -> !FilterJoinPlacement.isFilterJoin(it)).toList();
         if (!joins.isEmpty()) {
@@ -555,7 +558,8 @@ abstract class QueryBuilderImpl<T extends Data, R, ID> extends QueryBuilder<T, R
      * Returns the WHERE conditions with each search in them resolved for the dialect, or the conditions themselves
      * when none holds a search.
      */
-    private static List<Where> resolveSearches(List<Where> where, int minimumSearchTermLength) {
+    private static List<Where> resolveSearches(List<Where> where, int minimumSearchTermLength,
+                                               int suggestMinimumWordLength) {
         List<Where> resolved = null;
         for (int i = 0; i < where.size(); i++) {
             var condition = where.get(i);
@@ -564,7 +568,7 @@ abstract class QueryBuilderImpl<T extends Data, R, ID> extends QueryBuilder<T, R
                 if (resolved == null) {
                     resolved = new ArrayList<>(where);
                 }
-                var node = PredicateNode.resolve(predicate, minimumSearchTermLength);
+                var node = PredicateNode.resolve(predicate, minimumSearchTermLength, suggestMinimumWordLength);
                 resolved.set(i, new Where(new TemplateExpression(node.toTemplate(), node), condition.bindVars()));
             }
         }
@@ -678,7 +682,7 @@ abstract class QueryBuilderImpl<T extends Data, R, ID> extends QueryBuilder<T, R
         for (var value : values) {
             // A predicate carries its comparisons as object expressions; the rest of its values render as they are.
             if (value instanceof ObjectExpression expression) {
-                ranked.add(expression.ranking());
+                ranked.add(new RankingExpression(expression));
                 changed = true;
             } else {
                 ranked.add(value);

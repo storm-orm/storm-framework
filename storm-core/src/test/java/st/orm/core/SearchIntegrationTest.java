@@ -183,10 +183,10 @@ public class SearchIntegrationTest {
         // The default dialect renders a word start as a LIKE per separator and one for the value's start; a dialect
         // whose database matches a regular expression renders one, which its conformance test covers.
         assertEquals(1 + SqlDialect.WORD_SEPARATORS.length(), whereClause().split("LIKE LOWER\\(\\?\\) ESCAPE").length - 1, whereClause());
-        assertEquals(List.of("Betty", "Harold"), suggest("da", Owner_.lastName));
         assertEquals(List.of(), suggest("dav is", Owner_.lastName));
-        assertEquals(List.of("David"), suggest("sc", Owner_.lastName));
-        // A one-character word takes no part; without a word that takes part, no rows match.
+        assertEquals(List.of("David"), suggest("sch", Owner_.lastName));
+        // Without a word of three characters, no rows match.
+        assertEquals(List.of(), suggest("da", Owner_.lastName));
         assertEquals(List.of(), suggest("d", Owner_.lastName));
         assertEquals("1 <> 1", whereClause());
         assertEquals(List.of(), suggest("", Owner_.lastName));
@@ -222,11 +222,35 @@ public class SearchIntegrationTest {
         assertEquals(List.of("van der berg"), searchNames("\"der berg\"", wordStart(NAME_LOWER)));
         assertEquals(List.of("van der berg"), searchNames("\"van der berg\"", exact(NAME_LOWER)));
         // suggest takes the forms as search does, with its own input contract.
-        assertEquals(List.of("dave", "davis"), suggestNames("av", anywhere(NAME_LOWER)));
-        assertEquals(List.of("upton"), suggestNames("Up", prefix(NAME_LOWER)));
+        assertEquals(List.of("dave", "davis"), suggestNames("dav", anywhere(NAME_LOWER)));
+        assertEquals(List.of("upton"), suggestNames("Upt", prefix(NAME_LOWER)));
         assertEquals(List.of(), suggestNames("u", prefix(NAME_LOWER)));
         assertEquals(List.of(), suggestNames("", exact(NAME_LOWER)));
         assertEquals(6, searchNames("", exact(NAME_LOWER)).size());
+    }
+
+    @Test
+    public void aSuggestionMatchesNoRowsUntilAWordReachesTheMinimumLength() {
+        // "der" reaches the minimum word length; "de" and "da" alone match nothing, in every form.
+        assertEquals(List.of("van der berg"), suggestNames("der", wordStart(NAME_LOWER)));
+        assertEquals(List.of(), suggestNames("de", wordStart(NAME_LOWER)));
+        assertEquals(List.of(), suggestNames("da", wordStart(NAME_LOWER)));
+        assertEquals("1 <> 1", whereClause());
+        assertEquals(List.of(), suggestNames("da", prefix(NAME_LOWER)));
+        // Next to a word that reaches the length, a short word matches in its form, on the rows the long word found.
+        assertEquals(List.of("van der berg"), suggestNames("van de", wordStart(NAME_LOWER)));
+        assertEquals(List.of("van der berg"), suggestNames("van d", wordStart(NAME_LOWER)));
+        assertEquals(List.of(), suggestNames("van xy", wordStart(NAME_LOWER)));
+        // The length is a setting, the same on every database.
+        var orm = ORMTemplate.of(dataSource,
+                StormConfig.of(Map.of(StormConfig.SUGGEST_MIN_WORD_LENGTH, "2")));
+        statements = new ArrayList<>();
+        List<String> found = new ArrayList<>();
+        observe(sql -> statements.add(sql.statement()), () -> orm.entity(Suggestion.class).select()
+                .where(it -> PredicateBuilderFactory.<Suggestion, Suggestion, Integer>suggest("de", Set.of(), wordStart(NAME_LOWER)))
+                .getResultList()
+                .forEach(suggestion -> found.add(suggestion.nameLower())));
+        assertEquals(List.of("van der berg"), found);
     }
 
     @Test

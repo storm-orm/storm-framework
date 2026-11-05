@@ -22,6 +22,7 @@ import st.orm.Data;
 import st.orm.PersistenceException;
 import st.orm.Ref;
 import st.orm.SqlTemplateException;
+import st.orm.StormConfig;
 import st.orm.core.spi.Providers;
 import st.orm.core.spi.QueryFactory;
 import st.orm.core.spi.RefFactory;
@@ -62,6 +63,11 @@ public class QueryTemplateImpl implements QueryTemplate {
     @Override
     public SqlDialect dialect() {
         return queryFactory.sqlTemplate().dialect();
+    }
+
+    @Override
+    public StormConfig config() {
+        return queryFactory.sqlTemplate().config();
     }
 
     /**

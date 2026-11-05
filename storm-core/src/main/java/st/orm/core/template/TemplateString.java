@@ -14,19 +14,19 @@ import org.jspecify.annotations.Nullable;
  * @param fragments the constant string parts, in order
  * @param values    the runtime values to interpolate
  */
-public record TemplateString(List<String> fragments, List<Object> values) {
+public record TemplateString(List<String> fragments, List<@Nullable Object> values) {
     public TemplateString {
         if (fragments.size() != values.size() + 1) {
             throw new IllegalArgumentException("Fragments must have exactly one more element than values.");
         }
     }
-    public TemplateString(String[] fragments, Object[] values) {
+    public TemplateString(String[] fragments, @Nullable Object[] values) {
         this(List.of(fragments), asList(values));
     }
 
     public static TemplateString EMPTY = new TemplateString(List.of(""), List.of());
 
-    public static TemplateString of(List<String> fragments, List<Object> values) {
+    public static TemplateString of(List<String> fragments, List<@Nullable Object> values) {
         return new TemplateString(fragments, values);
     }
 
@@ -63,7 +63,7 @@ public record TemplateString(List<String> fragments, List<Object> values) {
             size += st.values().size();
         }
         String[] combinedFragments = new String[size + 1];
-        Object[] combinedValues = new Object[size];
+        @Nullable Object[] combinedValues = new Object[size];
         combinedFragments[0] = "";
         int fragmentIndex = 1;
         int valueIndex = 0;
@@ -73,7 +73,7 @@ public record TemplateString(List<String> fragments, List<Object> values) {
             while (iterator.hasNext()) {
                 combinedFragments[fragmentIndex++] = iterator.next();
             }
-            for (Object value : st.values()) {
+            for (@Nullable Object value : st.values()) {
                 combinedValues[valueIndex++] = value;
             }
         }

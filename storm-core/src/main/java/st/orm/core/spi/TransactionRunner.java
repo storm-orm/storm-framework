@@ -15,6 +15,7 @@
  */
 package st.orm.core.spi;
 
+import java.sql.SQLException;
 import java.sql.SQLTimeoutException;
 import java.util.ArrayList;
 import java.util.List;
@@ -192,27 +193,52 @@ public final class TransactionRunner {
 
     /**
      * Completes the scope after a failed block and returns the exception to throw: the original failure, or a
-     * {@link TransactionTimedOutException} when the failure was caused by a statement timeout. Completion
-     * failures are suppressed onto the original failure.
+     * {@link TransactionTimedOutException} when the failure was a statement timeout. A driver reports one as a
+     * {@link SQLTimeoutException}, or, where it cancels a timed-out statement as it cancels any other, as the
+     * failure of a cancelled statement; so a statement that failed once the frame's deadline had passed, in a
+     * transaction that was not cancelled, timed out whatever the driver says. Completion failures are suppressed
+     * onto the original failure.
      */
     public static Throwable completeAfterFailure(TransactionScope scope, Throwable e) {
         String description;
+        boolean expired;
         try {
             var context = scope.materializedContext();
             description = context == null ? null : context.describe().orElse(null);
+            expired = scope.isDeadlineExpired() || (context != null && context.isDeadlineExpired());
         } catch (Throwable ignore) {
             description = null;
+            expired = scope.isDeadlineExpired();
         }
         try {
             scope.complete(true); // Suppresses rollback exceptions internally to surface the original error.
         } catch (Throwable completionException) {
             e.addSuppressed(completionException);
         }
-        if (e.getCause() instanceof SQLTimeoutException) {
+        if (timedOut(e, expired && !scope.isCancelled())) {
             var base = e.getMessage() == null ? "Did not complete within timeout." : e.getMessage();
             return new TransactionTimedOutException(description != null ? base + " [" + description + "]" : base, e);
         }
         return e;
+    }
+
+    /**
+     * Returns whether a failure is a statement timeout: a {@link SQLTimeoutException} in its cause chain, or any
+     * database failure once the deadline has passed.
+     */
+    private static boolean timedOut(Throwable e, boolean pastDeadline) {
+        for (Throwable cause = e; cause != null; cause = cause.getCause()) {
+            if (cause instanceof SQLTimeoutException) {
+                return true;
+            }
+            if (pastDeadline && cause instanceof SQLException) {
+                return true;
+            }
+            if (cause.getCause() == cause) {
+                break;
+            }
+        }
+        return false;
     }
 
     /**

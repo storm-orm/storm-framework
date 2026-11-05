@@ -100,6 +100,8 @@ import st.orm.core.template.impl.Elements.From;
 import st.orm.core.template.impl.Elements.Insert;
 import st.orm.core.template.impl.Elements.ObjectExpression;
 import st.orm.core.template.impl.Elements.PathExpression;
+import st.orm.core.template.impl.Elements.PositionExpression;
+import st.orm.core.template.impl.Elements.RankingExpression;
 import st.orm.core.template.impl.Elements.SearchExpression;
 import st.orm.core.template.impl.Elements.Select;
 import st.orm.core.template.impl.Elements.Source;
@@ -1734,6 +1736,10 @@ class TemplatePreparation {
                     addReferencedTablePath(rootTable, objectExpression.metamodel(), paths);
                 }
             }
+            case RankingExpression(var comparison) ->
+                    collectReferencedTablePaths(rootTable, comparison, paths, tables, hydratedTables, hydratedPaths);
+            case PositionExpression(var comparison) ->
+                    collectReferencedTablePaths(rootTable, comparison, paths, tables, hydratedTables, hydratedPaths);
             case PathExpression pathExpression -> {
                 addReferencedTablePath(rootTable, pathExpression.path(), paths);
                 addReferencedTablePath(rootTable, pathExpression.other(), paths);
@@ -1763,7 +1769,7 @@ class TemplatePreparation {
                 case Element element -> collectReferencedTablePaths(rootTable, element, paths, tables, hydratedTables, hydratedPaths);
                 case TemplateString nested ->
                         collectReferencedTablePaths(rootTable, nested, paths, tables, hydratedTables, hydratedPaths);
-                default -> {
+                case null, default -> {
                 }
             }
         }

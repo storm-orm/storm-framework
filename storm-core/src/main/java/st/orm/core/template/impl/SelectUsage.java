@@ -91,7 +91,7 @@ final class SelectUsage {
                 }
                 case Element ignored -> whole = false;
                 case Record ignored -> whole = false;
-                default -> {
+                case null, default -> {
                 }
             }
         }

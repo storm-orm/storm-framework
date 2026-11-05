@@ -196,8 +196,8 @@ public abstract class AbstractSemiJoinConformanceTest {
     public void suggestMatchesAShortWordAtTheStartOfAWord() {
         assertEquals(List.of("Tolkien"), trigramSearch("tolkien th", true));
         assertEquals(List.of(), trigramSearch("austen th", true));
-        assertEquals(List.of("Tolkien"), trigramSearch("th", true));
-        // A word shorter than the index serves at the start of a word is left out.
+        // Without a word of the minimum word length, no rows match.
+        assertEquals(List.of(), trigramSearch("th", true));
         assertEquals(List.of(), trigramSearch("t", true));
         assertEquals(List.of(), trigramSearch("", true));
     }

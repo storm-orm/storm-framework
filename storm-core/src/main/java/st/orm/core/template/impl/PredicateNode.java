@@ -16,10 +16,13 @@
 package st.orm.core.template.impl;
 
 import static java.util.Objects.requireNonNull;
+import static st.orm.core.template.TemplateString.wrap;
 
 import java.util.ArrayList;
 import java.util.List;
+import st.orm.Match;
 import st.orm.core.template.TemplateString;
+import st.orm.core.template.impl.Elements.SearchExpression;
 
 /**
  * The boolean structure of a predicate: its terms and the operators combining them. A predicate renders as one
@@ -76,67 +79,64 @@ public sealed interface PredicateNode {
 
     /**
      * The words of a search, kept apart until the query is built, since {@code search} plans its short words by the
-     * length the dialect's substring index serves.
+     * length the dialect's substring index serves, and {@code suggest} by its minimum word length.
      *
      * @param terms the terms, as the input holds them.
-     * @param words per term, the predicate matching it in at least one of the fields, each in its match form.
-     * @param suggest {@code true} to match the terms from {@link #SUGGEST_MIN_LENGTH} characters and match no rows
-     *                when none remains; {@code false} to match every term.
+     * @param fields the text columns to search with their match forms, at least one.
+     * @param suggest {@code true} to match no rows unless a term reaches the minimum word length; {@code false} to
+     *                match every term.
      */
-    record Search(List<String> terms, List<PredicateNode> words, boolean suggest) implements PredicateNode {
-
-        /**
-         * The characters a word takes part in a suggestion from. A one-character word names too many rows to suggest
-         * from, and the box orders what it finds, so the database would fetch and sort them all before the limit cut
-         * the list; whatever the index serves, it is left out.
-         */
-        static final int SUGGEST_MIN_LENGTH = 2;
+    record Search(List<String> terms, List<Match<?>> fields, boolean suggest) implements PredicateNode {
 
         public Search {
             terms = List.copyOf(terms);
-            words = List.copyOf(words);
-            if (terms.size() != words.size()) {
-                throw new IllegalArgumentException("A search holds one predicate per term.");
+            fields = List.copyOf(fields);
+            if (fields.isEmpty()) {
+                throw new IllegalArgumentException("%s needs at least one field to search.".formatted(suggest ? "suggest" : "search"));
             }
         }
 
         /**
-         * Returns the search as the predicates it renders for a dialect whose substring index serves terms of the
-         * given length: an AND over the words. {@code search} keeps every word and marks a short one as residual when a
-         * longer one narrows the rows. {@code suggest} takes a word from {@link #SUGGEST_MIN_LENGTH} characters and
-         * matches no rows when none remains.
+         * Returns the search as the predicates it renders: an AND over the words, each matched in at least one field.
+         * A word shorter than the given length is residual next to one that reaches it, tested only on the rows the
+         * longer word found. Where no word reaches it, {@code search} matches every word as it is and {@code suggest}
+         * matches no rows, since a word that short names too large a share of a table to suggest from.
          *
          * @param minimumLength the shortest term the substring index serves, {@code 0} where no index serves one.
+         * @param suggestMinimumLength the shortest word a suggestion matches on its own.
          */
-        PredicateNode resolve(int minimumLength) {
-            if (suggest) {
-                var served = new ArrayList<PredicateNode>(words.size());
-                for (int i = 0; i < terms.size(); i++) {
-                    if (indexed(terms.get(i), SUGGEST_MIN_LENGTH)) {
-                        served.add(new Scope(words.get(i)));
-                    }
-                }
-                if (served.isEmpty()) {
+        PredicateNode resolve(int minimumLength, int suggestMinimumLength) {
+            int length = suggest ? suggestMinimumLength : minimumLength;
+            boolean reached = terms.stream().anyMatch(term -> reaches(term, length));
+            if (!reached) {
+                if (suggest) {
                     return new Term(TemplateString.of("1 <> 1"), true);
                 }
-                return and(served);
+                if (terms.isEmpty()) {
+                    return new Term(TemplateString.of("1 = 1"), true);
+                }
             }
-            if (terms.isEmpty()) {
-                return new Term(TemplateString.of("1 = 1"), true);
-            }
-            var indexed = new ArrayList<PredicateNode>(words.size());
-            var shortWords = new ArrayList<PredicateNode>(words.size());
-            for (int i = 0; i < terms.size(); i++) {
-                (indexed(terms.get(i), minimumLength) ? indexed : shortWords).add(words.get(i));
-            }
-            var scopes = new ArrayList<PredicateNode>(words.size());
-            indexed.forEach(word -> scopes.add(new Scope(word, false)));
+            var scopes = new ArrayList<PredicateNode>(terms.size());
+            terms.stream().filter(term -> reaches(term, length)).forEach(term -> scopes.add(new Scope(word(term), false)));
             // A short word is tested on the rows the long words found; alone, nothing narrows the rows for it.
-            shortWords.forEach(word -> scopes.add(new Scope(word, !indexed.isEmpty())));
+            terms.stream().filter(term -> !reaches(term, length)).forEach(term -> scopes.add(new Scope(word(term), reached)));
             return and(scopes);
         }
 
-        private static boolean indexed(String term, int minimumLength) {
+        /**
+         * Returns the predicate matching a term in at least one of the fields, each in its match form. Each term is
+         * matched on its own, so on a semi-joined table the terms may match different related rows. A word start may
+         * render as several predicates, so it is grouped when combined.
+         */
+        private PredicateNode word(String term) {
+            var matches = new ArrayList<PredicateNode>(fields.size());
+            for (Match<?> field : fields) {
+                matches.add(new Term(wrap(new SearchExpression(field, term)), MatchForm.of(field) != MatchForm.WORD_START));
+            }
+            return or(matches);
+        }
+
+        private static boolean reaches(String term, int minimumLength) {
             return term.codePointCount(0, term.length()) >= minimumLength;
         }
     }
@@ -147,21 +147,22 @@ public sealed interface PredicateNode {
      *
      * @param node the predicate.
      * @param minimumLength the shortest term the substring index serves, {@code 0} to treat every term alike.
+     * @param suggestMinimumLength the shortest word a suggestion matches in its form.
      * @return the resolved predicate.
      */
-    static PredicateNode resolve(PredicateNode node, int minimumLength) {
+    static PredicateNode resolve(PredicateNode node, int minimumLength, int suggestMinimumLength) {
         return switch (node) {
             case Term term -> term;
-            case Search search -> search.resolve(minimumLength);
+            case Search search -> search.resolve(minimumLength, suggestMinimumLength);
             case Scope(var inner, var residual) -> {
-                var resolved = resolve(inner, minimumLength);
+                var resolved = resolve(inner, minimumLength, suggestMinimumLength);
                 yield resolved == inner ? node : new Scope(resolved, residual);
             }
             case Group(var and, var operands) -> {
                 var resolved = new ArrayList<PredicateNode>(operands.size());
                 boolean changed = false;
                 for (var operand : operands) {
-                    var r = resolve(operand, minimumLength);
+                    var r = resolve(operand, minimumLength, suggestMinimumLength);
                     changed |= r != operand;
                     resolved.add(r);
                 }
@@ -232,7 +233,7 @@ public sealed interface PredicateNode {
         return switch (this) {
             case Term term -> term.template();
             case Scope(var node, var ignore) -> node.toTemplate();
-            case Search search -> search.resolve(0).toTemplate();
+            case Search search -> search.resolve(0, MatchForm.DEFAULT_SUGGEST_MIN_WORD_LENGTH).toTemplate();
             case Group(var and, var operands) -> {
                 var parts = new ArrayList<TemplateString>(operands.size() * 2);
                 for (var operand : operands) {
@@ -254,7 +255,7 @@ public sealed interface PredicateNode {
         return switch (this) {
             case Term term -> !term.safe();
             case Scope(var node, var ignore) -> node.grouped();
-            case Search search -> search.resolve(0).grouped();
+            case Search search -> search.resolve(0, MatchForm.DEFAULT_SUGGEST_MIN_WORD_LENGTH).grouped();
             case Group ignore -> true;
         };
     }

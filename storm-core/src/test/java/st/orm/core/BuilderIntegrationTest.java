@@ -49,6 +49,7 @@ import st.orm.core.model.Vet_;
 import st.orm.core.model.Visit;
 import st.orm.core.template.ORMTemplate;
 import st.orm.core.template.TemplateBuilder;
+import st.orm.core.template.TemplateString;
 
 /**
  * Extended integration tests for QueryBuilder edge cases and miscellaneous coverage gaps
@@ -64,6 +65,14 @@ public class BuilderIntegrationTest {
     private DataSource dataSource;
 
     // 1. rightJoin
+
+    @Test
+    public void aNullTemplateValueBindsAsNull() {
+        var orm = ORMTemplate.of(dataSource);
+        long cities = orm.entity(City.class).count();
+        var isNull = TemplateString.combine(TemplateString.of("CAST("), TemplateString.wrap(null), TemplateString.of(" AS VARCHAR(10)) IS NULL"));
+        assertEquals(cities, orm.entity(City.class).select().where(isNull).getResultCount());
+    }
 
     @Test
     public void testRightJoin() {

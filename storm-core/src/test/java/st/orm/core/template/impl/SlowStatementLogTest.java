@@ -141,6 +141,13 @@ public class SlowStatementLogTest {
     }
 
     @Test
+    public void aCancelledExecutionIsOneLineWithoutTheStatement() {
+        String line = SlowStatementLog.renderCancelled(select(1), 697_000_000L, "SearchService.kt:89");
+        assertEquals("SQL cancelled (SELECT City) after 697 ms, SearchService.kt:89", line);
+        assertEquals("SQL cancelled (SELECT City) after 697 ms", SlowStatementLog.renderCancelled(select(1), 697_000_000L, null));
+    }
+
+    @Test
     public void aFailedExecutionNamesTheFailureInsteadOfRows() {
         String line = SlowStatementLog.render(select(1), 30_012_000_000L, 0, 0, true,
                 new java.sql.SQLTimeoutException("canceling statement due to statement timeout"), "PetService.kt:42",

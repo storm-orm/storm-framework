@@ -50,10 +50,11 @@ public class MSSQLServerTransactionConformanceTest extends AbstractTransactionCo
     }
 
     /**
-     * A count over a cross join of the catalog with itself twice, which runs until it is stopped.
+     * A count over a recursive sequence of ten billion rows, which runs until it is stopped; a cross join of the
+     * catalog with itself completes at once, as the count needs no rows of it.
      */
     @Override
     protected Optional<String> slowStatement() {
-        return Optional.of("SELECT COUNT(*) FROM sys.all_objects a CROSS JOIN sys.all_objects b CROSS JOIN sys.all_objects c");
+        return Optional.of("WITH sequence(n) AS (SELECT CAST(1 AS BIGINT) UNION ALL SELECT n + 1 FROM sequence WHERE n < 10000000000) SELECT COUNT_BIG(*) FROM sequence OPTION (MAXRECURSION 0)");
     }
 }

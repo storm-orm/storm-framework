@@ -396,6 +396,12 @@ public abstract class AbstractMissingIndexConformanceTest {
         }
     }
 
+    private List<String> suggestions(String input) {
+        return orm.entity(SearchProbe.class).select()
+                .where(it -> PredicateBuilderFactory.<SearchProbe, SearchProbe, Integer>suggest(input, Set.of(), PROBE_NAME))
+                .getResultList().stream().map(SearchProbe::name).sorted().toList();
+    }
+
     private List<String> names(String input, Match<SearchProbe> field) {
         return orm.entity(SearchProbe.class).select()
                 .where(it -> PredicateBuilderFactory.<SearchProbe, SearchProbe, Integer>search(input, field))
@@ -423,13 +429,15 @@ public abstract class AbstractMissingIndexConformanceTest {
         assertEquals(List.of("Upton"), names("Up", Match.prefix(PROBE_NAME_LOWER)));
         assertEquals(List.of("Van Upton"), names("\"van upton", Match.exact(PROBE_NAME_LOWER)));
         assertEquals(List.of(), names("van", Match.exact(PROBE_NAME_LOWER)));
-        // suggest takes the same forms; a one-character word takes no part, whatever the index serves.
-        assertEquals(List.of("Anne-Marie"), orm.entity(SearchProbe.class).select()
-                .where(it -> PredicateBuilderFactory.<SearchProbe, SearchProbe, Integer>suggest("Ma", Set.of(), PROBE_NAME))
-                .getResultList().stream().map(SearchProbe::name).toList());
-        assertEquals(List.of(), orm.entity(SearchProbe.class).select()
-                .where(it -> PredicateBuilderFactory.<SearchProbe, SearchProbe, Integer>suggest("U", Set.of(), PROBE_NAME))
-                .getResultList());
+        // suggest takes the same forms; an input without a word of the minimum word length matches no rows, whatever
+        // the index serves, and a short word next to a longer one matches at a word start on the rows the longer
+        // word found.
+        assertEquals(List.of(), suggestions("Up"));
+        assertEquals(List.of("Upton", "Van Upton"), suggestions("upt"));
+        assertEquals(List.of("Van Upton"), suggestions("van up"));
+        assertEquals(List.of("Van Upton"), suggestions("van u"));
+        assertEquals(List.of("Anne-Marie"), suggestions("mar"));
+        assertEquals(List.of(), suggestions("U"));
     }
 
     /**

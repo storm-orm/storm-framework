@@ -448,7 +448,7 @@ public final class SpringTransactionContext implements TransactionContext {
     }
 
     @Override
-    public boolean takeFreshTransaction() {
+    public boolean beginsTransaction() {
         var state = lastOrNull();
         if (state == null) {
             return false;

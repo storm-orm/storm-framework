@@ -282,6 +282,16 @@ public final class JdbcTransactionContext implements TransactionContext {
         return Optional.ofNullable(state == null ? null : state.timeoutDescription());
     }
 
+    @Override
+    public boolean isDeadlineExpired() {
+        var state = lastOrNull();
+        if (state == null) {
+            return false;
+        }
+        Integer remaining = state.remainingSeconds();
+        return remaining != null && remaining == 0;
+    }
+
     /**
      * Obtains a JDBC connection for the current transaction, creating or reusing one based on the transaction
      * propagation rules.
@@ -376,7 +386,7 @@ public final class JdbcTransactionContext implements TransactionContext {
     }
 
     @Override
-    public boolean takeFreshTransaction() {
+    public boolean beginsTransaction() {
         var state = lastOrNull();
         if (state == null) {
             return false;

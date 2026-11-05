@@ -49,6 +49,8 @@ import st.orm.core.template.impl.Elements.Correlation;
 import st.orm.core.template.impl.Elements.Expression;
 import st.orm.core.template.impl.Elements.ObjectExpression;
 import st.orm.core.template.impl.Elements.PathExpression;
+import st.orm.core.template.impl.Elements.PositionExpression;
+import st.orm.core.template.impl.Elements.RankingExpression;
 import st.orm.core.template.impl.Elements.RelationKey;
 import st.orm.core.template.impl.Elements.SearchExpression;
 import st.orm.core.template.impl.Elements.Subquery;
@@ -628,7 +630,7 @@ final class FilterJoinPlacement {
         return switch (node) {
             case Term term -> namesAny(term, tables) ? null : term;
             case Scope(var inner, var ignore) -> withoutTables(inner, tables);
-            case Search search -> withoutTables(search.resolve(0), tables);
+            case Search search -> withoutTables(search.resolve(0, MatchForm.DEFAULT_SUGGEST_MIN_WORD_LENGTH), tables);
             case Group(var and, var operands) -> {
                 var kept = new ArrayList<PredicateNode>(operands.size());
                 for (var operand : operands) {
@@ -749,7 +751,7 @@ final class FilterJoinPlacement {
                 yield !named.isEmpty() && tables.containsAll(named);
             }
             case Scope(var inner, var ignore) -> onlyNames(inner, tables);
-            case Search search -> onlyNames(search.resolve(0), tables);
+            case Search search -> onlyNames(search.resolve(0, MatchForm.DEFAULT_SUGGEST_MIN_WORD_LENGTH), tables);
             case Group group -> group.operands().stream().allMatch(operand -> onlyNames(operand, tables));
         };
     }
@@ -767,7 +769,7 @@ final class FilterJoinPlacement {
         switch (node) {
             case Term term -> collect(term.template(), tables);
             case Scope(var inner, var ignore) -> collect(inner, tables);
-            case Search search -> search.words().forEach(word -> collect(word, tables));
+            case Search search -> search.fields().forEach(field -> tables.add(field.path().root()));
             case Group group -> group.operands().forEach(operand -> collect(operand, tables));
         }
     }
@@ -791,6 +793,8 @@ final class FilterJoinPlacement {
                     tables.add(data.getClass());
                 }
             }
+            case RankingExpression(var comparison) -> collect(comparison, tables);
+            case PositionExpression(var comparison) -> collect(comparison, tables);
             case PathExpression expression -> {
                 tables.add(expression.path().root());
                 tables.add(expression.other().root());
@@ -858,7 +862,8 @@ final class FilterJoinPlacement {
         var anchor = target.table();
         var condition = target.condition();
         if (condition != null) {
-            condition = PredicateNode.resolve(condition, queryTemplate.dialect().minimumSearchTermLength());
+            condition = PredicateNode.resolve(condition, queryTemplate.dialect().minimumSearchTermLength(),
+                    MatchForm.suggestMinimumWordLength(queryTemplate.config()));
         }
         if (target.sourceKey() != null || target.targetKey() != null) {
             return keyedFilterJoin(queryTemplate, fromType, resolved, type, table, anchor, target.sourceKey(), target.targetKey(), condition);

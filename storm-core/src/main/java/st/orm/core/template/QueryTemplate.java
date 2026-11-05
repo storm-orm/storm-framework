@@ -21,6 +21,7 @@ import st.orm.BindVars;
 import st.orm.Data;
 import st.orm.PersistenceException;
 import st.orm.Ref;
+import st.orm.StormConfig;
 import st.orm.core.spi.Providers;
 import st.orm.core.spi.TransactionTemplateProvider;
 import st.orm.spi.ExceptionMapper;
@@ -41,6 +42,14 @@ public interface QueryTemplate extends SubqueryTemplate {
      * @since 1.2
      */
     SqlDialect dialect();
+
+    /**
+     * Returns the configuration of the underlying SQL template.
+     *
+     * @return the configuration.
+     * @since 1.16
+     */
+    StormConfig config();
 
     /**
      * Returns the transaction template provider used by this template.

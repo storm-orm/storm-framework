@@ -42,4 +42,13 @@ public class SQLiteTransactionConformanceTest extends AbstractTransactionConform
     protected Optional<String> slowStatement() {
         return Optional.of("WITH RECURSIVE sequence(n) AS (SELECT 1 UNION ALL SELECT n + 1 FROM sequence WHERE n < 10000000000) SELECT COUNT(*) FROM sequence");
     }
+
+    /**
+     * The SQLite driver applies the query timeout as the time to wait for a locked database, so a running statement
+     * is not stopped at it.
+     */
+    @Override
+    protected boolean stopsStatementAtTimeout() {
+        return false;
+    }
 }
