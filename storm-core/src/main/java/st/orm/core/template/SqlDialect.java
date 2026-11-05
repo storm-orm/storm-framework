@@ -523,12 +523,8 @@ public interface SqlDialect {
     /**
      * Escapes text so that a regular expression built from it matches the text literally: each character the
      * common engines read as syntax is preceded by a backslash.
-     *
-     * @param text the text to match literally.
-     * @return the escaped text.
-     * @since 1.16
      */
-    static String escapeRegex(String text) {
+    private static String escapeRegex(String text) {
         var escaped = new StringBuilder(text.length() + 8);
         for (int i = 0; i < text.length(); i++) {
             char c = text.charAt(i);

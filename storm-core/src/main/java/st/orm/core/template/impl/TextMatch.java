@@ -30,8 +30,6 @@ import static st.orm.Operator.NOT_STARTS_WITH_IGNORE_CASE;
 import static st.orm.Operator.STARTS_WITH;
 import static st.orm.Operator.STARTS_WITH_IGNORE_CASE;
 
-import java.util.ArrayList;
-import java.util.List;
 import org.jspecify.annotations.Nullable;
 import st.orm.Metamodel;
 import st.orm.Operator;
@@ -108,37 +106,6 @@ final class TextMatch {
             case START -> escaped + "%";
             case END -> "%" + escaped;
         };
-    }
-
-    /**
-     * Returns the values to bind for a comparison of a search field: the patterns the dialect binds for a word-start
-     * match, in the order its rendering binds them, or the one value {@link #bindValue(Operator, Object, Metamodel,
-     * SqlDialect)} binds for any other comparison.
-     *
-     * @param operator the operator of the comparison.
-     * @param search the match form of a search word, or {@code null} for any other comparison.
-     * @param value the value the comparison was given.
-     * @param path the path of the compared column, named when the value is not text.
-     * @param dialect the dialect that escapes the text and renders a word start.
-     * @return the values to bind, in placeholder order.
-     * @throws SqlTemplateException if an operator that takes text is given a value that is not text.
-     */
-    static List<@Nullable Object> bindValues(Operator operator,
-                                             @Nullable MatchForm search,
-                                             @Nullable Object value,
-                                             Metamodel<?, ?> path,
-                                             SqlDialect dialect) throws SqlTemplateException {
-        var values = new ArrayList<@Nullable Object>(1);
-        if (search == MatchForm.WORD_START && value instanceof String word) {
-            // The rendering is discarded; what it binds, in its order, is what the statement binds.
-            dialect.wordStartMatch("", word, pattern -> {
-                values.add(pattern);
-                return "?";
-            });
-            return values;
-        }
-        values.add(bindValue(operator, value, path, dialect));
-        return values;
     }
 
     /**

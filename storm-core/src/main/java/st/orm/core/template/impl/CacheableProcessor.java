@@ -27,6 +27,7 @@ import st.orm.core.template.TemplateString;
 import st.orm.core.template.impl.BindHint.NoBindHint;
 import st.orm.core.template.impl.Elements.ObjectExpression;
 import st.orm.core.template.impl.Elements.PathExpression;
+import st.orm.core.template.impl.Elements.SearchExpression;
 import st.orm.core.template.impl.Elements.TemplateExpression;
 
 final class CacheableProcessor implements ElementProcessor<Cacheable> {
@@ -78,20 +79,20 @@ final class CacheableProcessor implements ElementProcessor<Cacheable> {
             case TemplateExpression it -> keyGenerator.apply(it.template());
             // Two columns of the query compile the same whenever the paths and the operator are the same.
             case PathExpression(var path, var operator, var other) -> List.of(path, operator, other);
-            case ObjectExpression(var metamodel, var operator, var object, var indexable, var fromRow, var search) -> {
+            case ObjectExpression(var metamodel, var operator, var object, var indexable, var fromRow) -> {
                 var objectShape = getObjectShape(object, ignoreArity);
                 if (objectShape == null) {
                     yield null;
                 }
-                // Whether the comparison asks for an index, whether its value came from a row, and the match form of
-                // a search word, are part of what it compiles to.
+                // Whether the comparison asks for an index, and whether its value came from a row, are part of what it
+                // compiles to.
                 if (metamodel == null) {
                     yield List.of(operator, objectShape, indexable, fromRow);
                 }
-                yield search == null
-                        ? List.of(metamodel, operator, objectShape, indexable, fromRow)
-                        : List.of(metamodel, operator, objectShape, indexable, fromRow, search);
+                yield List.of(metamodel, operator, objectShape, indexable, fromRow);
             }
+            // A search word compiles the same for every word: the column and its match form are the shape.
+            case SearchExpression(var match, var ignore) -> List.of(match);
         };
     }
 

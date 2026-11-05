@@ -50,6 +50,7 @@ import st.orm.core.template.impl.Elements.Expression;
 import st.orm.core.template.impl.Elements.ObjectExpression;
 import st.orm.core.template.impl.Elements.PathExpression;
 import st.orm.core.template.impl.Elements.RelationKey;
+import st.orm.core.template.impl.Elements.SearchExpression;
 import st.orm.core.template.impl.Elements.Subquery;
 import st.orm.core.template.impl.Elements.TableSource;
 import st.orm.core.template.impl.Elements.TableTarget;
@@ -794,6 +795,7 @@ final class FilterJoinPlacement {
                 tables.add(expression.path().root());
                 tables.add(expression.other().root());
             }
+            case SearchExpression expression -> tables.add(expression.match().path().root());
             case TemplateExpression expression -> collect(expression.template(), tables);
             case Navigable<?, ?> path -> tables.add(path.root());
             case Column column -> tables.add(column.field().root());

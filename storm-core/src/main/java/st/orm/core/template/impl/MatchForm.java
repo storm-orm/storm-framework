@@ -15,7 +15,14 @@
  */
 package st.orm.core.template.impl;
 
+import static st.orm.Operator.CONTAINS_IGNORE_CASE;
+import static st.orm.Operator.EQUALS;
+import static st.orm.Operator.STARTS_WITH;
+
+import java.util.Locale;
+import org.jspecify.annotations.Nullable;
 import st.orm.Match;
+import st.orm.Operator;
 
 /**
  * The form a word of a {@code search} or {@code suggest} matches a field in, as the {@link Match} records state it,
@@ -26,25 +33,49 @@ import st.orm.Match;
 public enum MatchForm {
 
     /** Anywhere in the value, on the lowered column. */
-    ANYWHERE("anywhere"),
+    ANYWHERE("anywhere", CONTAINS_IGNORE_CASE, false),
 
     /**
      * At the start of a word in the value, the value's start or the text after one of the
      * {@link st.orm.core.template.SqlDialect#WORD_SEPARATORS}, on the lowered column, rendered as the dialect renders
      * it: one regular expression where the database matches one, {@code LIKE} patterns elsewhere.
      */
-    WORD_START("wordStart"),
+    WORD_START("wordStart", null, false),
 
     /** As a prefix of the value, on the bare column with the word lowered. */
-    PREFIX("prefix"),
+    PREFIX("prefix", STARTS_WITH, true),
 
     /** As the whole value, on the bare column with the word lowered. */
-    EXACT("exact");
+    EXACT("exact", EQUALS, true);
 
     private final String factory;
+    private final @Nullable Operator operator;
+    private final boolean lowersWord;
 
-    MatchForm(String factory) {
+    MatchForm(String factory, @Nullable Operator operator, boolean lowersWord) {
         this.factory = factory;
+        this.operator = operator;
+        this.lowersWord = lowersWord;
+    }
+
+    /**
+     * Returns the operator the form compares with, or {@code null} for a word start, which the dialect renders.
+     *
+     * @return the operator, or {@code null}.
+     */
+    public @Nullable Operator operator() {
+        return operator;
+    }
+
+    /**
+     * Returns the text the form compares for a typed word: the word lowered where the form leaves the column bare,
+     * the word as typed where the comparison lowers both sides.
+     *
+     * @param word the typed word.
+     * @return the text to compare.
+     */
+    public String text(String word) {
+        return lowersWord ? word.toLowerCase(Locale.ROOT) : word;
     }
 
     /**

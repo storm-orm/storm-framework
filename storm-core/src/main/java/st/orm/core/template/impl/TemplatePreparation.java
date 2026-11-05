@@ -95,12 +95,21 @@ import st.orm.core.template.impl.Elements.Columns;
 import st.orm.core.template.impl.Elements.Cursor;
 import st.orm.core.template.impl.Elements.Delete;
 import st.orm.core.template.impl.Elements.Expression;
+import st.orm.core.template.impl.Elements.Fetch;
 import st.orm.core.template.impl.Elements.From;
 import st.orm.core.template.impl.Elements.Insert;
+import st.orm.core.template.impl.Elements.ObjectExpression;
+import st.orm.core.template.impl.Elements.PathExpression;
+import st.orm.core.template.impl.Elements.SearchExpression;
 import st.orm.core.template.impl.Elements.Select;
 import st.orm.core.template.impl.Elements.Source;
+import st.orm.core.template.impl.Elements.Subquery;
 import st.orm.core.template.impl.Elements.Table;
 import st.orm.core.template.impl.Elements.TableSource;
+import st.orm.core.template.impl.Elements.TableTarget;
+import st.orm.core.template.impl.Elements.Target;
+import st.orm.core.template.impl.Elements.TemplateExpression;
+import st.orm.core.template.impl.Elements.TemplateSource;
 import st.orm.core.template.impl.Elements.TemplateTarget;
 import st.orm.core.template.impl.Elements.Update;
 import st.orm.core.template.impl.Elements.UpdateTarget;
@@ -603,7 +612,7 @@ class TemplatePreparation {
                 }
                 case Expression e -> new Cacheable(e);
                 case BindVars b -> resolveBindVarsElement(sqlOperation, p, b);
-                case Subqueryable t -> new Elements.Subquery(t.getSubquery(), true);
+                case Subqueryable t -> new Subquery(t.getSubquery(), true);
                 case Navigable<?, ?> m when m.isColumn() -> new Column(toColumnMetamodel(m), CASCADE);
                 case Navigable<?, ?> ignore -> throw new SqlTemplateException(
                         "Path does not reference a column. Use a column-level path (e.g., User_.name) rather than a table-level path.");
@@ -893,7 +902,7 @@ class TemplatePreparation {
                     ? getRecordType(table).getAnnotation(ProjectionQuery.class)
                     : null;  // Sealed entity interfaces don't have ProjectionQuery.
             Source source = projectionQuery != null
-                    ? new Elements.TemplateSource(TemplateString.of(projectionQuery.value()))
+                    ? new TemplateSource(TemplateString.of(projectionQuery.value()))
                     : new TableSource(table);
             effectiveFrom = new From(source, alias, from.autoJoin());
             mutableElements.replaceAll(element -> element instanceof From ? effectiveFrom : element);
@@ -967,7 +976,7 @@ class TemplatePreparation {
                     aliasMapper.addJoinAlias(ts.table(), alias);
                     var projectionQuery = getRecordType(ts.table()).getAnnotation(ProjectionQuery.class);
                     Source source = projectionQuery != null
-                            ? new Elements.TemplateSource(TemplateString.of(projectionQuery.value()))
+                            ? new TemplateSource(TemplateString.of(projectionQuery.value()))
                             : ts;
                     customJoins.add(new Join(source, alias, j.target(), j.type(), false));
                     tableMapper.mapPrimaryKey(
@@ -1087,7 +1096,7 @@ class TemplatePreparation {
     private static @Nullable RecordField reusedKey(Class<? extends Data> table,
                                                    Class<? extends Data> fromTable,
                                                    Join join) throws SqlTemplateException {
-        if (!(join.target() instanceof Elements.TableTarget target)
+        if (!(join.target() instanceof TableTarget target)
                 || target.table() != fromTable || target.targetKey() != null) {
             return null;
         }
@@ -1554,9 +1563,9 @@ class TemplatePreparation {
         ProjectionQuery query = fieldType.getAnnotation(ProjectionQuery.class);
         Source source = query == null
                 ? new TableSource(fieldType.requireDataType())
-                : new Elements.TemplateSource(TemplateString.of(query.value()));
-        Elements.Target target = query == null
-                ? new Elements.TableTarget(table, null, field, null)
+                : new TemplateSource(TemplateString.of(query.value()));
+        Target target = query == null
+                ? new TableTarget(table, null, field, null)
                 : getTemplateTarget(
                 fromAlias,
                 alias,
@@ -1640,7 +1649,7 @@ class TemplatePreparation {
         // occurrence carries its own alias, so a type reference to it is already satisfied and deriving a second
         // occurrence would make the type ambiguous.
         for (Join join : customJoins) {
-            if (join.target() instanceof Elements.TableTarget target) {
+            if (join.target() instanceof TableTarget target) {
                 tables.add(target.table());
             }
             if (join.source() instanceof TableSource(var table)) {
@@ -1686,7 +1695,7 @@ class TemplatePreparation {
             case Select(var table, var mode) -> (mode == SelectMode.NESTED ? hydratedTables : tables).add(table);
             // A resolved reference is materialized in its own right: the referenced table is joined, and the foreign
             // keys of the record it holds are joined with it. The element's paths are prefix-closed.
-            case Elements.Fetch fetch -> hydratedPaths.addAll(fetch.paths());
+            case Fetch fetch -> hydratedPaths.addAll(fetch.paths());
             case Alias alias -> tables.add(alias.table());
             case Where where -> {
                 if (where.expression() != null) {
@@ -1720,16 +1729,18 @@ class TemplatePreparation {
                                              Set<Class<? extends Data>> hydratedTables,
                                              Set<String> hydratedPaths) {
         switch (expression) {
-            case Elements.ObjectExpression objectExpression -> {
+            case ObjectExpression objectExpression -> {
                 if (objectExpression.metamodel() != null) {
                     addReferencedTablePath(rootTable, objectExpression.metamodel(), paths);
                 }
             }
-            case Elements.PathExpression pathExpression -> {
+            case PathExpression pathExpression -> {
                 addReferencedTablePath(rootTable, pathExpression.path(), paths);
                 addReferencedTablePath(rootTable, pathExpression.other(), paths);
             }
-            case Elements.TemplateExpression templateExpression ->
+            case SearchExpression searchExpression ->
+                    addReferencedTablePath(rootTable, searchExpression.match().path(), paths);
+            case TemplateExpression templateExpression ->
                     collectReferencedTablePaths(rootTable, templateExpression.template(), paths, tables, hydratedTables, hydratedPaths);
         }
     }

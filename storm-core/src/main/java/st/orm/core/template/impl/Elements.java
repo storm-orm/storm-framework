@@ -26,6 +26,7 @@ import org.jspecify.annotations.Nullable;
 import st.orm.BindVars;
 import st.orm.Data;
 import st.orm.Element;
+import st.orm.Match;
 import st.orm.Metamodel;
 import st.orm.Operator;
 import st.orm.ResolveScope;
@@ -200,12 +201,7 @@ public final class Elements {
      * values a caller supplies.</p>
      */
     public record ObjectExpression(@Nullable Metamodel<?, ?> metamodel, Operator operator, Object object,
-                                   boolean indexable, boolean fromRow,
-                                   @Nullable MatchForm search) implements Expression {
-        public ObjectExpression(@Nullable Metamodel<?, ?> metamodel, Operator operator, Object object,
-                                boolean indexable, boolean fromRow) {
-            this(metamodel, operator, object, indexable, fromRow, null);
-        }
+                                   boolean indexable, boolean fromRow) implements Expression {
         public ObjectExpression(@Nullable Metamodel<?, ?> metamodel, Operator operator, Object object) {
             this(metamodel, operator, object, true, false);
         }
@@ -217,29 +213,31 @@ public final class Elements {
         }
 
         /**
-         * Returns the comparison of a word of a {@code search} or {@code suggest} with a text column, in a match form.
-         * It asks no ordinary index for its column: the search advice decides, per field and form, which index serves
-         * it.
-         *
-         * @param path the text column.
-         * @param operator the operator the form renders.
-         * @param text the text the operator compares, the word or the word with the space before it.
-         * @param search the match form.
-         */
-        public static ObjectExpression search(Metamodel<?, String> path, Operator operator, String text,
-                                              MatchForm search) {
-            return new ObjectExpression(path, operator, List.of(text), false, false, requireNonNull(search, "search"));
-        }
-
-        /**
          * Returns this comparison as one that does not select rows, and so asks no index for its column.
          */
         public ObjectExpression ranking() {
-            return indexable ? new ObjectExpression(metamodel, operator, object, false, fromRow, search) : this;
+            return indexable ? new ObjectExpression(metamodel, operator, object, false, fromRow) : this;
         }
         public ObjectExpression {
             requireNonNull(object, "object");
             requireNonNull(operator, "operator");
+        }
+    }
+
+    /**
+     * A word of a {@code search} or {@code suggest} matched against a text column in the column's match form. The
+     * form decides the comparison: a {@code LIKE} on the lowered column for a match anywhere, the dialect's word-start
+     * comparison, or a {@code LIKE} or an equality on the bare column against the lowered word. The comparison asks
+     * no ordinary index for its column; the search advice decides, per column and form, what serves it.
+     *
+     * @param match the column with its match form.
+     * @param word the typed word, as the input holds it.
+     * @since 1.16
+     */
+    public record SearchExpression(Match<?> match, String word) implements Expression {
+        public SearchExpression {
+            requireNonNull(match, "match");
+            requireNonNull(word, "word");
         }
     }
     /**

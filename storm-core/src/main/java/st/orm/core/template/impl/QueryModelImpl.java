@@ -34,6 +34,7 @@ import java.util.List;
 import java.util.NoSuchElementException;
 import java.util.SequencedMap;
 import java.util.function.BiConsumer;
+import java.util.function.Function;
 import java.util.stream.Stream;
 import org.jspecify.annotations.Nullable;
 import st.orm.BindVars;
@@ -56,6 +57,7 @@ import st.orm.core.template.TemplateString;
 import st.orm.core.template.impl.Elements.Expression;
 import st.orm.core.template.impl.Elements.ObjectExpression;
 import st.orm.core.template.impl.Elements.PathExpression;
+import st.orm.core.template.impl.Elements.SearchExpression;
 import st.orm.core.template.impl.Elements.Subquery;
 import st.orm.core.template.impl.Elements.TemplateExpression;
 import st.orm.mapping.RecordField;
@@ -255,8 +257,9 @@ final class QueryModelImpl implements QueryModel {
         try {
             return switch (expression) {
                 case TemplateExpression it -> compileTemplateExpression(it.template(), compiler);
-                case ObjectExpression it -> compileObjectExpression(getMetamodel(it), it.operator(), it.object(), it.indexable(), it.fromRow(), it.search(), compiler);
+                case ObjectExpression it -> compileObjectExpression(getMetamodel(it), it.operator(), it.object(), it.indexable(), it.fromRow(), compiler);
                 case PathExpression it -> compilePathExpression(it.path(), it.operator(), it.other());
+                case SearchExpression it -> compileSearchExpression(it, compiler);
             };
         } catch (SqlTemplateException e) {
             throw new UncheckedSqlTemplateException(e);
@@ -277,8 +280,9 @@ final class QueryModelImpl implements QueryModel {
         try {
             switch (expression) {
                 case TemplateExpression it -> bindTemplateExpression(it.template(), binder);
-                case ObjectExpression it -> bindObjectExpression(getMetamodel(it), it.operator(), it.object(), it.fromRow(), it.search(), binder);
+                case ObjectExpression it -> bindObjectExpression(getMetamodel(it), it.operator(), it.object(), it.fromRow(), binder);
                 case PathExpression ignore -> { }  // Two columns of the query; nothing to bind.
+                case SearchExpression it -> bindSearchExpression(it, binder);
             }
         } catch (SqlTemplateException e) {
             throw new UncheckedSqlTemplateException(e);
@@ -428,7 +432,6 @@ final class QueryModelImpl implements QueryModel {
                                            Object object,
                                            boolean indexable,
                                            boolean fromRow,
-                                           @Nullable MatchForm search,
                                            TemplateCompiler compiler) throws SqlTemplateException {
         // A SqlFunction call compares the column it is applied to, with the call around the column and around each
         // value, so the database computes both sides alike.
@@ -484,11 +487,7 @@ final class QueryModelImpl implements QueryModel {
                 if (column != null && !column.equals(k)) {
                     throw new SqlTemplateException("Multiple columns specified by WHERE clause argument: %s and %s.".formatted(column, k));
                 }
-                if (search == MatchForm.WORD_START) {
-                    values.add(entry.getValue());
-                } else {
-                    values.add(TextMatch.bindValue(operator, entry.getValue(), metamodel, compiler.dialect()));
-                }
+                values.add(TextMatch.bindValue(operator, entry.getValue(), metamodel, compiler.dialect()));
                 column = k;
             } else {
                 TextMatch.requireSingleColumn(operator, metamodel);
@@ -500,13 +499,6 @@ final class QueryModelImpl implements QueryModel {
         }
         if (multiValues.isEmpty() && column == null) {
             column = toFullyQualifiedColumn(model.getSingleColumn(metamodel), navigated);
-        }
-        if (search != null) {
-            // A search word asks no ordinary index for its column: the search advice decides, per field and match
-            // form, which index serves the expression the match compares around the bare column.
-            var searched = model.getSingleColumn(metamodel);
-            String field = FunctionCalls.render(path, searched.name());
-            ColumnUsage.recordSearchUse(searched, search, field, search.lowered() ? "LOWER(" + field + ")" : field, compiler);
         }
         if (path != metamodel) {
             if (!multiValues.isEmpty()) {
@@ -537,13 +529,6 @@ final class QueryModelImpl implements QueryModel {
                     values = shape.values();
                 }
             }
-            if (search == MatchForm.WORD_START && values.getFirst() instanceof String word) {
-                // The dialect renders a word start, one regular expression where the database matches one and LIKE
-                // patterns elsewhere, and binds each pattern as it renders it.
-                var finalPath = path;
-                return compiler.dialect().wordStartMatch(column, word,
-                        pattern -> FunctionCalls.render(finalPath, applyFunction(valueFunction, compiler.mapParameter(pattern))));
-            }
             List<String> placeholders = new ArrayList<>(values.size());
             for (var value : values) {
                 placeholders.add(FunctionCalls.render(path, applyFunction(valueFunction, compiler.mapParameter(value))));
@@ -552,6 +537,59 @@ final class QueryModelImpl implements QueryModel {
         } catch (IllegalArgumentException e) {
             throw new SqlTemplateException(e);
         }
+    }
+
+    /**
+     * Compiles a search word against its column in the column's match form. The column resolves as it does for a
+     * value comparison, joined on demand where a path reaches it, and the comparison wraps it in the function calls
+     * of the path. A match anywhere, a prefix and an exact match render through the operator the form names, with
+     * the text the form compares bound as the operator binds it; a word start renders through the dialect, which
+     * binds each pattern as it renders it. The column and its form are recorded for the search advice.
+     */
+    private String compileSearchExpression(SearchExpression expression, TemplateCompiler compiler)
+            throws SqlTemplateException {
+        var match = expression.match();
+        var form = MatchForm.of(match);
+        Metamodel<?, ?> path = match.path();
+        Metamodel<?, ?> metamodel = FunctionCalls.column(path);
+        var resolved = MetamodelFactory.canonical(metamodel);
+        Model<Data, ?> model = getModel(resolved);
+        Metamodel<?, ?> navigated = isOwnModel(resolved) ? null : resolved;
+        Column column = model.getSingleColumn(metamodel);
+        String field = FunctionCalls.render(path, column.name());
+        ColumnUsage.recordSearchUse(column, form, field, form.lowered() ? "LOWER(" + field + ")" : field, compiler);
+        String rendered = FunctionCalls.render(path, toFullyQualifiedColumn(column, navigated));
+        String valueFunction = valueFunction(model, metamodel);
+        Function<Object, String> value = v -> FunctionCalls.render(path, applyFunction(valueFunction, compiler.mapParameter(v)));
+        var operator = form.operator();
+        if (operator == null) {
+            return compiler.dialect().wordStartMatch(rendered, expression.word(), value::apply);
+        }
+        try {
+            return operator.format(rendered, value.apply(
+                    TextMatch.bindValue(operator, form.text(expression.word()), metamodel, compiler.dialect())));
+        } catch (IllegalArgumentException e) {
+            throw new SqlTemplateException(e);
+        }
+    }
+
+    /**
+     * Binds the value of a search word as {@link #compileSearchExpression(SearchExpression, TemplateCompiler)}
+     * rendered it: the one text the form compares, or the patterns the dialect's word start binds, in its order.
+     */
+    private void bindSearchExpression(SearchExpression expression, TemplateBinder binder) throws SqlTemplateException {
+        var form = MatchForm.of(expression.match());
+        var operator = form.operator();
+        if (operator == null) {
+            // The rendering is discarded; what it binds, in its order, is what the statement binds.
+            template.dialect().wordStartMatch("", expression.word(), pattern -> {
+                binder.bindParameter(pattern);
+                return "?";
+            });
+            return;
+        }
+        binder.bindParameter(TextMatch.bindValue(operator, form.text(expression.word()),
+                FunctionCalls.column(expression.match().path()), template.dialect()));
     }
 
     /**
@@ -628,7 +666,6 @@ final class QueryModelImpl implements QueryModel {
                                       Operator operator,
                                       Object object,
                                       boolean fromRow,
-                                      @Nullable MatchForm search,
                                       TemplateBinder binder) throws SqlTemplateException {
         Metamodel<?, ?> path = metamodel;
         metamodel = FunctionCalls.column(path);
@@ -658,7 +695,7 @@ final class QueryModelImpl implements QueryModel {
                 }
             }
             if ((multiValues == null || multiValues.isEmpty()) && values.size == 1) {
-                singleValues.addAll(TextMatch.bindValues(operator, search, values.firstValue, metamodel, template.dialect()));
+                singleValues.add(TextMatch.bindValue(operator, values.firstValue, metamodel, template.dialect()));
             } else {
                 TextMatch.requireSingleColumn(operator, metamodel);
                 if (multiValues == null) {
