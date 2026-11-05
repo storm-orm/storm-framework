@@ -192,6 +192,25 @@ public abstract class AbstractTextMatchConformanceTest {
     }
 
     @Test
+    public void aValueComputedOncePerExecutionComparesAsTheValue() throws SQLException {
+        // Whatever form the dialect computes a value over bound values in, the database takes it where a value goes.
+        String value = orm.dialect().computedOnce("UPPER(?)");
+        var contents = new TreeSet<String>();
+        try (Connection connection = dataSource.getConnection();
+             var statement = connection.prepareStatement(
+                     "SELECT content FROM phrase WHERE UPPER(content) = " + value + " OR UPPER(content) IN (" + value + ")")) {
+            statement.setString(1, "madison");
+            statement.setString(2, "abc");
+            try (var rows = statement.executeQuery()) {
+                while (rows.next()) {
+                    contents.add(rows.getString(1));
+                }
+            }
+        }
+        assertEquals(Set.of("Madison", "MADISON", "abc"), contents);
+    }
+
+    @Test
     public void containsMatchesAPercentSignLiterally() {
         assertEquals(Set.of("50%", "a\\%b"), match(CONTAINS, "%"));
     }

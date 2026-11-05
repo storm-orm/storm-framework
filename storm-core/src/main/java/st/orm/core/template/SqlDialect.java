@@ -555,6 +555,25 @@ public interface SqlDialect {
     }
 
     /**
+     * Renders an expression over bound values, such as a function applied to a bound value, so that the database
+     * computes it once per execution rather than once per row it compares. A database that plans a statement for any
+     * value, as it may a prepared statement after a few executions, cannot compute such an expression while planning,
+     * and may compute it anew for every row it compares. A case-sensitive starts-with is never passed here: a range
+     * scan over an ordinary index takes its pattern only as a constant, which the database computes while planning.
+     *
+     * <p>The default returns the expression unchanged, as a database that computes an expression over bound values
+     * once per execution needs nothing more. A dialect whose database computes it per row renders a form it computes
+     * once, such as a scalar subquery.</p>
+     *
+     * @param expression the expression over bound values.
+     * @return the expression as the database computes it once per execution.
+     * @since 1.16
+     */
+    default String computedOnce(String expression) {
+        return expression;
+    }
+
+    /**
      * Escapes the given wildcard characters and the escape character {@code !} in the text, for
      * {@link #escapeLike(String)}.
      *
