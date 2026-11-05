@@ -17,6 +17,7 @@ package st.orm.core;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static st.orm.Match.anywhere;
 import static st.orm.Match.exact;
@@ -255,6 +256,12 @@ public class SearchIntegrationTest {
         // Ignored in every form alike.
         assertEquals(List.of("upton"), names(true, "the upton", ignore, prefix(NAME_LOWER)));
         assertEquals(List.of(), names(true, "the", ignore, prefix(NAME_LOWER)));
+    }
+
+    @Test
+    public void aSearchWithoutFieldsIsRefused() {
+        assertThrows(IllegalArgumentException.class, () -> PredicateBuilderFactory.<Owner, Owner, Integer>search("davis", new Match<?>[0]));
+        assertThrows(IllegalArgumentException.class, () -> PredicateBuilderFactory.<Owner, Owner, Integer>suggest("davis", Set.of(), new Match<?>[0]));
     }
 
     @Test

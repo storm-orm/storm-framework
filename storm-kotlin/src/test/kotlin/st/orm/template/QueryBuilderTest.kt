@@ -2284,6 +2284,10 @@ internal open class QueryBuilderTest(
             .semiJoin<Pet>().on<Owner>()
             .where(suggest("leo", setOf("the"), wordStart(petName), exact(lastName)))
             .resultList.map { it.firstName } shouldBe listOf("Betty")
+        ownerRepo.select()
+            .semiJoin<Pet>().on<Owner>()
+            .where(suggest("le", wordStart(petName)))
+            .resultList.map { it.firstName } shouldBe listOf("Betty")
     }
 
     @Test

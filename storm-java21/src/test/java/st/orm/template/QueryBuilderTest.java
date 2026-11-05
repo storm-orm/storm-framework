@@ -830,6 +830,17 @@ public class QueryBuilderTest {
                 .semiJoin(Pet.class).on(Owner.class)
                 .where(it -> it.suggest("leo", Set.of("the"), wordStart(Pet_.name), exact(Owner_.lastName)))
                 .getResultList().stream().map(Owner::firstName).toList());
+        assertEquals(List.of("Betty"), orm.entity(Owner.class).select()
+                .semiJoin(Pet.class).on(Owner.class)
+                .where(it -> it.suggest("le", wordStart(Pet_.name)))
+                .getResultList().stream().map(Owner::firstName).toList());
+    }
+
+    @Test
+    public void testWhereRefusesANullValue() {
+        assertThrows(PersistenceException.class, () -> orm.entity(Owner.class).select()
+                .where(it -> it.where(Owner_.lastName, EQUALS, (String) null))
+                .getResultList());
     }
 
     private static List<String> semiJoinSuggestFirstNames(ORMTemplate template, String input) {
