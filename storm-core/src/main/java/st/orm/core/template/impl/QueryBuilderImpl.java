@@ -667,8 +667,22 @@ abstract class QueryBuilderImpl<T extends Data, R, ID> extends QueryBuilder<T, R
     @Override
     public QueryBuilder<T, R, ID> orderFirst(PredicateBuilder<? extends T, ?, ?> predicate) {
         requireNonNull(predicate, "predicate");
+        refuseSearch(((PredicateBuilderImpl<?, ?, ?>) predicate).node(), "orderFirst",
+                "Filter with where(search(...)), and rank with startsWithIgnoreCase or equalsIgnoreCase.");
         return orderFirstKey(TemplateString.combine(TemplateString.of("CASE WHEN "),
                 ranking(((PredicateBuilderImpl<?, ?, ?>) predicate).asTemplate()), TemplateString.of(" THEN 0 ELSE 1 END")));
+    }
+
+    /**
+     * Refuses a predicate that holds a search or a suggestion where the query does not filter its rows by it. A search
+     * resolves its words by the dialect's substring index and the configured minimum word length, which only a
+     * condition that filters rows applies: {@code where}, and the condition of a semi-join or anti-join.
+     */
+    private static void refuseSearch(PredicateNode node, String clause, String fix) {
+        if (PredicateNode.holdsSearch(node)) {
+            throw new PersistenceException("%s takes no search or suggest, which filter the query's rows by what a user typed. %s"
+                    .formatted(clause, fix));
+        }
     }
 
     /**
@@ -943,13 +957,16 @@ abstract class QueryBuilderImpl<T extends Data, R, ID> extends QueryBuilder<T, R
                                                 Function<WhereBuilder<Data, R, ID>, PredicateBuilder<Data, ?, ?>> condition) {
                 requireNonNull(onRelation, "onRelation");
                 requireNonNull(condition, "condition");
-                return addJoin(new Join(new TableSource(relation), alias, new TableTarget(onRelation, null, null, node(condition)), type, false));
+                var node = node(condition);
+                refuseSearchInJoin(node);
+                return addJoin(new Join(new TableSource(relation), alias, new TableTarget(onRelation, null, null, node), type, false));
             }
 
             @Override
             public QueryBuilder<Data, R, ID> on(Function<WhereBuilder<Data, R, ID>, PredicateBuilder<Data, ?, ?>> predicate) {
                 requireNonNull(predicate, "predicate");
                 var node = node(predicate);
+                refuseSearchInJoin(node);
                 var resolved = JoinKeys.resolve(queryTemplate, relation, fromType, node);
                 if (resolved.keys() == null) {
                     if (type instanceof FilterJoinType filterJoinType) {
@@ -964,6 +981,16 @@ abstract class QueryBuilderImpl<T extends Data, R, ID> extends QueryBuilder<T, R
             }
 
             @SuppressWarnings("unchecked")
+            /**
+             * Refuses a search in the condition of a join that adds rows. A semi-join or anti-join filters the query's
+             * rows by its condition, and resolves a search in it as {@code where} does.
+             */
+            private void refuseSearchInJoin(PredicateNode node) {
+                if (!(type instanceof FilterJoinType)) {
+                    refuseSearch(node, "A join condition", "Use them in where, or in the condition of a semiJoin or antiJoin.");
+                }
+            }
+
             private PredicateNode node(Function<WhereBuilder<Data, R, ID>, PredicateBuilder<Data, ?, ?>> condition) {
                 var whereBuilder = new WhereBuilderImpl<>((QueryBuilderImpl<Data, R, ID>) widen());
                 return ((PredicateBuilderImpl<?, ?, ?>) condition.apply(whereBuilder)).node();
@@ -1254,6 +1281,7 @@ abstract class QueryBuilderImpl<T extends Data, R, ID> extends QueryBuilder<T, R
      */
     private QueryBuilder<T, R, ID> addHaving(PredicateBuilder<?, ?, ?> predicate) {
         requireNonNull(predicate, "predicate");
+        refuseSearch(((PredicateBuilderImpl<?, ?, ?>) predicate).node(), "having", "Use them in where.");
         return having(((PredicateBuilderImpl<?, ?, ?>) predicate).asTemplate());
     }
 }

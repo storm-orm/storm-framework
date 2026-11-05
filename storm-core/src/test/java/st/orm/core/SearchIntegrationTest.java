@@ -36,15 +36,21 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.jdbc.JdbcTest;
 import org.springframework.test.context.ContextConfiguration;
 import org.springframework.test.context.junit.jupiter.SpringExtension;
+import st.orm.Data;
 import st.orm.DbTable;
 import st.orm.Entity;
 import st.orm.Match;
 import st.orm.Metamodel;
 import st.orm.PK;
+import st.orm.PersistenceException;
 import st.orm.SqlFunction;
 import st.orm.StormConfig;
 import st.orm.core.model.Owner;
 import st.orm.core.model.Owner_;
+import st.orm.core.model.Pet;
+import st.orm.core.model.Pet_;
+import st.orm.core.model.Visit;
+import st.orm.core.model.Visit_;
 import st.orm.core.template.ORMTemplate;
 import st.orm.core.template.SqlDialect;
 import st.orm.core.template.impl.PredicateBuilderFactory;
@@ -261,6 +267,25 @@ public class SearchIntegrationTest {
                 .getResultList()
                 .forEach(suggestion -> found.add(suggestion.nameLower())));
         assertEquals(List.of("van der berg"), found);
+    }
+
+    @Test
+    public void aSearchFiltersRowsOnlyInWhereAndInASemiJoinCondition() {
+        var orm = ORMTemplate.of(dataSource);
+        var orderFirst = assertThrows(PersistenceException.class, () -> orm.entity(Owner.class).select()
+                .orderFirst(PredicateBuilderFactory.<Owner, Owner, Integer>search("davis", Owner_.lastName)));
+        assertTrue(orderFirst.getMessage().startsWith("orderFirst takes no search or suggest"), orderFirst.getMessage());
+        var having = assertThrows(PersistenceException.class, () -> orm.entity(Owner.class).select()
+                .having(PredicateBuilderFactory.<Owner, Owner, Integer>suggest("davis", Set.of(), Owner_.lastName)));
+        assertTrue(having.getMessage().startsWith("having takes no search or suggest"), having.getMessage());
+        var join = assertThrows(PersistenceException.class, () -> orm.entity(Pet.class).select()
+                .innerJoin(Visit.class).on(Pet.class, it -> PredicateBuilderFactory.<Data, Pet, Integer>search("rabies", Visit_.description)));
+        assertTrue(join.getMessage().startsWith("A join condition takes no search or suggest"), join.getMessage());
+        // A semi-join filters the query's rows by its condition, so a search resolves there as it does in where.
+        var owners = orm.entity(Owner.class).select()
+                .semiJoin(Pet.class).on(Owner.class, it -> PredicateBuilderFactory.<Data, Owner, Integer>suggest("leo", Set.of(), Pet_.name))
+                .getResultList();
+        assertEquals(List.of("Betty"), owners.stream().map(Owner::firstName).toList());
     }
 
     @Test

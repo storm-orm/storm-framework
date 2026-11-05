@@ -102,7 +102,6 @@ The two functions read the input alike and differ in what they do with it, the s
 | `va` | `va` anywhere | the start of the value: "Van den Berg", not "Sullivan" nor "De Vaal" |
 | `van d` | both words, anywhere | `van` at a word start; `d` at a word start on the rows `van` found |
 | `v` | `v` anywhere | no rows: one character names too many |
-| `van de` | both words, anywhere | `van` at a word start; `de` at a word start on the rows `van` found |
 | empty or blank | every row | no rows |
 
 A word shorter than three characters matches too large a share of a table, whatever index serves it: `va` starts a word in a sizeable part of the names in a directory, and the box would fetch and rank them all. So until one of its words reaches three characters, a suggestion matches the whole input as the start of the value, ignoring case: `de va` suggests "De Vaal", `up` suggests "Upton" but not "Van Upton". Its words are joined by one space, and a `prefix` or `exact` column compares the whole input in its own form. Once a word reaches the length, a shorter word next to it narrows only the rows the longer word found. An input of one character matches no rows. The length is `storm.suggest.min_word_length`, three by default and the same on every database, since it changes which rows come back.
@@ -239,6 +238,7 @@ List<Owner> owners = orm.entity(Owner.class)
 - Each word renders as an `IN` over a `UNION` of a branch per table, so each table is read through its own indexes rather than through a join of both. Where the database runs such a union once per outer row (`SqlDialect.flattensInOverUnion()`), each word renders as an `EXISTS` per table instead.
 - The columns may come from several semi-joined tables. With `semiJoin<Pet>().on<Owner>()` and `semiJoin<Visit>().on<Pet>()`, `search(input, Owner_.lastName, Pet_.name, Visit_.description)` finds an owner by their name, by a pet's name or by what a visit was about, so `vaccination` finds the owners whose pets came in for one although no name says so. Each word matches a row of any of the tables, and renders as one `IN` over a `UNION` with a branch per table, so each table is read through its own indexes.
 - A condition on the join limits which related rows a word may match. `semiJoin<Visit>().on(Pet::class, Visit_.visitDate greaterEq lastYear)` with `search(input, Owner_.lastName, Visit_.description)` matches a word against the names and the visits of the past year, and an index limited to those rows serves it.
+- `search` and `suggest` filter rows, so they go in `where` or in the condition of a `semiJoin` or `antiJoin`. `orderFirst`, `having` and the condition of a join that adds rows refuse them: rank with `startsWithIgnoreCase` or `equalsIgnoreCase` instead.
 
 See [Filtering by Related Rows](queries.md#filtering-by-related-rows) for how semi-joins answer conditions in general.
 
