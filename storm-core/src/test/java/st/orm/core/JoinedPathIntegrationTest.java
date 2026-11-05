@@ -141,6 +141,18 @@ public class JoinedPathIntegrationTest {
     }
 
     @Test
+    public void keyEquatedToTheQueryTableByAPredicateIsNotJoinedAgain() {
+        var pets = capture(() -> orm().entity(Owner.class).select(Pet.class)
+                .innerJoin(Pet.class).on(it -> it.where(Pet_.owner.id, EQUALS, Owner_.id))
+                .where(Pet_.owner.lastName, EQUALS, "Davis")
+                .getResultList());
+        assertEquals(2, pets.size());
+        assertTrue(statement().contains("INNER JOIN pet p ON p.owner_id = o.id"), statement());
+        assertTrue(statement().contains("WHERE o.last_name = ?"), statement());
+        assertFalse(statement().contains("o1"), statement());
+    }
+
+    @Test
     public void pathFromJoinedTableReachesTwoLevelsDeep() {
         var count = capture(() -> orm().selectFrom(Owner.class, Long.class, raw("COUNT(*)"))
                 .innerJoin(Pet.class).on(Owner.class)

@@ -2489,7 +2489,7 @@ internal open class QueryBuilderTest(
     }
 
     @Test
-    fun `semiJoin on named keys should match the keys with each other`() {
+    fun `semiJoin on a predicate should match the keys it equates`() {
         // data.sql: Leo (1) and Basil (2) had a checkup; Rosy (3) and Leo had a surgery. Both reference Pet and Vet.
         val surgeryPet = Metamodel.of<Surgery, Pet>(Surgery::class.java, "pet")
         val checkupPet = Metamodel.of<Checkup, Pet>(Checkup::class.java, "pet")
@@ -2502,15 +2502,18 @@ internal open class QueryBuilderTest(
         e.message shouldContain "Surgery and Checkup reference the same table through more than one pair of foreign keys"
         orm.entity(Pet::class).select()
             .semiJoin<Checkup>().on<Pet>()
-            .semiJoin<Surgery>().on(surgeryPet, checkupPet)
+            .semiJoin<Surgery>().on(surgeryPet eq checkupPet)
             .resultList.map { it.name } shouldBe listOf("Leo")
         orm.entity(Pet::class).select {
             semiJoin<Checkup, Pet>()
-            antiJoin<Surgery>(surgeryPet, checkupPet)
+            antiJoin<Surgery>(surgeryPet eq checkupPet)
         }.resultList.map { it.name } shouldBe listOf("Basil")
-        // One key names which of a table's keys the join follows.
+        // A key equated with the key it references names which of a table's keys the join follows; the other
+        // terms are the condition.
+        val surgeryPetId = Metamodel.of<Surgery, Int>(Surgery::class.java, "pet.id")
+        val petId = Metamodel.of<Pet, Int>(Pet::class.java, "id")
         orm.entity(Pet::class).select {
-            semiJoin<Surgery>(surgeryPet) { Metamodel.of<Surgery, Int>(Surgery::class.java, "duration") eq 90 }
+            semiJoin<Surgery>((surgeryPetId eq petId) and (Metamodel.of<Surgery, Int>(Surgery::class.java, "duration") eq 90))
         }.resultList.map { it.name } shouldBe listOf("Rosy")
     }
 

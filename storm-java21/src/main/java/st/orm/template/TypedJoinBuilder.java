@@ -70,4 +70,26 @@ public interface TypedJoinBuilder<T extends Data, R, ID> extends JoinBuilder<T, 
      */
     QueryBuilder<Data, R, ID> on(Class<? extends Data> relation,
                                  Function<WhereBuilder<Data, R, ID>, PredicateBuilder<Data, ?, ?>> condition);
+
+    /**
+     * Specifies the relation to join on as a predicate, which states it as a whole: the keys it equates and any
+     * condition on the joined rows. A term equating a key of the joined table with a key of another table, a
+     * foreign key with the primary key it references, {@code where(Transfer_.to.id, EQUALS, Owner_.id)}, or two
+     * foreign keys referencing one table, {@code where(Invoice_.pet, EQUALS, Visit_.pet)}, is the key the join
+     * resolves by; the remaining terms are its condition. An inner or left join takes any predicate; a semi-join or
+     * anti-join takes one equating a key of the joined table with a key of the table to join on.
+     *
+     * <pre>{@code
+     * List<Visit> visits = orm.entity(Visit.class)
+     *         .select()
+     *         .semiJoin(Invoice.class).on(it -> it.where(Invoice_.pet, EQUALS, Visit_.pet).and(it.where(Invoice_.vet, EQUALS, Visit_.vet)))
+     *         .getResultList();
+     * }</pre>
+     *
+     * @param predicate the predicate relating the joined rows to the rows they join.
+     * @return the query builder.
+     * @see #on(Class, Function)
+     * @since 1.16
+     */
+    QueryBuilder<Data, R, ID> on(Function<WhereBuilder<Data, R, ID>, PredicateBuilder<Data, ?, ?>> predicate);
 }

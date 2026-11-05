@@ -452,6 +452,12 @@ public final class QueryBuilderImpl<T extends Data, R, ID> extends QueryBuilder<
             }
 
             @Override
+            public QueryBuilder<Data, R, ID> on(Function<WhereBuilder<Data, R, ID>, PredicateBuilder<Data, ?, ?>> predicate) {
+                return new QueryBuilderImpl<>(joinBuilder.on(whereBuilder ->
+                        ((PredicateBuilderImpl<Data, ?, ?>) predicate.apply(new WhereBuilderImpl<>(whereBuilder))).core));
+            }
+
+            @Override
             public QueryBuilder<Data, R, ID> on(StringTemplate template) {
                 return new QueryBuilderImpl<>(joinBuilder.on(convert(template)));
             }

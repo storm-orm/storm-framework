@@ -121,7 +121,7 @@ public class ColumnComparisonIntegrationTest {
                 .where(Visit_.pet, orm().entity(Pet.class).getById(1))
                 .getResultCount();
         var visits = capture(() -> orm().entity(Visit.class).select()
-                .innerJoin(OwnerPrimaryPet.class).on(OwnerPrimaryPet_.pet, Visit_.pet)
+                .innerJoin(OwnerPrimaryPet.class).on(it -> it.where(OwnerPrimaryPet_.pet, EQUALS, Visit_.pet))
                 .where(OwnerPrimaryPet_.owner, EQUALS, Visit_.pet.owner)
                 .getResultList());
         assertEquals(visitsOfLeo, visits.size());

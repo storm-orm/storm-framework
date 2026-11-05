@@ -15,27 +15,35 @@
  */
 package st.orm.core.template.impl;
 
+import static st.orm.Operator.EQUALS;
+import static st.orm.core.template.impl.RecordReflection.findPkField;
 import static st.orm.core.template.impl.RecordReflection.getRecordField;
 import static st.orm.core.template.impl.RecordReflection.getRefDataType;
 import static st.orm.core.template.impl.RecordReflection.isTableJoinCandidate;
 
+import java.util.ArrayList;
+import java.util.List;
 import org.jspecify.annotations.Nullable;
 import st.orm.Data;
 import st.orm.FK;
-import st.orm.Metamodel;
+import st.orm.Navigable;
 import st.orm.PersistenceException;
 import st.orm.Ref;
 import st.orm.SqlTemplateException;
 import st.orm.core.template.QueryTemplate;
+import st.orm.core.template.impl.Elements.PathExpression;
+import st.orm.core.template.impl.PredicateNode.Group;
+import st.orm.core.template.impl.PredicateNode.Term;
 import st.orm.mapping.RecordField;
 
 /**
- * Resolves the foreign keys a typed join names to the table it joins on and the keys it joins by.
+ * Recognises the keys a join's predicate relates the joined table by.
  *
- * <p>One key relates the joined table and the table on the other side of the key: a key of the joined table joins
- * the table it references, and a key of another table joins that table where the key references the joined table.
- * Two keys relate the joined table to the table holding the second key where neither references the other: both
- * reference one table, and the join matches the keys with each other.</p>
+ * <p>A predicate states the relation of a join as a whole. A term of it that equates a key of the joined table with
+ * a key of another table is a key match: a foreign key of the joined table with the primary key of the table it
+ * references, the primary key of the joined table with a foreign key referencing it, or a foreign key of each
+ * referencing one table. The first key match among the terms joined by AND is the relation the join resolves by;
+ * the remaining terms are its condition. The key beyond a foreign key, {@code Pet_.owner.id}, is that key.</p>
  *
  * @since 1.16
  */
@@ -50,72 +58,157 @@ final class JoinKeys {
      */
     record Keys(Class<? extends Data> table, @Nullable RecordField sourceKey, @Nullable RecordField targetKey) {}
 
+    /**
+     * A predicate resolved into the keys it relates the joined table by and the condition it adds to them.
+     *
+     * @param keys the keys, or {@code null} when no term of the predicate equates a key of the joined table with a
+     *             key of another table.
+     * @param condition the terms beyond the key match, or {@code null} when the key match is the whole predicate.
+     */
+    record Resolved(@Nullable Keys keys, @Nullable PredicateNode condition) {}
+
+    /**
+     * A key a path names: a foreign key with the table it references, or a primary key.
+     *
+     * @param holder the table holding the key.
+     * @param field the key's field.
+     * @param referenced the table a foreign key references, or {@code null} for a primary key.
+     */
+    private record Key(Class<? extends Data> holder, RecordField field, @Nullable Class<? extends Data> referenced) {}
+
     private JoinKeys() {
     }
 
     /**
-     * Resolves the keys a join names.
+     * Resolves the keys a join's predicate relates the joined table by.
      *
      * @param queryTemplate the template the query belongs to.
      * @param source the joined table.
-     * @param key a foreign key of the joined table, or of the table to join on.
-     * @param anchorKey a foreign key of the table to join on referencing the table {@code key} references, or
-     *                  {@code null} when {@code key} relates the two tables by itself.
-     * @throws PersistenceException if a key is not a foreign key, or the keys do not relate the joined table to the
-     *                              table to join on.
+     * @param fromType the query's table.
+     * @param predicate the predicate stating the relation.
      */
-    static Keys resolve(QueryTemplate queryTemplate,
-                        Class<? extends Data> source,
-                        Metamodel<? extends Data, ?> key,
-                        @Nullable Metamodel<? extends Data, ?> anchorKey) {
+    static Resolved resolve(QueryTemplate queryTemplate,
+                            Class<? extends Data> source,
+                            Class<? extends Data> fromType,
+                            PredicateNode predicate) {
+        Keys keys = null;
+        var rest = new ArrayList<PredicateNode>();
+        for (var conjunct : conjuncts(predicate)) {
+            if (keys == null) {
+                var expression = pathEquality(conjunct);
+                keys = expression == null ? null : keys(queryTemplate, source, fromType, expression);
+                if (keys != null) {
+                    continue;
+                }
+            }
+            rest.add(conjunct);
+        }
+        return new Resolved(keys, rest.isEmpty() ? null : PredicateNode.and(rest));
+    }
+
+    private static List<PredicateNode> conjuncts(PredicateNode node) {
+        return node instanceof Group(var and, var operands) && and ? operands : List.of(node);
+    }
+
+    /**
+     * Returns the comparison of two paths a term holds when it equates them, or {@code null} for any other term.
+     */
+    private static @Nullable PathExpression pathEquality(PredicateNode node) {
+        if (!(node instanceof Term(var template, var ignore))
+                || template.values().size() != 1
+                || template.fragments().stream().anyMatch(fragment -> !fragment.isBlank())) {
+            return null;
+        }
+        return template.values().getFirst() instanceof PathExpression expression && expression.operator() == EQUALS ? expression : null;
+    }
+
+    /**
+     * Returns the keys a comparison of two paths relates the joined table by, or {@code null} when it does not
+     * equate a key of the joined table with a key of another table.
+     */
+    private static @Nullable Keys keys(QueryTemplate queryTemplate,
+                                       Class<? extends Data> source,
+                                       Class<? extends Data> fromType,
+                                       PathExpression expression) {
         try {
-            var field = foreignKey(key);
-            var referenced = referenced(key, field);
-            if (anchorKey == null) {
-                if (key.root() == source) {
-                    return new Keys(referenced, field, null);
-                }
-                if (!references(queryTemplate, referenced, source)) {
-                    throw new PersistenceException("on(%1$s): %1$s references %2$s, not the joined %3$s. Name a key of %3$s, or a key referencing %3$s."
-                            .formatted(describe(key), referenced.getSimpleName(), source.getSimpleName()));
-                }
-                return new Keys(key.root(), null, field);
+            var left = key(expression.path());
+            var right = key(expression.other());
+            if (left == null || right == null) {
+                return null;
             }
-            if (key.root() != source) {
-                throw new PersistenceException("on(%1$s, %2$s): the first key is a key of the joined %3$s, and %1$s is a key of %4$s."
-                        .formatted(describe(key), describe(anchorKey), source.getSimpleName(), key.root().getSimpleName()));
+            if (left.holder() == source && right.holder() == source) {
+                // A filter join on the query's own table finds the rows holding the same key as the query's row.
+                return source == fromType && left.referenced() != null && left.field().equals(right.field())
+                        ? new Keys(left.referenced(), left.field(), null)
+                        : null;
             }
-            var anchorField = foreignKey(anchorKey);
-            var anchorReferenced = referenced(anchorKey, anchorField);
-            if (!references(queryTemplate, referenced, anchorReferenced)) {
-                throw new PersistenceException("on(%1$s, %2$s): the keys reference %3$s and %4$s, so no table relates %5$s and %6$s through them. Name two keys referencing the same table."
-                        .formatted(describe(key), describe(anchorKey), referenced.getSimpleName(), anchorReferenced.getSimpleName(),
-                                source.getSimpleName(), anchorKey.root().getSimpleName()));
+            if (left.holder() == source) {
+                return keys(queryTemplate, left, right);
             }
-            return new Keys(anchorKey.root(), field, anchorField);
+            if (right.holder() == source) {
+                return keys(queryTemplate, right, left);
+            }
+            return null;
         } catch (SqlTemplateException e) {
             throw new PersistenceException(e);
         }
     }
 
-    private static RecordField foreignKey(Metamodel<? extends Data, ?> key) throws SqlTemplateException {
-        var field = getRecordField(key.root(), key.fieldPath());
-        if (!field.isAnnotationPresent(FK.class)) {
-            throw new PersistenceException("on(%1$s): %1$s is not a foreign key. Name a field annotated @FK."
-                    .formatted(describe(key)));
+    /**
+     * Returns the keys a key of the joined table and a key of another table relate the tables by, or {@code null}
+     * when the keys do not relate them.
+     */
+    private static @Nullable Keys keys(QueryTemplate queryTemplate, Key joined, Key anchor) {
+        if (joined.referenced() != null && anchor.referenced() == null) {
+            return references(queryTemplate, joined.referenced(), anchor.holder())
+                    ? new Keys(anchor.holder(), joined.field(), null)
+                    : null;
         }
-        return field;
+        if (joined.referenced() == null && anchor.referenced() != null) {
+            return references(queryTemplate, anchor.referenced(), joined.holder())
+                    ? new Keys(anchor.holder(), null, anchor.field())
+                    : null;
+        }
+        if (joined.referenced() != null && anchor.referenced() != null) {
+            return references(queryTemplate, joined.referenced(), anchor.referenced())
+                    ? new Keys(anchor.holder(), joined.field(), anchor.field())
+                    : null;
+        }
+        return null;
+    }
+
+    /**
+     * Returns the key a path names: a foreign key of the table holding it, the primary key of that table, or the
+     * foreign key a path beyond it ends in, {@code Pet_.owner.id}. Returns {@code null} for any other column.
+     */
+    private static @Nullable Key key(Navigable<?, ?> path) throws SqlTemplateException {
+        if (!path.isColumn() || path.isInline()) {
+            return null;
+        }
+        var table = path.table();
+        if (!table.fieldPath().isEmpty()) {
+            var holder = table.tableType();
+            var foreignKey = getRecordField(holder, table.field());
+            var primaryKey = findPkField(table.fieldType());
+            if (foreignKey.isAnnotationPresent(FK.class) && primaryKey.isPresent()
+                    && primaryKey.get().name().equals(path.field())) {
+                return new Key(holder, foreignKey, referenced(foreignKey));
+            }
+        }
+        var holder = path.tableType();
+        var field = getRecordField(holder, path.field());
+        if (field.isAnnotationPresent(FK.class)) {
+            var referenced = referenced(field);
+            return referenced == null ? null : new Key(holder, field, referenced);
+        }
+        var primaryKey = findPkField(holder);
+        return primaryKey.isPresent() && primaryKey.get().equals(field) ? new Key(holder, field, null) : null;
     }
 
     @SuppressWarnings("unchecked")
-    private static Class<? extends Data> referenced(Metamodel<? extends Data, ?> key, RecordField field)
-            throws SqlTemplateException {
+    private static @Nullable Class<? extends Data> referenced(RecordField field) throws SqlTemplateException {
         Class<?> type = Ref.class.isAssignableFrom(field.type()) ? getRefDataType(field) : field.type();
-        if (!Data.class.isAssignableFrom(type)) {
-            throw new PersistenceException("on(%1$s): %1$s references %2$s, which is not a table."
-                    .formatted(describe(key), type.getSimpleName()));
-        }
-        return (Class<? extends Data>) type;
+        return Data.class.isAssignableFrom(type) ? (Class<? extends Data>) type : null;
     }
 
     /**
@@ -132,9 +225,5 @@ final class JoinKeys {
         var referencedModel = queryTemplate.model(referenced, false);
         var tableModel = queryTemplate.model(table, false);
         return referencedModel.name().equals(tableModel.name()) && referencedModel.schema().equals(tableModel.schema());
-    }
-
-    private static String describe(Metamodel<? extends Data, ?> key) {
-        return key.root().getSimpleName() + "_." + key.fieldPath();
     }
 }

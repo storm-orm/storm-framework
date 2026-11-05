@@ -39,6 +39,10 @@ import org.springframework.boot.test.autoconfigure.jdbc.JdbcTest;
 import org.springframework.test.context.ContextConfiguration;
 import org.springframework.test.context.junit.jupiter.SpringExtension;
 import st.orm.Data;
+import st.orm.Entity;
+import st.orm.FK;
+import st.orm.Metamodel;
+import st.orm.PK;
 import st.orm.PersistenceException;
 import st.orm.StormConfig;
 import st.orm.core.model.Address;
@@ -51,6 +55,7 @@ import st.orm.core.model.PetExtension_;
 import st.orm.core.model.PetPair;
 import st.orm.core.model.PetPair_;
 import st.orm.core.model.PetType;
+import st.orm.core.model.PetType_;
 import st.orm.core.model.PetVisitCount;
 import st.orm.core.model.Pet_;
 import st.orm.core.model.Tenant;
@@ -788,16 +793,16 @@ public class SemiJoinIntegrationTest {
     public void semiJoinOnANamedKeyFollowsThatKey() {
         // data.sql: the pairs are (1, 2), (3, 4) and (5, 6).
         var pets = capture(() -> orm().entity(Pet.class).select()
-                .semiJoin(PetPair.class).on(PetPair_.first)
+                .semiJoin(PetPair.class).on(it -> it.where(PetPair_.first.id, EQUALS, Pet_.id))
                 .getResultList());
         assertEquals(List.of("Iggy", "Leo", "Rosy"), petNames(pets));
         assertTrue(statement().contains("WHERE EXISTS (SELECT 1 FROM pet_pair pp WHERE pp.first_id = p.id)"), statement());
         assertEquals(List.of("Basil", "George", "Jewel"), petNames(orm().entity(Pet.class).select()
-                .semiJoin(PetPair.class).on(PetPair_.second)
+                .semiJoin(PetPair.class).on(it -> it.where(Pet_.id, EQUALS, PetPair_.second.id))
                 .getResultList()));
-        // A key of the table joined on, referencing the filtered table.
+        // A key of the table joined on, referencing the filtered table, with a condition beside the key.
         var owned = capture(() -> orm().entity(Pet.class).select()
-                .semiJoin(Owner.class).on(Pet_.owner, it -> it.where(Owner_.lastName, EQUALS, "Davis"))
+                .semiJoin(Owner.class).on(it -> it.where(Pet_.owner.id, EQUALS, Owner_.id).and(it.where(Owner_.lastName, EQUALS, "Davis")))
                 .getResultList());
         assertEquals(List.of("Iggy", "Leo"), petNames(owned));
         assertTrue(statement().contains("WHERE EXISTS (SELECT 1 FROM owner o1 WHERE o1.id = p.owner_id AND o1.last_name = ?)"), statement());
@@ -808,14 +813,14 @@ public class SemiJoinIntegrationTest {
         // The pairs whose second member is the pet of a spayed visit: Basil (2), Jewel (4) and George (6).
         var pets = capture(() -> orm().entity(Pet.class).select()
                 .semiJoin(Visit.class).on(Pet.class)
-                .semiJoin(PetPair.class).on(PetPair_.second, Visit_.pet)
+                .semiJoin(PetPair.class).on(it -> it.where(PetPair_.second, EQUALS, Visit_.pet))
                 .where(it -> it.where(Visit_.description, EQUALS, "spayed"))
                 .getResultList());
         assertEquals(List.of("Basil", "George", "Jewel"), petNames(pets));
         assertTrue(statement().contains("AND EXISTS (SELECT 1 FROM pet_pair pp WHERE pp.second_id = v.pet_id))"), statement());
         assertEquals(List.of("Leo", "Rosy", "Samantha"), petNames(orm().entity(Pet.class).select()
                 .semiJoin(Visit.class).on(Pet.class)
-                .antiJoin(PetPair.class).on(PetPair_.second, Visit_.pet)
+                .antiJoin(PetPair.class).on(it -> it.where(Visit_.pet, EQUALS, PetPair_.second))
                 .where(it -> it.where(Visit_.description, EQUALS, "spayed"))
                 .getResultList()));
     }
@@ -824,22 +829,22 @@ public class SemiJoinIntegrationTest {
     public void filterJoinOnATableHoldingTwoKeysToTheAnchorNamesTheKeyForm() {
         var e = assertThrows(PersistenceException.class, () -> orm().entity(Pet.class).select()
                 .antiJoin(PetPair.class).on(Pet.class));
-        assertTrue(e.getMessage().contains("antiJoin: PetPair references Pet through more than one foreign key (first, second), so the key to follow is ambiguous. Name it: on(PetPair_.first), with one antiJoin per key to follow each of them."), e.getMessage());
+        assertTrue(e.getMessage().contains("antiJoin: PetPair references Pet through more than one foreign key (first, second), so the key to follow is ambiguous. Name it: on(PetPair_.first.id eq Pet_.id), with one antiJoin per key to follow each of them."), e.getMessage());
     }
 
     @Test
     public void antiJoinPerKeyKeepsTheRowsNoKeyRefersTo() {
         // data.sql: the pairs are (1, 2), (3, 4) and (5, 6), so the pets from 7 on are in no pair.
         var pets = capture(() -> orm().entity(Pet.class).select()
-                .antiJoin(PetPair.class).on(PetPair_.first)
-                .antiJoin(PetPair.class).on(PetPair_.second)
+                .antiJoin(PetPair.class).on(it -> it.where(PetPair_.first.id, EQUALS, Pet_.id))
+                .antiJoin(PetPair.class).on(it -> it.where(PetPair_.second.id, EQUALS, Pet_.id))
                 .getResultList());
         assertEquals(List.of("Freddy", "Lucky", "Lucky", "Max", "Mulligan", "Samantha", "Sly"), petNames(pets));
         assertTrue(statement().contains("WHERE NOT EXISTS (SELECT 1 FROM pet_pair pp WHERE pp.first_id = p.id) AND NOT EXISTS (SELECT 1 FROM pet_pair pp WHERE pp.second_id = p.id)"), statement());
         // A semi-join per key keeps the rows both keys refer to, which no pair does.
         assertEquals(List.of(), petNames(orm().entity(Pet.class).select()
-                .semiJoin(PetPair.class).on(PetPair_.first)
-                .semiJoin(PetPair.class).on(PetPair_.second)
+                .semiJoin(PetPair.class).on(it -> it.where(PetPair_.first.id, EQUALS, Pet_.id))
+                .semiJoin(PetPair.class).on(it -> it.where(PetPair_.second.id, EQUALS, Pet_.id))
                 .getResultList()));
     }
 
@@ -859,24 +864,112 @@ public class SemiJoinIntegrationTest {
     public void semiJoinOnTheQueryTableOnANamedKey() {
         // The pairs sharing their first member with another pair: each pair matches itself.
         var pairs = capture(() -> orm().entity(PetPair.class).select()
-                .semiJoin(PetPair.class).on(PetPair_.first)
+                .semiJoin(PetPair.class).on(it -> it.where(PetPair_.first, EQUALS, PetPair_.first))
                 .getResultList());
         assertEquals(3, pairs.size());
         assertTrue(statement().contains(".first_id = pp.first_id)"), statement());
     }
 
     @Test
-    public void semiJoinOnNamedKeysRefusesKeysThatDoNotRelate() {
+    public void semiJoinOnAPredicateWithoutAKeyIsRefused() {
         var e = assertThrows(PersistenceException.class, () -> orm().entity(Pet.class).select()
-                .semiJoin(PetPair.class).on(PetPair_.first, Pet_.owner));
-        assertTrue(e.getMessage().contains("on(PetPair_.first, Pet_.owner): the keys reference Pet and Owner"), e.getMessage());
-        var swapped = assertThrows(PersistenceException.class, () -> orm().entity(Pet.class).select()
+                .semiJoin(PetPair.class).on(it -> it.where(PetPair_.first.id, EQUALS, Pet_.owner.id)));
+        assertTrue(e.getMessage().contains("semiJoin(PetPair): the predicate equates no key of PetPair with a key of another table, so it relates PetPair to no row of the query. State the relation as a key comparison: on(PetPair_.<key>.id eq <Table>_.id), or on(PetPair_.<key> eq <Table>_.<key>) where both keys reference one table."), e.getMessage());
+        // The primary keys of two tables relate them through no key.
+        var primaryKeys = assertThrows(PersistenceException.class, () -> orm().entity(Pet.class).select()
+                .semiJoin(PetPair.class).on(it -> it.where(PetPair_.id, EQUALS, Pet_.id)));
+        assertTrue(primaryKeys.getMessage().contains("semiJoin(PetPair): the predicate equates no key"), primaryKeys.getMessage());
+        // A predicate naming the joined table alone holds for every row of the query.
+        var alone = assertThrows(PersistenceException.class, () -> orm().entity(Pet.class).select()
+                .antiJoin(PetPair.class).on(it -> it.where(PetPair_.first.id, EQUALS, PetPair_.second.id)));
+        assertTrue(alone.getMessage().contains("antiJoin(PetPair): the predicate equates no key"), alone.getMessage());
+        // Either key refers to the row: an OR holds no key the subquery could correlate on.
+        var either = assertThrows(PersistenceException.class, () -> orm().entity(Pet.class).select()
+                .semiJoin(PetPair.class).on(it -> it.where(PetPair_.first.id, EQUALS, Pet_.id).or(it.where(PetPair_.second.id, EQUALS, Pet_.id))));
+        assertTrue(either.getMessage().contains("semiJoin(PetPair): the predicate equates no key"), either.getMessage());
+    }
+
+    @Test
+    public void semiJoinOnAPredicateTakesTheKeyFromAnyTerm() {
+        // The key match need not come first: the other terms are the condition on the related rows.
+        var pets = capture(() -> orm().entity(Pet.class).select()
+                .semiJoin(Visit.class).on(it -> it.where(Visit_.description, EQUALS, "spayed").and(it.where(Visit_.pet.id, EQUALS, Pet_.id)))
+                .getResultList());
+        assertEquals(List.of("Basil", "George", "Jewel", "Leo", "Rosy", "Samantha"), petNames(pets));
+        assertTrue(statement().contains("WHERE EXISTS (SELECT 1 FROM visit v WHERE v.pet_id = p.id AND v.description = ?)"), statement());
+    }
+
+    @Test
+    public void semiJoinOnAPredicateSkipsTheTermsEquatingNoKey() {
+        // An equality of two columns that are no keys, or of a column beyond a key, is a condition like any other.
+        var pets = capture(() -> orm().entity(Pet.class).select()
+                .semiJoin(Visit.class).on(it -> it.where(Visit_.description, EQUALS, Pet_.name)
+                        .and(it.where(Visit_.pet.id, EQUALS, Pet_.id)))
+                .getResultList());
+        assertEquals(List.of(), petNames(pets));
+        // The subquery joins the visit's pet, so a type reference to Pet names that occurrence, the same row as p.
+        assertTrue(statement().contains("INNER JOIN pet p1 ON v.pet_id = p1.id WHERE v.pet_id = p.id AND v.description = p1.name)"), statement());
+        // A column beyond the key names the row the key reaches.
+        var beyond = capture(() -> orm().entity(Pet.class).select()
+                .semiJoin(Visit.class).on(it -> it.where(Visit_.pet.name, EQUALS, Visit_.description)
+                        .and(it.where(Visit_.pet.id, EQUALS, Pet_.id)))
+                .getResultList());
+        assertEquals(List.of(), petNames(beyond));
+        assertTrue(statement().contains("INNER JOIN pet p1 ON v.pet_id = p1.id WHERE v.pet_id = p.id AND p1.name = v.description)"), statement());
+    }
+
+    @Test
+    public void semiJoinOnAPredicateRefusesKeysThatDoNotRelateTheTables() {
+        // Neither side belongs to the joined table.
+        var neither = assertThrows(PersistenceException.class, () -> orm().entity(Pet.class).select()
+                .semiJoin(PetPair.class).on(it -> it.where(Visit_.pet.id, EQUALS, Pet_.id)));
+        assertTrue(neither.getMessage().contains("semiJoin(PetPair): the predicate equates no key"), neither.getMessage());
+        // A key of the joined table equated with the primary key of a table it does not reference.
+        var otherTable = assertThrows(PersistenceException.class, () -> orm().entity(Pet.class).select()
+                .semiJoin(PetPair.class).on(it -> it.where(PetPair_.first.id, EQUALS, Owner_.id)));
+        assertTrue(otherTable.getMessage().contains("semiJoin(PetPair): the predicate equates no key"), otherTable.getMessage());
+        // The primary key of the joined table equated with a key referencing another table.
+        var otherKey = assertThrows(PersistenceException.class, () -> orm().entity(Pet.class).select()
+                .semiJoin(Owner.class).on(it -> it.where(Owner_.id, EQUALS, Pet_.type.id)));
+        assertTrue(otherKey.getMessage().contains("semiJoin(Owner): the predicate equates no key"), otherKey.getMessage());
+        // On the query's own table, two different keys of the table relate no row to the query's row.
+        var twoKeys = assertThrows(PersistenceException.class, () -> orm().entity(PetPair.class).select()
+                .semiJoin(PetPair.class).on(it -> it.where(PetPair_.first, EQUALS, PetPair_.second)));
+        assertTrue(twoKeys.getMessage().contains("semiJoin(PetPair): the predicate equates no key"), twoKeys.getMessage());
+    }
+
+    @Test
+    public void semiJoinOnTheQueryTableRefusesAKeyOfAnotherTable() {
+        record PairNote(@PK Integer id, @FK PetPair pair) implements Entity<Integer> {}
+        var pairId = Metamodel.<PairNote, Integer>of(PairNote.class, "pair.id");
+        var e = assertThrows(PersistenceException.class, () -> orm().entity(PetPair.class).select()
+                .semiJoin(PetPair.class).on(it -> it.where(PetPair_.id, EQUALS, pairId)));
+        assertTrue(e.getMessage().contains("semiJoin(PetPair).on(PairNote_.pair eq PetPair_.id): a semiJoin on the query's own table finds the PetPair rows that reference the same row as the query's row, which takes a key of PetPair equated with itself: on(PetPair_.<key> eq PetPair_.<key>)."), e.getMessage());
+    }
+
+    @Test
+    public void semiJoinOnTheQueryTableHoldingTwoKeysNamesTheSelfForm() {
+        var e = assertThrows(PersistenceException.class, () -> orm().entity(PetPair.class).select()
+                .semiJoin(PetPair.class).on(Pet.class));
+        assertTrue(e.getMessage().contains("Name it: on(PetPair_.first eq PetPair_.first), with one semiJoin per key"), e.getMessage());
+    }
+
+    @Test
+    public void semiJoinOnAPredicateOverARefKey() {
+        // A key held as a Ref compares through the key beyond it as an entity key does.
+        var pets = capture(() -> orm().entity(Pet.class).select()
+                .semiJoin(PetType.class).on(it -> it.where(Pet_.type.id, EQUALS, PetType_.id).and(it.where(PetType_.name, EQUALS, "dog")))
+                .getResultList());
+        assertEquals(4, pets.size());
+        assertTrue(statement().contains("WHERE EXISTS (SELECT 1 FROM pet_type pt WHERE pt.id = p.type_id AND pt.name = ?)"), statement());
+    }
+
+    @Test
+    public void filterJoinSharingTwoPairsOfKeysNamesThePairForm() {
+        var e = assertThrows(PersistenceException.class, () -> orm().entity(Pet.class).select()
                 .semiJoin(Visit.class).on(Pet.class)
-                .semiJoin(PetPair.class).on(Visit_.pet, PetPair_.first));
-        assertTrue(swapped.getMessage().contains("on(Visit_.pet, PetPair_.first): the first key is a key of the joined PetPair, and Visit_.pet is a key of Visit"), swapped.getMessage());
-        var notAKey = assertThrows(PersistenceException.class, () -> orm().entity(Pet.class).select()
-                .semiJoin(PetPair.class).on(Pet_.name));
-        assertTrue(notAKey.getMessage().contains("Pet_.name is not a foreign key"), notAKey.getMessage());
+                .semiJoin(PetPair.class).on(Visit.class));
+        assertTrue(e.getMessage().contains("Name the pair: on(PetPair_.<key> eq Visit_.<key>)"), e.getMessage());
     }
 
     @Test

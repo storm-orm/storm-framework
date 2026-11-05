@@ -745,6 +745,38 @@ public class QueryBuilderTest {
     }
 
     @Test
+    public void testColumnsCompareInWhereAndHaving() {
+        List<Pet> pets = orm.entity(Pet.class).select()
+                .where(Pet_.owner.firstName, NOT_EQUALS, Pet_.name)
+                .getResultList();
+        assertEquals(orm.entity(Pet.class).select().where(Pet_.owner.firstName, IS_NOT_NULL).getResultList(), pets);
+        List<Long> counts = orm.selectFrom(Owner.class, Long.class, RAW."COUNT(*)")
+                .groupBy(Owner_.firstName, Owner_.lastName)
+                .having(Owner_.firstName, NOT_EQUALS, Owner_.lastName)
+                .getResultList();
+        assertEquals(orm.entity(Owner.class).select().getResultCount(), counts.size());
+    }
+
+    @Test
+    public void testJoinTakesAPredicateAsItsRelation() {
+        // The predicate states the relation: the key it equates and the condition beside it.
+        List<Pet> pets = orm.entity(Pet.class).select()
+                .semiJoin(Visit.class).on(it -> it.where(Visit_.pet.id, EQUALS, Pet_.id).and(it.where(Visit_.description, EQUALS, "spayed")))
+                .getResultList();
+        assertEquals(orm.entity(Pet.class).select()
+                .semiJoin(Visit.class).on(Pet.class, it -> it.where(Visit_.description, EQUALS, "spayed"))
+                .getResultList(), pets);
+        assertFalse(pets.isEmpty());
+        List<Owner> owners = orm.entity(Owner.class).select()
+                .innerJoin(Pet.class).on(it -> it.where(Pet_.owner.id, EQUALS, Owner_.id))
+                .getResultList();
+        assertEquals(orm.entity(Owner.class).select().innerJoin(Pet.class).on(Owner.class).getResultList(), owners);
+        var exception = assertThrows(PersistenceException.class, () -> orm.entity(Pet.class).select()
+                .antiJoin(Visit.class).on(it -> it.where(Visit_.id, GREATER_THAN, Pet_.id)));
+        assertTrue(exception.getMessage().contains("antiJoin(Visit): the predicate equates no key of Visit"), exception.getMessage());
+    }
+
+    @Test
     public void testSemiJoinHoldsConditionsJoinedByAndToOneRelatedRow() {
         List<Owner> owners = orm.entity(Owner.class).select()
                 .semiJoin(Pet.class).on(Owner.class)

@@ -323,6 +323,17 @@ public final class Elements {
     }
     /** An ON condition supplied as a template fragment. */
     public record TemplateTarget(TemplateString template) implements Target {}
+    /**
+     * An ON condition supplied as a predicate that relates the joined table through no key the join could resolve,
+     * so the predicate is the whole condition.
+     *
+     * @param predicate the predicate.
+     */
+    public record PredicateTarget(PredicateNode predicate) implements Target {
+        public PredicateTarget {
+            requireNonNull(predicate, "predicate");
+        }
+    }
 
     /**
      * Renders the FROM clause: the source under the given alias (empty derives one). With {@code autoJoin}, the

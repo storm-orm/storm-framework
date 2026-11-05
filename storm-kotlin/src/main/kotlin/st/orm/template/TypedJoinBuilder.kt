@@ -16,7 +16,6 @@
 package st.orm.template
 
 import st.orm.Data
-import st.orm.Metamodel
 import kotlin.reflect.KClass
 
 /**
@@ -103,67 +102,23 @@ public abstract class TypedJoinBuilder<T : Data, R : Any, ID : Any> : JoinBuilde
     ): QueryBuilder<Data, R, ID> = on(O::class, condition)
 
     /**
-     * Specifies the foreign key to join on, where the table holds more than one key to the table joined on. A key
-     * of the joined table joins the table it references; a key of another table joins that table, and must reference
-     * the joined table.
+     * Specifies the relation to join on as a predicate, which states it as a whole: the keys it equates and any
+     * condition on the joined rows. A term equating a key of the joined table with a key of another table, a
+     * foreign key with the primary key it references, `Transfer_.to.id eq Owner_.id`, or two foreign keys
+     * referencing one table, `Invoice_.pet eq Visit_.pet`, is the key the join resolves by; the remaining terms are
+     * its condition. An inner or left join takes any predicate; a semi-join or anti-join takes one equating a key of
+     * the joined table with a key of the table to join on.
      *
      * ```kotlin
-     * orm.entity(Owner::class)
+     * val visits = orm.entity(Visit::class)
      *     .select()
-     *     .semiJoin<Transfer>().on(Transfer_.to)
+     *     .semiJoin<Invoice>().on((Invoice_.pet eq Visit_.pet) and (Invoice_.vet eq Visit_.vet))
      *     .resultList
      * ```
      *
-     * @param key a foreign key of the joined table, or of the table to join on.
+     * @param predicate the predicate relating the joined rows to the rows they join.
      * @return the query builder.
      * @since 1.16
      */
-    public abstract fun on(key: Metamodel<out Data, *>): QueryBuilder<Data, R, ID>
-
-    /**
-     * Specifies the foreign key to join on, with a condition the join adds to the key it joins by.
-     *
-     * @param key a foreign key of the joined table, or of the table to join on.
-     * @param condition the condition on the joined rows.
-     * @return the query builder.
-     * @since 1.16
-     */
-    public abstract fun on(
-        key: Metamodel<out Data, *>,
-        condition: WhereBuilder<Data, R, ID>.() -> PredicateBuilder<out Data, *, *>,
-    ): QueryBuilder<Data, R, ID>
-
-    /**
-     * Specifies the foreign keys to join on, where neither table references the other and both hold a key to one
-     * table: the join matches the two keys with each other.
-     *
-     * ```kotlin
-     * orm.entity(Pet::class)
-     *     .select()
-     *     .semiJoin<Visit>().on<Pet>()
-     *     .semiJoin<Transfer>().on(Transfer_.pet, Visit_.pet)
-     *     .resultList
-     * ```
-     *
-     * @param key a foreign key of the joined table.
-     * @param anchorKey a foreign key of the table to join on, referencing the table [key] references.
-     * @return the query builder.
-     * @since 1.16
-     */
-    public abstract fun on(key: Metamodel<out Data, *>, anchorKey: Metamodel<out Data, *>): QueryBuilder<Data, R, ID>
-
-    /**
-     * Specifies the foreign keys to join on, with a condition the join adds to the keys it joins by.
-     *
-     * @param key a foreign key of the joined table.
-     * @param anchorKey a foreign key of the table to join on, referencing the table [key] references.
-     * @param condition the condition on the joined rows.
-     * @return the query builder.
-     * @since 1.16
-     */
-    public abstract fun on(
-        key: Metamodel<out Data, *>,
-        anchorKey: Metamodel<out Data, *>,
-        condition: WhereBuilder<Data, R, ID>.() -> PredicateBuilder<out Data, *, *>,
-    ): QueryBuilder<Data, R, ID>
+    public abstract fun on(predicate: PredicateBuilder<out Data, *, *>): QueryBuilder<Data, R, ID>
 }
