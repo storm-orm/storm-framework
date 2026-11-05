@@ -319,14 +319,33 @@ final class AliasMapper {
     public Optional<String> findAlias(Class<? extends Data> root,
                                       Class<? extends Data> table,
                                       String path) throws SqlTemplateException {
-        var placement = placement(root, INNER);
+        return findAlias(root, table, path, INNER);
+    }
+
+    /**
+     * Returns the alias of the table at the path of a metamodel rooted at {@code root}, resolved in the given scope:
+     * at the current nesting level, in the enclosing levels only, or in the nearest level that registers the root.
+     * The path is placed as {@link #findAlias(Class, Class, String)} places it, at the level the scope selects.
+     *
+     * @param root the table the path is rooted at.
+     * @param table the table at the end of the path.
+     * @param path the path from the root to the table.
+     * @param scope the scope to resolve the alias in.
+     * @return the alias, or empty when the table is not registered at the path in the scope.
+     * @throws SqlTemplateException if the alias is ambiguous.
+     */
+    public Optional<String> findAlias(Class<? extends Data> root,
+                                      Class<? extends Data> table,
+                                      String path,
+                                      ResolveScope scope) throws SqlTemplateException {
+        var placement = placement(root, scope);
         if (path.isEmpty()) {
             return placement.prefix().isEmpty()
-                    ? findAlias(table, null, INNER)
-                    : findAlias(table, placement.prefix(), null, INNER);
+                    ? findAlias(table, null, scope)
+                    : findAlias(table, placement.prefix(), null, scope);
         }
         return findAlias(table, placement.prefix().isEmpty() ? path : placement.prefix() + "." + path,
-                placement.origin(), INNER);
+                placement.origin(), scope);
     }
 
     /**

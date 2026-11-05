@@ -135,7 +135,7 @@ val users = orm.entity(User::class)
 Builder quick reference:
 - Compound filters: `(A eq x) and (B eq y)`, `(A eq x) or (B eq y)`.
 - Nested paths: `User_.city.country.code eq "US"`.
-- Compare a column with a column of the query by putting a path on the right: `Visit_.vet eq Visit_.pet.regularVet`, in `where`, `having` and a join condition `on(Invoice_.pet, Visit_.pet) { Invoice_.vet eq Visit_.vet }`. `neq`, `less`, `lessEq`, `greater` and `greaterEq` take a path too. A key compares with a key to the same table; never write such a comparison as a template.
+- Compare a column with a column of the query by putting a path on the right: `Visit_.vet eq Visit_.pet.regularVet`, in `where`, `having` and a join condition `on(Invoice_.pet, Visit_.pet) { Invoice_.vet eq Visit_.vet }`, on a semi-join or anti-join as well. `neq`, `less`, `lessEq`, `greater` and `greaterEq` take a path too. A key compares with a key to the same table, and the key beyond a foreign key is that key, `Pet_.owner.id` is `p.owner_id`; never write such a comparison as a template.
 - Ordering: `.orderBy(User_.name)`, `.orderByDescending(User_.createdAt)`.
 - Pagination: `.page(0, 20)` or `.page(Pageable.ofSize(20).sortBy(User_.name))`. Page API methods are Java record accessors, so always call them with `()`: `page.content()`, `page.totalPages()`, `page.totalCount()`, `page.pageNumber()`, `page.pageSize()`, `page.hasNext()`, `page.hasPrevious()`, `page.next()`.
 - Scrolling (keyset, better for large tables): `.scroll(Scrollable.of(User_.id, 20))`. Never combine it with `orderBy()`: the `Scrollable` manages ORDER BY (see **Keyset Scrolling**).
@@ -1075,7 +1075,7 @@ QueryBuilder terminals:
 Critical rules:
 - **QueryBuilder is IMMUTABLE.** Every method returns a new instance. Always use the return value (or use the `select { }` DSL, which handles this automatically).
 - **Streaming:** `select().resultFlow` returns a Flow with automatic cleanup. There are no `selectBy` methods that return Flow/Stream directly: use `select()` (optionally with predicate or block DSL) and then `.resultFlow`, `.resultStream` or `.windows(size)`.
-- **Metamodel navigation depth**: Multiple levels of navigation are allowed on the root entity and on an explicitly joined entity alike: a path from a joined table joins the tables it reaches on demand, after the join, at any depth. A path from a table joined twice is refused: reach the table through a path from the root, or join it once. A path a semi-joined or anti-joined table reaches is joined inside its subquery.
+- **Metamodel navigation depth**: Multiple levels of navigation are allowed on the root entity and on an explicitly joined entity alike: a path from a joined table joins the tables it reaches on demand, after the join, at any depth. A path from a table joined twice is refused: reach the table through a path from the root, or join it once. A path a semi-joined or anti-joined table reaches is joined inside its subquery, and a path on a table of the query itself names the query's row there. The key beyond a foreign key, `Pet_.owner.id`, is the key column of the table holding it and joins nothing.
 - **Use `Ref` for map keys and set membership**: Prefer `Ref<Entity>` (via `.ref()`) for map keys, set membership, and identity-based lookups. `Ref` provides identity-based `equals`/`hashCode` on the primary key:
   ```kotlin
   val countMap: MutableMap<Ref<Cell>, MutableMap<String, Int>> = mutableMapOf()

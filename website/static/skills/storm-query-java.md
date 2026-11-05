@@ -128,7 +128,7 @@ Builder quick reference:
 - Streaming: `.getResultStream()` is consume-only while rows remain; a loop that queries or writes per row uses `.windows(size)` (see **Streams and the Connection**).
 - Explicit joins: `.innerJoin(Entity.class).on(OtherEntity.class)`, `.leftJoin(Entity.class).on(OtherEntity.class)`, `.rightJoin(Entity.class).on(OtherEntity.class)`.
 - A condition on the join: `.leftJoin(Pet.class).on(Owner.class, it -> it.where(Pet_.name, EQUALS, "Leo"))` adds the condition to the resolved foreign key. On a left join it keeps the rows without a match, which the same condition in `where` would drop.
-- Compare a column with a column of the query by passing a path in place of the value: `.where(Visit_.vet, EQUALS, Visit_.pet.regularVet)`, in `where`, `having` and a join condition. A key compares with a key to the same table; never write such a comparison as a template.
+- Compare a column with a column of the query by passing a path in place of the value: `.where(Visit_.vet, EQUALS, Visit_.pet.regularVet)`, in `where`, `having` and a join condition, on a semi-join or anti-join as well. A key compares with a key to the same table, and the key beyond a foreign key is that key, `Pet_.owner.id` is `p.owner_id`; never write such a comparison as a template.
 - Filtering by related rows: `.semiJoin(Pet.class).on(Owner.class)` keeps the rows with a related row matching the conditions that name it, each once; `.antiJoin(Visit.class).on(Pet.class, it -> it.where(Visit_.description, EQUALS, "rabies shot"))` keeps the rows without one.
 - Result type: `.select(ResultType.class)` returns a different type than the root entity.
 
@@ -850,7 +850,7 @@ QueryBuilder terminals:
 Critical rules:
 - **QueryBuilder is IMMUTABLE.** Every method returns a new instance. Always use the return value.
 - **Streaming:** ALWAYS close a `getResultStream()` with try-with-resources to avoid connection leaks. There are no `selectBy` methods that return Stream directly: use `select()` and then `.getResultStream()`.
-- **Metamodel navigation depth**: Multiple levels of navigation are allowed on the root entity and on an explicitly joined entity alike: a path from a joined table joins the tables it reaches on demand, after the join, at any depth. A path from a table joined twice is refused: reach the table through a path from the root, or join it once. A path a semi-joined or anti-joined table reaches is joined inside its subquery.
+- **Metamodel navigation depth**: Multiple levels of navigation are allowed on the root entity and on an explicitly joined entity alike: a path from a joined table joins the tables it reaches on demand, after the join, at any depth. A path from a table joined twice is refused: reach the table through a path from the root, or join it once. A path a semi-joined or anti-joined table reaches is joined inside its subquery, and a path on a table of the query itself names the query's row there. The key beyond a foreign key, `Pet_.owner.id`, is the key column of the table holding it and joins nothing.
 - **Use `Ref` for map keys and set membership**: Prefer `Ref<Entity>` (via `.ref()`) for map keys, set membership, and identity-based lookups. `Ref` provides identity-based `equals`/`hashCode` on the primary key.
 - **Typed ID from `Ref`:** Use `Ref.entityId(ref)` to extract a type-safe ID. For projections, use `Ref.projectionId(ref)`. Avoid `ref.id()`: it returns `Object` and requires an unsafe cast.
 
