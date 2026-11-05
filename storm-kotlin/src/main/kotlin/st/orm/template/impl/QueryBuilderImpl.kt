@@ -296,25 +296,14 @@ internal class QueryBuilderImpl<T : Data, R : Any, ID : Any>(
     private fun typedJoin(joinBuilder: CoreTypedJoinBuilder<T, R, ID>): TypedJoinBuilder<T, R, ID> = object : TypedJoinBuilder<T, R, ID>() {
         override fun on(relation: KClass<out Data>): QueryBuilder<Data, R, ID> = QueryBuilderImpl(joinBuilder.on(relation.java))
 
-        override fun on(
-            relation: KClass<out Data>,
-            condition: WhereBuilder<Data, R, ID>.() -> PredicateBuilder<out Data, *, *>,
-        ): QueryBuilder<Data, R, ID> = QueryBuilderImpl(joinBuilder.on(relation.java, core(condition)))
+        override fun on(relation: KClass<out Data>, condition: PredicateBuilder<out Data, *, *>): QueryBuilder<Data, R, ID> = QueryBuilderImpl(joinBuilder.on(relation.java, Function { core(condition) }))
 
         override fun on(template: TemplateString): QueryBuilder<Data, R, ID> = QueryBuilderImpl<Data, R, ID>(joinBuilder.on(template.unwrap))
 
-        override fun on(predicate: PredicateBuilder<out Data, *, *>): QueryBuilder<Data, R, ID> {
-            @Suppress("UNCHECKED_CAST")
-            val core = (predicate as PredicateBuilderImpl<Data, *, *>).core as CorePredicateBuilder<Data, *, *>
-            return QueryBuilderImpl(joinBuilder.on(Function { core }))
-        }
+        override fun on(predicate: PredicateBuilder<out Data, *, *>): QueryBuilder<Data, R, ID> = QueryBuilderImpl(joinBuilder.on(Function { core(predicate) }))
 
-        private fun core(
-            condition: WhereBuilder<Data, R, ID>.() -> PredicateBuilder<out Data, *, *>,
-        ): Function<CoreWhereBuilder<Data, R, ID>, CorePredicateBuilder<Data, *, *>> = Function { whereBuilder ->
-            @Suppress("UNCHECKED_CAST")
-            (condition(WhereBuilderImpl(whereBuilder)) as PredicateBuilderImpl<Data, *, *>).core as CorePredicateBuilder<Data, *, *>
-        }
+        @Suppress("UNCHECKED_CAST")
+        private fun core(predicate: PredicateBuilder<out Data, *, *>): CorePredicateBuilder<Data, *, *> = (predicate as PredicateBuilderImpl<Data, *, *>).core as CorePredicateBuilder<Data, *, *>
     }
 
     /**
