@@ -773,7 +773,7 @@ public final class PreparedStatementTemplateImpl implements PreparedStatementTem
 
     private Query createQuery(Sql sql, SqlDialect dialect) {
         var bindVariables = sql.bindVariables().orElse(null);
-        // Advice and index demands travel with Storm's own statements; a statement an interceptor built carries none.
+        // Advice and index usage travels with Storm's own statements; a statement an interceptor built carries none.
         var impl = sql instanceof SqlImpl it ? it : null;
         var environment = new QueryImpl.Environment(
                 refFactory,
@@ -791,7 +791,7 @@ public final class PreparedStatementTemplateImpl implements PreparedStatementTem
                 sql.parameters(),
                 strategies.sqlCommenter(),
                 impl != null ? impl.advisories() : List.of(),
-                impl != null ? impl.indexDemands() : null,
+                impl != null ? impl.indexUsage() : null,
                 dataSource,
                 dialect);
         return new QueryImpl(environment, unsafe -> {

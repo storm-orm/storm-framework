@@ -237,10 +237,10 @@ public class SqlImplTest {
     }
 
     @Test
-    public void testIndexDemandsSurviveTheCopies() {
-        var builder = new IndexDemands.Builder();
-        builder.add("", "users", "email", IndexDemands.Kind.EQUALITY);
-        var demands = builder.build();
+    public void testIndexUsageSurvivesTheCopies() {
+        var builder = new IndexUsage.Builder();
+        builder.add("", "users", "email", IndexUsage.Kind.EQUALITY);
+        var usage = builder.build();
         var sql = new SqlImpl(
                 SqlOperation.SELECT,
                 false,
@@ -254,8 +254,8 @@ public class SqlImplTest {
                 List.of(),
                 false,
                 Optional.empty(), StatementOrigin.DIRECT, 0L
-        , List.of(), demands);
-        assertSame(demands, ((SqlImpl) sql.shapeId(7L)).indexDemands());
-        assertSame(demands, ((SqlImpl) sql.statement("SELECT 1")).indexDemands());
+        , List.of(), usage);
+        assertSame(usage, ((SqlImpl) sql.shapeId(7L)).indexUsage());
+        assertSame(usage, ((SqlImpl) sql.statement("SELECT 1")).indexUsage());
     }
 }

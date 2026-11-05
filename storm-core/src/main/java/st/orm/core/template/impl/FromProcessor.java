@@ -19,6 +19,7 @@ import static st.orm.core.template.impl.RecordReflection.getTableName;
 
 import java.util.List;
 import java.util.function.Function;
+import org.jspecify.annotations.Nullable;
 import st.orm.SqlTemplateException;
 import st.orm.core.template.TemplateString;
 import st.orm.core.template.impl.Elements.From;
@@ -42,7 +43,7 @@ final class FromProcessor implements ElementProcessor<From> {
      * @return an immutable key for caching, or {@code null} if the element or its compilation cannot be cached.
      */
     @Override
-    public Object getCompilationKey(From from, Function<TemplateString, Object> keyGenerator) {
+    public @Nullable Object getCompilationKey(From from, Function<TemplateString, @Nullable Object> keyGenerator) {
         if (from.source() instanceof TemplateSource(var template)) {
             var key = keyGenerator.apply(template);
             return key == null ? null : List.of(key, from.alias(), from.autoJoin());

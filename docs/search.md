@@ -9,11 +9,12 @@ Most applications have a search box somewhere: a movie catalog searched by title
 |------------------|-----|
 | A search results page: the user submits a few words, and every word narrows the results | [`search`](#searching-text) |
 | A type-ahead or auto-complete box that queries as the user types | [`suggest`](#suggestions-as-the-user-types), with a limit |
+| A column that should match a word as a prefix or as the whole value, or a title where a word should match inside a compound | [a match form per column](#match-forms) |
 | A search that also matches related rows, such as an owner found by a pet's name | [`search` with a semi-join](#searching-related-rows) |
 | Results with the best matches on top, such as an exact title before a partial one | [`orderFirst`](#ranking-the-matches) |
 | A search where "leon" finds "Léon" | [`SqlFunction`](#ignoring-accents) over an accent-removing function |
 
-A search that is fast on test data can read every row of a production-sized table; [Indexing a Search](#indexing-a-search) covers the index that keeps it fast.
+A search that is fast on test data can read every row of a production-sized table; [Indexing a Search](#indexing-a-search) covers the index that keeps it fast, and [Large Tables Without a Substring Index](#large-tables-without-a-substring-index) the table that stands in for one.
 
 ## Searching Text
 
@@ -57,15 +58,15 @@ WHERE (LOWER(m.title) LIKE LOWER(?) ESCAPE '!' OR LOWER(d.name) LIKE LOWER(?) ES
 |-------|-------|
 | `ugly bad` | `ugly`, `bad` |
 | `"the good" ugly` | `the good`, `ugly`: a quoted phrase is one word |
-| `50% a_b` | `50%`, `a_b`, matched literally |
-| `"ugly` | `"ugly`: an unpaired quote is an ordinary character |
+| `"the good` | `the good`: a quote at the start of a word opens a phrase that runs to the next quote, or to the end of the input while the user is still typing it |
+| `50% a_b 12"` | `50%`, `a_b`, `12"`, matched literally: a quote inside a word is an ordinary character |
 | empty or blank | none: the predicate matches every row |
 
-`search` matches words; it does not rank the rows it finds, and it does not stem words the way a full-text index does. To put the closest matches first, see [Ranking the Matches](#ranking-the-matches). Accents follow the column's collation; see [Ignoring Accents](#ignoring-accents).
+`search` and `suggest` read the input the same way, so a box that suggests while typing and searches on Enter sees the same words in both. `search` matches words; it does not rank the rows it finds, and it does not stem words the way a full-text index does. To put the closest matches first, see [Ranking the Matches](#ranking-the-matches). Accents follow the column's collation; see [Ignoring Accents](#ignoring-accents).
 
 ## Suggestions as the User Types
 
-A type-ahead box queries as the user types and shows a handful of matches under the input: the user types `de n` on the way to `de niro`, and the box queries along the way. A debounce, which waits for a short pause in typing before it queries, keeps that to a few queries rather than one per keystroke, but the pauses still fall on unfinished words. Those queries run far more often than a search page's, on inputs such as `de` or `de n`, so each one must stay cheap however little has been typed. Such a box uses `suggest` instead of `search`. It takes the same input and paths, and matches every word of two characters or more in the form the database's index serves, so that every statement it renders is served by an index: on a database with a substring index, a word anywhere from the length the index serves and at the start of a word below that; elsewhere, a word as a prefix of the column, which an ordinary index over the column serves. A one-character word takes no part, and an input without a word that takes part, an empty one included, matches no rows.
+A type-ahead box queries as the user types and shows a handful of matches under the input: the user types `de n` on the way to `de niro`, and the box queries along the way. A debounce, which waits for a short pause in typing before it queries, keeps that to a few queries rather than one per keystroke, but the pauses still fall on unfinished words. Those queries run far more often than a search page's, on inputs such as `de` or `de n`, so each one must stay cheap however little has been typed. Such a box uses `suggest` instead of `search`. It takes the same input and columns, and matches every word of two characters or more at the start of a word: the start of the value, or the text after a space or a punctuation character that joins or separates words. A one-character word takes no part, and an input without a word that takes part, an empty one included, matches no rows, so the box never fetches and sorts a whole table on the first keystroke.
 
 <Tabs groupId="language">
 <TabItem value="kotlin" label="Kotlin" default>
@@ -92,16 +93,18 @@ List<Movie> suggestions = orm.entity(Movie.class)
 </TabItem>
 </Tabs>
 
-| Input | `search` | `suggest` on PostgreSQL, with a trigram index | `suggest` elsewhere, with an index over the column |
-|-------|----------|-----------|-----------|
-| `de niro` | every word, anywhere: `de` and `niro` | `niro` anywhere, `de` at the start of a word | `de` and `niro`, each a prefix of the column |
-| `de` | `de` anywhere, reading every row | `de` at the start of a word: "De Niro", not "Alfredo" | `de` as a prefix: "De Niro", not "Robert De Niro" |
-| `d` | `d` anywhere, reading every row | no rows | no rows |
-| empty or blank | every row | no rows | no rows |
+The two functions read the input alike and differ in what they do with it, the same on every database:
 
-Which form the database serves is the dialect's to say. PostgreSQL's trigram index serves a word anywhere from three characters, and at the start of a word below that, since the space before a word counts as a character to it; `storm.search.min_term_length` states another length for an index of a different kind. The other databases have no index that serves a substring, and an ordinary index over the column serves a prefix of it, so `suggest` matches a prefix there, with the column left bare and the word lowered: `title LIKE ?`, since `LOWER(title)` would lose the index. The column must then compare case-insensitively on its own: a case-insensitive collation, the default on MySQL, MariaDB and SQL Server, an index with the `NOCASE` collation on SQLite, or a stored lowered column declared as a [query column](entities.md#query-columns) on H2 and Oracle, which the lowered word matches as typed.
+| Input | `search` | `suggest` |
+|-------|----------|-----------|
+| `de niro` | both words, anywhere | both words, at the start of a word: "Robert De Niro", not "Alfredo" |
+| `de` | `de` anywhere: "De Niro" and "Alfredo" | `de` at the start of a word: "De Niro" |
+| `d` | `d` anywhere | no rows: a one-character word takes no part |
+| empty or blank | every row | no rows |
 
-A one-character word takes no part, whatever the index serves: it names a twenty-sixth of the rows, and the box orders what it finds, so the database would fetch and sort them all before the limit cut the list to a handful. A conformance test per database creates the index named here and reads the database's own plan to find the suggestion served by it. The search page the box leads to keeps `search`, which matches every word. Where a word starts to match anywhere is the dialect's to say: from three characters on PostgreSQL, whose trigram index needs three; the other databases match a prefix of the column instead. The `storm.search.min_term_length` property sets another length, for an index of a different kind.
+The empty-input contract is why both exist. A results page with an empty box lists everything; a suggestion box with an empty box lists nothing. The default match form follows the situation: a person typing into a box types the start of a word, in any order, so `suggest` matches word starts, and a submitted search should find every row the words occur in, so `search` matches anywhere. Either function takes another form per column; see [Match Forms](#match-forms).
+
+A word starts the value or follows a space, a hyphen, an apostrophe, an opening parenthesis, a slash, a colon, a period or a comma, so `man` suggests "Spider-Man", `claude` "Jean-Claude Van Damme" and `connor` "Sinéad O'Connor". The same set applies on every database. A word does not match inside a compound: `father` does not suggest "The Godfather", and `fellas` not "Goodfellas", although the search page the box leads to finds both through `search`. Where matches inside a word matter for a column, such as a title, state `anywhere` for that column and keep the word start for names; see [Match Forms](#match-forms).
 
 ### Ignoring Words
 
@@ -136,15 +139,65 @@ List<Movie> suggestions = orm.entity(Movie.class)
 </TabItem>
 </Tabs>
 
-An ignored word is treated as a short word is: it takes no part in the predicate, compared ignoring case as the words themselves match, and an input without a remaining word matches no rows. A quoted phrase is one word, ignored when it equals an ignored word, not when it contains one.
+An ignored word is treated as a short word is: it takes no part in the predicate, compared ignoring case as the words themselves match, and an input without a remaining word matches no rows. The ignored words apply to bare words only: a quoted word is an explicit request, and is never ignored.
 
 | Input | Words `suggest` matches |
 |-------|----------|
 | `the god` | `god`: finds "The Godfather" and "City of God" |
 | `The` | none: no rows |
+| `"the"` | `the`: quoted, so it counts |
 | `"the good"` | `the good`: the phrase is one word |
 
 The set is a constant next to the box that uses it, typed by hand for most boxes. Where the catalog is large enough to measure, a query over the column counts the words and the set holds those that occur in more rows than the box shows. `search` takes no such set: on a results page a frequent word next to a longer one costs nothing and still narrows correctly, and a page of every title with `the` in it is a broad but legitimate query.
+
+## Match Forms
+
+Each column states how a word matches it. The plain overloads use one form for every column, the default of the function; the overloads that take a match per column state the form for each, through the `anywhere`, `wordStart`, `prefix` and `exact` factories. A call is either all defaults or all stated.
+
+| Match | A typed word matches | Renders | Default for |
+|-------|----------------------|---------|-------------|
+| `anywhere` | anywhere in the value | `LOWER(col) LIKE '%bad%'` | `search` |
+| `wordStart` | the start of any word in the value | `LOWER(col) LIKE 'bad%' OR LOWER(col) LIKE '% bad%'`, and one more `LIKE` per separator | `suggest` |
+| `prefix` | the start of the value | `col LIKE 'bad%'`, the column bare and the word lowered | |
+| `exact` | the whole value | `col = 'bad'`, the column bare and the word lowered | |
+
+<Tabs groupId="language">
+<TabItem value="kotlin" label="Kotlin" default>
+
+```kotlin
+val suggestions = orm.entity(Movie::class)
+    .select()
+    .where(suggest(input, wordStart(Movie_.title), wordStart(Movie_.director.name), exact(Movie_.titleLower)))
+    .orderFirst(Movie_.title startsWithIgnoreCase input)
+    .orderBy(Movie_.title)
+    .limit(8)
+    .resultList
+```
+
+</TabItem>
+<TabItem value="java" label="Java">
+
+```java
+import static st.orm.Match.*;
+
+List<Movie> suggestions = orm.entity(Movie.class)
+    .select()
+    .where(it -> it.suggest(input, wordStart(Movie_.title), wordStart(Movie_.director.name), exact(Movie_.titleLower)))
+    .orderFirst(it -> it.where(Movie_.title, STARTS_WITH_IGNORE_CASE, input))
+    .orderBy(Movie_.title)
+    .limit(8)
+    .getResultList();
+```
+
+</TabItem>
+</Tabs>
+
+Every form compares ignoring case and matches the word as literal text, and each renders the same SQL on every database, so the rows found are the same everywhere. A phrase is one word in every form: `wordStart` with `"the good"` matches a value with a word starting `the good`, and `exact` with `"grown ups"` the value `grown ups`.
+
+- **`anywhere` and `wordStart`** lower the column, so the index that serves them is one built for substring matching over `LOWER(col)`; see [Indexing a Search](#indexing-a-search). A word at a word start is a word anywhere with a separator in front of it, so the same index serves both.
+- **`prefix` and `exact`** leave the column bare and lower the word, so an ordinary index over the column serves them: `title LIKE ?`, since `LOWER(title)` would lose the index. The column must then compare case-insensitively on its own: a case-insensitive collation, the default on MySQL, MariaDB and SQL Server and `COLLATE NOCASE` on the column on SQLite, or a stored lowered column declared as a [query column](entities.md#query-columns) on PostgreSQL, H2 and Oracle, which the lowered word matches as typed. A `prefix` or `exact` match on a column that compares case-sensitively never matches a value with an upper-case letter.
+- **A match composes with a [`SqlFunction`](#ignoring-accents)**: `wordStart(foldAccents(Movie_.title))` in Kotlin, `wordStart(foldAccents.apply(Movie_.title))` in Java, matches the folded title, and the index is built over the same expression.
+- **A match is not a path**, so only `search` and `suggest` take it; `orderFirst` and the operators take the column.
 
 ## Searching Related Rows
 
@@ -232,21 +285,73 @@ The operators match the input as they do in a WHERE clause: ignoring case, and l
 
 ## Indexing a Search
 
-`search` and the `IGNORE_CASE` text operators compare a lowered expression against a pattern that may start anywhere: `LOWER(column) LIKE LOWER('%word%')`. A B-tree index orders values from their first character, so it serves neither the lowered expression nor a match inside a word. An index already on the column goes unused, and every search reads every row of each table it names, lowering each value as it goes. Lowering text under a linguistic collation is often the larger part of that cost, so a search that answers at once on test data can take seconds on a production-sized table.
+`search`, `suggest` and the `IGNORE_CASE` text operators compare a lowered expression against a pattern that may start anywhere: `LOWER(column) LIKE LOWER('%word%')`, or the word-start form with a separator in front of the word. A B-tree index orders values from their first character, so it serves neither the lowered expression nor a match inside a value. An index already on the column goes unused, and every search reads every row of each table it names, lowering each value as it goes. Lowering text under a linguistic collation is often the larger part of that cost, so a search that answers at once on test data can take seconds on a production-sized table.
 
-What serves the statement is the database's index for substring matching, a trigram or n-gram index, created over the same expression the statement compares: `LOWER(column)`, not the column itself. Storm renders the predicate the same way on every database, so the index matches it without a change to the query.
+What serves the statement is the database's index for substring matching, a trigram or n-gram index, created over the same expression the statement compares: `LOWER(column)`, not the column itself. Storm renders the predicate the same way on every database, so the index matches it without a change to the query. A `prefix` or `exact` match needs no such index: an ordinary index over the bare column serves it, on every database.
 
 - Index every column the search names, including the columns of a semi-joined table and of a table reached through a path. The statement matches each word against each column, and a column without the index keeps its table's scan.
 - Index the expression exactly as the statement renders it. An index on the plain column, or on another case function, does not match `LOWER(column)`, and the plan falls back to reading every row.
-- A word shorter than the index's gram, usually three characters, cannot use it. `search` tests such a word only on the rows its longer words found, as an `EXISTS` over the related rows of each, so it reads no table in full and the rows found are the same; a search of short words alone still reads every row. `suggest` matches such a word at the start of a word, which the index serves from one character less. The dialect states the length, three on PostgreSQL, and `storm.search.min_term_length` overrides it.
-- Where the database has no substring index, `suggest` matches a prefix of the column, which an ordinary index over the column serves, and the column must compare case-insensitively on its own; see [Suggestions as the user types](#suggestions-as-the-user-types). `search` reads every row there, as the next point says.
+- A word shorter than the index's gram, usually three characters, cannot use it. `search` tests such a word only on the rows its longer words found, as an `EXISTS` over the related rows of each, so it reads no table in full and the rows found are the same; a search of short words alone still reads every row. The dialect states the length, three on PostgreSQL, and `storm.search.min_term_length` overrides it. A word at a word start counts the separator before it, so the index serves it from one character less; `suggest` takes a word from two characters.
 - Read the query plan on production-sized data to confirm that each table is read through its index. On a small table the planner may read every row regardless, because that is cheaper there.
 - Read the plan of the statement as the application sends it, with the word as a bind parameter, not with the word written into the SQL. A driver that prepares a statement once for many executions lets the database plan it once for every value, and that plan cannot see the word, so it cannot tell a rare word from a common one. A search that also orders by an indexed column and takes the first few rows, as a list of suggestions does, is then read in that column's order, testing every row until enough match, while the same statement planned for its word takes a few rows from the substring index. Where the plans differ, have the search planned for its values: most drivers and databases have a setting that stops a statement from being prepared, or that plans each execution for its parameters.
 - Refresh the table's statistics after creating the index on a table that already holds data; a planner without statistics for the indexed expression may keep reading every row. Where a rare word is still estimated to match many rows, a larger statistics sample for the indexed expression brings the estimate down.
 - Keep the predicate. A case-sensitive operator reads every row as well and changes what matches; an `ILIKE` or a case function in a template reads every row just the same.
-- Where the database has no substring index, reading every row is what a substring search costs. Narrow the rows with a selective predicate first, keep the searched table small, or match whole words through the database's full-text search in a [SQL template](sql-templates.md).
+- Where the database has no substring index, reading every row is what a match anywhere or at a word start costs. Narrow the rows with a selective predicate first, keep the searched table small, match whole words through the database's full-text search in a [SQL template](sql-templates.md), or stand a word-suffix table in for the index; see [Large Tables Without a Substring Index](#large-tables-without-a-substring-index).
 
-A search that reads every row shows up under `st.orm.sql.slow` once its database time passes the threshold; see [The Slow Statement Log](sql-logging.md#the-slow-statement-log). When every word of the search was too short for the index, the line carries advice saying so, and pointing a search box that queries as the user types to `suggest`.
+A search that reads every row shows up under `st.orm.sql.slow` once its database time passes the threshold; see [The Slow Statement Log](sql-logging.md#the-slow-statement-log). With the [schema loaded](advice.md#loading-the-schema), the line carries [`unindexed-search` advice](advice.md#unindexed-search) for each searched column no index serves in its match form: it says whether no index serves the column or an index exists that cannot, such as a trigram index over `title` where the match compares `LOWER(title)`, and names what does serve it.
+
+## Large Tables Without a Substring Index
+
+On a database without a substring index, a match anywhere or at a word start reads the table in full, which a small table affords and a large one does not. A word-suffix table stands in for the index: one row per word start of the value, holding the text from that word to the end, which a `prefix` match finds through an ordinary index. "The Good, the Bad and the Ugly" yields six rows, `the good, the bad and the ugly`, `good, the bad and the ugly`, `the bad and the ugly`, `bad and the ugly`, `and the ugly` and `the ugly`, and `ugly` a seventh; `bad` is then a prefix of one of them. The rows split on the same separators `wordStart` recognizes, so `prefix` over the suffix table finds the rows `wordStart` finds on a database that has the index.
+
+```sql
+CREATE TABLE movie_title_suffix (
+    movie_id INT NOT NULL REFERENCES movie (id) ON DELETE CASCADE,
+    suffix VARCHAR(255) NOT NULL COLLATE utf8mb4_0900_ai_ci,
+    INDEX movie_title_suffix_idx (suffix)
+);
+```
+
+The column compares case-insensitively through its collation, here MySQL's, so the lowered word matches the suffix as stored; on a database whose collations compare case-sensitively, store the suffix lowered and the index serves it the same way. A trigger keeps the table filled: on an insert or update of a movie, it deletes the movie's suffixes and inserts one per word start, splitting the title on the separators. A backfill runs the same split once over the existing rows:
+
+```sql
+INSERT INTO movie_title_suffix (movie_id, suffix)
+SELECT m.id, SUBSTRING(m.title, s.start)
+FROM movie m
+JOIN (SELECT 1 AS start UNION ALL SELECT 2 UNION ALL SELECT 3 ... ) s
+  ON s.start = 1 OR SUBSTRING(m.title, s.start - 1, 1) IN (' ', '-', '''', '(', '/', ':', '.', ',');
+```
+
+The suffix table is a related table of the movie, so the search semi-joins it and matches the word as a prefix of a suffix row; each movie comes back once, however many of its suffixes match:
+
+<Tabs groupId="language">
+<TabItem value="kotlin" label="Kotlin" default>
+
+```kotlin
+val suggestions = orm.entity(Movie::class)
+    .select()
+    .semiJoin<MovieTitleSuffix>().on<Movie>()
+    .where(suggest(input, prefix(MovieTitleSuffix_.suffix)))
+    .limit(6)
+    .resultList
+```
+
+</TabItem>
+<TabItem value="java" label="Java">
+
+```java
+List<Movie> suggestions = orm.entity(Movie.class)
+    .select()
+    .semiJoin(MovieTitleSuffix.class).on(Movie.class)
+    .where(it -> it.suggest(input, prefix(MovieTitleSuffix_.suffix)))
+    .limit(6)
+    .getResultList();
+```
+
+</TabItem>
+</Tabs>
+
+The suffix table serves `wordStart`; a match `anywhere` has no such table, since a value has as many substrings as characters. Where a search must match inside a word on such a database, the database's full-text search in a [SQL template](sql-templates.md) is what there is.
 
 ## Ignoring Accents
 

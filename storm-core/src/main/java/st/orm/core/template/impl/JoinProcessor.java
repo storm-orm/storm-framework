@@ -80,7 +80,7 @@ final class JoinProcessor implements ElementProcessor<Join> {
      * @return an immutable key for caching, or {@code null} if the element (or its compilation) cannot be cached.
      */
     @Override
-    public Object getCompilationKey(Join join, Function<TemplateString, Object> keyGenerator) {
+    public @Nullable Object getCompilationKey(Join join, Function<TemplateString, @Nullable Object> keyGenerator) {
         if (join.source() instanceof TableSource
                 && join.target() instanceof TableTarget(var table, var sourceKey, var targetKey, var condition) && condition != null) {
             var conditionKey = keyGenerator.apply(condition.toTemplate());
@@ -221,7 +221,7 @@ final class JoinProcessor implements ElementProcessor<Join> {
         if (sourceKey != null && targetKey != null) {
             // Both tables hold a key to one table: the joined rows are read by their key, which the key of the table
             // joined on matches.
-            demandJoinedKey(fromTable, sourceKey, compiler);
+            recordJoinedKeyUse(fromTable, sourceKey, compiler);
             return compileKeyCondition(fromTable, alias, toTable, toAlias, sourceKey, targetKey, compiler);
         }
         if (targetKey != null) {
@@ -234,7 +234,7 @@ final class JoinProcessor implements ElementProcessor<Join> {
         if (sourceKey != null) {
             // A key of the joined table, named by the join, references the table joined on.
             validateDataType(toTable, true);
-            demandJoinedKey(fromTable, sourceKey, compiler);
+            recordJoinedKeyUse(fromTable, sourceKey, compiler);
             return compileJoinCondition(toTable, toAlias, fromTable, alias, sourceKey,
                     findPkField(toTable).orElseThrow(), compiler);
         }
@@ -248,7 +248,7 @@ final class JoinProcessor implements ElementProcessor<Join> {
         var leftComponent = findExactJoinField(fromTable, toTable);
         if (leftComponent.isPresent()) {
             validateDataType(toTable, true);
-            demandJoinedKey(fromTable, leftComponent.get(), compiler);
+            recordJoinedKeyUse(fromTable, leftComponent.get(), compiler);
             // Joins foreign key of left table to the primary key of right table.
             return compileJoinCondition(toTable, toAlias, fromTable, alias, leftComponent.get(),
                     findPkField(toTable).orElseThrow(), compiler);
@@ -265,7 +265,7 @@ final class JoinProcessor implements ElementProcessor<Join> {
         var leftTableComponent = findTableJoinField(fromTable, toTable, compiler);
         if (leftTableComponent.isPresent()) {
             validateDataType(toTable, true);
-            demandJoinedKey(fromTable, leftTableComponent.get(), compiler);
+            recordJoinedKeyUse(fromTable, leftTableComponent.get(), compiler);
             return compileJoinCondition(toTable, toAlias, fromTable, alias, leftTableComponent.get(),
                     findPkField(toTable).orElseThrow(), compiler);
         }
@@ -278,16 +278,16 @@ final class JoinProcessor implements ElementProcessor<Join> {
      * that key for every row it joins them to, which an index on the key serves. The other direction joins on the
      * joined table's primary key, which is always indexed.
      */
-    private static void demandJoinedKey(Class<? extends Data> joined,
+    private static void recordJoinedKeyUse(Class<? extends Data> joined,
                                         RecordField foreignKey,
                                         TemplateCompiler compiler) throws SqlTemplateException {
-        if (ColumnDemands.inJoinedHierarchy(joined)) {
+        if (ColumnUsage.inJoinedHierarchy(joined)) {
             return;
         }
         var model = compiler.getModel(joined);
         for (var column : getForeignKeys(foreignKey, compiler.template().foreignKeyResolver(),
                 compiler.template().columnNameResolver())) {
-            compiler.demandIndex(model, column.name(), IndexDemands.Kind.JOIN);
+            compiler.recordIndexUse(model, column.name(), IndexUsage.Kind.JOIN);
         }
     }
 

@@ -255,7 +255,7 @@ final class QueryModelImpl implements QueryModel {
         try {
             return switch (expression) {
                 case TemplateExpression it -> compileTemplateExpression(it.template(), compiler);
-                case ObjectExpression it -> compileObjectExpression(getMetamodel(it), it.operator(), it.object(), it.indexable(), it.fromRow(), compiler);
+                case ObjectExpression it -> compileObjectExpression(getMetamodel(it), it.operator(), it.object(), it.indexable(), it.fromRow(), it.search(), compiler);
                 case PathExpression it -> compilePathExpression(it.path(), it.operator(), it.other());
             };
         } catch (SqlTemplateException e) {
@@ -428,6 +428,7 @@ final class QueryModelImpl implements QueryModel {
                                            Object object,
                                            boolean indexable,
                                            boolean fromRow,
+                                           @Nullable MatchForm search,
                                            TemplateCompiler compiler) throws SqlTemplateException {
         // A SqlFunction call compares the column it is applied to, with the call around the column and around each
         // value, so the database computes both sides alike.
@@ -496,6 +497,13 @@ final class QueryModelImpl implements QueryModel {
         if (multiValues.isEmpty() && column == null) {
             column = toFullyQualifiedColumn(model.getSingleColumn(metamodel), navigated);
         }
+        if (search != null) {
+            // A search word asks no ordinary index for its column: the search advice decides, per field and match
+            // form, which index serves the expression the match compares around the bare column.
+            var searched = model.getSingleColumn(metamodel);
+            String field = FunctionCalls.render(path, searched.name());
+            ColumnUsage.recordSearchUse(searched, search, field, search.lowered() ? "LOWER(" + field + ")" : field, compiler);
+        }
         if (path != metamodel) {
             if (!multiValues.isEmpty()) {
                 throw new SqlTemplateException("%s applies a SQL function to %s, which spans several columns. Name one of its fields instead."
@@ -504,9 +512,9 @@ final class QueryModelImpl implements QueryModel {
             column = FunctionCalls.render(path, column);
         } else if (indexable) {
             // A comparison on the bare column is one an index on it can serve; one on a function call is not.
-            var kind = IndexDemands.kindOf(operator);
+            var kind = IndexUsage.kindOf(operator);
             if (kind != null) {
-                ColumnDemands.demand(model.getColumns(metamodel), kind, compiler);
+                ColumnUsage.record(model.getColumns(metamodel), kind, compiler);
             }
         }
         try {

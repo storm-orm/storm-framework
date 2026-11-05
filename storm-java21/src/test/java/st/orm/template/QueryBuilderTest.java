@@ -7,6 +7,10 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static st.orm.JoinType.inner;
+import static st.orm.Match.anywhere;
+import static st.orm.Match.exact;
+import static st.orm.Match.prefix;
+import static st.orm.Match.wordStart;
 import static st.orm.Operator.EQUALS;
 import static st.orm.Operator.GREATER_THAN;
 import static st.orm.Operator.GREATER_THAN_OR_EQUAL;
@@ -37,6 +41,8 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.context.ContextConfiguration;
 import org.springframework.test.context.jdbc.Sql;
 import org.springframework.test.context.junit.jupiter.SpringExtension;
+import st.orm.Data;
+import st.orm.Match;
 import st.orm.NoResultException;
 import st.orm.NonUniqueResultException;
 import st.orm.Pageable;
@@ -795,18 +801,35 @@ public class QueryBuilderTest {
     }
 
     @Test
-    public void testSuggestMatchesTheWordsTheSubstringIndexServes() {
+    public void testSuggestMatchesAWordAtTheStartOfAWord() {
         // data.sql: owner 1 (Betty Davis) has pet Leo; owner 4 (Harold Davis) has pet Iggy; owner 6 is Jean Coleman.
+        // A word matches at the start of a word on every dialect: pet Leo, not Coleman.
+        assertEquals(List.of("Betty"), semiJoinSuggestFirstNames(orm, "davis le"));
+        assertEquals(List.of("Betty"), semiJoinSuggestFirstNames(orm, "le"));
+        assertEquals(List.of(), semiJoinSuggestFirstNames(orm, "l"));
+        assertEquals(List.of(), semiJoinSuggestFirstNames(orm, ""));
         var trigramOrm = ORMTemplate.of(dataSource,
                 st.orm.StormConfig.of(java.util.Map.of(st.orm.StormConfig.SEARCH_MIN_TERM_LENGTH, "3")));
-        // A short word matches at the start of a word: pet Leo, not Coleman.
-        assertEquals(List.of("Betty"), semiJoinSuggestFirstNames(trigramOrm, "davis le"));
         assertEquals(List.of("Betty"), semiJoinSuggestFirstNames(trigramOrm, "le"));
-        assertEquals(List.of(), semiJoinSuggestFirstNames(trigramOrm, "l"));
-        assertEquals(List.of(), semiJoinSuggestFirstNames(trigramOrm, ""));
-        // A dialect without a substring index matches the lowered word as a prefix of the bare column; these columns
-        // compare case-sensitively, so nothing matches: a suggestion column is one that compares ignoring case.
-        assertEquals(List.of(), semiJoinSuggestFirstNames(orm, "le"));
+    }
+
+    @Test
+    public void testSearchAndSuggestTakeAMatchFormPerField() {
+        // data.sql: owner 6 is Jean Coleman; owner 1 Betty Davis has pet Leo. Anywhere finds Coleman through "le", a
+        // word start finds Leo; a prefix of the bare column matches the lowered word, which these case-sensitive
+        // columns never hold.
+        Function<Match<? extends Data>, List<String>> firstNames = field -> orm.entity(Owner.class).select()
+                .semiJoin(Pet.class).on(Owner.class)
+                .where(it -> it.search("le", field))
+                .getResultList().stream().map(Owner::firstName).sorted().toList();
+        assertEquals(List.of("Jean"), firstNames.apply(anywhere(Owner_.lastName)));
+        assertEquals(List.of("Betty"), firstNames.apply(wordStart(Pet_.name)));
+        assertEquals(List.of(), firstNames.apply(wordStart(Owner_.lastName)));
+        assertEquals(List.of(), firstNames.apply(prefix(Pet_.name)));
+        assertEquals(List.of("Betty"), orm.entity(Owner.class).select()
+                .semiJoin(Pet.class).on(Owner.class)
+                .where(it -> it.suggest("leo", Set.of("the"), wordStart(Pet_.name), exact(Owner_.lastName)))
+                .getResultList().stream().map(Owner::firstName).toList());
     }
 
     private static List<String> semiJoinSuggestFirstNames(ORMTemplate template, String input) {

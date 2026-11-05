@@ -124,8 +124,8 @@ final class Repeats {
         /** Whether an upsert that updates draws a generated key value all the same, on the database it ran on. */
         final boolean upsertTakesGeneratedKey;
         /** The columns the statement asks an index for, from its first execution; {@code null} for none. */
-        final @Nullable IndexDemands indexDemands;
-        /** The data source the statement ran on, whose index catalog the demands are checked against. */
+        final @Nullable IndexUsage indexUsage;
+        /** The data source the statement ran on, whose index catalog the usage is checked against. */
         final @Nullable DataSource dataSource;
         /** Every execution recorded, which decides when the threshold is reached. */
         int executions;
@@ -153,7 +153,7 @@ final class Repeats {
             this.call = context instanceof QueryImpl.QueryContextImpl impl ? impl.call() : null;
             this.upsertTakesGeneratedKey = upsertTakesGeneratedKey(context);
             var impl = context instanceof QueryImpl.QueryContextImpl it ? it : null;
-            this.indexDemands = impl == null ? null : impl.indexDemands();
+            this.indexUsage = impl == null ? null : impl.indexUsage();
             this.dataSource = impl == null ? null : impl.dataSource();
         }
 
@@ -401,8 +401,8 @@ final class Repeats {
             advisories.add(new Advisory(repeat.advice, entry.getKey(), repeat.shapeId, counted.elapsedNanos(), text));
             // A statement that costs more than its round trips is the thing to look at, and no single execution of
             // it need reach the slow threshold that would name the index it lacks, so the repeat names it.
-            if (costly(counted) && repeat.indexDemands != null) {
-                for (var index : repeat.indexDemands.advise(IndexCatalog.published(repeat.dataSource))) {
+            if (costly(counted) && repeat.indexUsage != null) {
+                for (var index : repeat.indexUsage.advise(IndexCatalog.published(repeat.dataSource))) {
                     var advice = Advice.of(index);
                     if (advice != null) {
                         advisories.add(new Advisory(advice, entry.getKey(), repeat.shapeId, counted.elapsedNanos(),

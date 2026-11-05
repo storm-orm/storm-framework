@@ -26,9 +26,9 @@ import st.orm.core.template.Column;
  *
  * @since 1.16
  */
-final class ColumnDemands {
+final class ColumnUsage {
 
-    private ColumnDemands() {
+    private ColumnUsage() {
     }
 
     /**
@@ -42,19 +42,41 @@ final class ColumnDemands {
      * @param compiler the compiler of the statement.
      * @throws SqlTemplateException if the model of a column's table cannot be built.
      */
-    static void demand(List<Column> columns, IndexDemands.Kind kind, TemplateCompiler compiler)
+    static void record(List<Column> columns, IndexUsage.Kind kind, TemplateCompiler compiler)
             throws SqlTemplateException {
         for (var column : columns) {
             var type = column.metamodel().tableType();
             if (inJoinedHierarchy(type)) {
                 return;
             }
-            compiler.demandIndex(compiler.getModel(type), column.name(), kind);
+            compiler.recordIndexUse(compiler.getModel(type), column.name(), kind);
             // A range or an order is served on one column; every column of a key, a group or a select counts.
-            if (kind == IndexDemands.Kind.RANGE || kind == IndexDemands.Kind.ORDER) {
+            if (kind == IndexUsage.Kind.RANGE || kind == IndexUsage.Kind.ORDER) {
                 return;
             }
         }
+    }
+
+    /**
+     * Records that a search of the statement matches the given column in a match form. The column is recorded on
+     * the table that holds it, with the expression the match compares around its bare name, so the search advice
+     * can tell an index on the expression from one on the column. A column of a joined inheritance hierarchy is left
+     * out, as for {@link #record(List, IndexUsage.Kind, TemplateCompiler)}.
+     *
+     * @param column the column.
+     * @param form the match form.
+     * @param field the column as the match names it, bare or wrapped in its function calls.
+     * @param expression the expression the match compares, rendered around the bare column name.
+     * @param compiler the compiler of the statement.
+     * @throws SqlTemplateException if the model of the column's table cannot be built.
+     */
+    static void recordSearchUse(Column column, MatchForm form, String field, String expression,
+                             TemplateCompiler compiler) throws SqlTemplateException {
+        var type = column.metamodel().tableType();
+        if (inJoinedHierarchy(type)) {
+            return;
+        }
+        compiler.recordSearchUse(compiler.getModel(type), column.name(), form, field, expression);
     }
 
     /**

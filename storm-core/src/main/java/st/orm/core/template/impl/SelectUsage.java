@@ -40,9 +40,9 @@ import st.orm.core.template.impl.Elements.Columns;
  *
  * @since 1.16
  */
-final class SelectDemands {
+final class SelectUsage {
 
-    private SelectDemands() {
+    private SelectUsage() {
     }
 
     /** A word, a quoted identifier, a string literal, or a star. */
@@ -96,16 +96,16 @@ final class SelectDemands {
             }
         }
         whole = whole && namesNoColumn(select.fragments());
-        var kind = whole ? IndexDemands.Kind.WHOLE_SELECT : IndexDemands.Kind.SELECT;
+        var kind = whole ? IndexUsage.Kind.WHOLE_SELECT : IndexUsage.Kind.SELECT;
         if (paths.isEmpty()) {
-            if (whole && !ColumnDemands.inJoinedHierarchy(fromType)) {
-                compiler.demandIndex(compiler.getModel(fromType), "", kind);
+            if (whole && !ColumnUsage.inJoinedHierarchy(fromType)) {
+                compiler.recordIndexUse(compiler.getModel(fromType), "", kind);
             }
             return;
         }
         for (var path : paths) {
             var metamodel = MetamodelFactory.canonical(path);
-            ColumnDemands.demand(compiler.getModel(metamodel.tableType()).getColumns(metamodel), kind, compiler);
+            ColumnUsage.record(compiler.getModel(metamodel.tableType()).getColumns(metamodel), kind, compiler);
         }
     }
 

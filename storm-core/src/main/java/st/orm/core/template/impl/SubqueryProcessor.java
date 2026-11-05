@@ -17,6 +17,7 @@ package st.orm.core.template.impl;
 
 import java.util.List;
 import java.util.function.Function;
+import org.jspecify.annotations.Nullable;
 import st.orm.core.template.TemplateString;
 import st.orm.core.template.impl.Elements.Subquery;
 
@@ -36,7 +37,7 @@ final class SubqueryProcessor implements ElementProcessor<Subquery> {
      * @param keyGenerator a function that generates compilation keys for sub-templates.
      * @return an immutable key for caching, or {@code null} if the element or its compilation cannot be cached.
      */
-    public Object getCompilationKey(Subquery subquery, Function<TemplateString, Object> keyGenerator) {
+    public @Nullable Object getCompilationKey(Subquery subquery, Function<TemplateString, @Nullable Object> keyGenerator) {
         var key = keyGenerator.apply(subquery.template());
         return key == null ? null : List.of(key, subquery.correlate());
     }

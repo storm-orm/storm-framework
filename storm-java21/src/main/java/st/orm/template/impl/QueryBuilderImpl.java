@@ -24,7 +24,6 @@ import static st.orm.template.impl.StringTemplates.convert;
 
 import java.util.List;
 import java.util.Optional;
-import java.util.Set;
 import java.util.function.Function;
 import java.util.stream.Stream;
 import org.jspecify.annotations.Nullable;
@@ -40,7 +39,6 @@ import st.orm.Window;
 import st.orm.core.spi.ORMReflection;
 import st.orm.core.spi.Providers;
 import st.orm.core.template.TemplateString;
-import st.orm.core.template.impl.PredicateBuilderFactory;
 import st.orm.core.template.impl.Subqueryable;
 import st.orm.template.JoinBuilder;
 import st.orm.template.PredicateBuilder;
@@ -539,7 +537,22 @@ public final class QueryBuilderImpl<T extends Data, R, ID> extends QueryBuilder<
         return onTemplate -> new QueryBuilderImpl<>(joinBuilder.on(convert(onTemplate)));
     }
 
-    static class PredicateBuilderImpl<TX extends Data, RX, IDX> implements PredicateBuilder<TX, RX, IDX> {
+    public static class PredicateBuilderImpl<TX extends Data, RX, IDX> implements PredicateBuilder<TX, RX, IDX> {
+
+        /**
+         * Returns the predicate builder of the Java API over the given core predicate builder.
+         *
+         * @param core the core predicate builder.
+         * @param <TX> the type of the table being queried.
+         * @param <RX> the type of the result.
+         * @param <IDX> the type of the primary key.
+         * @return the predicate builder.
+         */
+        public static <TX extends Data, RX, IDX> PredicateBuilder<TX, RX, IDX> of(
+                st.orm.core.template.PredicateBuilder<TX, RX, IDX> core) {
+            return new PredicateBuilderImpl<>(core);
+        }
+
         final st.orm.core.template.PredicateBuilder<TX, RX, IDX> core;
 
         PredicateBuilderImpl(st.orm.core.template.PredicateBuilder<TX, RX, IDX> core) {
@@ -644,22 +657,6 @@ public final class QueryBuilderImpl<T extends Data, R, ID> extends QueryBuilder<
             return new PredicateBuilderImpl<>(core.where(convert(template)));
         }
 
-        @Override
-        protected <V> PredicateBuilder<TX, RX, IDX> whereImpl(Navigable<? extends TX, V> path, Operator operator, V[] o) {
-            return new PredicateBuilderImpl<>(core.where(path, operator, o));
-        }
-
-        @Override
-        protected PredicateBuilder<TX, RX, IDX> searchImpl(String input, List<Navigable<? extends TX, String>> paths) {
-            return new PredicateBuilderImpl<>(PredicateBuilderFactory.search(input, paths.stream().map(Navigable::asMetamodel).toList()));
-        }
-
-        @Override
-        protected PredicateBuilder<TX, RX, IDX> suggestImpl(String input,
-                                                            Set<String> ignore,
-                                                            List<Navigable<? extends TX, String>> paths) {
-            return new PredicateBuilderImpl<>(PredicateBuilderFactory.suggest(input, ignore, paths.stream().map(Navigable::asMetamodel).toList()));
-        }
     }
 
     /**

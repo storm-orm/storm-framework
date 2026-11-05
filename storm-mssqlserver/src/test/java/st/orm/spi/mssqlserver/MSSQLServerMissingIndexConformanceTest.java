@@ -15,9 +15,15 @@
  */
 package st.orm.spi.mssqlserver;
 
+import static st.orm.Match.anywhere;
+import static st.orm.Match.exact;
+import static st.orm.Match.prefix;
+import static st.orm.Match.wordStart;
+
 import java.sql.Connection;
 import java.sql.SQLException;
 import java.sql.Statement;
+import java.util.List;
 import javax.sql.DataSource;
 import org.testcontainers.containers.MSSQLServerContainer;
 import st.orm.tck.AbstractMissingIndexConformanceTest;
@@ -67,14 +73,25 @@ public class MSSQLServerMissingIndexConformanceTest extends AbstractMissingIndex
     }
 
     @Override
-    protected java.util.List<String> suggestProbeDdl() {
-        return java.util.List.of(
-                "CREATE TABLE suggest_probe (id INT PRIMARY KEY, title VARCHAR(100) NOT NULL, title_lower AS LOWER(title) PERSISTED)",
-                "CREATE INDEX probe_stored ON suggest_probe (title_lower)");
+    protected List<String> searchProbeDdl() {
+        return List.of(
+                "CREATE TABLE search_probe (id INT PRIMARY KEY, title VARCHAR(100) NOT NULL, title_lower AS LOWER(title) PERSISTED)");
+    }
+
+    @Override
+    protected List<SearchIndexProbe> searchIndexProbes() {
+        return List.of(
+                // An ordinary index over the persisted lowered title serves a prefix and an exact match.
+                new SearchIndexProbe(prefix(PROBE_TITLE_LOWER), "CREATE INDEX probe_stored ON search_probe (title_lower)", "probe_stored", true),
+                new SearchIndexProbe(exact(PROBE_TITLE_LOWER), "CREATE INDEX probe_stored ON search_probe (title_lower)", "probe_stored", true),
+                // No index serves a match that starts with a wildcard: an index on the column cannot.
+                new SearchIndexProbe(anywhere(PROBE_TITLE), "CREATE INDEX probe_title ON search_probe (title)", "probe_title", false),
+                new SearchIndexProbe(wordStart(PROBE_TITLE), null, null, false));
     }
 
     @Override
     protected boolean servedByIndex(String plan) {
-        return plan.contains("Index Seek") && plan.contains("probe_stored");
+        return plan.contains("Index Seek") && plan.contains("probe_");
     }
+
 }

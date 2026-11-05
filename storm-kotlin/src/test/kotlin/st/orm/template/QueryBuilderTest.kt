@@ -23,6 +23,7 @@ import org.springframework.test.context.jdbc.Sql
 import org.springframework.test.context.junit.jupiter.SpringExtension
 import st.orm.Data
 import st.orm.JoinType
+import st.orm.Match
 import st.orm.Metamodel
 import st.orm.Navigable
 import st.orm.NoResultException
@@ -2238,7 +2239,7 @@ internal open class QueryBuilderTest(
     }
 
     @Test
-    fun `suggest should match the words the substring index serves`() {
+    fun `suggest should match a word at the start of a word on every dialect`() {
         // data.sql: owner 1 (Betty Davis) has pet Leo; owner 4 (Harold Davis) has pet Iggy; owner 6 is Jean Coleman.
         val trigramOrm = dataSource.orm(st.orm.StormConfig.of(mapOf(st.orm.StormConfig.SEARCH_MIN_TERM_LENGTH to "3")))
         val petName = metamodel<Pet, String>(orm.entity(Pet::class).model, "name")
@@ -2251,17 +2252,38 @@ internal open class QueryBuilderTest(
                 .where(predicate)
                 .resultList.map { it.firstName }.sorted()
         }
-        // A short word matches at the start of a word: pet Leo, not Coleman.
-        firstNames(trigramOrm, "davis le", suggest = true) shouldBe listOf("Betty")
+        // A word matches at the start of a word: pet Leo, not Coleman, whatever the dialect's index serves.
+        firstNames(orm, "davis le", suggest = true) shouldBe listOf("Betty")
+        firstNames(orm, "le", suggest = true) shouldBe listOf("Betty")
+        firstNames(orm, "l", suggest = true) shouldBe emptyList()
+        firstNames(orm, "", suggest = true) shouldBe emptyList()
         firstNames(trigramOrm, "le", suggest = true) shouldBe listOf("Betty")
-        firstNames(trigramOrm, "l", suggest = true) shouldBe emptyList()
-        firstNames(trigramOrm, "", suggest = true) shouldBe emptyList()
-        // search keeps the short word, tested on the rows the long word found.
+        // search keeps the short word, anywhere, tested on the rows the long word found where the index serves one.
         firstNames(trigramOrm, "davis le", suggest = false) shouldBe listOf("Betty")
         firstNames(trigramOrm, "le", suggest = false) shouldBe listOf("Betty", "Jean")
-        // A dialect without a substring index matches the lowered word as a prefix of the bare column; these columns
-        // compare case-sensitively, so nothing matches: a suggestion column is one that compares ignoring case.
-        firstNames(orm, "le", suggest = true) shouldBe emptyList()
+        firstNames(orm, "le", suggest = false) shouldBe listOf("Betty", "Jean")
+    }
+
+    @Test
+    fun `search and suggest should take a match form per field`() {
+        // data.sql: owner 6 is Jean Coleman; owner 1 Betty Davis has pet Leo. Anywhere finds Coleman through "le", a
+        // word start finds Leo; a prefix of the bare column matches the lowered word, which these case-sensitive
+        // columns never hold.
+        val ownerRepo = orm.entity(Owner::class)
+        val lastName = metamodel<Owner, String>(ownerRepo.model, "last_name")
+        val petName = metamodel<Pet, String>(orm.entity(Pet::class).model, "name")
+        fun firstNames(field: Match<out Data>): List<String> = ownerRepo.select()
+            .semiJoin<Pet>().on<Owner>()
+            .where(search("le", field))
+            .resultList.map { it.firstName }.sorted()
+        firstNames(anywhere(lastName)) shouldBe listOf("Jean")
+        firstNames(wordStart(petName)) shouldBe listOf("Betty")
+        firstNames(wordStart(lastName)) shouldBe emptyList()
+        firstNames(prefix(petName)) shouldBe emptyList()
+        ownerRepo.select()
+            .semiJoin<Pet>().on<Owner>()
+            .where(suggest("leo", setOf("the"), wordStart(petName), exact(lastName)))
+            .resultList.map { it.firstName } shouldBe listOf("Betty")
     }
 
     @Test

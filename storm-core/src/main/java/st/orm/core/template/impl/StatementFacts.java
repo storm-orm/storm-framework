@@ -32,7 +32,7 @@ import st.orm.core.template.TemplateString;
  *
  * @param advisories the advice the builder decided, reported with the statement.
  * @param sortedBy the columns a limited result is sorted by, which an index read in their order serves; recorded as
- *                 an index demand.
+ *                 an index use.
  * @param select the select list built from a template, whose columns an index can hold, or {@code null} for a
  *               select of an entity; left out of equality, as the statement's own key covers the select clause.
  * @param unconditional whether an UPDATE or DELETE holds no condition, whatever WHERE clause it renders.

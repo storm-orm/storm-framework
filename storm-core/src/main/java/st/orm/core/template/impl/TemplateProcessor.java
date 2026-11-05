@@ -189,13 +189,13 @@ class TemplateProcessor {
     /**
      * Compile-time only: the columns the statement asks an index for, collected while it compiles.
      */
-    private IndexDemands.@Nullable Builder indexDemandBuilder;
+    private IndexUsage.@Nullable Builder indexUsageBuilder;
 
     /**
      * The columns the statement asks an index for, fixed when compilation completes; {@code null} when it asks for
      * none.
      */
-    private @Nullable IndexDemands indexDemands;
+    private @Nullable IndexUsage indexUsage;
 
     /**
      * Compile-time only: whether the template marks the statement as an UPDATE or DELETE without a condition, which is
@@ -419,9 +419,15 @@ class TemplateProcessor {
             }
 
             @Override
-            protected void demandIndex(Model<?, ?> table, String column, IndexDemands.Kind kind) {
-                // A subquery's demands are the statement's: the slow statement log reports on the statement.
-                TemplateProcessor.this.demandIndex(table, column, kind);
+            protected void recordIndexUse(Model<?, ?> table, String column, IndexUsage.Kind kind) {
+                // A subquery's usage is the statement's: the slow statement log reports on the statement.
+                TemplateProcessor.this.recordIndexUse(table, column, kind);
+            }
+
+            @Override
+            protected void recordSearchUse(Model<?, ?> table, String column, MatchForm form, String field,
+                                        String expression) {
+                TemplateProcessor.this.recordSearchUse(table, column, form, field, expression);
             }
         };
     }
@@ -429,11 +435,21 @@ class TemplateProcessor {
     /**
      * Records that the statement uses the given column of the given table in a way an index can serve.
      */
-    protected void demandIndex(Model<?, ?> table, String column, IndexDemands.Kind kind) {
-        if (indexDemandBuilder == null) {
-            indexDemandBuilder = new IndexDemands.Builder();
+    protected void recordIndexUse(Model<?, ?> table, String column, IndexUsage.Kind kind) {
+        if (indexUsageBuilder == null) {
+            indexUsageBuilder = new IndexUsage.Builder();
         }
-        indexDemandBuilder.add(table.schema(), table.name(), column, kind);
+        indexUsageBuilder.add(table.schema(), table.name(), column, kind);
+    }
+
+    /**
+     * Records that a search of the statement matches the given column of the given table in a match form.
+     */
+    protected void recordSearchUse(Model<?, ?> table, String column, MatchForm form, String field, String expression) {
+        if (indexUsageBuilder == null) {
+            indexUsageBuilder = new IndexUsage.Builder();
+        }
+        indexUsageBuilder.addSearch(table.schema(), table.name(), column, form, field, expression);
     }
 
     /**
@@ -505,9 +521,9 @@ class TemplateProcessor {
     private void freeze(String sql) {
         checkState(false);
         this.sql = sql;
-        if (indexDemandBuilder != null) {
-            indexDemands = indexDemandBuilder.build();
-            indexDemandBuilder = null;
+        if (indexUsageBuilder != null) {
+            indexUsage = indexUsageBuilder.build();
+            indexUsageBuilder = null;
         }
     }
 
@@ -639,7 +655,7 @@ class TemplateProcessor {
         if (!subquery) {
             applyFacts();
             classify(sql, elements);
-            demandDeleteCheck();
+            recordDeleteCheck();
         }
         freeze(sql);
         return sql;
@@ -688,12 +704,12 @@ class TemplateProcessor {
         }
         for (var field : facts.sortedBy()) {
             var metamodel = MetamodelFactory.canonical(field);
-            ColumnDemands.demand(compiler.getModel(metamodel.tableType()).getColumns(metamodel),
-                    IndexDemands.Kind.ORDER, compiler);
+            ColumnUsage.record(compiler.getModel(metamodel.tableType()).getColumns(metamodel),
+                    IndexUsage.Kind.ORDER, compiler);
         }
         var select = facts.select();
         if (select != null) {
-            SelectDemands.record(select, compiler);
+            SelectUsage.record(select, compiler);
         }
     }
 
@@ -713,19 +729,19 @@ class TemplateProcessor {
      *
      * @throws SqlTemplateException if the model of the table cannot be built.
      */
-    private void demandDeleteCheck() throws SqlTemplateException {
+    private void recordDeleteCheck() throws SqlTemplateException {
         if (operation != SqlOperation.DELETE) {
             return;
         }
         var type = affectedType();
-        if (type == null || ColumnDemands.inJoinedHierarchy(type)) {
+        if (type == null || ColumnUsage.inJoinedHierarchy(type)) {
             return;
         }
         var model = modelBuilder.build(type, false);
-        if (indexDemandBuilder == null) {
-            indexDemandBuilder = new IndexDemands.Builder();
+        if (indexUsageBuilder == null) {
+            indexUsageBuilder = new IndexUsage.Builder();
         }
-        indexDemandBuilder.deleteFrom(model.schema(), model.name());
+        indexUsageBuilder.deleteFrom(model.schema(), model.name());
     }
 
     /**
@@ -820,7 +836,7 @@ class TemplateProcessor {
                 StatementOrigin.DIRECT,
                 shapeId,
                 advisories,
-                indexDemands
+                indexUsage
         );
     }
 
@@ -1164,8 +1180,13 @@ class TemplateProcessor {
         }
 
         @Override
-        public void demandIndex(Model<?, ?> table, String column, IndexDemands.Kind kind) {
-            TemplateProcessor.this.demandIndex(table, column, kind);
+        public void recordIndexUse(Model<?, ?> table, String column, IndexUsage.Kind kind) {
+            TemplateProcessor.this.recordIndexUse(table, column, kind);
+        }
+
+        @Override
+        public void recordSearchUse(Model<?, ?> table, String column, MatchForm form, String field, String expression) {
+            TemplateProcessor.this.recordSearchUse(table, column, form, field, expression);
         }
 
         /**

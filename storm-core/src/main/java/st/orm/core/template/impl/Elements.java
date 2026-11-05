@@ -200,7 +200,12 @@ public final class Elements {
      * values a caller supplies.</p>
      */
     public record ObjectExpression(@Nullable Metamodel<?, ?> metamodel, Operator operator, Object object,
-                                   boolean indexable, boolean fromRow) implements Expression {
+                                   boolean indexable, boolean fromRow,
+                                   @Nullable MatchForm search) implements Expression {
+        public ObjectExpression(@Nullable Metamodel<?, ?> metamodel, Operator operator, Object object,
+                                boolean indexable, boolean fromRow) {
+            this(metamodel, operator, object, indexable, fromRow, null);
+        }
         public ObjectExpression(@Nullable Metamodel<?, ?> metamodel, Operator operator, Object object) {
             this(metamodel, operator, object, true, false);
         }
@@ -212,10 +217,25 @@ public final class Elements {
         }
 
         /**
+         * Returns the comparison of a word of a {@code search} or {@code suggest} with a text column, in a match form.
+         * It asks no ordinary index for its column: the search advice decides, per field and form, which index serves
+         * it.
+         *
+         * @param path the text column.
+         * @param operator the operator the form renders.
+         * @param text the text the operator compares, the word or the word with the space before it.
+         * @param search the match form.
+         */
+        public static ObjectExpression search(Metamodel<?, String> path, Operator operator, String text,
+                                              MatchForm search) {
+            return new ObjectExpression(path, operator, List.of(text), false, false, requireNonNull(search, "search"));
+        }
+
+        /**
          * Returns this comparison as one that does not select rows, and so asks no index for its column.
          */
         public ObjectExpression ranking() {
-            return indexable ? new ObjectExpression(metamodel, operator, object, false, fromRow) : this;
+            return indexable ? new ObjectExpression(metamodel, operator, object, false, fromRow, search) : this;
         }
         public ObjectExpression {
             requireNonNull(object, "object");

@@ -19,6 +19,7 @@ import java.util.Arrays;
 import java.util.Collection;
 import java.util.List;
 import java.util.function.Function;
+import org.jspecify.annotations.Nullable;
 import st.orm.Data;
 import st.orm.Ref;
 import st.orm.SqlTemplateException;
@@ -49,9 +50,9 @@ final class CacheableProcessor implements ElementProcessor<Cacheable> {
      * @throws SqlTemplateException if the key generation fails.
      */
     @Override
-    public Object getCompilationKey(
+    public @Nullable Object getCompilationKey(
             Cacheable cacheable,
-            Function<TemplateString, Object> keyGenerator
+            Function<TemplateString, @Nullable Object> keyGenerator
     ) throws SqlTemplateException {
         return key(cacheable, keyGenerator, false);
     }
@@ -61,33 +62,35 @@ final class CacheableProcessor implements ElementProcessor<Cacheable> {
      * how far a collection expanded share it.
      */
     @Override
-    public Object getShapeKey(
+    public @Nullable Object getShapeKey(
             Cacheable cacheable,
-            Function<TemplateString, Object> keyGenerator
+            Function<TemplateString, @Nullable Object> keyGenerator
     ) throws SqlTemplateException {
         return key(cacheable, keyGenerator, true);
     }
 
-    private Object key(
+    private @Nullable Object key(
             Cacheable cacheable,
-            Function<TemplateString, Object> keyGenerator,
+            Function<TemplateString, @Nullable Object> keyGenerator,
             boolean ignoreArity
     ) throws SqlTemplateException {
         return switch(cacheable.expression()) {
             case TemplateExpression it -> keyGenerator.apply(it.template());
             // Two columns of the query compile the same whenever the paths and the operator are the same.
             case PathExpression(var path, var operator, var other) -> List.of(path, operator, other);
-            case ObjectExpression(var metamodel, var operator, var object, var indexable, var fromRow) -> {
+            case ObjectExpression(var metamodel, var operator, var object, var indexable, var fromRow, var search) -> {
                 var objectShape = getObjectShape(object, ignoreArity);
                 if (objectShape == null) {
                     yield null;
                 }
-                // Whether the comparison asks for an index, and whether its value came from a row, are part of what it
-                // compiles to.
+                // Whether the comparison asks for an index, whether its value came from a row, and the match form of
+                // a search word, are part of what it compiles to.
                 if (metamodel == null) {
                     yield List.of(operator, objectShape, indexable, fromRow);
                 }
-                yield List.of(metamodel, operator, objectShape, indexable, fromRow);
+                yield search == null
+                        ? List.of(metamodel, operator, objectShape, indexable, fromRow)
+                        : List.of(metamodel, operator, objectShape, indexable, fromRow, search);
             }
         };
     }
@@ -101,7 +104,7 @@ final class CacheableProcessor implements ElementProcessor<Cacheable> {
      * @return the shape of the object.
      * @throws SqlTemplateException if the shape cannot be determined.
      */
-    private static Object getObjectShape(Object object, boolean ignoreArity)
+    private static @Nullable Object getObjectShape(Object object, boolean ignoreArity)
             throws SqlTemplateException {
         return switch (object) {
             case Collection<?> c -> {

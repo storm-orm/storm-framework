@@ -19,43 +19,58 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 
 import java.util.List;
 import org.junit.jupiter.api.Test;
+import st.orm.core.template.impl.SearchTerms.Term;
 
 public class SearchTermsTest {
 
+    private static List<String> texts(String input) {
+        return SearchTerms.parse(input).stream().map(Term::text).toList();
+    }
+
     @Test
     public void whitespaceSeparatesTerms() {
-        assertEquals(List.of("ugly", "bad"), SearchTerms.parse("ugly bad"));
-        assertEquals(List.of("ugly", "bad"), SearchTerms.parse("  ugly \t bad\n"));
+        assertEquals(List.of("ugly", "bad"), texts("ugly bad"));
+        assertEquals(List.of("ugly", "bad"), texts("  ugly \t bad\n"));
     }
 
     @Test
     public void inputWithoutTermsHoldsNone() {
-        assertEquals(List.of(), SearchTerms.parse(""));
-        assertEquals(List.of(), SearchTerms.parse("   "));
-        assertEquals(List.of(), SearchTerms.parse("\"\""));
-        assertEquals(List.of(), SearchTerms.parse("\"  \""));
+        assertEquals(List.of(), texts(""));
+        assertEquals(List.of(), texts("   "));
+        assertEquals(List.of(), texts("\"\""));
+        assertEquals(List.of(), texts("\"  \""));
+        assertEquals(List.of(), texts("\""));
     }
 
     @Test
     public void quotedPhraseIsOneTerm() {
-        assertEquals(List.of("the good", "ugly"), SearchTerms.parse("\"the good\" ugly"));
-        assertEquals(List.of("the good"), SearchTerms.parse("\" the good \""));
-        assertEquals(List.of("a b", "c"), SearchTerms.parse("\"a b\"c"));
+        assertEquals(List.of(new Term("the good", true), new Term("ugly", false)), SearchTerms.parse("\"the good\" ugly"));
+        assertEquals(List.of("the good"), texts("\" the good \""));
+        assertEquals(List.of("a b", "c"), texts("\"a b\"c"));
     }
 
     @Test
-    public void unpairedOrInnerQuoteIsAnOrdinaryCharacter() {
-        assertEquals(List.of("\"ugly", "bad"), SearchTerms.parse("\"ugly bad"));
-        assertEquals(List.of("o\"brien"), SearchTerms.parse("o\"brien"));
+    public void anOpenQuoteRunsToTheEndOfTheInput() {
+        // The user is still typing the phrase.
+        assertEquals(List.of(new Term("ugly bad", true)), SearchTerms.parse("\"ugly bad"));
+        assertEquals(List.of("ugly", "bad and"), texts("ugly \"bad and "));
+    }
+
+    @Test
+    public void innerQuoteIsAnOrdinaryCharacter() {
+        assertEquals(List.of("o\"brien"), texts("o\"brien"));
+        assertEquals(List.of("12\"", "x"), texts("12\" x"));
     }
 
     @Test
     public void wildcardsAreKeptForTheOperatorToEscape() {
-        assertEquals(List.of("50%", "a_b"), SearchTerms.parse("50% a_b"));
+        assertEquals(List.of("50%", "a_b"), texts("50% a_b"));
     }
 
     @Test
     public void repeatedTermIsReadOnce() {
-        assertEquals(List.of("bad", "ugly"), SearchTerms.parse("bad ugly bad \"bad\""));
+        assertEquals(List.of("bad", "ugly"), texts("bad ugly bad"));
+        // A quoted term is read apart from the bare one: it is never ignored where the bare one may be.
+        assertEquals(List.of(new Term("bad", false), new Term("bad", true)), SearchTerms.parse("bad \"bad\" bad"));
     }
 }

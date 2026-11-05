@@ -282,7 +282,9 @@ public class MySQLSqlDialect extends DefaultSqlDialect {
 
     /**
      * MySQL lists every index column in {@code INFORMATION_SCHEMA.STATISTICS}, so the indexes of a schema are read in
-     * one query. The column of a functional key part is {@code NULL}.
+     * one query. The column of a functional key part is {@code NULL}, and its expression is listed. A B-tree is the
+     * ordinary index; a hash index serves an equality alone, and a full-text or spatial index serves no match of a
+     * search.
      *
      * @return the query on {@code INFORMATION_SCHEMA.STATISTICS}.
      * @since 1.16
@@ -292,7 +294,10 @@ public class MySQLSqlDialect extends DefaultSqlDialect {
         return """
                 SELECT TABLE_NAME, INDEX_NAME, COLUMN_NAME, SEQ_IN_INDEX AS ORDINAL_POSITION,
                        CASE WHEN NON_UNIQUE = 0 THEN 1 ELSE 0 END AS IS_UNIQUE,
-                       0 AS IS_PARTIAL
+                       0 AS IS_PARTIAL,
+                       CASE WHEN INDEX_TYPE = 'BTREE' THEN NULL WHEN INDEX_TYPE = 'HASH' THEN 'exact' ELSE '' END
+                           AS MATCH_FORMS,
+                       EXPRESSION AS KEY_EXPRESSION
                 FROM INFORMATION_SCHEMA.STATISTICS
                 WHERE TABLE_SCHEMA = ?""";
     }

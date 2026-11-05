@@ -1223,21 +1223,21 @@ class TemplatePreparation {
             TableMapper tableMapper,
             List<Join> joins,
             ReferencedPaths referenced,
-            boolean demandOnly
+            boolean requireOnly
     ) throws SqlTemplateException {
-        // When demandOnly is set, only referenced foreign keys are joined (the hydrated graph is not expanded), so
+        // When requireOnly is set, only referenced foreign keys are joined (the hydrated graph is not expanded), so
         // the recursion starts already beyond the eager region.
         var context = new AutoJoinContext(rootTable, aliasMapper, tableMapper, joins, referenced, null, Set.of());
         if (!isSealedEntity(table)) {
-            deriveAutoJoins(getRecordType(table), table, List.of(), null, false, demandOnly, context);
+            deriveAutoJoins(getRecordType(table), table, List.of(), null, false, requireOnly, context);
         } else {
             // A sealed entity has the fields of its subtypes. For JOINED inheritance, each extension table (permitted
             // subclass with its own table) is joined on the primary key first, so that the foreign keys of its fields
             // can start from it.
-            Map<Class<?>, String> extensionAliases = !demandOnly && isJoinedEntity(table)
+            Map<Class<?>, String> extensionAliases = !requireOnly && isJoinedEntity(table)
                     ? addJoinedExtensionJoins(table, aliasMapper, joins)
                     : Map.of();
-            deriveSealedAutoJoins(table, extensionAliases, demandOnly, context);
+            deriveSealedAutoJoins(table, extensionAliases, requireOnly, context);
         }
         joins.addAll(customJoins);
     }

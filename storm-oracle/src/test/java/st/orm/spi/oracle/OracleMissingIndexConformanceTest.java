@@ -15,9 +15,15 @@
  */
 package st.orm.spi.oracle;
 
+import static st.orm.Match.anywhere;
+import static st.orm.Match.exact;
+import static st.orm.Match.prefix;
+import static st.orm.Match.wordStart;
+
 import java.sql.Connection;
 import java.sql.SQLException;
 import java.sql.Statement;
+import java.util.List;
 import javax.sql.DataSource;
 import org.testcontainers.oracle.OracleContainer;
 import st.orm.tck.AbstractMissingIndexConformanceTest;
@@ -57,14 +63,28 @@ public class OracleMissingIndexConformanceTest extends AbstractMissingIndexConfo
     }
 
     @Override
-    protected java.util.List<String> suggestProbeDdl() {
-        return java.util.List.of(
-                "CREATE TABLE suggest_probe (id NUMBER(10) PRIMARY KEY, title VARCHAR2(100) NOT NULL, title_lower VARCHAR2(100) GENERATED ALWAYS AS (LOWER(title)) VIRTUAL)",
-                "CREATE INDEX probe_stored ON suggest_probe (title_lower)");
+    protected List<String> searchProbeDdl() {
+        return List.of(
+                "CREATE TABLE search_probe (id NUMBER(10) PRIMARY KEY, title VARCHAR2(100) NOT NULL, title_lower VARCHAR2(100) GENERATED ALWAYS AS (LOWER(title)) VIRTUAL)");
+    }
+
+    @Override
+    protected List<SearchIndexProbe> searchIndexProbes() {
+        return List.of(
+                // An ordinary index over the virtual lowered title serves a prefix and an exact match.
+                new SearchIndexProbe(prefix(PROBE_TITLE_LOWER), "CREATE INDEX probe_stored ON search_probe (title_lower)", "probe_stored", true),
+                new SearchIndexProbe(exact(PROBE_TITLE_LOWER), "CREATE INDEX probe_stored ON search_probe (title_lower)", "probe_stored", true),
+                // A function-based index over another expression of the title, and an index on the bare title, hold
+                // another expression than the match compares. An index over LOWER(title) is not probed: Oracle keys
+                // it on the virtual title_lower column, which holds the same expression.
+                new SearchIndexProbe(anywhere(PROBE_TITLE), "CREATE INDEX probe_upper ON search_probe (UPPER(title))", "probe_upper", false),
+                new SearchIndexProbe(anywhere(PROBE_TITLE), "CREATE INDEX probe_title ON search_probe (title)", "probe_title", false),
+                new SearchIndexProbe(wordStart(PROBE_TITLE), null, null, false));
     }
 
     @Override
     protected boolean servedByIndex(String plan) {
-        return plan.contains("INDEX RANGE SCAN") && plan.contains("PROBE_STORED");
+        return (plan.contains("INDEX RANGE SCAN") || plan.contains("INDEX UNIQUE SCAN")) && plan.contains("PROBE_");
     }
+
 }

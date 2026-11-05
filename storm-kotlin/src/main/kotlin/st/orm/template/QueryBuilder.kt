@@ -1792,17 +1792,18 @@ public infix fun <T : Data> Navigable<T, String>.notEndsWithIgnoreCase(text: Str
  * Creates a predicate that matches the words of a search input against one or more text columns. Every word must occur
  * in at least one of the paths, ignoring case and matched as literal text, as [containsIgnoreCase] matches it, so
  * `search("ugly bad", Movie_.title)` finds "The Good, the Bad and the Ugly". Whitespace separates the words, and a
- * quoted phrase such as `"the good"` is one word; an unpaired quote is an ordinary character. An input without words,
- * such as an empty search box, matches every row.
+ * quote at the start of a word opens a phrase such as `"the good"`, one word that runs to the next quote or to the end
+ * of the input; a quote inside a word is an ordinary character. An input without words, such as an empty search box,
+ * matches every row. The overload taking a [Match] per column states another match form.
  *
  * A path through a relation joins its table as any other path does, and a path may start at a table the query joins.
  * A path may also start at a semi-joined table, which searches the rows related to each row; each word is matched on
  * its own, so the words may match different related rows.
  * Accents compare as the column's collation compares them.
  *
- * A word shorter than the database's substring index serves, such as the three characters of a trigram index on
- * PostgreSQL, is tested only on the rows the longer words found, so it reads no table in full; the rows found are the
- * same. A search box that queries as the user types, such as an auto-complete, uses [suggest] instead.
+ * A word shorter than the database's substring index serves is tested only on the rows the longer words found, so it
+ * reads no table in full; the rows found are the same. A search box that queries as the user types, such as an
+ * auto-complete, uses [suggest] instead.
  *
  * @param input the search input, as a search box receives it.
  * @param path the first text column to search.
@@ -1813,15 +1814,32 @@ public fun <T : Data> search(
     input: String,
     path: Navigable<out T, String>,
     vararg more: Navigable<out T, String>,
-): PredicateBuilder<T, T, *> = createSearch(input, listOf(path.asMetamodel()) + more.map { it.asMetamodel() })
+): PredicateBuilder<T, T, *> = createSearch(input, path.asMetamodel(), *more.map { it.asMetamodel() }.toTypedArray())
+
+/**
+ * Creates a predicate that matches the words of a search input against text columns, each in its stated match form,
+ * as [search] matches them anywhere in the value. A field states its form with [anywhere], [wordStart], [prefix] or
+ * [exact]: `search("ugly bad", wordStart(Movie_.title), exact(Movie_.titleLower))` matches each word at the start of
+ * a word of the title or as the whole lowered title.
+ *
+ * @param input the search input, as a search box receives it.
+ * @param field the first text column to search, with its match form.
+ * @param more further text columns to search, with their match forms.
+ * @since 1.16
+ */
+public fun <T : Data> search(
+    input: String,
+    field: Match<out T>,
+    vararg more: Match<out T>,
+): PredicateBuilder<T, T, *> = createSearch(input, field, *more)
 
 /**
  * Creates a predicate that matches the words of a search box that queries as the user types, such as an auto-complete,
- * against one or more text columns. Every word of two characters or more matches in the form the database's index
- * serves: on a database with a substring index, such as a trigram index on PostgreSQL, anywhere from the length the
- * index serves and at the start of a word below that; elsewhere, as a prefix of the column, which an ordinary index
- * over the column serves. A one-character word takes no part, and an input without a word that takes part, an empty one
- * included, matches no rows. Every statement it renders is therefore served by an index, however the user types.
+ * against one or more text columns. Every word of two characters or more matches at the start of a word in one of
+ * the columns, the same rows on every database: `suggest("de n", Movie_.director.name)` finds "Robert De Niro" and
+ * not "Alfredo". The input is read as [search] reads it. A one-character word takes no part, and an input without a
+ * word that takes part, an empty one included, matches no rows, so the box never fetches and sorts a whole table on
+ * the first keystroke. The overload taking a [Match] per column states another match form.
  *
  * @param input the search input, as a search box receives it.
  * @param path the first text column to search.
@@ -1838,8 +1856,8 @@ public fun <T : Data> suggest(
  * Creates a predicate that matches the words of a search box that queries as the user types against one or more text
  * columns, as [suggest] does, ignoring the given words as well. A word that equals one of them, ignoring case, takes
  * no part in the predicate, as a one-character word takes none, so an input of ignored words alone matches
- * no rows. A search box names the words that occur in a large share of its rows, such as "the" in a catalog of
- * titles, which the index serves but which narrow nothing: `suggest("the god", setOf("the", "a", "of"), Movie_.title)`
+ * no rows; a quoted word is never ignored. A search box names the words that occur in a large share of its rows, such
+ * as "the" in a catalog of titles, which narrow nothing: `suggest("the god", setOf("the", "a", "of"), Movie_.title)`
  * matches on "god" alone.
  *
  * @param input the search input, as a search box receives it.
@@ -1853,7 +1871,82 @@ public fun <T : Data> suggest(
     ignore: Set<String>,
     path: Navigable<out T, String>,
     vararg more: Navigable<out T, String>,
-): PredicateBuilder<T, T, *> = createSuggest(input, ignore, listOf(path.asMetamodel()) + more.map { it.asMetamodel() })
+): PredicateBuilder<T, T, *> = createSuggest(input, ignore, path.asMetamodel(), *more.map { it.asMetamodel() }.toTypedArray())
+
+/**
+ * Creates a predicate that matches the words of a search box that queries as the user types against text columns,
+ * each in its stated match form, as [suggest] matches them at the start of a word. A field states its form with
+ * [anywhere], [wordStart], [prefix] or [exact]: `suggest(input, wordStart(Movie_.title), prefix(MovieTitleSuffix_.suffix))`
+ * matches each word at the start of a word of the title, or as a prefix of a suffix row, which an ordinary index
+ * serves.
+ *
+ * @param input the search input, as a search box receives it.
+ * @param field the first text column to search, with its match form.
+ * @param more further text columns to search, with their match forms.
+ * @since 1.16
+ */
+public fun <T : Data> suggest(
+    input: String,
+    field: Match<out T>,
+    vararg more: Match<out T>,
+): PredicateBuilder<T, T, *> = suggest(input, emptySet(), field, *more)
+
+/**
+ * Creates a predicate that matches the words of a search box that queries as the user types against text columns,
+ * each in its stated match form, ignoring the given words as well, as [suggest] ignores them. A quoted word is never
+ * ignored.
+ *
+ * @param input the search input, as a search box receives it.
+ * @param ignore the words to ignore, compared ignoring case.
+ * @param field the first text column to search, with its match form.
+ * @param more further text columns to search, with their match forms.
+ * @since 1.16
+ */
+public fun <T : Data> suggest(
+    input: String,
+    ignore: Set<String>,
+    field: Match<out T>,
+    vararg more: Match<out T>,
+): PredicateBuilder<T, T, *> = createSuggest(input, ignore, field, *more)
+
+/**
+ * States that a word of a [search] or [suggest] matches anywhere in the column's value, the default of [search]:
+ * `LOWER(column) LIKE LOWER('%word%')`.
+ *
+ * @param path the text column.
+ * @since 1.16
+ */
+public fun <T : Data> anywhere(path: Navigable<T, String>): Match<T> = Match.anywhere(path)
+
+/**
+ * States that a word of a [search] or [suggest] matches at the start of any word in the column's value, the value's
+ * start or the text after a space, the default of [suggest]:
+ * `LOWER(column) LIKE LOWER('word%') OR LOWER(column) LIKE LOWER('% word%')`.
+ *
+ * @param path the text column.
+ * @since 1.16
+ */
+public fun <T : Data> wordStart(path: Navigable<T, String>): Match<T> = Match.wordStart(path)
+
+/**
+ * States that a word of a [search] or [suggest] matches as a prefix of the column's value, with the column bare and
+ * the word lowered, `column LIKE 'word%'`, which an ordinary index over the column serves. The column is then one that
+ * compares case-insensitively on its own, through its collation or as a stored lowered column.
+ *
+ * @param path the text column.
+ * @since 1.16
+ */
+public fun <T : Data> prefix(path: Navigable<T, String>): Match<T> = Match.prefix(path)
+
+/**
+ * States that a word of a [search] or [suggest] matches the column's whole value, with the column bare and the word
+ * lowered, `column = 'word'`, which an ordinary index over the column serves. The column is then one that compares
+ * case-insensitively on its own, through its collation or as a stored lowered column.
+ *
+ * @param path the text column.
+ * @since 1.16
+ */
+public fun <T : Data> exact(path: Navigable<T, String>): Match<T> = Match.exact(path)
 
 /**
  * Applies a SQL function to a column, for a query that names the expression an index is built on. The call is taken

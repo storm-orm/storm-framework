@@ -437,13 +437,12 @@ public interface SqlDialect {
      * <p>A search term matches anywhere in a column, ignoring case: {@code LOWER(column) LIKE LOWER('%term%')}. An
      * index built for substring matching, such as a trigram index, serves that comparison for terms of a minimum
      * length, and reads every row for a shorter one. {@code search} therefore matches a shorter term only against the
-     * rows its longer terms found, which keeps the result and leaves the short term no table to read in full, and
-     * {@code suggest} matches a shorter term at the start of a word, which the index serves from one character less.
-     * A search of short terms alone still reads every row.</p>
+     * rows its longer terms found, which keeps the result and leaves the short term no table to read in full. A
+     * search of short terms alone still reads every row. The length changes no result.</p>
      *
-     * <p>The default is {@code 0}: no index of the database serves a substring. {@code search} then treats every
-     * term alike, and {@code suggest} matches a term as a prefix of the column, which an ordinary index over the
-     * column serves. {@link st.orm.StormConfig#SEARCH_MIN_TERM_LENGTH} overrides the dialect's value.</p>
+     * <p>The default is {@code 0}: no index of the database serves a substring, and {@code search} treats every term
+     * alike. The search advice reads it as whether the database has an index for substring matching to name.
+     * {@link st.orm.StormConfig#SEARCH_MIN_TERM_LENGTH} overrides the dialect's value.</p>
      *
      * @return the shortest term the substring index serves, or {@code 0} to treat every term alike.
      * @since 1.16
@@ -709,9 +708,22 @@ public interface SqlDialect {
      *   <li>{@code IS_UNIQUE}: {@code 1} for a unique index, {@code 0} otherwise.</li>
      *   <li>{@code IS_PARTIAL}: {@code 1} for an index that covers only the rows a condition selects, {@code 0}
      *       otherwise.</li>
+     *   <li>{@code MATCH_FORMS}: the match forms of a {@code search} or {@code suggest} the index serves at this
+     *       position, taking the position to hold the expression the match compares, as a list of the forms' names
+     *       separated by commas: {@code anywhere} and {@code wordStart} for an index that serves a {@code LIKE}
+     *       with a wildcard in front of the word, such as a trigram index; {@code prefix} for one that serves a
+     *       {@code LIKE} with the wildcard behind it; {@code exact} for one that serves an equality. {@code NULL}
+     *       for an ordinary index, which orders its values from their first character and so serves
+     *       {@code prefix} and {@code exact}; an empty string for an index that serves none of them, such as a
+     *       full-text index.</li>
+     *   <li>{@code KEY_EXPRESSION}: the expression a position holds, as the database writes it, or {@code NULL} for
+     *       a column. The search advice compares it with the expression the match compares ignoring case,
+     *       whitespace, quoting and parentheses, so a dialect strips what else its database adds, such as casts.
+     *       Listed last, for a database that streams a long text column only when it is read last.</li>
      * </ul>
      *
-     * <p>Without a schema name to bind, the indexes are read per table instead.</p>
+     * <p>A query that lists neither of the last two reads as ordinary indexes whose expressions the read cannot see.
+     * Without a schema name to bind, the indexes are read per table instead.</p>
      *
      * @return the query, or {@code null} to read the indexes per table.
      * @since 1.16

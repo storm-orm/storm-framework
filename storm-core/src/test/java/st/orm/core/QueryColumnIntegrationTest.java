@@ -94,7 +94,7 @@ public class QueryColumnIntegrationTest {
     @Test
     public void searchMatchesTheQueryColumn() {
         List<Owner> owners = orm().entity(Owner.class).select()
-                .where(it -> PredicateBuilderFactory.<Owner, Owner, Integer>search("dav", List.of(Owner_.lastNameFolded)))
+                .where(it -> PredicateBuilderFactory.<Owner, Owner, Integer>search("dav", Owner_.lastNameFolded))
                 .getResultList();
         assertEquals(List.of("Betty", "Harold"), firstNames(owners));
     }
@@ -223,7 +223,7 @@ public class QueryColumnIntegrationTest {
     public void queryColumnFunctionAppliesToSearchAndToInLists() {
         List<String> statements = new ArrayList<>();
         List<Owner> searched = observe(sql -> statements.add(sql.statement().replaceAll("\\s+", " ")),
-                () -> orm().entity(Owner.class).select().where(it -> PredicateBuilderFactory.<Owner, Owner, Integer>search("dav", List.of(Owner_.lastNameUpper))).getResultList());
+                () -> orm().entity(Owner.class).select().where(it -> PredicateBuilderFactory.<Owner, Owner, Integer>search("dav", Owner_.lastNameUpper)).getResultList());
         assertEquals(List.of("Betty", "Harold"), firstNames(searched));
         assertTrue(statements.getFirst().contains("LIKE LOWER(upper(?)) ESCAPE '!'"), statements.getFirst());
         List<Owner> listed = observe(sql -> statements.add(sql.statement().replaceAll("\\s+", " ")),

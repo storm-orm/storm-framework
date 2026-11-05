@@ -103,7 +103,7 @@ public class PostgreSQLSqlFunctionTest {
     private Set<String> search(String input) {
         var names = new TreeSet<String>();
         orm.entity(Title.class).select()
-                .where(it -> PredicateBuilderFactory.<Title, Title, Integer>search(input, List.of(FOLD_ACCENTS.apply(NAME))))
+                .where(it -> PredicateBuilderFactory.<Title, Title, Integer>search(input, FOLD_ACCENTS.apply(NAME)))
                 .getResultList()
                 .forEach(title -> names.add(title.name()));
         return names;

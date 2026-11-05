@@ -48,11 +48,11 @@ Each piece of advice is derived in the scope that sees what it is about, and rep
 
 | Advice | Derived per | Reported |
 |--------|-------------|----------|
-| [`unordered-limit`](#unordered-limit), [`deep-offset`](#deep-offset), [`distinct-over-join`](#distinct-over-join), [`unindexed-search`](#unindexed-search), [`in-list-shapes`](#in-list-shapes) | statement shape, for the life of the application | the advice log, once per shape, with the call site and the cost of the execution; every slow line of the shape |
+| [`unordered-limit`](#unordered-limit), [`deep-offset`](#deep-offset), [`distinct-over-join`](#distinct-over-join), [`in-list-shapes`](#in-list-shapes) | statement shape, for the life of the application | the advice log, once per shape, with the call site and the cost of the execution; every slow line of the shape |
 | [`repeated-select`](#repeated-select), [`repeated-write`](#repeated-write), [`repeated-fetch`](#repeated-fetch) within a transaction | transaction | the advice log when the transaction completes, one block under its call site |
 | the same, across transactions, and [`writes-without-transaction`](#writes-without-transaction) | the unit of work a performance log scope covers, less the executions a transaction advised on | the performance log summary, which says that a batch commits the rows together |
 | [`idle-transaction`](#idle-transaction) | transaction | the slow statement log when the transaction completes |
-| [`page-count`](#page-count), [`missing-index`](#missing-index), [`unindexed-foreign-key`](#unindexed-foreign-key), [`wide-entity-read`](#wide-entity-read) | statement shape, decided for a slow execution | the slow statement log |
+| [`page-count`](#page-count), [`missing-index`](#missing-index), [`unindexed-search`](#unindexed-search), [`unindexed-foreign-key`](#unindexed-foreign-key), [`wide-entity-read`](#wide-entity-read) | statement shape, decided for a slow execution | the slow statement log |
 | [`entity-budget`](#entity-budget) | entity, at startup or first use | the advice log, once per entity |
 
 ```
@@ -135,18 +135,23 @@ Loading the schema is optional. Storm works the same without it; what it adds is
 - **Each load reads anew.** A load or validation replaces what an earlier one kept for the same schemas. After a migration that changed the schema while the application runs, such as one that added an index, call `loadSchema()` again to make the change known.
 - **Nothing is read while statements run.** The loaded schema is a snapshot; a table created after the load is not in it, and a table that is not in the loaded schema gets no advice.
 
-## A search of short words alone {#unindexed-search}
+## A search field no index serves {#unindexed-search}
 
 ```text
-every search term is shorter than the 3 characters a substring index serves, so the search reads every row.
-fix: for a search box that queries as the user types, use suggest, which returns no rows for such input.
+index movie_title_trgm on movie is on title, and the match compares LOWER(title), so the database reads movie in full to match it.
+fix: an index for substring matching on LOWER(title) serves it.
 ```
 
-Category: performance. Logger: `st.orm.sql.advice.unindexed-search`.
+Category: performance, reported by the slow statement log, only once the schema is [loaded](#loading-the-schema).
 
-A substring index, such as PostgreSQL's trigram index, serves words of a minimum length, three characters for a trigram. `search` tests a shorter word only on the rows its longer words found, but an input of short words alone, such as `de`, leaves it nothing to start from, so the database reads every row of each searched table.
+`search` and `suggest` record each column they match and the [form](search.md#match-forms) they match it in: anywhere or at a word start, which compare the lowered column with a wildcard in front of the word, or as a prefix or the whole value, which compare the bare column. When an execution is slow, the check looks at the indexes of each searched table and asks, for each field, whether an index holds the expression the match compares and serves the form: the dialect's index read says which forms each index serves, a trigram index every form and an ordinary index a prefix and an equality. A field no index serves is advised, and the advice says which of the two it is:
 
-A search box that queries as the user types meets such input on almost every keystroke. Use `suggest` there: it matches every word of two characters or more in the form the index serves, at the start of a word where a substring index cannot serve it anywhere and as a prefix of the column where no index serves a substring, and matches no rows for an input without such a word, so every statement it renders is served by an index. The search page the box leads to keeps `search`. See [Suggestions as the User Types](search.md#suggestions-as-the-user-types) and [Indexing a Search](search.md#indexing-a-search).
+- **No index serves it.** `no index on movie serves wordStart(title)`: the table has no index on the column or expression.
+- **An index exists and cannot.** The index holds the column where the match compares `LOWER(title)`, or holds the right expression but serves no match that starts with a wildcard, such as a B-tree over `LOWER(title)` or, on PostgreSQL, a B-tree with the default operator class for a `prefix` match. The advice names the index and why it cannot serve the field.
+
+The fix names what serves the form: an index for substring matching on the expression where the database has one, an ordinary index on the bare column for a `prefix` or `exact` match, and where no index of the database serves a match anywhere or at a word start, a [word-suffix table](search.md#large-tables-without-a-substring-index), matched as a prefix. See [Indexing a Search](search.md#indexing-a-search) for the index per database.
+
+The check stays silent where it cannot tell: a partial index, or an index on an expression the read cannot see, may serve the match. A read of a small table is never slow, so a search over one is never advised.
 
 ## DISTINCT over a join that repeats rows {#distinct-over-join}
 

@@ -1,6 +1,7 @@
 package st.orm.core.template.impl;
 
 import java.util.function.Function;
+import org.jspecify.annotations.Nullable;
 import st.orm.Element;
 import st.orm.SqlTemplateException;
 import st.orm.core.template.TemplateString;
@@ -37,7 +38,7 @@ interface ElementProcessor<E extends Element> {
      * @return an immutable key for caching, or {@code null} if the element (or its compilation) cannot be cached.
      * @throws SqlTemplateException if the key generation fails.
      */
-    default Object getCompilationKey(E element) throws SqlTemplateException {
+    default @Nullable Object getCompilationKey(E element) throws SqlTemplateException {
         return null;
     }
 
@@ -56,9 +57,9 @@ interface ElementProcessor<E extends Element> {
      * @return an immutable key for caching, or {@code null} if the element or its compilation cannot be cached.
      * @throws SqlTemplateException if the key generation fails.
      */
-    default Object getCompilationKey(
+    default @Nullable Object getCompilationKey(
             E element,
-            Function<TemplateString, Object> keyGenerator
+            Function<TemplateString, @Nullable Object> keyGenerator
     ) throws SqlTemplateException {
         return getCompilationKey(element);
     }
@@ -77,9 +78,9 @@ interface ElementProcessor<E extends Element> {
      * @throws SqlTemplateException if the key generation fails.
      * @since 1.13
      */
-    default Object getShapeKey(
+    default @Nullable Object getShapeKey(
             E element,
-            Function<TemplateString, Object> keyGenerator
+            Function<TemplateString, @Nullable Object> keyGenerator
     ) throws SqlTemplateException {
         return getCompilationKey(element, keyGenerator);
     }

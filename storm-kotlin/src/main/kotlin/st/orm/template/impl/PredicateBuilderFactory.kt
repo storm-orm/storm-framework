@@ -16,6 +16,7 @@
 package st.orm.template.impl
 
 import st.orm.Data
+import st.orm.Match
 import st.orm.Metamodel
 import st.orm.Operator
 import st.orm.Ref
@@ -72,7 +73,8 @@ internal fun <T : Data, R : Any, V : Any> compare(
 ): PredicateBuilder<T, R, *> = PredicateBuilderImpl(PredicateBuilderFactory.compare(path, operator, other))
 
 /**
- * Creates a predicate that matches every term of a search input in at least one of the paths, ignoring case.
+ * Creates a predicate that matches every term of a search input in at least one of the paths, anywhere in the value,
+ * ignoring case.
  *
  * @param input the search input.
  * @param paths the text columns to search, at least one.
@@ -80,12 +82,25 @@ internal fun <T : Data, R : Any, V : Any> compare(
  */
 internal fun <T : Data, R : Any> createSearch(
     input: String,
-    paths: List<Metamodel<*, String>>,
-): PredicateBuilder<T, R, *> = PredicateBuilderImpl(PredicateBuilderFactory.search<T, R, Any>(input, paths))
+    vararg paths: Metamodel<*, String>,
+): PredicateBuilder<T, R, *> = PredicateBuilderImpl(PredicateBuilderFactory.search<T, R, Any>(input, *paths))
 
 /**
- * Creates a predicate that matches the terms of a search input the dialect's substring index serves, and the search
- * box does not ignore, in at least one of the paths, ignoring case, and no rows when the input holds none.
+ * Creates a predicate that matches every term of a search input in at least one of the fields, each in its match form.
+ *
+ * @param input the search input.
+ * @param fields the text columns to search with their match forms, at least one.
+ * @return a new instance of [PredicateBuilder]
+ */
+internal fun <T : Data, R : Any> createSearch(
+    input: String,
+    vararg fields: Match<*>,
+): PredicateBuilder<T, R, *> = PredicateBuilderImpl(PredicateBuilderFactory.search<T, R, Any>(input, *fields))
+
+/**
+ * Creates a predicate that matches the terms of a search box that queries as the user types, and that the box does
+ * not ignore, at the start of a word in at least one of the paths, ignoring case, and no rows when the input holds
+ * none.
  *
  * @param input the search input.
  * @param ignore the terms to ignore, compared ignoring case.
@@ -95,8 +110,23 @@ internal fun <T : Data, R : Any> createSearch(
 internal fun <T : Data, R : Any> createSuggest(
     input: String,
     ignore: Set<String>,
-    paths: List<Metamodel<*, String>>,
-): PredicateBuilder<T, R, *> = PredicateBuilderImpl(PredicateBuilderFactory.suggest<T, R, Any>(input, ignore, paths))
+    vararg paths: Metamodel<*, String>,
+): PredicateBuilder<T, R, *> = PredicateBuilderImpl(PredicateBuilderFactory.suggest<T, R, Any>(input, ignore, *paths))
+
+/**
+ * Creates a predicate that matches the terms of a search box that queries as the user types, and that the box does
+ * not ignore, in at least one of the fields, each in its match form, and no rows when the input holds none.
+ *
+ * @param input the search input.
+ * @param ignore the terms to ignore, compared ignoring case.
+ * @param fields the text columns to search with their match forms, at least one.
+ * @return a new instance of [PredicateBuilder]
+ */
+internal fun <T : Data, R : Any> createSuggest(
+    input: String,
+    ignore: Set<String>,
+    vararg fields: Match<*>,
+): PredicateBuilder<T, R, *> = PredicateBuilderImpl(PredicateBuilderFactory.suggest<T, R, Any>(input, ignore, *fields))
 
 /**
  * Combines two predicates using an AND condition, rooting the result at the operands' least common root.

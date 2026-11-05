@@ -32,7 +32,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.jdbc.datasource.DriverManagerDataSource;
 import st.orm.Data;
 import st.orm.Entity;
-import st.orm.core.template.impl.IndexDemands.Kind;
+import st.orm.core.template.impl.IndexUsage.Kind;
 import st.orm.spi.QueryContext.ExecutionKind;
 import st.orm.spi.SqlOperation;
 import st.orm.spi.StatementOrigin;
@@ -65,10 +65,10 @@ class RepeatsTest {
     }
 
     private static QueryImpl.QueryContextImpl context(SqlOperation operation, @Nullable RepositoryCall call,
-                                                      @Nullable IndexDemands indexDemands,
+                                                      @Nullable IndexUsage indexUsage,
                                                       @Nullable DataSource dataSource) {
         return new QueryImpl.QueryContextImpl(operation, false, Owner.class, ExecutionKind.QUERY, "SQL",
-                StatementOrigin.DIRECT, 13, true, null, true, call, false, null, indexDemands, dataSource);
+                StatementOrigin.DIRECT, 13, true, null, true, call, false, null, indexUsage, dataSource);
     }
 
     /**
@@ -232,7 +232,7 @@ class RepeatsTest {
             statement.execute("CREATE TABLE owner (id INTEGER PRIMARY KEY, last_name VARCHAR(50))");
             IndexCatalog.publish(dataSource, IndexCatalog.of(Map.of("", DatabaseSchema.read(connection))));
         }
-        var builder = new IndexDemands.Builder();
+        var builder = new IndexUsage.Builder();
         builder.add("", "owner", "last_name", Kind.EQUALITY);
         var select = context(SqlOperation.SELECT, null, builder.build(), dataSource);
         var costly = perTransaction(select, Advice.STATEMENT_COST_NANOS, false).advisories(false);
