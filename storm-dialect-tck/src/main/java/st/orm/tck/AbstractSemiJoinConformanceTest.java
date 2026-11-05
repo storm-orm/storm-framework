@@ -79,6 +79,8 @@ public abstract class AbstractSemiJoinConformanceTest {
     private static final Metamodel<Review, Integer> REVIEW_STARS = Metamodel.of(Review.class, "stars");
     private static final Metamodel<Review, Ref<Author>> REVIEW_AUTHOR = Metamodel.of(Review.class, "author");
     private static final Metamodel<Book, Ref<Author>> BOOK_AUTHOR = Metamodel.of(Book.class, "author");
+    private static final Metamodel<Review, Integer> REVIEW_AUTHOR_ID = Metamodel.of(Review.class, "author.id");
+    private static final Metamodel<Author, Integer> AUTHOR_ID = Metamodel.of(Author.class, "id");
 
     private static final List<String> TABLES = List.of("review", "printing", "edition", "book", "author");
 
@@ -290,20 +292,21 @@ public abstract class AbstractSemiJoinConformanceTest {
     }
 
     @Test
-    public void semiJoinOnNamedKeysMatchesTheKeysWithEachOther() {
-        // The keys named relate the tables as the shared key does, and a single key names the one the join follows.
+    public void semiJoinOnAPredicateMatchesTheKeysItEquates() {
+        // The keys the predicate equates relate the tables as the shared key does, and a key equated with the key it
+        // references names the one the join follows; the other terms are the condition.
         assertEquals(List.of("Emma", "Persuasion"), titles(orm.entity(Book.class).select()
-                .semiJoin(Review.class).on(REVIEW_AUTHOR, BOOK_AUTHOR)
+                .semiJoin(Review.class).on(it -> it.where(REVIEW_AUTHOR, EQUALS, BOOK_AUTHOR))
                 .where(it -> it.where(REVIEW_STARS, EQUALS, 3))
                 .getResultList()));
         assertEquals(List.of("Anonymous Verses", "Dune"), titles(orm.entity(Book.class).select()
-                .antiJoin(Review.class).on(REVIEW_AUTHOR, BOOK_AUTHOR)
+                .antiJoin(Review.class).on(it -> it.where(BOOK_AUTHOR, EQUALS, REVIEW_AUTHOR))
                 .getResultList()));
         assertEquals(List.of("Austen", "Tolkien"), names(orm.entity(Author.class).select()
-                .semiJoin(Review.class).on(REVIEW_AUTHOR)
+                .semiJoin(Review.class).on(it -> it.where(REVIEW_AUTHOR_ID, EQUALS, AUTHOR_ID))
                 .getResultList()));
         assertEquals(List.of("Herbert", "Orwell"), names(orm.entity(Author.class).select()
-                .antiJoin(Review.class).on(REVIEW_AUTHOR, it -> it.where(REVIEW_STARS, GREATER_THAN, 1))
+                .antiJoin(Review.class).on(it -> it.where(REVIEW_STARS, GREATER_THAN, 1).and(it.where(REVIEW_AUTHOR_ID, EQUALS, AUTHOR_ID)))
                 .getResultList()));
     }
 
