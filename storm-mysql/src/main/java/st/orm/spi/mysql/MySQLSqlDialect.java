@@ -18,11 +18,13 @@ package st.orm.spi.mysql;
 import java.util.List;
 import java.util.Locale;
 import java.util.Set;
+import java.util.function.Function;
 import java.util.regex.Pattern;
 import st.orm.Operator;
 import st.orm.PersistenceException;
 import st.orm.StormConfig;
 import st.orm.core.spi.DefaultSqlDialect;
+import st.orm.core.template.SqlDialect;
 
 public class MySQLSqlDialect extends DefaultSqlDialect {
 
@@ -282,9 +284,7 @@ public class MySQLSqlDialect extends DefaultSqlDialect {
 
     /**
      * MySQL lists every index column in {@code INFORMATION_SCHEMA.STATISTICS}, so the indexes of a schema are read in
-     * one query. The column of a functional key part is {@code NULL}, and its expression is listed. A B-tree is the
-     * ordinary index; a hash index serves an equality alone, and a full-text or spatial index serves no match of a
-     * search.
+     * one query. The column of a functional key part is {@code NULL}.
      *
      * @return the query on {@code INFORMATION_SCHEMA.STATISTICS}.
      * @since 1.16
@@ -294,10 +294,7 @@ public class MySQLSqlDialect extends DefaultSqlDialect {
         return """
                 SELECT TABLE_NAME, INDEX_NAME, COLUMN_NAME, SEQ_IN_INDEX AS ORDINAL_POSITION,
                        CASE WHEN NON_UNIQUE = 0 THEN 1 ELSE 0 END AS IS_UNIQUE,
-                       0 AS IS_PARTIAL,
-                       CASE WHEN INDEX_TYPE = 'BTREE' THEN NULL WHEN INDEX_TYPE = 'HASH' THEN 'exact' ELSE '' END
-                           AS MATCH_FORMS,
-                       EXPRESSION AS KEY_EXPRESSION
+                       0 AS IS_PARTIAL
                 FROM INFORMATION_SCHEMA.STATISTICS
                 WHERE TABLE_SCHEMA = ?""";
     }
@@ -460,5 +457,16 @@ public class MySQLSqlDialect extends DefaultSqlDialect {
         return super.isUpsert(sql)
                 || ("INSERT".equals(statementKeyword(sql)) && mentions(sql, "DUPLICATE")
                         && ON_DUPLICATE_KEY_UPDATE.matcher(sql).find());
+    }
+
+    /**
+     * Renders a word start as one regular expression, through the {@code REGEXP} operator MySQL and MariaDB share:
+     * the word at the start of the value or behind a separator, lowered on both sides.
+     *
+     * @since 1.16
+     */
+    @Override
+    public String wordStartMatch(String expression, String word, Function<String, String> bind) {
+        return "LOWER(%s) REGEXP LOWER(%s)".formatted(expression, bind.apply(SqlDialect.wordStartRegex(word)));
     }
 }

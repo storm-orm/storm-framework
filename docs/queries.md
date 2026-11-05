@@ -451,21 +451,21 @@ User user = orm.entity(User.class)
 - The column is a single column: a path through a relation joins its table as for the column itself, and a path spanning several columns is refused.
 - For the text operators the value the function receives is the pattern, escaped and with its wildcards, so the function must leave `%`, `_`, SQL Server's `[` and the escape character `!` alone.
 - A call is computed by the database, so a record holds no value for it. A keyset `Scrollable` refuses it as key or sort field; `orderBy` and `Pageable` sort by it.
-- Calls nest: `lower(foldAccents(Movie_.title))` (Java: `lower.apply(foldAccents.apply(Movie_.title))`) renders `lower(fold_accents(m.title))`.
+- Calls nest: `lower(foldAccents(Owner_.lastName))` (Java: `lower.apply(foldAccents.apply(Owner_.lastName))`) renders `lower(fold_accents(o.last_name))`.
 
 The most common function is one that removes accents, so a search ignores them; see [Ignoring Accents](search.md#ignoring-accents).
 
 ### Searching Text
 
-For a search box, pass what the user typed to `search` with the columns to look in. Every word of the input must match one of the columns, ignoring case and matching the input literally, so `ugly leone` finds "The Good, the Bad and the Ugly" through its title and its director. A type-ahead box that queries as the user types uses `suggest`, which stays served by the index however little has been typed:
+For a search box, pass what the user typed to `search` with the columns to look in. Every word of the input must match one of the columns, ignoring case and matching the input literally, so `berg madison` finds an owner named Van den Berg in Madison through the last name and the city. A type-ahead box that queries as the user types uses `suggest`, which stays served by the index however little has been typed:
 
 <Tabs groupId="language">
 <TabItem value="kotlin" label="Kotlin" default>
 
 ```kotlin
-val movies = orm.entity(Movie::class)
+val owners = orm.entity(Owner::class)
     .select()
-    .where(search(input, Movie_.title, Movie_.director.name))
+    .where(search(input, Owner_.lastName, Owner_.address.city.name))
     .resultList
 ```
 
@@ -473,9 +473,9 @@ val movies = orm.entity(Movie::class)
 <TabItem value="java" label="Java">
 
 ```java
-List<Movie> movies = orm.entity(Movie.class)
+List<Owner> owners = orm.entity(Owner.class)
     .select()
-    .where(it -> it.search(input, Movie_.title, Movie_.director.name))
+    .where(it -> it.search(input, Owner_.lastName, Owner_.address.city.name))
     .getResultList();
 ```
 

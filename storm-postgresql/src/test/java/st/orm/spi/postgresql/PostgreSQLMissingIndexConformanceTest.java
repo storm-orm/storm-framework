@@ -55,26 +55,22 @@ public class PostgreSQLMissingIndexConformanceTest extends AbstractMissingIndexC
     @Override
     protected List<String> searchProbeDdl() {
         return List.of(
-                "CREATE TABLE search_probe (id INT PRIMARY KEY, title VARCHAR(100) NOT NULL, title_lower VARCHAR(100) GENERATED ALWAYS AS (LOWER(title)) STORED)",
+                "CREATE TABLE search_probe (id INT PRIMARY KEY, name VARCHAR(100) NOT NULL, name_lower VARCHAR(100) GENERATED ALWAYS AS (LOWER(name)) STORED)",
                 "CREATE EXTENSION IF NOT EXISTS pg_trgm");
     }
 
     @Override
     protected List<SearchIndexProbe> searchIndexProbes() {
         return List.of(
-                // A trigram index over the lowered title serves a match anywhere and at a word start.
-                new SearchIndexProbe(anywhere(PROBE_TITLE), "CREATE INDEX probe_trgm ON search_probe USING gin (LOWER(title) gin_trgm_ops)", "probe_trgm", true),
-                new SearchIndexProbe(wordStart(PROBE_TITLE), "CREATE INDEX probe_trgm ON search_probe USING gin (LOWER(title) gin_trgm_ops)", "probe_trgm", true),
-                // A B-tree over the same expression serves no match that starts with a wildcard.
-                new SearchIndexProbe(anywhere(PROBE_TITLE), "CREATE INDEX probe_btree ON search_probe (LOWER(title))", "probe_btree", false),
-                // A trigram index over the bare title holds another expression than the match compares.
-                new SearchIndexProbe(wordStart(PROBE_TITLE), "CREATE INDEX probe_bare ON search_probe USING gin (title gin_trgm_ops)", "probe_bare", false),
+                // A trigram index over the lowered name serves a match anywhere and at a word start.
+                new SearchIndexProbe(anywhere(PROBE_NAME), "CREATE INDEX probe_trgm ON search_probe USING gin (LOWER(name) gin_trgm_ops)", true),
+                new SearchIndexProbe(wordStart(PROBE_NAME), "CREATE INDEX probe_trgm ON search_probe USING gin (LOWER(name) gin_trgm_ops)", true),
                 // A B-tree serves a prefix with the pattern operator class, and an equality with the default one.
-                new SearchIndexProbe(prefix(PROBE_TITLE_LOWER), "CREATE INDEX probe_pattern ON search_probe (title_lower text_pattern_ops)", "probe_pattern", true),
-                new SearchIndexProbe(prefix(PROBE_TITLE_LOWER), "CREATE INDEX probe_plain ON search_probe (title_lower)", "probe_plain", false),
-                new SearchIndexProbe(exact(PROBE_TITLE_LOWER), "CREATE INDEX probe_plain ON search_probe (title_lower)", "probe_plain", true),
-                new SearchIndexProbe(exact(PROBE_TITLE_LOWER), "CREATE INDEX probe_lowered ON search_probe USING gin (LOWER(title_lower) gin_trgm_ops)", "probe_lowered", false),
-                new SearchIndexProbe(anywhere(PROBE_TITLE), null, null, false));
+                new SearchIndexProbe(prefix(PROBE_NAME_LOWER), "CREATE INDEX probe_pattern ON search_probe (name_lower text_pattern_ops)", true),
+                new SearchIndexProbe(exact(PROBE_NAME_LOWER), "CREATE INDEX probe_plain ON search_probe (name_lower)", true),
+                // An index on the bare name serves no match of the lowered name.
+                new SearchIndexProbe(wordStart(PROBE_NAME), "CREATE INDEX probe_name ON search_probe (name)", false),
+                new SearchIndexProbe(anywhere(PROBE_NAME), null, false));
     }
 
     @Override

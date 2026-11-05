@@ -25,10 +25,12 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Optional;
 import java.util.Set;
+import java.util.function.Function;
 import st.orm.Operator;
 import st.orm.StormConfig;
 import st.orm.core.spi.DefaultSqlDialect;
 import st.orm.core.template.Column;
+import st.orm.core.template.SqlDialect;
 
 public class OracleSqlDialect extends DefaultSqlDialect {
 
@@ -298,9 +300,7 @@ public class OracleSqlDialect extends DefaultSqlDialect {
     /**
      * Oracle lists its indexes in the {@code ALL_INDEXES} and {@code ALL_IND_COLUMNS} dictionary views, so the
      * indexes of a schema are read in one query. A function-based index keys on a hidden virtual column, named
-     * {@code SYS_NC...}, which stands for an expression that {@code ALL_IND_EXPRESSIONS} lists; it is read last,
-     * since Oracle streams it as a {@code LONG}. A normal, function-based or bitmap index is the ordinary index; a
-     * domain index, such as a text index, serves no match of a search.
+     * {@code SYS_NC...}, which stands for an expression.
      *
      * @return the query on {@code ALL_IND_COLUMNS}.
      * @since 1.16
@@ -312,19 +312,11 @@ public class OracleSqlDialect extends DefaultSqlDialect {
                        CASE WHEN ic.COLUMN_NAME LIKE 'SYS!_NC%' ESCAPE '!' THEN NULL ELSE ic.COLUMN_NAME END AS COLUMN_NAME,
                        ic.COLUMN_POSITION AS ORDINAL_POSITION,
                        CASE WHEN i.UNIQUENESS = 'UNIQUE' THEN 1 ELSE 0 END AS IS_UNIQUE,
-                       0 AS IS_PARTIAL,
-                       CASE WHEN i.INDEX_TYPE IN ('NORMAL', 'FUNCTION-BASED NORMAL', 'BITMAP',
-                                                  'FUNCTION-BASED BITMAP', 'IOT - TOP') THEN NULL ELSE '' END
-                           AS MATCH_FORMS,
-                       e.COLUMN_EXPRESSION AS KEY_EXPRESSION
+                       0 AS IS_PARTIAL
                 FROM ALL_IND_COLUMNS ic
                 JOIN ALL_INDEXES i
                   ON i.OWNER = ic.INDEX_OWNER
                   AND i.INDEX_NAME = ic.INDEX_NAME
-                LEFT JOIN ALL_IND_EXPRESSIONS e
-                  ON e.INDEX_OWNER = ic.INDEX_OWNER
-                  AND e.INDEX_NAME = ic.INDEX_NAME
-                  AND e.COLUMN_POSITION = ic.COLUMN_POSITION
                 WHERE ic.TABLE_OWNER = ?""";
     }
 
@@ -376,5 +368,16 @@ public class OracleSqlDialect extends DefaultSqlDialect {
     @Override
     public int maxIndexKeyBytes() {
         return 6_398;
+    }
+
+    /**
+     * Renders a word start as one regular expression, through {@code REGEXP_LIKE}: the word at the start of the
+     * value or behind a separator, lowered on both sides.
+     *
+     * @since 1.16
+     */
+    @Override
+    public String wordStartMatch(String expression, String word, Function<String, String> bind) {
+        return "REGEXP_LIKE(LOWER(%s), LOWER(%s))".formatted(expression, bind.apply(SqlDialect.wordStartRegex(word)));
     }
 }

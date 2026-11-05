@@ -23,7 +23,6 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
-import java.util.Set;
 import java.util.SortedMap;
 import java.util.SortedSet;
 import java.util.TreeMap;
@@ -67,24 +66,23 @@ final class IndexCatalog {
      * @param indexes the table's indexes with their columns in order, the primary key first.
      * @param columnBytes the bytes a value of each column takes in an index key at most, by its declared size, for
      *                    the columns whose type sizes that way.
-     * @param leadingKeys the leading key of each index, the primary key included, with the match forms the index
-     *                    serves, for the search advice.
+     * @param expressionIndexed whether an index of the table starts with an expression rather than a column, such
+     *                          as {@code lower(last_name)}, which may serve a search that compares that expression.
      */
     record TableIndexes(SortedSet<String> leadingColumns, List<UnindexedReference> unindexedReferences,
                         SortedMap<String, String> fewValuedColumns, List<IndexColumns> indexes,
-                        SortedMap<String, Integer> columnBytes, List<LeadingKey> leadingKeys) {
+                        SortedMap<String, Integer> columnBytes, boolean expressionIndexed) {
         TableIndexes {
             leadingColumns = Collections.unmodifiableSortedSet(leadingColumns);
             unindexedReferences = List.copyOf(unindexedReferences);
             fewValuedColumns = Collections.unmodifiableSortedMap(fewValuedColumns);
             indexes = List.copyOf(indexes);
             columnBytes = Collections.unmodifiableSortedMap(columnBytes);
-            leadingKeys = List.copyOf(leadingKeys);
         }
 
         TableIndexes(SortedSet<String> leadingColumns, List<UnindexedReference> unindexedReferences) {
             this(leadingColumns, unindexedReferences, new TreeMap<>(String.CASE_INSENSITIVE_ORDER), List.of(),
-                    new TreeMap<>(String.CASE_INSENSITIVE_ORDER), List.of());
+                    new TreeMap<>(String.CASE_INSENSITIVE_ORDER), false);
         }
 
         /**
@@ -126,29 +124,6 @@ final class IndexCatalog {
     record IndexColumns(@Nullable String name, List<String> columns, boolean unique) {
         IndexColumns {
             columns = List.copyOf(columns);
-        }
-    }
-
-    /**
-     * The leading key of an index: the column or expression it starts with, and the match forms of a {@code search}
-     * or {@code suggest} it serves there, taking the key to hold the expression the match compares.
-     *
-     * @param index the index name, or {@code null} for the primary key.
-     * @param column the column the key holds, or {@code null} where it holds an expression.
-     * @param expression the expression the key holds, as the database writes it, or {@code null} for a column or
-     *                   where the read cannot see it.
-     * @param matchForms the match forms the key serves.
-     * @param partial whether the index covers only the rows a condition selects.
-     */
-    record LeadingKey(@Nullable String index, @Nullable String column, @Nullable String expression,
-                      Set<MatchForm> matchForms, boolean partial) {
-        LeadingKey {
-            matchForms = Set.copyOf(matchForms);
-        }
-
-        /** Returns the key as the index names it: the column, or the expression. */
-        @Nullable String key() {
-            return column != null ? column : expression;
         }
     }
 
@@ -227,7 +202,7 @@ final class IndexCatalog {
             leadingColumnsByTable.forEach((tableName, leadingColumns) -> tables.put(tableName,
                     new TableIndexes(leadingColumns, unindexedReferences.getOrDefault(tableName, List.of()),
                             fewValuedColumns(schema, tableName), indexColumns(schema, tableName),
-                            columnBytes(schema, tableName), leadingKeys(schema, tableName))));
+                            columnBytes(schema, tableName), expressionIndexed(schema, tableName))));
             tablesBySchema.put(schemaName, tables);
         });
         return new IndexCatalog(tablesBySchema, dialect);
@@ -249,22 +224,15 @@ final class IndexCatalog {
     }
 
     /**
-     * Returns the leading key of each index of a table, the primary key first, with the match forms each serves.
+     * Returns whether an index of a table starts with an expression rather than a column.
      */
-    private static List<LeadingKey> leadingKeys(DatabaseSchema schema, String tableName) {
-        var keys = new ArrayList<LeadingKey>();
-        schema.getPrimaryKeys(tableName).stream()
-                .filter(primaryKey -> primaryKey.keySeq() == 1)
-                .findFirst()
-                .ifPresent(primaryKey -> keys.add(new LeadingKey(null, primaryKey.columnName(), null,
-                        MatchForm.ORDINARY, false)));
+    private static boolean expressionIndexed(DatabaseSchema schema, String tableName) {
         for (DbIndex index : schema.getIndexes(tableName)) {
-            if (index.ordinalPosition() == 1) {
-                keys.add(new LeadingKey(index.indexName(), index.columnName(), index.expression(),
-                        MatchForm.listed(index.matchForms()), index.partial()));
+            if (index.ordinalPosition() == 1 && index.columnName() == null) {
+                return true;
             }
         }
-        return keys;
+        return false;
     }
 
     /**

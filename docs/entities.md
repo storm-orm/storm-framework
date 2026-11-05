@@ -699,21 +699,21 @@ A query column is a column a query names but the entity does not carry. `@QueryC
 <TabItem value="kotlin" label="Kotlin" default>
 
 ```kotlin
-@QueryColumn(field = "titleFolded", type = String::class, function = "fold_accents")
-data class Movie(
+@QueryColumn(field = "lastNameFolded", type = String::class, function = "fold_accents")
+data class Owner(
     @PK val id: Int = 0,
-    val title: String,
+    val lastName: String,
     val year: Int
 ) : Entity<Int>
 ```
 
-The annotation repeats for each query column. `Movie_.titleFolded` is a `Metamodel<Movie, String>` and goes wherever a column does:
+The annotation repeats for each query column. `Owner_.lastNameFolded` is a `Metamodel<Owner, String>` and goes wherever a column does:
 
 ```kotlin
-orm.entity(Movie::class)
+orm.entity(Owner::class)
     .select()
-    .where(search(input, Movie_.titleFolded))
-    .orderBy(Movie_.titleFolded)
+    .where(search(input, Owner_.lastNameFolded))
+    .orderBy(Owner_.lastNameFolded)
     .resultList
 ```
 
@@ -721,34 +721,34 @@ orm.entity(Movie::class)
 <TabItem value="java" label="Java">
 
 ```java
-@QueryColumn(field = "titleFolded", type = String.class, function = "fold_accents")
-record Movie(@PK Integer id, String title, Integer year) implements Entity<Integer> {}
+@QueryColumn(field = "lastNameFolded", type = String.class, function = "fold_accents")
+record Owner(@PK Integer id, String firstName, String lastName) implements Entity<Integer> {}
 ```
 
-The annotation repeats for each query column. `Movie_.titleFolded` is a `Metamodel<Movie, String>` and goes wherever a column does:
+The annotation repeats for each query column. `Owner_.lastNameFolded` is a `Metamodel<Owner, String>` and goes wherever a column does:
 
 ```java
-orm.entity(Movie.class)
+orm.entity(Owner.class)
     .select()
-    .where(it -> it.search(input, Movie_.titleFolded))
-    .orderBy(Movie_.titleFolded)
+    .where(it -> it.search(input, Owner_.lastNameFolded))
+    .orderBy(Owner_.lastNameFolded)
     .getResultList();
 ```
 
 </TabItem>
 </Tabs>
 
-The migration creates the column, here generated from the title by the accent-folding function of [Storing the Folded Text](search.md#storing-the-folded-text), and the index on it:
+The migration creates the column, here generated from the last name by the accent-folding function of [Storing the Folded Text](search.md#storing-the-folded-text), and the index on it:
 
 ```sql
-ALTER TABLE movie ADD COLUMN title_folded VARCHAR GENERATED ALWAYS AS (fold_accents(title)) STORED NOT NULL;
-CREATE INDEX idx_movie_title_folded ON movie USING gin (LOWER(title_folded) gin_trgm_ops);
+ALTER TABLE owner ADD COLUMN last_name_folded VARCHAR GENERATED ALWAYS AS (fold_accents(last_name)) STORED NOT NULL;
+CREATE INDEX idx_owner_last_name_folded ON owner USING gin (LOWER(last_name_folded) gin_trgm_ops);
 ```
 
 - A query column is never selected, inserted or updated. A record holds no value for it: `Metamodel.getValue` throws, and `update().set` refuses it.
 - A column is carried by a field or named by a query column, not both. A query column whose column a field maps is refused when the model is built, as is one named after a record component.
-- It is reached through paths like any other field: a query column declared on `Movie` is `Credit_.movie.titleFolded` from a query on credits. Projections of the same table declare their own.
-- A query column that stores a function's result names it: `function = "fold_accents"`. A value the column is compared with passes through the function, on the value side only, `title_folded = fold_accents(?)`, so the column is read as stored and the database computes the value in the same statement. It applies to the comparison operators, `IN`, `BETWEEN`, the text operators, `search`, `suggest` and `orderFirst`; a pattern passes through it too, so the function must leave the wildcards and the escape character as they are. A keyset position holds the stored value and is compared as it is.
+- It is reached through paths like any other field: a query column declared on `Owner` is `Pet_.owner.lastNameFolded` from a query on pets. Projections of the same table declare their own.
+- A query column that stores a function's result names it: `function = "fold_accents"`. A value the column is compared with passes through the function, on the value side only, `last_name_folded = fold_accents(?)`, so the column is read as stored and the database computes the value in the same statement. It applies to the comparison operators, `IN`, `BETWEEN`, the text operators, `search`, `suggest` and `orderFirst`; a pattern passes through it too, so the function must leave the wildcards and the escape character as they are. A keyset position holds the stored value and is compared as it is.
 - `where`, `orderBy`, `orderFirst`, `search` and `suggest`, a `SqlFunction`, a keyset sort and a template placeholder take it. A keyset sort refuses a nullable query column, as it refuses a nullable field; `nullable = true` declares one.
 - Schema validation checks that the column exists with a compatible type. On an entity every insert leaves it out, so the database must fill it: a `NOT NULL` query column that is not generated, not an identity column and has no default is reported as an [unmapped column](validation.md) is.
 

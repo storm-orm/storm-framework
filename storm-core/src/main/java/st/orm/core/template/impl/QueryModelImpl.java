@@ -277,7 +277,7 @@ final class QueryModelImpl implements QueryModel {
         try {
             switch (expression) {
                 case TemplateExpression it -> bindTemplateExpression(it.template(), binder);
-                case ObjectExpression it -> bindObjectExpression(getMetamodel(it), it.operator(), it.object(), it.fromRow(), binder);
+                case ObjectExpression it -> bindObjectExpression(getMetamodel(it), it.operator(), it.object(), it.fromRow(), it.search(), binder);
                 case PathExpression ignore -> { }  // Two columns of the query; nothing to bind.
             }
         } catch (SqlTemplateException e) {
@@ -484,7 +484,11 @@ final class QueryModelImpl implements QueryModel {
                 if (column != null && !column.equals(k)) {
                     throw new SqlTemplateException("Multiple columns specified by WHERE clause argument: %s and %s.".formatted(column, k));
                 }
-                values.add(TextMatch.bindValue(operator, entry.getValue(), metamodel, compiler.dialect()));
+                if (search == MatchForm.WORD_START) {
+                    values.add(entry.getValue());
+                } else {
+                    values.add(TextMatch.bindValue(operator, entry.getValue(), metamodel, compiler.dialect()));
+                }
                 column = k;
             } else {
                 TextMatch.requireSingleColumn(operator, metamodel);
@@ -532,6 +536,13 @@ final class QueryModelImpl implements QueryModel {
                     }
                     values = shape.values();
                 }
+            }
+            if (search == MatchForm.WORD_START && values.getFirst() instanceof String word) {
+                // The dialect renders a word start, one regular expression where the database matches one and LIKE
+                // patterns elsewhere, and binds each pattern as it renders it.
+                var finalPath = path;
+                return compiler.dialect().wordStartMatch(column, word,
+                        pattern -> FunctionCalls.render(finalPath, applyFunction(valueFunction, compiler.mapParameter(pattern))));
             }
             List<String> placeholders = new ArrayList<>(values.size());
             for (var value : values) {
@@ -617,6 +628,7 @@ final class QueryModelImpl implements QueryModel {
                                       Operator operator,
                                       Object object,
                                       boolean fromRow,
+                                      @Nullable MatchForm search,
                                       TemplateBinder binder) throws SqlTemplateException {
         Metamodel<?, ?> path = metamodel;
         metamodel = FunctionCalls.column(path);
@@ -646,7 +658,7 @@ final class QueryModelImpl implements QueryModel {
                 }
             }
             if ((multiValues == null || multiValues.isEmpty()) && values.size == 1) {
-                singleValues.add(TextMatch.bindValue(operator, values.firstValue, metamodel, template.dialect()));
+                singleValues.addAll(TextMatch.bindValues(operator, search, values.firstValue, metamodel, template.dialect()));
             } else {
                 TextMatch.requireSingleColumn(operator, metamodel);
                 if (multiValues == null) {

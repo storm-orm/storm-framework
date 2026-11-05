@@ -38,19 +38,18 @@ public class H2MissingIndexConformanceTest extends AbstractMissingIndexConforman
     @Override
     protected List<String> searchProbeDdl() {
         return List.of(
-                "CREATE TABLE search_probe (id INT PRIMARY KEY, title VARCHAR(100) NOT NULL, title_lower VARCHAR(100) GENERATED ALWAYS AS (LOWER(title)))");
+                "CREATE TABLE search_probe (id INT PRIMARY KEY, name VARCHAR(100) NOT NULL, name_lower VARCHAR(100) GENERATED ALWAYS AS (LOWER(name)))");
     }
 
     @Override
     protected List<SearchIndexProbe> searchIndexProbes() {
         return List.of(
-                // An ordinary index over the stored lowered title serves a prefix and an exact match.
-                new SearchIndexProbe(prefix(PROBE_TITLE_LOWER), "CREATE INDEX probe_stored ON search_probe (title_lower)", "probe_stored", true),
-                new SearchIndexProbe(exact(PROBE_TITLE_LOWER), "CREATE INDEX probe_stored ON search_probe (title_lower)", "probe_stored", true),
+                new SearchIndexProbe(prefix(PROBE_NAME_LOWER), "CREATE INDEX probe_stored ON search_probe (name_lower)", true),
+                new SearchIndexProbe(exact(PROBE_NAME_LOWER), "CREATE INDEX probe_stored ON search_probe (name_lower)", true),
                 // No index of H2 serves a match that starts with a wildcard: an index on the column cannot.
-                new SearchIndexProbe(anywhere(PROBE_TITLE), "CREATE INDEX probe_title ON search_probe (title)", "probe_title", false),
-                new SearchIndexProbe(wordStart(PROBE_TITLE), null, null, false),
-                new SearchIndexProbe(prefix(PROBE_TITLE_LOWER), null, null, false));
+                new SearchIndexProbe(anywhere(PROBE_NAME), "CREATE INDEX probe_name ON search_probe (name)", false),
+                new SearchIndexProbe(wordStart(PROBE_NAME), null, false),
+                new SearchIndexProbe(prefix(PROBE_NAME_LOWER), null, false));
     }
 
     @Override

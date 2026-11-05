@@ -65,21 +65,18 @@ public class OracleMissingIndexConformanceTest extends AbstractMissingIndexConfo
     @Override
     protected List<String> searchProbeDdl() {
         return List.of(
-                "CREATE TABLE search_probe (id NUMBER(10) PRIMARY KEY, title VARCHAR2(100) NOT NULL, title_lower VARCHAR2(100) GENERATED ALWAYS AS (LOWER(title)) VIRTUAL)");
+                "CREATE TABLE search_probe (id NUMBER(10) PRIMARY KEY, name VARCHAR2(100) NOT NULL, name_lower VARCHAR2(100) GENERATED ALWAYS AS (LOWER(name)) VIRTUAL)");
     }
 
     @Override
     protected List<SearchIndexProbe> searchIndexProbes() {
         return List.of(
-                // An ordinary index over the virtual lowered title serves a prefix and an exact match.
-                new SearchIndexProbe(prefix(PROBE_TITLE_LOWER), "CREATE INDEX probe_stored ON search_probe (title_lower)", "probe_stored", true),
-                new SearchIndexProbe(exact(PROBE_TITLE_LOWER), "CREATE INDEX probe_stored ON search_probe (title_lower)", "probe_stored", true),
-                // A function-based index over another expression of the title, and an index on the bare title, hold
-                // another expression than the match compares. An index over LOWER(title) is not probed: Oracle keys
-                // it on the virtual title_lower column, which holds the same expression.
-                new SearchIndexProbe(anywhere(PROBE_TITLE), "CREATE INDEX probe_upper ON search_probe (UPPER(title))", "probe_upper", false),
-                new SearchIndexProbe(anywhere(PROBE_TITLE), "CREATE INDEX probe_title ON search_probe (title)", "probe_title", false),
-                new SearchIndexProbe(wordStart(PROBE_TITLE), null, null, false));
+                // An ordinary index over the virtual lowered name serves a prefix and an exact match.
+                new SearchIndexProbe(prefix(PROBE_NAME_LOWER), "CREATE INDEX probe_stored ON search_probe (name_lower)", true),
+                new SearchIndexProbe(exact(PROBE_NAME_LOWER), "CREATE INDEX probe_stored ON search_probe (name_lower)", true),
+                // No index serves a match that starts with a wildcard: an index on the column cannot.
+                new SearchIndexProbe(anywhere(PROBE_NAME), "CREATE INDEX probe_name ON search_probe (name)", false),
+                new SearchIndexProbe(wordStart(PROBE_NAME), null, false));
     }
 
     @Override

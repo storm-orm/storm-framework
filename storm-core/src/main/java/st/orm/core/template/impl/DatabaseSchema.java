@@ -152,10 +152,6 @@ public final class DatabaseSchema {
      * @param ordinalPosition the position of the column within the index (1-based).
      * @param unique          whether the index is unique.
      * @param partial         whether the index covers only the rows a condition selects.
-     * @param expression      the expression the position holds, as the database writes it, or {@code null} for a
-     *                        column or where the read cannot see it.
-     * @param matchForms      the match forms of a {@code search} or {@code suggest} the index serves at this position,
-     *                        as the dialect's index query lists them, or {@code null} for an ordinary index.
      * @since 1.16
      */
     public record DbIndex(
@@ -164,15 +160,8 @@ public final class DatabaseSchema {
             @Nullable String columnName,
             int ordinalPosition,
             boolean unique,
-            boolean partial,
-            @Nullable String expression,
-            @Nullable String matchForms
-    ) {
-        public DbIndex(String tableName, String indexName, @Nullable String columnName, int ordinalPosition,
-                       boolean unique, boolean partial) {
-            this(tableName, indexName, columnName, ordinalPosition, unique, partial, null, null);
-        }
-    }
+            boolean partial
+    ) {}
 
     /**
      * A kind of constraint a schema read discovers.
@@ -915,9 +904,6 @@ public final class DatabaseSchema {
         try {
             try (var statement = prepareSchemaQuery(connection, query, List.of(schema));
                  var resultSet = statement.executeQuery()) {
-                // A query that lists neither reads as ordinary indexes whose expressions the read cannot see.
-                boolean reportsMatchForms = hasColumn(resultSet.getMetaData(), "MATCH_FORMS");
-                boolean reportsExpression = hasColumn(resultSet.getMetaData(), "KEY_EXPRESSION");
                 while (resultSet.next()) {
                     String tableName = resultSet.getString("TABLE_NAME");
                     if (!columnsByTable.containsKey(tableName)) {
@@ -928,12 +914,8 @@ public final class DatabaseSchema {
                     int ordinalPosition = resultSet.getInt("ORDINAL_POSITION");
                     boolean unique = resultSet.getInt("IS_UNIQUE") == 1;
                     boolean partial = resultSet.getInt("IS_PARTIAL") == 1;
-                    String matchForms = reportsMatchForms ? resultSet.getString("MATCH_FORMS") : null;
-                    // Read last: a database that streams a long text column discards it once a later column is read.
-                    String expression = reportsExpression ? resultSet.getString("KEY_EXPRESSION") : null;
                     indexesByTable.computeIfAbsent(tableName, k -> new ArrayList<>())
-                            .add(new DbIndex(tableName, indexName, columnName, ordinalPosition, unique, partial,
-                                    expression, matchForms));
+                            .add(new DbIndex(tableName, indexName, columnName, ordinalPosition, unique, partial));
                 }
             }
             discovered(discovered, ConstraintKind.INDEX, columnsByTable.keySet());

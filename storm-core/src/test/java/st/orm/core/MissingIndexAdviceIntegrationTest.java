@@ -36,7 +36,6 @@ import java.sql.SQLException;
 import java.time.Duration;
 import java.time.LocalDate;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
@@ -233,17 +232,16 @@ public class MissingIndexAdviceIntegrationTest {
     }
 
     @Test
-    public void anIndexThatExistsAndCannotServeTheSearchFieldIsNamed() {
+    public void anIndexOnTheBareColumnServesNoMatchOfTheLoweredColumn() {
         var orm = ORMTemplate.of(dataSource);
         orm.loadSchema();
         var advice = searchAdvice(() -> orm.entity(Customer.class).select()
                 .where(it -> PredicateBuilderFactory.<Customer, Customer, Integer>search("davis", wordStart(EMAIL)))
                 .getResultList());
         assertEquals(1, advice.size(), advice.toString());
-        // The index and its column are named as the schema reports them.
-        assertTrue(advice.getFirst().toLowerCase(Locale.ROOT).startsWith("index customer_email on customer is on "
-                + "email, and the match compares lower(email), so the database reads customer in full to match it.\n"
-                + "fix: no index of the database serves the wordstart form"), advice.getFirst());
+        assertTrue(advice.getFirst().startsWith("no index on customer serves wordStart(email), so the database reads "
+                + "customer in full to match it.\nfix: no index of the database serves the wordStart form"),
+                advice.getFirst());
         // The decision is made once per shape and catalog.
         assertEquals(advice, searchAdvice(() -> orm.entity(Customer.class).select()
                 .where(it -> PredicateBuilderFactory.<Customer, Customer, Integer>search("davis", wordStart(EMAIL)))

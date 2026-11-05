@@ -21,7 +21,6 @@ import static java.util.stream.Collectors.toSet;
 import static st.orm.Operator.CONTAINS_IGNORE_CASE;
 import static st.orm.Operator.EQUALS;
 import static st.orm.Operator.STARTS_WITH;
-import static st.orm.Operator.STARTS_WITH_IGNORE_CASE;
 import static st.orm.core.template.TemplateString.wrap;
 
 import java.util.ArrayList;
@@ -261,23 +260,17 @@ public interface PredicateBuilderFactory {
 
     /**
      * Returns the predicate matching a term in a field, in the field's form: anywhere in the value, at the start of a
-     * word, which is the value's start or the text after a {@link MatchForm#WORD_SEPARATORS separator}, as a prefix
-     * of the value with the column bare and the term lowered, or as the whole value, bare and lowered alike.
+     * word, which is the value's start or the text after a {@link st.orm.core.template.SqlDialect#WORD_SEPARATORS
+     * separator} and which the dialect renders, as a prefix of the value with the column bare and the term lowered,
+     * or as the whole value, bare and lowered alike.
      */
     private static PredicateNode match(Match<?> field, String term) {
         var path = field.path();
         var form = MatchForm.of(field);
         return switch (form) {
             case ANYWHERE -> new PredicateNode.Term(wrap(ObjectExpression.search(path, CONTAINS_IGNORE_CASE, term, form)), true);
-            case WORD_START -> {
-                var starts = new ArrayList<PredicateNode>(MatchForm.WORD_SEPARATORS.length() + 1);
-                starts.add(new PredicateNode.Term(wrap(ObjectExpression.search(path, STARTS_WITH_IGNORE_CASE, term, form)), true));
-                // A separator before the term is literal text in the pattern.
-                for (char separator : MatchForm.WORD_SEPARATORS.toCharArray()) {
-                    starts.add(new PredicateNode.Term(wrap(ObjectExpression.search(path, CONTAINS_IGNORE_CASE, separator + term, form)), true));
-                }
-                yield PredicateNode.or(starts);
-            }
+            // The dialect renders the word start and binds its patterns; the operator stands for a text match.
+            case WORD_START -> new PredicateNode.Term(wrap(ObjectExpression.search(path, CONTAINS_IGNORE_CASE, term, form)), false);
             // The column stays bare, for an ordinary index over it, and the term is lowered here: the column is one
             // that compares case-insensitively on its own, a stored lowered column included.
             case PREFIX -> new PredicateNode.Term(wrap(ObjectExpression.search(path, STARTS_WITH, term.toLowerCase(ROOT), form)), true);

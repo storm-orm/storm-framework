@@ -138,20 +138,19 @@ Loading the schema is optional. Storm works the same without it; what it adds is
 ## A search field no index serves {#unindexed-search}
 
 ```text
-index movie_title_trgm on movie is on title, and the match compares LOWER(title), so the database reads movie in full to match it.
-fix: an index for substring matching on LOWER(title) serves it.
+no index on owner serves wordStart(last_name), so the database reads owner in full to match it.
+fix: a trigram index on LOWER(last_name) serves it.
 ```
 
 Category: performance, reported by the slow statement log, only once the schema is [loaded](#loading-the-schema).
 
-`search` and `suggest` record each column they match and the [form](search.md#match-forms) they match it in: anywhere or at a word start, which compare the lowered column with a wildcard in front of the word, or as a prefix or the whole value, which compare the bare column. When an execution is slow, the check looks at the indexes of each searched table and asks, for each field, whether an index holds the expression the match compares and serves the form: the dialect's index read says which forms each index serves, a trigram index every form and an ordinary index a prefix and an equality. A field no index serves is advised, and the advice says which of the two it is:
+`search` and `suggest` record each column they match and the [form](search.md#match-forms) they match it in: anywhere or at a word start, which compare the lowered column, or as a prefix or the whole value, which compare the bare column. When an execution is slow, the check looks at the indexes of each searched table:
 
-- **No index serves it.** `no index on movie serves wordStart(title)`: the table has no index on the column or expression.
-- **An index exists and cannot.** The index holds the column where the match compares `LOWER(title)`, or holds the right expression but serves no match that starts with a wildcard, such as a B-tree over `LOWER(title)` or, on PostgreSQL, a B-tree with the default operator class for a `prefix` match. The advice names the index and why it cannot serve the field.
+- **A prefix or exact match on a bare column** is served by an index that leads with the column. Without one, the advice names the index on the column.
+- **A match anywhere or at a word start** compares `LOWER(column)`, which only an index over that expression serves. An index of the table that starts with an expression may be it, so the advice stays silent; a table whose indexes all start with columns has none, and the advice says so, naming the database's index for substring matching on the expression where it has one, such as a trigram index on PostgreSQL, and the [word-suffix table](search.md#large-tables-without-a-substring-index), matched as a prefix, elsewhere.
+- **A column wrapped in a function** compares an expression as well, and the same rule applies to it.
 
-The fix names what serves the form: an index for substring matching on the expression where the database has one, an ordinary index on the bare column for a `prefix` or `exact` match, and where no index of the database serves a match anywhere or at a word start, a [word-suffix table](search.md#large-tables-without-a-substring-index), matched as a prefix. See [Indexing a Search](search.md#indexing-a-search) for the index per database.
-
-The check stays silent where it cannot tell: a partial index, or an index on an expression the read cannot see, may serve the match. A read of a small table is never slow, so a search over one is never advised.
+See [Indexing a Search](search.md#indexing-a-search) for the index per database. A read of a small table is never slow, so a search over one is never advised.
 
 ## DISTINCT over a join that repeats rows {#distinct-over-join}
 

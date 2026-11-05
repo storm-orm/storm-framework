@@ -34,10 +34,10 @@ import org.jspecify.annotations.Nullable;
 enum Advice {
 
     /**
-     * A field of a {@code search} or {@code suggest} that no index of its table serves in its match form: none at
-     * all, or one that exists and cannot, such as a trigram index on the column where the match compares the lowered
-     * column, or an ordinary index where the match needs a substring. Which index serves the form is the dialect's to
-     * say, and whether the read matters is the slow execution's, so only the slow statement log reports it.
+     * A field of a {@code search} or {@code suggest} that no index of its table serves in its match form: no index
+     * leads with the bare column a prefix or exact match compares, or no index starts with an expression where the
+     * match compares the lowered column. Whether the read matters is the slow execution's to say, so only the slow
+     * statement log reports it.
      */
     UNINDEXED_SEARCH("unindexed-search", Category.PERFORMANCE, true,
             "%1$s, so the database reads %2$s in full to match it.\nfix: %3$s."),

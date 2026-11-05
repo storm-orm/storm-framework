@@ -31,14 +31,14 @@ import static java.util.Objects.requireNonNull;
  * <pre>{@code
  * import static st.orm.Match.*;
  *
- * movies.select()
- *         .where(it -> it.suggest(input, wordStart(Movie_.title), wordStart(Movie_.director.name)))
+ * owners.select()
+ *         .where(it -> it.suggest(input, wordStart(Owner_.lastName), wordStart(Owner_.firstName)))
  *         .limit(8)
  *         .getResultList();
  * }</pre>
  *
- * <p>A match composes with a {@link SqlFunction}: {@code wordStart(foldAccents.apply(Movie_.title))} matches the
- * folded title. The match is not a path, so only {@code search} and {@code suggest} take it.</p>
+ * <p>A match composes with a {@link SqlFunction}: {@code wordStart(foldAccents.apply(Owner_.lastName))} matches the
+ * folded name. The match is not a path, so only {@code search} and {@code suggest} take it.</p>
  *
  * @param <T> the root table type of the column.
  * @since 1.16
@@ -59,9 +59,9 @@ public sealed interface Match<T extends Data> {
 
     /**
      * A word matches at the start of any word in the value: the value's start, or the text after a space or one of
-     * the punctuation characters that join or separate the words of a name or a title, a hyphen, an apostrophe, an
-     * opening parenthesis, a slash, a colon, a period or a comma, so {@code man} matches "Spider-Man" and
-     * {@code connor} "O'Connor". It renders as {@code LOWER(column) LIKE LOWER('word%')} and one
+     * the punctuation characters that join or separate the words of a name, a hyphen, an apostrophe, an
+     * opening parenthesis, a slash, a colon, a period or a comma, so {@code marie} matches "Anne-Marie" and
+     * {@code brien} "O'Brien". It renders as {@code LOWER(column) LIKE LOWER('word%')} and one
      * {@code LOWER(column) LIKE LOWER('% word%')} per separator, the same on every database.
      *
      * @param path the text column.
@@ -118,7 +118,7 @@ public sealed interface Match<T extends Data> {
     /**
      * Returns a match of a word at the start of any word in the value, the default of {@code suggest}: the value's
      * start, or the text after a space or a punctuation character that joins or separates words. It does not match
-     * inside a compound, so {@code father} does not find "The Godfather"; {@link #anywhere(Navigable) anywhere} does.
+     * inside a compound, so {@code son} does not find "Davidson"; {@link #anywhere(Navigable) anywhere} does.
      *
      * @param path the text column.
      * @param <T> the root table type of the column.

@@ -222,23 +222,4 @@ public class MariaDBSqlDialect extends MySQLSqlDialect {
     public boolean supportsMultiRowGeneratedKeys() {
         return false;
     }
-    /**
-     * MariaDB lists every index column in {@code INFORMATION_SCHEMA.STATISTICS} as MySQL does, without an expression
-     * column: it has no functional key parts.
-     *
-     * @return the query on {@code INFORMATION_SCHEMA.STATISTICS}.
-     * @since 1.16
-     */
-    @Override
-    public String indexDiscoveryQuery() {
-        return """
-                SELECT TABLE_NAME, INDEX_NAME, COLUMN_NAME, SEQ_IN_INDEX AS ORDINAL_POSITION,
-                       CASE WHEN NON_UNIQUE = 0 THEN 1 ELSE 0 END AS IS_UNIQUE,
-                       0 AS IS_PARTIAL,
-                       CASE WHEN INDEX_TYPE = 'BTREE' THEN NULL WHEN INDEX_TYPE = 'HASH' THEN 'exact' ELSE '' END
-                           AS MATCH_FORMS,
-                       NULL AS KEY_EXPRESSION
-                FROM INFORMATION_SCHEMA.STATISTICS
-                WHERE TABLE_SCHEMA = ?""";
-    }
 }

@@ -268,7 +268,7 @@ public abstract class WhereBuilder<T extends Data, R, ID> implements SubqueryTem
     /**
      * Matches the words of a search input against one or more text columns. Every word must occur in at least one of
      * the paths, ignoring case and matched as literal text, as {@link Operator#CONTAINS_IGNORE_CASE} matches it, so
-     * {@code search("ugly bad", Movie_.title)} finds "The Good, the Bad and the Ugly". Whitespace separates the words,
+     * {@code search("davis madison", Owner_.lastName, Owner_.address.city.name)} finds Harold Davis of Madison. Whitespace separates the words,
      * and a quote at the start of a word opens a phrase such as {@code "the good"}, one word that runs to the next
      * quote or to the end of the input; a quote inside a word is an ordinary character. An input without words, such
      * as an empty search box, matches every row. {@link #search(String, Match, Match[])} states another match form
@@ -300,8 +300,8 @@ public abstract class WhereBuilder<T extends Data, R, ID> implements SubqueryTem
      * Matches the words of a search input against text columns, each in its stated match form, as
      * {@link #search(String, Navigable, Navigable[])} matches them anywhere in the value. A field states its form
      * through the factories of {@link Match}: {@code anywhere}, {@code wordStart}, {@code prefix} or {@code exact};
-     * {@code search("ugly bad", wordStart(Movie_.title), exact(Movie_.titleLower))} matches each word at the start
-     * of a word of the title or as the whole lowered title.
+     * {@code search("van berg", wordStart(Owner_.lastName), exact(Owner_.telephone))} matches each word at the start
+     * of a word of the last name or as the whole telephone number.
      *
      * @param input the search input, as a search box receives it.
      * @param field the first text column to search, with its match form.
@@ -319,8 +319,8 @@ public abstract class WhereBuilder<T extends Data, R, ID> implements SubqueryTem
     /**
      * Matches the words of a search box that queries as the user types, such as an auto-complete, against one or more
      * text columns. Every word of two characters or more matches at the start of a word in one of the columns, the
-     * same rows on every database: {@code suggest("de n", Movie_.director.name)} finds "Robert De Niro" and not
-     * "Alfredo". The input is read as {@link #search(String, Navigable, Navigable[])} reads it. A one-character word
+     * same rows on every database: {@code suggest("van b", Owner_.lastName)} finds "Van den Berg" and not
+     * "Sullivan". The input is read as {@link #search(String, Navigable, Navigable[])} reads it. A one-character word
      * takes no part, and an input without a word that takes part, an empty one included, matches no rows, so the box
      * never fetches and sorts a whole table on the first keystroke. {@link #suggest(String, Match, Match[])} states
      * another match form per column.
@@ -343,8 +343,8 @@ public abstract class WhereBuilder<T extends Data, R, ID> implements SubqueryTem
      * {@link #suggest(String, Navigable, Navigable[])} does, ignoring the given words as well. A word that equals one
      * of them, ignoring case, takes no part in the predicate, as a one-character word takes none, so an
      * input of ignored words alone matches no rows; a quoted word is never ignored. A search box names the words that
-     * occur in a large share of its rows, such as "the" in a catalog of titles, which narrow nothing:
-     * {@code suggest("the god", Set.of("the", "a", "of"), Movie_.title)} matches on "god" alone.
+     * occur in a large share of its rows, such as "van" in a list of last names, which narrow nothing:
+     * {@code suggest("van berg", Set.of("van", "de", "der"), Owner_.lastName)} matches on "berg" alone.
      *
      * @param input  the search input, as a search box receives it.
      * @param ignore the words to ignore, compared ignoring case.
@@ -365,8 +365,8 @@ public abstract class WhereBuilder<T extends Data, R, ID> implements SubqueryTem
      * Matches the words of a search box that queries as the user types against text columns, each in its stated
      * match form, as {@link #suggest(String, Navigable, Navigable[])} matches them at the start of a word. A field
      * states its form through the factories of {@link Match}: {@code anywhere}, {@code wordStart}, {@code prefix} or
-     * {@code exact}; {@code suggest(input, wordStart(Movie_.title), prefix(MovieTitleSuffix_.suffix))} matches each
-     * word at the start of a word of the title, or as a prefix of a suffix row, which an ordinary index serves.
+     * {@code exact}; {@code suggest(input, wordStart(Owner_.lastName), prefix(OwnerNameSuffix_.suffix))} matches each
+     * word at the start of a word of the name, or as a prefix of a suffix row, which an ordinary index serves.
      *
      * @param input the search input, as a search box receives it.
      * @param field the first text column to search, with its match form.

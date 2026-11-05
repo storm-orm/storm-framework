@@ -26,10 +26,12 @@ import java.sql.SQLException;
 import java.util.Locale;
 import java.util.Set;
 import java.util.UUID;
+import java.util.function.Function;
 import java.util.regex.Pattern;
 import st.orm.Operator;
 import st.orm.StormConfig;
 import st.orm.core.spi.DefaultSqlDialect;
+import st.orm.core.template.SqlDialect;
 
 public class H2SqlDialect extends DefaultSqlDialect {
 
@@ -237,5 +239,16 @@ public class H2SqlDialect extends DefaultSqlDialect {
     @Override
     public boolean isUpsert(String sql) {
         return super.isUpsert(sql) || ("MERGE".equals(statementKeyword(sql)) && KEY_CLAUSE.matcher(sql).find());
+    }
+
+    /**
+     * Renders a word start as one regular expression, through {@code REGEXP_LIKE}: the word at the start of the
+     * value or behind a separator, lowered on both sides.
+     *
+     * @since 1.16
+     */
+    @Override
+    public String wordStartMatch(String expression, String word, Function<String, String> bind) {
+        return "REGEXP_LIKE(LOWER(%s), LOWER(%s))".formatted(expression, bind.apply(SqlDialect.wordStartRegex(word)));
     }
 }

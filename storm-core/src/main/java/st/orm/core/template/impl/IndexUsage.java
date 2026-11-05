@@ -279,7 +279,7 @@ final class IndexUsage {
             if (indexes == null) {
                 continue;
             }
-            var piece = searchAdvice(search, indexes, catalog.dialect().minimumSearchTermLength() > 0);
+            var piece = searchAdvice(search, indexes, catalog.dialect().substringIndex());
             if (piece != null) {
                 advice.add(piece);
             }
@@ -362,54 +362,25 @@ final class IndexUsage {
 
     /**
      * Returns the advice on one search field, or {@code null} where an index of its table serves the field in its
-     * match form, or may. A key serves the field when it holds the expression the match compares, the bare column or
-     * the same expression, and the forms the dialect's index query lists for it hold the form. An index on the column
-     * that holds another expression, or one on the right expression that serves another form, is named as the index
-     * that exists and cannot serve the match; a partial index, or a key whose expression the read cannot see, may
-     * serve it, so the advice stays silent. The fix names what serves the form: an index for substring matching on
-     * the expression, where the database has one, a word-suffix table matched as a prefix elsewhere, or an ordinary
-     * index on a bare column.
+     * match form, or may. A prefix or exact match on a bare column is served by an index that leads with the column.
+     * A match anywhere or at a word start compares the lowered column, which only an index over that expression
+     * serves: an index of the table that starts with an expression may be it, so the advice stays silent; without
+     * one, no index serves the field. A field wrapped in a function compares an expression as well. The fix names
+     * what serves the form: the database's index for substring matching on the expression, where it has one, a
+     * word-suffix table matched as a prefix elsewhere, or an ordinary index on a bare column.
      *
-     * @param substringIndex whether the database has an index for substring matching.
+     * @param substringIndex the kind of index the database has for substring matching, or {@code null}.
      */
-    private @Nullable String searchAdvice(SearchField search, IndexCatalog.TableIndexes indexes, boolean substringIndex) {
-        String table = qualified(search.schema(), search.table());
-        IndexCatalog.LeadingKey nearMiss = null;
-        String reason = null;
-        for (var key : indexes.leadingKeys()) {
-            boolean onColumn = key.column() != null && key.column().equalsIgnoreCase(search.column());
-            boolean unreadable = key.column() == null && key.expression() == null;
-            boolean onExpression = key.column() == null && key.expression() != null
-                    && normalize(key.expression()).equals(normalize(search.expression()));
-            boolean mentions = key.column() == null && key.expression() != null
-                    && mentions(key.expression(), search.column());
-            if (!onColumn && !unreadable && !onExpression && !mentions) {
-                continue;
-            }
-            if (unreadable || key.partial()) {
-                return null;
-            }
-            if (onExpression || (onColumn && search.bare())) {
-                if (key.matchForms().contains(search.form())) {
-                    return null;
-                }
-                if (nearMiss == null) {
-                    nearMiss = key;
-                    reason = "serves no %s match".formatted(search.form().factory());
-                }
-            } else if (nearMiss == null) {
-                nearMiss = key;
-                reason = "is on %s, and the match compares %s".formatted(key.key(), search.expression());
-            }
+    private static @Nullable String searchAdvice(SearchField search, IndexCatalog.TableIndexes indexes,
+                                                 @Nullable String substringIndex) {
+        if (search.bare() ? indexes.leadsWith(search.column()) : indexes.expressionIndexed()) {
+            return null;
         }
-        String what = nearMiss == null
-                ? "no index on %s serves %s".formatted(table, search.match())
-                : "%s on %s %s".formatted(nearMiss.index() == null ? "the primary key" : "index " + nearMiss.index(),
-                        table, reason);
+        String table = qualified(search.schema(), search.table());
         String fix;
         if (search.form().lowered()) {
-            fix = substringIndex
-                    ? "an index for substring matching on %s serves it".formatted(search.expression())
+            fix = substringIndex != null
+                    ? "%s on %s serves it".formatted(substringIndex, search.expression())
                     : ("no index of the database serves the %s form; a word-suffix table, matched as a prefix, takes "
                             + "an ordinary index").formatted(search.form().factory());
         } else if (search.bare()) {
@@ -418,49 +389,7 @@ final class IndexUsage {
             fix = ("an index on %s serves it where the database indexes an expression, and a stored column holding "
                     + "it, declared as a query column, takes an ordinary index").formatted(search.expression());
         }
-        return Advice.UNINDEXED_SEARCH.format(what, table, fix);
-    }
-
-    /**
-     * Returns an expression as the search advice compares it with the expression an index key holds: lower case,
-     * without whitespace, quoting characters or parentheses.
-     */
-    static String normalize(String expression) {
-        var normalized = new StringBuilder(expression.length());
-        for (int i = 0; i < expression.length(); i++) {
-            char c = expression.charAt(i);
-            if (Character.isWhitespace(c) || c == '"' || c == '`' || c == '[' || c == ']' || c == '(' || c == ')') {
-                continue;
-            }
-            normalized.append(Character.toLowerCase(c));
-        }
-        return normalized.toString();
-    }
-
-    /**
-     * Returns whether an index expression names the column, as a word of its own, ignoring case.
-     */
-    private static boolean mentions(String expression, String column) {
-        String lowered = expression.toLowerCase(Locale.ROOT);
-        String name = column.toLowerCase(Locale.ROOT);
-        int from = 0;
-        while (true) {
-            int at = lowered.indexOf(name, from);
-            if (at < 0) {
-                return false;
-            }
-            int end = at + name.length();
-            boolean before = at == 0 || !identifierPart(lowered.charAt(at - 1));
-            boolean after = end == lowered.length() || !identifierPart(lowered.charAt(end));
-            if (before && after) {
-                return true;
-            }
-            from = at + 1;
-        }
-    }
-
-    private static boolean identifierPart(char c) {
-        return Character.isLetterOrDigit(c) || c == '_' || c == '$';
+        return Advice.UNINDEXED_SEARCH.format("no index on %s serves %s".formatted(table, search.match()), table, fix);
     }
 
     /**

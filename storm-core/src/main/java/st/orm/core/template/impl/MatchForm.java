@@ -15,15 +15,11 @@
  */
 package st.orm.core.template.impl;
 
-import java.util.EnumSet;
-import java.util.Set;
-import org.jspecify.annotations.Nullable;
 import st.orm.Match;
 
 /**
  * The form a word of a {@code search} or {@code suggest} matches a field in, as the {@link Match} records state it,
- * named as the API names it. A statement records the form per field, and the search advice compares it with the forms
- * the database's index serves.
+ * named as the API names it. A statement records the form per field for the search advice.
  *
  * @since 1.16
  */
@@ -32,7 +28,11 @@ public enum MatchForm {
     /** Anywhere in the value, on the lowered column. */
     ANYWHERE("anywhere"),
 
-    /** At the start of a word in the value, the value's start or the text after a separator, on the lowered column. */
+    /**
+     * At the start of a word in the value, the value's start or the text after one of the
+     * {@link st.orm.core.template.SqlDialect#WORD_SEPARATORS}, on the lowered column, rendered as the dialect renders
+     * it: one regular expression where the database matches one, {@code LIKE} patterns elsewhere.
+     */
     WORD_START("wordStart"),
 
     /** As a prefix of the value, on the bare column with the word lowered. */
@@ -40,17 +40,6 @@ public enum MatchForm {
 
     /** As the whole value, on the bare column with the word lowered. */
     EXACT("exact");
-
-    /** The forms an ordinary index serves: one that orders its values from their first character. */
-    static final Set<MatchForm> ORDINARY = EnumSet.of(PREFIX, EXACT);
-
-    /**
-     * The characters a word follows in a value, besides the value's start: a space, and the punctuation that joins
-     * or separates the words of a name or a title, so that {@code man} matches "Spider-Man", {@code connor}
-     * "O'Connor" and {@code off} "Face/Off". The set is the same on every database, so a word start finds the same
-     * rows everywhere; a word-suffix table that stands in for a substring index splits its values on the same set.
-     */
-    public static final String WORD_SEPARATORS = " -'(/:.,";
 
     private final String factory;
 
@@ -92,25 +81,4 @@ public enum MatchForm {
         };
     }
 
-    /**
-     * Returns the forms a schema read lists for an index key, as the dialect's index query names them: the factory
-     * names, separated by commas, or {@code null} for an ordinary index.
-     *
-     * @param forms the forms as listed, or {@code null}.
-     * @return the forms.
-     */
-    static Set<MatchForm> listed(@Nullable String forms) {
-        if (forms == null) {
-            return ORDINARY;
-        }
-        var set = EnumSet.noneOf(MatchForm.class);
-        for (String name : forms.split(",")) {
-            for (var form : values()) {
-                if (form.factory.equalsIgnoreCase(name.strip())) {
-                    set.add(form);
-                }
-            }
-        }
-        return set;
-    }
 }

@@ -1057,11 +1057,11 @@ public abstract class QueryBuilder<T : Data, R : Any, ID : Any> {
      * appends a key, so the keys apply in the order they are called:
      *
      * ```
-     * movies.select()
-     *     .where(search(input, Movie_.title))
-     *     .orderFirst(Movie_.title eqIgnoreCase input)
-     *     .orderFirst(Movie_.title startsWithIgnoreCase input)
-     *     .orderByDescending(Movie_.votes)
+     * owners.select()
+     *     .where(search(input, Owner_.lastName))
+     *     .orderFirst(Owner_.lastName eqIgnoreCase input)
+     *     .orderFirst(Owner_.lastName startsWithIgnoreCase input)
+     *     .orderBy(Owner_.lastName)
      *     .limit(10)
      *     .resultList
      * ```
@@ -1791,7 +1791,7 @@ public infix fun <T : Data> Navigable<T, String>.notEndsWithIgnoreCase(text: Str
 /**
  * Creates a predicate that matches the words of a search input against one or more text columns. Every word must occur
  * in at least one of the paths, ignoring case and matched as literal text, as [containsIgnoreCase] matches it, so
- * `search("ugly bad", Movie_.title)` finds "The Good, the Bad and the Ugly". Whitespace separates the words, and a
+ * `search("davis madison", Owner_.lastName, Owner_.address.city.name)` finds Harold Davis of Madison. Whitespace separates the words, and a
  * quote at the start of a word opens a phrase such as `"the good"`, one word that runs to the next quote or to the end
  * of the input; a quote inside a word is an ordinary character. An input without words, such as an empty search box,
  * matches every row. The overload taking a [Match] per column states another match form.
@@ -1819,8 +1819,8 @@ public fun <T : Data> search(
 /**
  * Creates a predicate that matches the words of a search input against text columns, each in its stated match form,
  * as [search] matches them anywhere in the value. A field states its form with [anywhere], [wordStart], [prefix] or
- * [exact]: `search("ugly bad", wordStart(Movie_.title), exact(Movie_.titleLower))` matches each word at the start of
- * a word of the title or as the whole lowered title.
+ * [exact]: `search("van berg", wordStart(Owner_.lastName), exact(Owner_.telephone))` matches each word at the start of
+ * a word of the last name or as the whole telephone number.
  *
  * @param input the search input, as a search box receives it.
  * @param field the first text column to search, with its match form.
@@ -1836,8 +1836,8 @@ public fun <T : Data> search(
 /**
  * Creates a predicate that matches the words of a search box that queries as the user types, such as an auto-complete,
  * against one or more text columns. Every word of two characters or more matches at the start of a word in one of
- * the columns, the same rows on every database: `suggest("de n", Movie_.director.name)` finds "Robert De Niro" and
- * not "Alfredo". The input is read as [search] reads it. A one-character word takes no part, and an input without a
+ * the columns, the same rows on every database: `suggest("van b", Owner_.lastName)` finds "Van den Berg" and
+ * not "Sullivan". The input is read as [search] reads it. A one-character word takes no part, and an input without a
  * word that takes part, an empty one included, matches no rows, so the box never fetches and sorts a whole table on
  * the first keystroke. The overload taking a [Match] per column states another match form.
  *
@@ -1857,8 +1857,8 @@ public fun <T : Data> suggest(
  * columns, as [suggest] does, ignoring the given words as well. A word that equals one of them, ignoring case, takes
  * no part in the predicate, as a one-character word takes none, so an input of ignored words alone matches
  * no rows; a quoted word is never ignored. A search box names the words that occur in a large share of its rows, such
- * as "the" in a catalog of titles, which narrow nothing: `suggest("the god", setOf("the", "a", "of"), Movie_.title)`
- * matches on "god" alone.
+ * as "van" in a list of last names, which narrow nothing: `suggest("van berg", setOf("van", "de", "der"), Owner_.lastName)`
+ * matches on "berg" alone.
  *
  * @param input the search input, as a search box receives it.
  * @param ignore the words to ignore, compared ignoring case.
@@ -1876,8 +1876,8 @@ public fun <T : Data> suggest(
 /**
  * Creates a predicate that matches the words of a search box that queries as the user types against text columns,
  * each in its stated match form, as [suggest] matches them at the start of a word. A field states its form with
- * [anywhere], [wordStart], [prefix] or [exact]: `suggest(input, wordStart(Movie_.title), prefix(MovieTitleSuffix_.suffix))`
- * matches each word at the start of a word of the title, or as a prefix of a suffix row, which an ordinary index
+ * [anywhere], [wordStart], [prefix] or [exact]: `suggest(input, wordStart(Owner_.lastName), prefix(OwnerNameSuffix_.suffix))`
+ * matches each word at the start of a word of the name, or as a prefix of a suffix row, which an ordinary index
  * serves.
  *
  * @param input the search input, as a search box receives it.
@@ -1958,8 +1958,8 @@ public fun <T : Data> exact(path: Navigable<T, String>): Match<T> = Match.exact(
  * val foldAccents = SqlFunction.of<String>("fold_accents")
  *
  * select()
- *     .where(search(input, foldAccents(Movie_.title)))   // LOWER(fold_accents(m.title)) LIKE LOWER(fold_accents(?))
- *     .orderFirst(foldAccents(Movie_.title) eqIgnoreCase input)
+ *     .where(search(input, foldAccents(Owner_.lastName)))   // LOWER(fold_accents(o.last_name)) LIKE LOWER(fold_accents(?))
+ *     .orderFirst(foldAccents(Owner_.lastName) eqIgnoreCase input)
  * ```
  *
  * See [SqlFunction] for what the function must leave alone and where a call is refused.

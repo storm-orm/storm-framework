@@ -28,12 +28,14 @@ import java.sql.Types;
 import java.util.Locale;
 import java.util.Set;
 import java.util.UUID;
+import java.util.function.Function;
 import java.util.regex.Pattern;
 import org.jspecify.annotations.Nullable;
 import st.orm.Operator;
 import st.orm.StormConfig;
 import st.orm.core.spi.DefaultSqlDialect;
 import st.orm.core.spi.JsonString;
+import st.orm.core.template.SqlDialect;
 
 public class PostgreSQLSqlDialect extends DefaultSqlDialect {
 
@@ -67,15 +69,19 @@ public class PostgreSQLSqlDialect extends DefaultSqlDialect {
     }
 
     /**
-     * PostgreSQL lists its indexes in the {@code pg_index} system catalog, so the indexes of a schema are read in one
-     * query. A position whose attribute number is {@code 0} holds an expression, read through
-     * {@code pg_get_indexdef} with the casts PostgreSQL adds stripped, and the columns past {@code indnkeyatts} are
-     * {@code INCLUDE} columns, which the index carries but is not keyed on.
+     * PostgreSQL's trigram index serves a match anywhere and at a word start over the lowered column.
      *
-     * <p>The match forms follow the access method and operator class: a GIN or GiST index with a trigram operator
-     * class serves a {@code LIKE} wherever the wildcard is; a B-tree serves a {@code LIKE} prefix only with a
-     * pattern operator class or the {@code C} collation, on the key or as the database's own, and an equality
-     * otherwise; a hash index serves an equality alone.</p>
+     * @since 1.16
+     */
+    @Override
+    public String substringIndex() {
+        return "a trigram index";
+    }
+
+    /**
+     * PostgreSQL lists its indexes in the {@code pg_index} system catalog, so the indexes of a schema are read in one
+     * query. A position whose attribute number is {@code 0} holds an expression, and the columns past
+     * {@code indnkeyatts} are {@code INCLUDE} columns, which the index carries but is not keyed on.
      *
      * @return the query on {@code pg_index}.
      * @since 1.16
@@ -86,30 +92,13 @@ public class PostgreSQLSqlDialect extends DefaultSqlDialect {
                 SELECT t.relname AS TABLE_NAME, i.relname AS INDEX_NAME, a.attname AS COLUMN_NAME,
                        k.ordinality AS ORDINAL_POSITION,
                        CASE WHEN ix.indisunique THEN 1 ELSE 0 END AS IS_UNIQUE,
-                       CASE WHEN ix.indpred IS NULL THEN 0 ELSE 1 END AS IS_PARTIAL,
-                       CASE WHEN am.amname IN ('gin', 'gist') AND oc.opcname LIKE '%trgm%'
-                                THEN 'anywhere,wordStart,prefix,exact'
-                            WHEN am.amname = 'btree' AND (oc.opcname LIKE '%pattern_ops'
-                                OR co.collname IN ('C', 'POSIX')
-                                OR (co.collname = 'default' AND d.datcollate IN ('C', 'POSIX')))
-                                THEN 'prefix,exact'
-                            WHEN am.amname IN ('btree', 'hash') THEN 'exact'
-                            ELSE '' END AS MATCH_FORMS,
-                       CASE WHEN k.attnum = 0
-                                THEN regexp_replace(pg_get_indexdef(ix.indexrelid, k.ordinality::int, true),
-                                                    '::[a-z_ ]+', '', 'g')
-                            END AS KEY_EXPRESSION
+                       CASE WHEN ix.indpred IS NULL THEN 0 ELSE 1 END AS IS_PARTIAL
                 FROM pg_catalog.pg_index ix
                 JOIN pg_catalog.pg_class t ON t.oid = ix.indrelid
                 JOIN pg_catalog.pg_class i ON i.oid = ix.indexrelid
-                JOIN pg_catalog.pg_am am ON am.oid = i.relam
                 JOIN pg_catalog.pg_namespace n ON n.oid = t.relnamespace
-                JOIN pg_catalog.pg_database d ON d.datname = current_database()
-                CROSS JOIN LATERAL unnest(ix.indkey::int2[], ix.indclass::oid[], ix.indcollation::oid[])
-                    WITH ORDINALITY AS k(attnum, opclass, keycollation, ordinality)
+                CROSS JOIN LATERAL unnest(ix.indkey::int2[]) WITH ORDINALITY AS k(attnum, ordinality)
                 LEFT JOIN pg_catalog.pg_attribute a ON a.attrelid = t.oid AND a.attnum = k.attnum AND k.attnum > 0
-                LEFT JOIN pg_catalog.pg_opclass oc ON oc.oid = k.opclass
-                LEFT JOIN pg_catalog.pg_collation co ON co.oid = k.keycollation
                 WHERE k.ordinality <= ix.indnkeyatts
                   AND n.nspname = ?""";
     }
@@ -436,5 +425,16 @@ public class PostgreSQLSqlDialect extends DefaultSqlDialect {
         }
         var conflict = ON_CONFLICT.matcher(sql);
         return conflict.find() && DO_UPDATE.matcher(sql).find(conflict.end());
+    }
+
+    /**
+     * Renders a word start as one regular expression, which a trigram index serves as it serves a {@code LIKE}: the
+     * word at the start of the value or behind a separator, lowered on both sides.
+     *
+     * @since 1.16
+     */
+    @Override
+    public String wordStartMatch(String expression, String word, Function<String, String> bind) {
+        return "LOWER(%s) ~ LOWER(%s)".formatted(expression, bind.apply(SqlDialect.wordStartRegex(word)));
     }
 }

@@ -179,33 +179,33 @@ Operators (static constants of `st.orm.Operator`): `EQUALS`, `NOT_EQUALS`, `LESS
 
 ### Search
 
-**A search box goes through `search`, never through hand-built `CONTAINS_IGNORE_CASE` chains.** `.where(it -> it.search(input, Movie_.title, Movie_.director.name))` takes the input as the box receives it. It returns a predicate, so it combines with `.and()` and `.or()`.
+**A search box goes through `search`, never through hand-built `CONTAINS_IGNORE_CASE` chains.** `.where(it -> it.search(input, Owner_.lastName, Owner_.address.city.name))` takes the input as the box receives it. It returns a predicate, so it combines with `.and()` and `.or()`.
 - Whitespace separates the words, and a quote at the start of a word opens a phrase that runs to the next quote or to the end of the input, so a phrase matches while it is being typed; a quote inside a word is an ordinary character.
 - Every word must occur in at least one of the columns, ignoring case, literally.
 - An empty input matches every row.
 - Never split the input, reduce over the words or special-case the empty box in application code.
 - To search the rows related to each row, such as an owner's pets, semi-join the related table and name its column: `.semiJoin(Pet.class).on(Owner.class).where(it -> it.search(input, Owner_.lastName, Pet_.name))`. Each word may then match a different related row, and every owner comes back once. Columns of several semi-joined tables may share one search, each answered by its own table's rows.
 
-**A search box that queries as the user types goes through `suggest`, not `search`.** An auto-complete, a typeahead or any box that fetches on every keystroke uses `.where(it -> it.suggest(input, Movie_.title, Movie_.director.name))`. It takes the same input and columns as `search` and reads the input the same way; it differs in the input contract, the same on every database.
-- Every word of two characters or more matches at the start of a word: the start of the value, or the text after a space, a hyphen, an apostrophe, an opening parenthesis, a slash, a colon, a period or a comma. `man` suggests "Spider-Man"; `father` does not suggest "The Godfather", which `search` finds.
+**A search box that queries as the user types goes through `suggest`, not `search`.** An auto-complete, a typeahead or any box that fetches on every keystroke uses `.where(it -> it.suggest(input, Owner_.lastName, Owner_.address.city.name))`. It takes the same input and columns as `search` and reads the input the same way; it differs in the input contract, the same on every database.
+- Every word of two characters or more matches at the start of a word: the start of the value, or the text after a space, a hyphen, an apostrophe, an opening parenthesis, a slash, a colon, a period or a comma. `marie` suggests "Anne-Marie"; `son` does not suggest "Davidson", which `search` finds.
 - A one-character word takes no part. An input without a word that takes part, an empty one included, matches no rows, so the box never fetches a whole table on the first keystroke. `search` with an empty input matches every row.
 - The search page the box leads to keeps `search`, which matches every word anywhere.
 - Never filter short words or an empty input out in application code: `suggest` does it.
 - A query the client may abort, as a box that fetches on every keystroke does, runs inside `transaction(tx -> ...)`, and the block hands `tx` to whoever decides the result is no longer wanted: `tx.cancel()`, from any thread, stops the statement on the database and releases the connection.
-- A word that occurs in a large share of the rows, such as `the` in a catalog of titles, is the box's to name. `it.suggest(input, Set.of("the", "a", "of"), Movie_.title)` ignores those words as it ignores short ones, compared ignoring case; a quoted word is never ignored.
+- A word that occurs in a large share of the rows, such as `van` in a list of last names, is the box's to name. `it.suggest(input, Set.of("van", "de", "der"), Owner_.lastName)` ignores those words as it ignores short ones, compared ignoring case; a quoted word is never ignored.
 - Keep that set a constant next to the box. Never strip the words from the input in application code, and never pass the set to `search`, which takes none.
 
-**State a match form per column where the default does not fit.** `search` matches anywhere and `suggest` at a word start; the overloads that take a `Match` per column state another form, with `import static st.orm.Match.*`: `it.suggest(input, wordStart(Movie_.title), wordStart(Movie_.director.name), exact(Movie_.titleLower))`. A call is either all defaults or all stated.
-- `anywhere(col)` matches inside a word, for a title where `father` should find "The Godfather" in the box too; `wordStart(col)` at a word start; `prefix(col)` at the start of the value; `exact(col)` the whole value. Every form renders the same SQL on every database.
-- `prefix` and `exact` leave the column bare and lower the word, `title LIKE ?`, so an ordinary index over the column serves them. The column must compare case-insensitively on its own: a case-insensitive collation, or a stored lowered column declared as a `@QueryColumn`. On a case-sensitive column they never match a value with an upper-case letter.
-- A match composes with a `SqlFunction`: `wordStart(foldAccents.apply(Movie_.title))`.
-- On a database without a substring index, a large table takes a word-suffix table, one row per word start of the value, matched with `prefix` through a semi-join: `.semiJoin(MovieTitleSuffix.class).on(Movie.class).where(it -> it.suggest(input, prefix(MovieTitleSuffix_.suffix)))`. The rows split on the separators `wordStart` recognizes.
+**State a match form per column where the default does not fit.** `search` matches anywhere and `suggest` at a word start; the overloads that take a `Match` per column state another form, with `import static st.orm.Match.*`: `it.suggest(input, wordStart(Owner_.lastName), wordStart(Owner_.firstName), exact(Owner_.telephone))`. A call is either all defaults or all stated.
+- `anywhere(col)` matches inside a word, for a column where `son` should find "Davidson" in the box too; `wordStart(col)` at a word start; `prefix(col)` at the start of the value; `exact(col)` the whole value. Every form renders the same SQL on every database.
+- `prefix` and `exact` leave the column bare and lower the word, `last_name LIKE ?`, so an ordinary index over the column serves them. The column must compare case-insensitively on its own: a case-insensitive collation, or a stored lowered column declared as a `@QueryColumn`. On a case-sensitive column they never match a value with an upper-case letter.
+- A match composes with a `SqlFunction`: `wordStart(foldAccents.apply(Owner_.lastName))`.
+- On a database without a substring index, a large table takes a word-suffix table, one row per word start of the value, matched with `prefix` through a semi-join: `.semiJoin(OwnerNameSuffix.class).on(Owner.class).where(it -> it.suggest(input, prefix(OwnerNameSuffix_.suffix)))`. The rows split on the separators `wordStart` recognizes.
 
-**Rank search results with `orderFirst`, never with a `CASE` template.** `search` and `suggest` decide which rows match, not which come first. `orderFirst(predicate)` puts the rows matching the predicate first and appends a sort key as `orderBy` does, so the calls apply in order. This lists an exact title, then titles starting with the input, then the most popular:
+**Rank search results with `orderFirst`, never with a `CASE` template.** `search` and `suggest` decide which rows match, not which come first. `orderFirst(predicate)` puts the rows matching the predicate first and appends a sort key as `orderBy` does, so the calls apply in order. This lists an exact name, then names starting with the input, then the rest alphabetically:
 ```java
-.orderFirst(it -> it.where(Movie_.title, EQUALS_IGNORE_CASE, input))
-.orderFirst(it -> it.where(Movie_.title, STARTS_WITH_IGNORE_CASE, input))
-.orderByDescending(Movie_.votes)
+.orderFirst(it -> it.where(Owner_.lastName, EQUALS_IGNORE_CASE, input))
+.orderFirst(it -> it.where(Owner_.lastName, STARTS_WITH_IGNORE_CASE, input))
+.orderBy(Owner_.lastName)
 ```
 - The operators match the input literally and ignoring case, as in `where`. Combine columns with `.or(...)`.
 - Rank only by columns of the queried or joined tables. A semi-joined table adds no columns, so its columns are refused.
@@ -216,7 +216,7 @@ Operators (static constants of `st.orm.Operator`): `EQUALS`, `NOT_EQUALS`, `LESS
 **A search needs an index built for it, created in the migration with the query.** `search` and the `IGNORE_CASE` text operators compare `LOWER(column) LIKE LOWER('%word%')`: a lowered expression with a leading wildcard, which no B-tree index serves. Without an index for it, each search reads and lowers every row of every table it names. That goes unnoticed on test data and takes seconds on a production-sized table.
 - Where a searched table can grow beyond a few thousand rows, add the target database's substring index (a trigram or n-gram index) to the migration. Build it over exactly `LOWER(column)`, one per searched column, including the columns of a semi-joined table or of a table reached through a path.
 - An index on the plain column does not match the lowered expression.
-- A word shorter than the index's gram (usually three characters) cannot use it. `search` tests such a word only on the rows its longer words found, so a search of short words alone still reads every row. With the schema loaded, the slow log (`st.orm.sql.slow`) adds `unindexed-search` advice to a slow statement for each searched column no index serves in its match form, naming an index that exists and cannot serve it, such as one on `title` where the match compares `LOWER(title)`.
+- A word shorter than the index's gram (usually three characters) cannot use it. `search` tests such a word only on the rows its longer words found, so a search of short words alone still reads every row. With the schema loaded, the slow log (`st.orm.sql.slow`) adds `unindexed-search` advice to a slow statement for each searched column no index serves in its match form, naming an index that exists and cannot serve it, such as one on `last_name` where the match compares `LOWER(last_name)`.
 - Where the database has no substring index, say so, and narrow the rows with a selective predicate instead.
 
 **Confirm in the database's query plan that each table is read through its index.** Check the statement as the application sends it: with the word as a bind parameter, after the driver has prepared it, not with the word written into the SQL.
@@ -228,7 +228,7 @@ Operators (static constants of `st.orm.Operator`): `EQUALS`, `NOT_EQUALS`, `LESS
 **Whether accents count is the schema's decision, never the application's.** The search follows the column's collation, which ignores accents on some databases by default and compares them on others. Where a search must ignore accents on a database that compares them, the database removes them through a function an index is built on, and the query names that function with `SqlFunction`:
 - The migration wraps the database's accent-removing function in `fold_accents(text)`, marked immutable so the database accepts it in an index where the original function is not immutable. It indexes `LOWER(fold_accents(column))`.
 - The repository declares `SqlFunction<String> foldAccents = SqlFunction.of("fold_accents")` once.
-- The query searches `it.search(input, foldAccents.apply(Movie_.title))` and ranks with `orderFirst(it -> it.where(foldAccents.apply(Movie_.title), EQUALS_IGNORE_CASE, input))`.
+- The query searches `it.search(input, foldAccents.apply(Owner_.lastName))` and ranks with `orderFirst(it -> it.where(foldAccents.apply(Owner_.lastName), EQUALS_IGNORE_CASE, input))`.
 
 **The database folds both sides; the application folds neither.** A comparison applies the function to the column and to the input.
 - Never remove accents from the input in application code or in a query of its own.
@@ -238,9 +238,9 @@ Operators (static constants of `st.orm.Operator`): `EQUALS`, `NOT_EQUALS`, `LESS
 - A `Scrollable` refuses a function call as key or sort field.
 
 **Store the folded text in a generated column where the function's recheck dominates.** That shows on a column where a common word matches many thousands of rows, since the database rechecks the function on every candidate row.
-- Store it as `title_folded VARCHAR GENERATED ALWAYS AS (fold_accents(title)) STORED NOT NULL` and index `LOWER(title_folded)`.
-- Declare it as a query column on the entity that names the function: `@QueryColumn(field = "titleFolded", type = String.class, function = "fold_accents")`. No row carries it (see the entity skill), and a value compared with it passes through the function on the value side.
-- `it.search(input, Movie_.titleFolded)` renders `LOWER(m.title_folded) LIKE LOWER(fold_accents(?))`: the column as stored, and the input folded by the database in the same statement.
+- Store it as `last_name_folded VARCHAR GENERATED ALWAYS AS (fold_accents(last_name)) STORED NOT NULL` and index `LOWER(last_name_folded)`.
+- Declare it as a query column on the entity that names the function: `@QueryColumn(field = "lastNameFolded", type = String.class, function = "fold_accents")`. No row carries it (see the entity skill), and a value compared with it passes through the function on the value side.
+- `it.search(input, Owner_.lastNameFolded)` renders `LOWER(o.last_name_folded) LIKE LOWER(fold_accents(?))`: the column as stored, and the input folded by the database in the same statement.
 
 ### Naming a foreign key column
 

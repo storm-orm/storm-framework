@@ -101,18 +101,15 @@ public abstract class AbstractMissingIndexConformanceTest {
      *
      * @param field the field with its match form.
      * @param ddl the statement creating the index, or {@code null} for no index.
-     * @param index the name of the index the statement creates, or {@code null} for none.
      * @param served whether the index serves the field in its form: the plan must then use it and the advice stay
-     *               silent; otherwise the advice names the index that exists and cannot serve the match, or says no
-     *               index does.
+     *               silent; otherwise the advice says no index serves the field.
      */
-    public record SearchIndexProbe(Match<SearchProbe> field, @Nullable String ddl, @Nullable String index,
-                                      boolean served) {
+    public record SearchIndexProbe(Match<SearchProbe> field, @Nullable String ddl, boolean served) {
     }
 
     /**
-     * Returns the statements that create the search probe table, {@code search_probe(id, title, title_lower)} with
-     * {@code title_lower} the stored lowered title, which a prefix or exact match compares on its own. Empty where
+     * Returns the statements that create the search probe table, {@code search_probe(id, name, name_lower)} with
+     * {@code name_lower} the stored lowered name, which a prefix or exact match compares on its own. Empty where
      * the probe does not apply.
      */
     protected List<String> searchProbeDdl() {
@@ -121,7 +118,7 @@ public abstract class AbstractMissingIndexConformanceTest {
 
     /**
      * Returns the index probes of the dialect: for each match form, where the database has an index that serves it,
-     * that index, and an index that exists and cannot serve the form, or none.
+     * that index, and an index on the bare column where the form compares an expression, or none.
      */
     protected List<SearchIndexProbe> searchIndexProbes() {
         return List.of();
@@ -335,13 +332,13 @@ public abstract class AbstractMissingIndexConformanceTest {
                 .groupBy(NAME).getResultList());
     }
 
-    /** A table of titles with a stored lowered copy, the column a prefix or exact match compares on its own. */
+    /** A table of names with a stored lowered copy, the column a prefix or exact match compares on its own. */
     @DbTable("search_probe")
-    public record SearchProbe(@PK(generation = NONE) Integer id, String title, String titleLower)
+    public record SearchProbe(@PK(generation = NONE) Integer id, String name, String nameLower)
             implements Entity<Integer> {}
 
-    protected static final Metamodel<SearchProbe, String> PROBE_TITLE = Metamodel.of(SearchProbe.class, "title");
-    protected static final Metamodel<SearchProbe, String> PROBE_TITLE_LOWER = Metamodel.of(SearchProbe.class, "titleLower");
+    protected static final Metamodel<SearchProbe, String> PROBE_NAME = Metamodel.of(SearchProbe.class, "name");
+    protected static final Metamodel<SearchProbe, String> PROBE_NAME_LOWER = Metamodel.of(SearchProbe.class, "nameLower");
 
     /**
      * Returns whether the plan reads the probe table through an index named {@code probe_...}, as a range or a seek
@@ -368,20 +365,21 @@ public abstract class AbstractMissingIndexConformanceTest {
                 "juliet", "kilo", "lima", "mike", "november", "oscar", "papa", "quebec", "romeo", "sierra", "tango",
                 "victor", "whiskey", "xray", "yankee", "zulu"};
         try (var connection = dataSource.getConnection();
-             var insert = connection.prepareStatement("INSERT INTO search_probe (id, title) VALUES (?, ?)")) {
+             var insert = connection.prepareStatement("INSERT INTO search_probe (id, name) VALUES (?, ?)")) {
             boolean autoCommit = connection.getAutoCommit();
             connection.setAutoCommit(false);
             for (int id = 1; id <= ROWS; id++) {
-                String title = switch (id) {
-                    case 1 -> "Upside Down";
-                    case 2 -> "Pick Me Up";
-                    case 3 -> "Grown Ups";
-                    case 4 -> "Spider-Man";
-                    case 5 -> "O'Connor";
+                String name = switch (id) {
+                    case 1 -> "Upton";
+                    case 2 -> "Van Upton";
+                    case 3 -> "Dupont";
+                    case 4 -> "Anne-Marie";
+                    case 5 -> "O'Brien";
+                    case 6 -> "St. John (Jr.)";
                     default -> words[id % words.length] + " " + words[id * 7 % words.length] + " " + id;
                 };
                 insert.setInt(1, id);
-                insert.setString(2, title);
+                insert.setString(2, name);
                 insert.addBatch();
                 if (id % 1_000 == 0) {
                     insert.executeBatch();
@@ -398,10 +396,10 @@ public abstract class AbstractMissingIndexConformanceTest {
         }
     }
 
-    private List<String> titles(String input, Match<SearchProbe> field) {
+    private List<String> names(String input, Match<SearchProbe> field) {
         return orm.entity(SearchProbe.class).select()
                 .where(it -> PredicateBuilderFactory.<SearchProbe, SearchProbe, Integer>search(input, field))
-                .getResultList().stream().map(SearchProbe::title).sorted().toList();
+                .getResultList().stream().map(SearchProbe::name).sorted().toList();
     }
 
     /**
@@ -413,29 +411,32 @@ public abstract class AbstractMissingIndexConformanceTest {
     public void eachMatchFormFindsTheSameRowsOnEveryDatabase() throws SQLException {
         Assumptions.assumeFalse(searchProbeDdl().isEmpty(), "No probe for this dialect.");
         createSearchProbe(null);
-        assertEquals(List.of("Grown Ups", "Pick Me Up", "Upside Down"), titles("up", Match.anywhere(PROBE_TITLE)));
-        assertEquals(List.of("Grown Ups", "Upside Down"), titles("ps", Match.anywhere(PROBE_TITLE)));
-        assertEquals(List.of("Grown Ups", "Pick Me Up", "Upside Down"), titles("up", Match.wordStart(PROBE_TITLE)));
-        assertEquals(List.of(), titles("ps", Match.wordStart(PROBE_TITLE)));
-        assertEquals(List.of("Spider-Man"), titles("man", Match.wordStart(PROBE_TITLE)));
-        assertEquals(List.of("O'Connor"), titles("connor", Match.wordStart(PROBE_TITLE)));
-        assertEquals(List.of("Upside Down"), titles("Up", Match.prefix(PROBE_TITLE_LOWER)));
-        assertEquals(List.of("Grown Ups"), titles("\"grown ups", Match.exact(PROBE_TITLE_LOWER)));
-        assertEquals(List.of(), titles("grown", Match.exact(PROBE_TITLE_LOWER)));
+        assertEquals(List.of("Dupont", "Upton", "Van Upton"), names("up", Match.anywhere(PROBE_NAME)));
+        assertEquals(List.of("Upton", "Van Upton"), names("up", Match.wordStart(PROBE_NAME)));
+        assertEquals(List.of(), names("pton", Match.wordStart(PROBE_NAME)));
+        assertEquals(List.of("Anne-Marie"), names("marie", Match.wordStart(PROBE_NAME)));
+        assertEquals(List.of("O'Brien"), names("brien", Match.wordStart(PROBE_NAME)));
+        // The word is matched literally, whatever the dialect renders the word start as.
+        assertEquals(List.of("St. John (Jr.)"), names("st. (jr.)", Match.wordStart(PROBE_NAME)));
+        assertEquals(List.of(), names("t.", Match.wordStart(PROBE_NAME)));
+        assertEquals(List.of(), names("s.", Match.wordStart(PROBE_NAME)));
+        assertEquals(List.of("Upton"), names("Up", Match.prefix(PROBE_NAME_LOWER)));
+        assertEquals(List.of("Van Upton"), names("\"van upton", Match.exact(PROBE_NAME_LOWER)));
+        assertEquals(List.of(), names("van", Match.exact(PROBE_NAME_LOWER)));
         // suggest takes the same forms; a one-character word takes no part, whatever the index serves.
-        assertEquals(List.of("Spider-Man"), orm.entity(SearchProbe.class).select()
-                .where(it -> PredicateBuilderFactory.<SearchProbe, SearchProbe, Integer>suggest("Ma", Set.of(), PROBE_TITLE))
-                .getResultList().stream().map(SearchProbe::title).toList());
+        assertEquals(List.of("Anne-Marie"), orm.entity(SearchProbe.class).select()
+                .where(it -> PredicateBuilderFactory.<SearchProbe, SearchProbe, Integer>suggest("Ma", Set.of(), PROBE_NAME))
+                .getResultList().stream().map(SearchProbe::name).toList());
         assertEquals(List.of(), orm.entity(SearchProbe.class).select()
-                .where(it -> PredicateBuilderFactory.<SearchProbe, SearchProbe, Integer>suggest("U", Set.of(), PROBE_TITLE))
+                .where(it -> PredicateBuilderFactory.<SearchProbe, SearchProbe, Integer>suggest("U", Set.of(), PROBE_NAME))
                 .getResultList());
     }
 
     /**
      * The index the docs name for a match form serves the statement the form renders, and the advice is silent: the
      * database's own plan, read with the word inlined and the planner's preference for a sequential scan of a small
-     * table turned off where it has one, uses the index. An index that exists and cannot serve the form is named by
-     * the advice as such, and without one the advice says no index serves the field.
+     * table turned off where it has one, uses the index. Without one, or with an index on the bare column where the
+     * form compares an expression, the advice says no index serves the field.
      */
     @Test
     public void eachMatchFormIsServedByTheIndexTheDocsNameAndAdvisedOtherwise() throws SQLException {
@@ -445,7 +446,7 @@ public abstract class AbstractMissingIndexConformanceTest {
             createSearchProbe(probe.ddl());
             orm.loadSchema();
             String form = MatchForm.of(probe.field()).factory();
-            String input = probe.field() instanceof Match.Exact<?> ? "\"grown ups\"" : "up";
+            String input = probe.field() instanceof Match.Exact<?> ? "\"van upton\"" : "up";
             var results = new ArrayList<SearchProbe>();
             var lines = slowLines(() -> results.addAll(orm.entity(SearchProbe.class).select()
                     .where(it -> PredicateBuilderFactory.<SearchProbe, SearchProbe, Integer>search(input, probe.field()))
@@ -466,10 +467,7 @@ public abstract class AbstractMissingIndexConformanceTest {
                 }
             } else {
                 assertEquals(1, advice.size(), probe + ": " + advice);
-                String expected = probe.index() == null
-                        ? "no index on search_probe serves " + form + "("
-                        : "index " + probe.index() + " on search_probe ";
-                assertTrue(advice.getFirst().toLowerCase(Locale.ROOT).startsWith(expected.toLowerCase(Locale.ROOT)),
+                assertTrue(advice.getFirst().startsWith("no index on search_probe serves " + form + "("),
                         probe + ": " + advice.getFirst());
             }
         }
