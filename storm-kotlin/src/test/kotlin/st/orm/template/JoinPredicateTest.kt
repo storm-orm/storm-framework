@@ -2,6 +2,7 @@ package st.orm.template
 
 import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.matchers.collections.shouldHaveSize
+import io.kotest.matchers.shouldBe
 import io.kotest.matchers.string.shouldContain
 import io.kotest.matchers.string.shouldNotContain
 import org.junit.jupiter.api.Test
@@ -95,6 +96,8 @@ internal class JoinPredicateTest {
 
     @Test
     fun `the block DSL takes the predicate`(orm: ORMTemplate, capture: SqlCapture) {
+        val all = orm.entity(Pet::class).select().resultList.size
+        val visited = orm.entity(Pet::class).select().semiJoin<Visit>().on(visitPetId eq petId).resultList.size
         val pets = capture.execute {
             orm.entity(Pet::class).select {
                 semiJoin<Visit>((visitPetId eq petId) and (visitDescription eq "rabies shot"))
@@ -104,6 +107,11 @@ internal class JoinPredicateTest {
         capture.sql() shouldContain "WHERE EXISTS ( SELECT 1 FROM visit v WHERE v.pet_id = p.id AND v.description = ? )"
         val joined = orm.entity(Pet::class).select { innerJoin<Visit>(visitPetId eq petId) }.resultList
         joined shouldHaveSize 14
+        val leftJoined = orm.entity(Pet::class).select { leftJoin(Visit::class, visitPetId eq petId) }.resultList.size
+        val innerJoined = orm.entity(Pet::class).select { innerJoin(Visit::class, visitPetId eq petId) }.resultList.size
+        leftJoined shouldBe innerJoined + all - visited
+        orm.entity(Pet::class).select { rightJoin(Visit::class, visitPetId eq petId) }.resultList shouldHaveSize 14
+        orm.entity(Pet::class).select { antiJoin(Visit::class, visitPetId eq petId) }.resultList shouldHaveSize all - visited
     }
 
     @Test

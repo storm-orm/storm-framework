@@ -32,7 +32,6 @@ import st.orm.Ref;
 import st.orm.SqlTemplateException;
 import st.orm.core.template.QueryTemplate;
 import st.orm.core.template.impl.Elements.PathExpression;
-import st.orm.core.template.impl.Elements.Where;
 import st.orm.core.template.impl.PredicateNode.Group;
 import st.orm.core.template.impl.PredicateNode.Term;
 import st.orm.mapping.RecordField;
@@ -120,11 +119,7 @@ final class JoinKeys {
                 || template.fragments().stream().anyMatch(fragment -> !fragment.isBlank())) {
             return null;
         }
-        var value = template.values().getFirst();
-        if (value instanceof Where where) {
-            value = where.expression();
-        }
-        return value instanceof PathExpression expression && expression.operator() == EQUALS ? expression : null;
+        return template.values().getFirst() instanceof PathExpression expression && expression.operator() == EQUALS ? expression : null;
     }
 
     /**
@@ -200,7 +195,7 @@ final class JoinKeys {
                 return new Key(holder, foreignKey, referenced(foreignKey));
             }
         }
-        var holder = table.tableType();
+        var holder = path.tableType();
         var field = getRecordField(holder, path.field());
         if (field.isAnnotationPresent(FK.class)) {
             var referenced = referenced(field);

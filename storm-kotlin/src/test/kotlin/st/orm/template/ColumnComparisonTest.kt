@@ -17,10 +17,12 @@ package st.orm.template
 
 import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.matchers.collections.shouldHaveSize
+import io.kotest.matchers.shouldBe
 import io.kotest.matchers.string.shouldContain
 import io.kotest.matchers.string.shouldNotContain
 import org.junit.jupiter.api.Test
 import st.orm.Metamodel
+import st.orm.Operator
 import st.orm.Operator.NOT_EQUALS
 import st.orm.PersistenceException
 import st.orm.template.model.Owner
@@ -70,6 +72,38 @@ internal class ColumnComparisonTest {
         }
         owners shouldHaveSize 12
         capture.sql() shouldContain "INNER JOIN pet p ON p.owner_id = o.id AND (p.name <> o.first_name)"
+    }
+
+    @Test
+    fun `every comparison operator takes a path`(orm: ORMTemplate, capture: SqlCapture) {
+        val petId = Metamodel.of<Pet, Int>(Pet::class.java, "id")
+        val all = orm.entity(Pet::class).select().resultList.size
+        val less = orm.entity(Pet::class).select().where(petId less petOwnerId).resultList.size
+        val lessEq = orm.entity(Pet::class).select().where(petId lessEq petOwnerId).resultList.size
+        val greater = orm.entity(Pet::class).select().where(petId greater petOwnerId).resultList.size
+        val greaterEq = capture.execute {
+            orm.entity(Pet::class).select().where(petId greaterEq petOwnerId).resultList.size
+        }
+        capture.sql() shouldContain "WHERE p.id >= p.owner_id"
+        // A pet without an owner matches neither side of a comparison.
+        val owned = all - orm.entity(Pet::class).select().where(petOwnerId, Operator.IS_NULL).resultList.size
+        (less + greaterEq) shouldBe owned
+        (lessEq + greater) shouldBe owned
+    }
+
+    @Test
+    fun `the operator form and the block DSL take a path`(orm: ORMTemplate, capture: SqlCapture) {
+        val owners = capture.execute {
+            orm.entity(Owner::class).select { where(ownerFirstName, NOT_EQUALS, ownerLastName) }.resultList
+        }
+        owners shouldHaveSize 10
+        capture.sql() shouldContain "WHERE o.first_name <> o.last_name"
+        orm.entity(Owner::class)
+            .select(Long::class) { "COUNT(*)" }
+            .groupBy(ownerFirstName, ownerLastName)
+            .having(ownerFirstName, NOT_EQUALS, ownerLastName)
+            .resultList shouldHaveSize 10
+        orm.entity(Owner::class).select(Long::class) { "COUNT(*)" }.resultList shouldHaveSize 1
     }
 
     @Test

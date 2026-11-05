@@ -745,6 +745,19 @@ public class QueryBuilderTest {
     }
 
     @Test
+    public void testColumnsCompareInWhereAndHaving() {
+        List<Pet> pets = orm.entity(Pet.class).select()
+                .where(Pet_.owner.firstName, NOT_EQUALS, Pet_.name)
+                .getResultList();
+        assertEquals(orm.entity(Pet.class).select().where(Pet_.owner.firstName, IS_NOT_NULL).getResultList(), pets);
+        List<Long> counts = orm.selectFrom(Owner.class, Long.class, RAW."COUNT(*)")
+                .groupBy(Owner_.firstName, Owner_.lastName)
+                .having(Owner_.firstName, NOT_EQUALS, Owner_.lastName)
+                .getResultList();
+        assertEquals(orm.entity(Owner.class).select().getResultCount(), counts.size());
+    }
+
+    @Test
     public void testJoinTakesAPredicateAsItsRelation() {
         // The predicate states the relation: the key it equates and the condition beside it.
         List<Pet> pets = orm.entity(Pet.class).select()

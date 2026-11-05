@@ -174,6 +174,37 @@ public class BuilderIntegrationTest {
                 .getResultList()));
         assertTrue(statements.getLast().contains("INNER JOIN pet_pair pp ON pp.id > p.id"), statements.getLast());
         assertEquals(List.of("Basil", "Leo", "Leo"), other.stream().map(Pet::name).sorted().toList());
+        // A parameter in such a predicate binds as it does in any condition.
+        var leo = new ArrayList<Pet>();
+        observe(sql -> statements.add(sql.statement()), () -> leo.addAll(ORMTemplate.of(dataSource)
+                .selectFrom(Pet.class)
+                .innerJoin(PetPair.class).on(it -> it.where(PetPair_.id, GREATER_THAN, Pet_.id).and(it.where(Pet_.name, EQUALS, "Leo")))
+                .getResultList()));
+        assertTrue(statements.getLast().contains("INNER JOIN pet_pair pp ON pp.id > p.id AND p.name = ?"), statements.getLast());
+        assertEquals(List.of("Leo", "Leo"), leo.stream().map(Pet::name).toList());
+    }
+
+    @Test
+    public void innerJoinWithoutAForeignKeyNamesThePredicateForm() {
+        var e = assertThrows(PersistenceException.class, () -> ORMTemplate.of(dataSource)
+                .selectFrom(Pet.class)
+                .innerJoin(Visit.class).on(Owner.class)
+                .getResultList());
+        assertTrue(e.getMessage().contains("Failed to join Visit with Owner: no matching foreign key relationship found. Ensure one of the types has an @FK-annotated field referencing the other, state the relation as a predicate, on(Visit_.<key> eq Owner_.<key>) for the keys both hold to one table, or use an explicit ON clause with a template-based join."), e.getMessage());
+    }
+
+    @Test
+    public void innerJoinOnAPredicateTakesAMultiColumnTermAsItsCondition() {
+        // An inline record compares column by column; it is no key, so the key term beside it resolves the join.
+        var statements = new ArrayList<String>();
+        var pets = new ArrayList<Pet>();
+        observe(sql -> statements.add(sql.statement()), () -> pets.addAll(ORMTemplate.of(dataSource)
+                .entity(Owner.class).select(Pet.class)
+                .innerJoin(Pet.class).on(it -> it.where(Owner_.address, EQUALS, Owner_.address).and(it.where(Pet_.owner.id, EQUALS, Owner_.id)))
+                .getResultList()));
+        assertEquals(12, pets.size());
+        assertTrue(statements.getFirst().contains("INNER JOIN pet p ON p.owner_id = o.id AND ("), statements.getFirst());
+        assertTrue(statements.getFirst().contains("o.city_id"), statements.getFirst());
     }
 
     @Test
