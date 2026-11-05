@@ -2426,7 +2426,7 @@ internal open class QueryBuilderTest(
         val description = metamodel<Visit, String>(orm.entity(Visit::class).model, "description")
         val petName = metamodel<Pet, String>(petRepo.model, "name")
         petRepo.select()
-            .antiJoin<Visit>().on<Pet> { description eq "spayed" }
+            .antiJoin<Visit>().on(Pet::class, description eq "spayed")
             .where((petName eq "Max") or (petName eq "Samantha"))
             .resultList.map { it.name } shouldBe listOf("Max")
         petRepo.select()
@@ -2440,11 +2440,11 @@ internal open class QueryBuilderTest(
         val visitRepo = orm.entity(Visit::class)
         val description = metamodel<Visit, String>(visitRepo.model, "description")
         visitRepo.select()
-            .semiJoin<Visit>().on<Pet> { description eq "spayed" }
+            .semiJoin<Visit>().on(Pet::class, description eq "spayed")
             .where(description eq "neutered")
             .resultList.map { it.pet.id }.sorted() shouldBe listOf(2, 4)
         visitRepo.select()
-            .antiJoin<Visit>().on<Pet> { description eq "spayed" }
+            .antiJoin<Visit>().on(Pet::class, description eq "spayed")
             .where(description eq "neutered")
             .resultList.map { it.pet.id } shouldBe listOf(8)
     }
@@ -2538,7 +2538,7 @@ internal open class QueryBuilderTest(
         }.resultList.map { it.firstName } shouldBe listOf("George")
         orm.entity(Owner::class).select {
             antiJoin<Pet, Owner>()
-            semiJoin<Visit, Pet> { description eq "neutered" }
+            semiJoin(Visit::class, Pet::class, description eq "neutered")
         }.resultList.map { it.firstName }.sorted() shouldBe
             listOf("Betty", "Carlos", "David", "Harold", "Jeff", "Maria", "Peter")
     }
@@ -2549,17 +2549,17 @@ internal open class QueryBuilderTest(
         val petRepo = orm.entity(Pet::class)
         val description = metamodel<Visit, String>(orm.entity(Visit::class).model, "description")
         petRepo.select {
-            antiJoin<Visit, Pet> { description eq "spayed" }
+            antiJoin(Visit::class, Pet::class, description eq "spayed")
             semiJoin<Visit, Pet>()
         }.resultList.map { it.name }.sorted() shouldBe listOf("Iggy", "Max")
         petRepo.select()
-            .semiJoin<Visit>().on<Pet> { description eq "spayed" }
-            .semiJoin<Visit>().on<Pet> { description eq "neutered" }
+            .semiJoin<Visit>().on(Pet::class, description eq "spayed")
+            .semiJoin<Visit>().on(Pet::class, description eq "neutered")
             .resultList.map { it.name }.sorted() shouldBe listOf("Basil", "Jewel")
         assertThrows<PersistenceException> {
             petRepo.select()
                 .semiJoin<Visit>().on<Pet>()
-                .antiJoin<Visit>().on<Pet> { description eq "spayed" }
+                .antiJoin<Visit>().on(Pet::class, description eq "spayed")
                 .where(description eq "neutered")
                 .resultList
         }.message shouldContain "filters by more than once"
@@ -2570,7 +2570,7 @@ internal open class QueryBuilderTest(
         val ownerRepo = orm.entity(Owner::class)
         val petName = metamodel<Pet, String>(orm.entity(Pet::class).model, "name")
         ownerRepo.select()
-            .leftJoin<Pet>().on<Owner> { petName eq "Lucky" }
+            .leftJoin<Pet>().on(Owner::class, petName eq "Lucky")
             .resultList shouldHaveSize 10
     }
 
@@ -2585,7 +2585,7 @@ internal open class QueryBuilderTest(
             where(petName eq "Lucky")
         }.resultList.map { it.firstName }.sorted() shouldBe listOf("Carlos", "Jeff")
         petRepo.select {
-            antiJoin<Visit, Pet> { description eq "spayed" }
+            antiJoin(Visit::class, Pet::class, description eq "spayed")
             where((petName eq "Max") or (petName eq "Samantha"))
         }.resultList.map { it.name } shouldBe listOf("Max")
     }

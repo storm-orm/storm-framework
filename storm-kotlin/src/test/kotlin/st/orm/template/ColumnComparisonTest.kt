@@ -68,7 +68,7 @@ internal class ColumnComparisonTest {
     @Test
     fun `columns compare in a join condition`(orm: ORMTemplate, capture: SqlCapture) {
         val owners = capture.execute {
-            orm.entity(Owner::class).select().innerJoin<Pet>().on<Owner> { petName neq ownerFirstName }.resultList
+            orm.entity(Owner::class).select().innerJoin<Pet>().on(Owner::class, petName neq ownerFirstName).resultList
         }
         owners shouldHaveSize 12
         capture.sql() shouldContain "INNER JOIN pet p ON p.owner_id = o.id AND (p.name <> o.first_name)"
@@ -124,7 +124,7 @@ internal class ColumnComparisonTest {
         val visits = capture.execute {
             orm.entity(Owner::class).select()
                 .crossJoin<Visit>()
-                .innerJoin<Pet>().on<Visit> { petOwnerId eq ownerId }
+                .innerJoin<Pet>().on(Visit::class, petOwnerId eq ownerId)
                 .resultList
         }
         visits shouldHaveSize 14
@@ -135,11 +135,11 @@ internal class ColumnComparisonTest {
     @Test
     fun `a condition on a semi-join names the query's table`(orm: ORMTemplate, capture: SqlCapture) {
         val visits = capture.execute {
-            orm.entity(Visit::class).select().semiJoin<Pet>().on<Visit> { petName neq visitDescription }.resultList
+            orm.entity(Visit::class).select().semiJoin<Pet>().on(Visit::class, petName neq visitDescription).resultList
         }
         visits shouldHaveSize 14
         capture.sql() shouldContain "WHERE p1.id = v.pet_id AND p1.name <> v.description"
-        orm.entity(Visit::class).select().antiJoin<Pet>().on<Visit> { petName eq visitDescription }.resultList shouldHaveSize 14
+        orm.entity(Visit::class).select().antiJoin<Pet>().on(Visit::class, petName eq visitDescription).resultList shouldHaveSize 14
     }
 
     @Test

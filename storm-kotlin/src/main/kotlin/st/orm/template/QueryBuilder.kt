@@ -401,7 +401,7 @@ public abstract class QueryBuilder<T : Data, R : Any, ID : Any> {
      * query's own tables holds without one, so a row without related rows still matches through its own columns.
      * [search] matches each word on its own, so its words may match different related rows. Without a condition that
      * names the table, the query keeps the rows that have any related row, as the complement of an anti-join on the
-     * same table. A condition stated on the join, `on<Owner> { Pet_.type eq dog }`, states which related rows count:
+     * same table. A condition stated on the join, `on(Owner::class, Pet_.type eq dog)`, states which related rows count:
      * every condition that names the table, each word of a search included, is answered by a related row matching it.
      *
      * `on` may also name a semi-joined or anti-joined table, or a table such a table references through a foreign key,
@@ -446,7 +446,7 @@ public abstract class QueryBuilder<T : Data, R : Any, ID : Any> {
      * ```kotlin
      * val petsWithoutRabiesShot = pets
      *     .select()
-     *     .antiJoin<Visit>().on<Pet> { Visit_.description eq "rabies shot" }
+     *     .antiJoin<Visit>().on(Pet::class, Visit_.description eq "rabies shot")
      *     .resultList
      * ```
      *
@@ -2201,36 +2201,18 @@ public class SqlScope<T : Data, R : Any, ID : Any> @PublishedApi internal constr
     }
 
     /** Adds an INNER JOIN between [relation] and [on], with a [condition] added to the resolved foreign key. */
-    public fun innerJoin(relation: KClass<out Data>, on: KClass<out Data>, condition: WhereBuilder<Data, R, ID>.() -> PredicateBuilder<out Data, *, *>) {
+    public fun innerJoin(relation: KClass<out Data>, on: KClass<out Data>, condition: PredicateBuilder<out Data, *, *>) {
         builder = builder.innerJoin(relation).on(on, condition)
     }
 
-    /** Adds an INNER JOIN between [J] and [O], with a [condition] added to the resolved foreign key. */
-    @JvmName("innerJoinCondition")
-    public inline fun <reified J : Data, reified O : Data> innerJoin(noinline condition: WhereBuilder<Data, R, ID>.() -> PredicateBuilder<out Data, *, *>) {
-        builder = builder.innerJoin(J::class).on(O::class, condition)
-    }
-
     /** Adds a LEFT JOIN between [relation] and [on], with a [condition] added to the resolved foreign key. */
-    public fun leftJoin(relation: KClass<out Data>, on: KClass<out Data>, condition: WhereBuilder<Data, R, ID>.() -> PredicateBuilder<out Data, *, *>) {
+    public fun leftJoin(relation: KClass<out Data>, on: KClass<out Data>, condition: PredicateBuilder<out Data, *, *>) {
         builder = builder.leftJoin(relation).on(on, condition)
     }
 
-    /** Adds a LEFT JOIN between [J] and [O], with a [condition] added to the resolved foreign key. */
-    @JvmName("leftJoinCondition")
-    public inline fun <reified J : Data, reified O : Data> leftJoin(noinline condition: WhereBuilder<Data, R, ID>.() -> PredicateBuilder<out Data, *, *>) {
-        builder = builder.leftJoin(J::class).on(O::class, condition)
-    }
-
     /** Adds a RIGHT JOIN between [relation] and [on], with a [condition] added to the resolved foreign key. */
-    public fun rightJoin(relation: KClass<out Data>, on: KClass<out Data>, condition: WhereBuilder<Data, R, ID>.() -> PredicateBuilder<out Data, *, *>) {
+    public fun rightJoin(relation: KClass<out Data>, on: KClass<out Data>, condition: PredicateBuilder<out Data, *, *>) {
         builder = builder.rightJoin(relation).on(on, condition)
-    }
-
-    /** Adds a RIGHT JOIN between [J] and [O], with a [condition] added to the resolved foreign key. */
-    @JvmName("rightJoinCondition")
-    public inline fun <reified J : Data, reified O : Data> rightJoin(noinline condition: WhereBuilder<Data, R, ID>.() -> PredicateBuilder<out Data, *, *>) {
-        builder = builder.rightJoin(J::class).on(O::class, condition)
     }
 
     /**
@@ -2309,13 +2291,8 @@ public class SqlScope<T : Data, R : Any, ID : Any> @PublishedApi internal constr
     }
 
     /** Adds a semi-join of [relation] on [on], with a [condition] on the related rows. */
-    public fun semiJoin(relation: KClass<out Data>, on: KClass<out Data>, condition: WhereBuilder<Data, R, ID>.() -> PredicateBuilder<out Data, *, *>) {
+    public fun semiJoin(relation: KClass<out Data>, on: KClass<out Data>, condition: PredicateBuilder<out Data, *, *>) {
         builder = builder.semiJoin(relation).on(on, condition)
-    }
-
-    /** Adds a semi-join of [J] on [O], with a [condition] on the related rows. */
-    public inline fun <reified J : Data, reified O : Data> semiJoin(noinline condition: WhereBuilder<Data, R, ID>.() -> PredicateBuilder<out Data, *, *>) {
-        builder = builder.semiJoin(J::class).on(O::class, condition)
     }
 
     /** Adds an anti-join of [relation] on [on]: the query keeps the rows without a related row. */
@@ -2329,13 +2306,8 @@ public class SqlScope<T : Data, R : Any, ID : Any> @PublishedApi internal constr
     }
 
     /** Adds an anti-join of [relation] on [on]: the query keeps the rows without a related row matching [condition]. */
-    public fun antiJoin(relation: KClass<out Data>, on: KClass<out Data>, condition: WhereBuilder<Data, R, ID>.() -> PredicateBuilder<out Data, *, *>) {
+    public fun antiJoin(relation: KClass<out Data>, on: KClass<out Data>, condition: PredicateBuilder<out Data, *, *>) {
         builder = builder.antiJoin(relation).on(on, condition)
-    }
-
-    /** Adds an anti-join of [J] on [O]: the query keeps the rows without a related row matching [condition]. */
-    public inline fun <reified J : Data, reified O : Data> antiJoin(noinline condition: WhereBuilder<Data, R, ID>.() -> PredicateBuilder<out Data, *, *>) {
-        builder = builder.antiJoin(J::class).on(O::class, condition)
     }
 
     /** Adds a join of the specified [type] for [relation] under [alias], with automatic ON resolution against [on]. */

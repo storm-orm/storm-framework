@@ -84,8 +84,8 @@ internal open class SealedForeignKeyTest(
         pets.select().antiJoin<Surgery>().on<Pet>().resultList shouldHaveSize 11
         pets.select().semiJoin<Surgery>().on<Pet>().resultList shouldHaveSize 2
         val duration = Metamodel.of<Surgery, Int>(Surgery::class.java, "duration")
-        pets.select().antiJoin<Surgery>().on<Pet> { duration greaterEq 60 }.resultList shouldHaveSize 12
-        pets.select().semiJoin<Surgery>().on<Pet> { duration greaterEq 60 }.resultList.map { it.name } shouldBe listOf("Rosy")
+        pets.select().antiJoin<Surgery>().on(Pet::class, duration greaterEq 60).resultList shouldHaveSize 12
+        pets.select().semiJoin<Surgery>().on(Pet::class, duration greaterEq 60).resultList.map { it.name } shouldBe listOf("Rosy")
         pets.select().antiJoin<Checkup>().on<Pet>().resultList shouldHaveSize 11
         pets.select().antiJoin<Surgery>().on<Pet>().windows(5).toList().map { it.content().size } shouldBe listOf(5, 5, 1)
     }

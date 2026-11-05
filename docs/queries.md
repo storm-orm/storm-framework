@@ -1060,7 +1060,7 @@ List<Role> roles = orm.query(RAW."""
 ```kotlin
 val owners = orm.entity(Owner::class)
     .select()
-    .leftJoin<Pet>().on<Owner> { Pet_.name eq "Leo" }
+    .leftJoin<Pet>().on(Owner::class, Pet_.name eq "Leo")
     .resultList
 ```
 
@@ -1082,6 +1082,8 @@ SELECT ...
 FROM owner o
 LEFT JOIN pet p ON p.owner_id = o.id AND (p.name = ?)
 ```
+
+The condition after the table is a filter on the joined rows. A term that equates a key states a relation, and a relation is stated as a whole, as a predicate in place of the table. With a `Transfer(pet: Pet, from: Owner, to: Owner)`, the transfers to an owner of the pet the query joined are `innerJoin<Transfer>().on((Transfer_.to.id eq Owner_.id) and (Transfer_.pet.id eq Pet_.id))`, not the table with the second key as its condition, and a filter on top goes in the same predicate, `and (Transfer_.date greaterEq since)`. In Java, `on(it -> it.where(Transfer_.to.id, EQUALS, Owner_.id).and(it.where(Transfer_.pet.id, EQUALS, Pet_.id)))`.
 
 When a table holds more than one foreign key to the table it is joined on, `on` cannot tell which one the join follows and refuses the join, naming the keys. `on` then takes a predicate stating the relation instead of the table. With a `Transfer(pet: Pet, from: Owner, to: Owner)` that records a pet changing owners, the owners who received a pet:
 
@@ -1181,7 +1183,7 @@ The semi-joined table filters the query but adds no columns to it: ordering, gro
 // Pets that never had a rabies shot.
 val pets = orm.entity(Pet::class)
     .select()
-    .antiJoin<Visit>().on<Pet> { Visit_.description eq "rabies shot" }
+    .antiJoin<Visit>().on(Pet::class, Visit_.description eq "rabies shot")
     .resultList
 ```
 
@@ -1207,7 +1209,7 @@ WHERE NOT EXISTS (SELECT 1 FROM visit v WHERE v.pet_id = p.id AND v.description 
 
 `NOT EXISTS`, unlike `NOT IN`, keeps its meaning when a related row's foreign key is null. A condition in `where` that names the anti-joined table is refused when the query is built, pointing at the join's condition.
 
-Two semi-joins or anti-joins on one table are two subqueries, each with its own condition on the join. `antiJoin<Visit>().on<Pet> { Visit_.description eq "rabies shot" }` followed by `semiJoin<Visit>().on<Pet>()` finds the pets that had a visit but never a rabies shot, and two semi-joins with different conditions find the rows with a related row matching each, where one semi-join with both conditions asks for a single related row matching both. A condition in `where` that names the table could not tell the joins apart and is refused; each condition goes on its join.
+Two semi-joins or anti-joins on one table are two subqueries, each with its own condition on the join. `antiJoin<Visit>().on(Pet::class, Visit_.description eq "rabies shot")` followed by `semiJoin<Visit>().on<Pet>()` finds the pets that had a visit but never a rabies shot, and two semi-joins with different conditions find the rows with a related row matching each, where one semi-join with both conditions asks for a single related row matching both. A condition in `where` that names the table could not tell the joins apart and is refused; each condition goes on its join.
 
 ### Filtering Through Two Relations
 
@@ -1316,7 +1318,7 @@ A semi-join on the query's own table finds the rows that reference the same row 
 ```kotlin
 val visits = orm.entity(Visit::class)
     .select()
-    .semiJoin<Visit>().on<Pet> { Visit_.description eq "rabies shot" }
+    .semiJoin<Visit>().on(Pet::class, Visit_.description eq "rabies shot")
     .where(Visit_.visitDate greaterEq LocalDate.of(2026, 1, 1))
     .resultList
 ```
@@ -1690,7 +1692,7 @@ val taken: Boolean = orm.existsBy(User_.email, email)
 val vaccinated: Boolean = orm.entity(Pet::class)
     .select()
     .where(Pet_.owner eq owner)
-    .semiJoin<Visit>().on<Pet> { Visit_.description eq "rabies shot" }
+    .semiJoin<Visit>().on(Pet::class, Visit_.description eq "rabies shot")
     .exists()
 ```
 
