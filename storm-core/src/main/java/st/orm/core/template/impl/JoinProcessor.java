@@ -36,6 +36,7 @@ import st.orm.Data;
 import st.orm.Metamodel;
 import st.orm.SqlTemplateException;
 import st.orm.core.template.TemplateString;
+import st.orm.core.template.impl.Elements.PredicateTarget;
 import st.orm.core.template.impl.Elements.TableSource;
 import st.orm.core.template.impl.Elements.TableTarget;
 import st.orm.core.template.impl.Elements.TemplateExpression;
@@ -63,7 +64,8 @@ final class JoinProcessor implements ElementProcessor<Join> {
         if (join.source() instanceof TemplateSource || join.target() instanceof TemplateTarget) {
             return null;
         }
-        if (join.target() instanceof TableTarget target && target.condition() != null) {
+        if (join.target() instanceof TableTarget target && target.condition() != null
+                || join.target() instanceof PredicateTarget) {
             return null;    // The condition's values are no part of the shape; the key generator variant keys it.
         }
         return join;
@@ -88,6 +90,13 @@ final class JoinProcessor implements ElementProcessor<Join> {
             var withoutCondition = new Join(join.source(), join.sourceAlias(), new TableTarget(table, sourceKey, targetKey, null),
                     join.targetAlias(), join.type(), join.autoJoin());
             return List.of(withoutCondition, conditionKey);
+        }
+        if (join.source() instanceof TableSource && join.target() instanceof PredicateTarget(var predicate)) {
+            var predicateKey = keyGenerator.apply(predicate.toTemplate());
+            if (predicateKey == null) {
+                return null;
+            }
+            return List.of(join.source(), join.sourceAlias(), Optional.ofNullable(join.targetAlias()), join.type(), predicateKey);
         }
         return getCompilationKey(join);
     }
@@ -133,6 +142,9 @@ final class JoinProcessor implements ElementProcessor<Join> {
         if (join.target() instanceof TableTarget target && target.condition() != null) {
             binder.getQueryModel().bindExpression(new TemplateExpression(target.condition().toTemplate()), binder);
         }
+        if (join.target() instanceof PredicateTarget(var predicate)) {
+            binder.getQueryModel().bindExpression(new TemplateExpression(predicate.toTemplate()), binder);
+        }
         if (join.source() instanceof TableSource(var table) && join.type().hasOnClause() && !join.autoJoin()) {
             var discriminator = SubtypeDiscriminator.of(table);
             if (discriminator.isPresent()) {
@@ -157,6 +169,8 @@ final class JoinProcessor implements ElementProcessor<Join> {
                         ? derived
                         : "%s AND (%s)".formatted(derived, compiler.getQueryModel().compileExpression(new TemplateExpression(condition.toTemplate()), compiler));
             }
+            case PredicateTarget(var predicate) when join.source() instanceof TableSource ->
+                    compiler.getQueryModel().compileExpression(new TemplateExpression(predicate.toTemplate()), compiler);
             case TemplateTarget ts -> compiler.compile(ts.template(), true);
             default -> throw new SqlTemplateException("Unsupported join target type: %s. Join targets must be either a table type (Class<? extends Data>) or a template expression.".formatted(join.target().getClass().getSimpleName()));
         } : "";
@@ -256,7 +270,7 @@ final class JoinProcessor implements ElementProcessor<Join> {
                     findPkField(toTable).orElseThrow(), compiler);
         }
         throw new SqlTemplateException(
-                "Failed to join %1$s with %2$s: no matching foreign key relationship found. Ensure one of the types has an @FK-annotated field referencing the other, name the keys both hold to one table, on(%1$s_.<key>, %2$s_.<key>), or use an explicit ON clause with a template-based join.".formatted(fromTable.getSimpleName(), toTable.getSimpleName()));
+                "Failed to join %1$s with %2$s: no matching foreign key relationship found. Ensure one of the types has an @FK-annotated field referencing the other, state the relation as a predicate, on(%1$s_.<key> eq %2$s_.<key>) for the keys both hold to one table, or use an explicit ON clause with a template-based join.".formatted(fromTable.getSimpleName(), toTable.getSimpleName()));
     }
 
     /**
@@ -290,11 +304,12 @@ final class JoinProcessor implements ElementProcessor<Join> {
         var matches = findRecordFields(getFkFields(fkSide).toList(), targetSide);
         if (matches.size() > 1) {
             throw new SqlTemplateException(
-                    "Failed to join %1$s with %2$s: multiple foreign keys reference %2$s (fields: %3$s). Name the one to join on: on(%1$s_.%4$s).".formatted(
+                    "Failed to join %1$s with %2$s: multiple foreign keys reference %2$s (fields: %3$s). Name the one to join on: on(%1$s_.%4$s.%5$s eq %2$s_.%5$s).".formatted(
                             fkSide.getSimpleName(),
                             targetSide.getSimpleName(),
                             matches.stream().map(RecordField::name).collect(joining(", ")),
-                            matches.getFirst().name()));
+                            matches.getFirst().name(),
+                            primaryKeyName(targetSide)));
         }
         return matches.stream().findFirst();
     }
@@ -318,14 +333,22 @@ final class JoinProcessor implements ElementProcessor<Join> {
         var matches = findRecordFieldsByTable(getFkFields(fkSide).toList(), tableSide, tableNameResolver);
         if (matches.size() > 1) {
             throw new SqlTemplateException(
-                    "Failed to join %1$s with %2$s: multiple foreign keys reference table '%3$s' (fields: %4$s). Name the one to join on: on(%1$s_.%5$s).".formatted(
+                    "Failed to join %1$s with %2$s: multiple foreign keys reference table '%3$s' (fields: %4$s). Name the one to join on: on(%1$s_.%5$s.%6$s eq %2$s_.%6$s).".formatted(
                             fkSide.getSimpleName(),
                             tableSide.getSimpleName(),
                             getTableName(tableSide, tableNameResolver).table(),
                             matches.stream().map(RecordField::name).collect(joining(", ")),
-                            matches.getFirst().name()));
+                            matches.getFirst().name(),
+                            primaryKeyName(tableSide)));
         }
         return matches.stream().findFirst();
+    }
+
+    /**
+     * Returns the name of the table's primary key field, as a message naming the key form writes it.
+     */
+    static String primaryKeyName(Class<? extends Data> table) {
+        return findPkField(table).map(RecordField::name).orElse("id");
     }
 
     /**

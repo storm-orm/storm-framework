@@ -17,7 +17,6 @@ package st.orm.core.template;
 
 import java.util.function.Function;
 import st.orm.Data;
-import st.orm.Metamodel;
 
 /**
  * A builder for constructing join clause of the query.
@@ -50,50 +49,17 @@ public interface TypedJoinBuilder<T extends Data, R, ID> extends JoinBuilder<T, 
                                  Function<WhereBuilder<Data, R, ID>, PredicateBuilder<Data, ?, ?>> condition);
 
     /**
-     * Specifies the foreign key to join on, where the table holds more than one key to the table joined on. A key of
-     * the joined table joins the table it references; a key of another table joins that table, and must reference
-     * the joined table.
+     * Specifies the relation to join on as a predicate, which states it as a whole: the keys it equates and any
+     * condition on the joined rows. A term equating a key of the joined table with a key of another table, a
+     * foreign key with the primary key it references, {@code where(Transfer_.to.id, EQUALS, Owner_.id)}, or two
+     * foreign keys referencing one table, {@code where(Invoice_.pet, EQUALS, Visit_.pet)}, is the key the join
+     * resolves by; the remaining terms are its condition. An inner or left join takes any predicate; a semi-join or
+     * anti-join takes one equating a key of the joined table with a key of the table to join on.
      *
-     * @param key a foreign key of the joined table, or of the table to join on.
-     * @return the query builder.
-     * @since 1.16
-     */
-    QueryBuilder<Data, R, ID> on(Metamodel<? extends Data, ?> key);
-
-    /**
-     * Specifies the foreign key to join on, with a condition the join adds to the key it joins by.
-     *
-     * @param key a foreign key of the joined table, or of the table to join on.
-     * @param condition the condition on the joined rows.
+     * @param predicate the predicate relating the joined rows to the rows they join.
      * @return the query builder.
      * @see #on(Class, Function)
      * @since 1.16
      */
-    QueryBuilder<Data, R, ID> on(Metamodel<? extends Data, ?> key,
-                                 Function<WhereBuilder<Data, R, ID>, PredicateBuilder<Data, ?, ?>> condition);
-
-    /**
-     * Specifies the foreign keys to join on, where neither table references the other and both hold a key to one
-     * table: the join matches the two keys with each other.
-     *
-     * @param key a foreign key of the joined table.
-     * @param anchorKey a foreign key of the table to join on, referencing the table {@code key} references.
-     * @return the query builder.
-     * @since 1.16
-     */
-    QueryBuilder<Data, R, ID> on(Metamodel<? extends Data, ?> key, Metamodel<? extends Data, ?> anchorKey);
-
-    /**
-     * Specifies the foreign keys to join on, with a condition the join adds to the keys it joins by.
-     *
-     * @param key a foreign key of the joined table.
-     * @param anchorKey a foreign key of the table to join on, referencing the table {@code key} references.
-     * @param condition the condition on the joined rows.
-     * @return the query builder.
-     * @see #on(Class, Function)
-     * @since 1.16
-     */
-    QueryBuilder<Data, R, ID> on(Metamodel<? extends Data, ?> key,
-                                 Metamodel<? extends Data, ?> anchorKey,
-                                 Function<WhereBuilder<Data, R, ID>, PredicateBuilder<Data, ?, ?>> condition);
+    QueryBuilder<Data, R, ID> on(Function<WhereBuilder<Data, R, ID>, PredicateBuilder<Data, ?, ?>> predicate);
 }

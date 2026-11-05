@@ -303,20 +303,11 @@ internal class QueryBuilderImpl<T : Data, R : Any, ID : Any>(
 
         override fun on(template: TemplateString): QueryBuilder<Data, R, ID> = QueryBuilderImpl<Data, R, ID>(joinBuilder.on(template.unwrap))
 
-        override fun on(key: Metamodel<out Data, *>): QueryBuilder<Data, R, ID> = QueryBuilderImpl(joinBuilder.on(key))
-
-        override fun on(
-            key: Metamodel<out Data, *>,
-            condition: WhereBuilder<Data, R, ID>.() -> PredicateBuilder<out Data, *, *>,
-        ): QueryBuilder<Data, R, ID> = QueryBuilderImpl(joinBuilder.on(key, core(condition)))
-
-        override fun on(key: Metamodel<out Data, *>, anchorKey: Metamodel<out Data, *>): QueryBuilder<Data, R, ID> = QueryBuilderImpl(joinBuilder.on(key, anchorKey))
-
-        override fun on(
-            key: Metamodel<out Data, *>,
-            anchorKey: Metamodel<out Data, *>,
-            condition: WhereBuilder<Data, R, ID>.() -> PredicateBuilder<out Data, *, *>,
-        ): QueryBuilder<Data, R, ID> = QueryBuilderImpl(joinBuilder.on(key, anchorKey, core(condition)))
+        override fun on(predicate: PredicateBuilder<out Data, *, *>): QueryBuilder<Data, R, ID> {
+            @Suppress("UNCHECKED_CAST")
+            val core = (predicate as PredicateBuilderImpl<Data, *, *>).core as CorePredicateBuilder<Data, *, *>
+            return QueryBuilderImpl(joinBuilder.on(Function { core }))
+        }
 
         private fun core(
             condition: WhereBuilder<Data, R, ID>.() -> PredicateBuilder<out Data, *, *>,

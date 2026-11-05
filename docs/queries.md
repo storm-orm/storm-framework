@@ -323,7 +323,7 @@ WHERE v.vet_id = p.regular_vet_id
 
 The key of a table reached through a foreign key is the foreign key column itself: `Pet_.owner.id` is `p.owner_id`, wherever the pet is in the query, so comparing it joins nothing.
 
-The same comparison goes in `having` and in a join condition, on a semi-join or anti-join as well, where the condition is placed in the join's subquery and a column of the query's own table names the row the subquery is correlated on. An invoice per pet and vet, read next to the visits, is the one sharing both keys with the visit: the join matches the first pair of keys, and the condition the second.
+The same comparison goes in `having` and in a join condition, on a semi-join or anti-join as well, where the condition is placed in the join's subquery and a column of the query's own table names the row the subquery is correlated on. A predicate also states the relation of a join as a whole, in place of the table to join on: an invoice per pet and vet, read next to the visits, is the one sharing both keys with the visit. See [Join Conditions](#join-conditions).
 
 <Tabs groupId="language">
 <TabItem value="kotlin" label="Kotlin" default>
@@ -331,7 +331,7 @@ The same comparison goes in `having` and in a join condition, on a semi-join or 
 ```kotlin
 val visits = orm.entity(Visit::class)
     .select()
-    .leftJoin<Invoice>().on(Invoice_.pet, Visit_.pet) { Invoice_.vet eq Visit_.vet }
+    .leftJoin<Invoice>().on((Invoice_.pet eq Visit_.pet) and (Invoice_.vet eq Visit_.vet))
     .resultList
 ```
 
@@ -341,7 +341,7 @@ val visits = orm.entity(Visit::class)
 ```java
 List<Visit> visits = orm.entity(Visit.class)
     .select()
-    .leftJoin(Invoice.class).on(Invoice_.pet, Visit_.pet, it -> it.where(Invoice_.vet, EQUALS, Visit_.vet))
+    .leftJoin(Invoice.class).on(it -> it.where(Invoice_.pet, EQUALS, Visit_.pet).and(it.where(Invoice_.vet, EQUALS, Visit_.vet)))
     .getResultList();
 ```
 
@@ -1083,7 +1083,7 @@ FROM owner o
 LEFT JOIN pet p ON p.owner_id = o.id AND (p.name = ?)
 ```
 
-When a table holds more than one foreign key to the table it is joined on, `on` cannot tell which one the join follows and refuses the join, naming the keys. `on` then takes the key instead of the table. With a `Transfer(pet: Pet, from: Owner, to: Owner)` that records a pet changing owners, the owners who received a pet:
+When a table holds more than one foreign key to the table it is joined on, `on` cannot tell which one the join follows and refuses the join, naming the keys. `on` then takes a predicate stating the relation instead of the table. With a `Transfer(pet: Pet, from: Owner, to: Owner)` that records a pet changing owners, the owners who received a pet:
 
 <Tabs groupId="language">
 <TabItem value="kotlin" label="Kotlin" default>
@@ -1091,7 +1091,7 @@ When a table holds more than one foreign key to the table it is joined on, `on` 
 ```kotlin
 val owners = orm.entity(Owner::class)
     .select()
-    .innerJoin<Transfer>().on(Transfer_.to)
+    .innerJoin<Transfer>().on(Transfer_.to.id eq Owner_.id)
     .resultList
 ```
 
@@ -1101,7 +1101,7 @@ val owners = orm.entity(Owner::class)
 ```java
 List<Owner> owners = orm.entity(Owner.class)
     .select()
-    .innerJoin(Transfer.class).on(Transfer_.to)
+    .innerJoin(Transfer.class).on(it -> it.where(Transfer_.to.id, EQUALS, Owner_.id))
     .getResultList();
 ```
 
@@ -1114,14 +1114,14 @@ FROM owner o
 INNER JOIN transfer t ON t.to_id = o.id
 ```
 
-The key names both the table it belongs to and the column, so nothing is left to resolve: a key of the joined table joins the table it references, and a key of another table in the query, `innerJoin<Owner>().on(Transfer_.to)` from a query on transfers, joins that table. A condition follows the key as it follows the table, `on(Transfer_.to) { ... }`. Where neither table references the other and both hold a key to one table, `on` takes both keys and matches them with each other: `innerJoin<Transfer>().on(Transfer_.pet, Visit_.pet)` joins the transfers of the pet a visit was for. The block DSL takes the same keys: `innerJoin<Transfer>(Transfer_.to)` and `innerJoin<Transfer>(Transfer_.pet, Visit_.pet)`.
+The predicate states the relation as a whole, and the keys are read off it when the query is built. A term equating a key of the joined table with a key of another table is the key the join resolves by: a foreign key with the primary key it references, written through the key beyond the foreign key, which is the foreign key column itself, so `Transfer_.to.id eq Owner_.id` renders as `t.to_id = o.id`; or two foreign keys referencing one table, where neither table references the other: `innerJoin<Transfer>().on(Transfer_.pet eq Visit_.pet)` joins the transfers of the pet a visit was for. The same term names the key from the other side, `innerJoin<Owner>().on(Transfer_.to.id eq Owner_.id)` from a query on transfers. The remaining terms are the join's condition, as the condition after the table is, `on((Transfer_.to.id eq Owner_.id) and (Transfer_.date greater since))`, and a relation of two pairs of keys states both, `on((Invoice_.pet eq Visit_.pet) and (Invoice_.vet eq Visit_.vet))`. An inner or left join takes any predicate: one equating no keys is the `ON` clause it reads as. In Java the predicate is a `where` condition, `on(it -> it.where(Transfer_.to.id, EQUALS, Owner_.id))`, and the block DSL takes the predicate in place of the table: `innerJoin<Transfer>(Transfer_.to.id eq Owner_.id)`.
 
-A filter join follows one key, so a table that holds two keys to the query's table is filtered by both with a join per key. The owners no transfer names, as sender or as receiver, are the rows neither key refers to:
+A semi-join or anti-join takes a predicate equating a key of the joined table with a key of the table it is joined on, and follows one key, so a table that holds two keys to the query's table is filtered by both with a join per key. The owners no transfer names, as sender or as receiver, are the rows neither key refers to:
 
 ```kotlin
 orm.selectFrom<Owner>()
-    .antiJoin<Transfer>().on(Transfer_.from)
-    .antiJoin<Transfer>().on(Transfer_.to)
+    .antiJoin<Transfer>().on(Transfer_.from.id eq Owner_.id)
+    .antiJoin<Transfer>().on(Transfer_.to.id eq Owner_.id)
 ```
 
 Two semi-joins keep the rows both keys refer to, the owners who sent a pet and received one. The rows either key refers to are a correlated subquery, whose condition names the query's own table through the outer scope, since the transfer's own owners would make `Owner_.id` ambiguous inside it: `whereExists { subquery(Transfer::class).where { "${column(Transfer_.from, INNER)} = ${column(Owner_.id, OUTER)} OR ${column(Transfer_.to, INNER)} = ${column(Owner_.id, OUTER)}" } }`. See [ResolveScope](sql-templates.md#resolvescope).
@@ -1302,7 +1302,7 @@ WHERE p.id IN (
       AND EXISTS (SELECT 1 FROM vaccination v WHERE v.pet_id = n.pet_id))
 ```
 
-The vaccination relates to the nickname through the pet both reference, `v.pet_id = n.pet_id`, without reading the pet table, and its subquery sits inside the nickname's: a pet found by its own name needs no vaccination. `semiJoin<Vaccination>().on<Pet>()` would relate the vaccination to the query's pet instead and require one on every branch. When the two tables reference the same table through more than one pair of foreign keys, the key to relate them on is ambiguous and the join is refused; `on` then takes the two keys, `semiJoin<Vaccination>().on(Vaccination_.pet, PetNickname_.pet)`, as it takes one key where a table holds more than one key to the table it is joined on, `semiJoin<Transfer>().on(Transfer_.to)`. See [Join Conditions](#join-conditions).
+The vaccination relates to the nickname through the pet both reference, `v.pet_id = n.pet_id`, without reading the pet table, and its subquery sits inside the nickname's: a pet found by its own name needs no vaccination. `semiJoin<Vaccination>().on<Pet>()` would relate the vaccination to the query's pet instead and require one on every branch. When the two tables reference the same table through more than one pair of foreign keys, the key to relate them on is ambiguous and the join is refused; `on` then takes the predicate equating the pair, `semiJoin<Vaccination>().on(Vaccination_.pet eq PetNickname_.pet)`, as it takes a key equated with the key it references where a table holds more than one key to the table it is joined on, `semiJoin<Transfer>().on(Transfer_.to.id eq Owner_.id)`. A semi-join of the query's own table equates a key of the table with itself, the joined row's with the query row's, where the table form is ambiguous: `semiJoin<Transfer>().on(Transfer_.to eq Transfer_.to)` finds the transfers to the same owner as the query's transfer. See [Join Conditions](#join-conditions).
 
 The same rule relates a semi-joined table to the query's own table. With `Tenant(owner: Owner)` and `Pet(owner: Owner)`, `semiJoin<Pet>().on<Tenant>()` finds the tenants whose owner has a matching pet, `p.owner_id = t.owner_id`, and an `or` across `Tenant_.name` and `Pet_.name` branches as a `UNION` like any other: the pets found by name give owner keys, through which the tenants are read.
 

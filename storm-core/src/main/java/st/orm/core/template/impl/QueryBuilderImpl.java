@@ -59,6 +59,7 @@ import st.orm.core.template.WhereBuilder;
 import st.orm.core.template.impl.Elements.Expression;
 import st.orm.core.template.impl.Elements.ObjectExpression;
 import st.orm.core.template.impl.Elements.PathExpression;
+import st.orm.core.template.impl.Elements.PredicateTarget;
 import st.orm.core.template.impl.Elements.Subquery;
 import st.orm.core.template.impl.Elements.TableSource;
 import st.orm.core.template.impl.Elements.TableTarget;
@@ -952,34 +953,19 @@ abstract class QueryBuilderImpl<T extends Data, R, ID> extends QueryBuilder<T, R
             }
 
             @Override
-            public QueryBuilder<Data, R, ID> on(Metamodel<? extends Data, ?> key) {
-                return keyed(key, null, null);
-            }
-
-            @Override
-            public QueryBuilder<Data, R, ID> on(Metamodel<? extends Data, ?> key,
-                                                Function<WhereBuilder<Data, R, ID>, PredicateBuilder<Data, ?, ?>> condition) {
-                return keyed(key, null, requireNonNull(condition, "condition"));
-            }
-
-            @Override
-            public QueryBuilder<Data, R, ID> on(Metamodel<? extends Data, ?> key, Metamodel<? extends Data, ?> anchorKey) {
-                return keyed(key, requireNonNull(anchorKey, "anchorKey"), null);
-            }
-
-            @Override
-            public QueryBuilder<Data, R, ID> on(Metamodel<? extends Data, ?> key,
-                                                Metamodel<? extends Data, ?> anchorKey,
-                                                Function<WhereBuilder<Data, R, ID>, PredicateBuilder<Data, ?, ?>> condition) {
-                return keyed(key, requireNonNull(anchorKey, "anchorKey"), requireNonNull(condition, "condition"));
-            }
-
-            private QueryBuilder<Data, R, ID> keyed(Metamodel<? extends Data, ?> key,
-                                                    @Nullable Metamodel<? extends Data, ?> anchorKey,
-                                                    @Nullable Function<WhereBuilder<Data, R, ID>, PredicateBuilder<Data, ?, ?>> condition) {
-                requireNonNull(key, "key");
-                var keys = JoinKeys.resolve(queryTemplate, relation, key, anchorKey);
-                var target = new TableTarget(keys.table(), keys.sourceKey(), keys.targetKey(), condition == null ? null : node(condition));
+            public QueryBuilder<Data, R, ID> on(Function<WhereBuilder<Data, R, ID>, PredicateBuilder<Data, ?, ?>> predicate) {
+                requireNonNull(predicate, "predicate");
+                var node = node(predicate);
+                var resolved = JoinKeys.resolve(queryTemplate, relation, fromType, node);
+                if (resolved.keys() == null) {
+                    if (type instanceof FilterJoinType filterJoinType) {
+                        throw new PersistenceException("%1$s(%2$s): the predicate equates no key of %2$s with a key of another table, so it relates %2$s to no row of the query. State the relation as a key comparison: on(%2$s_.<key>.id eq <Table>_.id), or on(%2$s_.<key> eq <Table>_.<key>) where both keys reference one table."
+                                .formatted(filterJoinType.method(), relation.getSimpleName()));
+                    }
+                    return addJoin(new Join(new TableSource(relation), alias, new PredicateTarget(node), type, false));
+                }
+                var keys = resolved.keys();
+                var target = new TableTarget(keys.table(), keys.sourceKey(), keys.targetKey(), resolved.condition());
                 return addJoin(new Join(new TableSource(relation), alias, target, type, false));
             }
 
@@ -992,7 +978,7 @@ abstract class QueryBuilderImpl<T extends Data, R, ID> extends QueryBuilder<T, R
             @Override
             public QueryBuilder<Data, R, ID> on(TemplateString onTemplate) {
                 if (type instanceof FilterJoinType filterJoinType) {
-                    throw new PersistenceException("%s(%s) relates the tables through their foreign key, so it takes the table to join on: on(%s.class), with a condition where one is needed."
+                    throw new PersistenceException("%s(%s) relates the tables through their foreign key, so it takes the table to join on, on(%s.class), or a predicate equating the keys."
                             .formatted(filterJoinType.method(), relation.getSimpleName(), fromType.getSimpleName()));
                 }
                 return addJoin(new Join(new TableSource(relation), alias, new TemplateTarget(onTemplate), type, false));

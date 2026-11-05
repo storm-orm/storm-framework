@@ -868,7 +868,7 @@ final class FilterJoinPlacement {
         var hop = parent == null && anchor != fromType && !joined.contains(anchor) && !joinedThroughForeignKeys(fromType, anchor)
                 ? hop(queryTemplate, type, table, anchor, resolved)
                 : null;
-        var relation = relation(queryTemplate, type, table, anchor);
+        var relation = relation(queryTemplate, type, table, anchor, false);
         if (hop != null) {
             if (relation == null) {
                 throw noRelation(type, table, anchor);
@@ -925,7 +925,7 @@ final class FilterJoinPlacement {
         try {
             if (table == fromType) {
                 if (sourceKey == null) {
-                    throw new PersistenceException("%1$s(%2$s).on(%3$s_.%4$s): a %1$s on the query's own table finds the %2$s rows that reference the same row as the query's row, which takes a key of %2$s: on(%2$s_.<key>)."
+                    throw new PersistenceException("%1$s(%2$s).on(%3$s_.%4$s eq %2$s_.id): a %1$s on the query's own table finds the %2$s rows that reference the same row as the query's row, which takes a key of %2$s equated with itself: on(%2$s_.<key> eq %2$s_.<key>)."
                             .formatted(type.method(), table.getSimpleName(), anchor.getSimpleName(), requireNonNull(targetKey).name()));
                 }
                 var referenced = targetKey == null ? anchor : requireNonNull(referenced(sourceKey));
@@ -985,7 +985,7 @@ final class FilterJoinPlacement {
             throw new PersistenceException(e);
         }
         if (siblings.size() > 1) {
-            throw new PersistenceException("%1$s(%2$s).on(%3$s): %2$s and %3$s reference the same table through more than one pair of foreign keys (%4$s), so the key to relate them on is ambiguous."
+            throw new PersistenceException("%1$s(%2$s).on(%3$s): %2$s and %3$s reference the same table through more than one pair of foreign keys (%4$s), so the key to relate them on is ambiguous. Name the pair: on(%2$s_.<key> eq %3$s_.<key>)."
                     .formatted(type.method(), table.getSimpleName(), anchor.getSimpleName(),
                             siblings.stream()
                                     .map(sibling -> "%s.%s and %s.%s".formatted(table.getSimpleName(), sibling.relation().foreignKey().name(), anchor.getSimpleName(), sibling.anchorKey().name()))
@@ -1009,7 +1009,7 @@ final class FilterJoinPlacement {
             throw new PersistenceException("%1$s(%2$s).on(%2$s): a %1$s on the query's own table finds the %2$s rows that reference the same row of another table as the query's row. Name that table: %1$s(%2$s).on(<table>)."
                     .formatted(type.method(), table.getSimpleName()));
         }
-        var relation = relation(queryTemplate, type, table, anchor);
+        var relation = relation(queryTemplate, type, table, anchor, true);
         if (relation == null) {
             throw noRelation(type, table, anchor);
         }
@@ -1143,26 +1143,29 @@ final class FilterJoinPlacement {
      * Resolves how the filtered table relates to the table it is joined on, the way a join between them resolves its
      * ON clause: a foreign key referencing the other type, then one referencing the other type's table.
      *
+     * @param self whether the join is on the query's own table, which names the key form with the key equated
+     *             with itself.
      * @return the relation, or {@code null} when neither references the other.
      */
     private static @Nullable Relation relation(QueryTemplate queryTemplate,
                                                FilterJoinType type,
                                                Class<? extends Data> table,
-                                               Class<? extends Data> anchor) {
+                                               Class<? extends Data> anchor,
+                                               boolean self) {
         try {
-            var anchorKey = single(type, anchor, table, findRecordFields(getFkFields(anchor).toList(), table));
+            var anchorKey = single(type, anchor, table, findRecordFields(getFkFields(anchor).toList(), table), self);
             if (anchorKey != null) {
                 return relation(queryTemplate, anchorKey, false, table);
             }
-            var tableKey = single(type, table, anchor, findRecordFields(getFkFields(table).toList(), anchor));
+            var tableKey = single(type, table, anchor, findRecordFields(getFkFields(table).toList(), anchor), self);
             if (tableKey != null) {
                 return relation(queryTemplate, tableKey, true, anchor);
             }
-            anchorKey = single(type, anchor, table, byTable(queryTemplate, getFkFields(anchor).toList(), table));
+            anchorKey = single(type, anchor, table, byTable(queryTemplate, getFkFields(anchor).toList(), table), self);
             if (anchorKey != null) {
                 return relation(queryTemplate, anchorKey, false, table);
             }
-            tableKey = single(type, table, anchor, byTable(queryTemplate, getFkFields(table).toList(), anchor));
+            tableKey = single(type, table, anchor, byTable(queryTemplate, getFkFields(table).toList(), anchor), self);
             if (tableKey != null) {
                 return relation(queryTemplate, tableKey, true, anchor);
             }
@@ -1188,11 +1191,16 @@ final class FilterJoinPlacement {
     private static @Nullable RecordField single(FilterJoinType type,
                                                 Class<? extends Data> holder,
                                                 Class<? extends Data> referenced,
-                                                List<RecordField> matches) {
+                                                List<RecordField> matches,
+                                                boolean self) {
         if (matches.size() > 1) {
-            throw new PersistenceException("%1$s: %2$s references %3$s through more than one foreign key (%4$s), so the key to follow is ambiguous. Name it: on(%2$s_.%5$s), with one %1$s per key to follow each of them."
+            var key = holder.getSimpleName() + "_." + matches.getFirst().name();
+            var form = self
+                    ? "on(%1$s eq %1$s)".formatted(key)
+                    : "on(%1$s.%3$s eq %2$s_.%3$s)".formatted(key, referenced.getSimpleName(), JoinProcessor.primaryKeyName(referenced));
+            throw new PersistenceException("%1$s: %2$s references %3$s through more than one foreign key (%4$s), so the key to follow is ambiguous. Name it: %5$s, with one %1$s per key to follow each of them."
                     .formatted(type.method(), holder.getSimpleName(), referenced.getSimpleName(),
-                            matches.stream().map(RecordField::name).collect(joining(", ")), matches.getFirst().name()));
+                            matches.stream().map(RecordField::name).collect(joining(", ")), form));
         }
         return matches.isEmpty() ? null : matches.getFirst();
     }

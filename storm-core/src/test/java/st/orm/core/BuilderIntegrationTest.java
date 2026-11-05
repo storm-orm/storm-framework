@@ -7,6 +7,7 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static st.orm.JoinType.cross;
 import static st.orm.Operator.EQUALS;
+import static st.orm.Operator.GREATER_THAN;
 import static st.orm.ResolveScope.INNER;
 import static st.orm.ResolveScope.OUTER;
 import static st.orm.core.template.SqlInterceptor.observe;
@@ -131,13 +132,13 @@ public class BuilderIntegrationTest {
         var first = new ArrayList<Pet>();
         observe(sql -> statements.add(sql.statement()), () -> first.addAll(ORMTemplate.of(dataSource)
                 .selectFrom(Pet.class)
-                .innerJoin(PetPair.class).on(PetPair_.first)
+                .innerJoin(PetPair.class).on(it -> it.where(PetPair_.first.id, EQUALS, Pet_.id))
                 .getResultList()));
         assertEquals(List.of("Iggy", "Leo", "Rosy"), first.stream().map(Pet::name).sorted().toList());
         assertTrue(statements.getFirst().contains("INNER JOIN pet_pair pp ON pp.first_id = p.id"), statements.getFirst());
         var second = ORMTemplate.of(dataSource)
                 .selectFrom(Pet.class)
-                .innerJoin(PetPair.class).on(PetPair_.second, it -> it.where(Pet_.name, EQUALS, "Basil"))
+                .innerJoin(PetPair.class).on(it -> it.where(Pet_.name, EQUALS, "Basil").and(it.where(PetPair_.second.id, EQUALS, Pet_.id)))
                 .getResultList();
         assertEquals(List.of("Basil"), second.stream().map(Pet::name).toList());
     }
@@ -149,22 +150,30 @@ public class BuilderIntegrationTest {
         var pets = new ArrayList<Pet>();
         observe(sql -> statements.add(sql.statement()), () -> pets.addAll(ORMTemplate.of(dataSource)
                 .selectFrom(Pet.class)
-                .innerJoin(Owner.class).on(Pet_.owner)
+                .innerJoin(Owner.class).on(it -> it.where(Pet_.owner.id, EQUALS, Owner_.id))
                 .getResultList()));
         assertEquals(12, pets.size());
         assertTrue(statements.getFirst().contains("INNER JOIN owner o ON p.owner_id = o.id"), statements.getFirst());
     }
 
     @Test
-    public void innerJoinOnANamedKeyRefusesAKeyThatIsNotOne() {
-        var e = assertThrows(PersistenceException.class, () -> ORMTemplate.of(dataSource)
+    public void innerJoinOnAPredicateWithoutAKeyTakesItAsTheCondition() {
+        // A predicate equating no key of the joined table with a key of another table is the whole ON clause.
+        var statements = new ArrayList<String>();
+        var pets = new ArrayList<Pet>();
+        observe(sql -> statements.add(sql.statement()), () -> pets.addAll(ORMTemplate.of(dataSource)
                 .selectFrom(Pet.class)
-                .innerJoin(PetPair.class).on(Pet_.name));
-        assertTrue(e.getMessage().contains("on(Pet_.name): Pet_.name is not a foreign key"), e.getMessage());
-        var other = assertThrows(PersistenceException.class, () -> ORMTemplate.of(dataSource)
+                .innerJoin(PetPair.class).on(it -> it.where(PetPair_.first.id, EQUALS, Pet_.id).or(it.where(PetPair_.second.id, EQUALS, Pet_.id)))
+                .getResultList()));
+        assertEquals(List.of("Basil", "George", "Iggy", "Jewel", "Leo", "Rosy"), pets.stream().map(Pet::name).sorted().toList());
+        assertTrue(statements.getFirst().contains("INNER JOIN pet_pair pp ON pp.first_id = p.id OR pp.second_id = p.id"), statements.getFirst());
+        var other = new ArrayList<Pet>();
+        observe(sql -> statements.add(sql.statement()), () -> other.addAll(ORMTemplate.of(dataSource)
                 .selectFrom(Pet.class)
-                .innerJoin(PetPair.class).on(Pet_.owner));
-        assertTrue(other.getMessage().contains("on(Pet_.owner): Pet_.owner references Owner, not the joined PetPair"), other.getMessage());
+                .innerJoin(PetPair.class).on(it -> it.where(PetPair_.id, GREATER_THAN, Pet_.id))
+                .getResultList()));
+        assertTrue(statements.getLast().contains("INNER JOIN pet_pair pp ON pp.id > p.id"), statements.getLast());
+        assertEquals(List.of("Basil", "Leo", "Leo"), other.stream().map(Pet::name).sorted().toList());
     }
 
     @Test
