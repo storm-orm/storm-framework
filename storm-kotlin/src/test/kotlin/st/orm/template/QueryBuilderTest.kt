@@ -2257,8 +2257,9 @@ internal open class QueryBuilderTest(
         firstNames(orm, "davis le", suggest = true) shouldBe listOf("Betty")
         firstNames(orm, "leo", suggest = true) shouldBe listOf("Betty")
         firstNames(trigramOrm, "leo", suggest = true) shouldBe listOf("Betty")
-        // Without a word of three characters, no rows match.
-        firstNames(orm, "le", suggest = true) shouldBe emptyList()
+        // Without a word of three characters, the input matches the start of the value: pet Leo, not Coleman.
+        firstNames(orm, "le", suggest = true) shouldBe listOf("Betty")
+        firstNames(trigramOrm, "le", suggest = true) shouldBe listOf("Betty")
         firstNames(orm, "l", suggest = true) shouldBe emptyList()
         firstNames(orm, "", suggest = true) shouldBe emptyList()
         // search keeps the short word, anywhere, tested on the rows the long word found where the index serves one.

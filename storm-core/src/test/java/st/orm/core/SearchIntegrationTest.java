@@ -185,8 +185,9 @@ public class SearchIntegrationTest {
         assertEquals(1 + SqlDialect.WORD_SEPARATORS.length(), whereClause().split("LIKE LOWER\\(\\?\\) ESCAPE").length - 1, whereClause());
         assertEquals(List.of(), suggest("dav is", Owner_.lastName));
         assertEquals(List.of("David"), suggest("sch", Owner_.lastName));
-        // Without a word of three characters, no rows match.
-        assertEquals(List.of(), suggest("da", Owner_.lastName));
+        // Without a word of three characters, the input matches the start of the value; one character matches none.
+        assertEquals(List.of("Betty", "Harold"), suggest("da", Owner_.lastName));
+        assertEquals(List.of(), suggest("vi", Owner_.lastName));
         assertEquals(List.of(), suggest("d", Owner_.lastName));
         assertEquals("1 <> 1", whereClause());
         assertEquals(List.of(), suggest("", Owner_.lastName));
@@ -223,20 +224,29 @@ public class SearchIntegrationTest {
         assertEquals(List.of("van der berg"), searchNames("\"van der berg\"", exact(NAME_LOWER)));
         // suggest takes the forms as search does, with its own input contract.
         assertEquals(List.of("dave", "davis"), suggestNames("dav", anywhere(NAME_LOWER)));
-        assertEquals(List.of("upton"), suggestNames("Upt", prefix(NAME_LOWER)));
+        assertEquals(List.of("upton"), suggestNames("Up", prefix(NAME_LOWER)));
         assertEquals(List.of(), suggestNames("u", prefix(NAME_LOWER)));
         assertEquals(List.of(), suggestNames("", exact(NAME_LOWER)));
         assertEquals(6, searchNames("", exact(NAME_LOWER)).size());
     }
 
     @Test
-    public void aSuggestionMatchesNoRowsUntilAWordReachesTheMinimumLength() {
-        // "der" reaches the minimum word length; "de" and "da" alone match nothing, in every form.
+    public void aSuggestionOfShortWordsMatchesTheStartOfTheValue() {
+        // "der" reaches the minimum word length and matches at a word start; "de" alone matches the value's start.
         assertEquals(List.of("van der berg"), suggestNames("der", wordStart(NAME_LOWER)));
         assertEquals(List.of(), suggestNames("de", wordStart(NAME_LOWER)));
-        assertEquals(List.of(), suggestNames("da", wordStart(NAME_LOWER)));
-        assertEquals("1 <> 1", whereClause());
-        assertEquals(List.of(), suggestNames("da", prefix(NAME_LOWER)));
+        assertEquals(List.of("dave", "davis"), suggestNames("da", wordStart(NAME_LOWER)));
+        assertTrue(whereClause().startsWith("LOWER(s.name_lower) LIKE LOWER(?) ESCAPE '!'"), whereClause());
+        assertEquals(List.of(), suggestNames("av", anywhere(NAME_LOWER)));
+        // The whole input is one start, its words joined by one space, the ignored ones included.
+        assertEquals(List.of("van der berg"), suggestNames("va", wordStart(NAME_LOWER)));
+        assertEquals(List.of(), suggestNames("va de", wordStart(NAME_LOWER)));
+        assertEquals(List.of("van der berg"), names(true, "van  de", Set.of("van"), wordStart(NAME_LOWER)));
+        assertEquals(List.of(), names(true, "van", Set.of("van"), wordStart(NAME_LOWER)));
+        // A prefix or exact field keeps its form, the whole input as the word, on the bare column.
+        assertEquals(List.of("dave", "davis"), suggestNames("da", prefix(NAME_LOWER)));
+        assertTrue(whereClause().startsWith("s.name_lower LIKE ? ESCAPE '!'"), whereClause());
+        assertEquals(List.of(), suggestNames("d", prefix(NAME_LOWER)));
         // Next to a word that reaches the length, a short word matches in its form, on the rows the long word found.
         assertEquals(List.of("van der berg"), suggestNames("van de", wordStart(NAME_LOWER)));
         assertEquals(List.of("van der berg"), suggestNames("van d", wordStart(NAME_LOWER)));

@@ -242,7 +242,7 @@ public class SemiJoinIntegrationTest {
                 .where(it -> suggest("davis le", Owner_.lastName, Pet_.name))
                 .getResultList()));
         assertEquals(List.of("Betty"), firstNames(ownersWithPets(trigramOrm())
-                .where(it -> suggest("leo", Owner_.lastName, Pet_.name))
+                .where(it -> suggest("le", Owner_.lastName, Pet_.name))
                 .getResultList()));
         assertEquals(List.of("Betty", "Jean"), firstNames(ownersWithPets(trigramOrm())
                 .where(it -> search("le", Owner_.lastName, Pet_.name))
@@ -250,9 +250,9 @@ public class SemiJoinIntegrationTest {
     }
 
     @Test
-    public void suggestOfShortWordsAloneMatchesNoRows() {
+    public void suggestOfAOneCharacterWordMatchesNoRows() {
         var owners = capture(() -> ownersWithPets()
-                .where(it -> suggest("l le", Owner_.lastName, Pet_.name))
+                .where(it -> suggest("l", Owner_.lastName, Pet_.name))
                 .getResultList());
         assertEquals(List.of(), firstNames(owners));
         assertTrue(statement().contains("1 <> 1"), statement());

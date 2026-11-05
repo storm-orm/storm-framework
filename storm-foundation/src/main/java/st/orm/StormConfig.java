@@ -93,9 +93,9 @@ public final class StormConfig {
     @SqlShaping
     public static final String SEARCH_MIN_TERM_LENGTH = "storm.search.min_term_length";
     /**
-     * Shortest word, in characters, that {@code suggest} matches on its own, the same on every database. Defaults
-     * to 3. An input whose words are all shorter matches no rows, since a word that short matches too large a share
-     * of a table; a shorter word next to one that reaches the length is tested only on the rows the longer word
+     * Shortest word, in characters, that {@code suggest} matches in its match form, the same on every database.
+     * Defaults to 3. An input whose words are all shorter matches the whole input as the start of the value, since a
+     * word that short matches too large a share of a table anywhere or at a word start; a shorter word next to one that reaches the length is tested only on the rows the longer word
      * found. {@code search} is unaffected.
      */
     @SqlShaping

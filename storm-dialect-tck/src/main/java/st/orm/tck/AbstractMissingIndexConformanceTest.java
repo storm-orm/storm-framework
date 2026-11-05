@@ -429,10 +429,12 @@ public abstract class AbstractMissingIndexConformanceTest {
         assertEquals(List.of("Upton"), names("Up", Match.prefix(PROBE_NAME_LOWER)));
         assertEquals(List.of("Van Upton"), names("\"van upton", Match.exact(PROBE_NAME_LOWER)));
         assertEquals(List.of(), names("van", Match.exact(PROBE_NAME_LOWER)));
-        // suggest takes the same forms; an input without a word of the minimum word length matches no rows, whatever
-        // the index serves, and a short word next to a longer one matches at a word start on the rows the longer
-        // word found.
-        assertEquals(List.of(), suggestions("Up"));
+        // suggest takes the same forms; an input without a word of the minimum word length matches as the start of
+        // the value, whatever the index serves, and a short word next to a longer one matches at a word start on the
+        // rows the longer word found.
+        assertEquals(List.of("Upton"), suggestions("Up"));
+        assertEquals(List.of("Van Upton"), suggestions("va"));
+        assertEquals(List.of(), suggestions("va up"));
         assertEquals(List.of("Upton", "Van Upton"), suggestions("upt"));
         assertEquals(List.of("Van Upton"), suggestions("van up"));
         assertEquals(List.of("Van Upton"), suggestions("van u"));

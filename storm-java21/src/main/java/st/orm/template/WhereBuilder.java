@@ -321,9 +321,10 @@ public abstract class WhereBuilder<T extends Data, R, ID> implements SubqueryTem
      * text columns. Every word matches at the start of a word in one of the columns, the same rows on every
      * database: {@code suggest("van b", Owner_.lastName)} finds "Van den Berg" and not "Sullivan". The input is read
      * as {@link #search(String, Navigable, Navigable[])} reads it. An input without a word of
-     * {@link st.orm.StormConfig#SUGGEST_MIN_WORD_LENGTH} characters, three by default, an empty one included,
-     * matches no rows, so the box never fetches and sorts a whole table on the first keystrokes; a shorter word next
-     * to one that reaches the length is tested only on the rows the longer word found.
+     * {@link st.orm.StormConfig#SUGGEST_MIN_WORD_LENGTH} characters, three by default, matches the whole input as the
+     * start of the value, ignoring case, and a shorter word next to one that reaches the length is tested only on the
+     * rows the longer word found. An empty input, or one of a single character, matches no rows, so the box never
+     * fetches and sorts a whole table on the first keystroke.
      * {@link #suggest(String, Match, Match[])} states another match form per column.
      *
      * @param input the search input, as a search box receives it.

@@ -811,8 +811,9 @@ public class QueryBuilderTest {
         var trigramOrm = ORMTemplate.of(dataSource,
                 StormConfig.of(Map.of(StormConfig.SEARCH_MIN_TERM_LENGTH, "3")));
         assertEquals(List.of("Betty"), semiJoinSuggestFirstNames(trigramOrm, "leo"));
-        // Without a word of three characters, no rows match.
-        assertEquals(List.of(), semiJoinSuggestFirstNames(orm, "le"));
+        // Without a word of three characters, the input matches the start of the value: pet Leo, not Coleman.
+        assertEquals(List.of("Betty"), semiJoinSuggestFirstNames(orm, "le"));
+        assertEquals(List.of("Betty"), semiJoinSuggestFirstNames(trigramOrm, "le"));
         assertEquals(List.of(), semiJoinSuggestFirstNames(orm, "l"));
         assertEquals(List.of(), semiJoinSuggestFirstNames(orm, ""));
     }

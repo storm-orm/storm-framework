@@ -188,9 +188,10 @@ public interface PredicateBuilderFactory {
      * Creates a predicate that matches the terms of a search box that queries as the user types, such as an
      * auto-complete, against text columns, each in its stated match form. The input is read as
      * {@link #search(String, Match[])} reads it. An input without a term of
-     * {@link st.orm.StormConfig#SUGGEST_MIN_WORD_LENGTH} characters, an empty one included, matches no rows, so the
-     * box never fetches and sorts a whole table on the first keystrokes; a shorter term next to one that reaches the
-     * length is tested only on the rows the longer term found.
+     * {@link st.orm.StormConfig#SUGGEST_MIN_WORD_LENGTH} characters matches the whole input, its terms joined by one
+     * space, as the start of the value, ignoring case; a shorter term next to one that reaches the length is tested
+     * only on the rows the longer term found. An empty input, or one of a single character, matches no rows, so the
+     * box never fetches and sorts a whole table on the first keystroke.
      *
      * <p>A bare term that equals one of the ignored terms, ignoring case, takes no part in the predicate; a quoted
      * term is never ignored. A search box names the words that occur in a
@@ -235,10 +236,12 @@ public interface PredicateBuilderFactory {
                                                                             boolean suggest) {
         requireNonNull(input, "input");
         List<SearchTerms.Term> terms = SearchTerms.parse(input);
+        // The start of a value keeps the ignored terms, as they stand at its start as typed.
+        String start = String.join(" ", terms.stream().map(SearchTerms.Term::text).toList());
         if (!ignore.isEmpty()) {
             Set<String> ignored = ignore.stream().map(word -> word.toLowerCase(ROOT)).collect(toSet());
             terms = terms.stream().filter(term -> term.quoted() || !ignored.contains(term.text().toLowerCase(ROOT))).toList();
         }
-        return new PredicateBuilderImpl<>(new PredicateNode.Search(terms.stream().map(SearchTerms.Term::text).toList(), List.of(fields), suggest));
+        return new PredicateBuilderImpl<>(new PredicateNode.Search(terms.stream().map(SearchTerms.Term::text).toList(), start, List.of(fields), suggest));
     }
 }

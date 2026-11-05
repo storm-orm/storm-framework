@@ -16,12 +16,15 @@
 package st.orm.core.template.impl;
 
 import static java.util.Objects.requireNonNull;
+import static st.orm.Operator.STARTS_WITH_IGNORE_CASE;
 import static st.orm.core.template.TemplateString.wrap;
 
 import java.util.ArrayList;
 import java.util.List;
 import st.orm.Match;
+import st.orm.Metamodel;
 import st.orm.core.template.TemplateString;
+import st.orm.core.template.impl.Elements.ObjectExpression;
 import st.orm.core.template.impl.Elements.SearchExpression;
 
 /**
@@ -81,15 +84,25 @@ public sealed interface PredicateNode {
      * The words of a search, kept apart until the query is built, since {@code search} plans its short words by the
      * length the dialect's substring index serves, and {@code suggest} by its minimum word length.
      *
-     * @param terms the terms, as the input holds them.
+     * @param terms the terms, as the input holds them, without the ignored ones.
+     * @param start the input as the start of a value: its terms joined by one space, the ignored ones included,
+     *              since they stand at the start of the value as typed.
      * @param fields the text columns to search with their match forms, at least one.
-     * @param suggest {@code true} to match no rows unless a term reaches the minimum word length; {@code false} to
-     *                match every term.
+     * @param suggest {@code true} to match the input as the start of the value until a term reaches the minimum word
+     *                length; {@code false} to match every term.
      */
-    record Search(List<String> terms, List<Match<?>> fields, boolean suggest) implements PredicateNode {
+    record Search(List<String> terms, String start, List<Match<?>> fields, boolean suggest) implements PredicateNode {
+
+        /**
+         * The characters the start of a value takes from. A one-character start names too many rows to suggest from,
+         * and the box orders what it finds, so the database would fetch and sort them all before the limit cut the
+         * list.
+         */
+        static final int MIN_START_LENGTH = 2;
 
         public Search {
             terms = List.copyOf(terms);
+            requireNonNull(start, "start");
             fields = List.copyOf(fields);
             if (fields.isEmpty()) {
                 throw new IllegalArgumentException("%s needs at least one field to search.".formatted(suggest ? "suggest" : "search"));
@@ -100,7 +113,8 @@ public sealed interface PredicateNode {
          * Returns the search as the predicates it renders: an AND over the words, each matched in at least one field.
          * A word shorter than the given length is residual next to one that reaches it, tested only on the rows the
          * longer word found. Where no word reaches it, {@code search} matches every word as it is and {@code suggest}
-         * matches no rows, since a word that short names too large a share of a table to suggest from.
+         * matches the input as the start of the value, since a word that short matches too large a share of a table
+         * anywhere or at a word start; an input without a term, or a start of one character, matches no rows.
          *
          * @param minimumLength the shortest term the substring index serves, {@code 0} where no index serves one.
          * @param suggestMinimumLength the shortest word a suggestion matches on its own.
@@ -110,7 +124,9 @@ public sealed interface PredicateNode {
             boolean reached = terms.stream().anyMatch(term -> reaches(term, length));
             if (!reached) {
                 if (suggest) {
-                    return new Term(TemplateString.of("1 <> 1"), true);
+                    return terms.isEmpty() || !reaches(start, MIN_START_LENGTH)
+                            ? new Term(TemplateString.of("1 <> 1"), true)
+                            : valueStart();
                 }
                 if (terms.isEmpty()) {
                     return new Term(TemplateString.of("1 = 1"), true);
@@ -134,6 +150,28 @@ public sealed interface PredicateNode {
                 matches.add(new Term(wrap(new SearchExpression(field, term)), MatchForm.of(field) != MatchForm.WORD_START));
             }
             return or(matches);
+        }
+
+        /**
+         * Returns the predicate matching the input as the start of the value in at least one of the fields: ignoring
+         * case on a field that matches anywhere or at a word start, with the field's function on both sides, and in
+         * its own form, the whole input as the word, on a prefix or exact field, which compares the bare column.
+         */
+        private PredicateNode valueStart() {
+            var matches = new ArrayList<PredicateNode>(fields.size());
+            for (Match<?> field : fields) {
+                matches.add(switch (field) {
+                    case Match.Anywhere<?> it -> startsWith(it.path());
+                    case Match.WordStart<?> it -> startsWith(it.path());
+                    case Match.Prefix<?> it -> new Term(wrap(new SearchExpression(it, start)), true);
+                    case Match.Exact<?> it -> new Term(wrap(new SearchExpression(it, start)), true);
+                });
+            }
+            return or(matches);
+        }
+
+        private PredicateNode startsWith(Metamodel<?, String> path) {
+            return new Term(wrap(new ObjectExpression(path, STARTS_WITH_IGNORE_CASE, List.of(start))), true);
         }
 
         private static boolean reaches(String term, int minimumLength) {
