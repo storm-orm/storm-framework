@@ -19,6 +19,7 @@ import java.util.Arrays;
 import java.util.Collection;
 import java.util.List;
 import java.util.function.Function;
+import org.jspecify.annotations.Nullable;
 import st.orm.Data;
 import st.orm.Ref;
 import st.orm.SqlTemplateException;
@@ -26,6 +27,7 @@ import st.orm.core.template.TemplateString;
 import st.orm.core.template.impl.BindHint.NoBindHint;
 import st.orm.core.template.impl.Elements.ObjectExpression;
 import st.orm.core.template.impl.Elements.PathExpression;
+import st.orm.core.template.impl.Elements.SearchExpression;
 import st.orm.core.template.impl.Elements.TemplateExpression;
 
 final class CacheableProcessor implements ElementProcessor<Cacheable> {
@@ -49,9 +51,9 @@ final class CacheableProcessor implements ElementProcessor<Cacheable> {
      * @throws SqlTemplateException if the key generation fails.
      */
     @Override
-    public Object getCompilationKey(
+    public @Nullable Object getCompilationKey(
             Cacheable cacheable,
-            Function<TemplateString, Object> keyGenerator
+            Function<TemplateString, @Nullable Object> keyGenerator
     ) throws SqlTemplateException {
         return key(cacheable, keyGenerator, false);
     }
@@ -61,16 +63,16 @@ final class CacheableProcessor implements ElementProcessor<Cacheable> {
      * how far a collection expanded share it.
      */
     @Override
-    public Object getShapeKey(
+    public @Nullable Object getShapeKey(
             Cacheable cacheable,
-            Function<TemplateString, Object> keyGenerator
+            Function<TemplateString, @Nullable Object> keyGenerator
     ) throws SqlTemplateException {
         return key(cacheable, keyGenerator, true);
     }
 
-    private Object key(
+    private @Nullable Object key(
             Cacheable cacheable,
-            Function<TemplateString, Object> keyGenerator,
+            Function<TemplateString, @Nullable Object> keyGenerator,
             boolean ignoreArity
     ) throws SqlTemplateException {
         return switch(cacheable.expression()) {
@@ -89,6 +91,8 @@ final class CacheableProcessor implements ElementProcessor<Cacheable> {
                 }
                 yield List.of(metamodel, operator, objectShape, indexable, fromRow);
             }
+            // A search word compiles the same for every word: the column and its match form are the shape.
+            case SearchExpression(var match, var ignore) -> List.of(match);
         };
     }
 
@@ -101,7 +105,7 @@ final class CacheableProcessor implements ElementProcessor<Cacheable> {
      * @return the shape of the object.
      * @throws SqlTemplateException if the shape cannot be determined.
      */
-    private static Object getObjectShape(Object object, boolean ignoreArity)
+    private static @Nullable Object getObjectShape(Object object, boolean ignoreArity)
             throws SqlTemplateException {
         return switch (object) {
             case Collection<?> c -> {

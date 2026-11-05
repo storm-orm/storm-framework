@@ -247,7 +247,20 @@ interface TemplateCompiler {
      * @param kind how the statement uses the column.
      * @since 1.16
      */
-    void demandIndex(Model<?, ?> table, String column, IndexDemands.Kind kind);
+    void recordIndexUse(Model<?, ?> table, String column, IndexUsage.Kind kind);
+
+    /**
+     * Records that a {@code search} or {@code suggest} of the statement matches the given column of the given table
+     * in a match form, which the slow statement log checks against the database's indexes when an execution is slow.
+     *
+     * @param table the model of the table holding the column.
+     * @param column the column name.
+     * @param form the match form.
+     * @param field the column as the match names it, bare or wrapped in its function calls.
+     * @param expression the expression the match compares, as rendered around the bare column name.
+     * @since 1.16
+     */
+    void recordSearchUse(Model<?, ?> table, String column, MatchForm form, String field, String expression);
 
     /**
      * Returns the fetch plan of the compilation in progress: the references the statement resolves as part of its

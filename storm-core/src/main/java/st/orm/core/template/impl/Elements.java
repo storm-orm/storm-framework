@@ -26,6 +26,7 @@ import org.jspecify.annotations.Nullable;
 import st.orm.BindVars;
 import st.orm.Data;
 import st.orm.Element;
+import st.orm.Match;
 import st.orm.Metamodel;
 import st.orm.Operator;
 import st.orm.ResolveScope;
@@ -220,6 +221,23 @@ public final class Elements {
         public ObjectExpression {
             requireNonNull(object, "object");
             requireNonNull(operator, "operator");
+        }
+    }
+
+    /**
+     * A word of a {@code search} or {@code suggest} matched against a text column in the column's match form. The
+     * form decides the comparison: a {@code LIKE} on the lowered column for a match anywhere, the dialect's word-start
+     * comparison, or a {@code LIKE} or an equality on the bare column against the lowered word. The comparison asks
+     * no ordinary index for its column; the search advice decides, per column and form, what serves it.
+     *
+     * @param match the column with its match form.
+     * @param word the typed word, as the input holds it.
+     * @since 1.16
+     */
+    public record SearchExpression(Match<?> match, String word) implements Expression {
+        public SearchExpression {
+            requireNonNull(match, "match");
+            requireNonNull(word, "word");
         }
     }
     /**

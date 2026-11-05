@@ -18,6 +18,7 @@ package st.orm.spi.mssqlserver;
 import java.util.List;
 import java.util.Locale;
 import java.util.Set;
+import java.util.function.Function;
 import java.util.regex.Pattern;
 import st.orm.StormConfig;
 import st.orm.core.spi.DefaultSqlDialect;
@@ -331,5 +332,19 @@ public class MSSQLServerSqlDialect extends DefaultSqlDialect {
     @Override
     public boolean applyOptimizerHintAfterKeyword() {
         return false;
+    }
+
+    /**
+     * Renders a word start as two {@code LIKE} patterns, the word as a prefix and the word behind a bracket
+     * expression of the separators, which SQL Server's {@code LIKE} reads as a character set; the hyphen leads it,
+     * where it stands for itself.
+     *
+     * @since 1.16
+     */
+    @Override
+    public String wordStartMatch(String expression, String word, Function<String, String> bind) {
+        String escaped = escapeLike(word);
+        return "LOWER(%1$s) LIKE LOWER(%2$s) ESCAPE '!' OR LOWER(%1$s) LIKE LOWER(%3$s) ESCAPE '!'".formatted(
+                expression, bind.apply(escaped + "%"), bind.apply("%[-" + WORD_SEPARATORS.replace("-", "") + "]" + escaped + "%"));
     }
 }

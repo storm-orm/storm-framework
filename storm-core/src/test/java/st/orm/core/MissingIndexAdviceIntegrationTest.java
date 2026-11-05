@@ -19,6 +19,10 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static st.orm.Match.anywhere;
+import static st.orm.Match.exact;
+import static st.orm.Match.prefix;
+import static st.orm.Match.wordStart;
 import static st.orm.Operator.EQUALS;
 import static st.orm.Operator.GREATER_THAN;
 
@@ -32,6 +36,8 @@ import java.sql.SQLException;
 import java.time.Duration;
 import java.time.LocalDate;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import java.util.function.Supplier;
 import java.util.function.UnaryOperator;
@@ -48,6 +54,8 @@ import st.orm.FK;
 import st.orm.Metamodel;
 import st.orm.PK;
 import st.orm.PersistenceException;
+import st.orm.SqlFunction;
+import st.orm.StormConfig;
 import st.orm.UK;
 import st.orm.core.model.polymorphic.JoinedAdoption;
 import st.orm.core.model.polymorphic.JoinedAnimal;
@@ -55,6 +63,7 @@ import st.orm.core.template.ORMTemplate;
 import st.orm.core.template.Sql;
 import st.orm.core.template.SqlInterceptor;
 import st.orm.core.template.TemplateString;
+import st.orm.core.template.impl.PredicateBuilderFactory;
 import st.orm.core.template.impl.SchemaValidationError;
 import st.orm.core.template.impl.SchemaValidationError.ErrorKind;
 import st.orm.core.template.impl.SchemaValidator;
@@ -135,6 +144,16 @@ public class MissingIndexAdviceIntegrationTest {
 
     /** Returns the missing-index advice on the slow lines the action logs. */
     private static List<String> missingIndexAdvice(Supplier<?> action) {
+        return slowAdvice(action, "#missing-index");
+    }
+
+    /** Returns the unindexed-search advice on the slow lines the action logs. */
+    private static List<String> searchAdvice(Supplier<?> action) {
+        return slowAdvice(action, "#unindexed-search");
+    }
+
+    /** Returns the advice with the given anchor on the slow lines the action logs. */
+    private static List<String> slowAdvice(Supplier<?> action, String anchor) {
         var context = (LoggerContext) LoggerFactory.getILoggerFactory();
         var logger = context.getLogger("st.orm.sql.slow");
         var appender = new ListAppender<ILoggingEvent>();
@@ -155,8 +174,78 @@ public class MissingIndexAdviceIntegrationTest {
         }
         return AdviceCapture.advisoriesIn(appender.list.stream()
                         .map(ILoggingEvent::getFormattedMessage).toList()).stream()
-                .filter(advisory -> advisory.contains("#missing-index"))
+                .filter(advisory -> advisory.contains(anchor))
                 .toList();
+    }
+
+    @Test
+    public void aSearchFieldAnOrdinaryIndexServesIsNotAdvised() {
+        var orm = ORMTemplate.of(dataSource);
+        orm.loadSchema();
+        // An ordinary index on the bare column serves a prefix and an exact match; neither asks for an ordinary
+        // index through the missing-index advice.
+        assertEquals(List.of(), searchAdvice(() -> orm.entity(Customer.class).select()
+                .where(it -> PredicateBuilderFactory.<Customer, Customer, Integer>search("davis", exact(EMAIL)))
+                .getResultList()));
+        assertEquals(List.of(), searchAdvice(() -> orm.entity(Customer.class).select()
+                .where(it -> PredicateBuilderFactory.<Customer, Customer, Integer>search("dav", prefix(EMAIL)))
+                .getResultList()));
+        assertEquals(List.of(), missingIndexAdvice(() -> orm.entity(Customer.class).select()
+                .where(it -> PredicateBuilderFactory.<Customer, Customer, Integer>search("davis", exact(LAST_NAME)))
+                .getResultList()));
+    }
+
+    @Test
+    public void aSearchFieldNoIndexServesIsAdvisedWhatServesIt() {
+        var orm = ORMTemplate.of(dataSource);
+        orm.loadSchema();
+        var advice = searchAdvice(() -> orm.entity(Customer.class).select()
+                .where(it -> PredicateBuilderFactory.<Customer, Customer, Integer>search("davis", anywhere(LAST_NAME)))
+                .getResultList());
+        assertEquals(1, advice.size(), advice.toString());
+        assertTrue(advice.getFirst().startsWith("no index on customer serves anywhere(last_name), so the database "
+                + "reads customer in full to match it.\nfix: no index of the database serves the anywhere form; a "
+                + "word-suffix table, matched as a prefix, takes an ordinary index."), advice.getFirst());
+        advice = searchAdvice(() -> orm.entity(Customer.class).select()
+                .where(it -> PredicateBuilderFactory.<Customer, Customer, Integer>search("dav", prefix(LAST_NAME)))
+                .getResultList());
+        assertTrue(advice.getFirst().startsWith("no index on customer serves prefix(last_name), so the database "
+                + "reads customer in full to match it.\nfix: an index on customer(last_name) serves it."),
+                advice.getFirst());
+        // A field wrapped in a function compares an expression, which only an index on that expression serves.
+        SqlFunction<String> upper = SqlFunction.of("UPPER");
+        advice = searchAdvice(() -> orm.entity(Customer.class).select()
+                .where(it -> PredicateBuilderFactory.<Customer, Customer, Integer>search("DAV", prefix(upper.apply(LAST_NAME))))
+                .getResultList());
+        assertTrue(advice.getFirst().startsWith("no index on customer serves prefix(UPPER(last_name)), so the "
+                + "database reads customer in full to match it.\nfix: an index on UPPER(last_name) serves it where "
+                + "the database indexes an expression"), advice.getFirst());
+        // A dialect with an index for substring matching is pointed to it: the dialect the schema was loaded with.
+        var trigramOrm = ORMTemplate.of(dataSource, StormConfig.of(Map.of(StormConfig.SEARCH_MIN_TERM_LENGTH, "3")));
+        trigramOrm.loadSchema();
+        advice = searchAdvice(() -> trigramOrm.entity(Customer.class).select()
+                .where(it -> PredicateBuilderFactory.<Customer, Customer, Integer>suggest("dav", Set.of(), LAST_NAME))
+                .getResultList());
+        assertTrue(advice.getFirst().startsWith("no index on customer serves wordStart(last_name), so the database "
+                + "reads customer in full to match it.\nfix: an index for substring matching on LOWER(last_name) "
+                + "serves it."), advice.getFirst());
+    }
+
+    @Test
+    public void anIndexOnTheBareColumnServesNoMatchOfTheLoweredColumn() {
+        var orm = ORMTemplate.of(dataSource);
+        orm.loadSchema();
+        var advice = searchAdvice(() -> orm.entity(Customer.class).select()
+                .where(it -> PredicateBuilderFactory.<Customer, Customer, Integer>search("davis", wordStart(EMAIL)))
+                .getResultList());
+        assertEquals(1, advice.size(), advice.toString());
+        assertTrue(advice.getFirst().startsWith("no index on customer serves wordStart(email), so the database reads "
+                + "customer in full to match it.\nfix: no index of the database serves the wordStart form"),
+                advice.getFirst());
+        // The decision is made once per shape and catalog.
+        assertEquals(advice, searchAdvice(() -> orm.entity(Customer.class).select()
+                .where(it -> PredicateBuilderFactory.<Customer, Customer, Integer>search("davis", wordStart(EMAIL)))
+                .getResultList()));
     }
 
     @Test

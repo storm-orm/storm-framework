@@ -132,7 +132,7 @@ public abstract class AbstractTextMatchConformanceTest {
     private Set<String> search(String input) {
         var contents = new TreeSet<String>();
         orm.entity(Phrase.class).select()
-                .where(it -> PredicateBuilderFactory.<Phrase, Phrase, Integer>search(input, List.of(CONTENT)))
+                .where(it -> PredicateBuilderFactory.<Phrase, Phrase, Integer>search(input, CONTENT))
                 .getResultList()
                 .forEach(phrase -> contents.add(phrase.content()));
         return contents;
@@ -185,7 +185,7 @@ public abstract class AbstractTextMatchConformanceTest {
         assertEquals(Set.of("a_b"), match(content, ENDS_WITH, "_b"));
         var contents = new TreeSet<String>();
         orm.entity(Phrase.class).select()
-                .where(it -> PredicateBuilderFactory.<Phrase, Phrase, Integer>search("DOLLARS 50", List.of(content)))
+                .where(it -> PredicateBuilderFactory.<Phrase, Phrase, Integer>search("DOLLARS 50", content))
                 .getResultList()
                 .forEach(phrase -> contents.add(phrase.content()));
         assertEquals(Set.of("50 dollars"), contents);

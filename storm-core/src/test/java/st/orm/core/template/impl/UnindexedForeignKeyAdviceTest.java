@@ -124,11 +124,11 @@ public class UnindexedForeignKeyAdviceTest {
             new ForeignKey("PURCHASE", "FK_PURCHASE_CUSTOMER", "CUSTOMER_ID", "CUSTOMER", "ID");
 
     private static List<String> deleteAdvice(String table, IndexCatalog catalog) {
-        var builder = new IndexDemands.Builder();
+        var builder = new IndexUsage.Builder();
         builder.deleteFrom("", table);
-        var demands = builder.build();
-        assert demands != null;
-        return demands.advise(catalog);
+        var usage = builder.build();
+        assert usage != null;
+        return usage.advise(catalog);
     }
 
     @Test

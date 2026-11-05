@@ -20,6 +20,7 @@ import static st.orm.ResolveScope.CASCADE;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.function.Function;
+import org.jspecify.annotations.Nullable;
 import st.orm.SqlTemplateException;
 import st.orm.core.template.TemplateString;
 import st.orm.core.template.impl.Elements.Cursor;
@@ -58,7 +59,7 @@ final class CursorProcessor implements ElementProcessor<Cursor> {
      * @return an immutable key for caching, or {@code null} if an expression cannot be cached.
      */
     @Override
-    public Object getCompilationKey(Cursor cursor, Function<TemplateString, Object> keyGenerator) {
+    public @Nullable Object getCompilationKey(Cursor cursor, Function<TemplateString, @Nullable Object> keyGenerator) {
         if (cursor.expressions().isEmpty()) {
             return cursor;
         }

@@ -16,18 +16,29 @@
 package st.orm.core.template.impl;
 
 import java.util.ArrayList;
-import java.util.LinkedHashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 
 /**
  * Reads the terms of a search input, as a search box receives it. Whitespace separates the terms, and a quote at the
- * start of a term opens a phrase that runs to the next quote, so {@code "the good" ugly} holds the terms
- * {@code the good} and {@code ugly}. A quote without a closing one, or inside a term, is an ordinary character. A
- * phrase is trimmed, an empty phrase holds no term, and a term that occurs twice is read once.
+ * start of a term opens a phrase that runs to the next quote, or to the end of the input when there is none, so
+ * {@code "the good" ugly} holds the terms {@code the good} and {@code ugly}, and {@code "the good} holds
+ * {@code the good} while the user is still typing the phrase. A quote inside a term, as in {@code 12"}, is an
+ * ordinary character. A phrase is trimmed, an empty phrase holds no term, and a term that occurs twice is read once.
  *
  * @since 1.15
  */
 final class SearchTerms {
+
+    /**
+     * A term of the input.
+     *
+     * @param text the term as it matches.
+     * @param quoted {@code true} for a phrase the input quoted, which is an explicit request and is never ignored.
+     */
+    record Term(String text, boolean quoted) {
+    }
 
     private SearchTerms() {
     }
@@ -38,8 +49,8 @@ final class SearchTerms {
      * @param input the search input.
      * @return the terms, empty for an input that holds none.
      */
-    static List<String> parse(String input) {
-        var terms = new LinkedHashSet<String>();
+    static List<Term> parse(String input) {
+        Map<Term, Term> terms = new LinkedHashMap<>();
         int length = input.length();
         int i = 0;
         while (i < length) {
@@ -49,22 +60,23 @@ final class SearchTerms {
             }
             if (input.charAt(i) == '"') {
                 int close = input.indexOf('"', i + 1);
-                if (close >= 0) {
-                    String phrase = input.substring(i + 1, close).strip();
-                    if (!phrase.isEmpty()) {
-                        terms.add(phrase);
-                    }
-                    i = close + 1;
-                    continue;
+                int end = close >= 0 ? close : length;
+                String phrase = input.substring(i + 1, end).strip();
+                if (!phrase.isEmpty()) {
+                    var term = new Term(phrase, true);
+                    terms.putIfAbsent(term, term);
                 }
+                i = end + 1;
+                continue;
             }
             int end = i;
             while (end < length && !Character.isWhitespace(input.charAt(end))) {
                 end++;
             }
-            terms.add(input.substring(i, end));
+            var term = new Term(input.substring(i, end), false);
+            terms.putIfAbsent(term, term);
             i = end;
         }
-        return new ArrayList<>(terms);
+        return new ArrayList<>(terms.values());
     }
 }

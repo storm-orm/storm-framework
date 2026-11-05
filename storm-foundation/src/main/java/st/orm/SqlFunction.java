@@ -27,15 +27,15 @@ import org.jspecify.annotations.Nullable;
  * {@code orderFirst}, {@code orderBy}, {@code groupBy} and a template placeholder take it as they take the column.
  *
  * <p>Its use is an expression index: the database serves a query that names the expression the index is built on.
- * An index on {@code LOWER(fold_accents(primary_title))} serves a search over
- * {@code foldAccents.apply(Movie_.primaryTitle)}, which compares as
- * {@code LOWER(fold_accents(m.primary_title)) LIKE LOWER(fold_accents(?))}.</p>
+ * An index on {@code LOWER(fold_accents(last_name))} serves a search over
+ * {@code foldAccents.apply(Owner_.lastName)}, which compares as
+ * {@code LOWER(fold_accents(o.last_name)) LIKE LOWER(fold_accents(?))}.</p>
  *
  * <pre>{@code
  * SqlFunction<String> foldAccents = SqlFunction.of("fold_accents");
  *
- * movies.select()
- *         .where(it -> it.search(input, foldAccents.apply(Movie_.primaryTitle)))
+ * owners.select()
+ *         .where(it -> it.search(input, foldAccents.apply(Owner_.lastName)))
  *         .getResultList();
  * }</pre>
  *

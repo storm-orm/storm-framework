@@ -33,11 +33,14 @@ import org.jspecify.annotations.Nullable;
  */
 enum Advice {
 
-    /** A search whose terms are all shorter than the substring index serves. */
-    UNINDEXED_SEARCH("unindexed-search", Category.PERFORMANCE, false,
-            "every search term is shorter than the %d characters a substring index serves, so the search reads every "
-                    + "row.\nfix: for a search box that queries as the user types, use suggest, which returns no rows "
-                    + "for such input."),
+    /**
+     * A field of a {@code search} or {@code suggest} that no index of its table serves in its match form: no index
+     * leads with the bare column a prefix or exact match compares, or no index starts with an expression where the
+     * match compares the lowered column. Whether the read matters is the slow execution's to say, so only the slow
+     * statement log reports it.
+     */
+    UNINDEXED_SEARCH("unindexed-search", Category.PERFORMANCE, true,
+            "%1$s, so the database reads %2$s in full to match it.\nfix: %3$s."),
 
     /** A distinct select over a join that repeats its rows. */
     DISTINCT_OVER_JOIN("distinct-over-join", Category.PERFORMANCE, false,

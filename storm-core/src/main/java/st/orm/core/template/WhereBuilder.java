@@ -18,10 +18,14 @@ package st.orm.core.template;
 import static st.orm.Operator.EQUALS;
 import static st.orm.Operator.IN;
 
+import java.util.List;
 import st.orm.Data;
 import st.orm.Navigable;
 import st.orm.Operator;
+import st.orm.PersistenceException;
 import st.orm.Ref;
+import st.orm.SqlTemplateException;
+import st.orm.core.template.impl.PredicateBuilderFactory;
 
 /**
  * A builder for constructing the WHERE clause of the query.
@@ -207,7 +211,15 @@ public abstract class WhereBuilder<T extends Data, R, ID> implements SubqueryTem
     public final <V> PredicateBuilder<T, R, ID> where(Navigable<? extends T, V> path,
                                                       Operator operator,
                                                       V... o) {
-        return whereImpl(path, operator, o);
+        try {
+            try {
+                return PredicateBuilderFactory.createWithId(path.asMetamodel(), operator, List.of(o));
+            } catch (NullPointerException e) {
+                throw new SqlTemplateException("Null value not allowed.");
+            }
+        } catch (SqlTemplateException e) {
+            throw new PersistenceException(e);
+        }
     }
 
     /**
@@ -234,20 +246,4 @@ public abstract class WhereBuilder<T extends Data, R, ID> implements SubqueryTem
      * @return the predicate builder.
      */
     public abstract PredicateBuilder<T, R, ID> where(TemplateString template);
-
-    /**
-     * Adds a condition to the WHERE clause that matches the specified objects at the specified path in the table
-     * graph or manually added joins.
-     *
-     * @param path     the path to the object in the table graph.
-     * @param operator the operator to use for the comparison.
-     * @param o        the object(s) to match, which can be primary keys, records representing the table, or fields in the
-     *                 table graph.
-     * @param <V>      the type of the object that the metamodel represents.
-     * @return the query builder.
-     * @since 1.2
-     */
-    protected abstract <V> PredicateBuilder<T, R, ID> whereImpl(Navigable<?, V> path,
-                                                                Operator operator,
-                                                                V[] o);
 }

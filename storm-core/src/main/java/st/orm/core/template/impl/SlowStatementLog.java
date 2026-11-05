@@ -424,9 +424,9 @@ public final class SlowStatementLog {
      * @param sqlCommenter the commenter whose content the statement carried, or {@code null}; asked again on the
      *                     executing thread, in the span the statement was prepared in, only for a slow execution.
      * @param advisories advice about the statement, reported on a slow execution.
-     * @param indexDemands the columns the statement asks an index for, checked against the indexes of the database
+     * @param indexUsage the columns the statement asks an index for, checked against the indexes of the database
      *                     only for a slow execution; {@code null} when it asks for none.
-     * @param dataSource the data source the statement runs on, whose published index catalog the demands are checked
+     * @param dataSource the data source the statement runs on, whose published index catalog the usage is checked
      *                   against; {@code null} for a template without one.
      * @param transactionTemplateProvider the provider whose transaction the statement runs in, if any, whose held
      *                                    connection the statement is credited to.
@@ -436,10 +436,10 @@ public final class SlowStatementLog {
                             List<Parameter> parameters,
                             @Nullable SqlCommenter sqlCommenter,
                             List<String> advisories,
-                            @Nullable IndexDemands indexDemands,
+                            @Nullable IndexUsage indexUsage,
                             @Nullable DataSource dataSource,
                             TransactionTemplateProvider transactionTemplateProvider) {
-        return new SlowHandle(context, parameters, sqlCommenter, advisories, indexDemands, dataSource,
+        return new SlowHandle(context, parameters, sqlCommenter, advisories, indexUsage, dataSource,
                 transactionTemplateProvider);
     }
 
@@ -449,7 +449,7 @@ public final class SlowStatementLog {
         private final List<Parameter> parameters;
         private final @Nullable SqlCommenter sqlCommenter;
         private final List<String> advisories;
-        private final @Nullable IndexDemands indexDemands;
+        private final @Nullable IndexUsage indexUsage;
         private final @Nullable DataSource dataSource;
         private final TransactionTemplateProvider transactionTemplateProvider;
         private final long start = System.nanoTime();
@@ -467,14 +467,14 @@ public final class SlowStatementLog {
                    List<Parameter> parameters,
                    @Nullable SqlCommenter sqlCommenter,
                    List<String> advisories,
-                   @Nullable IndexDemands indexDemands,
+                   @Nullable IndexUsage indexUsage,
                    @Nullable DataSource dataSource,
                    TransactionTemplateProvider transactionTemplateProvider) {
             this.context = context;
             this.parameters = parameters;
             this.sqlCommenter = sqlCommenter;
             this.advisories = advisories;
-            this.indexDemands = indexDemands;
+            this.indexUsage = indexUsage;
             this.dataSource = dataSource;
             this.transactionTemplateProvider = transactionTemplateProvider;
         }
@@ -545,10 +545,10 @@ public final class SlowStatementLog {
          * slow. The decision is kept on the statement's shape, so a shape that is slow again is not decided twice.
          */
         private List<String> advisories() {
-            if (indexDemands == null) {
+            if (indexUsage == null) {
                 return advisories;
             }
-            var missing = indexDemands.advise(IndexCatalog.published(dataSource));
+            var missing = indexUsage.advise(IndexCatalog.published(dataSource));
             if (missing.isEmpty()) {
                 return advisories;
             }

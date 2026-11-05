@@ -44,7 +44,6 @@ import st.orm.Order;
 import st.orm.PersistenceException;
 import st.orm.Ref;
 import st.orm.Scrollable;
-import st.orm.SqlTemplateException;
 import st.orm.Window;
 import st.orm.core.spi.PositionFactory;
 import st.orm.core.template.JoinBuilder;
@@ -491,11 +490,7 @@ abstract class QueryBuilderImpl<T extends Data, R, ID> extends QueryBuilder<T, R
      */
     protected final TemplateString appendJoinsAndWhere(TemplateString template, StatementFacts.Collector facts) {
         // Which search terms a substring index serves depends on the dialect, so a search resolves its words here.
-        int minimumSearchTermLength = queryTemplate.dialect().minimumSearchTermLength();
-        var where = resolveSearches(this.where, minimumSearchTermLength);
-        if (where != this.where && this.where.stream().anyMatch(it -> unindexedSearch(it, minimumSearchTermLength))) {
-            facts.advise(Advice.UNINDEXED_SEARCH.format(minimumSearchTermLength));
-        }
+        var where = resolveSearches(this.where, queryTemplate.dialect().minimumSearchTermLength());
         var filterJoins = join.stream().filter(FilterJoinPlacement::isFilterJoin).toList();
         var joins = filterJoins.isEmpty() ? join : join.stream().filter(it -> !FilterJoinPlacement.isFilterJoin(it)).toList();
         if (!joins.isEmpty()) {
@@ -574,11 +569,6 @@ abstract class QueryBuilderImpl<T extends Data, R, ID> extends QueryBuilder<T, R
             }
         }
         return resolved == null ? where : resolved;
-    }
-
-    private static boolean unindexedSearch(Where where, int minimumSearchTermLength) {
-        return where.expression() instanceof TemplateExpression(var ignore, var predicate)
-                && predicate != null && PredicateNode.holdsUnindexedSearch(predicate, minimumSearchTermLength);
     }
 
     /**
@@ -1207,19 +1197,6 @@ abstract class QueryBuilderImpl<T extends Data, R, ID> extends QueryBuilder<T, R
         @Override
         public PredicateBuilder<TX, RX, IDX> where(TemplateString template) {
             return new PredicateBuilderImpl<>(template, false);
-        }
-
-        @Override
-        protected <V> PredicateBuilder<TX, RX, IDX> whereImpl(Navigable<?, V> path, Operator operator, V[] o) {
-            try {
-                try {
-                    return PredicateBuilderFactory.createWithId(path.asMetamodel(), operator, List.of(o));
-                } catch (NullPointerException e) {
-                    throw new SqlTemplateException("Null value not allowed.");
-                }
-            } catch (SqlTemplateException e) {
-                throw new PersistenceException(e);
-            }
         }
 
         private Object unwrap(TemplateString template) {

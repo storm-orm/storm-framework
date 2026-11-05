@@ -25,10 +25,12 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Optional;
 import java.util.Set;
+import java.util.function.Function;
 import st.orm.Operator;
 import st.orm.StormConfig;
 import st.orm.core.spi.DefaultSqlDialect;
 import st.orm.core.template.Column;
+import st.orm.core.template.SqlDialect;
 
 public class OracleSqlDialect extends DefaultSqlDialect {
 
@@ -366,5 +368,16 @@ public class OracleSqlDialect extends DefaultSqlDialect {
     @Override
     public int maxIndexKeyBytes() {
         return 6_398;
+    }
+
+    /**
+     * Renders a word start as one regular expression, through {@code REGEXP_LIKE}: the word at the start of the
+     * value or behind a separator, lowered on both sides.
+     *
+     * @since 1.16
+     */
+    @Override
+    public String wordStartMatch(String expression, String word, Function<String, String> bind) {
+        return "REGEXP_LIKE(LOWER(%s), LOWER(%s))".formatted(expression, bind.apply(SqlDialect.wordStartRegex(word)));
     }
 }

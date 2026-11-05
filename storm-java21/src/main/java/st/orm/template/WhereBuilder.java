@@ -19,13 +19,18 @@ import static java.lang.StringTemplate.RAW;
 import static st.orm.Operator.EQUALS;
 import static st.orm.Operator.IN;
 
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
 import st.orm.Data;
+import st.orm.Match;
+import st.orm.Metamodel;
 import st.orm.Navigable;
 import st.orm.Operator;
+import st.orm.PersistenceException;
 import st.orm.Ref;
+import st.orm.SqlTemplateException;
+import st.orm.core.template.impl.PredicateBuilderFactory;
+import st.orm.template.impl.QueryBuilderImpl.PredicateBuilderImpl;
 
 /**
  * A builder for constructing the WHERE clause of a query, providing type-safe predicate construction.
@@ -232,7 +237,15 @@ public abstract class WhereBuilder<T extends Data, R, ID> implements SubqueryTem
     public final <V> PredicateBuilder<T, R, ID> where(Navigable<? extends T, V> path,
                                                       Operator operator,
                                                       V... o) {
-        return whereImpl(path, operator, o);
+        try {
+            try {
+                return PredicateBuilderImpl.of(PredicateBuilderFactory.createWithId(path.asMetamodel(), operator, List.of(o)));
+            } catch (NullPointerException e) {
+                throw new SqlTemplateException("Null value not allowed.");
+            }
+        } catch (SqlTemplateException e) {
+            throw new PersistenceException(e);
+        }
     }
 
     /**
@@ -255,19 +268,20 @@ public abstract class WhereBuilder<T extends Data, R, ID> implements SubqueryTem
     /**
      * Matches the words of a search input against one or more text columns. Every word must occur in at least one of
      * the paths, ignoring case and matched as literal text, as {@link Operator#CONTAINS_IGNORE_CASE} matches it, so
-     * {@code search("ugly bad", Movie_.title)} finds "The Good, the Bad and the Ugly". Whitespace separates the words,
-     * and a quoted phrase such as {@code "the good"} is one word; an unpaired quote is an ordinary character. An input
-     * without words, such as an empty search box, matches every row.
+     * {@code search("davis madison", Owner_.lastName, Owner_.address.city.name)} finds Harold Davis of Madison. Whitespace separates the words,
+     * and a quote at the start of a word opens a phrase such as {@code "the good"}, one word that runs to the next
+     * quote or to the end of the input; a quote inside a word is an ordinary character. An input without words, such
+     * as an empty search box, matches every row. {@link #search(String, Match, Match[])} states another match form
+     * per column.
      *
      * <p>A path through a relation joins its table as any other path does, and a path may start at a table the query
      * joins. A path may also start at a semi-joined table, which searches the rows related to each row; each word is
      * matched on its own, so the words may match different related rows. Accents compare as the column's collation
      * compares them.</p>
      *
-     * <p>A word shorter than the database's substring index serves, such as the three characters of a trigram index
-     * on PostgreSQL, is tested only on the rows the longer words found, so it reads no table in full; the rows found are
-     * the same. A search box that queries as the user types, such as an auto-complete, uses
-     * {@link #suggest(String, Navigable, Navigable[])} instead.</p>
+     * <p>A word shorter than the database's substring index serves is tested only on the rows the longer words found,
+     * so it reads no table in full; the rows found are the same. A search box that queries as the user types, such
+     * as an auto-complete, uses {@link #suggest(String, Navigable, Navigable[])} instead.</p>
      *
      * @param input the search input, as a search box receives it.
      * @param path  the first text column to search.
@@ -279,19 +293,37 @@ public abstract class WhereBuilder<T extends Data, R, ID> implements SubqueryTem
     public final PredicateBuilder<T, R, ID> search(String input,
                                                    Navigable<? extends T, String> path,
                                                    Navigable<? extends T, String>... more) {
-        var paths = new ArrayList<Navigable<? extends T, String>>(more.length + 1);
-        paths.add(path);
-        paths.addAll(List.of(more));
-        return searchImpl(input, paths);
+        return PredicateBuilderImpl.of(PredicateBuilderFactory.search(input, metamodels(path, more)));
+    }
+
+    /**
+     * Matches the words of a search input against text columns, each in its stated match form, as
+     * {@link #search(String, Navigable, Navigable[])} matches them anywhere in the value. A field states its form
+     * through the factories of {@link Match}: {@code anywhere}, {@code wordStart}, {@code prefix} or {@code exact};
+     * {@code search("van berg", wordStart(Owner_.lastName), exact(Owner_.telephone))} matches each word at the start
+     * of a word of the last name or as the whole telephone number.
+     *
+     * @param input the search input, as a search box receives it.
+     * @param field the first text column to search, with its match form.
+     * @param more  further text columns to search, with their match forms.
+     * @return the predicate builder.
+     * @since 1.16
+     */
+    @SafeVarargs
+    public final PredicateBuilder<T, R, ID> search(String input,
+                                                   Match<? extends T> field,
+                                                   Match<? extends T>... more) {
+        return PredicateBuilderImpl.of(PredicateBuilderFactory.search(input, fields(field, more)));
     }
 
     /**
      * Matches the words of a search box that queries as the user types, such as an auto-complete, against one or more
-     * text columns. Every word of two characters or more matches in the form the database's index serves: on a database
-     * with a substring index, such as a trigram index on PostgreSQL, anywhere from the length the index serves and at
-     * the start of a word below that; elsewhere, as a prefix of the column, which an ordinary index over the column
-     * serves. A one-character word takes no part, and an input without a word that takes part, an empty one included,
-     * matches no rows. Every statement it renders is therefore served by an index, however the user types.
+     * text columns. Every word of two characters or more matches at the start of a word in one of the columns, the
+     * same rows on every database: {@code suggest("van b", Owner_.lastName)} finds "Van den Berg" and not
+     * "Sullivan". The input is read as {@link #search(String, Navigable, Navigable[])} reads it. A one-character word
+     * takes no part, and an input without a word that takes part, an empty one included, matches no rows, so the box
+     * never fetches and sorts a whole table on the first keystroke. {@link #suggest(String, Match, Match[])} states
+     * another match form per column.
      *
      * @param input the search input, as a search box receives it.
      * @param path  the first text column to search.
@@ -310,9 +342,9 @@ public abstract class WhereBuilder<T extends Data, R, ID> implements SubqueryTem
      * Matches the words of a search box that queries as the user types against one or more text columns, as
      * {@link #suggest(String, Navigable, Navigable[])} does, ignoring the given words as well. A word that equals one
      * of them, ignoring case, takes no part in the predicate, as a one-character word takes none, so an
-     * input of ignored words alone matches no rows. A search box names the words that occur in a large share of its
-     * rows, such as "the" in a catalog of titles, which the index serves but which narrow nothing:
-     * {@code suggest("the god", Set.of("the", "a", "of"), Movie_.title)} matches on "god" alone.
+     * input of ignored words alone matches no rows; a quoted word is never ignored. A search box names the words that
+     * occur in a large share of its rows, such as "van" in a list of last names, which narrow nothing:
+     * {@code suggest("van berg", Set.of("van", "de", "der"), Owner_.lastName)} matches on "berg" alone.
      *
      * @param input  the search input, as a search box receives it.
      * @param ignore the words to ignore, compared ignoring case.
@@ -326,10 +358,69 @@ public abstract class WhereBuilder<T extends Data, R, ID> implements SubqueryTem
                                                     Set<String> ignore,
                                                     Navigable<? extends T, String> path,
                                                     Navigable<? extends T, String>... more) {
-        var paths = new ArrayList<Navigable<? extends T, String>>(more.length + 1);
-        paths.add(path);
-        paths.addAll(List.of(more));
-        return suggestImpl(input, ignore, paths);
+        return PredicateBuilderImpl.of(PredicateBuilderFactory.suggest(input, ignore, metamodels(path, more)));
+    }
+
+    /**
+     * Matches the words of a search box that queries as the user types against text columns, each in its stated
+     * match form, as {@link #suggest(String, Navigable, Navigable[])} matches them at the start of a word. A field
+     * states its form through the factories of {@link Match}: {@code anywhere}, {@code wordStart}, {@code prefix} or
+     * {@code exact}; {@code suggest(input, wordStart(Owner_.lastName), prefix(OwnerNameSuffix_.suffix))} matches each
+     * word at the start of a word of the name, or as a prefix of a suffix row, which an ordinary index serves.
+     *
+     * @param input the search input, as a search box receives it.
+     * @param field the first text column to search, with its match form.
+     * @param more  further text columns to search, with their match forms.
+     * @return the predicate builder.
+     * @since 1.16
+     */
+    @SafeVarargs
+    public final PredicateBuilder<T, R, ID> suggest(String input,
+                                                    Match<? extends T> field,
+                                                    Match<? extends T>... more) {
+        return suggest(input, Set.of(), field, more);
+    }
+
+    /**
+     * Matches the words of a search box that queries as the user types against text columns, each in its stated
+     * match form, as {@link #suggest(String, Match, Match[])} does, ignoring the given words as well, as
+     * {@link #suggest(String, Set, Navigable, Navigable[])} ignores them. A quoted word is never ignored.
+     *
+     * @param input  the search input, as a search box receives it.
+     * @param ignore the words to ignore, compared ignoring case.
+     * @param field  the first text column to search, with its match form.
+     * @param more   further text columns to search, with their match forms.
+     * @return the predicate builder.
+     * @since 1.16
+     */
+    @SafeVarargs
+    public final PredicateBuilder<T, R, ID> suggest(String input,
+                                                    Set<String> ignore,
+                                                    Match<? extends T> field,
+                                                    Match<? extends T>... more) {
+        return PredicateBuilderImpl.of(PredicateBuilderFactory.suggest(input, ignore, fields(field, more)));
+    }
+
+    /** Returns the paths as the metamodels the core factory takes. */
+    @SafeVarargs
+    @SuppressWarnings("unchecked")
+    private static <T extends Data> Metamodel<?, String>[] metamodels(Navigable<? extends T, String> path,
+                                                                       Navigable<? extends T, String>... more) {
+        var metamodels = (Metamodel<?, String>[]) new Metamodel<?, ?>[more.length + 1];
+        metamodels[0] = path.asMetamodel();
+        for (int i = 0; i < more.length; i++) {
+            metamodels[i + 1] = more[i].asMetamodel();
+        }
+        return metamodels;
+    }
+
+    /** Returns the fields as the array the core factory takes. */
+    @SafeVarargs
+    private static <T extends Data> Match<?>[] fields(Match<? extends T> field, Match<? extends T>... more) {
+        var fields = new Match<?>[more.length + 1];
+        fields[0] = field;
+        System.arraycopy(more, 0, fields, 1, more.length);
+        return fields;
     }
 
     /**
@@ -339,44 +430,4 @@ public abstract class WhereBuilder<T extends Data, R, ID> implements SubqueryTem
      * @return the predicate builder.
      */
     public abstract PredicateBuilder<T, R, ID> where(StringTemplate template);
-
-    /**
-     * Adds a condition to the WHERE clause that matches the specified objects at the specified path in the table
-     * graph or manually added joins.
-     *
-     * @param path     the path to the object in the table graph.
-     * @param operator the operator to use for the comparison.
-     * @param o        the object(s) to match, which can be primary keys, records representing the table, or fields in the
-     *                 table graph.
-     * @param <V>      the type of the object that the metamodel represents.
-     * @return the query builder.
-     * @since 1.2
-     */
-    protected abstract <V> PredicateBuilder<T, R, ID> whereImpl(Navigable<? extends T, V> path,
-                                                                Operator operator,
-                                                                V[] o);
-
-    /**
-     * Matches the words of a search input against the given text columns.
-     *
-     * @param input the search input.
-     * @param paths the text columns to search, at least one.
-     * @return the predicate builder.
-     * @since 1.15
-     */
-    protected abstract PredicateBuilder<T, R, ID> searchImpl(String input, List<Navigable<? extends T, String>> paths);
-
-    /**
-     * Matches the words of a search input that the database's substring index serves, and that the search box does
-     * not ignore, against the given text columns.
-     *
-     * @param input  the search input.
-     * @param ignore the words to ignore, compared ignoring case.
-     * @param paths  the text columns to search, at least one.
-     * @return the predicate builder.
-     * @since 1.16
-     */
-    protected abstract PredicateBuilder<T, R, ID> suggestImpl(String input,
-                                                              Set<String> ignore,
-                                                              List<Navigable<? extends T, String>> paths);
 }

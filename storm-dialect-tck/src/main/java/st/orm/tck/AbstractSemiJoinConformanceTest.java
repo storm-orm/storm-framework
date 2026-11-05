@@ -25,6 +25,7 @@ import java.sql.SQLException;
 import java.sql.Statement;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import javax.sql.DataSource;
 import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.AfterEach;
@@ -159,7 +160,7 @@ public abstract class AbstractSemiJoinConformanceTest {
 
     private List<String> search(String input) {
         return names(authorsByBooks()
-                .where(it -> PredicateBuilderFactory.<Data, Author, Integer>search(input, List.of(AUTHOR_NAME, BOOK_TITLE)))
+                .where(it -> PredicateBuilderFactory.<Data, Author, Integer>search(input, AUTHOR_NAME, BOOK_TITLE))
                 .getResultList());
     }
 
@@ -177,11 +178,10 @@ public abstract class AbstractSemiJoinConformanceTest {
      */
     private List<String> trigramSearch(String input, boolean suggest) {
         var trigramOrm = ORMTemplate.of(dataSource, StormConfig.of(Map.of(StormConfig.SEARCH_MIN_TERM_LENGTH, "3")));
-        var paths = List.of(AUTHOR_NAME, BOOK_TITLE);
         return names(trigramOrm.entity(Author.class).select().semiJoin(Book.class).on(Author.class)
                 .where(it -> suggest
-                        ? PredicateBuilderFactory.<Data, Author, Integer>suggest(input, paths)
-                        : PredicateBuilderFactory.<Data, Author, Integer>search(input, paths))
+                        ? PredicateBuilderFactory.<Data, Author, Integer>suggest(input, Set.of(), AUTHOR_NAME, BOOK_TITLE)
+                        : PredicateBuilderFactory.<Data, Author, Integer>search(input, AUTHOR_NAME, BOOK_TITLE))
                 .getResultList());
     }
 
@@ -224,7 +224,7 @@ public abstract class AbstractSemiJoinConformanceTest {
     public void semiJoinCountsEachRowOnce() {
         // Two of Tolkien's books and one of Austen's hold an 'o'.
         assertEquals(2, authorsByBooks()
-                .where(it -> PredicateBuilderFactory.<Data, Author, Integer>search("o", List.of(BOOK_TITLE)))
+                .where(it -> PredicateBuilderFactory.<Data, Author, Integer>search("o", BOOK_TITLE))
                 .getResultCount());
     }
 

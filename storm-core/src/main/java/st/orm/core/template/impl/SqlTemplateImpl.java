@@ -96,7 +96,7 @@ public final class SqlTemplateImpl implements SqlTemplate {
     private final LazySupplier<SqlDialect> dialect;
 
     private final Supplier<TemplatePreparation> templatePreparation;
-    private final Function<TemplateString, Object> keyGenerator;
+    private final Function<TemplateString, @Nullable Object> keyGenerator;
     private final StormConfig config;
 
     /** The template cache, keyed by the resolved dialect and therefore lazy; {@code null} when caching is disabled. */
@@ -161,7 +161,7 @@ public final class SqlTemplateImpl implements SqlTemplate {
         return Map.copyOf(map);
     }
 
-    private Function<TemplateString, Object> keyGenerator() {
+    private Function<TemplateString, @Nullable Object> keyGenerator() {
         return template -> {
             try {
                 return getCompilationKey(templatePreparation.get().preprocess(template));
@@ -171,7 +171,7 @@ public final class SqlTemplateImpl implements SqlTemplate {
         };
     }
 
-    private Function<TemplateString, Object> shapeGenerator() {
+    private Function<TemplateString, @Nullable Object> shapeGenerator() {
         return template -> {
             try {
                 return getShapeKey(templatePreparation.get().preprocess(template));
@@ -548,13 +548,13 @@ public final class SqlTemplateImpl implements SqlTemplate {
         }
     }
 
-    private Object getShapeKey(BindingContext bindingContext) {
+    private @Nullable Object getShapeKey(BindingContext bindingContext) {
         var shapeGenerator = shapeGenerator();
         return buildKey(bindingContext,
                 element -> getElementProcessor(element).getShapeKey(element, shapeGenerator));
     }
 
-    private Object getCompilationKey(BindingContext bindingContext) {
+    private @Nullable Object getCompilationKey(BindingContext bindingContext) {
         return buildKey(bindingContext,
                 element -> getElementProcessor(element).getCompilationKey(element, keyGenerator));
     }

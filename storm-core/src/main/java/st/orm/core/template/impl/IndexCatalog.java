@@ -30,6 +30,8 @@ import java.util.TreeSet;
 import java.util.WeakHashMap;
 import javax.sql.DataSource;
 import org.jspecify.annotations.Nullable;
+import st.orm.core.spi.DefaultSqlDialect;
+import st.orm.core.template.SqlDialect;
 import st.orm.core.template.impl.DatabaseSchema.ConstraintKind;
 import st.orm.core.template.impl.DatabaseSchema.DbForeignKey;
 import st.orm.core.template.impl.DatabaseSchema.DbIndex;
@@ -64,10 +66,12 @@ final class IndexCatalog {
      * @param indexes the table's indexes with their columns in order, the primary key first.
      * @param columnBytes the bytes a value of each column takes in an index key at most, by its declared size, for
      *                    the columns whose type sizes that way.
+     * @param expressionIndexed whether an index of the table starts with an expression rather than a column, such
+     *                          as {@code lower(last_name)}, which may serve a search that compares that expression.
      */
     record TableIndexes(SortedSet<String> leadingColumns, List<UnindexedReference> unindexedReferences,
                         SortedMap<String, String> fewValuedColumns, List<IndexColumns> indexes,
-                        SortedMap<String, Integer> columnBytes) {
+                        SortedMap<String, Integer> columnBytes, boolean expressionIndexed) {
         TableIndexes {
             leadingColumns = Collections.unmodifiableSortedSet(leadingColumns);
             unindexedReferences = List.copyOf(unindexedReferences);
@@ -78,7 +82,7 @@ final class IndexCatalog {
 
         TableIndexes(SortedSet<String> leadingColumns, List<UnindexedReference> unindexedReferences) {
             this(leadingColumns, unindexedReferences, new TreeMap<>(String.CASE_INSENSITIVE_ORDER), List.of(),
-                    new TreeMap<>(String.CASE_INSENSITIVE_ORDER));
+                    new TreeMap<>(String.CASE_INSENSITIVE_ORDER), false);
         }
 
         /**
@@ -139,35 +143,35 @@ final class IndexCatalog {
 
     /** Schema as the models name it ({@code ""} for the connection's default schema) to table to its indexes. */
     private final SortedMap<String, SortedMap<String, TableIndexes>> tablesBySchema;
-    private final int maxKeyBytes;
+    private final SqlDialect dialect;
 
-    private IndexCatalog(SortedMap<String, SortedMap<String, TableIndexes>> tablesBySchema, int maxKeyBytes) {
+    private IndexCatalog(SortedMap<String, SortedMap<String, TableIndexes>> tablesBySchema, SqlDialect dialect) {
         this.tablesBySchema = tablesBySchema;
-        this.maxKeyBytes = maxKeyBytes;
+        this.dialect = dialect;
     }
 
     /**
      * Builds a catalog from the schemas a read found, keyed by the schema as the models name it: {@code ""} for the
-     * connection's default schema. A table whose indexes could not be read is left out, so no lookup reports it as
-     * having none.
+     * connection's default schema, as the default dialect reads them. A table whose indexes could not be read is
+     * left out, so no lookup reports it as having none.
      *
      * @param schemas the schemas read, by the name the models use for them.
      * @return the catalog.
      */
     static IndexCatalog of(Map<String, DatabaseSchema> schemas) {
-        return of(schemas, 0);
+        return of(schemas, new DefaultSqlDialect());
     }
 
     /**
-     * Builds a catalog from the schemas a read found, for a database that checks the declared sizes of an index key's
-     * columns against a limit.
+     * Builds a catalog from the schemas a read found, for the dialect of the database they were read from, which
+     * says what the database's indexes serve and how large an index key may be.
      *
      * @param schemas the schemas read, by the name the models use for them.
-     * @param maxKeyBytes the most bytes an index key may hold, {@code 0} where the database checks no declared size.
+     * @param dialect the dialect of the database.
      * @return the catalog.
      * @see st.orm.core.template.SqlDialect#maxIndexKeyBytes()
      */
-    static IndexCatalog of(Map<String, DatabaseSchema> schemas, int maxKeyBytes) {
+    static IndexCatalog of(Map<String, DatabaseSchema> schemas, SqlDialect dialect) {
         SortedMap<String, SortedMap<String, TableIndexes>> tablesBySchema = new TreeMap<>(String.CASE_INSENSITIVE_ORDER);
         schemas.forEach((schemaName, schema) -> {
             SortedMap<String, SortedSet<String>> leadingColumnsByTable = new TreeMap<>(String.CASE_INSENSITIVE_ORDER);
@@ -198,10 +202,10 @@ final class IndexCatalog {
             leadingColumnsByTable.forEach((tableName, leadingColumns) -> tables.put(tableName,
                     new TableIndexes(leadingColumns, unindexedReferences.getOrDefault(tableName, List.of()),
                             fewValuedColumns(schema, tableName), indexColumns(schema, tableName),
-                            columnBytes(schema, tableName))));
+                            columnBytes(schema, tableName), expressionIndexed(schema, tableName))));
             tablesBySchema.put(schemaName, tables);
         });
-        return new IndexCatalog(tablesBySchema, maxKeyBytes);
+        return new IndexCatalog(tablesBySchema, dialect);
     }
 
     /**
@@ -209,7 +213,26 @@ final class IndexCatalog {
      * declared size against a limit.
      */
     int maxKeyBytes() {
-        return maxKeyBytes;
+        return dialect.maxIndexKeyBytes();
+    }
+
+    /**
+     * Returns the dialect of the database the catalog was read from, which says what its indexes serve.
+     */
+    SqlDialect dialect() {
+        return dialect;
+    }
+
+    /**
+     * Returns whether an index of a table starts with an expression rather than a column.
+     */
+    private static boolean expressionIndexed(DatabaseSchema schema, String tableName) {
+        for (DbIndex index : schema.getIndexes(tableName)) {
+            if (index.ordinalPosition() == 1 && index.columnName() == null) {
+                return true;
+            }
+        }
+        return false;
     }
 
     /**
@@ -385,7 +408,7 @@ final class IndexCatalog {
             SortedMap<String, SortedMap<String, TableIndexes>> merged = new TreeMap<>(String.CASE_INSENSITIVE_ORDER);
             merged.putAll(previous.tablesBySchema);
             merged.putAll(next.tablesBySchema);
-            return new IndexCatalog(merged, next.maxKeyBytes);
+            return new IndexCatalog(merged, next.dialect);
         });
     }
 

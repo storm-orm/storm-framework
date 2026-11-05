@@ -15,9 +15,15 @@
  */
 package st.orm.spi.oracle;
 
+import static st.orm.Match.anywhere;
+import static st.orm.Match.exact;
+import static st.orm.Match.prefix;
+import static st.orm.Match.wordStart;
+
 import java.sql.Connection;
 import java.sql.SQLException;
 import java.sql.Statement;
+import java.util.List;
 import javax.sql.DataSource;
 import org.testcontainers.oracle.OracleContainer;
 import st.orm.tck.AbstractMissingIndexConformanceTest;
@@ -57,14 +63,25 @@ public class OracleMissingIndexConformanceTest extends AbstractMissingIndexConfo
     }
 
     @Override
-    protected java.util.List<String> suggestProbeDdl() {
-        return java.util.List.of(
-                "CREATE TABLE suggest_probe (id NUMBER(10) PRIMARY KEY, title VARCHAR2(100) NOT NULL, title_lower VARCHAR2(100) GENERATED ALWAYS AS (LOWER(title)) VIRTUAL)",
-                "CREATE INDEX probe_stored ON suggest_probe (title_lower)");
+    protected List<String> searchProbeDdl() {
+        return List.of(
+                "CREATE TABLE search_probe (id NUMBER(10) PRIMARY KEY, name VARCHAR2(100) NOT NULL, name_lower VARCHAR2(100) GENERATED ALWAYS AS (LOWER(name)) VIRTUAL)");
+    }
+
+    @Override
+    protected List<SearchIndexProbe> searchIndexProbes() {
+        return List.of(
+                // An ordinary index over the virtual lowered name serves a prefix and an exact match.
+                new SearchIndexProbe(prefix(PROBE_NAME_LOWER), "CREATE INDEX probe_stored ON search_probe (name_lower)", true),
+                new SearchIndexProbe(exact(PROBE_NAME_LOWER), "CREATE INDEX probe_stored ON search_probe (name_lower)", true),
+                // No index serves a match that starts with a wildcard: an index on the column cannot.
+                new SearchIndexProbe(anywhere(PROBE_NAME), "CREATE INDEX probe_name ON search_probe (name)", false),
+                new SearchIndexProbe(wordStart(PROBE_NAME), null, false));
     }
 
     @Override
     protected boolean servedByIndex(String plan) {
-        return plan.contains("INDEX RANGE SCAN") && plan.contains("PROBE_STORED");
+        return (plan.contains("INDEX RANGE SCAN") || plan.contains("INDEX UNIQUE SCAN")) && plan.contains("PROBE_");
     }
+
 }

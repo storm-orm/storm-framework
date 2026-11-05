@@ -96,7 +96,7 @@ class QueryImpl implements Query, KeyedQuery {
                        List<Parameter> parameters,
                        @Nullable SqlCommenter sqlCommenter,
                        List<String> advisories,
-                       @Nullable IndexDemands indexDemands,
+                       @Nullable IndexUsage indexUsage,
                        @Nullable DataSource dataSource,
                        SqlDialect dialect) {
 
@@ -291,7 +291,7 @@ class QueryImpl implements Query, KeyedQuery {
                         kind, environment.statementText(), environment.origin(), environment.shapeId(),
                         transactional, environment.transactionTemplateProvider(), readsRecords(resultType),
                         repositoryCall(), upsertTakesGeneratedKey(), CallSiteCapture.builtBy(),
-                        environment.indexDemands(), environment.dataSource()), environment.statementText(), advisories);
+                        environment.indexUsage(), environment.dataSource()), environment.statementText(), advisories);
             }
             boolean slowLog = SlowStatementLog.observes(transactional);
             if (queryObserver == QueryObserver.NOOP && operators == null && !slowLog && advice == null) {
@@ -301,7 +301,7 @@ class QueryImpl implements Query, KeyedQuery {
             var context = new QueryContextImpl(environment.operation(), environment.upsert(), environment.dataType(), kind,
                     environment.statementText(), environment.origin(), environment.shapeId(), transactional,
                     environment.transactionTemplateProvider(), readsRecords(resultType), repositoryCall(),
-                    upsertTakesGeneratedKey(), CallSiteCapture.builtBy(), environment.indexDemands(),
+                    upsertTakesGeneratedKey(), CallSiteCapture.builtBy(), environment.indexUsage(),
                     environment.dataSource());
             var observation = queryObserver == QueryObserver.NOOP
                     ? Observation.NOOP
@@ -311,7 +311,7 @@ class QueryImpl implements Query, KeyedQuery {
             if (slowLog) {
                 // The slow log listens the way a scope does, at the same point, for every execution.
                 handles = append(handles, SlowStatementLog.onExecute(context, environment.parameters(),
-                        environment.sqlCommenter(), environment.advisories(), environment.indexDemands(),
+                        environment.sqlCommenter(), environment.advisories(), environment.indexUsage(),
                         environment.dataSource(), environment.transactionTemplateProvider()));
             }
             if (advice != null) {
@@ -1461,7 +1461,7 @@ class QueryImpl implements Query, KeyedQuery {
                                     @Nullable RepositoryCall call,
                                     boolean upsertTakesGeneratedKey,
                                     @Nullable String builtBy,
-                                    @Nullable IndexDemands indexDemands,
+                                    @Nullable IndexUsage indexUsage,
                                     @Nullable DataSource dataSource)
             implements QueryContext {
         @Override

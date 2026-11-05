@@ -17,7 +17,12 @@ package st.orm.core;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static st.orm.Match.anywhere;
+import static st.orm.Match.exact;
+import static st.orm.Match.prefix;
+import static st.orm.Match.wordStart;
 import static st.orm.core.template.SqlInterceptor.observe;
 
 import java.util.ArrayList;
@@ -33,16 +38,21 @@ import org.springframework.test.context.ContextConfiguration;
 import org.springframework.test.context.junit.jupiter.SpringExtension;
 import st.orm.DbTable;
 import st.orm.Entity;
+import st.orm.Match;
 import st.orm.Metamodel;
 import st.orm.PK;
+import st.orm.SqlFunction;
 import st.orm.StormConfig;
 import st.orm.core.model.Owner;
 import st.orm.core.model.Owner_;
 import st.orm.core.template.ORMTemplate;
+import st.orm.core.template.SqlDialect;
 import st.orm.core.template.impl.PredicateBuilderFactory;
 
 /**
- * A search matches every term in at least one of its paths, ignoring case and literally, over a relation as well.
+ * A search matches every term in at least one of its fields, ignoring case and literally, over a relation as well,
+ * each field in its match form: anywhere by default, at the start of a word for a suggestion, as a prefix of the
+ * value or as the whole value where the call says so. The forms render the same SQL on every database.
  */
 @ExtendWith(SpringExtension.class)
 @ContextConfiguration(classes = IntegrationConfig.class)
@@ -60,54 +70,57 @@ public class SearchIntegrationTest {
         statements = new ArrayList<>();
         List<String> names = new ArrayList<>();
         observe(sql -> statements.add(sql.statement()), () -> orm.entity(Owner.class).select()
-                .where(it -> PredicateBuilderFactory.<Owner, Owner, Integer>search(input, List.of(paths)))
+                .where(it -> PredicateBuilderFactory.<Owner, Owner, Integer>search(input, paths))
                 .getResultList()
                 .forEach(owner -> names.add(owner.firstName())));
         return names.stream().sorted().toList();
     }
 
-    /** A table of titles stored lowered, as a column a suggestion box reads on a database without a substring index. */
+    /** A table of names stored lowered, as a column a prefix or exact match compares on its own. */
     @DbTable("suggestion")
-    public record Suggestion(@PK Integer id, String titleLower) implements Entity<Integer> {}
+    public record Suggestion(@PK Integer id, String nameLower) implements Entity<Integer> {}
 
-    private static final Metamodel<Suggestion, String> TITLE_LOWER = Metamodel.of(Suggestion.class, "titleLower");
+    private static final Metamodel<Suggestion, String> NAME_LOWER = Metamodel.of(Suggestion.class, "nameLower");
 
-    private List<String> suggestTitles(String input, int minimumLength) {
-        return suggestTitles(input, Set.of(), minimumLength);
-    }
-
-    private List<String> suggestTitles(String input, Set<String> ignore, int minimumLength) {
+    private List<String> names(boolean suggest, String input, Set<String> ignore, Match<Suggestion> field) {
         try (var connection = dataSource.getConnection(); var statement = connection.createStatement()) {
-            statement.execute("CREATE TABLE IF NOT EXISTS suggestion (id INTEGER PRIMARY KEY, title_lower VARCHAR(100) NOT NULL)");
+            statement.execute("CREATE TABLE IF NOT EXISTS suggestion (id INTEGER PRIMARY KEY, name_lower VARCHAR(100) NOT NULL)");
             statement.execute("DELETE FROM suggestion");
-            statement.execute("INSERT INTO suggestion (id, title_lower) VALUES (1, 'davis'), (2, 'dave'), (3, 'pick me up'), (4, 'upside down')");
+            statement.execute("INSERT INTO suggestion (id, name_lower) VALUES (1, 'davis'), (2, 'dave'), (3, 'van der berg'), (4, 'upton'), (5, 'anne-marie'), (6, 'o''brien (jr.)')");
         } catch (java.sql.SQLException e) {
             throw new IllegalStateException(e);
         }
-        var orm = ORMTemplate.of(dataSource,
-                StormConfig.of(Map.of(StormConfig.SEARCH_MIN_TERM_LENGTH, String.valueOf(minimumLength))));
+        var orm = ORMTemplate.of(dataSource);
         statements = new ArrayList<>();
-        List<String> titles = new ArrayList<>();
+        List<String> names = new ArrayList<>();
         observe(sql -> statements.add(sql.statement()), () -> orm.entity(Suggestion.class).select()
-                .where(it -> PredicateBuilderFactory.<Suggestion, Suggestion, Integer>suggest(input, ignore, List.of(TITLE_LOWER)))
+                .where(it -> suggest
+                        ? PredicateBuilderFactory.<Suggestion, Suggestion, Integer>suggest(input, ignore, field)
+                        : PredicateBuilderFactory.<Suggestion, Suggestion, Integer>search(input, field))
                 .getResultList()
-                .forEach(suggestion -> titles.add(suggestion.titleLower())));
-        return titles.stream().sorted().toList();
+                .forEach(suggestion -> names.add(suggestion.nameLower())));
+        return names.stream().sorted().toList();
+    }
+
+    private List<String> suggestNames(String input, Match<Suggestion> field) {
+        return names(true, input, Set.of(), field);
+    }
+
+    private List<String> searchNames(String input, Match<Suggestion> field) {
+        return names(false, input, Set.of(), field);
     }
 
     @SafeVarargs
-    private List<String> suggest(String input, int minimumLength, Metamodel<Owner, String>... paths) {
-        return suggest(input, Set.of(), minimumLength, paths);
+    private List<String> suggest(String input, Metamodel<Owner, String>... paths) {
+        return suggest(input, Set.of(), ORMTemplate.of(dataSource), paths);
     }
 
     @SafeVarargs
-    private List<String> suggest(String input, Set<String> ignore, int minimumLength, Metamodel<Owner, String>... paths) {
-        var orm = ORMTemplate.of(dataSource,
-                StormConfig.of(Map.of(StormConfig.SEARCH_MIN_TERM_LENGTH, String.valueOf(minimumLength))));
+    private List<String> suggest(String input, Set<String> ignore, ORMTemplate orm, Metamodel<Owner, String>... paths) {
         statements = new ArrayList<>();
         List<String> names = new ArrayList<>();
         observe(sql -> statements.add(sql.statement()), () -> orm.entity(Owner.class).select()
-                .where(it -> PredicateBuilderFactory.<Owner, Owner, Integer>suggest(input, ignore, List.of(paths)))
+                .where(it -> PredicateBuilderFactory.<Owner, Owner, Integer>suggest(input, ignore, paths))
                 .getResultList()
                 .forEach(owner -> names.add(owner.firstName())));
         return names.stream().sorted().toList();
@@ -145,52 +158,110 @@ public class SearchIntegrationTest {
     }
 
     @Test
+    public void anOpenQuoteRunsToTheEndOfTheInput() {
+        // The user is still typing the phrase: it matches as the closed phrase does.
+        assertEquals(List.of("Betty"), search("\"sun par", Owner_.address.city.name));
+        assertEquals(List.of("Betty"), suggest("\"sun par", Owner_.address.city.name));
+        assertEquals(List.of(), search("\"par sun", Owner_.address.city.name));
+        // A quote inside a word is an ordinary character.
+        assertEquals(List.of(), search("sun\"", Owner_.address.city.name));
+    }
+
+    @Test
     public void wildcardsMatchLiterally() {
         assertEquals(List.of(), search("%", Owner_.lastName));
         assertEquals(List.of(), search("_", Owner_.lastName));
     }
 
     @Test
-    public void suggestMatchesTheWordsTheIndexServes() {
-        assertEquals(List.of("Betty", "Harold"), suggest("dav da", 3, Owner_.lastName));
-        // A short word matches at the start of a word: the column's start or the text after a space.
-        assertEquals(List.of("Betty", "Harold"), suggest("da", 3, Owner_.lastName));
-        assertTrue(whereClause().contains("LIKE LOWER(?) ESCAPE '!' OR LOWER("), whereClause());
-        assertEquals(List.of(), suggest("dav is", 3, Owner_.lastName));
-        assertEquals(List.of("David"), suggest("sc", 3, Owner_.lastName));
-        // A word the index cannot serve even at the start of a word is left out.
-        assertEquals(List.of(), suggest("d", 3, Owner_.lastName));
+    public void searchMatchesAnywhereAndSuggestAtTheStartOfAWordOnEveryDialect() {
+        // No substring index configured: search still matches anywhere, McTavish included, suggest at the start of
+        // a word.
+        assertEquals(List.of("Betty", "Harold", "Peter"), search("avis", Owner_.lastName));
+        assertEquals(List.of(), suggest("avis", Owner_.lastName));
+        assertEquals(List.of("Betty", "Harold"), suggest("dav", Owner_.lastName));
+        // The default dialect renders a word start as a LIKE per separator and one for the value's start; a dialect
+        // whose database matches a regular expression renders one, which its conformance test covers.
+        assertEquals(1 + SqlDialect.WORD_SEPARATORS.length(), whereClause().split("LIKE LOWER\\(\\?\\) ESCAPE").length - 1, whereClause());
+        assertEquals(List.of("Betty", "Harold"), suggest("da", Owner_.lastName));
+        assertEquals(List.of(), suggest("dav is", Owner_.lastName));
+        assertEquals(List.of("David"), suggest("sc", Owner_.lastName));
+        // A one-character word takes no part; without a word that takes part, no rows match.
+        assertEquals(List.of(), suggest("d", Owner_.lastName));
         assertEquals("1 <> 1", whereClause());
-        assertEquals(List.of(), suggest("", 3, Owner_.lastName));
-        // A dialect without a substring index matches a prefix of the column, with no function around the column,
-        // so the column is one that compares case-insensitively on its own: here a stored lowered title.
-        assertEquals(List.of("dave", "davis"), suggestTitles("Da", 0));
-        assertTrue(whereClause().contains("title_lower LIKE ? ESCAPE '!'"), whereClause());
-        assertFalse(whereClause().contains("LOWER(s."), whereClause());
-        assertEquals(List.of("davis"), suggestTitles("DAVIS", 0));
-        assertEquals(List.of(), suggestTitles("avis", 0));
-        assertEquals(List.of(), suggestTitles("pick xy", 0));
-        assertEquals(List.of(), suggestTitles("d", 0));
-        assertEquals("1 <> 1", whereClause());
-        assertEquals(List.of(), suggestTitles("", 0));
+        assertEquals(List.of(), suggest("", Owner_.lastName));
+        // The same with a substring index configured: the form follows the function, not the dialect.
+        var trigramOrm = ORMTemplate.of(dataSource, StormConfig.of(Map.of(StormConfig.SEARCH_MIN_TERM_LENGTH, "3")));
+        assertEquals(List.of(), suggest("avis", Set.of(), trigramOrm, Owner_.lastName));
+        assertEquals(List.of("Betty", "Harold"), suggest("dav da", Set.of(), trigramOrm, Owner_.lastName));
+    }
+
+    @Test
+    public void eachFieldMatchesInItsStatedForm() {
+        assertEquals(List.of("dave", "davis"), searchNames("av", anywhere(NAME_LOWER)));
+        assertEquals(List.of(), searchNames("av", wordStart(NAME_LOWER)));
+        assertEquals(List.of("upton"), searchNames("up", wordStart(NAME_LOWER)));
+        // A word follows a space or a punctuation character that joins or separates words, not only a space.
+        assertEquals(List.of("anne-marie"), searchNames("marie", wordStart(NAME_LOWER)));
+        assertEquals(List.of("o'brien (jr.)"), searchNames("brien jr.", wordStart(NAME_LOWER)));
+        assertEquals(List.of(), searchNames("rien", wordStart(NAME_LOWER)));
+        // The word is matched literally: its characters are no regular expression syntax.
+        assertEquals(List.of("o'brien (jr.)"), searchNames("(jr.)", wordStart(NAME_LOWER)));
+        assertEquals(List.of(), searchNames(".", wordStart(NAME_LOWER)));
+        assertEquals(List.of(), searchNames("d.v", anywhere(NAME_LOWER)));
+        // A prefix or exact match leaves the column bare, for an ordinary index over it, and lowers the word: the
+        // column is one that compares case-insensitively on its own, here a stored lowered name.
+        assertEquals(List.of("upton"), searchNames("Up", prefix(NAME_LOWER)));
+        assertTrue(whereClause().contains("name_lower LIKE ? ESCAPE '!'"), whereClause());
+        assertFalse(whereClause().contains("LOWER("), whereClause());
+        assertEquals(List.of("davis"), searchNames("DAVIS", exact(NAME_LOWER)));
+        assertTrue(whereClause().contains("name_lower = ?"), whereClause());
+        assertEquals(List.of(), searchNames("davi", exact(NAME_LOWER)));
+        assertEquals(List.of(), searchNames("avis", prefix(NAME_LOWER)));
+        // A phrase is one term in every form.
+        assertEquals(List.of("van der berg"), searchNames("\"der berg\"", wordStart(NAME_LOWER)));
+        assertEquals(List.of("van der berg"), searchNames("\"van der berg\"", exact(NAME_LOWER)));
+        // suggest takes the forms as search does, with its own input contract.
+        assertEquals(List.of("dave", "davis"), suggestNames("av", anywhere(NAME_LOWER)));
+        assertEquals(List.of("upton"), suggestNames("Up", prefix(NAME_LOWER)));
+        assertEquals(List.of(), suggestNames("u", prefix(NAME_LOWER)));
+        assertEquals(List.of(), suggestNames("", exact(NAME_LOWER)));
+        assertEquals(6, searchNames("", exact(NAME_LOWER)).size());
+    }
+
+    @Test
+    public void aMatchComposesWithASqlFunction() {
+        SqlFunction<String> upper = SqlFunction.of("UPPER");
+        search("DAV", Match.anywhere(upper.apply(Owner_.lastName)).path());
+        assertTrue(whereClause().contains("LOWER(UPPER(o.last_name)) LIKE LOWER(UPPER(?)) ESCAPE '!'"), whereClause());
+        assertEquals(List.of("upton"), searchNames("UPT", prefix(SqlFunction.<String>of("UPPER").apply(NAME_LOWER))));
+        assertTrue(whereClause().contains("UPPER(s.name_lower) LIKE UPPER(?) ESCAPE '!'"), whereClause());
     }
 
     @Test
     public void suggestIgnoresTheWordsTheSearchBoxNames() {
         var ignore = Set.of("Davis", "the");
+        var orm = ORMTemplate.of(dataSource);
         // An ignored word takes no part, whatever its case; alone, it matches no rows.
-        assertEquals(List.of("Betty", "Harold"), suggest("davis", 3, Owner_.lastName));
-        assertEquals(List.of(), suggest("davis", ignore, 3, Owner_.lastName));
+        assertEquals(List.of("Betty", "Harold"), suggest("davis", Owner_.lastName));
+        assertEquals(List.of(), suggest("davis", ignore, orm, Owner_.lastName));
         assertEquals("1 <> 1", whereClause());
-        assertEquals(List.of(), suggest("DAVIS the", ignore, 3, Owner_.lastName));
-        // The other words match as before, each over every path.
-        assertEquals(List.of("Betty"), suggest("the davis betty", ignore, 3, Owner_.lastName, Owner_.firstName));
-        assertEquals(2, whereClause().split("LIKE").length - 1);
-        // A quoted phrase is one word, ignored when it equals an ignored word.
-        assertEquals(List.of(), suggest("\"Davis\"", ignore, 3, Owner_.lastName));
-        // Ignored on a dialect without a substring index as well, where the other words match as prefixes.
-        assertEquals(List.of("pick me up"), suggestTitles("the pick", ignore, 0));
-        assertEquals(List.of(), suggestTitles("the", ignore, 0));
+        assertEquals(List.of(), suggest("DAVIS the", ignore, orm, Owner_.lastName));
+        // The other words match as before, each over every path, at a word start on each.
+        assertEquals(List.of("Betty"), suggest("the davis betty", ignore, orm, Owner_.lastName, Owner_.firstName));
+        assertEquals(2 * (1 + SqlDialect.WORD_SEPARATORS.length()), whereClause().split("LIKE LOWER\\(\\?\\) ESCAPE").length - 1);
+        // A quoted word is an explicit request: it is never ignored.
+        assertEquals(List.of("Betty", "Harold"), suggest("\"Davis\"", ignore, orm, Owner_.lastName));
+        assertEquals(List.of("Betty", "Harold"), suggest("\"davis", ignore, orm, Owner_.lastName));
+        // Ignored in every form alike.
+        assertEquals(List.of("upton"), names(true, "the upton", ignore, prefix(NAME_LOWER)));
+        assertEquals(List.of(), names(true, "the", ignore, prefix(NAME_LOWER)));
+    }
+
+    @Test
+    public void aSearchWithoutFieldsIsRefused() {
+        assertThrows(IllegalArgumentException.class, () -> PredicateBuilderFactory.<Owner, Owner, Integer>search("davis", new Match<?>[0]));
+        assertThrows(IllegalArgumentException.class, () -> PredicateBuilderFactory.<Owner, Owner, Integer>suggest("davis", Set.of(), new Match<?>[0]));
     }
 
     @Test

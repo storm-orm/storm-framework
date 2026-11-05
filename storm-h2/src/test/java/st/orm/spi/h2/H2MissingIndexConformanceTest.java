@@ -15,8 +15,14 @@
  */
 package st.orm.spi.h2;
 
+import static st.orm.Match.anywhere;
+import static st.orm.Match.exact;
+import static st.orm.Match.prefix;
+import static st.orm.Match.wordStart;
+
 import java.sql.SQLException;
 import java.sql.Statement;
+import java.util.List;
 import st.orm.tck.AbstractMissingIndexConformanceTest;
 import st.orm.test.StormTest;
 
@@ -30,14 +36,25 @@ public class H2MissingIndexConformanceTest extends AbstractMissingIndexConforman
     }
 
     @Override
-    protected java.util.List<String> suggestProbeDdl() {
-        return java.util.List.of(
-                "CREATE TABLE suggest_probe (id INT PRIMARY KEY, title VARCHAR(100) NOT NULL, title_lower VARCHAR(100) GENERATED ALWAYS AS (LOWER(title)))",
-                "CREATE INDEX probe_stored ON suggest_probe (title_lower)");
+    protected List<String> searchProbeDdl() {
+        return List.of(
+                "CREATE TABLE search_probe (id INT PRIMARY KEY, name VARCHAR(100) NOT NULL, name_lower VARCHAR(100) GENERATED ALWAYS AS (LOWER(name)))");
+    }
+
+    @Override
+    protected List<SearchIndexProbe> searchIndexProbes() {
+        return List.of(
+                new SearchIndexProbe(prefix(PROBE_NAME_LOWER), "CREATE INDEX probe_stored ON search_probe (name_lower)", true),
+                new SearchIndexProbe(exact(PROBE_NAME_LOWER), "CREATE INDEX probe_stored ON search_probe (name_lower)", true),
+                // No index of H2 serves a match that starts with a wildcard: an index on the column cannot.
+                new SearchIndexProbe(anywhere(PROBE_NAME), "CREATE INDEX probe_name ON search_probe (name)", false),
+                new SearchIndexProbe(wordStart(PROBE_NAME), null, false),
+                new SearchIndexProbe(prefix(PROBE_NAME_LOWER), null, false));
     }
 
     @Override
     protected boolean servedByIndex(String plan) {
-        return plan.contains("PROBE_STORED:");
+        return plan.contains("PROBE_") && !plan.contains("tableScan");
     }
+
 }

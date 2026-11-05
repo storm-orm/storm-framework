@@ -15,9 +15,15 @@
  */
 package st.orm.spi.sqlite;
 
+import static st.orm.Match.anywhere;
+import static st.orm.Match.exact;
+import static st.orm.Match.prefix;
+import static st.orm.Match.wordStart;
+
 import java.sql.Connection;
 import java.sql.SQLException;
 import java.sql.Statement;
+import java.util.List;
 import st.orm.tck.AbstractMissingIndexConformanceTest;
 import st.orm.test.StormTest;
 
@@ -44,14 +50,26 @@ public class SQLiteMissingIndexConformanceTest extends AbstractMissingIndexConfo
     }
 
     @Override
-    protected java.util.List<String> suggestProbeDdl() {
-        return java.util.List.of(
-                "CREATE TABLE suggest_probe (id INTEGER PRIMARY KEY, title TEXT NOT NULL, title_lower TEXT GENERATED ALWAYS AS (lower(title)) STORED)",
-                "CREATE INDEX probe_stored ON suggest_probe (title_lower COLLATE NOCASE)");
+    protected List<String> searchProbeDdl() {
+        return List.of(
+                "CREATE TABLE search_probe (id INTEGER PRIMARY KEY, name TEXT NOT NULL, name_lower TEXT COLLATE NOCASE GENERATED ALWAYS AS (lower(name)) STORED)");
+    }
+
+    @Override
+    protected List<SearchIndexProbe> searchIndexProbes() {
+        return List.of(
+                // An ordinary index over the stored lowered name, a column with the NOCASE collation, serves a prefix
+                // and an exact match; a NOCASE index over a BINARY column serves the prefix alone.
+                new SearchIndexProbe(prefix(PROBE_NAME_LOWER), "CREATE INDEX probe_stored ON search_probe (name_lower)", true),
+                new SearchIndexProbe(exact(PROBE_NAME_LOWER), "CREATE INDEX probe_stored ON search_probe (name_lower)", true),
+                // No index serves a match that starts with a wildcard: an index on the column cannot.
+                new SearchIndexProbe(anywhere(PROBE_NAME), "CREATE INDEX probe_name ON search_probe (name)", false),
+                new SearchIndexProbe(wordStart(PROBE_NAME), null, false));
     }
 
     @Override
     protected boolean servedByIndex(String plan) {
-        return plan.contains("SEARCH") && plan.contains("probe_stored");
+        return plan.contains("SEARCH") && plan.contains("probe_");
     }
+
 }

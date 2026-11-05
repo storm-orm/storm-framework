@@ -437,19 +437,103 @@ public interface SqlDialect {
      * <p>A search term matches anywhere in a column, ignoring case: {@code LOWER(column) LIKE LOWER('%term%')}. An
      * index built for substring matching, such as a trigram index, serves that comparison for terms of a minimum
      * length, and reads every row for a shorter one. {@code search} therefore matches a shorter term only against the
-     * rows its longer terms found, which keeps the result and leaves the short term no table to read in full, and
-     * {@code suggest} matches a shorter term at the start of a word, which the index serves from one character less.
-     * A search of short terms alone still reads every row.</p>
+     * rows its longer terms found, which keeps the result and leaves the short term no table to read in full. A
+     * search of short terms alone still reads every row. The length changes no result.</p>
      *
-     * <p>The default is {@code 0}: no index of the database serves a substring. {@code search} then treats every
-     * term alike, and {@code suggest} matches a term as a prefix of the column, which an ordinary index over the
-     * column serves. {@link st.orm.StormConfig#SEARCH_MIN_TERM_LENGTH} overrides the dialect's value.</p>
+     * <p>The default is {@code 0}: no index of the database serves a substring, and {@code search} treats every term
+     * alike. The search advice reads it as whether the database has an index for substring matching to name.
+     * {@link st.orm.StormConfig#SEARCH_MIN_TERM_LENGTH} overrides the dialect's value.</p>
      *
      * @return the shortest term the substring index serves, or {@code 0} to treat every term alike.
      * @since 1.16
      */
     default int minimumSearchTermLength() {
         return 0;
+    }
+
+    /**
+     * Returns the kind of index the database has for substring matching, as the search advice names it, such as
+     * {@code a trigram index}, or {@code null} where the database has none. Such an index serves a match anywhere
+     * and at a word start over the lowered column; without one, the advice points to a word-suffix table.
+     *
+     * <p>The default follows {@link #minimumSearchTermLength()}: a dialect that states the length its substring
+     * index serves has one, and names it in general terms. A dialect names its own index.</p>
+     *
+     * @return the kind of index, or {@code null}.
+     * @since 1.16
+     */
+    default @Nullable String substringIndex() {
+        return minimumSearchTermLength() > 0 ? "an index for substring matching" : null;
+    }
+
+    /**
+     * The characters a word follows in a value, besides the value's start: a space, and the punctuation that joins
+     * or separates the words of a name, so that a word-start match of {@code marie} finds "Anne-Marie",
+     * {@code brien} "O'Brien" and {@code john} "St. John". The set is the same on every database, so a word start
+     * finds the same rows everywhere, and a word-suffix table that stands in for a substring index splits its values
+     * on the same set.
+     *
+     * @since 1.16
+     */
+    String WORD_SEPARATORS = " -'(/:.,";
+
+    /**
+     * Renders a word-start match of an expression against a typed word, ignoring case: the word at the start of the
+     * value, or after one of the {@link #WORD_SEPARATORS}. Each pattern the comparison compares is bound through
+     * the given function, which returns the placeholder of the value it binds; the dialect calls it once per
+     * pattern, in the order the comparison names them, so a statement binds its values as it rendered them.
+     *
+     * <p>The default renders a {@code LIKE} per pattern, the word as a prefix and the word behind each separator,
+     * with the word escaped by {@link #escapeLike(String)} and the expression and each placeholder lowered. A
+     * dialect whose database matches a regular expression renders its operator against the one pattern
+     * {@link #wordStartRegex(String)} builds, which an index for substring matching serves as it serves a
+     * {@code LIKE}.</p>
+     *
+     * @param expression the expression to match, a column or a function call around one.
+     * @param word the typed word, as the input holds it.
+     * @param bind binds a pattern and returns its placeholder.
+     * @return the comparison, one term in a condition.
+     * @since 1.16
+     */
+    default String wordStartMatch(String expression, String word, Function<String, String> bind) {
+        String escaped = escapeLike(word);
+        var terms = new ArrayList<String>(WORD_SEPARATORS.length() + 1);
+        terms.add("LOWER(%s) LIKE LOWER(%s) ESCAPE '!'".formatted(expression, bind.apply(escaped + "%")));
+        for (char separator : WORD_SEPARATORS.toCharArray()) {
+            terms.add("LOWER(%s) LIKE LOWER(%s) ESCAPE '!'".formatted(expression,
+                    bind.apply("%" + separator + escaped + "%")));
+        }
+        return String.join(" OR ", terms);
+    }
+
+    /**
+     * Returns the regular expression that matches a word at a word start: at the start of the value or after one of
+     * the {@link #WORD_SEPARATORS}, with the characters the word holds matched literally. The expression uses the
+     * syntax the common regular expression engines share: an anchor, a bracket expression and backslash escapes.
+     *
+     * @param word the typed word.
+     * @return the regular expression.
+     * @since 1.16
+     */
+    static String wordStartRegex(String word) {
+        // The hyphen leads the bracket expression, where every engine reads it as itself.
+        return "(^|[-" + WORD_SEPARATORS.replace("-", "") + "])" + escapeRegex(word);
+    }
+
+    /**
+     * Escapes text so that a regular expression built from it matches the text literally: each character the
+     * common engines read as syntax is preceded by a backslash.
+     */
+    private static String escapeRegex(String text) {
+        var escaped = new StringBuilder(text.length() + 8);
+        for (int i = 0; i < text.length(); i++) {
+            char c = text.charAt(i);
+            if ("\\^$.|?*+()[]{}".indexOf(c) >= 0) {
+                escaped.append('\\');
+            }
+            escaped.append(c);
+        }
+        return escaped.toString();
     }
 
     /**

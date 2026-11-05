@@ -30,6 +30,7 @@ import static st.orm.core.template.Templates.column;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.function.Supplier;
 import javax.sql.DataSource;
 import org.junit.jupiter.api.Test;
@@ -126,7 +127,7 @@ public class SemiJoinIntegrationTest {
 
     @SafeVarargs
     private static PredicateBuilder<Data, Owner, Integer> suggest(String input, st.orm.Metamodel<? extends Data, String>... paths) {
-        return PredicateBuilderFactory.suggest(input, List.of(paths));
+        return PredicateBuilderFactory.suggest(input, Set.of(), paths);
     }
 
     private List<String> advisories(Supplier<?> query) {
@@ -135,7 +136,7 @@ public class SemiJoinIntegrationTest {
 
     @SafeVarargs
     private static PredicateBuilder<Data, Owner, Integer> search(String input, st.orm.Metamodel<? extends Data, String>... paths) {
-        return PredicateBuilderFactory.search(input, List.of(paths));
+        return PredicateBuilderFactory.search(input, paths);
     }
 
     @Test
@@ -229,18 +230,28 @@ public class SemiJoinIntegrationTest {
     }
 
     @Test
-    public void suggestMatchesAShortWordAtTheStartOfAWord() {
-        // The short word matches pet Leo at the start of a word, where search matched Coleman anywhere.
-        var owners = capture(() -> ownersWithPets(trigramOrm())
+    public void suggestMatchesAWordAtTheStartOfAWordOnEveryDialect() {
+        // The short word matches pet Leo at the start of a word, where search matched Coleman anywhere; a dialect
+        // with a substring index matches the same rows.
+        var owners = capture(() -> ownersWithPets()
                 .where(it -> suggest("davis le", Owner_.lastName, Pet_.name))
                 .getResultList());
         assertEquals(List.of("Betty"), firstNames(owners));
         assertFalse(statement().contains("EXISTS"), statement());
+        assertEquals(List.of("Betty"), firstNames(ownersWithPets(trigramOrm())
+                .where(it -> suggest("davis le", Owner_.lastName, Pet_.name))
+                .getResultList()));
+        assertEquals(List.of("Betty"), firstNames(ownersWithPets(trigramOrm())
+                .where(it -> suggest("le", Owner_.lastName, Pet_.name))
+                .getResultList()));
+        assertEquals(List.of("Betty", "Jean"), firstNames(ownersWithPets(trigramOrm())
+                .where(it -> search("le", Owner_.lastName, Pet_.name))
+                .getResultList()));
     }
 
     @Test
-    public void suggestOfWordsTooShortForAWordStartMatchesNoRows() {
-        var owners = capture(() -> ownersWithPets(trigramOrm())
+    public void suggestOfAOneCharacterWordMatchesNoRows() {
+        var owners = capture(() -> ownersWithPets()
                 .where(it -> suggest("l", Owner_.lastName, Pet_.name))
                 .getResultList());
         assertEquals(List.of(), firstNames(owners));
@@ -256,33 +267,6 @@ public class SemiJoinIntegrationTest {
         assertEquals(List.of(), firstNames(ownersWithPets()
                 .where(it -> suggest("", Owner_.lastName, Pet_.name))
                 .getResultList()));
-    }
-
-    @Test
-    public void suggestMatchesAPrefixOfTheColumnWhereNoIndexServesASubstring() {
-        // The prefix leaves the column bare, for an index over it; these columns compare case-sensitively, so the
-        // lowered term finds nothing in them, which is why a suggestion column is one that compares ignoring case.
-        var owners = capture(() -> ownersWithPets()
-                .where(it -> suggest("le", Owner_.lastName, Pet_.name))
-                .getResultList());
-        assertEquals(List.of(), firstNames(owners));
-        assertTrue(statement().contains("last_name LIKE ? ESCAPE '!'"), statement());
-        assertFalse(statement().contains("LOWER(o.last_name)"), statement());
-    }
-
-    @Test
-    public void searchOfShortWordsAloneCarriesAdvice() {
-        var orm = trigramOrm();
-        var advice = advisories(() -> ownersWithPets(orm)
-                .where(it -> search("le", Owner_.lastName, Pet_.name)).getResultList());
-        assertEquals(1, advice.size(), advice.toString());
-        assertTrue(advice.getFirst().contains("suggest"), advice.getFirst());
-        assertEquals(List.of(), advisories(() -> ownersWithPets(orm)
-                .where(it -> search("davis le", Owner_.lastName, Pet_.name)).getResultList()));
-        assertEquals(List.of(), advisories(() -> ownersWithPets(orm)
-                .where(it -> suggest("le", Owner_.lastName, Pet_.name)).getResultList()));
-        assertEquals(List.of(), advisories(() -> ownersWithPets()
-                .where(it -> search("le", Owner_.lastName, Pet_.name)).getResultList()));
     }
 
     @Test
@@ -470,7 +454,7 @@ public class SemiJoinIntegrationTest {
         // data.sql: Rosy (pet 3) was spayed and is noted as a friendly dog; Leo (pet 1) is noted as a good cat.
         var pets = capture(() -> petsWithVisitsAndNotes()
                 .where(it -> PredicateBuilderFactory.<Data, Pet, Integer>search("spayed friendly",
-                        List.of(Pet_.name, Visit_.description, PetExtension_.notes)))
+                        Pet_.name, Visit_.description, PetExtension_.notes))
                 .getResultList());
         assertEquals(List.of("Rosy"), petNames(pets));
         // Each word is one UNION with a branch for the pet's name, its visits and its notes.
@@ -479,7 +463,7 @@ public class SemiJoinIntegrationTest {
         assertFalse(statement().contains("EXISTS"), statement());
         assertEquals(List.of("Leo"), petNames(petsWithVisitsAndNotes()
                 .where(it -> PredicateBuilderFactory.<Data, Pet, Integer>search("leo good",
-                        List.of(Pet_.name, Visit_.description, PetExtension_.notes)))
+                        Pet_.name, Visit_.description, PetExtension_.notes))
                 .getResultList()));
     }
 
@@ -743,12 +727,12 @@ public class SemiJoinIntegrationTest {
         assertEquals(List.of("Leo", "Rosy", "Samantha"), petNames(orm().entity(Pet.class).select()
                 .semiJoin(Visit.class).on(Pet.class)
                 .semiJoin(PetExtension.class).on(Visit.class)
-                .where(it -> PredicateBuilderFactory.<Data, Pet, Integer>search("spayed", List.of(Pet_.name, Visit_.description)))
+                .where(it -> PredicateBuilderFactory.<Data, Pet, Integer>search("spayed", Pet_.name, Visit_.description))
                 .getResultList()));
         assertEquals(List.of("Max"), petNames(orm().entity(Pet.class).select()
                 .semiJoin(Visit.class).on(Pet.class)
                 .semiJoin(PetExtension.class).on(Visit.class)
-                .where(it -> PredicateBuilderFactory.<Data, Pet, Integer>search("Max", List.of(Pet_.name, Visit_.description)))
+                .where(it -> PredicateBuilderFactory.<Data, Pet, Integer>search("Max", Pet_.name, Visit_.description))
                 .getResultList()));
     }
 
@@ -776,7 +760,7 @@ public class SemiJoinIntegrationTest {
         assertTrue(statement().contains("WHERE t.id IN (SELECT t.id FROM tenant t WHERE t.name = ? UNION SELECT t.id FROM tenant t WHERE t.owner_id IN (SELECT p.owner_id FROM pet p WHERE p.name = ?))"), statement());
         assertEquals(List.of("Alpha"), capture(() -> tenants.select()
                 .semiJoin(Pet.class).on(Tenant.class)
-                .where(it -> PredicateBuilderFactory.<Data, Tenant, Integer>search("Leo", List.of(Tenant_.name, Pet_.name)))
+                .where(it -> PredicateBuilderFactory.<Data, Tenant, Integer>search("Leo", Tenant_.name, Pet_.name))
                 .getResultList()).stream().map(Tenant::name).toList());
         assertTrue(statement().contains(" UNION "), statement());
     }

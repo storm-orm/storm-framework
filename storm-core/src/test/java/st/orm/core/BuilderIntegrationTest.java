@@ -1141,4 +1141,12 @@ public class BuilderIntegrationTest {
                 .whereExists(orm.deleteFrom(Visit.class))
                 .getResultList());
     }
+
+    @Test
+    public void whereRefusesANullValue() {
+        var exception = assertThrows(PersistenceException.class, () -> ORMTemplate.of(dataSource).entity(Owner.class).select()
+                .where(it -> it.where(Owner_.lastName, EQUALS, (String) null))
+                .getResultList());
+        assertTrue(exception.getMessage().contains("Null value not allowed."), exception.getMessage());
+    }
 }

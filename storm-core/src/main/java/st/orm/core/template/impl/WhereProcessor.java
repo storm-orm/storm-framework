@@ -66,7 +66,7 @@ final class WhereProcessor implements ElementProcessor<Where> {
      * @throws SqlTemplateException if the key generation fails.
      */
     @Override
-    public Object getCompilationKey(Where where, Function<TemplateString, Object> keyGenerator)
+    public @Nullable Object getCompilationKey(Where where, Function<TemplateString, @Nullable Object> keyGenerator)
             throws SqlTemplateException {
         if (where.expression() != null) {
             var cacheable = new Cacheable(where.expression());
@@ -85,7 +85,7 @@ final class WhereProcessor implements ElementProcessor<Where> {
      * erased through the delegation.
      */
     @Override
-    public Object getShapeKey(Where where, Function<TemplateString, Object> keyGenerator)
+    public @Nullable Object getShapeKey(Where where, Function<TemplateString, @Nullable Object> keyGenerator)
             throws SqlTemplateException {
         if (where.expression() != null) {
             var cacheable = new Cacheable(where.expression());

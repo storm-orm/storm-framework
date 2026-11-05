@@ -28,12 +28,14 @@ import java.sql.Types;
 import java.util.Locale;
 import java.util.Set;
 import java.util.UUID;
+import java.util.function.Function;
 import java.util.regex.Pattern;
 import org.jspecify.annotations.Nullable;
 import st.orm.Operator;
 import st.orm.StormConfig;
 import st.orm.core.spi.DefaultSqlDialect;
 import st.orm.core.spi.JsonString;
+import st.orm.core.template.SqlDialect;
 
 public class PostgreSQLSqlDialect extends DefaultSqlDialect {
 
@@ -64,6 +66,16 @@ public class PostgreSQLSqlDialect extends DefaultSqlDialect {
     @Override
     protected int defaultMinimumSearchTermLength() {
         return 3;
+    }
+
+    /**
+     * PostgreSQL's trigram index serves a match anywhere and at a word start over the lowered column.
+     *
+     * @since 1.16
+     */
+    @Override
+    public String substringIndex() {
+        return "a trigram index";
     }
 
     /**
@@ -413,5 +425,16 @@ public class PostgreSQLSqlDialect extends DefaultSqlDialect {
         }
         var conflict = ON_CONFLICT.matcher(sql);
         return conflict.find() && DO_UPDATE.matcher(sql).find(conflict.end());
+    }
+
+    /**
+     * Renders a word start as one regular expression, which a trigram index serves as it serves a {@code LIKE}: the
+     * word at the start of the value or behind a separator, lowered on both sides.
+     *
+     * @since 1.16
+     */
+    @Override
+    public String wordStartMatch(String expression, String word, Function<String, String> bind) {
+        return "LOWER(%s) ~ LOWER(%s)".formatted(expression, bind.apply(SqlDialect.wordStartRegex(word)));
     }
 }

@@ -32,8 +32,10 @@ import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
+import java.util.Set;
 import java.util.regex.Pattern;
 import javax.sql.DataSource;
+import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.BeforeEach;
@@ -41,11 +43,13 @@ import org.junit.jupiter.api.Test;
 import org.slf4j.LoggerFactory;
 import st.orm.DbTable;
 import st.orm.Entity;
+import st.orm.Match;
 import st.orm.Metamodel;
 import st.orm.PK;
 import st.orm.core.template.ORMTemplate;
 import st.orm.core.template.PreparedStatementTemplate;
 import st.orm.core.template.TemplateString;
+import st.orm.core.template.impl.MatchForm;
 import st.orm.core.template.impl.PredicateBuilderFactory;
 import st.orm.core.template.impl.SlowStatementLog;
 
@@ -93,12 +97,30 @@ public abstract class AbstractMissingIndexConformanceTest {
     }
 
     /**
-     * Returns the statements that create the probe table of {@link #theIndexTheDocsNameServesASuggestion()} with
-     * the index the docs name for a suggestion: {@code suggest_probe(id, title, title_lower)} with
-     * {@code title_lower} the stored lowered title, and {@code probe_stored} over it, or on a database with a
-     * substring index, {@code probe_trgm} over {@code LOWER(title_lower)}. Empty where the probe does not apply.
+     * A field of the search probe table with an index that may serve it, for {@link #eachMatchFormIsServedByTheIndexTheDocsNameAndAdvisedOtherwise()}.
+     *
+     * @param field the field with its match form.
+     * @param ddl the statement creating the index, or {@code null} for no index.
+     * @param served whether the index serves the field in its form: the plan must then use it and the advice stay
+     *               silent; otherwise the advice says no index serves the field.
      */
-    protected List<String> suggestProbeDdl() {
+    public record SearchIndexProbe(Match<SearchProbe> field, @Nullable String ddl, boolean served) {
+    }
+
+    /**
+     * Returns the statements that create the search probe table, {@code search_probe(id, name, name_lower)} with
+     * {@code name_lower} the stored lowered name, which a prefix or exact match compares on its own. Empty where
+     * the probe does not apply.
+     */
+    protected List<String> searchProbeDdl() {
+        return List.of();
+    }
+
+    /**
+     * Returns the index probes of the dialect: for each match form, where the database has an index that serves it,
+     * that index, and an index on the bare column where the form compares an expression, or none.
+     */
+    protected List<SearchIndexProbe> searchIndexProbes() {
         return List.of();
     }
 
@@ -159,7 +181,7 @@ public abstract class AbstractMissingIndexConformanceTest {
     @AfterEach
     final void drop() throws SQLException {
         SlowStatementLog.threshold(null);
-        for (String table : List.of("advice_pet", "advice_note")) {
+        for (String table : List.of("advice_pet", "advice_note", "search_probe")) {
             try (var connection = dataSource.getConnection(); var statement = connection.createStatement()) {
                 statement.execute("DROP TABLE " + table);
             } catch (SQLException ignore) {
@@ -310,40 +332,32 @@ public abstract class AbstractMissingIndexConformanceTest {
                 .groupBy(NAME).getResultList());
     }
 
-    /** A table of titles with a stored lowered copy, the column a suggestion box reads. */
-    @DbTable("suggest_probe")
-    public record SuggestProbe(@PK(generation = NONE) Integer id, String title, String titleLower)
+    /** A table of names with a stored lowered copy, the column a prefix or exact match compares on its own. */
+    @DbTable("search_probe")
+    public record SearchProbe(@PK(generation = NONE) Integer id, String name, String nameLower)
             implements Entity<Integer> {}
 
-    private static final Metamodel<SuggestProbe, String> TITLE_LOWER = Metamodel.of(SuggestProbe.class, "titleLower");
+    protected static final Metamodel<SearchProbe, String> PROBE_NAME = Metamodel.of(SearchProbe.class, "name");
+    protected static final Metamodel<SearchProbe, String> PROBE_NAME_LOWER = Metamodel.of(SearchProbe.class, "nameLower");
 
     /**
-     * Returns whether the plan reads the probe table through the index the docs name for a suggestion, as a range
-     * or a seek rather than a scan of the index: a database that prints the index name for a full scan of it says
-     * so in its own words.
+     * Returns whether the plan reads the probe table through an index named {@code probe_...}, as a range or a seek
+     * rather than a scan of the index: a database that prints the index name for a full scan of it says so in its own
+     * words.
      */
     protected boolean servedByIndex(String plan) {
         return plan.toLowerCase(Locale.ROOT).contains("probe_");
     }
 
-    /**
-     * The index the docs name serves the statement {@code suggest} renders: on a database with a substring index,
-     * the one over the lowered column; elsewhere an ordinary index over a column that compares case-insensitively on
-     * its own, here the stored lowered title. The plan is read with the word inlined, as the missing-index test
-     * reads it, and with the planner's preference for a sequential scan of a small table turned off where it has
-     * one, so the plan shows what the index serves.
-     */
-    @Test
-    public void theIndexTheDocsNameServesASuggestion() throws SQLException {
-        var ddl = suggestProbeDdl();
-        Assumptions.assumeFalse(ddl.isEmpty(), "No probe for this dialect.");
+    /** Creates the search probe table with its rows, and the given index. */
+    private void createSearchProbe(@Nullable String indexDdl) throws SQLException {
         try (var connection = dataSource.getConnection(); var statement = connection.createStatement()) {
             try {
-                statement.execute("DROP TABLE suggest_probe");
+                statement.execute("DROP TABLE search_probe");
             } catch (SQLException ignore) {
                 // Not there yet.
             }
-            for (String sql : ddl) {
+            for (String sql : searchProbeDdl()) {
                 statement.execute(sql);
             }
         }
@@ -351,18 +365,21 @@ public abstract class AbstractMissingIndexConformanceTest {
                 "juliet", "kilo", "lima", "mike", "november", "oscar", "papa", "quebec", "romeo", "sierra", "tango",
                 "victor", "whiskey", "xray", "yankee", "zulu"};
         try (var connection = dataSource.getConnection();
-             var insert = connection.prepareStatement("INSERT INTO suggest_probe (id, title) VALUES (?, ?)")) {
+             var insert = connection.prepareStatement("INSERT INTO search_probe (id, name) VALUES (?, ?)")) {
             boolean autoCommit = connection.getAutoCommit();
             connection.setAutoCommit(false);
             for (int id = 1; id <= ROWS; id++) {
-                String title = switch (id % 1_000) {
-                    case 1 -> "Upside Down " + id;
-                    case 2 -> "Pick Me Up " + id;
-                    case 3 -> "Grown Ups " + id;
+                String name = switch (id) {
+                    case 1 -> "Upton";
+                    case 2 -> "Van Upton";
+                    case 3 -> "Dupont";
+                    case 4 -> "Anne-Marie";
+                    case 5 -> "O'Brien";
+                    case 6 -> "St. John (Jr.)";
                     default -> words[id % words.length] + " " + words[id * 7 % words.length] + " " + id;
                 };
                 insert.setInt(1, id);
-                insert.setString(2, title);
+                insert.setString(2, name);
                 insert.addBatch();
                 if (id % 1_000 == 0) {
                     insert.executeBatch();
@@ -372,30 +389,90 @@ public abstract class AbstractMissingIndexConformanceTest {
             connection.setAutoCommit(autoCommit);
         }
         try (var connection = dataSource.getConnection(); var statement = connection.createStatement()) {
-            analyze(statement, "suggest_probe");
-        }
-        var results = new ArrayList<SuggestProbe>();
-        var lines = slowLines(() -> results.addAll(orm.entity(SuggestProbe.class).select()
-                .where(it -> PredicateBuilderFactory.<SuggestProbe, SuggestProbe, Integer>suggest("Up", List.of(TITLE_LOWER)))
-                .getResultList()));
-        assertFalse(results.isEmpty(), "A two-character word takes part in a suggestion.");
-        for (var result : results) {
-            assertTrue(result.titleLower().matches("(^|.* )up.*"), result.titleLower());
-        }
-        try (var connection = dataSource.getConnection()) {
-            try (var statement = connection.createStatement()) {
-                preferIndexes(statement);
+            if (indexDdl != null) {
+                statement.execute(indexDdl);
             }
-            var plan = plan(connection, lines.getFirst().sql());
-            assertTrue(servedByIndex(plan), "The suggestion is not served by the index the docs name:\n"
-                    + lines.getFirst().sql() + "\n" + plan);
+            analyze(statement, "search_probe");
         }
-        // A one-character word takes no part, whatever the index serves.
-        assertEquals(List.of(), orm.entity(SuggestProbe.class).select()
-                .where(it -> PredicateBuilderFactory.<SuggestProbe, SuggestProbe, Integer>suggest("U", List.of(TITLE_LOWER)))
+    }
+
+    private List<String> names(String input, Match<SearchProbe> field) {
+        return orm.entity(SearchProbe.class).select()
+                .where(it -> PredicateBuilderFactory.<SearchProbe, SearchProbe, Integer>search(input, field))
+                .getResultList().stream().map(SearchProbe::name).sorted().toList();
+    }
+
+    /**
+     * Each match form finds the same rows on every database: a word anywhere, at the start of a word, which follows
+     * the value's start, a space or a punctuation character such as a hyphen or an apostrophe, as a prefix of the
+     * stored lowered value, or as the whole of it.
+     */
+    @Test
+    public void eachMatchFormFindsTheSameRowsOnEveryDatabase() throws SQLException {
+        Assumptions.assumeFalse(searchProbeDdl().isEmpty(), "No probe for this dialect.");
+        createSearchProbe(null);
+        assertEquals(List.of("Dupont", "Upton", "Van Upton"), names("up", Match.anywhere(PROBE_NAME)));
+        assertEquals(List.of("Upton", "Van Upton"), names("up", Match.wordStart(PROBE_NAME)));
+        assertEquals(List.of(), names("pton", Match.wordStart(PROBE_NAME)));
+        assertEquals(List.of("Anne-Marie"), names("marie", Match.wordStart(PROBE_NAME)));
+        assertEquals(List.of("O'Brien"), names("brien", Match.wordStart(PROBE_NAME)));
+        // The word is matched literally, whatever the dialect renders the word start as.
+        assertEquals(List.of("St. John (Jr.)"), names("st. (jr.)", Match.wordStart(PROBE_NAME)));
+        assertEquals(List.of(), names("t.", Match.wordStart(PROBE_NAME)));
+        assertEquals(List.of(), names("s.", Match.wordStart(PROBE_NAME)));
+        assertEquals(List.of("Upton"), names("Up", Match.prefix(PROBE_NAME_LOWER)));
+        assertEquals(List.of("Van Upton"), names("\"van upton", Match.exact(PROBE_NAME_LOWER)));
+        assertEquals(List.of(), names("van", Match.exact(PROBE_NAME_LOWER)));
+        // suggest takes the same forms; a one-character word takes no part, whatever the index serves.
+        assertEquals(List.of("Anne-Marie"), orm.entity(SearchProbe.class).select()
+                .where(it -> PredicateBuilderFactory.<SearchProbe, SearchProbe, Integer>suggest("Ma", Set.of(), PROBE_NAME))
+                .getResultList().stream().map(SearchProbe::name).toList());
+        assertEquals(List.of(), orm.entity(SearchProbe.class).select()
+                .where(it -> PredicateBuilderFactory.<SearchProbe, SearchProbe, Integer>suggest("U", Set.of(), PROBE_NAME))
                 .getResultList());
+    }
+
+    /**
+     * The index the docs name for a match form serves the statement the form renders, and the advice is silent: the
+     * database's own plan, read with the word inlined and the planner's preference for a sequential scan of a small
+     * table turned off where it has one, uses the index. Without one, or with an index on the bare column where the
+     * form compares an expression, the advice says no index serves the field.
+     */
+    @Test
+    public void eachMatchFormIsServedByTheIndexTheDocsNameAndAdvisedOtherwise() throws SQLException {
+        var probes = searchIndexProbes();
+        Assumptions.assumeFalse(probes.isEmpty(), "No probe for this dialect.");
+        for (var probe : probes) {
+            createSearchProbe(probe.ddl());
+            orm.loadSchema();
+            String form = MatchForm.of(probe.field()).factory();
+            String input = probe.field() instanceof Match.Exact<?> ? "\"van upton\"" : "up";
+            var results = new ArrayList<SearchProbe>();
+            var lines = slowLines(() -> results.addAll(orm.entity(SearchProbe.class).select()
+                    .where(it -> PredicateBuilderFactory.<SearchProbe, SearchProbe, Integer>search(input, probe.field()))
+                    .getResultList()));
+            assertFalse(results.isEmpty(), probe.toString());
+            var advice = lines.getFirst().advice().stream()
+                    .filter(text -> text.contains("#unindexed-search"))
+                    .toList();
+            if (probe.served()) {
+                assertEquals(List.of(), advice, probe.toString());
+                try (var connection = dataSource.getConnection()) {
+                    try (var statement = connection.createStatement()) {
+                        preferIndexes(statement);
+                    }
+                    var plan = plan(connection, lines.getFirst().sql());
+                    assertTrue(servedByIndex(plan), probe + " is not served by its index:\n"
+                            + lines.getFirst().sql() + "\n" + plan);
+                }
+            } else {
+                assertEquals(1, advice.size(), probe + ": " + advice);
+                assertTrue(advice.getFirst().startsWith("no index on search_probe serves " + form + "("),
+                        probe + ": " + advice.getFirst());
+            }
+        }
         try (var connection = dataSource.getConnection(); var statement = connection.createStatement()) {
-            statement.execute("DROP TABLE suggest_probe");
+            statement.execute("DROP TABLE search_probe");
         }
     }
 }

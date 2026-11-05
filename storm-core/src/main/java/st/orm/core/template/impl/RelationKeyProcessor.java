@@ -99,10 +99,10 @@ final class RelationKeyProcessor implements ElementProcessor<RelationKey> {
                         .formatted(correlation.inner().getSimpleName(), correlation.outer().getSimpleName(), innerColumns.size(), outerColumns.size()));
             }
             // The subquery finds the related rows of each outer row by these columns, which an index on them serves.
-            if (!ColumnDemands.inJoinedHierarchy(correlation.inner())) {
+            if (!ColumnUsage.inJoinedHierarchy(correlation.inner())) {
                 var innerTable = compiler.getModel(correlation.inner());
                 for (var column : innerColumns) {
-                    compiler.demandIndex(innerTable, column.name(), IndexDemands.Kind.EQUALITY);
+                    compiler.recordIndexUse(innerTable, column.name(), IndexUsage.Kind.EQUALITY);
                 }
             }
             var condition = new StringBuilder();

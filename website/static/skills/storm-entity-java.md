@@ -164,10 +164,10 @@ Generation rules:
    ```
    Use `insertable = false` alone for columns the database sets only on INSERT, or `updatable = false` alone for columns written once and never modified.
 
-11c. **Declare a column a query names but no row needs to carry as a query column on the type, not as a field:** `@QueryColumn(field = "titleFolded", type = String.class)`, repeated per column. Typical cases: a generated column storing a folded title for a search index, a full-text search vector, a computed sort key, or a large column a filter names.
+11c. **Declare a column a query names but no row needs to carry as a query column on the type, not as a field:** `@QueryColumn(field = "lastNameFolded", type = String.class)`, repeated per column. Typical cases: a generated column storing a folded name for a search index, a full-text search vector, a computed sort key, or a large column a filter names.
    - `column = "..."` names the column where the resolver does not. `nullable = true` declares a nullable one.
-   - `function = "fold_accents"` names the function the column stores the result of. A value compared with the column then passes through it on the value side (`title_folded = fold_accents(?)`), in `search`, `suggest`, `orderFirst`, `IN` and the operators alike. The caller passes the input as it is, and the column is read as stored.
-   - It generates `Movie_.titleFolded` with no record component, so the column is never selected, inserted or updated. `where`, `orderBy`, `orderFirst`, `search`, `suggest`, a `SqlFunction`, a keyset sort and a template placeholder take it, through paths as well (`Credit_.movie.titleFolded`).
+   - `function = "fold_accents"` names the function the column stores the result of. A value compared with the column then passes through it on the value side (`last_name_folded = fold_accents(?)`), in `search`, `suggest`, `orderFirst`, `IN` and the operators alike. The caller passes the input as it is, and the column is read as stored.
+   - It generates `Owner_.lastNameFolded` with no record component, so the column is never selected, inserted or updated. `where`, `orderBy`, `orderFirst`, `search`, `suggest`, a `SqlFunction`, a keyset sort and a template placeholder take it, through paths as well (`Pet_.owner.lastNameFolded`).
    - Map such a column as a `@Persist(insertable = false, updatable = false)` field only when a caller reads its value.
    - On an entity, the database must fill a query column, since every insert leaves it out: generated, identity, with a default, or nullable. Schema validation reports one the database does not fill as an unmapped column.
 

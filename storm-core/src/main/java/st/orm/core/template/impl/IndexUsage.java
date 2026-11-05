@@ -30,9 +30,9 @@ import st.orm.Operator;
  * compares by range, and the column it sorts a limited result by; and for a delete, the table it deletes from, whose
  * referencing foreign keys the database checks for every row it deletes.
  *
- * <p>Demands are recorded while the statement compiles, from the parts of it Storm builds: a metamodel predicate, the
+ * <p>Usage is recorded while the statement compiles, from the parts of it Storm builds: a metamodel predicate, the
  * correlation of a semi-join or anti-join, the ordering of a limited result, and the table of a delete. A raw template
- * fragment is opaque and demands nothing. A compiled statement is cached per shape, so the demands are recorded once
+ * fragment is opaque and requires nothing. A compiled statement is cached per shape, so the usage is recorded once
  * per shape and every execution of it carries the same instance.</p>
  *
  * <p>The check against an {@link IndexCatalog} runs only for a slow execution, and its outcome is kept on the
@@ -41,7 +41,7 @@ import st.orm.Operator;
  *
  * @since 1.16
  */
-final class IndexDemands {
+final class IndexUsage {
 
     /**
      * How a statement uses a column.
@@ -87,7 +87,7 @@ final class IndexDemands {
     }
 
     /**
-     * The demands on one table.
+     * The usage of one table.
      *
      * @param schema the table's schema as its model names it, {@code ""} for the default schema.
      * @param table the table name.
@@ -98,7 +98,7 @@ final class IndexDemands {
      * @param join the key columns a to-many join reads the table by, in order.
      * @param select the columns the select list reads, where it names them through the metamodel.
      */
-    private record TableDemands(String schema, String table, List<String> equality, List<String> range,
+    private record TableUsage(String schema, String table, List<String> equality, List<String> range,
                                 List<String> order, List<String> group, List<String> join, List<String> select) {
     }
 
@@ -112,30 +112,78 @@ final class IndexDemands {
     }
 
     /**
+     * A field of a {@code search} or {@code suggest} with the form it matches in.
+     *
+     * @param schema the table's schema as its model names it, {@code ""} for the default schema.
+     * @param table the table name.
+     * @param column the column name.
+     * @param form the match form.
+     * @param field the column as the match names it, bare or wrapped in its function calls.
+     * @param expression the expression the match compares, rendered around the bare column name.
+     */
+    private record SearchField(String schema, String table, String column, MatchForm form, String field,
+                               String expression) {
+
+        /** Returns whether the match compares the bare column, with no function around it. */
+        boolean bare() {
+            return expression.equalsIgnoreCase(column);
+        }
+
+        /** Returns the match as the API names it, such as {@code wordStart(title)}. */
+        String match() {
+            return form.factory() + "(" + field + ")";
+        }
+    }
+
+    /**
      * The decision for one catalog.
      */
     private record Decision(IndexCatalog catalog, List<String> advice) {
     }
 
-    private final List<TableDemands> tables;
+    private final List<TableUsage> tables;
+    private final List<SearchField> searches;
     private final @Nullable DeleteTarget deleted;
     /** Whether the select names every column it reads, so an index that holds them is known to cover it. */
     private final boolean selectKnown;
     private volatile @Nullable Decision decision;
 
-    private IndexDemands(List<TableDemands> tables, @Nullable DeleteTarget deleted, boolean selectKnown) {
+    private IndexUsage(List<TableUsage> tables, List<SearchField> searches, @Nullable DeleteTarget deleted,
+                         boolean selectKnown) {
         this.tables = tables;
+        this.searches = searches;
         this.deleted = deleted;
         this.selectKnown = selectKnown;
     }
 
     /**
-     * Collects the demands of a statement while it compiles. Not thread-safe; a statement compiles on one thread.
+     * Collects the usage of a statement while it compiles. Not thread-safe; a statement compiles on one thread.
      */
     static final class Builder {
-        private final Map<String, TableDemands> tables = new LinkedHashMap<>();
+        private final Map<String, TableUsage> tables = new LinkedHashMap<>();
+        private final Map<String, SearchField> searches = new LinkedHashMap<>();
         private @Nullable DeleteTarget deleted;
         private boolean selectKnown;
+
+        /**
+         * Records that a search of the statement matches the given column of the given table in a match form.
+         *
+         * @param schema the table's schema as its model names it, {@code ""} for the default schema.
+         * @param table the table name.
+         * @param column the column name.
+         * @param form the match form.
+         * @param field the column as the match names it, bare or wrapped in its function calls.
+         * @param expression the expression the match compares, rendered around the bare column name.
+         */
+        void addSearch(String schema, String table, String column, MatchForm form, String field, String expression) {
+            requireNonNull(schema, "schema");
+            requireNonNull(table, "table");
+            requireNonNull(column, "column");
+            searches.putIfAbsent(
+                    schema.toLowerCase(Locale.ROOT) + '\0' + table.toLowerCase(Locale.ROOT) + '\0'
+                            + expression.toLowerCase(Locale.ROOT) + '\0' + form,
+                    new SearchField(schema, table, column, form, field, expression));
+        }
 
         /**
          * Records that the statement uses the given column of the given table.
@@ -155,17 +203,17 @@ final class IndexDemands {
                     return;
                 }
             }
-            var demands = tables.computeIfAbsent(
+            var usage = tables.computeIfAbsent(
                     schema.toLowerCase(Locale.ROOT) + '\0' + table.toLowerCase(Locale.ROOT),
-                    ignore -> new TableDemands(schema, table, new ArrayList<>(), new ArrayList<>(), new ArrayList<>(),
+                    ignore -> new TableUsage(schema, table, new ArrayList<>(), new ArrayList<>(), new ArrayList<>(),
                             new ArrayList<>(), new ArrayList<>(), new ArrayList<>()));
             var columns = switch (kind) {
-                case EQUALITY -> demands.equality();
-                case RANGE -> demands.range();
-                case ORDER -> demands.order();
-                case GROUP -> demands.group();
-                case JOIN -> demands.join();
-                case SELECT, WHOLE_SELECT -> demands.select();
+                case EQUALITY -> usage.equality();
+                case RANGE -> usage.range();
+                case ORDER -> usage.order();
+                case GROUP -> usage.group();
+                case JOIN -> usage.join();
+                case SELECT, WHOLE_SELECT -> usage.select();
             };
             if (columns.stream().noneMatch(column::equalsIgnoreCase)) {
                 columns.add(column);
@@ -183,19 +231,20 @@ final class IndexDemands {
         }
 
         /**
-         * Returns the demands, or {@code null} when the statement made none.
+         * Returns the usage, or {@code null} when the statement uses no column.
          */
-        @Nullable IndexDemands build() {
-            if (tables.isEmpty() && deleted == null) {
+        @Nullable IndexUsage build() {
+            if (tables.isEmpty() && searches.isEmpty() && deleted == null) {
                 return null;
             }
-            return new IndexDemands(tables.values().stream()
-                    .map(demands -> new TableDemands(demands.schema(), demands.table(), List.copyOf(demands.equality()),
-                            List.copyOf(demands.range()), List.copyOf(demands.order()), List.copyOf(demands.group()),
-                            List.copyOf(demands.join()), List.copyOf(demands.select())))
-                    .toList(), deleted, selectKnown);
+            return new IndexUsage(tables.values().stream()
+                    .map(usage -> new TableUsage(usage.schema(), usage.table(), List.copyOf(usage.equality()),
+                            List.copyOf(usage.range()), List.copyOf(usage.order()), List.copyOf(usage.group()),
+                            List.copyOf(usage.join()), List.copyOf(usage.select())))
+                    .toList(), List.copyOf(searches.values()), deleted, selectKnown);
         }
     }
+
 
     /**
      * Returns the index advice for the statement: one piece for each table none of whose indexes starts with a column
@@ -215,12 +264,22 @@ final class IndexDemands {
             return decided.advice();
         }
         var advice = new ArrayList<String>(1);
-        for (var demands : tables) {
-            var indexes = catalog.find(demands.schema(), demands.table());
+        for (var usage : tables) {
+            var indexes = catalog.find(usage.schema(), usage.table());
             if (indexes == null) {
                 continue;
             }
-            var piece = advice(demands, indexes, catalog.maxKeyBytes());
+            var piece = advice(usage, indexes, catalog.maxKeyBytes());
+            if (piece != null) {
+                advice.add(piece);
+            }
+        }
+        for (var search : searches) {
+            var indexes = catalog.find(search.schema(), search.table());
+            if (indexes == null) {
+                continue;
+            }
+            var piece = searchAdvice(search, indexes, catalog.dialect().substringIndex());
             if (piece != null) {
                 advice.add(piece);
             }
@@ -254,11 +313,11 @@ final class IndexDemands {
      * @param maxKeyBytes the most bytes an index key may hold on the database, {@code 0} where it checks no
      *                    declared size.
      */
-    private @Nullable String advice(TableDemands demands, IndexCatalog.TableIndexes indexes, int maxKeyBytes) {
-        var keys = new ArrayList<String>(demands.equality());
-        addAbsent(keys, demands.join());
-        var range = demands.range();
-        boolean groups = !demands.group().isEmpty();
+    private @Nullable String advice(TableUsage usage, IndexCatalog.TableIndexes indexes, int maxKeyBytes) {
+        var keys = new ArrayList<String>(usage.equality());
+        addAbsent(keys, usage.join());
+        var range = usage.range();
+        boolean groups = !usage.group().isEmpty();
         boolean filters = !keys.isEmpty() || !range.isEmpty();
         // An equality on every column of a unique index selects at most one row, which needs no index to sort or
         // group, and has one to find it.
@@ -266,15 +325,15 @@ final class IndexDemands {
                 && index.columns().stream().allMatch(column -> containsIgnoreCase(keys, column)))) {
             return null;
         }
-        var group = without(demands.group(), keys);
-        var order = without(demands.order(), keys);
+        var group = without(usage.group(), keys);
+        var order = without(usage.order(), keys);
         // The columns to read in order after the keys: the group columns, or the sort columns of a limited result
         // without a range, which an index then serves together with the keys. A group that holds the primary key
         // puts every row in a group of its own, so reading in order saves nothing.
         boolean ownGroups = groups && indexes.indexes().stream()
                 .filter(index -> index.name() == null)
                 .anyMatch(primaryKey -> primaryKey.columns().stream()
-                        .allMatch(column -> containsIgnoreCase(demands.group(), column)));
+                        .allMatch(column -> containsIgnoreCase(usage.group(), column)));
         List<String> inOrder = ownGroups ? List.of() : groups ? group : range.isEmpty() ? order : List.of();
         // The columns that compete with a range: the group columns, or a sort on another column than the range.
         List<String> competing = ownGroups ? List.of() : groups ? group
@@ -282,23 +341,55 @@ final class IndexDemands {
                         ? order : List.of();
         var findable = new ArrayList<String>(keys);
         addAbsent(findable, range);
-        addAbsent(findable, demands.order());
-        addAbsent(findable, demands.group());
+        addAbsent(findable, usage.order());
+        addAbsent(findable, usage.group());
         boolean found = findable.stream().anyMatch(indexes::leadsWith);
         var sizing = new Sizing(indexes, maxKeyBytes);
         if (!filters) {
             if (inOrder.isEmpty() || readsInOrder(indexes, keys, inOrder, groups)) {
                 return null;
             }
-            return fullAdvice(demands, sizing, keys, group, order, competing);
+            return fullAdvice(usage, sizing, keys, group, order, competing);
         }
         if (!found) {
-            return fullAdvice(demands, sizing, keys, group, order, competing);
+            return fullAdvice(usage, sizing, keys, group, order, competing);
         }
         if (inOrder.isEmpty() || readsInOrder(indexes, keys, inOrder, groups)) {
             return null;
         }
-        return continuingAdvice(demands, sizing, keys, inOrder);
+        return continuingAdvice(usage, sizing, keys, inOrder);
+    }
+
+    /**
+     * Returns the advice on one search field, or {@code null} where an index of its table serves the field in its
+     * match form, or may. A prefix or exact match on a bare column is served by an index that leads with the column.
+     * A match anywhere or at a word start compares the lowered column, which only an index over that expression
+     * serves: an index of the table that starts with an expression may be it, so the advice stays silent; without
+     * one, no index serves the field. A field wrapped in a function compares an expression as well. The fix names
+     * what serves the form: the database's index for substring matching on the expression, where it has one, a
+     * word-suffix table matched as a prefix elsewhere, or an ordinary index on a bare column.
+     *
+     * @param substringIndex the kind of index the database has for substring matching, or {@code null}.
+     */
+    private static @Nullable String searchAdvice(SearchField search, IndexCatalog.TableIndexes indexes,
+                                                 @Nullable String substringIndex) {
+        if (search.bare() ? indexes.leadsWith(search.column()) : indexes.expressionIndexed()) {
+            return null;
+        }
+        String table = qualified(search.schema(), search.table());
+        String fix;
+        if (search.form().lowered()) {
+            fix = substringIndex != null
+                    ? "%s on %s serves it".formatted(substringIndex, search.expression())
+                    : ("no index of the database serves the %s form; a word-suffix table, matched as a prefix, takes "
+                            + "an ordinary index").formatted(search.form().factory());
+        } else if (search.bare()) {
+            fix = "an index on %s(%s) serves it".formatted(table, search.column());
+        } else {
+            fix = ("an index on %s serves it where the database indexes an expression, and a stored column holding "
+                    + "it, declared as a query column, takes an ordinary index").formatted(search.expression());
+        }
+        return Advice.UNINDEXED_SEARCH.format("no index on %s serves %s".formatted(table, search.match()), table, fix);
     }
 
     /**
@@ -329,24 +420,24 @@ final class IndexDemands {
     }
 
     /** Returns the advice for a table none of whose indexes starts with a column the statement asks for. */
-    private String fullAdvice(TableDemands demands,
+    private String fullAdvice(TableUsage usage,
                               Sizing sizing,
                               List<String> keys,
                               List<String> group,
                               List<String> order,
                               List<String> inOrder) {
-        String table = qualified(demands.schema(), demands.table());
-        var range = demands.range();
-        boolean groups = !demands.group().isEmpty();
+        String table = qualified(usage.schema(), usage.table());
+        var range = usage.range();
+        boolean groups = !usage.group().isEmpty();
         boolean sorts = !order.isEmpty() && !groups;
         boolean filters = !keys.isEmpty() || !range.isEmpty();
         var asked = new ArrayList<String>(keys);
         addAbsent(asked, range);
         if (!groups) {
-            addAbsent(asked, demands.order());
+            addAbsent(asked, usage.order());
         }
         if (asked.isEmpty()) {
-            addAbsent(asked, demands.group());
+            addAbsent(asked, usage.group());
         }
         // The statement is in the log entry above the advice, so the advice names what the database does, not which
         // columns the statement uses them for.
@@ -357,7 +448,7 @@ final class IndexDemands {
             cost = "so the database sorts every row before it returns the first ones";
         } else if (groups) {
             cost = "so the database reads the table in full and sorts the matching rows into groups";
-        } else if (demands.equality().isEmpty() && range.isEmpty() && !sorts) {
+        } else if (usage.equality().isEmpty() && range.isEmpty() && !sorts) {
             cost = "so the database reads the table in full to find the joined rows";
         } else {
             cost = "so the database reads the table in full to find the matching rows";
@@ -379,9 +470,9 @@ final class IndexDemands {
                             : "finds them directly where the condition selects few of them", sizing.limit(single),
                     fewValued == null ? "" : fewValued);
         } else {
-            var ordered = inOrderIndex(demands, keys, inOrder);
+            var ordered = inOrderIndex(usage, keys, inOrder);
             String readInOrder = groups
-                    ? groupedRead(demands, sizing, ordered, filters)
+                    ? groupedRead(usage, sizing, ordered, filters)
                     : ("reads the rows in %s order, checks the range on each and stops at the limit, which is best "
                             + "where the range selects many of them").formatted(String.join(", ", inOrder))
                             + sizing.limit(ordered);
@@ -410,19 +501,19 @@ final class IndexDemands {
      * holds after the filter's columns: the index that continues the equality columns with the group or sort
      * columns, named as an extension of the index that holds exactly the equality columns, where one does.
      */
-    private String continuingAdvice(TableDemands demands,
+    private String continuingAdvice(TableUsage usage,
                                     Sizing sizing,
                                     List<String> keys,
                                     List<String> inOrder) {
-        String table = qualified(demands.schema(), demands.table());
-        boolean groups = !demands.group().isEmpty();
+        String table = qualified(usage.schema(), usage.table());
+        boolean groups = !usage.group().isEmpty();
         String which = keys.isEmpty()
                 ? "starts with " + String.join(", ", inOrder)
                 : "continues %s with %s".formatted(String.join(", ", keys), String.join(", ", inOrder));
         String cost = groups
                 ? "so the database sorts the matching rows into groups"
                 : "so the database sorts every matching row before it returns the first ones";
-        var ordered = inOrderIndex(demands, keys, inOrder);
+        var ordered = inOrderIndex(usage, keys, inOrder);
         String extending = null;
         if (!keys.isEmpty()) {
             for (var index : sizing.indexes().indexes()) {
@@ -434,7 +525,7 @@ final class IndexDemands {
             }
         }
         String read = groups
-                ? groupedRead(demands, sizing, ordered, true)
+                ? groupedRead(usage, sizing, ordered, true)
                 : "reads the matching rows in order and stops at the limit" + sizing.limit(ordered);
         String option = "index: %s(%s)%s %s".formatted(table, String.join(", ", ordered),
                 extending == null ? "" : ", extending " + extending + ",", read);
@@ -446,11 +537,11 @@ final class IndexDemands {
      * read a range column after them. The columns the select reads are not among them: they widen the key for the
      * last part of the gain, so the advice names them apart, for the reader to weigh.
      */
-    private static List<String> inOrderIndex(TableDemands demands, List<String> keys, List<String> inOrder) {
+    private static List<String> inOrderIndex(TableUsage usage, List<String> keys, List<String> inOrder) {
         var ordered = new ArrayList<String>(keys);
         addAbsent(ordered, inOrder);
-        if (!demands.group().isEmpty() && !demands.range().isEmpty()) {
-            addAbsent(ordered, List.of(demands.range().getFirst()));
+        if (!usage.group().isEmpty() && !usage.range().isEmpty()) {
+            addAbsent(ordered, List.of(usage.range().getFirst()));
         }
         return ordered;
     }
@@ -461,18 +552,18 @@ final class IndexDemands {
      * every column the select reads, or the select's columns appended, named apart so the reader can weigh the key
      * they add. Where the key passes the database's limit, that is said instead.
      */
-    private String groupedRead(TableDemands demands, Sizing sizing, List<String> index, boolean filters) {
+    private String groupedRead(TableUsage usage, Sizing sizing, List<String> index, boolean filters) {
         var grouped = new ArrayList<String>(index);
-        addAbsent(grouped, demands.group());
-        boolean ordersByGroup = !demands.order().isEmpty()
-                && demands.order().stream().allMatch(column -> containsIgnoreCase(grouped, column));
+        addAbsent(grouped, usage.group());
+        boolean ordersByGroup = !usage.order().isEmpty()
+                && usage.order().stream().allMatch(column -> containsIgnoreCase(grouped, column));
         String read = (filters ? "finds the matching rows and reads them already grouped" : "reads the rows already grouped")
                 + (ordersByGroup ? " and in the order the ORDER BY names" : "")
                 + ", without a temporary table or sort";
         if (sizing.passes(index)) {
             return read + sizing.limit(index);
         }
-        return read + covering(demands, sizing, index);
+        return read + covering(usage, sizing, index);
     }
 
     /**
@@ -480,9 +571,9 @@ final class IndexDemands {
      * column it reads, whether the index holds them or which to append; where part of the select is opaque, the same
      * hedged on what the select reads; and where the select names nothing, that the index must also hold its columns.
      */
-    private String covering(TableDemands demands, Sizing sizing, List<String> index) {
-        var appended = without(demands.select(), index);
-        if (demands.select().isEmpty() && !selectKnown) {
+    private String covering(TableUsage usage, Sizing sizing, List<String> index) {
+        var appended = without(usage.select(), index);
+        if (usage.select().isEmpty() && !selectKnown) {
             return "\ncovering: it reads the index alone when it also holds the columns the select reads";
         }
         if (appended.isEmpty()) {
