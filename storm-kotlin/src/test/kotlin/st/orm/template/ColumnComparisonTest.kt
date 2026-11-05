@@ -25,6 +25,7 @@ import st.orm.Operator.NOT_EQUALS
 import st.orm.PersistenceException
 import st.orm.template.model.Owner
 import st.orm.template.model.Pet
+import st.orm.template.model.Visit
 import st.orm.test.SqlCapture
 import st.orm.test.StormTest
 
@@ -37,6 +38,9 @@ internal class ColumnComparisonTest {
     private val ownerFirstName = Metamodel.of<Owner, String>(Owner::class.java, "firstName")
     private val ownerLastName = Metamodel.of<Owner, String>(Owner::class.java, "lastName")
     private val petName = Metamodel.of<Pet, String>(Pet::class.java, "name")
+    private val petOwnerId = Metamodel.of<Pet, Int>(Pet::class.java, "owner.id")
+    private val ownerId = Metamodel.of<Owner, Int>(Owner::class.java, "id")
+    private val visitDescription = Metamodel.of<Visit, String>(Visit::class.java, "description")
 
     private fun SqlCapture.sql(): String = statements().single().statement().replace(Regex("\\s+"), " ")
 
@@ -79,6 +83,29 @@ internal class ColumnComparisonTest {
         }
         counts shouldHaveSize 10
         capture.sql() shouldContain "HAVING o.first_name <> o.last_name"
+    }
+
+    @Test
+    fun `a key beyond a foreign key of a joined table is its key column`(orm: ORMTemplate, capture: SqlCapture) {
+        val visits = capture.execute {
+            orm.entity(Owner::class).select()
+                .crossJoin<Visit>()
+                .innerJoin<Pet>().on<Visit> { petOwnerId eq ownerId }
+                .resultList
+        }
+        visits shouldHaveSize 14
+        capture.sql() shouldContain "INNER JOIN pet p ON v.pet_id = p.id AND (p.owner_id = o.id)"
+        capture.sql() shouldNotContain "owner o1"
+    }
+
+    @Test
+    fun `a condition on a semi-join names the query's table`(orm: ORMTemplate, capture: SqlCapture) {
+        val visits = capture.execute {
+            orm.entity(Visit::class).select().semiJoin<Pet>().on<Visit> { petName neq visitDescription }.resultList
+        }
+        visits shouldHaveSize 14
+        capture.sql() shouldContain "WHERE p1.id = v.pet_id AND p1.name <> v.description"
+        orm.entity(Visit::class).select().antiJoin<Pet>().on<Visit> { petName eq visitDescription }.resultList shouldHaveSize 14
     }
 
     @Test

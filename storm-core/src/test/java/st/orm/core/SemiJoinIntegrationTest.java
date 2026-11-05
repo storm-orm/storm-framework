@@ -20,6 +20,7 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static st.orm.Operator.EQUALS;
+import static st.orm.Operator.NOT_EQUALS;
 import static st.orm.ResolveScope.INNER;
 import static st.orm.ResolveScope.OUTER;
 import static st.orm.core.template.SqlInterceptor.observe;
@@ -884,6 +885,24 @@ public class SemiJoinIntegrationTest {
                 .semiJoin(Visit.class).on(Pet.class)
                 .semiJoin(Tenant.class).on(Visit.class));
         assertTrue(e.getMessage().contains("semiJoin(Tenant).on(Visit): no foreign key relates Tenant and Visit"), e.getMessage());
+    }
+
+    @Test
+    public void filterJoinConditionNamesTheQueryTable() {
+        var visitCount = orm().entity(Visit.class).select().getResultCount();
+        var visits = capture(() -> orm().entity(Visit.class).select()
+                .semiJoin(Pet.class).on(Visit.class, it -> it.where(Pet_.name, NOT_EQUALS, Visit_.description))
+                .getResultList());
+        assertEquals(visitCount, visits.size());
+        assertTrue(statement().contains("WHERE p1.id = v.pet_id AND p1.name <> v.description"), statement());
+        var named = orm().entity(Visit.class).select()
+                .semiJoin(Pet.class).on(Visit.class, it -> it.where(Pet_.name, EQUALS, Visit_.description))
+                .getResultCount();
+        assertEquals(0, named);
+        var unnamed = orm().entity(Visit.class).select()
+                .antiJoin(Pet.class).on(Visit.class, it -> it.where(Pet_.name, EQUALS, Visit_.description))
+                .getResultCount();
+        assertEquals(visitCount, unnamed);
     }
 
     @Test

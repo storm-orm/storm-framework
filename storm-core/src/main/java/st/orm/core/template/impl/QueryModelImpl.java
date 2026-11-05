@@ -18,6 +18,7 @@ package st.orm.core.template.impl;
 import static java.util.Arrays.asList;
 import static st.orm.ResolveScope.CASCADE;
 import static st.orm.ResolveScope.INNER;
+import static st.orm.ResolveScope.OUTER;
 import static st.orm.core.template.Templates.alias;
 import static st.orm.core.template.Templates.param;
 import static st.orm.core.template.impl.RecordReflection.getDiscriminatorType;
@@ -318,8 +319,9 @@ final class QueryModelImpl implements QueryModel {
      * Returns the qualified columns of the path, resolved at the occurrence the path reaches.
      */
     private List<String> qualifiedColumns(Metamodel<?, ?> metamodel) throws SqlTemplateException {
-        var model = getModel(metamodel);
-        Metamodel<?, ?> navigated = isOwnModel(metamodel) ? null : metamodel;
+        var resolved = MetamodelFactory.canonical(metamodel);
+        var model = getModel(resolved);
+        Metamodel<?, ?> navigated = isOwnModel(resolved) ? null : resolved;
         List<String> columns = new ArrayList<>();
         for (var column : model.getColumns(metamodel)) {
             columns.add(toFullyQualifiedColumn(column, navigated));
@@ -431,8 +433,11 @@ final class QueryModelImpl implements QueryModel {
         // value, so the database computes both sides alike.
         Metamodel<?, ?> path = metamodel;
         metamodel = FunctionCalls.column(path);
+        // The key of a table reached through a foreign key is the foreign key column, which belongs to the table
+        // holding the key: the column resolves in that table's model and at that table's occurrence.
+        var resolved = MetamodelFactory.canonical(metamodel);
         //noinspection DuplicatedCode
-        Model<Data, ?> model = getModel(metamodel);
+        Model<Data, ?> model = getModel(resolved);
         // A query column that names a function takes each value a caller supplies through it, on the value side
         // only; a value read from a row is in the column's form already.
         String valueFunction = fromRow ? "" : valueFunction(model, metamodel);
@@ -440,7 +445,7 @@ final class QueryModelImpl implements QueryModel {
         // it was navigated from. Keep them so the column resolves against the occurrence the path reaches: the
         // joined occurrence rather than the root one beyond a reference, the occurrence the path from an explicitly
         // joined table reaches otherwise.
-        Metamodel<?, ?> navigated = isOwnModel(metamodel) ? null : metamodel;
+        Metamodel<?, ?> navigated = isOwnModel(resolved) ? null : resolved;
         List<SequencedMap<String, Object>> multiValues = new ArrayList<>();
         List<Object> values = new ArrayList<>();
         String column = null;
@@ -607,7 +612,7 @@ final class QueryModelImpl implements QueryModel {
                                       TemplateBinder binder) throws SqlTemplateException {
         Metamodel<?, ?> path = metamodel;
         metamodel = FunctionCalls.column(path);
-        var model = getModel(metamodel);
+        var model = getModel(MetamodelFactory.canonical(metamodel));
         boolean valueFunction = !fromRow && !valueFunction(model, metamodel).isEmpty();
         List<SequencedMap<String, Object>> multiValues = null;
         List<Object> singleValues = new ArrayList<>();
@@ -860,6 +865,11 @@ final class QueryModelImpl implements QueryModel {
      * for a table joined to itself. Resolving at the navigated metamodel selects the occurrence that the join was
      * generated for: at the path the reference was navigated from, or at the path from the explicitly joined table
      * the metamodel is rooted at.</p>
+     *
+     * <p>A column navigated from a table other than the query's own that the query does not hold at the path names
+     * the nearest enclosing query that holds it, as SQL resolves a name in the nearest enclosing scope: the subquery
+     * is correlated on that query's row. It never resolves to the query's own table, nor to a table of the same type
+     * reached another way, since the row at the navigated path is a different one.</p>
      */
     private ColumnExpression toColumnExpression(Column column, @Nullable Metamodel<?, ?> navigated) {
         try {
@@ -868,6 +878,13 @@ final class QueryModelImpl implements QueryModel {
             if (navigated != null) {
                 if (navigated.root() != model.type()) {
                     alias = aliasMapper.findAlias(navigated.root(), navigated.tableType(), navigated.path()).orElse(null);
+                    if (alias == null) {
+                        alias = aliasMapper.findAlias(navigated.root(), navigated.tableType(), navigated.path(), OUTER).orElse(null);
+                    }
+                    if (alias == null) {
+                        throw new SqlTemplateException("Cannot find alias for column %s at %s: %s is not part of this query rooted at %s. Join the table or correct the metamodel path.".formatted(
+                                column.qualifiedName(template.dialect()), navigated, metamodel.tableType().getSimpleName(), model.type().getSimpleName()));
+                    }
                 } else if (!navigated.path().isEmpty()) {
                     alias = aliasMapper.findAlias(navigated.tableType(), navigated.path(), INNER).orElse(null);
                 }

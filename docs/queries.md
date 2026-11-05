@@ -321,7 +321,9 @@ INNER JOIN pet p ON v.pet_id = p.id
 WHERE v.vet_id = p.regular_vet_id
 ```
 
-The same comparison goes in `having` and in a join condition. An invoice per pet and vet, read next to the visits, is the one sharing both keys with the visit: the join matches the first pair of keys, and the condition the second.
+The key of a table reached through a foreign key is the foreign key column itself: `Pet_.owner.id` is `p.owner_id`, wherever the pet is in the query, so comparing it joins nothing.
+
+The same comparison goes in `having` and in a join condition, on a semi-join or anti-join as well, where the condition is placed in the join's subquery and a column of the query's own table names the row the subquery is correlated on. An invoice per pet and vet, read next to the visits, is the one sharing both keys with the visit: the join matches the first pair of keys, and the condition the second.
 
 <Tabs groupId="language">
 <TabItem value="kotlin" label="Kotlin" default>

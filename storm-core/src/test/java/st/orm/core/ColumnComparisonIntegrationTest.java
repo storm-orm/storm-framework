@@ -20,6 +20,7 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static st.orm.Operator.EQUALS;
+import static st.orm.Operator.IS_NOT_NULL;
 import static st.orm.Operator.NOT_EQUALS;
 import static st.orm.core.template.SqlInterceptor.observe;
 import static st.orm.core.template.TemplateString.raw;
@@ -136,6 +137,41 @@ public class ColumnComparisonIntegrationTest {
                 .getResultList());
         assertEquals(10, counts.size());
         assertTrue(statement().contains("HAVING o.first_name <> o.last_name"), statement());
+    }
+
+    @Test
+    public void keyBeyondAForeignKeyOfAJoinedTableIsItsKeyColumn() {
+        var visitsOfOwnedPets = orm().entity(Visit.class).select()
+                .where(Visit_.pet.owner.firstName, IS_NOT_NULL)
+                .getResultCount();
+        var visits = capture(() -> orm().entity(Owner.class).select()
+                .crossJoin(Visit.class)
+                .innerJoin(Pet.class).on(Visit.class, it -> it.where(Pet_.owner.id, EQUALS, Owner_.id))
+                .getResultList());
+        assertEquals(visitsOfOwnedPets, visits.size());
+        assertTrue(visitsOfOwnedPets > 0);
+        assertTrue(statement().contains("INNER JOIN pet p ON v.pet_id = p.id AND (p.owner_id = o.id)"), statement());
+        var petsOfOwner = orm().entity(Pet.class).select()
+                .where(Pet_.owner, orm().entity(Owner.class).getById(1))
+                .getResultCount();
+        var owners = orm().entity(Owner.class).select().getResultCount();
+        var pairs = capture(() -> orm().entity(Owner.class).select()
+                .crossJoin(Pet.class)
+                .where(Pet_.owner.id, EQUALS, 1)
+                .getResultList());
+        assertEquals(owners * petsOfOwner, pairs.size());
+        assertTrue(statement().contains("WHERE p.owner_id = ?"), statement());
+        assertFalse(statement().contains("JOIN owner o1"), statement());
+    }
+
+    @Test
+    public void columnBeyondAKeyOfAJoinedTableIsRefusedInAJoinCondition() {
+        var e = assertThrows(PersistenceException.class, () -> orm().entity(Owner.class).select()
+                .crossJoin(Visit.class)
+                .innerJoin(Pet.class).on(Visit.class, it -> it.where(Pet_.owner.firstName, EQUALS, Owner_.firstName))
+                .getResultList());
+        var message = e.getCause().getMessage();
+        assertTrue(message.contains("Owner is not part of this query rooted at Owner"), message);
     }
 
     @Test
