@@ -1,8 +1,13 @@
 package st.orm.template
 
+import ch.qos.logback.classic.Level
+import ch.qos.logback.classic.LoggerContext
+import ch.qos.logback.classic.spi.ILoggingEvent
+import ch.qos.logback.core.read.ListAppender
 import io.kotest.matchers.booleans.shouldBeFalse
 import io.kotest.matchers.booleans.shouldBeTrue
 import io.kotest.matchers.longs.shouldBeLessThan
+import io.kotest.matchers.shouldBe
 import io.kotest.matchers.shouldNotBe
 import io.kotest.matchers.string.shouldContain
 import io.kotest.matchers.string.shouldStartWith
@@ -12,6 +17,7 @@ import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.assertThrows
 import org.junit.jupiter.api.extension.ExtendWith
+import org.slf4j.LoggerFactory
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.test.context.ContextConfiguration
 import org.springframework.test.context.jdbc.Sql
@@ -21,10 +27,12 @@ import st.orm.TransactionIsolation.*
 import st.orm.TransactionPropagation.*
 import st.orm.TransactionTimedOutException
 import st.orm.UnexpectedRollbackException
+import st.orm.core.template.impl.SlowStatementLog
 import st.orm.repository.countAll
 import st.orm.repository.exists
 import st.orm.repository.removeAll
 import st.orm.template.model.Visit
+import java.time.Duration
 import java.util.concurrent.CompletableFuture
 
 @ExtendWith(SpringExtension::class)
@@ -493,17 +501,42 @@ internal open class TransactionTest(
     @Test
     fun `cancelled suspend transaction stops its running statement and rolls back`(): Unit = runBlocking {
         val started = System.nanoTime()
-        assertThrows<TimeoutCancellationException> {
-            withTimeout(500) {
-                transaction {
-                    orm.removeAll<Visit>()
-                    orm.query(SLOW_STATEMENT).singleResult
+        // The slow log reports the stopped statement as cancelled, in one line below the warnings, not as failed.
+        val context = LoggerFactory.getILoggerFactory() as LoggerContext
+        val logger = context.getLogger("st.orm.sql.slow")
+        val appender = ListAppender<ILoggingEvent>()
+        appender.context = context
+        appender.start()
+        val previousLevel = logger.level
+        val previousThreshold = SlowStatementLog.threshold()
+        logger.level = Level.DEBUG
+        logger.addAppender(appender)
+        logger.isAdditive = false
+        SlowStatementLog.threshold(Duration.ofNanos(1))
+        try {
+            assertThrows<TimeoutCancellationException> {
+                withTimeout(500) {
+                    transaction {
+                        orm.removeAll<Visit>()
+                        orm.query(SLOW_STATEMENT).singleResult
+                    }
                 }
             }
+        } finally {
+            SlowStatementLog.threshold(previousThreshold)
+            logger.detachAppender(appender)
+            logger.isAdditive = true
+            logger.level = previousLevel
+            appender.stop()
         }
         // The statement was stopped long before it would have completed, and the delete rolled back with it.
         (System.nanoTime() - started).shouldBeLessThan(10_000_000_000L)
         orm.exists<Visit>().shouldBeTrue()
+        val cancelled = appender.list.filter { it.formattedMessage.startsWith("SQL cancelled (") }
+        cancelled.size shouldBe 1
+        cancelled.single().level shouldBe Level.DEBUG
+        cancelled.single().formattedMessage.shouldContain(") after ")
+        appender.list.none { it.formattedMessage.contains("failed (") }.shouldBeTrue()
     }
 
     @Test

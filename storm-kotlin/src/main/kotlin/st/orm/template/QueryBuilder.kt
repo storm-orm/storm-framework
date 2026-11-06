@@ -1835,11 +1835,12 @@ public fun <T : Data> search(
 
 /**
  * Creates a predicate that matches the words of a search box that queries as the user types, such as an auto-complete,
- * against one or more text columns. Every word of two characters or more matches at the start of a word in one of
- * the columns, the same rows on every database: `suggest("van b", Owner_.lastName)` finds "Van den Berg" and
- * not "Sullivan". The input is read as [search] reads it. A one-character word takes no part, and an input without a
- * word that takes part, an empty one included, matches no rows, so the box never fetches and sorts a whole table on
- * the first keystroke. The overload taking a [Match] per column states another match form.
+ * against one or more text columns. Every word matches at the start of a word in one of the columns, the same rows
+ * on every database: `suggest("van b", Owner_.lastName)` finds "Van den Berg" and not "Sullivan". The input is read
+ * as [search] reads it. An input without a word of three characters matches the whole input as the start of the value, ignoring case, and a shorter word next to one that
+ * reaches the length is tested only on the rows the longer word found. An empty input, or one of a single character,
+ * matches no rows, so the box never fetches and sorts a whole table on the first keystroke. The overload
+ * taking a [Match] per column states another match form.
  *
  * @param input the search input, as a search box receives it.
  * @param path the first text column to search.
@@ -1855,8 +1856,7 @@ public fun <T : Data> suggest(
 /**
  * Creates a predicate that matches the words of a search box that queries as the user types against one or more text
  * columns, as [suggest] does, ignoring the given words as well. A word that equals one of them, ignoring case, takes
- * no part in the predicate, as a one-character word takes none, so an input of ignored words alone matches
- * no rows; a quoted word is never ignored. A search box names the words that occur in a large share of its rows, such
+ * no part in the predicate, so an input of ignored words alone matches no rows; a quoted word is never ignored. A search box names the words that occur in a large share of its rows, such
  * as "van" in a list of last names, which narrow nothing: `suggest("van berg", setOf("van", "de", "der"), Owner_.lastName)`
  * matches on "berg" alone.
  *
@@ -1914,9 +1914,11 @@ public fun <T : Data> suggest(
  * `LOWER(column) LIKE LOWER('%word%')`.
  *
  * @param path the text column.
+ * @param minLength the shortest word, in characters, the column takes, `0` for any length. A shorter word does not
+ *   match the column, and where no word reaches it, the column takes no part in the statement.
  * @since 1.16
  */
-public fun <T : Data> anywhere(path: Navigable<T, String>): Match<T> = Match.anywhere(path)
+public fun <T : Data> anywhere(path: Navigable<T, String>, minLength: Int = 0): Match<T> = Match.anywhere(path, minLength)
 
 /**
  * States that a word of a [search] or [suggest] matches at the start of any word in the column's value, the value's
@@ -1924,9 +1926,11 @@ public fun <T : Data> anywhere(path: Navigable<T, String>): Match<T> = Match.any
  * `LOWER(column) LIKE LOWER('word%') OR LOWER(column) LIKE LOWER('% word%')`.
  *
  * @param path the text column.
+ * @param minLength the shortest word, in characters, the column takes, `0` for any length. A shorter word does not
+ *   match the column, and where no word reaches it, the column takes no part in the statement.
  * @since 1.16
  */
-public fun <T : Data> wordStart(path: Navigable<T, String>): Match<T> = Match.wordStart(path)
+public fun <T : Data> wordStart(path: Navigable<T, String>, minLength: Int = 0): Match<T> = Match.wordStart(path, minLength)
 
 /**
  * States that a word of a [search] or [suggest] matches as a prefix of the column's value, with the column bare and
@@ -1934,9 +1938,11 @@ public fun <T : Data> wordStart(path: Navigable<T, String>): Match<T> = Match.wo
  * compares case-insensitively on its own, through its collation or as a stored lowered column.
  *
  * @param path the text column.
+ * @param minLength the shortest word, in characters, the column takes, `0` for any length. A shorter word does not
+ *   match the column, and where no word reaches it, the column takes no part in the statement.
  * @since 1.16
  */
-public fun <T : Data> prefix(path: Navigable<T, String>): Match<T> = Match.prefix(path)
+public fun <T : Data> prefix(path: Navigable<T, String>, minLength: Int = 0): Match<T> = Match.prefix(path, minLength)
 
 /**
  * States that a word of a [search] or [suggest] matches the column's whole value, with the column bare and the word
@@ -1944,9 +1950,11 @@ public fun <T : Data> prefix(path: Navigable<T, String>): Match<T> = Match.prefi
  * case-insensitively on its own, through its collation or as a stored lowered column.
  *
  * @param path the text column.
+ * @param minLength the shortest word, in characters, the column takes, `0` for any length. A shorter word does not
+ *   match the column, and where no word reaches it, the column takes no part in the statement.
  * @since 1.16
  */
-public fun <T : Data> exact(path: Navigable<T, String>): Match<T> = Match.exact(path)
+public fun <T : Data> exact(path: Navigable<T, String>, minLength: Int = 0): Match<T> = Match.exact(path, minLength)
 
 /**
  * Applies a SQL function to a column, for a query that names the expression an index is built on. The call is taken

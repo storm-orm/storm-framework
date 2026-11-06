@@ -45,6 +45,7 @@ import st.orm.PersistenceException;
 import st.orm.ReadOnlyTransactionException;
 import st.orm.Transaction;
 import st.orm.TransactionOptions;
+import st.orm.TransactionTimedOutException;
 import st.orm.core.spi.JdbcConnectionProviderImpl;
 import st.orm.core.spi.JdbcTransactionTemplateProviderImpl;
 import st.orm.core.spi.TransactionRunner;
@@ -165,6 +166,14 @@ public abstract class AbstractTransactionConformanceTest {
      */
     protected Optional<String> slowStatement() {
         return Optional.empty();
+    }
+
+    /**
+     * Whether the driver stops a statement at its query timeout. A driver that reads the timeout as the time to
+     * wait for a lock lets the statement run to its end, and the block completes with a timeout only then.
+     */
+    protected boolean stopsStatementAtTimeout() {
+        return true;
     }
 
     @Test
@@ -292,6 +301,23 @@ public abstract class AbstractTransactionConformanceTest {
             assertEquals(seeded + 1, orm.entity(Vet.class).count());
             removeInsertedRows(orm);
         }
+    }
+
+    /**
+     * A statement that runs past the transaction's timeout completes the block with a timeout on every database,
+     * whether the driver reports a timeout exception or the cancellation of the statement.
+     */
+    @Test
+    public void aStatementPastTheTimeoutCompletesWithATimeout() {
+        var statement = slowStatement();
+        assumeTrue(statement.isPresent() && stopsStatementAtTimeout());
+        var orm = template(dataSource);
+        long started = System.nanoTime();
+        var exception = assertThrows(TransactionTimedOutException.class, () ->
+                TransactionRunner.<Object, RuntimeException>execute(new TransactionOptions(REQUIRED, null, 2, false),
+                        transaction -> orm.query(TemplateString.of(statement.get())).getResultList()));
+        assertTrue(exception.getMessage().contains("timeout=2s"), exception.getMessage());
+        assertTrue(NANOSECONDS.toSeconds(System.nanoTime() - started) < 20, "stopped within 20 seconds");
     }
 
     @Test

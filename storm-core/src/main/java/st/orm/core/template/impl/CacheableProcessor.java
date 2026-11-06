@@ -27,6 +27,8 @@ import st.orm.core.template.TemplateString;
 import st.orm.core.template.impl.BindHint.NoBindHint;
 import st.orm.core.template.impl.Elements.ObjectExpression;
 import st.orm.core.template.impl.Elements.PathExpression;
+import st.orm.core.template.impl.Elements.PositionExpression;
+import st.orm.core.template.impl.Elements.RankingExpression;
 import st.orm.core.template.impl.Elements.SearchExpression;
 import st.orm.core.template.impl.Elements.TemplateExpression;
 
@@ -79,21 +81,37 @@ final class CacheableProcessor implements ElementProcessor<Cacheable> {
             case TemplateExpression it -> keyGenerator.apply(it.template());
             // Two columns of the query compile the same whenever the paths and the operator are the same.
             case PathExpression(var path, var operator, var other) -> List.of(path, operator, other);
-            case ObjectExpression(var metamodel, var operator, var object, var indexable, var fromRow) -> {
-                var objectShape = getObjectShape(object, ignoreArity);
-                if (objectShape == null) {
-                    yield null;
-                }
-                // Whether the comparison asks for an index, and whether its value came from a row, are part of what it
-                // compiles to.
-                if (metamodel == null) {
-                    yield List.of(operator, objectShape, indexable, fromRow);
-                }
-                yield List.of(metamodel, operator, objectShape, indexable, fromRow);
-            }
+            case ObjectExpression it -> comparisonKey(it, ignoreArity);
+            // A ranking comparison asks no index, and a position compares its value as read: each compiles apart
+            // from the plain comparison.
+            case RankingExpression(var it) -> keyOf(RankingExpression.class, comparisonKey(it, ignoreArity));
+            case PositionExpression(var it) -> keyOf(PositionExpression.class, comparisonKey(it, ignoreArity));
             // A search word compiles the same for every word: the column and its match form are the shape.
             case SearchExpression(var match, var ignore) -> List.of(match);
         };
+    }
+
+    /**
+     * Returns the key of a value comparison: the column, the operator and the shape of the value, or {@code null}
+     * when the value has no shape the cache can key on.
+     */
+    private static @Nullable Object comparisonKey(ObjectExpression expression, boolean ignoreArity)
+            throws SqlTemplateException {
+        var objectShape = getObjectShape(expression.object(), ignoreArity);
+        if (objectShape == null) {
+            return null;
+        }
+        if (expression.metamodel() == null) {
+            return List.of(expression.operator(), objectShape);
+        }
+        return List.of(expression.metamodel(), expression.operator(), objectShape);
+    }
+
+    /**
+     * Returns the key of a comparison of the given kind, or {@code null} when the comparison has none.
+     */
+    private static @Nullable Object keyOf(Class<?> kind, @Nullable Object comparisonKey) {
+        return comparisonKey == null ? null : List.of(kind, comparisonKey);
     }
 
     /**

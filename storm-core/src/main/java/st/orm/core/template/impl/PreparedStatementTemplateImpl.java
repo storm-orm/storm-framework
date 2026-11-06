@@ -373,7 +373,7 @@ public final class PreparedStatementTemplateImpl implements PreparedStatementTem
             PreparedStatement preparedStatement = null;
             boolean success = false;
             try {
-                if (transactionContext != null && transactionContext.takeFreshTransaction()
+                if (transactionContext != null && transactionContext.beginsTransaction()
                         && transactionContext.isReadOnly()) {
                     openReadOnlyTransaction(connection, dialect);
                 }

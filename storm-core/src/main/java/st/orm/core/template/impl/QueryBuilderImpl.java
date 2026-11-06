@@ -58,7 +58,9 @@ import st.orm.core.template.WhereBuilder;
 import st.orm.core.template.impl.Elements.Expression;
 import st.orm.core.template.impl.Elements.ObjectExpression;
 import st.orm.core.template.impl.Elements.PathExpression;
+import st.orm.core.template.impl.Elements.PositionExpression;
 import st.orm.core.template.impl.Elements.PredicateTarget;
+import st.orm.core.template.impl.Elements.RankingExpression;
 import st.orm.core.template.impl.Elements.Subquery;
 import st.orm.core.template.impl.Elements.TableSource;
 import st.orm.core.template.impl.Elements.TableTarget;
@@ -247,7 +249,7 @@ abstract class QueryBuilderImpl<T extends Data, R, ID> extends QueryBuilder<T, R
         int field = index - ranks.size();
         // The value was read from a row, so it is in the column's form already and is compared as it is, without the
         // function a query column names for the values a caller supplies.
-        return new PredicateBuilderImpl<>(wrap(new ObjectExpression(orders.get(field).field(), operator, new Object[] {values.get(field)}, true, true)));
+        return new PredicateBuilderImpl<>(wrap(new PositionExpression(new ObjectExpression(orders.get(field).field(), operator, new Object[] {values.get(field)}))));
     }
 
     /**
@@ -488,9 +490,7 @@ abstract class QueryBuilderImpl<T extends Data, R, ID> extends QueryBuilder<T, R
      * Appends the registered joins and the WHERE clause, with multiple where-conditions AND-ed together, to the
      * given template.
      */
-    protected final TemplateString appendJoinsAndWhere(TemplateString template, StatementFacts.Collector facts) {
-        // Which search terms a substring index serves depends on the dialect, so a search resolves its words here.
-        var where = resolveSearches(this.where, queryTemplate.dialect().minimumSearchTermLength());
+    protected final TemplateString appendJoinsAndWhere(TemplateString template) {
         var filterJoins = join.stream().filter(FilterJoinPlacement::isFilterJoin).toList();
         var joins = filterJoins.isEmpty() ? join : join.stream().filter(it -> !FilterJoinPlacement.isFilterJoin(it)).toList();
         if (!joins.isEmpty()) {
@@ -504,7 +504,8 @@ abstract class QueryBuilderImpl<T extends Data, R, ID> extends QueryBuilder<T, R
             clauses.addAll(groupBy);
             clauses.addAll(having);
             clauses.addAll(orderBy);
-            var whereClause = FilterJoinPlacement.where(queryTemplate, fromType, join, where, clauses, subqueriesMayReadTable());
+            // The placement resolves the searches, since a semi-join takes no part where a search leaves out its columns.
+            var whereClause = FilterJoinPlacement.where(queryTemplate, fromType, join, this.where, clauses, subqueriesMayReadTable());
             if (whereClause == null) {
                 return template;
             }
@@ -513,6 +514,8 @@ abstract class QueryBuilderImpl<T extends Data, R, ID> extends QueryBuilder<T, R
             return TemplateString.combine(template, TemplateString.of("\nWHERE "),
                     wrap(new Where(new TemplateExpression(whereClause), null)));
         }
+        // Which search terms a substring index serves depends on the dialect, so a search resolves its words here.
+        var where = resolveSearches(this.where, queryTemplate.dialect().minimumSearchTermLength());
         if (where.isEmpty() && isSingleTableSubtype()) {
             // A statement on a subtype of a single-table hierarchy selects the subtype's rows by the discriminator,
             // which its WHERE clause carries: without a condition, the clause holds the discriminator alone.
@@ -663,8 +666,22 @@ abstract class QueryBuilderImpl<T extends Data, R, ID> extends QueryBuilder<T, R
     @Override
     public QueryBuilder<T, R, ID> orderFirst(PredicateBuilder<? extends T, ?, ?> predicate) {
         requireNonNull(predicate, "predicate");
+        refuseSearch(((PredicateBuilderImpl<?, ?, ?>) predicate).node(), "orderFirst",
+                "Filter with where(search(...)), and rank with startsWithIgnoreCase or equalsIgnoreCase.");
         return orderFirstKey(TemplateString.combine(TemplateString.of("CASE WHEN "),
                 ranking(((PredicateBuilderImpl<?, ?, ?>) predicate).asTemplate()), TemplateString.of(" THEN 0 ELSE 1 END")));
+    }
+
+    /**
+     * Refuses a predicate that holds a search or a suggestion where the query does not filter its rows by it. A search
+     * resolves its words by the dialect's substring index and the lengths its columns state, which only a condition
+     * that filters rows applies: {@code where}, and the condition of a semi-join or anti-join.
+     */
+    private static void refuseSearch(PredicateNode node, String clause, String fix) {
+        if (PredicateNode.holdsSearch(node)) {
+            throw new PersistenceException("%s takes no search or suggest, which filter the query's rows by what a user typed. %s"
+                    .formatted(clause, fix));
+        }
     }
 
     /**
@@ -678,7 +695,7 @@ abstract class QueryBuilderImpl<T extends Data, R, ID> extends QueryBuilder<T, R
         for (var value : values) {
             // A predicate carries its comparisons as object expressions; the rest of its values render as they are.
             if (value instanceof ObjectExpression expression) {
-                ranked.add(expression.ranking());
+                ranked.add(new RankingExpression(expression));
                 changed = true;
             } else {
                 ranked.add(value);
@@ -939,13 +956,16 @@ abstract class QueryBuilderImpl<T extends Data, R, ID> extends QueryBuilder<T, R
                                                 Function<WhereBuilder<Data, R, ID>, PredicateBuilder<Data, ?, ?>> condition) {
                 requireNonNull(onRelation, "onRelation");
                 requireNonNull(condition, "condition");
-                return addJoin(new Join(new TableSource(relation), alias, new TableTarget(onRelation, null, null, node(condition)), type, false));
+                var node = node(condition);
+                refuseSearchInJoin(node);
+                return addJoin(new Join(new TableSource(relation), alias, new TableTarget(onRelation, null, null, node), type, false));
             }
 
             @Override
             public QueryBuilder<Data, R, ID> on(Function<WhereBuilder<Data, R, ID>, PredicateBuilder<Data, ?, ?>> predicate) {
                 requireNonNull(predicate, "predicate");
                 var node = node(predicate);
+                refuseSearchInJoin(node);
                 var resolved = JoinKeys.resolve(queryTemplate, relation, fromType, node);
                 if (resolved.keys() == null) {
                     if (type instanceof FilterJoinType filterJoinType) {
@@ -960,6 +980,16 @@ abstract class QueryBuilderImpl<T extends Data, R, ID> extends QueryBuilder<T, R
             }
 
             @SuppressWarnings("unchecked")
+            /**
+             * Refuses a search in the condition of a join that adds rows. A semi-join or anti-join filters the query's
+             * rows by its condition, and resolves a search in it as {@code where} does.
+             */
+            private void refuseSearchInJoin(PredicateNode node) {
+                if (!(type instanceof FilterJoinType)) {
+                    refuseSearch(node, "A join condition", "Use them in where, or in the condition of a semiJoin or antiJoin.");
+                }
+            }
+
             private PredicateNode node(Function<WhereBuilder<Data, R, ID>, PredicateBuilder<Data, ?, ?>> condition) {
                 var whereBuilder = new WhereBuilderImpl<>((QueryBuilderImpl<Data, R, ID>) widen());
                 return ((PredicateBuilderImpl<?, ?, ?>) condition.apply(whereBuilder)).node();
@@ -1250,6 +1280,7 @@ abstract class QueryBuilderImpl<T extends Data, R, ID> extends QueryBuilder<T, R
      */
     private QueryBuilder<T, R, ID> addHaving(PredicateBuilder<?, ?, ?> predicate) {
         requireNonNull(predicate, "predicate");
+        refuseSearch(((PredicateBuilderImpl<?, ?, ?>) predicate).node(), "having", "Use them in where.");
         return having(((PredicateBuilderImpl<?, ?, ?>) predicate).asTemplate());
     }
 }

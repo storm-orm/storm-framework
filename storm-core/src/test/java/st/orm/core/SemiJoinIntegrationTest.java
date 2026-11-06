@@ -42,6 +42,7 @@ import org.springframework.test.context.junit.jupiter.SpringExtension;
 import st.orm.Data;
 import st.orm.Entity;
 import st.orm.FK;
+import st.orm.Match;
 import st.orm.Metamodel;
 import st.orm.PK;
 import st.orm.PersistenceException;
@@ -207,6 +208,62 @@ public class SemiJoinIntegrationTest {
     }
 
     @Test
+    public void aColumnNoWordReachesTakesNoPartWithItsRelatedTable() {
+        // The pet name takes words of three characters, so a shorter one leaves the pets out of the statement.
+        var owners = capture(() -> ownersWithPets()
+                .where(it -> PredicateBuilderFactory.<Data, Owner, Integer>suggest("le", Set.of(),
+                        Match.wordStart(Owner_.lastName), Match.wordStart(Pet_.name, 3)))
+                .getResultList());
+        assertEquals(List.of(), firstNames(owners));
+        assertFalse(statement().contains("p.name"), statement());
+        owners = capture(() -> ownersWithPets()
+                .where(it -> PredicateBuilderFactory.<Data, Owner, Integer>suggest("leo", Set.of(),
+                        Match.wordStart(Owner_.lastName), Match.wordStart(Pet_.name, 3)))
+                .getResultList());
+        assertEquals(List.of("Betty"), firstNames(owners));
+        // Per word: next to davis, le reaches the owner's name only, which it does not match.
+        owners = capture(() -> ownersWithPets()
+                .where(it -> PredicateBuilderFactory.<Data, Owner, Integer>search("davis le",
+                        Match.anywhere(Owner_.lastName), Match.anywhere(Pet_.name, 3)))
+                .getResultList());
+        assertEquals(List.of(), firstNames(owners));
+    }
+
+    @Test
+    public void aDeclaredSemiJoinNoWordReachesTakesNoPartWithItsCondition() {
+        // Only Jean has a pet named Max; da reaches the owner's name alone, so the semi-join and its condition go.
+        var owners = capture(() -> orm().entity(Owner.class).select()
+                .semiJoin(Pet.class).on(Owner.class, it -> it.where(Pet_.name, EQUALS, "Max"))
+                .where(it -> PredicateBuilderFactory.<Data, Owner, Integer>suggest("da", Set.of(),
+                        Match.wordStart(Owner_.lastName), Match.wordStart(Pet_.name, 3)))
+                .getResultList());
+        assertEquals(List.of("Betty", "Harold"), firstNames(owners));
+        assertFalse(statement().contains("pet p"), statement());
+        // A word that reaches the pet name keeps the semi-join and its condition.
+        owners = capture(() -> orm().entity(Owner.class).select()
+                .semiJoin(Pet.class).on(Owner.class, it -> it.where(Pet_.name, EQUALS, "Max"))
+                .where(it -> PredicateBuilderFactory.<Data, Owner, Integer>suggest("max", Set.of(),
+                        Match.wordStart(Owner_.lastName), Match.wordStart(Pet_.name, 3)))
+                .getResultList());
+        assertEquals(List.of("Jean"), firstNames(owners));
+    }
+
+    @Test
+    public void aWordNoColumnTakesIsLeftOut() {
+        var owners = capture(() -> ownersWithPets()
+                .where(it -> PredicateBuilderFactory.<Data, Owner, Integer>search("davis le",
+                        Match.anywhere(Owner_.lastName, 3), Match.anywhere(Pet_.name, 3)))
+                .getResultList());
+        assertEquals(List.of("Betty", "Harold"), firstNames(owners));
+        // An input whose words no column takes matches no rows.
+        owners = capture(() -> ownersWithPets()
+                .where(it -> PredicateBuilderFactory.<Data, Owner, Integer>search("le",
+                        Match.anywhere(Owner_.lastName, 3), Match.anywhere(Pet_.name, 3)))
+                .getResultList());
+        assertEquals(List.of(), firstNames(owners));
+    }
+
+    @Test
     public void joinConditionLimitsTheRelatedRowsEachWordMatches() {
         // data.sql: owner 6 (Jean Coleman) has pets Samantha and Max.
         var maxOnly = orm().entity(Owner.class).select()
@@ -231,13 +288,13 @@ public class SemiJoinIntegrationTest {
 
     @Test
     public void suggestMatchesAWordAtTheStartOfAWordOnEveryDialect() {
-        // The short word matches pet Leo at the start of a word, where search matched Coleman anywhere; a dialect
-        // with a substring index matches the same rows.
+        // The short word matches pet Leo at the start of a word, on the rows "davis" found, where search matched
+        // Coleman anywhere; a dialect with a substring index matches the same rows.
         var owners = capture(() -> ownersWithPets()
                 .where(it -> suggest("davis le", Owner_.lastName, Pet_.name))
                 .getResultList());
         assertEquals(List.of("Betty"), firstNames(owners));
-        assertFalse(statement().contains("EXISTS"), statement());
+        assertTrue(statement().contains("EXISTS"), statement());
         assertEquals(List.of("Betty"), firstNames(ownersWithPets(trigramOrm())
                 .where(it -> suggest("davis le", Owner_.lastName, Pet_.name))
                 .getResultList()));

@@ -437,4 +437,17 @@ public class PostgreSQLSqlDialect extends DefaultSqlDialect {
     public String wordStartMatch(String expression, String word, Function<String, String> bind) {
         return "LOWER(%s) ~ LOWER(%s)".formatted(expression, bind.apply(SqlDialect.wordStartRegex(word)));
     }
+
+    /**
+     * Renders an expression over bound values as a scalar subquery, which PostgreSQL computes once per execution, as
+     * an InitPlan, before it reads the rows. A generic plan, which the driver's prepared statement may use after a few
+     * executions, cannot fold a function of a parameter into a constant, and computes it again for every row it
+     * rechecks; a trigram or an ordinary index takes the subquery's result as it takes a bound value.
+     *
+     * @since 1.16
+     */
+    @Override
+    public String computedOnce(String expression) {
+        return "(SELECT " + expression + ")";
+    }
 }

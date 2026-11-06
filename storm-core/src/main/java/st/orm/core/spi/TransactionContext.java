@@ -41,6 +41,17 @@ public interface TransactionContext {
     }
 
     /**
+     * Returns whether the deadline of the innermost frame has passed, so a statement it issued that failed was
+     * cancelled by the query timeout Storm set from it, whatever exception the driver reports.
+     *
+     * @return {@code true} if the innermost frame has a deadline and it has passed.
+     * @since 1.16
+     */
+    default boolean isDeadlineExpired() {
+        return false;
+    }
+
+    /**
      * Returns true if the transaction has repeatable-read semantics.
      *
      * <p>This is true when the isolation level is {@code REPEATABLE_READ} or higher. The level is that of the
@@ -74,8 +85,9 @@ public interface TransactionContext {
     }
 
     /**
-     * Returns whether the connection this context last handed out carries a physical transaction the context
-     * opened on that request, with no statement run on it yet, and clears that state. The template runs the
+     * Returns whether the statement about to run begins the transaction: the connection this context last handed
+     * out carries a physical transaction the context opened on that request, with no statement run on it yet. Once
+     * answered, the next statement no longer begins it. The template runs the
      * dialect's transaction-opening statements, such as {@link st.orm.core.template.SqlDialect#readOnlyTransactionStatement()},
      * on the connection right after, so they are the transaction's first statements.
      *
@@ -83,7 +95,7 @@ public interface TransactionContext {
      * frame, on a transaction opened elsewhere, and on every later request.
      * @since 1.14
      */
-    default boolean takeFreshTransaction() {
+    default boolean beginsTransaction() {
         return false;
     }
 

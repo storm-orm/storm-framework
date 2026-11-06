@@ -381,7 +381,7 @@ public class SelectBuilderImpl<T extends Data, R, ID> extends QueryBuilderImpl<T
         if (hasLock && queryTemplate.dialect().applyLockHintAfterFrom()) {
             template = TemplateString.combine(template, TemplateString.of("\n"), forLock);
         }
-        template = appendJoinsAndWhere(template, facts);
+        template = appendJoinsAndWhere(template);
         if (!groupBy.isEmpty()) {
             TemplateString groupByClause = groupBy.stream()
                     .reduce((a, b) -> TemplateString.combine(a, TemplateString.of(", "), b))

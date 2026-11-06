@@ -27,6 +27,7 @@ import static st.orm.core.template.impl.RecordReflection.isTableJoinCandidate;
 
 import java.util.ArrayDeque;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
@@ -49,6 +50,8 @@ import st.orm.core.template.impl.Elements.Correlation;
 import st.orm.core.template.impl.Elements.Expression;
 import st.orm.core.template.impl.Elements.ObjectExpression;
 import st.orm.core.template.impl.Elements.PathExpression;
+import st.orm.core.template.impl.Elements.PositionExpression;
+import st.orm.core.template.impl.Elements.RankingExpression;
 import st.orm.core.template.impl.Elements.RelationKey;
 import st.orm.core.template.impl.Elements.SearchExpression;
 import st.orm.core.template.impl.Elements.Subquery;
@@ -72,7 +75,10 @@ import st.orm.mapping.RecordField;
  * <p>A condition on a semi-joined table holds when it holds for a related row, and the conditions joined by AND hold
  * for the same related row. A part of the condition that names only the query's own tables holds without one, so a
  * row without related rows still matches through its own columns. Each {@link Scope} is answered on its own, which is
- * how every word of a search may match a different related row.</p>
+ * how every word of a search may match a different related row. Whether a semi-join filters the rows or supplies
+ * matches is decided by the query as written: a semi-join no condition names filters, and one a condition names
+ * supplies matches, also where a search leaves out the columns that named it because no word of the input reaches
+ * them.</p>
  *
  * <p>A condition on a semi-joined table renders as {@code EXISTS} over the related rows. Where the condition is an OR
  * of terms on the query's table and terms on the semi-joined table, the common shape of a search, it renders as an
@@ -170,6 +176,13 @@ final class FilterJoinPlacement {
     private final List<FilterJoin> filterJoins;
 
     /**
+     * The tables the conditions as written name, and the conditions as resolved no longer do: a search named them
+     * through columns no word of the input reaches. A semi-join of such a table supplies matches rather than filters,
+     * so it takes no part in the statement, as a path into a related table the search leaves out does not.
+     */
+    private final Set<Class<? extends Data>> unused = new HashSet<>();
+
+    /**
      * @param queryTemplate the template the query builds its subqueries with.
      * @param fromType the query's table.
      * @param joins the query's joins.
@@ -223,7 +236,7 @@ final class FilterJoinPlacement {
      * @param queryTemplate the template the query builds its subqueries with.
      * @param fromType the query's table.
      * @param joins the query's joins, of which the semi-joins and anti-joins are placed.
-     * @param where the query's WHERE conditions.
+     * @param where the query's WHERE conditions, with their searches as stated, which the placement resolves.
      * @param clauses the query's other clauses, which may not name a filtered table.
      * @param branchOnAnchor whether a subquery may read the table a semi-join is joined on.
      * @return the WHERE condition, or {@code null} for none.
@@ -241,12 +254,21 @@ final class FilterJoinPlacement {
 
     private @Nullable TemplateString where(List<Where> where) {
         var conjuncts = new ArrayList<PredicateNode>();
+        var searched = new HashSet<Class<? extends Data>>();
         for (var condition : where) {
             var conjunct = node(condition);
+            if (PredicateNode.holdsSearch(conjunct)) {
+                // Which search terms a substring index serves depends on the dialect, so a search resolves its words
+                // here, after the tables it names are known.
+                collect(conjunct, searched);
+                conjunct = PredicateNode.resolve(conjunct, queryTemplate.dialect().minimumSearchTermLength());
+            }
             // A condition naming a table the query filters by more than once could not tell the joins apart.
             filterJoinsNamed(null, conjunct);
             conjuncts.add(conjunct);
         }
+        conjuncts.forEach(conjunct -> searched.removeAll(references(conjunct)));
+        unused.addAll(searched);
         for (var filterJoin : filterJoins) {
             var antiJoin = antiJoinHolding(filterJoin);
             if (antiJoin == null || filterJoin.table() == fromType) {
@@ -295,6 +317,12 @@ final class FilterJoinPlacement {
             // complement of the anti-join on the same table.
             if (filterJoin.type() == FilterJoinType.ANTI
                     || conjuncts.stream().noneMatch(conjunct -> namesAny(conjunct, tablesOf(filterJoin)))) {
+                // A semi-join the query wrote a condition for supplies matches, so without the columns that named it,
+                // it takes no part, its condition included: the rows are found through the columns the words reached.
+                if (filterJoin.type() == FilterJoinType.SEMI
+                        && !Collections.disjoint(tablesOf(filterJoin), unused)) {
+                    continue;
+                }
                 parts.add(new Term(exists(filterJoin, filterJoin.condition()), true));
             }
         }
@@ -767,7 +795,7 @@ final class FilterJoinPlacement {
         switch (node) {
             case Term term -> collect(term.template(), tables);
             case Scope(var inner, var ignore) -> collect(inner, tables);
-            case Search search -> search.words().forEach(word -> collect(word, tables));
+            case Search search -> search.fields().forEach(field -> tables.add(field.path().root()));
             case Group group -> group.operands().forEach(operand -> collect(operand, tables));
         }
     }
@@ -791,6 +819,8 @@ final class FilterJoinPlacement {
                     tables.add(data.getClass());
                 }
             }
+            case RankingExpression(var comparison) -> collect(comparison, tables);
+            case PositionExpression(var comparison) -> collect(comparison, tables);
             case PathExpression expression -> {
                 tables.add(expression.path().root());
                 tables.add(expression.other().root());

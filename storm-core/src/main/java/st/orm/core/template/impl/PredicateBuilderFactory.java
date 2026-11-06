@@ -20,7 +20,6 @@ import static java.util.Objects.requireNonNull;
 import static java.util.stream.Collectors.toSet;
 import static st.orm.core.template.TemplateString.wrap;
 
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
 import java.util.function.Function;
@@ -32,7 +31,6 @@ import st.orm.Ref;
 import st.orm.core.template.PredicateBuilder;
 import st.orm.core.template.impl.Elements.ObjectExpression;
 import st.orm.core.template.impl.Elements.PathExpression;
-import st.orm.core.template.impl.Elements.SearchExpression;
 import st.orm.core.template.impl.QueryBuilderImpl.PredicateBuilderImpl;
 
 /**
@@ -188,12 +186,15 @@ public interface PredicateBuilderFactory {
 
     /**
      * Creates a predicate that matches the terms of a search box that queries as the user types, such as an
-     * auto-complete, against text columns, each in its stated match form. A term takes part from two characters; an
-     * input without a term that takes part, an empty one included, matches no rows, so the box never fetches and
-     * sorts a whole table on the first keystroke. The input is read as {@link #search(String, Match[])} reads it.
+     * auto-complete, against text columns, each in its stated match form. The input is read as
+     * {@link #search(String, Match[])} reads it. An input without a term of three
+     * characters matches the whole input, its terms joined by one
+     * space, as the start of the value, ignoring case; a shorter term next to one that reaches the length is tested
+     * only on the rows the longer term found. An empty input, or one of a single character, matches no rows, so the
+     * box never fetches and sorts a whole table on the first keystroke.
      *
-     * <p>A bare term that equals one of the ignored terms, ignoring case, takes no part in the predicate, as a
-     * one-character term takes none; a quoted term is never ignored. A search box names the words that occur in a
+     * <p>A bare term that equals one of the ignored terms, ignoring case, takes no part in the predicate; a quoted
+     * term is never ignored. A search box names the words that occur in a
      * large share of its rows, such as "the" in a catalog of titles, which narrow nothing.</p>
      *
      * @param input the search input, as a search box receives it.
@@ -234,33 +235,13 @@ public interface PredicateBuilderFactory {
                                                                             Match<?>[] fields,
                                                                             boolean suggest) {
         requireNonNull(input, "input");
-        if (fields.length == 0) {
-            throw new IllegalArgumentException("%s needs at least one field to search.".formatted(suggest ? "suggest" : "search"));
-        }
         List<SearchTerms.Term> terms = SearchTerms.parse(input);
+        // The start of a value keeps the ignored terms, as they stand at its start as typed.
+        String start = String.join(" ", terms.stream().map(SearchTerms.Term::text).toList());
         if (!ignore.isEmpty()) {
             Set<String> ignored = ignore.stream().map(word -> word.toLowerCase(ROOT)).collect(toSet());
             terms = terms.stream().filter(term -> term.quoted() || !ignored.contains(term.text().toLowerCase(ROOT))).toList();
         }
-        var texts = new ArrayList<String>(terms.size());
-        var words = new ArrayList<PredicateNode>(terms.size());
-        for (SearchTerms.Term term : terms) {
-            var matches = new ArrayList<PredicateNode>(fields.length);
-            for (Match<?> field : fields) {
-                matches.add(match(field, term.text()));
-            }
-            texts.add(term.text());
-            // Each term is matched on its own, so on a semi-joined table the terms may match different related rows.
-            words.add(PredicateNode.or(matches));
-        }
-        return new PredicateBuilderImpl<>(new PredicateNode.Search(texts, words, suggest));
-    }
-
-    /**
-     * Returns the predicate matching a term in a field, in the field's form. A word start may render as several
-     * terms, so it is grouped when combined.
-     */
-    private static PredicateNode match(Match<?> field, String term) {
-        return new PredicateNode.Term(wrap(new SearchExpression(field, term)), MatchForm.of(field) != MatchForm.WORD_START);
+        return new PredicateBuilderImpl<>(new PredicateNode.Search(terms.stream().map(SearchTerms.Term::text).toList(), start, List.of(fields), suggest));
     }
 }

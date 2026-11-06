@@ -193,34 +193,45 @@ public final class Elements {
      * A value comparison: the path compared against the object using the operator. The object may be a value, a
      * collection of values, a record, a reference, or a primary key; a multi-column path expands component-wise.
      * When the metamodel is {@code null}, the object is matched against the table's primary key.
-     *
-     * <p>{@code indexable} is {@code false} for a comparison that does not select rows, such as the condition an
-     * {@code orderFirst} ranks the rows by: an index on its column spares no read, so the comparison asks for none.
-     * {@code fromRow} is {@code true} for a value read from a row of the table, as a keyset position holds one: it is
-     * in the column's own form already and is compared as it is, without the function a query column names for the
-     * values a caller supplies.</p>
      */
-    public record ObjectExpression(@Nullable Metamodel<?, ?> metamodel, Operator operator, Object object,
-                                   boolean indexable, boolean fromRow) implements Expression {
-        public ObjectExpression(@Nullable Metamodel<?, ?> metamodel, Operator operator, Object object) {
-            this(metamodel, operator, object, true, false);
-        }
+    public record ObjectExpression(@Nullable Metamodel<?, ?> metamodel, Operator operator, Object object)
+            implements Expression {
         public ObjectExpression(Operator operator, Object object) {
             this(null, operator, object);
         }
         public ObjectExpression(Object object) {
             this(null, EQUALS, object);
         }
-
-        /**
-         * Returns this comparison as one that does not select rows, and so asks no index for its column.
-         */
-        public ObjectExpression ranking() {
-            return indexable ? new ObjectExpression(metamodel, operator, object, false, fromRow) : this;
-        }
         public ObjectExpression {
             requireNonNull(object, "object");
             requireNonNull(operator, "operator");
+        }
+    }
+
+    /**
+     * A value comparison that ranks the rows rather than selecting them, such as the condition an {@code orderFirst}
+     * orders by. It compiles as the comparison does, but an index on its column spares no read, so it asks for none.
+     *
+     * @param comparison the comparison.
+     * @since 1.16
+     */
+    public record RankingExpression(ObjectExpression comparison) implements Expression {
+        public RankingExpression {
+            requireNonNull(comparison, "comparison");
+        }
+    }
+
+    /**
+     * A value comparison against a value read from a row of the table, as a keyset position holds one. The value is
+     * in the column's own form already, so it is compared as it is, without the function a query column names for
+     * the values a caller supplies.
+     *
+     * @param comparison the comparison.
+     * @since 1.16
+     */
+    public record PositionExpression(ObjectExpression comparison) implements Expression {
+        public PositionExpression {
+            requireNonNull(comparison, "comparison");
         }
     }
 
@@ -240,6 +251,7 @@ public final class Elements {
             requireNonNull(word, "word");
         }
     }
+
     /**
      * A comparison of two columns of the query: the path compared against the other path using the operator. Each
      * path resolves as it does in a value comparison, to a table of the query or to a path joined on demand. A

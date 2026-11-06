@@ -379,7 +379,7 @@ public class UpdateBuilderImpl<T extends Data, ID> extends QueryBuilderImpl<T, O
                     wrap(new UpdateTarget(fromType)),
                     wrap(from(fromType, true)),
                     TemplateString.of("\nSET "),
-                    getSetTemplate(true)), facts);
+                    getSetTemplate(true)));
             // UPDATE p SET p.name = ? FROM pet p INNER JOIN owner o ON ... WHERE o.last_name = ?.
             case FROM_CLAUSE -> appendJoinsAndWhere(TemplateString.combine(
                     TemplateString.of("UPDATE" + hintAfterKeyword() + " "),
@@ -388,11 +388,11 @@ public class UpdateBuilderImpl<T extends Data, ID> extends QueryBuilderImpl<T, O
                     TemplateString.of("\nSET "),
                     getSetTemplate(true),
                     TemplateString.of("\nFROM "),
-                    wrap(from(fromType, true))), facts);
+                    wrap(from(fromType, true))));
             // UPDATE pet SET name = ? WHERE (id) IN (SELECT p.id FROM pet p INNER JOIN owner o ON ... WHERE ...).
             case SUBQUERY -> {
                 var select = appendJoinsAndWhere(TemplateString.combine(TemplateString.of("SELECT "), getPrimaryKeyTemplate(true),
-                        TemplateString.raw("\nFROM \0", from(fromType, true))), facts);
+                        TemplateString.raw("\nFROM \0", from(fromType, true))));
                 yield TemplateString.combine(
                         TemplateString.raw("UPDATE" + hintAfterKeyword() + " \0\nSET ", fromType),
                         getSetTemplate(false),

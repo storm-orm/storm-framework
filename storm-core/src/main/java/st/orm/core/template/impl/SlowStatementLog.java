@@ -529,6 +529,14 @@ public final class SlowStatementLog {
             if (!slow) {
                 return;
             }
+            if (failure != null && cancelled()) {
+                // The application asked for the stop, so the statement is not a failure to look at: one line, with
+                // the time the statement cost before it was stopped, and no SQL or advice.
+                if (LOGGER.isDebugEnabled()) {
+                    LOGGER.debug(renderCancelled(context, databaseNanos, callSite));
+                }
+                return;
+            }
             long consumeNanos = System.nanoTime() - executed;
             String statement = context.statement().orElse("");
             // The logger's TRACE is the switch for values, as it is for the statement log; the line itself stays a
@@ -538,6 +546,14 @@ public final class SlowStatementLog {
             }
             LOGGER.warn(render(context, databaseNanos, consumeNanos, rows, exact, failure, callSite, statement,
                     baseline, parameters.size(), comment, suppressed, advisories()));
+        }
+
+        /**
+         * Returns whether the transaction the statement ran in was cancelled, which stopped the statement.
+         */
+        private static boolean cancelled() {
+            var scope = TransactionScope.current();
+            return scope != null && scope.isCancelled();
         }
 
         /**
@@ -557,6 +573,20 @@ public final class SlowStatementLog {
             all.addAll(missing);
             return all;
         }
+    }
+
+    /**
+     * Renders the line of a slow statement that its transaction's cancellation stopped: the operation and type, the
+     * time the statement had cost, and the call site. The statement and its advice are left out, since the
+     * application asked for the stop.
+     */
+    static String renderCancelled(QueryContext context, long databaseNanos, @Nullable String callSite) {
+        var rendered = new StringBuilder("SQL cancelled (").append(describe(context)).append(") after ")
+                .append(millis(databaseNanos));
+        if (callSite != null) {
+            rendered.append(", ").append(callSite);
+        }
+        return rendered.toString();
     }
 
     /**

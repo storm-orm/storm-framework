@@ -36,15 +36,21 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.jdbc.JdbcTest;
 import org.springframework.test.context.ContextConfiguration;
 import org.springframework.test.context.junit.jupiter.SpringExtension;
+import st.orm.Data;
 import st.orm.DbTable;
 import st.orm.Entity;
 import st.orm.Match;
 import st.orm.Metamodel;
 import st.orm.PK;
+import st.orm.PersistenceException;
 import st.orm.SqlFunction;
 import st.orm.StormConfig;
 import st.orm.core.model.Owner;
 import st.orm.core.model.Owner_;
+import st.orm.core.model.Pet;
+import st.orm.core.model.Pet_;
+import st.orm.core.model.Visit;
+import st.orm.core.model.Visit_;
 import st.orm.core.template.ORMTemplate;
 import st.orm.core.template.SqlDialect;
 import st.orm.core.template.impl.PredicateBuilderFactory;
@@ -183,10 +189,11 @@ public class SearchIntegrationTest {
         // The default dialect renders a word start as a LIKE per separator and one for the value's start; a dialect
         // whose database matches a regular expression renders one, which its conformance test covers.
         assertEquals(1 + SqlDialect.WORD_SEPARATORS.length(), whereClause().split("LIKE LOWER\\(\\?\\) ESCAPE").length - 1, whereClause());
-        assertEquals(List.of("Betty", "Harold"), suggest("da", Owner_.lastName));
         assertEquals(List.of(), suggest("dav is", Owner_.lastName));
-        assertEquals(List.of("David"), suggest("sc", Owner_.lastName));
-        // A one-character word takes no part; without a word that takes part, no rows match.
+        assertEquals(List.of("David"), suggest("sch", Owner_.lastName));
+        // Without a word of three characters, the input matches the start of the value; one character matches none.
+        assertEquals(List.of("Betty", "Harold"), suggest("da", Owner_.lastName));
+        assertEquals(List.of(), suggest("vi", Owner_.lastName));
         assertEquals(List.of(), suggest("d", Owner_.lastName));
         assertEquals("1 <> 1", whereClause());
         assertEquals(List.of(), suggest("", Owner_.lastName));
@@ -222,11 +229,57 @@ public class SearchIntegrationTest {
         assertEquals(List.of("van der berg"), searchNames("\"der berg\"", wordStart(NAME_LOWER)));
         assertEquals(List.of("van der berg"), searchNames("\"van der berg\"", exact(NAME_LOWER)));
         // suggest takes the forms as search does, with its own input contract.
-        assertEquals(List.of("dave", "davis"), suggestNames("av", anywhere(NAME_LOWER)));
+        assertEquals(List.of("dave", "davis"), suggestNames("dav", anywhere(NAME_LOWER)));
         assertEquals(List.of("upton"), suggestNames("Up", prefix(NAME_LOWER)));
         assertEquals(List.of(), suggestNames("u", prefix(NAME_LOWER)));
         assertEquals(List.of(), suggestNames("", exact(NAME_LOWER)));
         assertEquals(6, searchNames("", exact(NAME_LOWER)).size());
+    }
+
+    @Test
+    public void aSuggestionOfShortWordsMatchesTheStartOfTheValue() {
+        // "der" reaches the minimum word length and matches at a word start; "de" alone matches the value's start.
+        assertEquals(List.of("van der berg"), suggestNames("der", wordStart(NAME_LOWER)));
+        assertEquals(List.of(), suggestNames("de", wordStart(NAME_LOWER)));
+        assertEquals(List.of("dave", "davis"), suggestNames("da", wordStart(NAME_LOWER)));
+        assertTrue(whereClause().startsWith("LOWER(s.name_lower) LIKE LOWER(?) ESCAPE '!'"), whereClause());
+        assertEquals(List.of(), suggestNames("av", anywhere(NAME_LOWER)));
+        // The whole input is one start, its words joined by one space, the ignored ones included.
+        assertEquals(List.of("van der berg"), suggestNames("va", wordStart(NAME_LOWER)));
+        assertEquals(List.of(), suggestNames("va de", wordStart(NAME_LOWER)));
+        assertEquals(List.of("van der berg"), names(true, "van  de", Set.of("van"), wordStart(NAME_LOWER)));
+        assertEquals(List.of(), names(true, "van", Set.of("van"), wordStart(NAME_LOWER)));
+        // A prefix or exact field keeps its form, the whole input as the word, on the bare column.
+        assertEquals(List.of("dave", "davis"), suggestNames("da", prefix(NAME_LOWER)));
+        assertTrue(whereClause().startsWith("s.name_lower LIKE ? ESCAPE '!'"), whereClause());
+        assertEquals(List.of(), suggestNames("d", prefix(NAME_LOWER)));
+        // Next to a word that reaches the length, a short word matches in its form, on the rows the long word found.
+        assertEquals(List.of("van der berg"), suggestNames("van de", wordStart(NAME_LOWER)));
+        assertEquals(List.of("van der berg"), suggestNames("van d", wordStart(NAME_LOWER)));
+        assertEquals(List.of(), suggestNames("van xy", wordStart(NAME_LOWER)));
+        // The start of the value counts its whole length against the column's minimum.
+        assertEquals(List.of(), suggestNames("de", wordStart(NAME_LOWER, 3)));
+        assertEquals(List.of("van der berg"), names(true, "van de", Set.of("van"), wordStart(NAME_LOWER, 3)));
+        assertThrows(IllegalArgumentException.class, () -> wordStart(NAME_LOWER, -1));
+    }
+
+    @Test
+    public void aSearchFiltersRowsOnlyInWhereAndInASemiJoinCondition() {
+        var orm = ORMTemplate.of(dataSource);
+        var orderFirst = assertThrows(PersistenceException.class, () -> orm.entity(Owner.class).select()
+                .orderFirst(PredicateBuilderFactory.<Owner, Owner, Integer>search("davis", Owner_.lastName)));
+        assertTrue(orderFirst.getMessage().startsWith("orderFirst takes no search or suggest"), orderFirst.getMessage());
+        var having = assertThrows(PersistenceException.class, () -> orm.entity(Owner.class).select()
+                .having(PredicateBuilderFactory.<Owner, Owner, Integer>suggest("davis", Set.of(), Owner_.lastName)));
+        assertTrue(having.getMessage().startsWith("having takes no search or suggest"), having.getMessage());
+        var join = assertThrows(PersistenceException.class, () -> orm.entity(Pet.class).select()
+                .innerJoin(Visit.class).on(Pet.class, it -> PredicateBuilderFactory.<Data, Pet, Integer>search("rabies", Visit_.description)));
+        assertTrue(join.getMessage().startsWith("A join condition takes no search or suggest"), join.getMessage());
+        // A semi-join filters the query's rows by its condition, so a search resolves there as it does in where.
+        var owners = orm.entity(Owner.class).select()
+                .semiJoin(Pet.class).on(Owner.class, it -> PredicateBuilderFactory.<Data, Owner, Integer>suggest("leo", Set.of(), Pet_.name))
+                .getResultList();
+        assertEquals(List.of("Betty"), owners.stream().map(Owner::firstName).toList());
     }
 
     @Test

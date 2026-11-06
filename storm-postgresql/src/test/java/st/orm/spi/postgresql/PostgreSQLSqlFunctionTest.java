@@ -19,6 +19,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static st.orm.GenerationStrategy.NONE;
 import static st.orm.Operator.EQUALS_IGNORE_CASE;
+import static st.orm.Operator.STARTS_WITH;
 
 import java.sql.Connection;
 import java.sql.SQLException;
@@ -42,6 +43,7 @@ import st.orm.core.template.ORMTemplate;
 import st.orm.core.template.PreparedStatementTemplate;
 import st.orm.core.template.impl.PredicateBuilderFactory;
 import st.orm.tck.ContainerDataSource;
+import st.orm.test.CapturedSql;
 import st.orm.test.SqlCapture;
 import st.orm.test.StormTest;
 
@@ -95,6 +97,7 @@ public class PostgreSQLSqlFunctionTest {
                     INSERT INTO title VALUES (3001, 'Léon'), (3002, 'LEON the Professional'), (3003, 'Amélie'),
                         (3004, 'Søren'), (3005, '50% Léon')""");
             statement.execute("CREATE INDEX title_name_folded ON title USING gin (LOWER(fold_accents(name)) gin_trgm_ops)");
+            statement.execute("CREATE INDEX title_name_folded_prefix ON title (fold_accents(name) text_pattern_ops)");
             statement.execute("ANALYZE title");
         }
         orm = PreparedStatementTemplate.ORM(dataSource);
@@ -135,8 +138,28 @@ public class PostgreSQLSqlFunctionTest {
     public void theExpressionIndexServesTheSearch(SqlCapture capture) throws SQLException {
         capture.record(() -> search("léon"));
         var captured = capture.statements().getFirst();
-        assertTrue(captured.statement().contains("LOWER(fold_accents(t.name)) LIKE LOWER(fold_accents(?))"),
+        // The value is computed once per execution, as a subquery, so a reused plan does not fold it for every row.
+        assertTrue(captured.statement().contains("LOWER(fold_accents(t.name)) LIKE LOWER((SELECT fold_accents(?)))"),
                 captured.statement());
+        assertTrue(plan(captured).contains("title_name_folded"), plan(captured));
+    }
+
+    @Test
+    public void aCaseSensitiveStartsWithKeepsItsRangeScan(SqlCapture capture) throws SQLException {
+        var names = new ArrayList<String>();
+        capture.record(() -> orm.entity(Title.class).select()
+                .where(FOLD_ACCENTS.apply(NAME), STARTS_WITH, "Léo")
+                .getResultList()
+                .forEach(title -> names.add(title.name())));
+        assertEquals(List.of("Léon"), names);
+        var captured = capture.statements().getFirst();
+        // A range scan takes the pattern only as a constant, which the planner folds the function into.
+        assertTrue(captured.statement().contains("fold_accents(t.name) LIKE fold_accents(?)"), captured.statement());
+        String plan = plan(captured);
+        assertTrue(plan.contains("title_name_folded_prefix") && plan.contains("~>=~"), plan);
+    }
+
+    private String plan(CapturedSql captured) throws SQLException {
         var plan = new StringBuilder();
         try (Connection connection = dataSource.getConnection()) {
             connection.setAutoCommit(false);
@@ -155,6 +178,6 @@ public class PostgreSQLSqlFunctionTest {
             }
             connection.rollback();
         }
-        assertTrue(plan.toString().contains("title_name_folded"), plan.toString());
+        return plan.toString();
     }
 }

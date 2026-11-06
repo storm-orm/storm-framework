@@ -57,6 +57,8 @@ import st.orm.core.template.TemplateString;
 import st.orm.core.template.impl.Elements.Expression;
 import st.orm.core.template.impl.Elements.ObjectExpression;
 import st.orm.core.template.impl.Elements.PathExpression;
+import st.orm.core.template.impl.Elements.PositionExpression;
+import st.orm.core.template.impl.Elements.RankingExpression;
 import st.orm.core.template.impl.Elements.SearchExpression;
 import st.orm.core.template.impl.Elements.Subquery;
 import st.orm.core.template.impl.Elements.TemplateExpression;
@@ -257,7 +259,9 @@ final class QueryModelImpl implements QueryModel {
         try {
             return switch (expression) {
                 case TemplateExpression it -> compileTemplateExpression(it.template(), compiler);
-                case ObjectExpression it -> compileObjectExpression(getMetamodel(it), it.operator(), it.object(), it.indexable(), it.fromRow(), compiler);
+                case ObjectExpression it -> compileObjectExpression(it, true, false, compiler);
+                case RankingExpression(var it) -> compileObjectExpression(it, false, false, compiler);
+                case PositionExpression(var it) -> compileObjectExpression(it, true, true, compiler);
                 case PathExpression it -> compilePathExpression(it.path(), it.operator(), it.other());
                 case SearchExpression it -> compileSearchExpression(it, compiler);
             };
@@ -280,7 +284,9 @@ final class QueryModelImpl implements QueryModel {
         try {
             switch (expression) {
                 case TemplateExpression it -> bindTemplateExpression(it.template(), binder);
-                case ObjectExpression it -> bindObjectExpression(getMetamodel(it), it.operator(), it.object(), it.fromRow(), binder);
+                case ObjectExpression it -> bindObjectExpression(it, false, binder);
+                case RankingExpression(var it) -> bindObjectExpression(it, false, binder);
+                case PositionExpression(var it) -> bindObjectExpression(it, true, binder);
                 case PathExpression ignore -> { }  // Two columns of the query; nothing to bind.
                 case SearchExpression it -> bindSearchExpression(it, binder);
             }
@@ -362,7 +368,7 @@ final class QueryModelImpl implements QueryModel {
                     case Class<?> it -> parts.add(compiler.compile(alias(REFLECTION.getDataType(it))));
                     case Object it when REFLECTION.isSupportedType(it) -> parts.add(compiler.compile(alias(REFLECTION.getDataType(it))));
                     case Element it -> parts.add(compiler.compile(it));
-                    default -> parts.add(compiler.compile(param(resolved)));
+                    case null, default -> parts.add(compiler.compile(param(resolved)));
                 }
             }
         }
@@ -390,7 +396,7 @@ final class QueryModelImpl implements QueryModel {
                 case Class<?> it -> binder.bind(alias(REFLECTION.getDataType(it)));
                 case Object it when REFLECTION.isSupportedType(it) -> binder.bind(alias(REFLECTION.getDataType(it)));
                 case Element it -> binder.bind(it);
-                default -> binder.bind(param(resolved));
+                case null, default -> binder.bind(param(resolved));
             }
         }
     }
@@ -420,23 +426,25 @@ final class QueryModelImpl implements QueryModel {
      * <p>The object may represent a primary key value, entity instance, reference, or a collection
      * thereof. Multi-column and multi-value expressions are handled transparently.</p>
      *
-     * @param metamodel the metamodel describing the target columns.
-     * @param operator  the operator used to format the predicate.
-     * @param object    the object providing the comparison value(s).
-     * @param compiler  the compiler used to generate SQL fragments.
+     * @param expression the comparison.
+     * @param indexable  whether the comparison selects rows, and so records the index use of its column; a
+     *                   {@link RankingExpression} does not.
+     * @param fromRow    whether the value was read from a row, as a {@link PositionExpression} holds it, and so
+     *                   is compared without the function a query column names for the values a caller supplies.
+     * @param compiler   the compiler used to generate SQL fragments.
      * @return the compiled SQL predicate.
      * @throws SqlTemplateException if the object cannot be mapped to columns or values.
      */
-    private String compileObjectExpression(Metamodel<?, ?> metamodel,
-                                           Operator operator,
-                                           Object object,
+    private String compileObjectExpression(ObjectExpression expression,
                                            boolean indexable,
                                            boolean fromRow,
                                            TemplateCompiler compiler) throws SqlTemplateException {
+        Operator operator = expression.operator();
+        Object object = expression.object();
         // A SqlFunction call compares the column it is applied to, with the call around the column and around each
         // value, so the database computes both sides alike.
-        Metamodel<?, ?> path = metamodel;
-        metamodel = FunctionCalls.column(path);
+        Metamodel<?, ?> path = getMetamodel(expression);
+        Metamodel<?, ?> metamodel = FunctionCalls.column(path);
         // The key of a table reached through a foreign key is the foreign key column, which belongs to the table
         // holding the key: the column resolves in that table's model and at that table's occurrence.
         var resolved = MetamodelFactory.canonical(metamodel);
@@ -531,7 +539,7 @@ final class QueryModelImpl implements QueryModel {
             }
             List<String> placeholders = new ArrayList<>(values.size());
             for (var value : values) {
-                placeholders.add(FunctionCalls.render(path, applyFunction(valueFunction, compiler.mapParameter(value))));
+                placeholders.add(valueExpression(path, valueFunction, compiler.mapParameter(value), operator, compiler));
             }
             return ColumnComparison.render(operator, column, placeholders, multiValues, compiler::mapParameter, compiler.dialect());
         } catch (IllegalArgumentException e) {
@@ -560,8 +568,8 @@ final class QueryModelImpl implements QueryModel {
         ColumnUsage.recordSearchUse(column, form, field, form.lowered() ? "LOWER(" + field + ")" : field, compiler);
         String rendered = FunctionCalls.render(path, toFullyQualifiedColumn(column, navigated));
         String valueFunction = valueFunction(model, metamodel);
-        Function<Object, String> value = v -> FunctionCalls.render(path, applyFunction(valueFunction, compiler.mapParameter(v)));
         var operator = form.operator();
+        Function<Object, String> value = v -> valueExpression(path, valueFunction, compiler.mapParameter(v), operator, compiler);
         if (operator == null) {
             return compiler.dialect().wordStartMatch(rendered, expression.word(), value::apply);
         }
@@ -656,19 +664,34 @@ final class QueryModelImpl implements QueryModel {
     }
 
     /**
+     * Renders a value compared with the path: the bound value passed through the function its query column names and
+     * through the path's function calls, computed once per execution as the dialect renders it
+     * ({@link st.orm.core.template.SqlDialect#computedOnce(String)}). A value inlined as a literal is computed while
+     * planning, and so is the pattern of a case-sensitive starts-with, which a range scan over an ordinary index
+     * takes only as a constant.
+     */
+    private String valueExpression(Metamodel<?, ?> path, String valueFunction, String parameter,
+                                   @Nullable Operator operator, TemplateCompiler compiler) {
+        String rendered = FunctionCalls.render(path, applyFunction(valueFunction, parameter));
+        return rendered.equals(parameter) || template.inlineParameters() || operator == Operator.STARTS_WITH
+                ? rendered
+                : compiler.dialect().computedOnce(rendered);
+    }
+
+    /**
      * Wraps the rendered value in the function, or returns it as it is when there is none.
      */
     private static String applyFunction(String function, String sql) {
         return function.isEmpty() ? sql : function + "(" + sql + ")";
     }
 
-    private void bindObjectExpression(Metamodel<?, ?> metamodel,
-                                      Operator operator,
-                                      Object object,
+    private void bindObjectExpression(ObjectExpression expression,
                                       boolean fromRow,
                                       TemplateBinder binder) throws SqlTemplateException {
-        Metamodel<?, ?> path = metamodel;
-        metamodel = FunctionCalls.column(path);
+        Operator operator = expression.operator();
+        Object object = expression.object();
+        Metamodel<?, ?> path = getMetamodel(expression);
+        Metamodel<?, ?> metamodel = FunctionCalls.column(path);
         var model = getModel(MetamodelFactory.canonical(metamodel));
         boolean valueFunction = !fromRow && !valueFunction(model, metamodel).isEmpty();
         List<SequencedMap<String, Object>> multiValues = null;

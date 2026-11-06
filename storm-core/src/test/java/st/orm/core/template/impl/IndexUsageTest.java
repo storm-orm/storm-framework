@@ -165,15 +165,6 @@ public class IndexUsageTest {
     }
 
     @Test
-    public void aRankingComparisonStaysOne() {
-        var expression = new Elements.ObjectExpression(null, Operator.EQUALS, 1);
-        assertTrue(expression.indexable());
-        var ranking = expression.ranking();
-        assertFalse(ranking.indexable());
-        assertSame(ranking, ranking.ranking());
-    }
-
-    @Test
     public void aTableWhoseIndexesWereNotReadIsUnknown() throws SQLException {
         try (var connection = dataSource.getConnection()) {
             // A query the database cannot answer leaves the indexes unknown.
