@@ -9,6 +9,7 @@ import java.sql.SQLException;
 import java.util.List;
 import javax.sql.DataSource;
 import org.jspecify.annotations.Nullable;
+import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.Test;
 import org.testcontainers.containers.PostgreSQLContainer;
 import st.orm.DbTable;
@@ -32,6 +33,18 @@ public class PostgreSQLSchemaValidatorConformanceTest extends AbstractSchemaVali
             container.start();
         }
         return ContainerDataSource.of(container.getJdbcUrl(), container.getUsername(), container.getPassword());
+    }
+
+    /**
+     * Stops the database when the class is done: each test class starts its own, and one left running holds its
+     * memory until the module's tests end.
+     */
+    @AfterAll
+    static synchronized void stopContainer() {
+        if (container != null) {
+            container.stop();
+            container = null;
+        }
     }
 
     @Override

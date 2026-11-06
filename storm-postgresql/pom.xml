@@ -41,6 +41,10 @@
                          the unnamed module. This keeps the @Transactional test rollback applying to Storm
                          statements. -->
                     <useModulePath>false</useModulePath>
+                    <!-- Each test class runs in a JVM of its own. A test class starts its own database container, and
+                         Testcontainers removes a JVM's containers when it exits, so a container a class leaves running
+                         ends with that class instead of holding its memory until the module's tests are done. -->
+                    <reuseForks>false</reuseForks>
                     <argLine>
                         @{argLine}
                         -XX:+EnableDynamicAgentLoading

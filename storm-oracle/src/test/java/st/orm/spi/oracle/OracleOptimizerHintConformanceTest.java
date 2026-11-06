@@ -17,6 +17,7 @@ package st.orm.spi.oracle;
 
 import java.util.List;
 import javax.sql.DataSource;
+import org.junit.jupiter.api.AfterAll;
 import org.testcontainers.oracle.OracleContainer;
 import st.orm.tck.AbstractOptimizerHintConformanceTest;
 import st.orm.tck.ContainerDataSource;
@@ -32,6 +33,18 @@ public class OracleOptimizerHintConformanceTest extends AbstractOptimizerHintCon
             container.start();
         }
         return ContainerDataSource.of(container.getJdbcUrl(), container.getUsername(), container.getPassword());
+    }
+
+    /**
+     * Stops the database when the class is done: each test class starts its own, and one left running holds its
+     * memory until the module's tests end.
+     */
+    @AfterAll
+    static synchronized void stopContainer() {
+        if (container != null) {
+            container.stop();
+            container = null;
+        }
     }
 
     /** Hints Oracle reads: a query block name and a first-rows goal. */
