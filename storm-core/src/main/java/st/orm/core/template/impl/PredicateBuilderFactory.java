@@ -146,8 +146,10 @@ public interface PredicateBuilderFactory {
      * the next quote or to the end of the input; an input without terms matches every row. Each term is matched on
      * its own, so on a semi-joined table the terms may match different related rows.
      *
-     * <p>A term shorter than the dialect's substring index serves
-     * ({@link st.orm.core.template.SqlDialect#minimumSearchTermLength()}) is tested only on the rows the longer terms
+     * <p>A field takes the terms in its form once one reaches its {@link Match#minLength() minLength}, and the whole
+     * input in its {@link Match#fallback() fallback} before; see {@link PredicateNode.Search#resolve(int)}. A term
+     * shorter than the length, or than the dialect's substring index serves
+     * ({@link st.orm.core.template.SqlDialect#minimumSearchTermLength()}), is tested only on the rows the longer terms
      * found, so it reads no table in full, and the result is the same.</p>
      *
      * @param input the search input, as a search box receives it.
@@ -158,9 +160,53 @@ public interface PredicateBuilderFactory {
      * @return the predicate.
      * @since 1.16
      */
-    @SafeVarargs
     static <T extends Data, R, ID> PredicateBuilder<T, R, ID> search(String input, Match<?>... fields) {
-        return words(input, Set.of(), fields, false);
+        return search(input, Set.of(), fields);
+    }
+
+    /**
+     * Creates a predicate that matches the terms of a search input against text columns, each in the default form of
+     * {@code search}, ignoring the given terms.
+     *
+     * @param input the search input, as a search box receives it.
+     * @param ignore the terms to ignore, compared ignoring case.
+     * @param paths the text columns to search, at least one.
+     * @param <T> the type of the table being queried.
+     * @param <R> the type of the result.
+     * @param <ID> the type of the primary key.
+     * @return the predicate.
+     * @see #search(String, Set, Match[])
+     * @since 1.16
+     */
+    @SafeVarargs
+    static <T extends Data, R, ID> PredicateBuilder<T, R, ID> search(String input,
+                                                                     Set<String> ignore,
+                                                                     Metamodel<?, String>... paths) {
+        return search(input, ignore, fields(Match::anywhere, paths));
+    }
+
+    /**
+     * Creates a predicate that matches the terms of a search input against text columns, each in its stated match
+     * form, as {@link #search(String, Match[])} does, ignoring the given terms.
+     *
+     * <p>A bare term that equals one of the ignored terms, ignoring case, takes no part in the predicate; a quoted
+     * term is never ignored. An input of ignored terms alone matches as an input without terms: every row for
+     * {@code search}, no rows for {@code suggest}.</p>
+     *
+     * @param input the search input, as a search box receives it.
+     * @param ignore the terms to ignore, compared ignoring case.
+     * @param fields the text columns to search with their match forms, at least one.
+     * @param <T> the type of the table being queried.
+     * @param <R> the type of the result.
+     * @param <ID> the type of the primary key.
+     * @return the predicate.
+     * @since 1.16
+     */
+    static <T extends Data, R, ID> PredicateBuilder<T, R, ID> search(String input,
+                                                                     Set<String> ignore,
+                                                                     Match<?>... fields) {
+        requireNonNull(ignore, "ignore");
+        return words(input, ignore, fields, false);
     }
 
     /**
@@ -187,10 +233,8 @@ public interface PredicateBuilderFactory {
     /**
      * Creates a predicate that matches the terms of a search box that queries as the user types, such as an
      * auto-complete, against text columns, each in its stated match form. The input is read as
-     * {@link #search(String, Match[])} reads it. An input without a term of three
-     * characters matches the whole input, its terms joined by one
-     * space, as the start of the value, ignoring case; a shorter term next to one that reaches the length is tested
-     * only on the rows the longer term found. An empty input, or one of a single character, matches no rows, so the
+     * {@link #search(String, Match[])} reads it, and takes its terms as {@code search} takes them, by each field's
+     * {@link Match#minLength() minLength} and {@link Match#fallback() fallback}; an empty input matches no rows, so the
      * box never fetches and sorts a whole table on the first keystroke.
      *
      * <p>A bare term that equals one of the ignored terms, ignoring case, takes no part in the predicate; a quoted
@@ -206,7 +250,6 @@ public interface PredicateBuilderFactory {
      * @return the predicate.
      * @since 1.16
      */
-    @SafeVarargs
     static <T extends Data, R, ID> PredicateBuilder<T, R, ID> suggest(String input,
                                                                       Set<String> ignore,
                                                                       Match<?>... fields) {
@@ -226,9 +269,9 @@ public interface PredicateBuilderFactory {
     }
 
     /**
-     * Creates the predicate of {@link #search(String, Match[])} or {@link #suggest(String, Set, Match[])}. Each term is kept
-     * apart until the query is built, since {@code search} plans its short terms by the length the dialect's
-     * substring index serves; an ignored term is left out here, since no dialect serves it.
+     * Creates the predicate of {@link #search(String, Set, Match[])} or {@link #suggest(String, Set, Match[])}. Each term is kept
+     * apart until the query is built, since the fields take them by their minimum length, and the short terms are
+     * planned by the length the dialect's substring index serves; an ignored term is left out here, since no dialect serves it.
      */
     private static <T extends Data, R, ID> PredicateBuilder<T, R, ID> words(String input,
                                                                             Set<String> ignore,

@@ -279,8 +279,9 @@ public abstract class WhereBuilder<T extends Data, R, ID> implements SubqueryTem
      * matched on its own, so the words may match different related rows. Accents compare as the column's collation
      * compares them.</p>
      *
-     * <p>A word shorter than the database's substring index serves is tested only on the rows the longer words found,
-     * so it reads no table in full; the rows found are the same. A search box that queries as the user types, such
+     * <p>Until a word reaches three characters, the whole input matches as the start of the value, ignoring case, and
+     * an input of one character matches no rows; a shorter word next to a longer one is tested only on the rows the
+     * longer word found, so it reads no table in full. A search box that queries as the user types, such
      * as an auto-complete, uses {@link #suggest(String, Navigable, Navigable[])} instead.</p>
      *
      * @param input the search input, as a search box receives it.
@@ -293,13 +294,39 @@ public abstract class WhereBuilder<T extends Data, R, ID> implements SubqueryTem
     public final PredicateBuilder<T, R, ID> search(String input,
                                                    Navigable<? extends T, String> path,
                                                    Navigable<? extends T, String>... more) {
-        return PredicateBuilderImpl.of(PredicateBuilderFactory.search(input, metamodels(path, more)));
+        return search(input, Set.of(), path, more);
+    }
+
+    /**
+     * Matches the words of a search input against one or more text columns, as
+     * {@link #search(String, Navigable, Navigable[])} does, ignoring the given words as well. A word that equals one
+     * of them, ignoring case, takes no part in the predicate, so an input of ignored words alone matches every row,
+     * as an empty input does; a quoted word is never ignored. The whole input, ignored words included, still matches
+     * as the start of the value while no word reaches three characters. A search names the words that occur in a
+     * large share of its rows, such as "van" in a list of last names: matched anywhere, such a word narrows almost
+     * nothing, and a row without it is not found.
+     * {@code search("van berg", Set.of("van", "de", "der"), Owner_.lastName)} matches on "berg" alone.
+     *
+     * @param input  the search input, as a search box receives it.
+     * @param ignore the words to ignore, compared ignoring case.
+     * @param path   the first text column to search.
+     * @param more   further text columns to search.
+     * @return the predicate builder.
+     * @since 1.16
+     */
+    @SafeVarargs
+    public final PredicateBuilder<T, R, ID> search(String input,
+                                                   Set<String> ignore,
+                                                   Navigable<? extends T, String> path,
+                                                   Navigable<? extends T, String>... more) {
+        return PredicateBuilderImpl.of(PredicateBuilderFactory.search(input, ignore, metamodels(path, more)));
     }
 
     /**
      * Matches the words of a search input against text columns, each in its stated match form, as
      * {@link #search(String, Navigable, Navigable[])} matches them anywhere in the value. A field states its form
-     * through the factories of {@link Match}: {@code anywhere}, {@code wordStart}, {@code prefix} or {@code exact};
+     * through the factories of {@link Match}: {@code anywhere}, {@code wordStart}, {@code prefix},
+     * {@code prefixIgnoreCase}, {@code exact} or {@code exactIgnoreCase};
      * {@code search("van berg", wordStart(Owner_.lastName), exact(Owner_.telephone))} matches each word at the start
      * of a word of the last name or as the whole telephone number.
      *
@@ -313,7 +340,27 @@ public abstract class WhereBuilder<T extends Data, R, ID> implements SubqueryTem
     public final PredicateBuilder<T, R, ID> search(String input,
                                                    Match<? extends T> field,
                                                    Match<? extends T>... more) {
-        return PredicateBuilderImpl.of(PredicateBuilderFactory.search(input, fields(field, more)));
+        return search(input, Set.of(), field, more);
+    }
+
+    /**
+     * Matches the words of a search input against text columns, each in its stated match form, as
+     * {@link #search(String, Match, Match[])} does, ignoring the given words as well, as
+     * {@link #search(String, Set, Navigable, Navigable[])} ignores them. A quoted word is never ignored.
+     *
+     * @param input  the search input, as a search box receives it.
+     * @param ignore the words to ignore, compared ignoring case.
+     * @param field  the first text column to search, with its match form.
+     * @param more   further text columns to search, with their match forms.
+     * @return the predicate builder.
+     * @since 1.16
+     */
+    @SafeVarargs
+    public final PredicateBuilder<T, R, ID> search(String input,
+                                                   Set<String> ignore,
+                                                   Match<? extends T> field,
+                                                   Match<? extends T>... more) {
+        return PredicateBuilderImpl.of(PredicateBuilderFactory.search(input, ignore, fields(field, more)));
     }
 
     /**
@@ -321,9 +368,9 @@ public abstract class WhereBuilder<T extends Data, R, ID> implements SubqueryTem
      * text columns. Every word matches at the start of a word in one of the columns, the same rows on every
      * database: {@code suggest("van b", Owner_.lastName)} finds "Van den Berg" and not "Sullivan". The input is read
      * as {@link #search(String, Navigable, Navigable[])} reads it. An input without a word of
-     * three characters matches the whole input as the start of the value, ignoring case, and a shorter word next to one that reaches the length is tested only on the
-     * rows the longer word found. An empty input, or one of a single character, matches no rows, so the box never
-     * fetches and sorts a whole table on the first keystroke.
+     * three characters matches as the start of the value, ignoring case, and a shorter word next to one that reaches
+     * the length is tested only on the rows the longer word found. An empty input, or one of a single character,
+     * matches no rows, so the box never fetches and sorts a whole table on the first keystroke.
      * {@link #suggest(String, Match, Match[])} states another match form per column.
      *
      * @param input the search input, as a search box receives it.
@@ -365,9 +412,11 @@ public abstract class WhereBuilder<T extends Data, R, ID> implements SubqueryTem
     /**
      * Matches the words of a search box that queries as the user types against text columns, each in its stated
      * match form, as {@link #suggest(String, Navigable, Navigable[])} matches them at the start of a word. A field
-     * states its form through the factories of {@link Match}: {@code anywhere}, {@code wordStart}, {@code prefix} or
-     * {@code exact}; {@code suggest(input, wordStart(Owner_.lastName), prefix(OwnerNameSuffix_.suffix))} matches each
-     * word at the start of a word of the name, or as a prefix of a suffix row, which an ordinary index serves.
+     * states its form through the factories of {@link Match}: {@code anywhere}, {@code wordStart},
+     * {@code prefix}, {@code prefixIgnoreCase}, {@code exact} or {@code exactIgnoreCase}; {@code suggest(input, wordStart(Owner_.lastName),
+     * prefix(OwnerNameSuffix_.suffix))} matches each word at the start of a word of the name, or as a prefix of a
+     * suffix row, which an ordinary index serves. Until a word reaches a field's
+     * {@link Match#minLength() minLength}, the field matches the whole input in its {@link Match#fallback() fallback}.
      *
      * @param input the search input, as a search box receives it.
      * @param field the first text column to search, with its match form.

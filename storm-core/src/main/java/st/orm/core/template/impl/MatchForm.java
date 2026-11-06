@@ -17,11 +17,17 @@ package st.orm.core.template.impl;
 
 import static st.orm.Operator.CONTAINS_IGNORE_CASE;
 import static st.orm.Operator.EQUALS;
+import static st.orm.Operator.EQUALS_IGNORE_CASE;
 import static st.orm.Operator.STARTS_WITH;
+import static st.orm.Operator.STARTS_WITH_IGNORE_CASE;
 
 import java.util.Locale;
 import org.jspecify.annotations.Nullable;
 import st.orm.Match;
+import st.orm.Match.Anywhere;
+import st.orm.Match.Exact;
+import st.orm.Match.Prefix;
+import st.orm.Match.WordStart;
 import st.orm.Operator;
 
 /**
@@ -46,7 +52,13 @@ public enum MatchForm {
     PREFIX("prefix", STARTS_WITH, true),
 
     /** As the whole value, on the bare column with the word lowered. */
-    EXACT("exact", EQUALS, true);
+    EXACT("exact", EQUALS, true),
+
+    /** As a prefix of the value, on the lowered column. */
+    PREFIX_IGNORE_CASE("prefixIgnoreCase", STARTS_WITH_IGNORE_CASE, false),
+
+    /** As the whole value, on the lowered column. */
+    EXACT_IGNORE_CASE("exactIgnoreCase", EQUALS_IGNORE_CASE, false);
 
     private final String factory;
     private final @Nullable Operator operator;
@@ -88,12 +100,21 @@ public enum MatchForm {
     }
 
     /**
-     * Returns whether the form compares the lowered column, with a wildcard in front of the word, which only an index
-     * for substring matching serves.
+     * Returns whether the form compares the lowered column, which only an index over that expression serves.
+     *
+     * @return {@code true} for every form but a prefix or exact match on the bare column.
+     */
+    boolean lowered() {
+        return this != PREFIX && this != EXACT;
+    }
+
+    /**
+     * Returns whether the form puts a wildcard in front of the word, which only an index for substring matching
+     * serves.
      *
      * @return {@code true} for a match anywhere or at a word start.
      */
-    boolean lowered() {
+    boolean substring() {
         return this == ANYWHERE || this == WORD_START;
     }
 
@@ -105,10 +126,10 @@ public enum MatchForm {
      */
     public static MatchForm of(Match<?> match) {
         return switch (match) {
-            case Match.Anywhere<?> ignore -> ANYWHERE;
-            case Match.WordStart<?> ignore -> WORD_START;
-            case Match.Prefix<?> ignore -> PREFIX;
-            case Match.Exact<?> ignore -> EXACT;
+            case Anywhere<?> ignore -> ANYWHERE;
+            case WordStart<?> ignore -> WORD_START;
+            case Prefix<?> it -> it.ignoreCase() ? PREFIX_IGNORE_CASE : PREFIX;
+            case Exact<?> it -> it.ignoreCase() ? EXACT_IGNORE_CASE : EXACT;
         };
     }
 
