@@ -104,13 +104,57 @@ The two functions read the input alike and differ in what they do with it, the s
 | `v` | `v` anywhere | no rows: one character names too many |
 | empty or blank | every row | no rows |
 
-A word shorter than three characters matches too large a share of a table, whatever index serves it: `va` starts a word in a sizeable part of the names in a directory, and the box would fetch and rank them all. So until one of its words reaches three characters, a suggestion matches the whole input as the start of the value, ignoring case: `de va` suggests "De Vaal", `up` suggests "Upton" but not "Van Upton". Its words are joined by one space, and a `prefix` or `exact` column compares the whole input in its own form. Once a word reaches the length, a shorter word next to it narrows only the rows the longer word found. An input of one character matches no rows. The length is three on every database, since it changes which rows come back.
-
 The empty-input contract is why both exist. A results page with an empty box lists everything; a suggestion box with an empty box lists nothing. The default match form follows the situation: a person typing into a box types the start of a word, in any order, so `suggest` matches word starts, and a submitted search should find every row the words occur in, so `search` matches anywhere. Either function takes another form per column; see [Match Forms](#match-forms).
 
 A word starts the value or follows a space, a hyphen, an apostrophe, an opening parenthesis, a slash, a colon, a period or a comma, so `marie` suggests "Anne-Marie", `brien` "O'Brien" and `john` "St. John". The same set applies on every database. A word does not match inside a compound: `son` does not suggest "Davidson", and `berg` not "Lindberg", although the search page the box leads to finds both through `search`. Where matches inside a word matter for a column, state `anywhere` for that column and keep the word start for the others; see [Match Forms](#match-forms).
 
 Each database renders the word start in its own way, and finds the same rows: one regular expression where it has the operator, which PostgreSQL's trigram index serves as it serves a `LIKE`, and `LIKE` patterns elsewhere.
+
+### Short Words
+
+A word shorter than three characters matches too large a share of a table, whatever index serves it: `va` starts a word in a sizeable part of the names in a directory, and the box would fetch and rank them all. `suggest` handles short words in three ways, the same on every database, since the rules change which rows come back.
+
+- **Until a word reaches three characters, the whole input matches as the start of the value**, ignoring case: `de va` suggests "De Vaal", `up` suggests "Upton" but not "Van Upton". The words are joined by one space, an ignored word among them, and a `prefix` or `exact` column compares the whole input in its own form. An input of one character matches no rows.
+- **Once a word reaches the length, a shorter word next to it narrows only the rows the longer word found**: `van d` matches `van` at a word start and tests `d` on those rows alone.
+- **A column states the shortest word it takes.** The row's own columns answer a short input cheaply, but a column of a related table matches broadly and its matches rank below the row's own: `le` starts the names of many pets whose owners never reach the top of the list, and reading them costs the box more than the owner's name does. `minLength` keeps such a column out until a word names it narrowly:
+
+<Tabs groupId="language">
+<TabItem value="kotlin" label="Kotlin" default>
+
+```kotlin
+val owners = orm.entity(Owner::class)
+    .select()
+    .semiJoin<Pet>().on<Owner>()
+    .where(suggest(input, wordStart(Owner_.lastName), wordStart(Pet_.name, minLength = 3)))
+    .limit(6)
+    .resultList
+```
+
+</TabItem>
+<TabItem value="java" label="Java">
+
+```java
+import static st.orm.Match.*;
+
+List<Owner> owners = orm.entity(Owner.class)
+    .select()
+    .semiJoin(Pet.class).on(Owner.class)
+    .where(it -> it.suggest(input, wordStart(Owner_.lastName), wordStart(Pet_.name, 3)))
+    .limit(6)
+    .getResultList();
+```
+
+</TabItem>
+</Tabs>
+
+| Input | Columns that take part |
+|-------|------------------------|
+| `le` | the last name, as the start of the value; the pets are not read |
+| `leo` | the last name and the pet names, at a word start |
+| `da max` | `max` on both columns; `da` on the last name only, on the rows `max` found |
+| `da` with `minLength = 3` on both columns | none: no rows |
+
+A word shorter than a column's length does not match that column, and where no word of the input reaches it, the column takes no part in the statement, its related table with it. The semi-join on the pets is there to supply matches, not to require a pet, so it goes too, with any condition on the join, and an owner without pets is found through their own name for `le` as they are for `leo`. Where the input matches as the start of the value, its whole length counts, so `de v` reaches a column of three. A word no column takes is left out, and an input whose words no column takes matches no rows. `search` follows the same rules for a column that states a length.
 
 ### Ignoring Words
 
@@ -203,7 +247,7 @@ A word typed into that box matches the start of a word of a name, or a whole tel
 - **`anywhere` and `wordStart`** lower the column, so the index that serves them is one built for substring matching over `LOWER(col)`; see [Indexing a Search](#indexing-a-search). A word at a word start is a word anywhere with a separator in front of it, so the same index serves both.
 - **`prefix` and `exact`** leave the column bare and lower the word, so an ordinary index over the column serves them: `last_name LIKE ?`, since `LOWER(last_name)` would lose the index. The column must then compare case-insensitively on its own: a case-insensitive collation, the default on MySQL, MariaDB and SQL Server and `COLLATE NOCASE` on the column on SQLite, or a stored lowered column declared as a [query column](entities.md#query-columns) on PostgreSQL, H2 and Oracle, which the lowered word matches as typed. A `prefix` or `exact` match on a column that compares case-sensitively never matches a value with an upper-case letter.
 - **A match composes with a [`SqlFunction`](#ignoring-accents)**: `wordStart(foldAccents(Owner_.lastName))` in Kotlin, `wordStart(foldAccents.apply(Owner_.lastName))` in Java, matches the folded name, and the index is built over the same expression.
-- **A match may state the shortest word the column takes**: `wordStart(Pet_.name, minLength = 3)` in Kotlin, `wordStart(Pet_.name, 3)` in Java. A shorter word does not match that column, and where no word of the input reaches it, the column takes no part in the statement, its related table included: a semi-join the query declares for that column goes too, its condition with it, so a row without a related row is still found through its own columns. Where the input matches as the start of the value, its whole length counts. A word no column takes is left out, and an input whose words no column takes matches no rows. State it on a column whose matches rank below the row's own, such as a related table's: `le` starts the names of many pets whose owners never reach the top of the list, and reading them costs the box more than the row's own columns do.
+- **A match also states the shortest word its column takes**, `wordStart(Pet_.name, minLength = 3)`; see [Short Words](#short-words).
 - **A match is not a path**, so only `search` and `suggest` take it; `orderFirst` and the operators take the column.
 
 ## Searching Related Rows
@@ -238,6 +282,7 @@ List<Owner> owners = orm.entity(Owner.class)
 - Each word is matched on its own, so the words may match different related rows: `leo max` finds the owner of both a Leo and a Max.
 - Each word renders as an `IN` over a `UNION` of a branch per table, so each table is read through its own indexes rather than through a join of both. Where the database runs such a union once per outer row (`SqlDialect.flattensInOverUnion()`), each word renders as an `EXISTS` per table instead.
 - The columns may come from several semi-joined tables. With `semiJoin<Pet>().on<Owner>()` and `semiJoin<Visit>().on<Pet>()`, `search(input, Owner_.lastName, Pet_.name, Visit_.description)` finds an owner by their name, by a pet's name or by what a visit was about, so `vaccination` finds the owners whose pets came in for one although no name says so. Each word matches a row of any of the tables, and renders as one `IN` over a `UNION` with a branch per table, so each table is read through its own indexes.
+- Whether a semi-join filters the rows or supplies matches is decided by the query as written. A semi-join whose column the search names supplies matches: an owner without pets is still found through their own name, for every input. A related column usually states the shortest word it takes, since its matches rank below the row's own and cost the most to read; see [Short Words](#short-words).
 - A condition on the join limits which related rows a word may match. `semiJoin<Visit>().on(Pet::class, Visit_.visitDate greaterEq lastYear)` with `search(input, Owner_.lastName, Visit_.description)` matches a word against the names and the visits of the past year, and an index limited to those rows serves it.
 - `search` and `suggest` filter rows, so they go in `where` or in the condition of a `semiJoin` or `antiJoin`. `orderFirst`, `having` and the condition of a join that adds rows refuse them: rank with `startsWithIgnoreCase` or `equalsIgnoreCase` instead.
 

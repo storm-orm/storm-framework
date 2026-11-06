@@ -674,8 +674,8 @@ abstract class QueryBuilderImpl<T extends Data, R, ID> extends QueryBuilder<T, R
 
     /**
      * Refuses a predicate that holds a search or a suggestion where the query does not filter its rows by it. A search
-     * resolves its words by the dialect's substring index and the configured minimum word length, which only a
-     * condition that filters rows applies: {@code where}, and the condition of a semi-join or anti-join.
+     * resolves its words by the dialect's substring index and the lengths its columns state, which only a condition
+     * that filters rows applies: {@code where}, and the condition of a semi-join or anti-join.
      */
     private static void refuseSearch(PredicateNode node, String clause, String fix) {
         if (PredicateNode.holdsSearch(node)) {

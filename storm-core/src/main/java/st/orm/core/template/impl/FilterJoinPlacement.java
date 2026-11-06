@@ -75,7 +75,10 @@ import st.orm.mapping.RecordField;
  * <p>A condition on a semi-joined table holds when it holds for a related row, and the conditions joined by AND hold
  * for the same related row. A part of the condition that names only the query's own tables holds without one, so a
  * row without related rows still matches through its own columns. Each {@link Scope} is answered on its own, which is
- * how every word of a search may match a different related row.</p>
+ * how every word of a search may match a different related row. Whether a semi-join filters the rows or supplies
+ * matches is decided by the query as written: a semi-join no condition names filters, and one a condition names
+ * supplies matches, also where a search leaves out the columns that named it because no word of the input reaches
+ * them.</p>
  *
  * <p>A condition on a semi-joined table renders as {@code EXISTS} over the related rows. Where the condition is an OR
  * of terms on the query's table and terms on the semi-joined table, the common shape of a search, it renders as an
@@ -173,9 +176,9 @@ final class FilterJoinPlacement {
     private final List<FilterJoin> filterJoins;
 
     /**
-     * The tables the conditions named only through search columns no word of the input reaches, so no condition uses
-     * them. A semi-join of such a table takes no part in the statement, as a path into a related table the search
-     * leaves out does not.
+     * The tables the conditions as written name, and the conditions as resolved no longer do: a search named them
+     * through columns no word of the input reaches. A semi-join of such a table supplies matches rather than filters,
+     * so it takes no part in the statement, as a path into a related table the search leaves out does not.
      */
     private final Set<Class<? extends Data>> unused = new HashSet<>();
 
@@ -314,8 +317,8 @@ final class FilterJoinPlacement {
             // complement of the anti-join on the same table.
             if (filterJoin.type() == FilterJoinType.ANTI
                     || conjuncts.stream().noneMatch(conjunct -> namesAny(conjunct, tablesOf(filterJoin)))) {
-                // A semi-join whose table only unused search columns named takes no part, its condition included:
-                // the rows are found through the columns the words reached.
+                // A semi-join the query wrote a condition for supplies matches, so without the columns that named it,
+                // it takes no part, its condition included: the rows are found through the columns the words reached.
                 if (filterJoin.type() == FilterJoinType.SEMI
                         && !Collections.disjoint(tablesOf(filterJoin), unused)) {
                     continue;
