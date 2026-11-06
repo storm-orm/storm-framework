@@ -491,8 +491,6 @@ abstract class QueryBuilderImpl<T extends Data, R, ID> extends QueryBuilder<T, R
      * given template.
      */
     protected final TemplateString appendJoinsAndWhere(TemplateString template, StatementFacts.Collector facts) {
-        // Which search terms a substring index serves depends on the dialect, so a search resolves its words here.
-        var where = resolveSearches(this.where, queryTemplate.dialect().minimumSearchTermLength());
         var filterJoins = join.stream().filter(FilterJoinPlacement::isFilterJoin).toList();
         var joins = filterJoins.isEmpty() ? join : join.stream().filter(it -> !FilterJoinPlacement.isFilterJoin(it)).toList();
         if (!joins.isEmpty()) {
@@ -506,7 +504,8 @@ abstract class QueryBuilderImpl<T extends Data, R, ID> extends QueryBuilder<T, R
             clauses.addAll(groupBy);
             clauses.addAll(having);
             clauses.addAll(orderBy);
-            var whereClause = FilterJoinPlacement.where(queryTemplate, fromType, join, where, clauses, subqueriesMayReadTable());
+            // The placement resolves the searches, since a semi-join takes no part where a search leaves out its columns.
+            var whereClause = FilterJoinPlacement.where(queryTemplate, fromType, join, this.where, clauses, subqueriesMayReadTable());
             if (whereClause == null) {
                 return template;
             }
@@ -515,6 +514,8 @@ abstract class QueryBuilderImpl<T extends Data, R, ID> extends QueryBuilder<T, R
             return TemplateString.combine(template, TemplateString.of("\nWHERE "),
                     wrap(new Where(new TemplateExpression(whereClause), null)));
         }
+        // Which search terms a substring index serves depends on the dialect, so a search resolves its words here.
+        var where = resolveSearches(this.where, queryTemplate.dialect().minimumSearchTermLength());
         if (where.isEmpty() && isSingleTableSubtype()) {
             // A statement on a subtype of a single-table hierarchy selects the subtype's rows by the discriminator,
             // which its WHERE clause carries: without a condition, the clause holds the discriminator alone.

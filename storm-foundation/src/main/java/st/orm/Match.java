@@ -155,9 +155,9 @@ public sealed interface Match<T extends Data> {
 
     /**
      * Returns the shortest word, in characters, the column takes: a shorter word does not match the column, and where
-     * no word of the input reaches it, the column takes no part in the statement, its related table included.
-     * Where the input matches as the start of the value, its whole length counts. {@code 0} takes a word of any
-     * length.
+     * no word of the input reaches it, the column takes no part in the statement, its related table included, and a
+     * semi-join declared for it with its condition too. Where the input matches as the start of the value, its whole
+     * length counts. {@code 0} takes a word of any length.
      *
      * @return the length.
      */

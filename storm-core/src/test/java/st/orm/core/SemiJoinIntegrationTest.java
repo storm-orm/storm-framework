@@ -230,6 +230,25 @@ public class SemiJoinIntegrationTest {
     }
 
     @Test
+    public void aDeclaredSemiJoinNoWordReachesTakesNoPartWithItsCondition() {
+        // Only Jean has a pet named Max; da reaches the owner's name alone, so the semi-join and its condition go.
+        var owners = capture(() -> orm().entity(Owner.class).select()
+                .semiJoin(Pet.class).on(Owner.class, it -> it.where(Pet_.name, EQUALS, "Max"))
+                .where(it -> PredicateBuilderFactory.<Data, Owner, Integer>suggest("da", Set.of(),
+                        Match.wordStart(Owner_.lastName), Match.wordStart(Pet_.name, 3)))
+                .getResultList());
+        assertEquals(List.of("Betty", "Harold"), firstNames(owners));
+        assertFalse(statement().contains("pet p"), statement());
+        // A word that reaches the pet name keeps the semi-join and its condition.
+        owners = capture(() -> orm().entity(Owner.class).select()
+                .semiJoin(Pet.class).on(Owner.class, it -> it.where(Pet_.name, EQUALS, "Max"))
+                .where(it -> PredicateBuilderFactory.<Data, Owner, Integer>suggest("max", Set.of(),
+                        Match.wordStart(Owner_.lastName), Match.wordStart(Pet_.name, 3)))
+                .getResultList());
+        assertEquals(List.of("Jean"), firstNames(owners));
+    }
+
+    @Test
     public void aWordNoColumnTakesIsLeftOut() {
         var owners = capture(() -> ownersWithPets()
                 .where(it -> PredicateBuilderFactory.<Data, Owner, Integer>search("davis le",
