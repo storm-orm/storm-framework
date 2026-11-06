@@ -257,6 +257,10 @@ public class SearchIntegrationTest {
         assertEquals(List.of("van der berg"), suggestNames("van de", wordStart(NAME_LOWER)));
         assertEquals(List.of("van der berg"), suggestNames("van d", wordStart(NAME_LOWER)));
         assertEquals(List.of(), suggestNames("van xy", wordStart(NAME_LOWER)));
+        // The start of the value counts its whole length against the column's minimum.
+        assertEquals(List.of(), suggestNames("de", wordStart(NAME_LOWER, 3)));
+        assertEquals(List.of("van der berg"), names(true, "van de", Set.of("van"), wordStart(NAME_LOWER, 3)));
+        assertThrows(IllegalArgumentException.class, () -> wordStart(NAME_LOWER, -1));
     }
 
     @Test

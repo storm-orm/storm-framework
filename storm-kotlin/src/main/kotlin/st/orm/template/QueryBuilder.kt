@@ -1914,9 +1914,11 @@ public fun <T : Data> suggest(
  * `LOWER(column) LIKE LOWER('%word%')`.
  *
  * @param path the text column.
+ * @param minLength the shortest word, in characters, the column takes, `0` for any length. A shorter word does not
+ *   match the column, and where no word reaches it, the column takes no part in the statement.
  * @since 1.16
  */
-public fun <T : Data> anywhere(path: Navigable<T, String>): Match<T> = Match.anywhere(path)
+public fun <T : Data> anywhere(path: Navigable<T, String>, minLength: Int = 0): Match<T> = Match.anywhere(path, minLength)
 
 /**
  * States that a word of a [search] or [suggest] matches at the start of any word in the column's value, the value's
@@ -1924,9 +1926,11 @@ public fun <T : Data> anywhere(path: Navigable<T, String>): Match<T> = Match.any
  * `LOWER(column) LIKE LOWER('word%') OR LOWER(column) LIKE LOWER('% word%')`.
  *
  * @param path the text column.
+ * @param minLength the shortest word, in characters, the column takes, `0` for any length. A shorter word does not
+ *   match the column, and where no word reaches it, the column takes no part in the statement.
  * @since 1.16
  */
-public fun <T : Data> wordStart(path: Navigable<T, String>): Match<T> = Match.wordStart(path)
+public fun <T : Data> wordStart(path: Navigable<T, String>, minLength: Int = 0): Match<T> = Match.wordStart(path, minLength)
 
 /**
  * States that a word of a [search] or [suggest] matches as a prefix of the column's value, with the column bare and
@@ -1934,9 +1938,11 @@ public fun <T : Data> wordStart(path: Navigable<T, String>): Match<T> = Match.wo
  * compares case-insensitively on its own, through its collation or as a stored lowered column.
  *
  * @param path the text column.
+ * @param minLength the shortest word, in characters, the column takes, `0` for any length. A shorter word does not
+ *   match the column, and where no word reaches it, the column takes no part in the statement.
  * @since 1.16
  */
-public fun <T : Data> prefix(path: Navigable<T, String>): Match<T> = Match.prefix(path)
+public fun <T : Data> prefix(path: Navigable<T, String>, minLength: Int = 0): Match<T> = Match.prefix(path, minLength)
 
 /**
  * States that a word of a [search] or [suggest] matches the column's whole value, with the column bare and the word
@@ -1944,9 +1950,11 @@ public fun <T : Data> prefix(path: Navigable<T, String>): Match<T> = Match.prefi
  * case-insensitively on its own, through its collation or as a stored lowered column.
  *
  * @param path the text column.
+ * @param minLength the shortest word, in characters, the column takes, `0` for any length. A shorter word does not
+ *   match the column, and where no word reaches it, the column takes no part in the statement.
  * @since 1.16
  */
-public fun <T : Data> exact(path: Navigable<T, String>): Match<T> = Match.exact(path)
+public fun <T : Data> exact(path: Navigable<T, String>, minLength: Int = 0): Match<T> = Match.exact(path, minLength)
 
 /**
  * Applies a SQL function to a column, for a query that names the expression an index is built on. The call is taken

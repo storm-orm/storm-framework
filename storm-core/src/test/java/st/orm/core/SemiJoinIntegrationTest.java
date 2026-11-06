@@ -42,6 +42,7 @@ import org.springframework.test.context.junit.jupiter.SpringExtension;
 import st.orm.Data;
 import st.orm.Entity;
 import st.orm.FK;
+import st.orm.Match;
 import st.orm.Metamodel;
 import st.orm.PK;
 import st.orm.PersistenceException;
@@ -204,6 +205,43 @@ public class SemiJoinIntegrationTest {
         assertEquals(List.of("Betty", "Jean"), firstNames(owners));
         // Nothing narrows the rows for it, so it is read as a long word is.
         assertTrue(statement().contains(" UNION "), statement());
+    }
+
+    @Test
+    public void aColumnNoWordReachesTakesNoPartWithItsRelatedTable() {
+        // The pet name takes words of three characters, so a shorter one leaves the pets out of the statement.
+        var owners = capture(() -> ownersWithPets()
+                .where(it -> PredicateBuilderFactory.<Data, Owner, Integer>suggest("le", Set.of(),
+                        Match.wordStart(Owner_.lastName), Match.wordStart(Pet_.name, 3)))
+                .getResultList());
+        assertEquals(List.of(), firstNames(owners));
+        assertFalse(statement().contains("p.name"), statement());
+        owners = capture(() -> ownersWithPets()
+                .where(it -> PredicateBuilderFactory.<Data, Owner, Integer>suggest("leo", Set.of(),
+                        Match.wordStart(Owner_.lastName), Match.wordStart(Pet_.name, 3)))
+                .getResultList());
+        assertEquals(List.of("Betty"), firstNames(owners));
+        // Per word: next to davis, le reaches the owner's name only, which it does not match.
+        owners = capture(() -> ownersWithPets()
+                .where(it -> PredicateBuilderFactory.<Data, Owner, Integer>search("davis le",
+                        Match.anywhere(Owner_.lastName), Match.anywhere(Pet_.name, 3)))
+                .getResultList());
+        assertEquals(List.of(), firstNames(owners));
+    }
+
+    @Test
+    public void aWordNoColumnTakesIsLeftOut() {
+        var owners = capture(() -> ownersWithPets()
+                .where(it -> PredicateBuilderFactory.<Data, Owner, Integer>search("davis le",
+                        Match.anywhere(Owner_.lastName, 3), Match.anywhere(Pet_.name, 3)))
+                .getResultList());
+        assertEquals(List.of("Betty", "Harold"), firstNames(owners));
+        // An input whose words no column takes matches no rows.
+        owners = capture(() -> ownersWithPets()
+                .where(it -> PredicateBuilderFactory.<Data, Owner, Integer>search("le",
+                        Match.anywhere(Owner_.lastName, 3), Match.anywhere(Pet_.name, 3)))
+                .getResultList());
+        assertEquals(List.of(), firstNames(owners));
     }
 
     @Test
