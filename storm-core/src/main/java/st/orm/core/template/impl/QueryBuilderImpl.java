@@ -492,8 +492,7 @@ abstract class QueryBuilderImpl<T extends Data, R, ID> extends QueryBuilder<T, R
      */
     protected final TemplateString appendJoinsAndWhere(TemplateString template, StatementFacts.Collector facts) {
         // Which search terms a substring index serves depends on the dialect, so a search resolves its words here.
-        var where = resolveSearches(this.where, queryTemplate.dialect().minimumSearchTermLength(),
-                MatchForm.suggestMinimumWordLength(queryTemplate.config()));
+        var where = resolveSearches(this.where, queryTemplate.dialect().minimumSearchTermLength());
         var filterJoins = join.stream().filter(FilterJoinPlacement::isFilterJoin).toList();
         var joins = filterJoins.isEmpty() ? join : join.stream().filter(it -> !FilterJoinPlacement.isFilterJoin(it)).toList();
         if (!joins.isEmpty()) {
@@ -558,8 +557,7 @@ abstract class QueryBuilderImpl<T extends Data, R, ID> extends QueryBuilder<T, R
      * Returns the WHERE conditions with each search in them resolved for the dialect, or the conditions themselves
      * when none holds a search.
      */
-    private static List<Where> resolveSearches(List<Where> where, int minimumSearchTermLength,
-                                               int suggestMinimumWordLength) {
+    private static List<Where> resolveSearches(List<Where> where, int minimumSearchTermLength) {
         List<Where> resolved = null;
         for (int i = 0; i < where.size(); i++) {
             var condition = where.get(i);
@@ -568,7 +566,7 @@ abstract class QueryBuilderImpl<T extends Data, R, ID> extends QueryBuilder<T, R
                 if (resolved == null) {
                     resolved = new ArrayList<>(where);
                 }
-                var node = PredicateNode.resolve(predicate, minimumSearchTermLength, suggestMinimumWordLength);
+                var node = PredicateNode.resolve(predicate, minimumSearchTermLength);
                 resolved.set(i, new Where(new TemplateExpression(node.toTemplate(), node), condition.bindVars()));
             }
         }

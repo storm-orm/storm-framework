@@ -257,16 +257,6 @@ public class SearchIntegrationTest {
         assertEquals(List.of("van der berg"), suggestNames("van de", wordStart(NAME_LOWER)));
         assertEquals(List.of("van der berg"), suggestNames("van d", wordStart(NAME_LOWER)));
         assertEquals(List.of(), suggestNames("van xy", wordStart(NAME_LOWER)));
-        // The length is a setting, the same on every database.
-        var orm = ORMTemplate.of(dataSource,
-                StormConfig.of(Map.of(StormConfig.SUGGEST_MIN_WORD_LENGTH, "2")));
-        statements = new ArrayList<>();
-        List<String> found = new ArrayList<>();
-        observe(sql -> statements.add(sql.statement()), () -> orm.entity(Suggestion.class).select()
-                .where(it -> PredicateBuilderFactory.<Suggestion, Suggestion, Integer>suggest("de", Set.of(), wordStart(NAME_LOWER)))
-                .getResultList()
-                .forEach(suggestion -> found.add(suggestion.nameLower())));
-        assertEquals(List.of("van der berg"), found);
     }
 
     @Test

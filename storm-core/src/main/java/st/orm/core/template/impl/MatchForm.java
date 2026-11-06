@@ -18,13 +18,11 @@ package st.orm.core.template.impl;
 import static st.orm.Operator.CONTAINS_IGNORE_CASE;
 import static st.orm.Operator.EQUALS;
 import static st.orm.Operator.STARTS_WITH;
-import static st.orm.core.spi.StormConfigHelper.getInt;
 
 import java.util.Locale;
 import org.jspecify.annotations.Nullable;
 import st.orm.Match;
 import st.orm.Operator;
-import st.orm.StormConfig;
 
 /**
  * The form a word of a {@code search} or {@code suggest} matches a field in, as the {@link Match} records state it,
@@ -49,9 +47,6 @@ public enum MatchForm {
 
     /** As the whole value, on the bare column with the word lowered. */
     EXACT("exact", EQUALS, true);
-
-    /** The default of {@link StormConfig#SUGGEST_MIN_WORD_LENGTH}. */
-    static final int DEFAULT_SUGGEST_MIN_WORD_LENGTH = 3;
 
     private final String factory;
     private final @Nullable Operator operator;
@@ -100,16 +95,6 @@ public enum MatchForm {
      */
     boolean lowered() {
         return this == ANYWHERE || this == WORD_START;
-    }
-
-    /**
-     * Returns the shortest word {@code suggest} matches on its own, as configured, or the default.
-     *
-     * @param config the configuration.
-     * @return the length, at least one character.
-     */
-    static int suggestMinimumWordLength(StormConfig config) {
-        return Math.max(1, getInt(config, StormConfig.SUGGEST_MIN_WORD_LENGTH, DEFAULT_SUGGEST_MIN_WORD_LENGTH));
     }
 
     /**

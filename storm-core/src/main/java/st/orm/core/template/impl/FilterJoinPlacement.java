@@ -630,7 +630,7 @@ final class FilterJoinPlacement {
         return switch (node) {
             case Term term -> namesAny(term, tables) ? null : term;
             case Scope(var inner, var ignore) -> withoutTables(inner, tables);
-            case Search search -> withoutTables(search.resolve(0, MatchForm.DEFAULT_SUGGEST_MIN_WORD_LENGTH), tables);
+            case Search search -> withoutTables(search.resolve(0), tables);
             case Group(var and, var operands) -> {
                 var kept = new ArrayList<PredicateNode>(operands.size());
                 for (var operand : operands) {
@@ -751,7 +751,7 @@ final class FilterJoinPlacement {
                 yield !named.isEmpty() && tables.containsAll(named);
             }
             case Scope(var inner, var ignore) -> onlyNames(inner, tables);
-            case Search search -> onlyNames(search.resolve(0, MatchForm.DEFAULT_SUGGEST_MIN_WORD_LENGTH), tables);
+            case Search search -> onlyNames(search.resolve(0), tables);
             case Group group -> group.operands().stream().allMatch(operand -> onlyNames(operand, tables));
         };
     }
@@ -862,8 +862,7 @@ final class FilterJoinPlacement {
         var anchor = target.table();
         var condition = target.condition();
         if (condition != null) {
-            condition = PredicateNode.resolve(condition, queryTemplate.dialect().minimumSearchTermLength(),
-                    MatchForm.suggestMinimumWordLength(queryTemplate.config()));
+            condition = PredicateNode.resolve(condition, queryTemplate.dialect().minimumSearchTermLength());
         }
         if (target.sourceKey() != null || target.targetKey() != null) {
             return keyedFilterJoin(queryTemplate, fromType, resolved, type, table, anchor, target.sourceKey(), target.targetKey(), condition);

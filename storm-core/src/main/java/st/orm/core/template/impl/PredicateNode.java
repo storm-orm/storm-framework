@@ -98,6 +98,11 @@ public sealed interface PredicateNode {
          * and the box orders what it finds, so the database would fetch and sort them all before the limit cut the
          * list.
          */
+        /**
+         * The shortest word {@code suggest} matches in its form, the same on every database, since it changes which
+         * rows come back.
+         */
+        static final int SUGGEST_MIN_WORD_LENGTH = 3;
         static final int MIN_START_LENGTH = 2;
 
         public Search {
@@ -117,10 +122,9 @@ public sealed interface PredicateNode {
          * anywhere or at a word start; an input without a term, or a start of one character, matches no rows.
          *
          * @param minimumLength the shortest term the substring index serves, {@code 0} where no index serves one.
-         * @param suggestMinimumLength the shortest word a suggestion matches on its own.
          */
-        PredicateNode resolve(int minimumLength, int suggestMinimumLength) {
-            int length = suggest ? suggestMinimumLength : minimumLength;
+        PredicateNode resolve(int minimumLength) {
+            int length = suggest ? SUGGEST_MIN_WORD_LENGTH : minimumLength;
             boolean reached = terms.stream().anyMatch(term -> reaches(term, length));
             if (!reached) {
                 if (suggest) {
@@ -185,22 +189,21 @@ public sealed interface PredicateNode {
      *
      * @param node the predicate.
      * @param minimumLength the shortest term the substring index serves, {@code 0} to treat every term alike.
-     * @param suggestMinimumLength the shortest word a suggestion matches in its form.
      * @return the resolved predicate.
      */
-    static PredicateNode resolve(PredicateNode node, int minimumLength, int suggestMinimumLength) {
+    static PredicateNode resolve(PredicateNode node, int minimumLength) {
         return switch (node) {
             case Term term -> term;
-            case Search search -> search.resolve(minimumLength, suggestMinimumLength);
+            case Search search -> search.resolve(minimumLength);
             case Scope(var inner, var residual) -> {
-                var resolved = resolve(inner, minimumLength, suggestMinimumLength);
+                var resolved = resolve(inner, minimumLength);
                 yield resolved == inner ? node : new Scope(resolved, residual);
             }
             case Group(var and, var operands) -> {
                 var resolved = new ArrayList<PredicateNode>(operands.size());
                 boolean changed = false;
                 for (var operand : operands) {
-                    var r = resolve(operand, minimumLength, suggestMinimumLength);
+                    var r = resolve(operand, minimumLength);
                     changed |= r != operand;
                     resolved.add(r);
                 }
@@ -271,7 +274,7 @@ public sealed interface PredicateNode {
         return switch (this) {
             case Term term -> term.template();
             case Scope(var node, var ignore) -> node.toTemplate();
-            case Search search -> search.resolve(0, MatchForm.DEFAULT_SUGGEST_MIN_WORD_LENGTH).toTemplate();
+            case Search search -> search.resolve(0).toTemplate();
             case Group(var and, var operands) -> {
                 var parts = new ArrayList<TemplateString>(operands.size() * 2);
                 for (var operand : operands) {
@@ -293,7 +296,7 @@ public sealed interface PredicateNode {
         return switch (this) {
             case Term term -> !term.safe();
             case Scope(var node, var ignore) -> node.grouped();
-            case Search search -> search.resolve(0, MatchForm.DEFAULT_SUGGEST_MIN_WORD_LENGTH).grouped();
+            case Search search -> search.resolve(0).grouped();
             case Group ignore -> true;
         };
     }

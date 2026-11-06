@@ -187,8 +187,8 @@ public interface PredicateBuilderFactory {
     /**
      * Creates a predicate that matches the terms of a search box that queries as the user types, such as an
      * auto-complete, against text columns, each in its stated match form. The input is read as
-     * {@link #search(String, Match[])} reads it. An input without a term of
-     * {@link st.orm.StormConfig#SUGGEST_MIN_WORD_LENGTH} characters matches the whole input, its terms joined by one
+     * {@link #search(String, Match[])} reads it. An input without a term of three
+     * characters matches the whole input, its terms joined by one
      * space, as the start of the value, ignoring case; a shorter term next to one that reaches the length is tested
      * only on the rows the longer term found. An empty input, or one of a single character, matches no rows, so the
      * box never fetches and sorts a whole table on the first keystroke.
