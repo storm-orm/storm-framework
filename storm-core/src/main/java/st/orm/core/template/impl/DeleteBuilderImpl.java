@@ -226,11 +226,11 @@ public class DeleteBuilderImpl<T extends Data, ID> extends QueryBuilderImpl<T, O
             // DELETE p FROM pet p INNER JOIN owner o ON ... WHERE o.last_name = ?.
             case MULTI_TABLE, FROM_CLAUSE -> appendJoinsAndWhere(TemplateString.combine(
                     TemplateString.of("DELETE" + hintAfterKeyword()),
-                    TemplateString.raw(" \0\nFROM \0", fromType, from(fromType, true))), facts);
+                    TemplateString.raw(" \0\nFROM \0", fromType, from(fromType, true))));
             // DELETE FROM pet WHERE (id) IN (SELECT p.id FROM pet p INNER JOIN owner o ON ... WHERE ...).
             case SUBQUERY -> {
                 var select = appendJoinsAndWhere(TemplateString.combine(TemplateString.of("SELECT "), getPrimaryKeyTemplate(true),
-                        TemplateString.raw("\nFROM \0", from(fromType, true))), facts);
+                        TemplateString.raw("\nFROM \0", from(fromType, true))));
                 yield TemplateString.combine(TemplateString.of("DELETE" + hintAfterKeyword()),
                         TemplateString.raw("\nFROM \0\nWHERE ", from(fromType, false)), discriminatorCondition(),
                         TemplateString.of("("), getPrimaryKeyTemplate(false), TemplateString.of(") IN ("), wrap(subquery(select, false)), TemplateString.of(")"));

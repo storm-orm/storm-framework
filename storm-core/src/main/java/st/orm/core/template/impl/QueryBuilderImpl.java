@@ -490,7 +490,7 @@ abstract class QueryBuilderImpl<T extends Data, R, ID> extends QueryBuilder<T, R
      * Appends the registered joins and the WHERE clause, with multiple where-conditions AND-ed together, to the
      * given template.
      */
-    protected final TemplateString appendJoinsAndWhere(TemplateString template, StatementFacts.Collector facts) {
+    protected final TemplateString appendJoinsAndWhere(TemplateString template) {
         var filterJoins = join.stream().filter(FilterJoinPlacement::isFilterJoin).toList();
         var joins = filterJoins.isEmpty() ? join : join.stream().filter(it -> !FilterJoinPlacement.isFilterJoin(it)).toList();
         if (!joins.isEmpty()) {
