@@ -17,10 +17,12 @@ package st.orm.core;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static st.orm.Match.anywhere;
 import static st.orm.Match.exact;
+import static st.orm.Match.exactIgnoreCase;
 import static st.orm.Match.prefix;
 import static st.orm.Match.wordStart;
 import static st.orm.core.template.SqlInterceptor.observe;
@@ -102,7 +104,7 @@ public class SearchIntegrationTest {
         observe(sql -> statements.add(sql.statement()), () -> orm.entity(Suggestion.class).select()
                 .where(it -> suggest
                         ? PredicateBuilderFactory.<Suggestion, Suggestion, Integer>suggest(input, ignore, field)
-                        : PredicateBuilderFactory.<Suggestion, Suggestion, Integer>search(input, field))
+                        : PredicateBuilderFactory.<Suggestion, Suggestion, Integer>search(input, ignore, field))
                 .getResultList()
                 .forEach(suggestion -> names.add(suggestion.nameLower())));
         return names.stream().sorted().toList();
@@ -205,7 +207,10 @@ public class SearchIntegrationTest {
 
     @Test
     public void eachFieldMatchesInItsStatedForm() {
-        assertEquals(List.of("dave", "davis"), searchNames("av", anywhere(NAME_LOWER)));
+        // A length of 0 takes every word in its form; by default, a word of two characters alone matches the whole
+        // input at a word start.
+        assertEquals(List.of("dave", "davis"), searchNames("av", anywhere(NAME_LOWER, 0)));
+        assertEquals(List.of(), searchNames("av", anywhere(NAME_LOWER)));
         assertEquals(List.of(), searchNames("av", wordStart(NAME_LOWER)));
         assertEquals(List.of("upton"), searchNames("up", wordStart(NAME_LOWER)));
         // A word follows a space or a punctuation character that joins or separates words, not only a space.
@@ -237,8 +242,24 @@ public class SearchIntegrationTest {
     }
 
     @Test
-    public void aSuggestionOfShortWordsMatchesTheStartOfTheValue() {
-        // "der" reaches the minimum word length and matches at a word start; "de" alone matches the value's start.
+    public void aSearchIgnoresTheWordsItNames() {
+        // Every word must match, so a frequent word the row lacks drops it; ignored, the other words match alone.
+        var noise = Set.of("THE", "van", "der");
+        assertEquals(List.of(), searchNames("the upton", anywhere(NAME_LOWER)));
+        assertEquals(List.of("upton"), names(false, "the upton", noise, anywhere(NAME_LOWER)));
+        assertEquals(List.of("upton"), names(false, "The upton", noise, wordStart(NAME_LOWER)));
+        // An input of ignored words alone matches as an empty input: every row for search, none for suggest.
+        assertEquals(6, names(false, "van der", noise, anywhere(NAME_LOWER)).size());
+        assertEquals(List.of(), names(true, "van der", noise, wordStart(NAME_LOWER)));
+        // A quoted word is never ignored.
+        assertEquals(List.of("van der berg"), names(false, "\"der\"", noise, anywhere(NAME_LOWER)));
+        assertEquals(List.of(), names(false, "\"the\" upton", noise, anywhere(NAME_LOWER)));
+    }
+
+    @Test
+    public void aSuggestionOfShortWordsMatchesInTheFallback() {
+        // "der" reaches the minimum word length and matches at a word start; "de" alone matches as the whole input,
+        // by default as the start of the value, ignoring case.
         assertEquals(List.of("van der berg"), suggestNames("der", wordStart(NAME_LOWER)));
         assertEquals(List.of(), suggestNames("de", wordStart(NAME_LOWER)));
         assertEquals(List.of("dave", "davis"), suggestNames("da", wordStart(NAME_LOWER)));
@@ -249,6 +270,7 @@ public class SearchIntegrationTest {
         assertEquals(List.of(), suggestNames("va de", wordStart(NAME_LOWER)));
         assertEquals(List.of("van der berg"), names(true, "van  de", Set.of("van"), wordStart(NAME_LOWER)));
         assertEquals(List.of(), names(true, "van", Set.of("van"), wordStart(NAME_LOWER)));
+        assertEquals(List.of("van der berg"), names(false, "van  de", Set.of("van"), anywhere(NAME_LOWER)));
         // A prefix or exact field keeps its form, the whole input as the word, on the bare column.
         assertEquals(List.of("dave", "davis"), suggestNames("da", prefix(NAME_LOWER)));
         assertTrue(whereClause().startsWith("s.name_lower LIKE ? ESCAPE '!'"), whereClause());
@@ -257,10 +279,50 @@ public class SearchIntegrationTest {
         assertEquals(List.of("van der berg"), suggestNames("van de", wordStart(NAME_LOWER)));
         assertEquals(List.of("van der berg"), suggestNames("van d", wordStart(NAME_LOWER)));
         assertEquals(List.of(), suggestNames("van xy", wordStart(NAME_LOWER)));
-        // The start of the value counts its whole length against the column's minimum.
-        assertEquals(List.of(), suggestNames("de", wordStart(NAME_LOWER, 3)));
-        assertEquals(List.of("van der berg"), names(true, "van de", Set.of("van"), wordStart(NAME_LOWER, 3)));
+        // Without a fallback, the column takes no part until a word reaches its length.
+        assertEquals(List.of(), suggestNames("de", wordStart(NAME_LOWER).withoutFallback()));
+        // The fallback's length counts the whole input, the ignored words included.
+        assertEquals(List.of("van der berg"), names(true, "van de", Set.of("van"), wordStart(NAME_LOWER).withFallback(wordStart(NAME_LOWER, 6))));
+        assertEquals(List.of(), names(true, "van d", Set.of("van"), wordStart(NAME_LOWER).withFallback(wordStart(NAME_LOWER, 6))));
         assertThrows(IllegalArgumentException.class, () -> wordStart(NAME_LOWER, -1));
+    }
+
+    @Test
+    public void aMatchStatesTheFallbackOfAShortInput() {
+        // A match anywhere or at a word start takes words of three characters, and before them the whole input as the
+        // start of the value, ignoring case, of two characters or more; a prefix or exact match is narrow on its own,
+        // so it takes words of two characters, without a fallback.
+        assertEquals(new Match.Prefix<>(NAME_LOWER, 2, true, null), wordStart(NAME_LOWER).fallback());
+        assertEquals(new Match.Prefix<>(NAME_LOWER, 2, true, null), anywhere(NAME_LOWER, 5).fallback());
+        assertEquals(3, wordStart(NAME_LOWER).minLength());
+        assertNull(prefix(NAME_LOWER).fallback());
+        assertEquals(2, prefix(NAME_LOWER).minLength());
+        assertEquals(2, exactIgnoreCase(NAME_LOWER).minLength());
+        assertEquals(List.of("upton"), suggestNames("Up", prefix(NAME_LOWER)));
+        assertEquals(List.of(), suggestNames("u", prefix(NAME_LOWER)));
+        // Another fallback takes the whole input in its form: at a word start, "de" matches inside the value too.
+        assertEquals(List.of("van der berg"), suggestNames("de", wordStart(NAME_LOWER).withFallback(Match::wordStart)));
+        assertEquals(List.of(), suggestNames("de", wordStart(NAME_LOWER).withFallback(prefix(NAME_LOWER, 2))));
+        assertEquals(List.of("dave", "davis"), suggestNames("Da", wordStart(NAME_LOWER).withFallback(prefix(NAME_LOWER, 2))));
+        assertTrue(whereClause().startsWith("s.name_lower LIKE ? ESCAPE '!'"), whereClause());
+        // A match given as the fallback takes an input of its own length.
+        assertEquals(List.of(), suggestNames("Da", wordStart(NAME_LOWER).withFallback(prefix(NAME_LOWER, 3))));
+        // A form on the same column takes the factory, with the length of the default.
+        assertEquals(new Match.Prefix<>(NAME_LOWER, 2, false, null), wordStart(NAME_LOWER).withFallback(Match::prefix).fallback());
+        assertEquals(new Match.Prefix<>(NAME_LOWER, 2, false, null), wordStart(NAME_LOWER, 5).withFallback(Match::prefix).fallback());
+        assertEquals(List.of("dave", "davis"), suggestNames("Da", wordStart(NAME_LOWER).withFallback(Match::prefix)));
+        assertEquals(List.of(), suggestNames("d", wordStart(NAME_LOWER).withFallback(Match::prefix)));
+        // Its length applies to the whole input, so a fallback may take a single character.
+        assertEquals(List.of("dave", "davis"), suggestNames("d", wordStart(NAME_LOWER).withFallback(prefix(NAME_LOWER, 1))));
+        // Without a fallback, the column takes no part until a word reaches the length.
+        assertNull(wordStart(NAME_LOWER).withoutFallback().fallback());
+        assertEquals(List.of(), suggestNames("da", wordStart(NAME_LOWER).withoutFallback()));
+        assertEquals(List.of("dave", "davis"), suggestNames("dav", wordStart(NAME_LOWER).withoutFallback()));
+        // A fallback's own fallback takes no part, and search takes the fallback as suggest does.
+        assertNull(wordStart(NAME_LOWER).withFallback(anywhere(NAME_LOWER, 2)).fallback().fallback());
+        assertEquals(List.of(), searchNames("av", anywhere(NAME_LOWER).withFallback(exact(NAME_LOWER))));
+        assertEquals(List.of("upton"), searchNames("up", anywhere(NAME_LOWER).withFallback(Match::prefix)));
+        assertEquals(List.of("dave", "davis"), searchNames("av", anywhere(NAME_LOWER).withFallback(anywhere(NAME_LOWER, 2))));
     }
 
     @Test

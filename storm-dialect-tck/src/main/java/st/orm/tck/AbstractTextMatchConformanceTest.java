@@ -44,6 +44,7 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import st.orm.Entity;
+import st.orm.Match;
 import st.orm.Metamodel;
 import st.orm.Operator;
 import st.orm.PK;
@@ -129,10 +130,11 @@ public abstract class AbstractTextMatchConformanceTest {
         return contents;
     }
 
+    /** Searches the phrases, taking every word in its form, however short, as the literal text it matches. */
     private Set<String> search(String input) {
         var contents = new TreeSet<String>();
         orm.entity(Phrase.class).select()
-                .where(it -> PredicateBuilderFactory.<Phrase, Phrase, Integer>search(input, CONTENT))
+                .where(it -> PredicateBuilderFactory.<Phrase, Phrase, Integer>search(input, Match.anywhere(CONTENT, 0)))
                 .getResultList()
                 .forEach(phrase -> contents.add(phrase.content()));
         return contents;

@@ -10,6 +10,7 @@ Most applications have a search box somewhere: a customer list searched by name 
 | A search results page: the user submits a few words, and every word narrows the results | [`search`](#searching-text) |
 | A type-ahead or auto-complete box that queries as the user types | [`suggest`](#suggestions-as-the-user-types), with a limit |
 | A column that should match a word as a prefix or as the whole value, or a column where a word should match inside a compound | [a match form per column](#match-forms) |
+| Words such as "van" or "the" that occur in most rows and narrow nothing | [a set of words to ignore](#ignoring-words) |
 | A search that also matches related rows, such as an owner found by a pet's name | [`search` with a semi-join](#searching-related-rows) |
 | Results with the best matches on top, such as an exact name before a partial one | [`orderFirst`](#ranking-the-matches) |
 | A search where "muller" finds "Müller" | [`SqlFunction`](#ignoring-accents) over an accent-removing function |
@@ -66,7 +67,7 @@ WHERE (LOWER(o.last_name) LIKE LOWER(?) ESCAPE '!' OR LOWER(c.name) LIKE LOWER(?
 
 ## Suggestions as the User Types
 
-A type-ahead box queries as the user types and shows a handful of matches under the input: the user types `van b` on the way to `van den berg`, and the box queries along the way. A debounce, which waits for a short pause in typing before it queries, keeps that to a few queries rather than one per keystroke, but the pauses still fall on unfinished words. Those queries run far more often than a search page's, on inputs such as `va` or `van b`, so each one must stay cheap however little has been typed. Such a box uses `suggest` instead of `search`. It takes the same input and columns, and matches every word of two characters or more at the start of a word: the start of the value, or the text after a space or a punctuation character that joins or separates words. A one-character word takes no part, and an input without a word that takes part, an empty one included, matches no rows, so the box never fetches and sorts a whole table on the first keystroke.
+A type-ahead box queries as the user types and shows a handful of matches under the input: the user types `van b` on the way to `van den berg`, and the box queries along the way. A debounce, which waits for a short pause in typing before it queries, keeps that to a few queries rather than one per keystroke, but the pauses still fall on unfinished words. Those queries run far more often than a search page's, on inputs such as `va` or `van b`, so each one must stay cheap however little has been typed. Such a box uses `suggest` instead of `search`. It takes the same input and columns, and matches every word at the start of a word: the start of the value, or the text after a space or a punctuation character that joins or separates words. An empty input matches no rows, and so does one of a single character, so the box never fetches and sorts a whole table on the first keystroke.
 
 <Tabs groupId="language">
 <TabItem value="kotlin" label="Kotlin" default>
@@ -99,24 +100,24 @@ The two functions read the input alike and differ in what they do with it, the s
 |-------|----------|-----------|
 | `van b` | both words, anywhere | both words, at the start of a word: "Van den Berg", not "Sullivan" |
 | `van` | `van` anywhere: "Van den Berg" and "Sullivan" | `van` at the start of a word: "Van den Berg" |
-| `va` | `va` anywhere | the start of the value: "Van den Berg", not "Sullivan" nor "De Vaal" |
+| `va` | `va` as the start of the value, a short word alone; see [Short Words](#short-words) | `va` as the start of the value: "Van den Berg", not "Sullivan" nor "De Vaal" |
 | `van d` | both words, anywhere | `van` at a word start; `d` at a word start on the rows `van` found |
-| `v` | `v` anywhere | no rows: one character names too many |
+| `v` | no rows: one character matches too many | no rows |
 | empty or blank | every row | no rows |
 
-The empty-input contract is why both exist. A results page with an empty box lists everything; a suggestion box with an empty box lists nothing. The default match form follows the situation: a person typing into a box types the start of a word, in any order, so `suggest` matches word starts, and a submitted search should find every row the words occur in, so `search` matches anywhere. Either function takes another form per column; see [Match Forms](#match-forms).
+The two functions share everything else: the match forms, the short-word rules and fallbacks, and the words to ignore. They differ in two defaults only. The empty-input contract is why both exist. A results page with an empty box lists everything; a suggestion box with an empty box lists nothing. The default match form follows the situation: a person typing into a box types the start of a word, in any order, so `suggest` matches word starts, and a submitted search should find every row the words occur in, so `search` matches anywhere. Either function takes another form per column; see [Match Forms](#match-forms).
 
 A word starts the value or follows a space, a hyphen, an apostrophe, an opening parenthesis, a slash, a colon, a period or a comma, so `marie` suggests "Anne-Marie", `brien` "O'Brien" and `john` "St. John". The same set applies on every database. A word does not match inside a compound: `son` does not suggest "Davidson", and `berg` not "Lindberg", although the search page the box leads to finds both through `search`. Where matches inside a word matter for a column, state `anywhere` for that column and keep the word start for the others; see [Match Forms](#match-forms).
 
 Each database renders the word start in its own way, and finds the same rows: one regular expression where it has the operator, which PostgreSQL's trigram index serves as it serves a `LIKE`, and `LIKE` patterns elsewhere.
 
-### Short Words
+## Short Words
 
-A word shorter than three characters matches too large a share of a table, whatever index serves it: `va` starts a word in a sizeable part of the names in a directory, and the box would fetch and rank them all. `suggest` handles short words in three ways, the same on every database, since the rules change which rows come back.
+A word shorter than three characters matches too many rows on its own: `de` and `va` each start a word in a sizeable part of the names in a directory, and inside words `va` matches "Sullivan" and "Nevada" too. `search` and `suggest` handle short words alike, the same on every database, by the length each column states, its `minLength`: three characters for `anywhere` and `wordStart`, and two for `prefix`, `exact` and their `IgnoreCase` forms, which match the start or the whole of the value and so are narrow on their own.
 
-- **Until a word reaches three characters, the whole input matches as the start of the value**, ignoring case: `de va` suggests "De Vaal", `up` suggests "Upton" but not "Van Upton". The words are joined by one space, an ignored word among them, and a `prefix` or `exact` column compares the whole input in its own form. An input of one character matches no rows.
-- **Once a word reaches the length, a shorter word next to it narrows only the rows the longer word found**: `van d` matches `van` at a word start and tests `d` on those rows alone.
-- **A column states the shortest word it takes.** The row's own columns answer a short input cheaply, but a column of a related table matches broadly and its matches rank below the row's own: `le` starts the names of many pets whose owners never reach the top of the list, and reading them costs the box more than the owner's name does. `minLength` keeps such a column out until a word names it narrowly:
+- **Until a word reaches a column's length, the column matches the whole input as one word in its fallback**, by default as the start of the value, ignoring case: `de va` finds "De Vaal", `up` finds "Upton" but not "Van Upton". The words are joined by one space, an ignored word among them. A `prefix` or `exact` column has no fallback: it takes words of two characters in its form. An input of one character matches no rows. A column states another fallback; see [Fallbacks](#fallbacks).
+- **Once a word reaches the length, the column takes every word in its form, a shorter word tested only on the rows the longer word found**: `van d` matches `van` at a word start and tests `d` on those rows alone.
+- **A column of a related table takes no fallback.** The row's own columns answer a short input cheaply, but a column of a related table matches broadly and its matches rank below the row's own: `le` starts the names of many pets whose owners never reach the top of the list, and reading them costs the box more than the owner's name does. `withoutFallback()` keeps such a column out until a word reaches its length:
 
 <Tabs groupId="language">
 <TabItem value="kotlin" label="Kotlin" default>
@@ -125,7 +126,7 @@ A word shorter than three characters matches too large a share of a table, whate
 val owners = orm.entity(Owner::class)
     .select()
     .semiJoin<Pet>().on<Owner>()
-    .where(suggest(input, wordStart(Owner_.lastName), wordStart(Pet_.name, minLength = 3)))
+    .where(suggest(input, wordStart(Owner_.lastName), wordStart(Pet_.name).withoutFallback()))
     .limit(6)
     .resultList
 ```
@@ -139,7 +140,7 @@ import static st.orm.Match.*;
 List<Owner> owners = orm.entity(Owner.class)
     .select()
     .semiJoin(Pet.class).on(Owner.class)
-    .where(it -> it.suggest(input, wordStart(Owner_.lastName), wordStart(Pet_.name, 3)))
+    .where(it -> it.suggest(input, wordStart(Owner_.lastName), wordStart(Pet_.name).withoutFallback()))
     .limit(6)
     .getResultList();
 ```
@@ -151,24 +152,22 @@ List<Owner> owners = orm.entity(Owner.class)
 |-------|------------------------|
 | `le` | the last name, as the start of the value; the pets are not read |
 | `leo` | the last name and the pet names, at a word start |
-| `da max` | `max` on both columns; `da` on the last name only, on the rows `max` found |
-| `da` with `minLength = 3` on both columns | none: no rows |
+| `da max` | both words on both columns, `da` on the rows `max` found |
+| `da` with neither column taking a fallback | none: no rows |
 
-A word shorter than a column's length does not match that column, and where no word of the input reaches it, the column takes no part in the statement, its related table with it. The semi-join on the pets is there to supply matches, not to require a pet, so it goes too, with any condition on the join, and an owner without pets is found through their own name for `le` as they are for `leo`. Where the input matches as the start of the value, its whole length counts, so `de v` reaches a column of three. A word no column takes is left out, and an input whose words no column takes matches no rows. `search` follows the same rules for a column that states a length.
+Until a word reaches its length, a column without a fallback takes no part in the statement, its related table with it. The semi-join on the pets is there to supply matches, not to require a pet, so it goes too, with any condition on the join, and an owner without pets is found through their own name for `le` as they are for `leo`. A longer length, `wordStart(Pet_.name, minLength = 4)`, keeps a column in its fallback, or out, for longer words, and `minLength = 0` takes every word in its form, however short. Columns reach their length apart: for `leo`, the last name may take the word while a pet name of length four takes the whole input in its fallback, and a row matches through either. An input no column takes matches no rows.
 
-### Ignoring Words
+### Fallbacks
 
-A word the index serves can be as useless as a short one when it occurs in a large share of the rows: `van` is three characters, so a trigram index serves it, but it starts a large share of the last names in some countries. Typed alone it returns a page of noise, and next to another word it narrows nothing. Which words those are depends on the column's content, `van`, `de` and `der` for Dutch last names, `the` and `of` for titles, so the search box names them, as it names the columns. `suggest` takes the words to ignore after the input:
+Each match states how its column takes the whole input while no word reaches its `minLength`: its fallback. The factories of `anywhere` and `wordStart` state one, the start of the value ignoring case, `prefixIgnoreCase` on the same column, taking an input of at least two characters. It compares the lowered column as they do, so the index that serves them serves it. A fallback only earns its place where it is narrower than the form, so `prefix`, `exact` and their `IgnoreCase` forms have none. `withFallback` states another form on the same column, taking the factory, and the fallback takes the same two characters:
 
 <Tabs groupId="language">
 <TabItem value="kotlin" label="Kotlin" default>
 
 ```kotlin
-val nameNoise = setOf("van", "de", "der", "den")
-
-val suggestions = orm.entity(Owner::class)
+val owners = orm.entity(Owner::class)
     .select()
-    .where(suggest(input, nameNoise, Owner_.lastName, Owner_.firstName))
+    .where(suggest(input, wordStart(Owner_.lastName).withFallback(::wordStart)))
     .limit(6)
     .resultList
 ```
@@ -177,11 +176,11 @@ val suggestions = orm.entity(Owner::class)
 <TabItem value="java" label="Java">
 
 ```java
-private static final Set<String> NAME_NOISE = Set.of("van", "de", "der", "den");
+import static st.orm.Match.*;
 
-List<Owner> suggestions = orm.entity(Owner.class)
+List<Owner> owners = orm.entity(Owner.class)
     .select()
-    .where(it -> it.suggest(input, NAME_NOISE, Owner_.lastName, Owner_.firstName))
+    .where(it -> it.suggest(input, wordStart(Owner_.lastName).withFallback(Match::wordStart)))
     .limit(6)
     .getResultList();
 ```
@@ -189,20 +188,73 @@ List<Owner> suggestions = orm.entity(Owner.class)
 </TabItem>
 </Tabs>
 
-An ignored word takes no part in the predicate, compared ignoring case as the words themselves match, and an input without a remaining word matches no rows. Where the input matches as the start of the value, an ignored word keeps its place in it, since it stands at the start of the value as typed: with `van` ignored, `van de` still suggests "Van den Berg". The ignored words apply to bare words only: a quoted word is an explicit request, and is never ignored.
+A short input then matches the last name at every word start, so `up` suggests "Van Upton" too, at the cost of more rows to sort for every keystroke. The fallback matches the whole input in its own form; `withFallback(::prefix)`, `Match::prefix` in Java, matches it as a prefix of a column that compares case-insensitively on its own, which an ordinary index serves. A fallback on another column of the row takes the match itself, such as a `prefix` match over a stored lowered column declared as a [query column](entities.md#query-columns), and states the length it takes: its `minLength` applies to the whole input, so `withFallback(prefix(col, 2))` takes two characters and `withFallback(prefix(col, 1))` suggests from the first keystroke. A fallback's own fallback takes no part.
 
-| Input | Words `suggest` matches |
-|-------|----------|
-| `van berg` | `berg`: finds "Van den Berg" and "Berger" |
-| `Van` | none: no rows |
-| `"van"` | `van`: quoted, so it counts |
-| `"van der"` | `van der`: the phrase is one word |
+## Ignoring Words
 
-The set is a constant next to the box that uses it, typed by hand for most boxes. Where the table is large enough to measure, a query over the column counts the words and the set holds those that occur in more rows than the box shows. `search` takes no such set: on a results page a frequent word next to a longer one costs nothing and still narrows correctly, and a page of every owner named "van" something is a broad but legitimate query.
+A word the index serves can be as useless as a short one when it occurs in a large share of the rows: `van` is three characters, so a trigram index serves it, but it starts a large share of the last names in some countries. It hurts both functions:
+
+- **It narrows nothing and costs the most.** Matched anywhere, `van` also occurs inside "Sullivan" and "Donovan", so the index rules out few rows for it, and the statement spends most of its time testing it. Typed alone into a suggestion box, it returns a page of noise.
+- **It drops rows that lack it.** Every word must match, so `van berg` misses "Berg" and "Berger", which have no "van" in any column.
+
+Which words those are depends on the column's content, `van`, `de` and `der` for Dutch last names, `the` and `of` for titles, so the application names them, as it names the columns. `search` and `suggest` take the words to ignore after the input, in every overload:
+
+<Tabs groupId="language">
+<TabItem value="kotlin" label="Kotlin" default>
+
+```kotlin
+val nameNoise = setOf("van", "de", "der", "den")
+
+val owners = orm.entity(Owner::class)
+    .select()
+    .where(search(input, nameNoise, Owner_.lastName, Owner_.address.city.name))
+    .resultList
+
+val suggestions = orm.entity(Owner::class)
+    .select()
+    .where(suggest(input, nameNoise, wordStart(Owner_.lastName), wordStart(Owner_.firstName)))
+    .limit(6)
+    .resultList
+```
+
+</TabItem>
+<TabItem value="java" label="Java">
+
+```java
+import static st.orm.Match.*;
+
+private static final Set<String> NAME_NOISE = Set.of("van", "de", "der", "den");
+
+List<Owner> owners = orm.entity(Owner.class)
+    .select()
+    .where(it -> it.search(input, NAME_NOISE, Owner_.lastName, Owner_.address.city.name))
+    .getResultList();
+
+List<Owner> suggestions = orm.entity(Owner.class)
+    .select()
+    .where(it -> it.suggest(input, NAME_NOISE, wordStart(Owner_.lastName), wordStart(Owner_.firstName)))
+    .limit(6)
+    .getResultList();
+```
+
+</TabItem>
+</Tabs>
+
+An ignored word takes no part in the predicate, compared ignoring case as the words themselves match. An input without a remaining word matches as an empty input does: every row for `search`, no rows for `suggest`. Where the input matches as one word in a fallback, an ignored word keeps its place in it, as typed: with `van` ignored, `van da` still finds "Van Dam". The ignored words apply to bare words only: a quoted word is an explicit request, and is never ignored. A [ranking](#ranking-the-matches) over the input still sees the whole input, ignored words included.
+
+| Input | Words matched | `search` | `suggest` |
+|-------|---------------|----------|-----------|
+| `van berg` | `berg` | "Van den Berg", "Berg", "Berger", "Lindberg" | "Van den Berg", "Berg", "Berger" |
+| `Van` | none | every row | no rows |
+| `van da` | `da`, shorter than three characters | `van da` as the start of the value: "Van Dam" | the same |
+| `"van"` | `van`: quoted, so it counts | `van` anywhere | `van` at a word start |
+| `"van der"` | `van der`: the phrase is one word | `van der` anywhere | `van der` at a word start |
+
+The set is a constant next to the box that uses it, typed by hand for most boxes. Where the table is large enough to measure, a query over the column counts the words, and the set holds those that occur in a large share of the rows.
 
 ## Match Forms
 
-Each column states how a word matches it. The plain overloads use one form for every column, the default of the function; the overloads that take a match per column state the form for each, through the `anywhere`, `wordStart`, `prefix` and `exact` factories. A call is either all defaults or all stated.
+Each column states how a word matches it. The plain overloads use one form for every column, the default of the function; the overloads that take a match per column state the form for each, through the `anywhere`, `wordStart`, `prefix`, `prefixIgnoreCase`, `exact` and `exactIgnoreCase` factories. A call is either all defaults or all stated.
 
 | Match | A typed word matches | Renders | Default for |
 |-------|----------------------|---------|-------------|
@@ -210,6 +262,8 @@ Each column states how a word matches it. The plain overloads use one form for e
 | `wordStart` | the start of any word in the value | one regular expression, or `LOWER(col) LIKE 'berg%'` and a `LIKE` per separator, as the database has it | `suggest` |
 | `prefix` | the start of the value | `col LIKE 'berg%'`, the column bare and the word lowered | |
 | `exact` | the whole value | `col = 'berg'`, the column bare and the word lowered | |
+| `prefixIgnoreCase` | the start of the value | `LOWER(col) LIKE 'berg%'` | fallback of `anywhere` and `wordStart` |
+| `exactIgnoreCase` | the whole value | `LOWER(col) = 'berg'` | |
 
 <Tabs groupId="language">
 <TabItem value="kotlin" label="Kotlin" default>
@@ -246,8 +300,9 @@ A word typed into that box matches the start of a word of a name, or a whole tel
 
 - **`anywhere` and `wordStart`** lower the column, so the index that serves them is one built for substring matching over `LOWER(col)`; see [Indexing a Search](#indexing-a-search). A word at a word start is a word anywhere with a separator in front of it, so the same index serves both.
 - **`prefix` and `exact`** leave the column bare and lower the word, so an ordinary index over the column serves them: `last_name LIKE ?`, since `LOWER(last_name)` would lose the index. The column must then compare case-insensitively on its own: a case-insensitive collation, the default on MySQL, MariaDB and SQL Server and `COLLATE NOCASE` on the column on SQLite, or a stored lowered column declared as a [query column](entities.md#query-columns) on PostgreSQL, H2 and Oracle, which the lowered word matches as typed. A `prefix` or `exact` match on a column that compares case-sensitively never matches a value with an upper-case letter.
+- **`prefixIgnoreCase` and `exactIgnoreCase`** lower the column too, so they match any column as stored, served by an index over `LOWER(col)`: the substring index of `anywhere` and `wordStart`, or an ordinary index over the expression. They are `prefix` and `exact` for a column that compares case-sensitively, as `startsWithIgnoreCase` and `eqIgnoreCase` are to `startsWith` and `eq`.
 - **A match composes with a [`SqlFunction`](#ignoring-accents)**: `wordStart(foldAccents(Owner_.lastName))` in Kotlin, `wordStart(foldAccents.apply(Owner_.lastName))` in Java, matches the folded name, and the index is built over the same expression.
-- **A match also states the shortest word its column takes**, `wordStart(Pet_.name, minLength = 3)`; see [Short Words](#short-words).
+- **A match also states the shortest word its column takes in its form**, `minLength`, three for `anywhere` and `wordStart` and two for the others by default, and how its column takes a shorter input, its fallback; see [Short Words](#short-words).
 - **A match is not a path**, so only `search` and `suggest` take it; `orderFirst` and the operators take the column.
 
 ## Searching Related Rows
@@ -282,7 +337,7 @@ List<Owner> owners = orm.entity(Owner.class)
 - Each word is matched on its own, so the words may match different related rows: `leo max` finds the owner of both a Leo and a Max.
 - Each word renders as an `IN` over a `UNION` of a branch per table, so each table is read through its own indexes rather than through a join of both. Where the database runs such a union once per outer row (`SqlDialect.flattensInOverUnion()`), each word renders as an `EXISTS` per table instead.
 - The columns may come from several semi-joined tables. With `semiJoin<Pet>().on<Owner>()` and `semiJoin<Visit>().on<Pet>()`, `search(input, Owner_.lastName, Pet_.name, Visit_.description)` finds an owner by their name, by a pet's name or by what a visit was about, so `vaccination` finds the owners whose pets came in for one although no name says so. Each word matches a row of any of the tables, and renders as one `IN` over a `UNION` with a branch per table, so each table is read through its own indexes.
-- Whether a semi-join filters the rows or supplies matches is decided by the query as written. A semi-join whose column the search names supplies matches: an owner without pets is still found through their own name, for every input. A related column usually states the shortest word it takes, since its matches rank below the row's own and cost the most to read: `anywhere(Pet_.name, minLength = 3)` keeps `le` from adding every owner of a pet whose name contains it to the owners named "Le", and the pets join in from `leo`. The length applies per word, for `search` as for `suggest`; see [Short Words](#short-words).
+- Whether a semi-join filters the rows or supplies matches is decided by the query as written. A semi-join whose column the search names supplies matches: an owner without pets is still found through their own name, for every input. A related column usually takes no fallback, since its matches rank below the row's own and cost the most to read: `anywhere(Pet_.name).withoutFallback()` keeps `le` from adding every owner of a pet whose name starts with it to the owners named "Le", and the pets join in from `leo`. The length applies per column, for `search` as for `suggest`; see [Short Words](#short-words).
 - A condition on the join limits which related rows a word may match. `semiJoin<Visit>().on(Pet::class, Visit_.visitDate greaterEq lastYear)` with `search(input, Owner_.lastName, Visit_.description)` matches a word against the names and the visits of the past year, and an index limited to those rows serves it.
 - `search` and `suggest` filter rows, so they go in `where` or in the condition of a `semiJoin` or `antiJoin`. `orderFirst`, `having` and the condition of a join that adds rows refuse them: rank with `startsWithIgnoreCase` or `equalsIgnoreCase` instead.
 
@@ -340,11 +395,11 @@ The operators match the input as they do in a WHERE clause: ignoring case, and l
 
 `search`, `suggest` and the `IGNORE_CASE` text operators compare a lowered expression against a pattern that may start anywhere: `LOWER(column) LIKE LOWER('%word%')`, or the word-start form with a separator in front of the word. A B-tree index orders values from their first character, so it serves neither the lowered expression nor a match inside a value. An index already on the column goes unused, and every search reads every row of each table it names, lowering each value as it goes. Lowering text under a linguistic collation is often the larger part of that cost, so a search that answers at once on test data can take seconds on a production-sized table.
 
-What serves the statement is the database's index for substring matching, a trigram or n-gram index, created over the same expression the statement compares: `LOWER(column)`, not the column itself. Storm renders the predicate the same way on every database, so the index matches it without a change to the query. A `prefix` or `exact` match needs no such index: an ordinary index over the bare column serves it, on every database.
+What serves the statement is the database's index for substring matching, a trigram or n-gram index, created over the same expression the statement compares: `LOWER(column)`, not the column itself. Storm renders the predicate the same way on every database, so the index matches it without a change to the query. A `prefix` or `exact` match needs no such index: an ordinary index over the bare column serves it, on every database. `prefixIgnoreCase` and `exactIgnoreCase` compare `LOWER(column)`, which the same substring index serves, or an ordinary index over the expression.
 
 - Index every column the search names, including the columns of a semi-joined table and of a table reached through a path. The statement matches each word against each column, and a column without the index keeps its table's scan.
 - Index the expression exactly as the statement renders it. An index on the plain column, or on another case function, does not match `LOWER(column)`, and the plan falls back to reading every row.
-- A word shorter than the index's gram, usually three characters, cannot use it. `search` tests such a word only on the rows its longer words found, as an `EXISTS` over the related rows of each, so it reads no table in full and the rows found are the same; a search of short words alone still reads every row. The dialect states the length, three on PostgreSQL, and `storm.search.min_term_length` overrides it. `suggest` plans its short words by its own length, three on every database: a short word next to a longer one is tested the same way, and a suggestion of short words alone matches the start of the value, which the same index serves.
+- A word shorter than the index's gram, usually three characters, cannot use it. `search` and `suggest` test such a word only on the rows its longer words found, as an `EXISTS` over the related rows of each, so it reads no table in full and the rows found are the same. The dialect states the length, three on PostgreSQL, and `storm.search.min_term_length` overrides it. A column's `minLength` plans its short words the same way, three by default for `anywhere` and `wordStart` on every database, and an input of short words alone matches as one word in the fallback, by default as the start of the value, which the same index serves.
 - Read the query plan on production-sized data to confirm that each table is read through its index. On a small table the planner may read every row regardless, because that is cheaper there.
 - Read the plan of the statement as the application sends it, with the word as a bind parameter, not with the word written into the SQL. A driver that prepares a statement once for many executions lets the database plan it once for every value, and that plan cannot see the word, so it cannot tell a rare word from a common one. A search that also orders by an indexed column and takes the first few rows, as a list of suggestions does, is then read in that column's order, testing every row until enough match, while the same statement planned for its word takes a few rows from the substring index. Where the plans differ, have the search planned for its values: most drivers and databases have a setting that stops a statement from being prepared, or that plans each execution for its parameters.
 - Refresh the table's statistics after creating the index on a table that already holds data; a planner without statistics for the indexed expression may keep reading every row. Where a rare word is still estimated to match many rows, a larger statistics sample for the indexed expression brings the estimate down.

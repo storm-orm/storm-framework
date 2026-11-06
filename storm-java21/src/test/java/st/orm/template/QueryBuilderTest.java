@@ -827,7 +827,9 @@ public class QueryBuilderTest {
                 .semiJoin(Pet.class).on(Owner.class)
                 .where(it -> it.search("le", field))
                 .getResultList().stream().map(Owner::firstName).sorted().toList();
-        assertEquals(List.of("Jean"), firstNames.apply(anywhere(Owner_.lastName)));
+        assertEquals(List.of("Jean"), firstNames.apply(anywhere(Owner_.lastName, 0)));
+        // By default, a short word alone matches the whole input in the fallback, at the start of a word.
+        assertEquals(List.of(), firstNames.apply(anywhere(Owner_.lastName)));
         assertEquals(List.of("Betty"), firstNames.apply(wordStart(Pet_.name)));
         assertEquals(List.of(), firstNames.apply(wordStart(Owner_.lastName)));
         assertEquals(List.of(), firstNames.apply(prefix(Pet_.name)));
@@ -870,6 +872,24 @@ public class QueryBuilderTest {
         assertEquals(List.of(), firstNames.apply("the davis"));
         assertEquals(List.of(), firstNames.apply(""));
         assertEquals(List.of("Betty", "Harold"), semiJoinSuggestFirstNames(trigramOrm, "davis"));
+    }
+
+    @Test
+    public void testSearchIgnoresTheWordsItNames() {
+        // data.sql: owner 1 (Betty Davis) has pet Leo; owner 4 (Harold Davis) has pet Iggy.
+        var ignore = Set.of("the");
+        Function<String, List<String>> firstNames = input -> orm.entity(Owner.class).select()
+                .semiJoin(Pet.class).on(Owner.class)
+                .where(it -> it.search(input, ignore, Owner_.lastName, Pet_.name))
+                .getResultList().stream().map(Owner::firstName).sorted().toList();
+        assertEquals(List.of(), semiJoinSearchFirstNames("the davis leo"));
+        assertEquals(List.of("Betty"), firstNames.apply("The davis leo"));
+        assertEquals(10, firstNames.apply("the").size());
+        assertEquals(List.of(), firstNames.apply("\"the\" davis"));
+        assertEquals(List.of("Betty"), orm.entity(Owner.class).select()
+                .semiJoin(Pet.class).on(Owner.class)
+                .where(it -> it.search("the davis leo", ignore, anywhere(Owner_.lastName), wordStart(Pet_.name)))
+                .getResultList().stream().map(Owner::firstName).sorted().toList());
     }
 
     private List<String> semiJoinSearchFirstNames(String input) {

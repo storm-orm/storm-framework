@@ -417,8 +417,11 @@ public abstract class AbstractMissingIndexConformanceTest {
     public void eachMatchFormFindsTheSameRowsOnEveryDatabase() throws SQLException {
         Assumptions.assumeFalse(searchProbeDdl().isEmpty(), "No probe for this dialect.");
         createSearchProbe(null);
-        assertEquals(List.of("Dupont", "Upton", "Van Upton"), names("up", Match.anywhere(PROBE_NAME)));
-        assertEquals(List.of("Upton", "Van Upton"), names("up", Match.wordStart(PROBE_NAME)));
+        assertEquals(List.of("Dupont", "Upton", "Van Upton"), names("up", Match.anywhere(PROBE_NAME, 0)));
+        // By default, a word of two characters alone matches the whole input in the fallback, as the start of the
+        // value, ignoring case.
+        assertEquals(List.of("Upton"), names("up", Match.anywhere(PROBE_NAME)));
+        assertEquals(List.of("Upton", "Van Upton"), names("up", Match.wordStart(PROBE_NAME, 0)));
         assertEquals(List.of(), names("pton", Match.wordStart(PROBE_NAME)));
         assertEquals(List.of("Anne-Marie"), names("marie", Match.wordStart(PROBE_NAME)));
         assertEquals(List.of("O'Brien"), names("brien", Match.wordStart(PROBE_NAME)));
@@ -429,9 +432,12 @@ public abstract class AbstractMissingIndexConformanceTest {
         assertEquals(List.of("Upton"), names("Up", Match.prefix(PROBE_NAME_LOWER)));
         assertEquals(List.of("Van Upton"), names("\"van upton", Match.exact(PROBE_NAME_LOWER)));
         assertEquals(List.of(), names("van", Match.exact(PROBE_NAME_LOWER)));
-        // suggest takes the same forms; an input without a word of the minimum word length matches as the start of
-        // the value, whatever the index serves, and a short word next to a longer one matches at a word start on the
-        // rows the longer word found.
+        // Ignoring case, a prefix or exact match lowers the column too, so it matches the column as stored.
+        assertEquals(List.of("Upton"), names("UPT", Match.prefixIgnoreCase(PROBE_NAME)));
+        assertEquals(List.of("Van Upton"), names("\"VAN UPTON\"", Match.exactIgnoreCase(PROBE_NAME)));
+        // suggest takes the same forms; an input without a word of the minimum word length matches as a whole in the
+        // fallback, by default as the start of the value, whatever the index serves, and a short word next to a
+        // longer one matches at a word start on the rows the longer word found.
         assertEquals(List.of("Upton"), suggestions("Up"));
         assertEquals(List.of("Van Upton"), suggestions("va"));
         assertEquals(List.of(), suggestions("va up"));
@@ -456,7 +462,7 @@ public abstract class AbstractMissingIndexConformanceTest {
             createSearchProbe(probe.ddl());
             orm.loadSchema();
             String form = MatchForm.of(probe.field()).factory();
-            String input = probe.field() instanceof Match.Exact<?> ? "\"van upton\"" : "up";
+            String input = probe.field() instanceof Match.Exact<?> ? "\"van upton\"" : "upt";
             var results = new ArrayList<SearchProbe>();
             var lines = slowLines(() -> results.addAll(orm.entity(SearchProbe.class).select()
                     .where(it -> PredicateBuilderFactory.<SearchProbe, SearchProbe, Integer>search(input, probe.field()))

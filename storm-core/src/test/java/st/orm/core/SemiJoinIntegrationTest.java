@@ -188,9 +188,10 @@ public class SemiJoinIntegrationTest {
     }
 
     @Test
-    public void everyWordIsReadThroughItsIndexesWhereTheDialectTreatsWordsAlike() {
+    public void everyWordIsReadThroughItsIndexesWhereTheDialectAndTheColumnsTreatWordsAlike() {
         var owners = capture(() -> ownersWithPets()
-                .where(it -> search("davis le", Owner_.lastName, Pet_.name))
+                .where(it -> PredicateBuilderFactory.<Data, Owner, Integer>search("davis le",
+                        Match.anywhere(Owner_.lastName, 0), Match.anywhere(Pet_.name, 0)))
                 .getResultList());
         assertEquals(List.of("Betty"), firstNames(owners));
         assertEquals(2, statement().split(" UNION ").length - 1, statement());
@@ -198,44 +199,47 @@ public class SemiJoinIntegrationTest {
     }
 
     @Test
-    public void searchOfShortWordsAloneStillMatchesEveryWord() {
+    public void searchOfShortWordsAloneMatchesTheWholeInputInTheFallback() {
+        // Le starts the name of pet Leo; Coleman holds it inside a word, which the fallback, a word start, skips.
         var owners = capture(() -> ownersWithPets(trigramOrm())
                 .where(it -> search("le", Owner_.lastName, Pet_.name))
                 .getResultList());
-        assertEquals(List.of("Betty", "Jean"), firstNames(owners));
-        // Nothing narrows the rows for it, so it is read as a long word is.
+        assertEquals(List.of("Betty"), firstNames(owners));
+        // Nothing narrows the rows for it, so each table is read through its own indexes.
         assertTrue(statement().contains(" UNION "), statement());
     }
 
     @Test
     public void aColumnNoWordReachesTakesNoPartWithItsRelatedTable() {
-        // The pet name takes words of three characters, so a shorter one leaves the pets out of the statement.
+        // Without a fallback, the pet name takes no part until a word reaches three characters, so a shorter input
+        // leaves the pets out of the statement.
         var owners = capture(() -> ownersWithPets()
                 .where(it -> PredicateBuilderFactory.<Data, Owner, Integer>suggest("le", Set.of(),
-                        Match.wordStart(Owner_.lastName), Match.wordStart(Pet_.name, 3)))
+                        Match.wordStart(Owner_.lastName), Match.wordStart(Pet_.name).withoutFallback()))
                 .getResultList());
         assertEquals(List.of(), firstNames(owners));
         assertFalse(statement().contains("p.name"), statement());
         owners = capture(() -> ownersWithPets()
                 .where(it -> PredicateBuilderFactory.<Data, Owner, Integer>suggest("leo", Set.of(),
-                        Match.wordStart(Owner_.lastName), Match.wordStart(Pet_.name, 3)))
+                        Match.wordStart(Owner_.lastName), Match.wordStart(Pet_.name).withoutFallback()))
                 .getResultList());
         assertEquals(List.of("Betty"), firstNames(owners));
-        // Per word: next to davis, le reaches the owner's name only, which it does not match.
+        // Once davis reaches both columns, they take every word: le matches pet Leo.
         owners = capture(() -> ownersWithPets()
                 .where(it -> PredicateBuilderFactory.<Data, Owner, Integer>search("davis le",
-                        Match.anywhere(Owner_.lastName), Match.anywhere(Pet_.name, 3)))
+                        Match.anywhere(Owner_.lastName), Match.anywhere(Pet_.name).withoutFallback()))
                 .getResultList());
-        assertEquals(List.of(), firstNames(owners));
+        assertEquals(List.of("Betty"), firstNames(owners));
     }
 
     @Test
     public void aDeclaredSemiJoinNoWordReachesTakesNoPartWithItsCondition() {
-        // Only Jean has a pet named Max; da reaches the owner's name alone, so the semi-join and its condition go.
+        // Only Jean has a pet named Max; da takes the owner's name in its fallback and the pets not at all, so the
+        // semi-join and its condition go.
         var owners = capture(() -> orm().entity(Owner.class).select()
                 .semiJoin(Pet.class).on(Owner.class, it -> it.where(Pet_.name, EQUALS, "Max"))
                 .where(it -> PredicateBuilderFactory.<Data, Owner, Integer>suggest("da", Set.of(),
-                        Match.wordStart(Owner_.lastName), Match.wordStart(Pet_.name, 3)))
+                        Match.wordStart(Owner_.lastName), Match.wordStart(Pet_.name).withoutFallback()))
                 .getResultList());
         assertEquals(List.of("Betty", "Harold"), firstNames(owners));
         assertFalse(statement().contains("pet p"), statement());
@@ -243,24 +247,33 @@ public class SemiJoinIntegrationTest {
         owners = capture(() -> orm().entity(Owner.class).select()
                 .semiJoin(Pet.class).on(Owner.class, it -> it.where(Pet_.name, EQUALS, "Max"))
                 .where(it -> PredicateBuilderFactory.<Data, Owner, Integer>suggest("max", Set.of(),
-                        Match.wordStart(Owner_.lastName), Match.wordStart(Pet_.name, 3)))
+                        Match.wordStart(Owner_.lastName), Match.wordStart(Pet_.name).withoutFallback()))
                 .getResultList());
         assertEquals(List.of("Jean"), firstNames(owners));
     }
 
     @Test
-    public void aWordNoColumnTakesIsLeftOut() {
+    public void aColumnNoWordReachesTakesTheWholeInputInItsFallbackNextToTheWords() {
+        // leo reaches the owner's name, which takes it at a word start and finds no one; the pet name takes words of
+        // four characters, so it takes the whole input in its fallback, a word start, and finds Leo.
         var owners = capture(() -> ownersWithPets()
-                .where(it -> PredicateBuilderFactory.<Data, Owner, Integer>search("davis le",
-                        Match.anywhere(Owner_.lastName, 3), Match.anywhere(Pet_.name, 3)))
+                .where(it -> PredicateBuilderFactory.<Data, Owner, Integer>suggest("leo", Set.of(),
+                        Match.wordStart(Owner_.lastName), Match.wordStart(Pet_.name, 4)))
                 .getResultList());
-        assertEquals(List.of("Betty", "Harold"), firstNames(owners));
-        // An input whose words no column takes matches no rows.
+        assertEquals(List.of("Betty"), firstNames(owners));
         owners = capture(() -> ownersWithPets()
-                .where(it -> PredicateBuilderFactory.<Data, Owner, Integer>search("le",
-                        Match.anywhere(Owner_.lastName, 3), Match.anywhere(Pet_.name, 3)))
+                .where(it -> PredicateBuilderFactory.<Data, Owner, Integer>suggest("leo", Set.of(),
+                        Match.wordStart(Owner_.lastName), Match.wordStart(Pet_.name, 4).withoutFallback()))
                 .getResultList());
         assertEquals(List.of(), firstNames(owners));
+        assertFalse(statement().contains("p.name"), statement());
+        // An input no column takes matches no rows.
+        owners = capture(() -> ownersWithPets()
+                .where(it -> PredicateBuilderFactory.<Data, Owner, Integer>search("le",
+                        Match.anywhere(Owner_.lastName).withoutFallback(), Match.anywhere(Pet_.name).withoutFallback()))
+                .getResultList());
+        assertEquals(List.of(), firstNames(owners));
+        assertTrue(statement().contains("1 <> 1"), statement());
     }
 
     @Test
@@ -301,7 +314,7 @@ public class SemiJoinIntegrationTest {
         assertEquals(List.of("Betty"), firstNames(ownersWithPets(trigramOrm())
                 .where(it -> suggest("le", Owner_.lastName, Pet_.name))
                 .getResultList()));
-        assertEquals(List.of("Betty", "Jean"), firstNames(ownersWithPets(trigramOrm())
+        assertEquals(List.of("Betty"), firstNames(ownersWithPets(trigramOrm())
                 .where(it -> search("le", Owner_.lastName, Pet_.name))
                 .getResultList()));
     }

@@ -16,15 +16,12 @@
 package st.orm.core.template.impl;
 
 import static java.util.Objects.requireNonNull;
-import static st.orm.Operator.STARTS_WITH_IGNORE_CASE;
 import static st.orm.core.template.TemplateString.wrap;
 
 import java.util.ArrayList;
 import java.util.List;
 import st.orm.Match;
-import st.orm.Metamodel;
 import st.orm.core.template.TemplateString;
-import st.orm.core.template.impl.Elements.ObjectExpression;
 import st.orm.core.template.impl.Elements.SearchExpression;
 
 /**
@@ -81,30 +78,17 @@ public sealed interface PredicateNode {
     }
 
     /**
-     * The words of a search, kept apart until the query is built, since {@code search} plans its short words by the
-     * length the dialect's substring index serves, and {@code suggest} by its minimum word length.
+     * The words of a search, kept apart until the query is built, since each field takes them by its minimum length,
+     * and the short words are planned by the length the dialect's substring index serves.
      *
      * @param terms the terms, as the input holds them, without the ignored ones.
-     * @param start the input as the start of a value: its terms joined by one space, the ignored ones included,
-     *              since they stand at the start of the value as typed.
+     * @param start the whole input: its terms joined by one space, the ignored ones included, since they stand in the
+     *              value as typed.
      * @param fields the text columns to search with their match forms, at least one.
-     * @param suggest {@code true} to match the input as the start of the value until a term reaches the minimum word
-     *                length; {@code false} to match every term.
+     * @param suggest {@code true} for {@code suggest}, whose input without a term matches no rows; {@code false} for
+     *                {@code search}, whose input without a term matches every row.
      */
     record Search(List<String> terms, String start, List<Match<?>> fields, boolean suggest) implements PredicateNode {
-
-        /**
-         * The shortest word {@code suggest} matches in its form, the same on every database, since it changes which
-         * rows come back.
-         */
-        static final int SUGGEST_MIN_WORD_LENGTH = 3;
-
-        /**
-         * The characters the start of a value takes from. A one-character start names too many rows to suggest from,
-         * and the box orders what it finds, so the database would fetch and sort them all before the limit cut the
-         * list.
-         */
-        static final int MIN_START_LENGTH = 2;
 
         public Search {
             terms = List.copyOf(terms);
@@ -116,83 +100,76 @@ public sealed interface PredicateNode {
         }
 
         /**
-         * Returns the search as the predicates it renders: an AND over the words, each matched in at least one field
-         * the word reaches by that field's minimum length. A word no field takes is left out, and an input whose words
-         * no field takes matches no rows. A word shorter than the given length is residual next to one that reaches
-         * it, tested only on the rows the longer word found. Where no word reaches it, {@code search} matches every
-         * word as it is and {@code suggest} matches the input as the start of the value, in the fields its whole
-         * length reaches, since a word that short matches too large a share of a table anywhere or at a word start;
-         * an input without a term, or a start of one character, matches no rows.
+         * Returns the search as the predicates it renders. A field that a word reaches by the field's minimum length
+         * takes every word in its form: an AND over the words, each matched in at least one of those fields. A field
+         * that no word reaches takes the whole input in its fallback, where the input reaches the fallback's minimum
+         * length, as an alternative to the words; a field without a fallback then takes no part. An input that no
+         * field takes matches no rows. A word shorter than the given length, or than the fields' minimum length, is
+         * residual next to one that reaches it, tested only on the rows the longer word found. An input without a
+         * term matches every row for {@code search} and no rows for {@code suggest}.
          *
          * @param minimumLength the shortest term the substring index serves, {@code 0} where no index serves one.
          */
         PredicateNode resolve(int minimumLength) {
-            int length = suggest ? SUGGEST_MIN_WORD_LENGTH : minimumLength;
-            var taken = terms.stream().filter(term -> !fieldsTaking(term).isEmpty()).toList();
-            boolean reached = taken.stream().anyMatch(term -> reaches(term, length));
-            if (!reached) {
-                if (suggest) {
-                    var startFields = fieldsTaking(start);
-                    return terms.isEmpty() || !reaches(start, MIN_START_LENGTH) || startFields.isEmpty()
-                            ? NO_ROWS
-                            : valueStart(startFields);
-                }
-                if (terms.isEmpty()) {
-                    return new Term(TemplateString.of("1 = 1"), true);
+            if (terms.isEmpty()) {
+                return suggest ? NO_ROWS : new Term(TemplateString.of("1 = 1"), true);
+            }
+            var reached = new ArrayList<Match<?>>(fields.size());
+            var fallbacks = new ArrayList<PredicateNode>(fields.size());
+            for (Match<?> field : fields) {
+                if (terms.stream().anyMatch(term -> reaches(term, field.minLength()))) {
+                    reached.add(field);
+                } else {
+                    var fallback = field.fallback();
+                    if (fallback != null && reaches(start, fallback.minLength())) {
+                        fallbacks.add(match(fallback, start));
+                    }
                 }
             }
-            if (taken.isEmpty()) {
-                return NO_ROWS;
+            var alternatives = new ArrayList<PredicateNode>(2);
+            if (!reached.isEmpty()) {
+                alternatives.add(words(reached, minimumLength));
             }
-            var scopes = new ArrayList<PredicateNode>(taken.size());
-            taken.stream().filter(term -> reaches(term, length)).forEach(term -> scopes.add(new Scope(word(term), false)));
-            // A short word is tested on the rows the long words found; alone, nothing narrows the rows for it.
-            taken.stream().filter(term -> !reaches(term, length)).forEach(term -> scopes.add(new Scope(word(term), reached)));
-            return and(scopes);
+            if (!fallbacks.isEmpty()) {
+                alternatives.add(or(fallbacks));
+            }
+            return alternatives.isEmpty() ? NO_ROWS : or(alternatives);
         }
 
         private static final PredicateNode NO_ROWS = new Term(TemplateString.of("1 <> 1"), true);
 
         /**
-         * Returns the fields that take the text by their minimum length.
+         * Returns the predicate matching every word in at least one of the fields a word reaches. A word shorter than
+         * the planning length is tested on the rows the long words found; alone, nothing narrows the rows for it.
          */
-        private List<Match<?>> fieldsTaking(String text) {
-            return fields.stream().filter(field -> reaches(text, field.minLength())).toList();
+        private PredicateNode words(List<Match<?>> reached, int minimumLength) {
+            int fieldLength = reached.stream().mapToInt(Match::minLength).min().orElse(0);
+            int length = Math.max(minimumLength, fieldLength);
+            boolean narrowed = terms.stream().anyMatch(term -> reaches(term, length));
+            var scopes = new ArrayList<PredicateNode>(terms.size());
+            terms.stream().filter(term -> reaches(term, length)).forEach(term -> scopes.add(new Scope(word(reached, term), false)));
+            terms.stream().filter(term -> !reaches(term, length)).forEach(term -> scopes.add(new Scope(word(reached, term), narrowed)));
+            return and(scopes);
         }
 
         /**
-         * Returns the predicate matching a term in at least one of the fields that take it, each in its match form.
-         * Each term is matched on its own, so on a semi-joined table the terms may match different related rows. A
-         * word start may render as several predicates, so it is grouped when combined.
+         * Returns the predicate matching a term in at least one of the fields, each in its match form. Each term is
+         * matched on its own, so on a semi-joined table the terms may match different related rows.
          */
-        private PredicateNode word(String term) {
+        private static PredicateNode word(List<Match<?>> fields, String term) {
             var matches = new ArrayList<PredicateNode>(fields.size());
-            for (Match<?> field : fieldsTaking(term)) {
-                matches.add(new Term(wrap(new SearchExpression(field, term)), MatchForm.of(field) != MatchForm.WORD_START));
+            for (Match<?> field : fields) {
+                matches.add(match(field, term));
             }
             return or(matches);
         }
 
         /**
-         * Returns the predicate matching the input as the start of the value in at least one of the fields: ignoring
-         * case on a field that matches anywhere or at a word start, with the field's function on both sides, and in
-         * its own form, the whole input as the word, on a prefix or exact field, which compares the bare column.
+         * Returns the predicate matching the text in the field's form. A word start may render as several predicates,
+         * so it is grouped when combined.
          */
-        private PredicateNode valueStart(List<Match<?>> startFields) {
-            var matches = new ArrayList<PredicateNode>(startFields.size());
-            for (Match<?> field : startFields) {
-                matches.add(switch (field) {
-                    case Match.Anywhere<?> it -> startsWith(it.path());
-                    case Match.WordStart<?> it -> startsWith(it.path());
-                    case Match.Prefix<?> it -> new Term(wrap(new SearchExpression(it, start)), true);
-                    case Match.Exact<?> it -> new Term(wrap(new SearchExpression(it, start)), true);
-                });
-            }
-            return or(matches);
-        }
-
-        private PredicateNode startsWith(Metamodel<?, String> path) {
-            return new Term(wrap(new ObjectExpression(path, STARTS_WITH_IGNORE_CASE, List.of(start))), true);
+        private static PredicateNode match(Match<?> field, String text) {
+            return new Term(wrap(new SearchExpression(field, text)), MatchForm.of(field) != MatchForm.WORD_START);
         }
 
         private static boolean reaches(String term, int minimumLength) {

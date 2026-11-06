@@ -18,6 +18,7 @@ package st.orm.spi.postgresql;
 import static st.orm.Match.anywhere;
 import static st.orm.Match.exact;
 import static st.orm.Match.prefix;
+import static st.orm.Match.prefixIgnoreCase;
 import static st.orm.Match.wordStart;
 
 import java.sql.SQLException;
@@ -78,12 +79,15 @@ public class PostgreSQLMissingIndexConformanceTest extends AbstractMissingIndexC
                 // A trigram index over the lowered name serves a match anywhere and at a word start.
                 new SearchIndexProbe(anywhere(PROBE_NAME), "CREATE INDEX probe_trgm ON search_probe USING gin (LOWER(name) gin_trgm_ops)", true),
                 new SearchIndexProbe(wordStart(PROBE_NAME), "CREATE INDEX probe_trgm ON search_probe USING gin (LOWER(name) gin_trgm_ops)", true),
+                // The same index serves a prefix of the lowered name, the default fallback of both.
+                new SearchIndexProbe(prefixIgnoreCase(PROBE_NAME), "CREATE INDEX probe_trgm ON search_probe USING gin (LOWER(name) gin_trgm_ops)", true),
                 // A B-tree serves a prefix with the pattern operator class, and an equality with the default one.
                 new SearchIndexProbe(prefix(PROBE_NAME_LOWER), "CREATE INDEX probe_pattern ON search_probe (name_lower text_pattern_ops)", true),
                 new SearchIndexProbe(exact(PROBE_NAME_LOWER), "CREATE INDEX probe_plain ON search_probe (name_lower)", true),
                 // An index on the bare name serves no match of the lowered name.
                 new SearchIndexProbe(wordStart(PROBE_NAME), "CREATE INDEX probe_name ON search_probe (name)", false),
-                new SearchIndexProbe(anywhere(PROBE_NAME), null, false));
+                new SearchIndexProbe(anywhere(PROBE_NAME), null, false),
+                new SearchIndexProbe(prefixIgnoreCase(PROBE_NAME), "CREATE INDEX probe_name ON search_probe (name)", false));
     }
 
     @Override

@@ -363,11 +363,12 @@ final class IndexUsage {
     /**
      * Returns the advice on one search field, or {@code null} where an index of its table serves the field in its
      * match form, or may. A prefix or exact match on a bare column is served by an index that leads with the column.
-     * A match anywhere or at a word start compares the lowered column, which only an index over that expression
-     * serves: an index of the table that starts with an expression may be it, so the advice stays silent; without
-     * one, no index serves the field. A field wrapped in a function compares an expression as well. The fix names
-     * what serves the form: the database's index for substring matching on the expression, where it has one, a
-     * word-suffix table matched as a prefix elsewhere, or an ordinary index on a bare column.
+     * Every other match compares the lowered column, which only an index over that expression serves: an index of
+     * the table that starts with an expression may be it, so the advice stays silent; without one, no index serves
+     * the field. A field wrapped in a function compares an expression as well. The fix names what serves the form:
+     * for a wildcard in front of the word, the database's index for substring matching on the expression, where it
+     * has one, a word-suffix table matched as a prefix elsewhere; an ordinary index on a bare column; an index on the
+     * expression otherwise.
      *
      * @param substringIndex the kind of index the database has for substring matching, or {@code null}.
      */
@@ -378,7 +379,7 @@ final class IndexUsage {
         }
         String table = qualified(search.schema(), search.table());
         String fix;
-        if (search.form().lowered()) {
+        if (search.form().substring()) {
             fix = substringIndex != null
                     ? "%s on %s serves it".formatted(substringIndex, search.expression())
                     : ("no index of the database serves the %s form; a word-suffix table, matched as a prefix, takes "

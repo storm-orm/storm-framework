@@ -34,6 +34,7 @@ import org.junit.jupiter.api.Test;
 import st.orm.Data;
 import st.orm.Entity;
 import st.orm.FK;
+import st.orm.Match;
 import st.orm.Metamodel;
 import st.orm.PK;
 import st.orm.Ref;
@@ -158,9 +159,11 @@ public abstract class AbstractSemiJoinConformanceTest {
         return books.stream().map(Book::title).sorted().toList();
     }
 
+    /** Searches the authors and their books, taking every word anywhere, however short. */
     private List<String> search(String input) {
         return names(authorsByBooks()
-                .where(it -> PredicateBuilderFactory.<Data, Author, Integer>search(input, AUTHOR_NAME, BOOK_TITLE))
+                .where(it -> PredicateBuilderFactory.<Data, Author, Integer>search(input,
+                        Match.anywhere(AUTHOR_NAME, 0), Match.anywhere(BOOK_TITLE, 0)))
                 .getResultList());
     }
 
@@ -227,7 +230,7 @@ public abstract class AbstractSemiJoinConformanceTest {
     public void semiJoinCountsEachRowOnce() {
         // Two of Tolkien's books and one of Austen's hold an 'o'.
         assertEquals(2, authorsByBooks()
-                .where(it -> PredicateBuilderFactory.<Data, Author, Integer>search("o", BOOK_TITLE))
+                .where(it -> PredicateBuilderFactory.<Data, Author, Integer>search("o", Match.anywhere(BOOK_TITLE, 0)))
                 .getResultCount());
     }
 
