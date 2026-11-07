@@ -18,11 +18,13 @@ package st.orm.spring;
 import java.sql.SQLException;
 import javax.sql.DataSource;
 import org.jspecify.annotations.Nullable;
+import org.springframework.dao.ConcurrencyFailureException;
 import org.springframework.dao.DataAccessException;
 import org.springframework.dao.EmptyResultDataAccessException;
 import org.springframework.dao.IncorrectResultSizeDataAccessException;
 import org.springframework.dao.IncorrectUpdateSemanticsDataAccessException;
 import org.springframework.dao.OptimisticLockingFailureException;
+import org.springframework.dao.TransientDataAccessException;
 import org.springframework.jdbc.UncategorizedSQLException;
 import org.springframework.jdbc.support.SQLErrorCodeSQLExceptionTranslator;
 import org.springframework.jdbc.support.SQLExceptionSubclassTranslator;
@@ -34,6 +36,7 @@ import st.orm.OptimisticLockException;
 import st.orm.ReadOnlyTransactionException;
 import st.orm.TransactionCallbackException;
 import st.orm.TransactionTimedOutException;
+import st.orm.TransientPersistenceException;
 import st.orm.UnexpectedRollbackException;
 import st.orm.UnexpectedRowCountException;
 import st.orm.spi.ExceptionContext;
@@ -47,13 +50,17 @@ import st.orm.spi.ExceptionMapper;
  * {@code SQLException} subclass and SQL state translation. This gives Storm repositories the same exception
  * semantics as Spring's other data access integrations: deadlocks and lock timeouts surface as
  * {@code TransientDataAccessException} subtypes (enabling retry setups), constraint violations as
- * {@code DataIntegrityViolationException} subtypes, and so on.</p>
+ * {@code DataIntegrityViolationException} subtypes, and so on. A failure the dialect classifies as transient
+ * ({@link ExceptionContext#transientFailure()}), a deadlock or a serialization failure, translates to a
+ * {@link TransientDataAccessException} even where the translator knows no code for it: to
+ * {@link ConcurrencyFailureException} then.</p>
  *
  * <p>The failures Storm's own logic detects translate to the types Spring's other data access integrations use
  * for them: an {@link OptimisticLockException} to {@link OptimisticLockingFailureException}; a
  * {@link NoResultException} to {@link EmptyResultDataAccessException}; a {@link NonUniqueResultException} to
  * {@link IncorrectResultSizeDataAccessException}; an {@link UnexpectedRowCountException}, a write that affected
- * another number of rows than it expected, to {@link IncorrectUpdateSemanticsDataAccessException}. Each keeps the
+ * another number of rows than it expected, to {@link IncorrectUpdateSemanticsDataAccessException}; any other
+ * {@link TransientPersistenceException} to {@link ConcurrencyFailureException}. Each keeps the
  * Storm exception, and what it carries, such as the entity or the row counts, as its cause. A retry setup keyed on
  * {@code OptimisticLockingFailureException} therefore sees Storm's optimistic lock conflicts. Any other failure
  * translates to {@link StormSystemException}, so a caller catches one {@code DataAccessException} hierarchy.</p>
@@ -95,6 +102,8 @@ public class SpringExceptionMapper implements ExceptionMapper {
             return switch (cause) {
                 case OptimisticLockException conflict ->
                         new OptimisticLockingFailureException(conflict.getMessage(), conflict);
+                case TransientPersistenceException transientFailure ->
+                        new ConcurrencyFailureException(transientFailure.getMessage(), transientFailure);
                 case NoResultException missing ->
                         new EmptyResultDataAccessException(missing.getMessage(), 1, missing);
                 case NonUniqueResultException ambiguous ->
@@ -115,6 +124,9 @@ public class SpringExceptionMapper implements ExceptionMapper {
         DataAccessException translated = translator.translate(task, sql, sqlException);
         if (translated == null) {
             translated = new UncategorizedSQLException(task, sql, sqlException);
+        }
+        if (context.transientFailure() && !(translated instanceof TransientDataAccessException)) {
+            translated = new ConcurrencyFailureException(translated.getMessage(), sqlException);
         }
         // The translated exception keeps the SQLException as its cause, but drops any wrapper between the
         // reported failure and the SQLException. The framework attaches SQL diagnostics as suppressed

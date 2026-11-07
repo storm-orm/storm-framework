@@ -15,17 +15,26 @@
  */
 package st.orm.core.template.impl;
 
+import java.sql.SQLException;
+import java.sql.SQLNonTransientConnectionException;
+import java.sql.SQLRecoverableException;
+import java.sql.SQLTransientConnectionException;
+import java.util.Collections;
+import java.util.IdentityHashMap;
 import java.util.Optional;
+import java.util.Set;
 import java.util.function.Function;
 import org.jspecify.annotations.Nullable;
 import st.orm.Data;
 import st.orm.PersistenceException;
 import st.orm.SqlTemplateException;
+import st.orm.TransientPersistenceException;
 import st.orm.core.spi.TransactionContext;
 import st.orm.core.spi.TransactionScope;
 import st.orm.core.spi.TransactionTemplateProvider;
 import st.orm.core.template.QueryTemplate;
 import st.orm.core.template.Sql;
+import st.orm.core.template.SqlDialect;
 import st.orm.spi.ExceptionContext;
 import st.orm.spi.ExceptionMapper;
 import st.orm.spi.SqlOperation;
@@ -44,11 +53,13 @@ public final class ExceptionHelper {
      * caller via the given exception mapper.
      *
      * <p>The SQL statement and transaction description are attached to the original failure as a suppressed
-     * exception, so every mapper receives full diagnostics; the mapper only decides the thrown type. If the mapper
-     * itself fails or returns {@code null}, the failure is wrapped in a {@link PersistenceException} with the mapper
-     * failure suppressed; diagnostic mapping must never mask the original error.</p>
+     * exception, so every mapper receives full diagnostics; the mapper only decides the thrown type. The dialect
+     * classifies the failure before the mapper sees it ({@link ExceptionContext#transientFailure()}). If
+     * the mapper itself fails or returns {@code null}, the failure is wrapped in a {@link PersistenceException} with
+     * the mapper failure suppressed; diagnostic mapping must never mask the original error.</p>
      *
      * @param sql the SQL statement to attach, or {@code null} when no statement is associated.
+     * @param dialect the dialect the statement was generated with, which classifies the failure.
      * @param exceptionMapper the exception mapper configured on the template.
      * @param transactionTemplateProvider the transaction template provider of the template, used to describe the
      *                                    active transaction.
@@ -56,12 +67,14 @@ public final class ExceptionHelper {
      */
     public static Function<Throwable, RuntimeException> getExceptionTransformer(
             @Nullable Sql sql,
+            SqlDialect dialect,
             ExceptionMapper exceptionMapper,
             TransactionTemplateProvider transactionTemplateProvider) {
         return getExceptionTransformer(
                 sql != null ? sql.operation() : SqlOperation.UNDEFINED,
                 sql != null ? sql.affectedType().orElse(null) : null,
                 sql,
+                dialect,
                 exceptionMapper,
                 transactionTemplateProvider);
     }
@@ -82,7 +95,7 @@ public final class ExceptionHelper {
             QueryTemplate template,
             SqlOperation operation,
             @Nullable Class<? extends Data> dataType) {
-        return getExceptionTransformer(operation, dataType, null, template.exceptionMapper(),
+        return getExceptionTransformer(operation, dataType, null, template.dialect(), template.exceptionMapper(),
                 template.transactionTemplateProvider());
     }
 
@@ -90,6 +103,7 @@ public final class ExceptionHelper {
             SqlOperation operation,
             @Nullable Class<? extends Data> dataType,
             @Nullable Sql sql,
+            SqlDialect dialect,
             ExceptionMapper exceptionMapper,
             TransactionTemplateProvider transactionTemplateProvider) {
         return e -> {
@@ -101,7 +115,8 @@ public final class ExceptionHelper {
                     operation,
                     sql != null ? sql.statement() : null,
                     dataType,
-                    transactionDescription);
+                    transactionDescription,
+                    e instanceof TransientPersistenceException || isTransientFailure(e, dialect));
             try {
                 var mapped = exceptionMapper.map(e, context);
                 if (mapped != null) {
@@ -116,6 +131,47 @@ public final class ExceptionHelper {
                 return fallback;
             }
         };
+    }
+
+    /**
+     * Returns whether the dialect recognises an error in the failure's chain as a deadlock or a serialization
+     * failure. The chain is walked through the causes and, for each {@code SQLException}, the next exceptions a
+     * driver chains to it. A chain that reports a lost connection is never transient, as the outcome of the
+     * transaction is unknown.
+     */
+    private static boolean isTransientFailure(Throwable failure, SqlDialect dialect) {
+        Set<Throwable> visited = Collections.newSetFromMap(new IdentityHashMap<>());
+        boolean recognised = false;
+        for (Throwable cause = failure; cause != null && visited.add(cause); cause = cause.getCause()) {
+            if (cause instanceof SQLException sqlException) {
+                for (SQLException next = sqlException; next != null; next = next.getNextException()) {
+                    if (next != sqlException && !visited.add(next)) {
+                        break;
+                    }
+                    if (isConnectionFailure(next)) {
+                        return false;
+                    }
+                    try {
+                        recognised |= dialect.isTransientFailure(next);
+                    } catch (RuntimeException classificationFailure) {
+                        // Never let classification mask the original exception; it travels along with it.
+                        failure.addSuppressed(classificationFailure);
+                        return false;
+                    }
+                }
+            }
+        }
+        return recognised;
+    }
+
+    private static boolean isConnectionFailure(SQLException exception) {
+        if (exception instanceof SQLNonTransientConnectionException
+                || exception instanceof SQLTransientConnectionException
+                || exception instanceof SQLRecoverableException) {
+            return true;
+        }
+        String sqlState = exception.getSQLState();
+        return sqlState != null && sqlState.startsWith("08");
     }
 
     private static String buildSqlDetail(Sql sql, @Nullable String transactionDescription) {
@@ -145,7 +201,8 @@ public final class ExceptionHelper {
     private record ExceptionContextImpl(SqlOperation operation,
                                         @Nullable String statementText,
                                         @Nullable Class<? extends Data> affectedType,
-                                        @Nullable String description) implements ExceptionContext {
+                                        @Nullable String description,
+                                        boolean transientFailure) implements ExceptionContext {
         @Override
         public Optional<String> statement() {
             return Optional.ofNullable(statementText);

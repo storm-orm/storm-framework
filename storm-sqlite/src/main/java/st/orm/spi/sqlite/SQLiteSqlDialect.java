@@ -309,4 +309,35 @@ public class SQLiteSqlDialect extends DefaultSqlDialect {
         var conflict = ON_CONFLICT.matcher(sql);
         return conflict.find() && DO_UPDATE.matcher(sql).find(conflict.end());
     }
+
+    /**
+     * The primary result code SQLite reports for a database another connection holds locked.
+     */
+    private static final int SQLITE_BUSY = 5;
+
+    /**
+     * The extended result code of a write in a write-ahead-log transaction whose snapshot another connection wrote
+     * past, which the SQLite driver names at the start of the message.
+     */
+    private static final String SQLITE_BUSY_SNAPSHOT = "[SQLITE_BUSY_SNAPSHOT]";
+
+    /**
+     * Recognises {@code SQLITE_BUSY_SNAPSHOT}: a transaction in write-ahead-log mode that read a snapshot and then
+     * writes after another connection committed past it. Waiting does not help; the transaction must start over.
+     * The driver reports the primary result code, {@code SQLITE_BUSY}, as the error code and names the extended code
+     * at the start of the message. A plain {@code SQLITE_BUSY} is not transient: it is a lock wait that ran out of
+     * the busy timeout.
+     *
+     * <p>SQLite has one writer at a time, so two transactions never deadlock on rows; the second writer waits for
+     * the busy timeout instead.</p>
+     *
+     * @param exception one error of the failure's chain.
+     * @return {@code true} if the error reports a write past the transaction's snapshot.
+     * @since 1.16
+     */
+    @Override
+    public boolean isTransientFailure(SQLException exception) {
+        String message = exception.getMessage();
+        return exception.getErrorCode() == SQLITE_BUSY && message != null && message.startsWith(SQLITE_BUSY_SNAPSHOT);
+    }
 }

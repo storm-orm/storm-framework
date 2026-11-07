@@ -776,23 +776,33 @@ public final class JdbcTransactionContext implements TransactionContext {
         }
     }
 
+    /**
+     * Restores the connection's state and closes it. The connection is closed even when restoring its state fails,
+     * so a pool always gets it back. A connection that is closed already, such as one the database or the network
+     * dropped, has no state left to restore.
+     */
     private void close(Connection connection, TransactionState state) throws SQLException {
         try {
-            if (state.originalIsolationLevel != null) {
-                connection.setTransactionIsolation(state.originalIsolationLevel);
+            if (!connection.isClosed()) {
+                if (state.originalIsolationLevel != null) {
+                    connection.setTransactionIsolation(state.originalIsolationLevel);
+                }
+                if (state.originalReadOnly != null) {
+                    connection.setReadOnly(state.originalReadOnly);
+                }
+                // Restore auto-commit only when this frame changed it, so the pool gets the connection back in its
+                // arrived state: auto-commit for regular pools, manual-commit for declared pools.
+                if (state.originalAutoCommit != null) {
+                    connection.setAutoCommit(state.originalAutoCommit);
+                }
             }
-            if (state.originalReadOnly != null) {
-                connection.setReadOnly(state.originalReadOnly);
-            }
-            // Restore auto-commit only when this frame changed it, so the pool gets the connection back in its
-            // arrived state: auto-commit for regular pools, manual-commit for declared pools.
-            if (state.originalAutoCommit != null) {
-                connection.setAutoCommit(state.originalAutoCommit);
-            }
-            connection.close();
         } finally {
-            if (state.transactionRecord != null) {
-                state.transactionRecord.released();
+            try {
+                connection.close();
+            } finally {
+                if (state.transactionRecord != null) {
+                    state.transactionRecord.released();
+                }
             }
         }
     }

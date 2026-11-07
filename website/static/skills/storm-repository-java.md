@@ -702,6 +702,8 @@ transaction(REQUIRES_NEW, tx -> {
 
 **Keep a transaction's work on its thread.** A transaction is bound to the thread that runs it. Work handed to an `ExecutorService` or a parallel stream runs outside it: its statements commit on their own and do not see the transaction's uncommitted changes. Keep the work on the transaction's thread, or open a transaction inside the task.
 
+**Rerun a transaction on `TransientPersistenceException` only.** A deadlock, a serialization failure (SQL state `40001` or the database's own code for it) and an optimistic lock conflict (`OptimisticLockException` is a subtype) throw it: running the whole transaction again may succeed. Rerun the block that owns the transaction from its start, never the failed statement alone, never a block that joined an outer transaction. A lock wait timeout, a lost connection and a failed commit are not transient; never rerun on them. A rerun repeats the block's side effects, so every effect outside the database goes in `tx.onCommit(...)`. Under the Spring Boot starters the failure surfaces as a `TransientDataAccessException`.
+
 ### Spring Boot
 **Both styles work and cooperate.** `@Transactional` on service methods is first-class. Storm's `transaction(...)` blocks run through Spring's transaction managers when the template is Spring-composed (the starter does this automatically), so a Storm block inside a `@Transactional` method joins it.
 ```java

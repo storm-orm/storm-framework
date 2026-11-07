@@ -18,7 +18,8 @@ Storm uses unchecked exceptions for most error conditions. The root type is `Per
 | `PersistenceException` | `RuntimeException` | General database or SQL errors. This is the root of Storm's exception hierarchy. |
 | `NoResultException` | `PersistenceException` | `getSingleResult()` returns no rows. |
 | `NonUniqueResultException` | `PersistenceException` | `getSingleResult()` or `getOptionalResult()` returns more than one row. |
-| `OptimisticLockException` | `PersistenceException` | An update or delete detects a version conflict (the row was modified by another transaction). |
+| `TransientPersistenceException` | `PersistenceException` | The failure stems from concurrent activity, such as a deadlock or a serialization failure, and running the whole transaction again may succeed. See [Deadlocks and Serialization Failures](#deadlocks-and-serialization-failures). |
+| `OptimisticLockException` | `TransientPersistenceException` | An update or delete detects a version conflict (the row was modified by another transaction). |
 | `UnexpectedRowCountException` | `PersistenceException` | An insert, update or remove affects another number of rows than it expects, such as an update of an entity whose row does not exist. Carries the expected and actual row counts. |
 | `SchemaValidationException` | `PersistenceException` | Schema validation finds mismatches between entity definitions and the database schema. |
 | `IllegalTransactionStateException` | `PersistenceException` | A transaction block cannot open against the transaction state it finds: `MANDATORY` without a transaction, `NEVER` inside one, or a joined block stating a stricter isolation level than the transaction it joins. |
@@ -36,7 +37,8 @@ RuntimeException
  └── PersistenceException
       ├── NoResultException
       ├── NonUniqueResultException
-      ├── OptimisticLockException
+      ├── TransientPersistenceException
+      │    └── OptimisticLockException
       ├── UnexpectedRowCountException
       ├── SchemaValidationException
       ├── IllegalTransactionStateException
@@ -154,6 +156,61 @@ With the Spring Boot starter, exception translation turns this into Spring's `Op
 
 The exception includes a reference to the entity that caused the conflict, accessible via `getEntity()`.
 
+### Deadlocks and Serialization Failures
+
+When two transactions conflict, the database ends one of them. In a deadlock, each transaction waits for a row the other one holds. In a serialization failure, a transaction at `REPEATABLE_READ` or `SERIALIZABLE` writes a row that another transaction changed after it was read. Storm throws `TransientPersistenceException` for both. The dialect recognises the codes its database reports, so the type is the same on every database. `OptimisticLockException` is a subtype: a version conflict is concurrent activity too.
+
+The type is the signal to run the whole transaction again. The transaction the failure occurred in cannot commit its work, so rerun the block from its start, never the failed statement alone. Rerun the block that owns the transaction: a block that joined an outer transaction fails with it, and the outer block is the one to run again.
+
+A rerun repeats everything the block does. Its database writes rolled back with the failed attempt, but anything else it did happens again: a message sent, a call to another service, a change to state the block captured. Put such side effects in [`onCommit`](transactions.md#transaction-callbacks), which runs only for the attempt that committed.
+
+<Tabs groupId="language">
+<TabItem value="kotlin" label="Kotlin" default>
+
+```kotlin
+var attempt = 0
+while (true) {
+    try {
+        transactionBlocking(isolation = SERIALIZABLE) {
+            inventoryRepository.decrease(productId, quantity)
+            val order = orderRepository.insertAndFetch(newOrder)
+            onCommit { emailService.sendOrderConfirmation(order) }
+        }
+        break
+    } catch (exception: TransientPersistenceException) {
+        if (++attempt == 3) throw exception
+    }
+}
+```
+
+</TabItem>
+<TabItem value="java" label="Java">
+
+```java
+for (int attempt = 1; ; attempt++) {
+    try {
+        transaction(TransactionOptions.defaults().withIsolation(SERIALIZABLE), tx -> {
+            inventoryRepository.decrease(productId, quantity);
+            Order order = orderRepository.insertAndFetch(newOrder);
+            tx.onCommit(() -> emailService.sendOrderConfirmation(order));
+            return order;
+        });
+        break;
+    } catch (TransientPersistenceException exception) {
+        if (attempt == 3) {
+            throw exception;
+        }
+    }
+}
+```
+
+</TabItem>
+</Tabs>
+
+Only failures on which the database gave up the transaction's work are transient. A lock wait that runs out is not: some databases answer it by rolling back only the statement that waited. A lost connection and a failed commit are not either: whether the transaction committed is unknown, and running it again could apply it twice.
+
+With the Spring Boot starter, exception translation turns these failures into Spring's `TransientDataAccessException` subtypes, such as `ConcurrencyFailureException`. See [Exception Translation](spring-integration.md#exception-translation).
+
 ### Writes That Affect No Row
 
 An insert, update or remove of an entity expects to affect exactly one row, and a batch one row per entity. When the database reports another count, Storm throws `UnexpectedRowCountException`, with the counts on `getExpectedRowCount()` and `getActualRowCount()`. The usual cause is an update or remove of an entity whose row does not exist, or a trigger that suppressed the write. For an entity with a `@Version` field, an update that affects no row is an `OptimisticLockException` instead.
@@ -207,7 +264,7 @@ Each individual error is available programmatically through `getErrors()`, makin
 
 ### Connection and Database Errors
 
-Low-level database problems (connection failures, query timeouts, syntax errors) are wrapped in `PersistenceException`. The original `SQLException` is always available as the cause, preserving the vendor error code and SQL state:
+Low-level database problems (connection failures, query timeouts, syntax errors) are wrapped in `PersistenceException`; a lost connection is never a `TransientPersistenceException`, since the outcome of its transaction is unknown. The original `SQLException` is always available as the cause, preserving the vendor error code and SQL state:
 
 <Tabs groupId="language">
 <TabItem value="kotlin" label="Kotlin" default>
@@ -310,7 +367,7 @@ Catching `PersistenceException` at a high level can hide programming errors like
 
 ### Ignoring OptimisticLockException
 
-When using `@Version` columns, always have a strategy for handling `OptimisticLockException`. Common approaches include retrying the operation after reloading the entity, or returning a conflict response to the client and letting them resolve it.
+When using `@Version` columns, always have a strategy for handling `OptimisticLockException`. Common approaches include running the transaction again, which reloads the entity, or returning a conflict response to the client and letting them resolve it. A rerun follows the rules of [Deadlocks and Serialization Failures](#deadlocks-and-serialization-failures).
 
 ### Not Closing Streams
 

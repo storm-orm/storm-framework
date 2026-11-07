@@ -251,4 +251,19 @@ public class H2SqlDialect extends DefaultSqlDialect {
     public String wordStartMatch(String expression, String word, Function<String, String> bind) {
         return "REGEXP_LIKE(LOWER(%s), LOWER(%s))".formatted(expression, bind.apply(SqlDialect.wordStartRegex(word)));
     }
+
+    /**
+     * Recognises error {@code 40001}, {@code DEADLOCK_1}, which H2 reports, under SQL state {@code 40001}, both for a
+     * deadlock and for a write that conflicts with a serializable or repeatable read transaction's snapshot; H2
+     * rolls the transaction back on it. A lock wait that runs out of {@code LOCK_TIMEOUT}, error {@code 50200}, is
+     * not transient.
+     *
+     * @param exception one error of the failure's chain.
+     * @return {@code true} if the error reports a deadlock or a serialization conflict.
+     * @since 1.16
+     */
+    @Override
+    public boolean isTransientFailure(SQLException exception) {
+        return exception.getErrorCode() == 40001;
+    }
 }

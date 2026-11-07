@@ -9,7 +9,8 @@ import org.junit.jupiter.api.Test;
 
 /**
  * Tests for exception classes in storm-foundation: {@link PersistenceException},
- * {@link OptimisticLockException}, {@link NonUniqueResultException}, and {@link NoResultException}.
+ * {@link TransientPersistenceException}, {@link OptimisticLockException}, {@link NonUniqueResultException}, and
+ * {@link NoResultException}.
  */
 class ExceptionTest {
 
@@ -104,6 +105,47 @@ class ExceptionTest {
     @Test
     void optimisticLockExceptionIsPersistenceException() {
         assertInstanceOf(PersistenceException.class, new OptimisticLockException());
+    }
+
+    @Test
+    void optimisticLockExceptionIsTransient() {
+        assertInstanceOf(TransientPersistenceException.class, new OptimisticLockException());
+    }
+
+    // TransientPersistenceException
+
+    @Test
+    void transientPersistenceExceptionDefaultConstructor() {
+        TransientPersistenceException exception = new TransientPersistenceException();
+        assertNull(exception.getMessage());
+        assertNull(exception.getCause());
+    }
+
+    @Test
+    void transientPersistenceExceptionWithMessage() {
+        TransientPersistenceException exception = new TransientPersistenceException("deadlock");
+        assertEquals("deadlock", exception.getMessage());
+        assertNull(exception.getCause());
+    }
+
+    @Test
+    void transientPersistenceExceptionWithMessageAndCause() {
+        RuntimeException cause = new RuntimeException("root cause");
+        TransientPersistenceException exception = new TransientPersistenceException("deadlock", cause);
+        assertEquals("deadlock", exception.getMessage());
+        assertSame(cause, exception.getCause());
+    }
+
+    @Test
+    void transientPersistenceExceptionWithCause() {
+        RuntimeException cause = new RuntimeException("root cause");
+        TransientPersistenceException exception = new TransientPersistenceException(cause);
+        assertSame(cause, exception.getCause());
+    }
+
+    @Test
+    void transientPersistenceExceptionIsPersistenceException() {
+        assertInstanceOf(PersistenceException.class, new TransientPersistenceException());
     }
 
     // NonUniqueResultException

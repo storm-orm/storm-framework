@@ -15,26 +15,32 @@
  */
 package st.orm.spring;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
 import java.sql.SQLException;
+import java.sql.SQLTransactionRollbackException;
 import java.util.List;
+import java.util.Optional;
 import javax.sql.DataSource;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.jdbc.DataSourceBuilder;
 import org.springframework.core.io.ClassPathResource;
+import org.springframework.dao.ConcurrencyFailureException;
 import org.springframework.dao.DataAccessException;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.dao.EmptyResultDataAccessException;
 import org.springframework.dao.IncorrectResultSizeDataAccessException;
 import org.springframework.dao.IncorrectUpdateSemanticsDataAccessException;
 import org.springframework.dao.OptimisticLockingFailureException;
+import org.springframework.dao.TransientDataAccessException;
 import org.springframework.jdbc.datasource.DataSourceTransactionManager;
 import org.springframework.jdbc.datasource.init.ResourceDatabasePopulator;
+import st.orm.Data;
 import st.orm.IllegalTransactionStateException;
 import st.orm.NoResultException;
 import st.orm.NonUniqueResultException;
@@ -43,9 +49,11 @@ import st.orm.PersistenceException;
 import st.orm.ReadOnlyTransactionException;
 import st.orm.TransactionCallbackException;
 import st.orm.TransactionTimedOutException;
+import st.orm.TransientPersistenceException;
 import st.orm.UnexpectedRollbackException;
 import st.orm.UnexpectedRowCountException;
 import st.orm.spi.ExceptionContext;
+import st.orm.spi.SqlOperation;
 import st.orm.spring.model.Owner;
 import st.orm.spring.model.PetType;
 import st.orm.template.ORMTemplate;
@@ -197,7 +205,7 @@ class SpringExceptionMapperTest {
         wrapper.addSuppressed(diagnostics);
         RuntimeException translated = mapper.map(wrapper, emptyContext());
         assertInstanceOf(DataAccessException.class, translated);
-        org.assertj.core.api.Assertions.assertThat(translated.getSuppressed()).contains(diagnostics);
+        assertThat(translated.getSuppressed()).contains(diagnostics);
     }
 
     @Test
@@ -206,31 +214,70 @@ class SpringExceptionMapperTest {
         // retry setups key on, and the reason the translation exists.
         SpringExceptionMapper mapper = new SpringExceptionMapper();
         RuntimeException translated = mapper.map(
-                new java.sql.SQLTransactionRollbackException("Deadlock found when trying to get lock", "40001", 1213),
+                new SQLTransactionRollbackException("Deadlock found when trying to get lock", "40001", 1213),
                 emptyContext());
-        assertInstanceOf(org.springframework.dao.TransientDataAccessException.class, translated);
+        assertInstanceOf(TransientDataAccessException.class, translated);
+    }
+
+    @Test
+    void optimisticLockConflictStaysAnOptimisticLockingFailureAsATransientFailure() {
+        // The conflict is a TransientPersistenceException; it keeps Spring's optimistic locking type rather than
+        // the generic concurrency type of the other transient failures.
+        SpringExceptionMapper mapper = new SpringExceptionMapper(dataSource);
+        var conflict = new OptimisticLockException("stale");
+        var translated = assertInstanceOf(OptimisticLockingFailureException.class,
+                mapper.map(conflict, context(true)));
+        assertSame(conflict, translated.getCause());
+    }
+
+    @Test
+    void transientStormFailureTranslatesToConcurrencyFailure() {
+        SpringExceptionMapper mapper = new SpringExceptionMapper(dataSource);
+        var failure = new TransientPersistenceException("conflict");
+        var translated = assertInstanceOf(ConcurrencyFailureException.class, mapper.map(failure, context(true)));
+        assertSame(failure, translated.getCause());
+    }
+
+    @Test
+    void sqlFailureTheDialectClassifiesAsTransientTranslatesToATransientType() {
+        // A code the translator knows nothing of, as a database reports for a snapshot update conflict, still lands
+        // in the transient branch when the dialect classified it.
+        SpringExceptionMapper mapper = new SpringExceptionMapper();
+        var conflict = new SQLException("Snapshot isolation transaction aborted due to update conflict.", "S0002", 3960);
+        assertInstanceOf(DataAccessException.class, mapper.map(conflict, emptyContext()));
+        var translated = assertInstanceOf(ConcurrencyFailureException.class, mapper.map(conflict, context(true)));
+        assertSame(conflict, translated.getCause());
     }
 
     private static ExceptionContext emptyContext() {
+        return context(false);
+    }
+
+    private static ExceptionContext context(boolean transientFailure) {
         return new ExceptionContext() {
             @Override
-            public st.orm.spi.SqlOperation operation() {
-                return st.orm.spi.SqlOperation.UNDEFINED;
+            public SqlOperation operation() {
+                return SqlOperation.UNDEFINED;
             }
 
             @Override
-            public java.util.Optional<String> statement() {
-                return java.util.Optional.empty();
+            public Optional<String> statement() {
+                return Optional.empty();
             }
 
             @Override
-            public java.util.Optional<Class<? extends st.orm.Data>> dataType() {
-                return java.util.Optional.empty();
+            public Optional<Class<? extends Data>> dataType() {
+                return Optional.empty();
             }
 
             @Override
-            public java.util.Optional<String> transactionDescription() {
-                return java.util.Optional.empty();
+            public Optional<String> transactionDescription() {
+                return Optional.empty();
+            }
+
+            @Override
+            public boolean transientFailure() {
+                return transientFailure;
             }
         };
     }
