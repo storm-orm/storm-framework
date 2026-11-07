@@ -665,7 +665,7 @@ A grouping states what one row stands for. `groupBy` accepts the entity you want
 .groupBy(User_.city)      // one row per city
 .groupBy(User_.city.id)   // the same relationship, so the same grouping
 .groupBy(User_.id)        // one row per user
-.groupBy(User_.name)      // one row per distinct name: a value, not an identity
+.groupBy(User_.birthDate) // one row per distinct birth date: a value, not an identity
 ```
 
 The first three name an identity. The relationship, the key beyond it, and the query root's own key all say the same thing, and a reference says it too. The last names a value, and groups by that value literally.
@@ -681,20 +681,22 @@ How many columns an identity takes is a property of the database, not of the que
 | PostgreSQL, MySQL, SQLite, H2 | the key |
 | SQL Server, Oracle | every selected column of that table |
 
-Storm generates the form each product accepts, from the same source:
+Storm generates the form each product accepts, from the same source. Counting pets per pet type:
 
 ```kotlin
-orm.entity(User::class)
-    .select(CityCount::class) { "${City::class}, COUNT(*)" }
-    .groupBy(User_.city)
+data class PetTypeCount(val type: PetType, val count: Long)
+
+orm.entity(Pet::class)
+    .select(PetTypeCount::class) { "${PetType::class}, COUNT(*)" }
+    .groupBy(Pet_.type)
 ```
 
 ```sql
 -- PostgreSQL, MySQL, SQLite, H2
-SELECT c.id, c.name, c.population, COUNT(*) FROM user u INNER JOIN city c ON u.city_id = c.id GROUP BY c.id
+SELECT pt.id, pt.name, COUNT(*) FROM pet p INNER JOIN pet_type pt ON p.type_id = pt.id GROUP BY pt.id
 
 -- SQL Server, Oracle
-... GROUP BY c.id, c.name, c.population
+... GROUP BY pt.id, pt.name
 ```
 
 Writing the second form by hand is what portability used to cost: a column list that exists only for the strictest product, that has to be revisited whenever the entity gains a field, and that says nothing about intent. Stating the identity says what the query means once, and leaves the spelling to the dialect.

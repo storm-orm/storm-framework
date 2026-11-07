@@ -459,32 +459,32 @@ const SCENES = [
       P("    "),K("val "),P("population: "),T("Int"),P(",\n"),
       P("    "),K("val "),P("country: "),T("String"),P("\n"),
       P(") : "),T("Entity"),P("<"),T("Int"),P(">\n\n"),
-      K("data class "),T("User"),P("(\n"),
+      K("data class "),T("Owner"),P("(\n"),
       P("    "),A("@PK"),P(" "),K("val "),P("id: "),T("Int"),P(" = "),N("0"),P(",\n"),
-      P("    "),K("val "),P("email: "),T("String"),P(",\n"),
-      P("    "),K("val "),P("name: "),T("String"),P(",\n"),
+      P("    "),K("val "),P("firstName: "),T("String"),P(",\n"),
+      P("    "),K("val "),P("lastName: "),T("String"),P(",\n"),
       P("    "),A("@FK"),P(" "),K("val "),P("city: "),T("City"),P("   "),C("// foreign entities are available in queries and results\n"),
       P(") : "),T("Entity"),P("<"),T("Int"),P(">") ] },
 
-  { name:'3 · query', file:'UserService.kt',
+  { name:'3 · query', file:'OwnerService.kt',
     caption:"one-line queries to get all the data you need · no N+1",
-    code:[ C("// A user's city is loaded in the same query.\n"),
-      K("val "),P("user = userRepository."),F("getById"),P("("),N("1"),P(")\n"),
-      K("val "),P("cityName = user.city.name"),P("   "),C('// already loaded: no N+1, no lazy-init\n\n'),
+    code:[ C("// An owner's city is loaded in the same query.\n"),
+      K("val "),P("owner = owners."),F("getById"),P("("),N("1"),P(")\n"),
+      K("val "),P("cityName = owner.city.name"),P("   "),C('// already loaded: no N+1, no lazy-init\n\n'),
       C("// Filter across the graph, fully type-safe using the static metamodel.\n"),
-      K("val "),P("users = userRepository."),F("findAll"),P("(User_.city.name "),K("eq "),S('"Sunnyvale"'),P(")") ] },
+      K("val "),P("sunnyvale = owners."),F("findAll"),P("(Owner_.city.name "),K("eq "),S('"Sunnyvale"'),P(")") ] },
 
-  { name:'4 · repository', file:'UserRepository.kt',
+  { name:'4 · repository', file:'OwnerRepository.kt',
     caption:"your own type-safe queries · CRUD inherited",
     code:[ C("// Custom return types are just records. Define them in-place.\n"),
       K("data class "),T("CityCount"),P("("),K("val "),P("city: "),T("City"),P(", "),K("val "),P("count: "),T("Long"),P(")\n\n"),
       C("// Extend EntityRepository: all CRUD comes for free.\n"),
-      K("interface "),T("UserRepository"),P(" : "),T("EntityRepository"),P("<"),T("User"),P(", "),T("Int"),P("> {\n"),
-      P("    "),K("fun "),F("findByCity"),P("(city: "),T("City"),P(") = "),F("findAll"),P("(User_.city "),K("eq "),P("city)\n\n"),
-      P("    "),K("fun "),F("usersPerCity"),P("(country: "),T("String"),P(") =\n"),
+      K("interface "),T("OwnerRepository"),P(" : "),T("EntityRepository"),P("<"),T("Owner"),P(", "),T("Int"),P("> {\n"),
+      P("    "),K("fun "),F("findByCity"),P("(city: "),T("City"),P(") = "),F("findAll"),P("(Owner_.city "),K("eq "),P("city)\n\n"),
+      P("    "),K("fun "),F("ownersPerCity"),P("(country: "),T("String"),P(") =\n"),
       P("        "),F("select"),P("<"),T("CityCount"),P(", _, _> { "),S('"${City::class}, COUNT(*)"'),P(" }"),P("   "),C("// SQL template\n"),
-      P("            ."),F("where"),P("(User_.city.country "),K("eq "),P("country)\n"),
-      P("            ."),F("groupBy"),P("(User_.city)\n"),
+      P("            ."),F("where"),P("(Owner_.city.country "),K("eq "),P("country)\n"),
+      P("            ."),F("groupBy"),P("(Owner_.city)\n"),
       P("            .resultList\n"),
       P("}") ] },
 
@@ -493,18 +493,18 @@ const SCENES = [
     code:[ C("// Writes are explicit. One transaction.\n"),
       F("transaction"),P(" {\n"),
       P("    "),K("val "),P("city = orm "),K("insert "),T("City"),P("(name = "),S('"Sunnyvale"'),P(", population = "),N("161_884"),P(", country = "),S('"US"'),P(")\n"),
-      P("    orm "),K("insert "),T("User"),P("(email = "),S('"bob@acme.io"'),P(", name = "),S('"Bob"'),P(", city = city)\n"),
+      P("    orm "),K("insert "),T("Owner"),P("(firstName = "),S('"Bob"'),P(", lastName = "),S('"Lee"'),P(", city = city)\n"),
       P("}\n"),
       P("\n"),
       C("// Full control when you need it: propagation, isolation, timeout, plus post-tx hooks.\n"),
       F("transaction"),P("(propagation = "),T("REQUIRES_NEW"),P(", isolation = "),T("REPEATABLE_READ"),P(", timeoutSeconds = "),N("5"),P(") {\n"),
       P("    "),K("val "),P("city = orm "),K("insert "),T("City"),P("(name = "),S('"San Jose"'),P(", population = "),N("1_013_240"),P(", country = "),S('"US"'),P(")\n"),
-      P("    "),K("val "),P("user = orm "),K("insert "),T("User"),P("(email = "),S('"alice@acme.io"'),P(", name = "),S('"Alice"'),P(", city = city)\n"),
+      P("    "),K("val "),P("owner = orm "),K("insert "),T("Owner"),P("(firstName = "),S('"Alice"'),P(", lastName = "),S('"Chen"'),P(", city = city)\n"),
       P("\n"),
-      P("    "),F("onCommit"),P(" { events."),F("publish"),P("("),T("UserCreated"),P("(user)) }"),P("   "),C("// runs only after successful commit\n"),
+      P("    "),F("onCommit"),P(" { events."),F("publish"),P("("),T("OwnerCreated"),P("(owner)) }"),P("   "),C("// runs only after successful commit\n"),
       P("}") ] },
 
-  { name:'6 · sql', file:'UserService.kt',
+  { name:'6 · sql', file:'CityService.kt',
     caption:"full SQL when you want it, never locked in",
     code:[ C("// Full control of SQL, with typed columns and tables; rows map to any data class.\n"),
       K("data class "),T("RankedCity"),P("("),K("val "),P("name: "),T("String"),P(", "),K("val "),P("rank: "),T("Long"),P(")\n\n"),
@@ -538,34 +538,34 @@ const SQL = [
   null, // entities: no query, so the Show SQL button is hidden for this scene
 
   '<span class="sqlc">-- getById(1): joins the city graph, no N+1</span>\n'+
-  '<span class="sqlk">SELECT</span> u.id, u.email, u.name, c.id, c.name, c.population, c.country\n'+
-  '<span class="sqlk">FROM</span> "user" u\n'+
-  '<span class="sqlk">INNER JOIN</span> city c <span class="sqlk">ON</span> u.city_id = c.id\n'+
-  '<span class="sqlk">WHERE</span> u.id = <span class="sqlq">?</span>\n\n'+
-  '<span class="sqlc">-- findAll(User_.city.name eq "Sunnyvale")</span>\n'+
-  '<span class="sqlk">SELECT</span> u.id, u.email, u.name, c.id, c.name, c.population, c.country\n'+
-  '<span class="sqlk">FROM</span> "user" u\n'+
-  '<span class="sqlk">INNER JOIN</span> city c <span class="sqlk">ON</span> u.city_id = c.id\n'+
+  '<span class="sqlk">SELECT</span> o.id, o.first_name, o.last_name, c.id, c.name, c.population, c.country\n'+
+  '<span class="sqlk">FROM</span> owner o\n'+
+  '<span class="sqlk">INNER JOIN</span> city c <span class="sqlk">ON</span> o.city_id = c.id\n'+
+  '<span class="sqlk">WHERE</span> o.id = <span class="sqlq">?</span>\n\n'+
+  '<span class="sqlc">-- findAll(Owner_.city.name eq "Sunnyvale")</span>\n'+
+  '<span class="sqlk">SELECT</span> o.id, o.first_name, o.last_name, c.id, c.name, c.population, c.country\n'+
+  '<span class="sqlk">FROM</span> owner o\n'+
+  '<span class="sqlk">INNER JOIN</span> city c <span class="sqlk">ON</span> o.city_id = c.id\n'+
   '<span class="sqlk">WHERE</span> c.name = <span class="sqlq">?</span>',
 
   '<span class="sqlc">-- findByCity(city)</span>\n'+
-  '<span class="sqlk">SELECT</span> u.id, u.email, u.name, c.id, c.name, c.population, c.country\n'+
-  '<span class="sqlk">FROM</span> "user" u\n'+
-  '<span class="sqlk">INNER JOIN</span> city c <span class="sqlk">ON</span> u.city_id = c.id\n'+
-  '<span class="sqlk">WHERE</span> u.city_id = <span class="sqlq">?</span>\n\n'+
-  '<span class="sqlc">-- usersPerCity(country)</span>\n'+
+  '<span class="sqlk">SELECT</span> o.id, o.first_name, o.last_name, c.id, c.name, c.population, c.country\n'+
+  '<span class="sqlk">FROM</span> owner o\n'+
+  '<span class="sqlk">INNER JOIN</span> city c <span class="sqlk">ON</span> o.city_id = c.id\n'+
+  '<span class="sqlk">WHERE</span> o.city_id = <span class="sqlq">?</span>\n\n'+
+  '<span class="sqlc">-- ownersPerCity(country)</span>\n'+
   '<span class="sqlk">SELECT</span> c.id, c.name, c.population, c.country, <span class="sqlk">COUNT</span>(*)\n'+
-  '<span class="sqlk">FROM</span> "user" u\n'+
-  '<span class="sqlk">INNER JOIN</span> city c <span class="sqlk">ON</span> u.city_id = c.id\n'+
+  '<span class="sqlk">FROM</span> owner o\n'+
+  '<span class="sqlk">INNER JOIN</span> city c <span class="sqlk">ON</span> o.city_id = c.id\n'+
   '<span class="sqlk">WHERE</span> c.country = <span class="sqlq">?</span>\n'+
-  '<span class="sqlk">GROUP BY</span> u.city_id',
+  '<span class="sqlk">GROUP BY</span> o.city_id',
 
   '<span class="sqlc">-- the second block wraps these two inserts in one configured transaction:</span>\n'+
   '<span class="sqlc">-- transaction(REQUIRES_NEW, REPEATABLE_READ, timeoutSeconds = 5)</span>\n'+
   '<span class="sqlk">SET TRANSACTION ISOLATION LEVEL REPEATABLE READ</span>\n'+
   '<span class="sqlk">BEGIN</span>\n'+
   '<span class="sqlk">INSERT INTO</span> city (name, population, country) <span class="sqlk">VALUES</span> (<span class="sqlq">?</span>, <span class="sqlq">?</span>, <span class="sqlq">?</span>)\n'+
-  '<span class="sqlk">INSERT INTO</span> "user" (email, name, city_id) <span class="sqlk">VALUES</span> (<span class="sqlq">?</span>, <span class="sqlq">?</span>, <span class="sqlq">?</span>)\n'+
+  '<span class="sqlk">INSERT INTO</span> owner (first_name, last_name, city_id) <span class="sqlk">VALUES</span> (<span class="sqlq">?</span>, <span class="sqlq">?</span>, <span class="sqlq">?</span>)\n'+
   '<span class="sqlk">COMMIT</span>\n'+
   '<span class="sqlc">-- onCommit hook runs here, only after COMMIT succeeds</span>',
 

@@ -5,41 +5,55 @@ import {
 } from '../../components/tutorial/tutorialTheme';
 
 // Tutorial: typed query results (what Spring Data calls DTO projections),
-// JPA vs Storm. Storm's
-// answer to the per-query result shape is a plain data class mapped by
-// position. The reusable read-model concept (Projection) has its own
-// tutorial: projections.js.
+// JPA vs Storm. Storm's answer to the per-query result shape is a plain data
+// class mapped by position. The reusable read-model concept (Projection) has
+// its own tutorial: projections.js.
 
-const TITLE = 'Typed Query Results Without the Mapping Layer: JPA vs Storm';
+const TITLE = 'Typed Query Results: JPA vs Storm';
 const DESC =
-  'DTO projections in Spring Data JPA rely on interface proxies and constructor ' +
-  'expressions that resolve at runtime. In Storm, any data class is a result ' +
-  'type: define it next to the query and rows map onto it by position, with no ' +
-  'mapping layer to maintain.';
+  'Spring Data JPA shapes custom results with interface projections and ' +
+  'constructor expressions. In Storm, any data class whose constructor matches ' +
+  'the selected columns is a result type, for the query builder and for full SQL.';
 
 const CODE_JPA_INTERFACE = [
-  C('// Interface-based projection: implemented by a runtime proxy.\n'),
+  C('// Interface-based projection: Spring Data implements it with a proxy\n'),
   K('interface '), T('OwnerListItem'), P(' {\n'),
   P('    '), K('val '), P('id: '), T('Int'), P('\n'),
   P('    '), K('val '), P('firstName: '), T('String'), P('\n'),
   P('    '), K('val '), P('lastName: '), T('String'), P('\n'),
   P('}\n\n'),
   K('interface '), T('OwnerRepository'), P(' : '), T('JpaRepository'), P('<'), T('Owner'), P(', '), T('Int'), P('> {\n'),
-  P('    '), K('fun '), F('findAllProjectedBy'), P('(): '), T('List'), P('<'), T('OwnerListItem'), P('>   '), C('// the method name selects the projection type\n'),
+  P('    '), K('fun '), F('findAllProjectedBy'), P('(): '), T('List'), P('<'), T('OwnerListItem'), P('>\n'),
   P('}'),
 ].join('');
 
 const CODE_JPA_CONSTRUCTOR = [
   K('data class '), T('OwnerDto'), P('('), K('val '), P('id: '), T('Int'), P(', '), K('val '), P('firstName: '), T('String'), P(', '), K('val '), P('lastName: '), T('String'), P(')\n\n'),
   K('interface '), T('OwnerRepository'), P(' : '), T('JpaRepository'), P('<'), T('Owner'), P(', '), T('Int'), P('> {\n\n'),
-  C('    // The fully qualified class name lives inside a query string.\n'),
+  C('    // A JPQL constructor expression names the class in the query\n'),
   P('    '), A('@Query'), P('('), S('"SELECT new com.acme.owners.OwnerDto(o.id, o.firstName, o.lastName) FROM Owner o"'), P(')\n'),
   P('    '), K('fun '), F('findAllSummaries'), P('(): '), T('List'), P('<'), T('OwnerDto'), P('>\n'),
   P('}'),
 ].join('');
 
+const CODE_STORM_BUILDER = [
+  K('data class '), T('CityCount'), P('('), K('val '), P('city: '), T('String'), P(', '), K('val '), P('count: '), T('Long'), P(')\n\n'),
+  K('val '), P('counts = orm.'), F('entity'), P('('), T('Owner'), P('::'), K('class'), P(')\n'),
+  P('    .'), F('select'), P('('), T('CityCount'), P('::'), K('class'), P(') { '), S('"${Owner_.city}, COUNT(*)"'), P(' }\n'),
+  P('    .'), F('where'), P('('), T('Owner_'), P('.city '), K('like'), P(' '), S('"S%"'), P(')\n'),
+  P('    .'), F('groupBy'), P('('), T('Owner_'), P('.city)\n'),
+  P('    .resultList'),
+].join('');
+
+const SQL_STORM_BUILDER = [
+  QC('-- the select clause is the template; the rest comes from the builder'), '\n',
+  QK('SELECT'), ' o.city, ', QK('COUNT'), '(*)\n',
+  QK('FROM'), ' owner o\n',
+  QK('WHERE'), ' o.city ', QK('LIKE'), ' ', QQ('?'), '\n',
+  QK('GROUP BY'), ' o.city',
+].join('');
+
 const CODE_STORM_RESULT = [
-  C('// Any data class is a result type: no marker interface, no registration\n'),
   K('data class '), T('OwnerListItem'), P('('), K('val '), P('id: '), T('Int'), P(', '), K('val '), P('firstName: '), T('String'), P(', '), K('val '), P('lastName: '), T('String'), P(')\n\n'),
   K('val '), P('owners = orm.'), F('query'), P(' { '), S('"""'), P('\n'),
   P('    '), K('SELECT'), P(' id, first_name, last_name\n'),
@@ -48,7 +62,6 @@ const CODE_STORM_RESULT = [
 ].join('');
 
 const CODE_STORM_AGGREGATE = [
-  C('// Aggregates and reports work the same way\n'),
   K('data class '), T('VisitCount'), P('('), K('val '), P('petName: '), T('String'), P(', '), K('val '), P('visits: '), T('Long'), P(')\n\n'),
   K('val '), P('counts = orm.'), F('query'), P(' { '), S('"""'), P('\n'),
   P('    '), K('SELECT'), P(' p.name, COUNT(v.id)\n'),
@@ -60,7 +73,7 @@ const CODE_STORM_AGGREGATE = [
 ].join('');
 
 const SQL_STORM_AGGREGATE = [
-  QC('-- $since compiles to a bind parameter, never string concatenation'), '\n',
+  QC('-- $since is a bind parameter'), '\n',
   QK('SELECT'), ' p.name, ', QK('COUNT'), '(v.id)\n',
   QK('FROM'), ' pet p\n',
   QK('JOIN'), ' visit v ', QK('ON'), ' v.pet_id = p.id\n',
@@ -68,65 +81,47 @@ const SQL_STORM_AGGREGATE = [
   QK('GROUP BY'), ' p.name',
 ].join('');
 
-const CODE_STORM_BUILDER = [
-  C('// The query builder selects into a result type too\n'),
-  K('data class '), T('CityCount'), P('('), K('val '), P('city: '), T('String'), P(', '), K('val '), P('count: '), T('Long'), P(')\n\n'),
-  K('val '), P('counts = orm.'), F('entity'), P('<'), T('Owner'), P('>()\n'),
-  P('    .'), F('select'), P('<'), T('CityCount'), P(', _, _> { '), S('"${Owner_.city}, COUNT(*)"'), P(' }\n'),
-  P('    .'), F('where'), P('('), T('Owner_'), P('.city '), K('like'), P(' '), S('"S%"'), P(')\n'),
-  P('    .'), F('groupBy'), P('('), T('Owner_'), P('.city)\n'),
-  P('    .resultList'),
-].join('');
-
-const SQL_STORM_BUILDER = [
-  QC('-- only the select clause is yours; the rest stays generated and type-safe'), '\n',
-  QK('SELECT'), ' o.city, ', QK('COUNT'), '(*)\n',
-  QK('FROM'), ' owner o\n',
-  QK('WHERE'), ' o.city ', QK('LIKE'), ' ', QQ('?'), '\n',
-  QK('GROUP BY'), ' o.city',
-].join('');
-
 const BODY = `
 ${navHtml('tutorials')}
 
 <div class="art">
   <div class="crumbs"><a href="/tutorials/">Tutorials</a><span class="sep">/</span>Query results</div>
-  <h1>Typed query results without <span class="grad">the mapping layer</span></h1>
-  <p class="dek">A list screen needs three columns, a report needs an aggregate, and neither deserves an entity. JPA shapes results with proxies and constructor expressions; in Storm, any data class is a result type.</p>
+  <h1>Typed query results <span class="grad">without an entity</span></h1>
+  <p class="dek">A list screen needs three columns and a report needs an aggregate. Neither needs an entity. Spring Data JPA shapes such results with interface projections and constructor expressions; in Storm, any data class with a matching constructor is a result type.</p>
   <div class="meta"><span>Series · JPA to Storm</span><span>5 min read</span><span>Kotlin</span></div>
 
   <h2><span class="hno">01</span>The task</h2>
-  <p>An owners list screen needs three fields: id, first name, last name. The <code>owner</code> table has a dozen columns. A reporting endpoint needs visit counts per pet, which matches no table at all. Both want a typed result shape without a hand-written mapping layer between query results and DTOs.</p>
+  <p>An owners list shows id, first name and last name; the <code>owner</code> table has more columns than that. A report counts owners per city, and another counts visits per pet. Each wants a typed result without a mapping layer of its own.</p>
 
   <h2><span class="hno">02</span>The JPA way</h2>
-  <p>Spring Data JPA offers two main routes. The first is an interface projection, resolved by method-name convention and implemented by a proxy at runtime:</p>
+  <p>Spring Data JPA offers two routes. An interface projection, which Spring Data implements with a proxy and, for a closed projection like this one, reads only its properties:</p>
   ${editor({file: 'OwnerRepository.kt', tag: 'Kotlin · JPA', code: CODE_JPA_INTERFACE})}
-  <p>The second is a class-based DTO through a JPQL constructor expression:</p>
+  <p>And a class, built from a derived query or a JPQL constructor expression:</p>
   ${editor({file: 'OwnerRepository.kt', tag: 'Kotlin · JPA', code: CODE_JPA_CONSTRUCTOR})}
-  <p>Both work, and both resolve at runtime. The constructor expression embeds a fully qualified class name inside a string, so renaming the class or reordering its parameters fails when the query first runs, not when the code compiles. Interface projections return proxies, and which columns are actually selected depends on the projection kind and how the query was derived, so the SQL log is the only place to confirm you got the narrow query you wanted.</p>
+  <p>Both work. Either way the query is written in JPQL against the entities, or as a native query whose rows map onto the projection by column alias.</p>
 
   <h2><span class="hno">03</span>The Storm way</h2>
-  <p>Storm needs no special machinery for result shapes. Any data class whose constructor matches the query's columns by position and type hydrates directly. Start with the type-safe query builder: you supply only the select clause, and the where and grouping stay compile-checked against the metamodel:</p>
+  <p>In Storm a result type is a data class whose constructor matches the selected columns by position. The query builder takes it with a select clause of your own, and the filter and grouping stay metamodel paths:</p>
   ${editor({file: 'ReportService.kt', tag: 'Kotlin · Storm', code: CODE_STORM_BUILDER, sql: SQL_STORM_BUILDER})}
-  <p>No proxy, no naming convention, no class name inside a string. The result is a list of plain immutable objects that serialize to JSON as they are.</p>
+  <p>The result is a list of immutable <code>CityCount</code> values, ready to serialize. <code>groupBy</code> also takes a relationship, such as <code>Pet_.owner</code>, and then groups by the related row's key in the form each database accepts.</p>
 
-  <h2><span class="hno">04</span>Full SQL works the same way</h2>
-  <p>When a query outgrows the builder, or you simply want to write the SQL, the same positional mapping applies. The DTO is just a class, defined next to the query that fills it:</p>
+  <h2><span class="hno">04</span>Full SQL maps the same way</h2>
+  <p>A SQL template maps its rows by position too, onto a class defined next to the query:</p>
   ${editor({file: 'OwnerService.kt', tag: 'Kotlin · Storm', code: CODE_STORM_RESULT})}
-  <p>Aggregates work identically, and interpolated values compile to bind parameters, so dynamic filters stay injection-safe:</p>
+  <p>Interpolated values become bind parameters, so a filter value never ends up in the SQL text:</p>
   ${editor({file: 'ReportService.kt', tag: 'Kotlin · Storm', code: CODE_STORM_AGGREGATE, sql: SQL_STORM_AGGREGATE})}
-  <p>Define the class next to the query, and delete both together when the report goes away. The full template syntax, including letting Storm generate column lists and joins for you, is covered in the <a class="tlink" href="/tutorials/sql-templates">SQL templates tutorial</a>.</p>
+  <p>The class and the query live and go together. Templates can also expand an entity into its columns and joins; the <a class="tlink" href="/tutorials/sql-templates">SQL templates tutorial</a> shows how.</p>
 
-  <h2><span class="hno">05</span>When the shape earns more</h2>
-  <div class="note">A result class is for mapping on a case-by-case basis. The moment a shape wants to be reused, nested in other types, filtered with type-safe predicates, or served from more than one place, it has become a read model, and Storm has a first-class concept for that: <code>Projection</code>. See <a href="/tutorials/projections">Projections</a>.</div>
+  <h2><span class="hno">05</span>When the shape is reused</h2>
+  <div class="note">A result class serves one query. A shape that several places read, that nests in other types or takes typed predicates, is a read model, and Storm models it as a <code>Projection</code> with a repository of its own. See <a href="/tutorials/projections">Projections</a>.</div>
 
   <h2><span class="hno">06</span>Side by side</h2>
   <table class="cmp">
     <tr><th></th><th>Spring Data JPA</th><th>Storm</th></tr>
-    <tr><td>Defining a DTO</td><td>An interface plus naming conventions, or a class name inside a JPQL string</td><td>A data class next to the query</td></tr>
-    <tr><td>Runtime machinery</td><td>Proxies and reflection over strings</td><td>Positional constructor mapping</td></tr>
-    <tr><td>Refactoring safety</td><td>Renames break at first query execution</td><td>The class is ordinary code; the SQL is the only contract</td></tr>
-    <tr><td>Reuse path</td><td>Copy the pattern to another repository method</td><td>Promote the shape to a <code>Projection</code></td></tr>
+    <tr><td>Result type</td><td>An interface backed by a proxy, or a class with a matching constructor</td><td>A data class with a matching constructor</td></tr>
+    <tr><td>Mapping</td><td>By property name or column alias, or by constructor arguments in JPQL</td><td>By column position</td></tr>
+    <tr><td>Query language</td><td>JPQL against the entities, or native SQL</td><td>The query builder with your select clause, or SQL templates</td></tr>
+    <tr><td>Reused read model</td><td>An entity over the table or a view</td><td>A <code>Projection</code></td></tr>
   </table>
 
   <h2><span class="hno">07</span>Keep going</h2>

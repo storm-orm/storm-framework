@@ -7,7 +7,7 @@ Many applications need to create a record if it does not exist, or update it if 
 
 Storm provides first-class support for upsert (insert-or-update) operations across all major databases. By delegating conflict resolution to the database engine itself, upserts behave predictably and handle race conditions atomically in a single SQL statement. No application-level locking or retry logic is needed.
 
-Use upsert when you need idempotent write operations, data synchronization from external sources, or any scenario where the same logical record may arrive multiple times.
+Upsert resolves on the primary key. When a row with the entity's primary key exists, it is updated; otherwise the entity is inserted. It fits entities whose key the caller assigns, such as a code that arrives from an external source. Use it for idempotent writes, data synchronization, or any scenario where the same logical record may arrive multiple times.
 
 ---
 
@@ -16,46 +16,41 @@ Use upsert when you need idempotent write operations, data synchronization from 
 
 ### Single Upsert
 
-The simplest form of upsert operates on a single entity. Storm determines whether to insert or update based on the table's unique constraints. The returned entity includes any database-generated values, such as an auto-incremented primary key.
+The simplest form of upsert operates on a single entity. The examples on this page use a `Country` whose primary key is assigned by the data source, so `generation = NONE`:
 
 ```kotlin
-val user = orm upsert User(
-    email = "alice@example.com",
-    name = "Alice",
-    birthDate = LocalDate.of(1990, 5, 15),
-    city = city
-)
-// user.id is now populated with the database-generated ID
+data class Country(
+    @PK(generation = NONE) val code: String,  // Assigned by the source
+    val name: String
+) : Entity<String>
+
+val country = orm upsert Country(code = "NL", name = "Netherlands")
 ```
 
-If a user with matching unique constraints exists, it will be updated. Otherwise, a new user is inserted. The returned entity includes any database-generated values (such as the primary key).
+If a country with code `NL` exists, its name is updated. Otherwise, a new country is inserted. The returned entity is the row as the database holds it after the upsert, including any database-generated values.
 
 ### Batch Upsert
 
 Upsert multiple entities in a single batch operation:
 
 ```kotlin
-val users = listOf(
-    User(email = "alice@example.com", name = "Alice Updated", city = city),
-    User(email = "bob@example.com", name = "Bob", city = city),
-    User(email = "charlie@example.com", name = "Charlie", city = city)
+val countries = listOf(
+    Country(code = "NL", name = "Netherlands"),
+    Country(code = "BE", name = "Belgium"),
+    Country(code = "DE", name = "Germany")
 )
 
-orm upsert users
+orm upsert countries
 ```
 
 ### Upsert within a Transaction
 
-Upserts participate in transactions like any other Storm operation. When you need to upsert an entity that depends on another entity (for example, a user that references a city), wrap both operations in a transaction to ensure atomicity.
+Upserts participate in transactions like any other Storm operation. Wrap several writes in a transaction when they must commit together:
 
 ```kotlin
 transaction {
-    val city = orm insert City(name = "Sunnyvale", population = 161_884)
-    val user = orm upsert User(
-        email = "alice@example.com",
-        name = "Alice",
-        city = city
-    )
+    orm upsert Country(code = "NL", name = "Netherlands")
+    orm upsert Country(code = "BE", name = "Belgium")
 }
 ```
 
@@ -64,33 +59,24 @@ transaction {
 
 ### Single Upsert
 
-The Java API provides upsert through the `entity()` method. Pass `null` for the primary key field to indicate that the database should generate the value on insert.
+The Java API provides upsert through the `entity()` method. The examples on this page use a `Country` whose primary key is assigned by the data source, so `generation = NONE`:
 
 ```java
-orm.entity(User.class).upsert(new User(
-    null,  // null ID triggers insert logic
-    "alice@example.com",
-    "Alice",
-    LocalDate.of(1990, 5, 15),
-    city
-));
+record Country(@PK(generation = NONE) String code,  // Assigned by the source
+               String name
+) implements Entity<String> {}
+
+orm.entity(Country.class).upsert(new Country("NL", "Netherlands"));
 ```
 
-If a user with matching unique constraints exists, it will be updated. Otherwise, a new user is inserted.
+If a country with code `NL` exists, its name is updated. Otherwise, a new country is inserted.
 
 ### Upsert and Fetch
 
-When you need the resulting entity with all database-generated values (such as the assigned primary key or default column values), use `upsertAndFetch`. This performs the upsert and returns the complete entity as it exists in the database after the operation. In Kotlin, `orm upsert` returns the entity with generated values by default, but the Java API separates `upsert` (void) from `upsertAndFetch` (returns entity) for clarity.
+When you need the resulting entity with all database-generated values (such as default column values), use `upsertAndFetch`. This performs the upsert and returns the complete entity as it exists in the database after the operation. In Kotlin, `orm upsert` returns the entity by default, but the Java API separates `upsert` (void) from `upsertAndFetch` (returns entity) for clarity.
 
 ```java
-User user = orm.entity(User.class).upsertAndFetch(new User(
-    null,
-    "alice@example.com",
-    "Alice",
-    LocalDate.of(1990, 5, 15),
-    city
-));
-// user.id() is now populated with the database-generated ID
+Country country = orm.entity(Country.class).upsertAndFetch(new Country("NL", "Netherlands"));
 ```
 
 ### With Lombok Builder
@@ -98,11 +84,9 @@ User user = orm.entity(User.class).upsertAndFetch(new User(
 If your entity uses Lombok's `@Builder`, you can construct upsert arguments using the builder pattern. This avoids positional constructor arguments and makes the code more readable when entities have many fields.
 
 ```java
-User user = orm.entity(User.class).upsertAndFetch(User.builder()
-    .email("alice@example.com")
-    .name("Alice")
-    .birthDate(LocalDate.of(1990, 5, 15))
-    .city(city)
+Country country = orm.entity(Country.class).upsertAndFetch(Country.builder()
+    .code("NL")
+    .name("Netherlands")
     .build()
 );
 ```
@@ -112,12 +96,12 @@ User user = orm.entity(User.class).upsertAndFetch(User.builder()
 Batch upserts process a list of entities in a single batched operation, combining JDBC batching with the database's native upsert syntax. This is significantly faster than upserting entities one at a time in a loop.
 
 ```java
-List<User> users = List.of(
-    new User(null, "alice@example.com", "Alice Updated", null, city),
-    new User(null, "bob@example.com", "Bob", null, city)
+List<Country> countries = List.of(
+    new Country("NL", "Netherlands"),
+    new Country("BE", "Belgium")
 );
 
-orm.entity(User.class).upsert(users);
+orm.entity(Country.class).upsert(countries);
 ```
 
 </TabItem>
@@ -127,23 +111,55 @@ orm.entity(User.class).upsert(users);
 
 ## How Upsert Works
 
-Storm does not implement upsert logic in application code. Instead, it delegates to each database platform's native upsert syntax. This ensures atomicity at the database level and avoids race conditions that would occur with application-level check-then-insert logic. The specific SQL syntax varies by database:
+Storm does not implement upsert logic in application code. Instead, it delegates to each database platform's native upsert syntax. This ensures atomicity at the database level and avoids race conditions that would occur with application-level check-then-insert logic. The conflict target is the primary key on every database; the SQL syntax varies:
 
 | Database | SQL Strategy | Conflict Detection |
 |----------|--------------|--------------------|
-| Oracle | `MERGE INTO ...` | Explicit match conditions |
-| MS SQL Server | `MERGE INTO ...` | Explicit match conditions |
-| PostgreSQL | `INSERT ... ON CONFLICT DO UPDATE` | Targets a specific unique constraint or index |
-| MySQL/MariaDB | `INSERT ... ON DUPLICATE KEY UPDATE` | Primary key or any unique constraint |
-| SQLite | `INSERT ... ON CONFLICT DO UPDATE` | Targets a specific unique constraint |
-| H2 | `MERGE INTO ...` | Explicit match conditions |
+| Oracle | `MERGE INTO ...` | Matches on the primary key |
+| MS SQL Server | `MERGE INTO ...` | Matches on the primary key |
+| PostgreSQL | `INSERT ... ON CONFLICT (pk) DO UPDATE` | The primary key |
+| MySQL/MariaDB | `INSERT ... ON DUPLICATE KEY UPDATE` | The primary key or any unique key |
+| SQLite | `INSERT ... ON CONFLICT (pk) DO UPDATE` | The primary key |
+| H2 | `MERGE INTO ...` | Matches on the primary key |
 
 ### Database-Specific Behavior
 
-- **Oracle**, **MS SQL Server**, and **H2** define upsert behavior through explicit match conditions in the `MERGE` statement, giving you control over how conflicts are detected.
-- **PostgreSQL** upserts target a specific conflict source (a unique constraint or index), making conflict resolution explicit and predictable. This is the most granular approach.
-- **MySQL/MariaDB** upserts trigger the update branch when an insert would violate the primary key **or any unique constraint**. When multiple unique constraints exist, the database decides which conflict applies. Be aware of this if your table has multiple unique constraints.
-- **SQLite** uses the same `ON CONFLICT` syntax as PostgreSQL, targeting a specific unique constraint (available since SQLite 3.24).
+- **Oracle**, **MS SQL Server**, and **H2** run a `MERGE` statement whose match condition compares the primary key columns of the table and the incoming row.
+- **PostgreSQL** and **SQLite** name the primary key columns as the `ON CONFLICT` target. A violation of any other unique constraint is not resolved by the upsert; it fails the statement.
+- **MySQL/MariaDB** have no conflict target: `ON DUPLICATE KEY UPDATE` triggers the update branch when an insert would violate the primary key **or any unique key**. When a table has several unique keys, the database decides which conflict applies, so be deliberate about the unique keys on tables you upsert into.
+
+### Generated Primary Keys
+
+With a key the database generates (`IDENTITY` or `SEQUENCE`), a new entity has no key value to conflict on. Storm routes such an entity by its id: with the default id (`0` in Kotlin, `null` in Java), upsert inserts it; with the id set, upsert updates the row with that id. On MySQL and MariaDB the insert still runs as `INSERT ... ON DUPLICATE KEY UPDATE`, so a conflict on another unique key turns it into an update. On the other databases it is a plain insert, and a duplicate value in a unique column fails it.
+
+### Rows Identified by Another Unique Column
+
+Because upsert resolves on the primary key, it cannot insert-or-update a row that is identified by another unique column, such as a user's email under a generated id. Write that statement as a [SQL template](sql-templates.md) with the database's own syntax. On PostgreSQL:
+
+<Tabs groupId="language">
+<TabItem value="kotlin" label="Kotlin" default>
+
+```kotlin
+orm.query { """
+    INSERT INTO ${User::class}
+    VALUES $user
+    ON CONFLICT (email) DO UPDATE
+    SET birth_date = EXCLUDED.birth_date, city_id = EXCLUDED.city_id""" }.executeUpdate()
+```
+
+</TabItem>
+<TabItem value="java" label="Java">
+
+```java
+orm.query(RAW."""
+    INSERT INTO \{User.class}
+    VALUES \{user}
+    ON CONFLICT (email) DO UPDATE
+    SET birth_date = EXCLUDED.birth_date, city_id = EXCLUDED.city_id""").executeUpdate();
+```
+
+</TabItem>
+</Tabs>
 
 ## Failure Modes
 
@@ -151,11 +167,12 @@ Understanding how upserts fail helps you diagnose issues quickly and design your
 
 **Missing dialect dependency:** Upsert requires a database-specific dialect module (e.g., `storm-postgresql`, `storm-mysql`). If no dialect is on the classpath, Storm throws an `UnsupportedOperationException` at runtime when you call `upsert()`. The error message indicates that the current dialect does not support upsert operations. Add the appropriate dialect dependency to resolve this. See [Dialects](dialects.md) for the full list.
 
-**Missing unique constraint:** Upsert relies on database-level unique constraints to detect conflicts. If the table has no unique constraint (or the constraint does not cover the fields you expect), the behavior depends on the database:
-- **Oracle/MS SQL Server/H2:** The `MERGE` statement's match condition determines conflict detection. If the match condition references columns without a unique constraint, concurrent upserts may produce duplicates.
-- **PostgreSQL:** The `ON CONFLICT` clause references a specific constraint. If the constraint does not exist, the database returns a SQL error.
-- **MySQL/MariaDB:** Without any unique constraint, every row is treated as a new insert. No update branch is triggered, and duplicates accumulate silently.
-- **SQLite:** Behaves similarly to PostgreSQL. The `ON CONFLICT` clause references a specific constraint.
+**Missing primary key constraint:** Upsert resolves the conflict on the primary key, so the table needs that constraint in the database. Without it, the behavior depends on the database:
+- **Oracle/MS SQL Server/H2:** The `MERGE` statement still matches on the key columns, but concurrent upserts of the same key may produce duplicates.
+- **PostgreSQL/SQLite:** The database rejects an `ON CONFLICT` target that no unique index covers, and the statement fails.
+- **MySQL/MariaDB:** `ON DUPLICATE KEY UPDATE` finds no conflict on the key, every row is inserted, and duplicates accumulate silently.
+
+**Conflict on another unique key:** On every database except MySQL and MariaDB, a row that collides with an existing row on a unique column other than the primary key fails the upsert with a constraint violation. On MySQL and MariaDB it updates the existing row instead.
 
 In all cases, Storm does **not** fall back to a plain insert. It always generates the upsert SQL for the configured dialect. If the SQL fails at the database level, the exception propagates to the caller.
 
@@ -164,8 +181,8 @@ In all cases, Storm does **not** fall back to a plain insert. It always generate
 ## Requirements
 
 1. **Database dialect** - include the appropriate dialect dependency for your database (see [Dialects](dialects.md))
-2. **Unique constraints** - the table must have a primary key or unique constraint for conflict detection
-3. **Null ID for new inserts** - pass default `0` (Kotlin) or `null` (Java) for the primary key field to allow the database to generate a value
+2. **Primary key** - the entity and the table must have a primary key; it is the conflict target
+3. **Assigned keys for natural upserts** - upsert resolves a conflict when the entity carries its key. With a generated key, the default `0` (Kotlin) or `null` (Java) inserts and a set id updates (see [Generated Primary Keys](#generated-primary-keys))
 4. **Not a joined sealed entity** - upsert is not supported for [Joined Table](polymorphism.md#joined-table-inheritance) polymorphic entities, because SQL-level upsert constructs (`ON CONFLICT`, `MERGE`, etc.) are fundamentally single-table operations. Use `insert()` and `update()` separately instead
 
 ## Common Use Cases
@@ -175,8 +192,8 @@ In all cases, Storm does **not** fall back to a plain insert. It always generate
 REST APIs should be idempotent whenever possible: calling the same endpoint multiple times should produce the same result. Upserts make this straightforward. If a client retries a request (due to a timeout or network error), the second call updates the existing row instead of failing with a duplicate key violation.
 
 ```kotlin
-fun syncUser(email: String, name: String, city: City): User {
-    return orm upsert User(email = email, name = name, city = city)
+fun saveCountry(code: String, name: String): Country {
+    return orm upsert Country(code = code, name = name)
 }
 ```
 
@@ -185,11 +202,11 @@ fun syncUser(email: String, name: String, city: City): User {
 Import data from an external source, creating new records and updating existing ones:
 
 ```kotlin
-fun syncUsersFromExternalSource(externalUsers: List<ExternalUser>) {
-    val users = externalUsers.map { ext ->
-        User(email = ext.email, name = ext.name, city = resolveCity(ext.city))
+fun syncCountriesFromExternalSource(externalCountries: List<ExternalCountry>) {
+    val countries = externalCountries.map { ext ->
+        Country(code = ext.isoCode, name = ext.name)
     }
-    orm upsert users
+    orm upsert countries
 }
 ```
 
@@ -199,39 +216,17 @@ Key-value configuration tables are a natural fit for upserts. You want to store 
 
 ```kotlin
 data class Setting(
-    @PK val key: String,
+    @PK(generation = NONE) val key: String,
     val value: String
 ) : Entity<String>
 
 orm upsert Setting(key = "theme", value = "dark")
 ```
 
-## Entity Definition for Upserts
-
-For Java records, you can define a convenience constructor that omits the primary key for cleaner upsert calls:
-
-```java
-record User(@PK Integer id, String email, String name,
-            LocalDate birthDate, @FK City city)
-        implements Entity<Integer> {
-
-    // Convenience constructor for inserts/upserts
-    public User(String email, String name, LocalDate birthDate, City city) {
-        this(null, email, name, birthDate, city);
-    }
-}
-```
-
-This allows you to write:
-
-```java
-orm.entity(User.class).upsert(new User("alice@example.com", "Alice", birthDate, city));
-```
-
 ## Tips
 
 1. **Use upsert for idempotent operations** - safe to retry without creating duplicates
-2. **Check your constraints** - upsert relies on unique constraints to detect conflicts
-3. **Use upsertAndFetch for generated IDs** (Java) - get the actual ID assigned by the database; Kotlin's `orm upsert` returns the entity with the ID populated
+2. **Key the entity by what identifies the row** - upsert resolves on the primary key; a row identified by another unique column needs a [SQL template](#rows-identified-by-another-unique-column)
+3. **Use upsertAndFetch for the stored row** (Java) - get the entity as the database holds it after the upsert; Kotlin's `orm upsert` returns it directly
 4. **Include the dialect dependency** - upsert requires database-specific SQL syntax; see [Dialects](dialects.md)
-5. **Be mindful of multiple unique constraints** - especially on MySQL/MariaDB, where any unique constraint can trigger the update branch
+5. **Be mindful of unique keys on MySQL/MariaDB** - any unique key can trigger the update branch there

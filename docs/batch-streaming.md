@@ -124,30 +124,30 @@ users.removeById(idStream, 500);
 
 ### Batch Upsert
 
-Batch upserts combine insert and update semantics for a list of entities. Each entity is either inserted (if no matching row exists) or updated (if a row with the same unique constraint already exists). This is useful for data synchronization scenarios where you receive a batch of records from an external source and need to merge them into your database. See [Upserts](upserts.md) for details on how conflict detection works per database.
+Batch upserts combine insert and update semantics for a list of entities. Each entity is either inserted (if no row with its primary key exists) or updated (if one does). This is useful for data synchronization scenarios where you receive a batch of records from an external source and need to merge them into your database. The `Country` below has a primary key assigned by the source; see [Upserts](upserts.md) for its definition and for how conflict detection works per database.
 
 <Tabs groupId="language">
 <TabItem value="kotlin" label="Kotlin" default>
 
 ```kotlin
-val users = listOf(
-    User(email = "alice@example.com", name = "Alice Updated", city = city),
-    User(email = "dave@example.com", name = "Dave", city = city)
+val countries = listOf(
+    Country(code = "NL", name = "Netherlands"),
+    Country(code = "BE", name = "Belgium")
 )
 
-orm upsert users  // Inserts new, updates existing
+orm upsert countries  // Inserts new, updates existing
 ```
 
 </TabItem>
 <TabItem value="java" label="Java">
 
 ```java
-List<User> users = List.of(
-    new User(null, "alice@example.com", "Alice Updated", null, city),
-    new User(null, "dave@example.com", "Dave", null, city)
+List<Country> countries = List.of(
+    new Country("NL", "Netherlands"),
+    new Country("BE", "Belgium")
 );
 
-orm.entity(User.class).upsert(users);  // Inserts new, updates existing
+orm.entity(Country.class).upsert(countries);  // Inserts new, updates existing
 ```
 
 </TabItem>

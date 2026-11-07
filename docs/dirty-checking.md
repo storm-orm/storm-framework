@@ -101,12 +101,12 @@ The selected update mode controls:
 In `OFF` mode, Storm bypasses dirty checking entirely. Every call to `update()` generates a full UPDATE statement that writes all columns, regardless of whether values have actually changed.
 
 ```kotlin
-val user = orm.find(User_.id eq 1)
-val updatedUser = user.copy(name = "New Name")
+val owner = orm.get(Owner_.id eq 1)
+val updatedOwner = owner.copy(telephone = "555-0101")
 
-// Always generates: UPDATE user SET email=?, name=?, city_id=? WHERE id=?
-// All columns are included, even though only 'name' changed
-orm update updatedUser
+// Always generates: UPDATE owner SET first_name=?, last_name=?, street=?, city_id=?, telephone=? WHERE id=?
+// All columns are included, even though only 'telephone' changed
+orm update updatedOwner
 ```
 
 No comparison is performed; every update is unconditional.
@@ -118,7 +118,7 @@ No comparison is performed; every update is unconditional.
 ```kotlin
 // Processing 10,000 records - all UPDATEs have identical structure
 // JDBC can batch them efficiently
-userRepository.update(users.map { processUser(it) })
+owners.update(importedOwners.map { normalizeOwner(it) })
 ```
 
 **Simple applications:** If your entities are small and updates are infrequent, the overhead of dirty checking may not be worth the complexity. OFF mode keeps things straightforward.
@@ -144,27 +144,27 @@ userRepository.update(users.map { processUser(it) })
 - If **any field changed**: A full-row UPDATE is executed (all columns are written)
 
 ```kotlin
-val user = orm.get(User_.id eq 1)  // Storm observes: {id=1, email="a@b.com", name="Alice"}
+val owner = orm.get(Owner_.id eq 1)  // Storm observes: {id=1, firstName="Alice", lastName="Smith", ..., telephone="555-0100"}
 
 // Scenario 1: No changes
-orm update user  // No SQL executed - entity unchanged
+orm update owner  // No SQL executed - entity unchanged
 
 // Scenario 2: Any field changed
-val updated = user.copy(name = "Bob")
-orm update updated  // UPDATE user SET email=?, name=?, city_id=? WHERE id=?
-                    // Full row update, even though only 'name' changed
+val updated = owner.copy(telephone = "555-0101")
+orm update updated  // UPDATE owner SET first_name=?, last_name=?, street=?, city_id=?, telephone=? WHERE id=?
+                    // Full row update, even though only 'telephone' changed
 ```
 
 ### Why Full-Row Updates?
 
-You might wonder: if Storm knows only `name` changed, why update all columns? The answer is **batching efficiency**.
+You might wonder: if Storm knows only `telephone` changed, why update all columns? The answer is **batching efficiency**.
 
 When multiple entities of the same type are updated in a transaction, JDBC can batch them together only if they have the same SQL shape. With ENTITY mode, all UPDATEs for a given entity type look identical, enabling efficient batching:
 
 ```kotlin
 // All updates have identical SQL shape - JDBC batches them
-val users = userRepository.findAll(User_.city eq city)
-userRepository.update(users.map { it.copy(lastLogin = now()) })
+val cityOwners = owners.findAll(Owner_.address.city eq city)
+owners.update(cityOwners.map { it.copy(lastName = it.lastName.trim()) })
 ```
 
 ### When to Use ENTITY Mode
@@ -174,13 +174,13 @@ userRepository.update(users.map { it.copy(lastLogin = now()) })
 **Read-modify-write patterns:** When you load an entity and pass it back to update without modifications, ENTITY mode skips the UPDATE entirely.
 
 ```kotlin
-val user = orm.get(User_.id eq userId)
+val owner = orm.get(Owner_.id eq ownerId)
 
 // No changes made - UPDATE is skipped
-orm update user
+orm update owner
 
 // Conditional modification - UPDATE only if actually changed
-val updated = if (shouldUpdate) user.copy(name = "New Name") else user
+val updated = if (shouldUpdate) owner.copy(telephone = "555-0101") else owner
 orm update updated
 ```
 
@@ -202,17 +202,17 @@ orm update updated
 `FIELD` mode provides the most granular control. Storm compares each field individually and generates UPDATE statements that include only the columns that actually changed. Like ENTITY mode, if no fields changed, Storm skips the UPDATE entirely.
 
 ```kotlin
-val user = orm.get(User_.id eq 1)  // {id=1, email="a@b.com", name="Alice", bio="...", settings="..."}
+val owner = orm.get(Owner_.id eq 1)  // {id=1, firstName="Alice", lastName="Smith", ..., telephone="555-0100"}
 
-// Only name changed
-val updated = user.copy(name = "Bob")
+// Only telephone changed
+val updated = owner.copy(telephone = "555-0101")
 orm update updated
-// UPDATE user SET name=? WHERE id=?
+// UPDATE owner SET telephone=? WHERE id=?
 
 // Multiple fields changed
-val updated2 = user.copy(name = "Bob", email = "bob@example.com")
+val updated2 = owner.copy(firstName = "Alicia", lastName = "Jones")
 orm update updated2
-// UPDATE user SET name=?, email=? WHERE id=?
+// UPDATE owner SET first_name=?, last_name=? WHERE id=?
 ```
 
 ### Why Use Field-Level Updates?
@@ -241,17 +241,17 @@ The trade-off with FIELD mode is that it generates different SQL statements depe
 │                    FIELD Mode SQL Shapes                         │
 ├──────────────────────────────────────────────────────────────────┤
 │                                                                  │
-│  Change: name only                                               │
-│  SQL:    UPDATE user SET name=? WHERE id=?                       │
+│  Change: telephone only                                          │
+│  SQL:    UPDATE owner SET telephone=? WHERE id=?                 │
 │                                                                  │
-│  Change: email only                                              │
-│  SQL:    UPDATE user SET email=? WHERE id=?                      │
+│  Change: last_name only                                          │
+│  SQL:    UPDATE owner SET last_name=? WHERE id=?                 │
 │                                                                  │
-│  Change: name + email                                            │
-│  SQL:    UPDATE user SET name=?, email=? WHERE id=?              │
+│  Change: first_name + last_name                                  │
+│  SQL:    UPDATE owner SET first_name=?, last_name=? WHERE id=?   │
 │                                                                  │
-│  Change: name + email + city_id                                  │
-│  SQL:    UPDATE user SET name=?, email=?, city_id=? WHERE id=?   │
+│  Change: street + city_id                                        │
+│  SQL:    UPDATE owner SET street=?, city_id=? WHERE id=?         │
 │                                                                  │
 │  ... potentially many more combinations ...                      │
 │                                                                  │
@@ -296,11 +296,12 @@ Use the `@DynamicUpdate` annotation to specify the update mode for individual en
 
 ```kotlin
 @DynamicUpdate(FIELD)
-data class User(
+data class Owner(
     @PK val id: Int = 0,
-    val email: String,
-    val name: String,
-    @FK val city: City
+    val firstName: String,
+    val lastName: String,
+    val address: Address,
+    val telephone: String?
 ) : Entity<Int>
 ```
 
@@ -309,10 +310,11 @@ data class User(
 
 ```java
 @DynamicUpdate(FIELD)
-record User(@PK Integer id,
-            String email,
-            String name,
-            @FK City city
+record Owner(@PK Integer id,
+             String firstName,
+             String lastName,
+             Address address,
+             @Nullable String telephone
 ) implements Entity<Integer> {}
 ```
 
@@ -379,9 +381,12 @@ Per entity:
 
 ```kotlin
 @DynamicUpdate(value = FIELD, dirtyCheck = VALUE)
-data class User(
+data class Owner(
     @PK val id: Int = 0,
-    val email: String
+    val firstName: String,
+    val lastName: String,
+    val address: Address,
+    val telephone: String?
 ) : Entity<Int>
 ```
 
@@ -397,7 +402,7 @@ val config = StormConfig.of(mapOf(UPDATE_DIRTY_CHECK to "VALUE"))
 
 ### Foreign Keys Compare by Id
 
-For a foreign key field, dirty checking follows the column rather than the object graph. Under value-based checking, the referenced entity is compared by primary key only: a referenced `City` whose own fields changed does not make the referencing `User` dirty, because the `city_id` column is unchanged. Updating the `User` would not write the `City`'s fields anyway; to persist changes inside a referenced entity, update that entity itself.
+For a foreign key field, dirty checking follows the column rather than the object graph. Under value-based checking, the referenced entity is compared by primary key only: a referenced `City` whose own fields changed does not make the referencing `Owner` dirty, because the `city_id` column is unchanged. Updating the `Owner` would not write the `City`'s fields anyway; to persist changes inside a referenced entity, update that entity itself.
 
 Under instance-based checking, substituting a different instance with the same id marks the foreign key column dirty and costs a redundant write of the same value. `Ref<T>` fields compare the same way, by the id the ref carries.
 
@@ -424,15 +429,16 @@ Storm enforces a **maximum number of UPDATE shapes per entity**. Once this limit
 │                    Max Shapes Protection                            │
 ├─────────────────────────────────────────────────────────────────────┤
 │                                                                     │
-│  Shape 1:  UPDATE user SET name=? WHERE id=?                        │
-│  Shape 2:  UPDATE user SET email=? WHERE id=?                       │
-│  Shape 3:  UPDATE user SET name=?, email=? WHERE id=?               │
-│  Shape 4:  UPDATE user SET city_id=? WHERE id=?                     │
-│  Shape 5:  UPDATE user SET name=?, city_id=? WHERE id=?             │
+│  Shape 1:  UPDATE owner SET telephone=? WHERE id=?                  │
+│  Shape 2:  UPDATE owner SET last_name=? WHERE id=?                  │
+│  Shape 3:  UPDATE owner SET first_name=?, last_name=? WHERE id=?    │
+│  Shape 4:  UPDATE owner SET street=?, city_id=? WHERE id=?          │
+│  Shape 5:  UPDATE owner SET last_name=?, telephone=? WHERE id=?     │
 │  ─────────────────────────────────────────────────────────────────  │
 │  LIMIT REACHED (small default, e.g., 5)                             │
 │  ─────────────────────────────────────────────────────────────────  │
-│  Shape 6+: UPDATE user SET name=?, email=?, city_id=? WHERE id=?    │
+│  Shape 6+: UPDATE owner SET first_name=?, last_name=?, street=?,    │
+│                   city_id=?, telephone=? WHERE id=?                 │
 │            (Falls back to full-row update)                          │
 │                                                                     │
 └─────────────────────────────────────────────────────────────────────┘
@@ -553,19 +559,22 @@ Dirty checking determines *what to update*. Optimistic locking determines *wheth
 
 ```kotlin
 // This does NOT prevent lost updates:
-val user = orm.find(User_.id eq 1)
-// ... another transaction modifies the same user ...
-orm update user.copy(name = "New Name")  // May overwrite other transaction's changes!
+val owner = orm.get(Owner_.id eq 1)
+// ... another transaction modifies the same owner ...
+orm update owner.copy(telephone = "555-0101")  // May overwrite other transaction's changes!
 
 // For conflict detection, use @Version:
-data class User(
+data class Owner(
     @PK val id: Int = 0,
-    @Version val version: Int = 0,  // Incremented on each update
-    val name: String
+    val firstName: String,
+    val lastName: String,
+    val address: Address,
+    val telephone: String?,
+    @Version val version: Int = 0  // Incremented on each update
 ) : Entity<Int>
 
 // Now concurrent modifications are detected:
-orm update user.copy(name = "New Name")
+orm update owner.copy(telephone = "555-0101")
 // Throws OptimisticLockException if version changed since read
 ```
 
@@ -576,15 +585,15 @@ orm update user.copy(name = "New Name")
 Storm tracks which entity types are affected by each mutation so it can selectively invalidate observed state. For template-based updates (using `orm update entity`), Storm knows the entity type and only clears observed state of that type. However, when you execute raw SQL mutations without entity type information, Storm cannot determine which entities may have been affected. Rather than risk stale comparisons that could silently skip a necessary UPDATE, Storm clears all observed state in the current transaction:
 
 ```kotlin
-val user = orm.get(User_.id eq 1)     // Storm observes User state
+val owner = orm.get(Owner_.id eq 1)   // Storm observes Owner state
 val city = orm.get(City_.id eq 100)   // Storm observes City state
 
 // Raw SQL mutation - Storm clears all observed state
-orm.execute("UPDATE user SET name = 'Changed' WHERE id = 1")
+orm.query("UPDATE owner SET telephone = '555-0199' WHERE id = 1").executeUpdate()
 
 // All observed state is now invalidated
-orm update user.copy(email = "new@example.com")  // Falls back to full-row update
-orm update city.copy(name = "New City")          // Also falls back to full-row update
+orm update owner.copy(lastName = "Jones")  // Falls back to full-row update
+orm update city.copy(name = "New City")    // Also falls back to full-row update
 ```
 
 This ensures correctness at the cost of losing dirty checking optimization for the remainder of the transaction.
@@ -596,18 +605,23 @@ The [`update()`](queries.md#updating-rows-by-condition) and [`delete()`](queries
 Storm's dirty checking is not limited to top-level fields. When entities contain embedded records or value objects, Storm flattens the nested structure and inspects individual columns. This means that changing a single field inside a nested record produces a targeted UPDATE rather than rewriting the entire nested structure.
 
 ```kotlin
-data class Address(val street: String, val city: String)
+data class Address(
+    val street: String? = null,
+    @FK val city: City? = null
+)
 
-data class User(
+data class Owner(
     @PK val id: Int = 0,
-    val name: String,
-    @Embedded val address: Address
+    val firstName: String,
+    val lastName: String,
+    val address: Address,
+    val telephone: String?
 ) : Entity<Int>
 
-val user = orm.find(User_.id eq 1)
+val owner = orm.get(Owner_.id eq 1)
 // With FIELD mode: only changed columns in Address are updated
-orm update user.copy(address = user.address.copy(city = "New City"))
-// UPDATE user SET city=? WHERE id=?
+orm update owner.copy(address = owner.address.copy(street = "12 Elm Street"))
+// UPDATE owner SET street=? WHERE id=?
 ```
 
 ### 4. Generated Metamodel Improves Performance

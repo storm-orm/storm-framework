@@ -393,19 +393,19 @@ List<CountryName> names = orm.entity(User.class)
 
 ### The Target's Primary Key Is Part of the Reference
 
-A reference carries the target's primary key: `ref.id()` returns it without fetching the target, because the key is the foreign key column stored on the row itself. Queries mirror that. Reaching the primary key through a reference resolves to that column, so it needs no join, while any other column of the target does:
+A reference carries the target's primary key: `ref.id()` returns it without fetching the target, because the key is the foreign key column stored on the row itself. Queries mirror that. Reaching the primary key through a reference resolves to that column, so it needs no join, while any other column of the target does. Given `Visit` with `@FK val pet: Ref<Pet>`:
 
 ```kotlin
-// No join: the key is already on the user row, exactly as user.city.id() reads it without fetching.
-orm.entity(User::class).select().where(User_.city.id eq 42).resultList
-// SELECT ... FROM user u WHERE u.city_id = ?
+// No join: the key is already on the visit row, exactly as visit.pet.id() reads it without fetching.
+orm.entity(Visit::class).select().where(Visit_.pet.id eq 42).resultList
+// SELECT ... FROM visit v WHERE v.pet_id = ?
 
-// Joins: the name is not part of the reference, exactly as user.city.fetch().name needs the target.
-orm.entity(User::class).select().where(User_.city.name eq "Sunnyvale").resultList
-// SELECT ... FROM user u INNER JOIN city c ON u.city_id = c.id WHERE c.name = ?
+// Joins: the name is not part of the reference, exactly as visit.pet.fetch().name needs the target.
+orm.entity(Visit::class).select().where(Visit_.pet.name eq "Leo").resultList
+// SELECT ... FROM visit v INNER JOIN pet p ON v.pet_id = p.id WHERE p.name = ?
 ```
 
-This is the same column the reference itself resolves to, so `User_.city.id eq 42` and `User_.city eq refById<City>(42)` produce identical SQL. It is also the same column an entity foreign key resolves its primary key to, so a path means the same thing whether the relationship is declared as an entity or as a `Ref`.
+This is the same column the reference itself resolves to, so `Visit_.pet.id eq 42` and `Visit_.pet eq refById<Pet>(42)` produce identical SQL. It is also the same column an entity foreign key resolves its primary key to, so a path means the same thing whether the relationship is declared as an entity or as a `Ref`.
 
 Because the key is read from the row, a match does not require the referenced row to exist. Express that requirement explicitly with a join or an exists clause when you need it.
 
@@ -547,62 +547,62 @@ Use `Ref.of(entity)` when you already have the entity in memory and want to wrap
 
 ## Aggregation with Refs
 
-Refs are particularly useful in aggregation queries where you group by a foreign key. Instead of loading the full related entity for each group, name the foreign key path and select it as a Ref. This keeps the query lightweight while still giving you a typed identifier to use in subsequent lookups if needed.
+Refs are particularly useful in aggregation queries where you group by a foreign key. Instead of loading the full related entity for each group, name the foreign key path and select it as a Ref. This keeps the query lightweight while still giving you a typed identifier to use in subsequent lookups if needed. Given `Visit` with `@FK val pet: Ref<Pet>`, counting the visits per pet:
 
 <Tabs groupId="language">
 <TabItem value="kotlin" label="Kotlin" default>
 
 ```kotlin
-data class GroupedByCity(
-    val city: Ref<City>,
+data class GroupedByPet(
+    val pet: Ref<Pet>,
     val count: Long
 )
 
-val counts: Map<Ref<City>, Long> = orm.entity(User::class)
-    .select(GroupedByCity::class) { "${User_.city}, COUNT(*)" }
-    .groupBy(User_.city)
+val counts: Map<Ref<Pet>, Long> = orm.entity(Visit::class)
+    .select(GroupedByPet::class) { "${Visit_.pet}, COUNT(*)" }
+    .groupBy(Visit_.pet)
     .resultList
-    .associate { it.city to it.count }
+    .associate { it.pet to it.count }
 ```
 
 </TabItem>
 <TabItem value="java" label="Java">
 
 ```java
-record GroupedByCity(Ref<City> city, long count) {}
+record GroupedByPet(Ref<Pet> pet, long count) {}
 
-Map<Ref<City>, Long> counts = orm.entity(User.class)
-    .select(GroupedByCity.class, RAW."\{User_.city}, COUNT(*)")
-    .groupBy(User_.city)
+Map<Ref<Pet>, Long> counts = orm.entity(Visit.class)
+    .select(GroupedByPet.class, RAW."\{Visit_.pet}, COUNT(*)")
+    .groupBy(Visit_.pet)
     .getResultList().stream()
-    .collect(toMap(GroupedByCity::city, GroupedByCity::count));
+    .collect(toMap(GroupedByPet::pet, GroupedByPet::count));
 ```
 
 Using SQL Templates:
 
 ```java
-Map<Ref<City>, Long> counts = orm.query(RAW."""
-        SELECT \{User_.city}, COUNT(*)
-        FROM \{User.class}
-        GROUP BY \{User_.city}""")
-    .getResultList(GroupedByCity.class).stream()
-    .collect(toMap(GroupedByCity::city, GroupedByCity::count));
+Map<Ref<Pet>, Long> counts = orm.query(RAW."""
+        SELECT \{Visit_.pet}, COUNT(*)
+        FROM \{Visit.class}
+        GROUP BY \{Visit_.pet}""")
+    .getResultList(GroupedByPet.class).stream()
+    .collect(toMap(GroupedByPet::pet, GroupedByPet::count));
 ```
 
 </TabItem>
 </Tabs>
 
-The database does the aggregating, so one row per city comes back and the reference carries the key you group by. Fetch the cities themselves with `findAllByRef(counts.keys)` when a later step needs them.
+The database does the aggregating, so one row per pet comes back and the reference carries the key you group by. Fetch the pets themselves with `findAllByRef(counts.keys)` when a later step needs them.
 
-Naming the foreign key path selects the key column on the user table itself, so the referenced table is never joined:
+Naming the foreign key path selects the key column on the visit table itself, so the referenced table is never joined:
 
 ```sql
-SELECT u.city_id, COUNT(*) FROM user u GROUP BY u.city_id
+SELECT v.pet_id, COUNT(*) FROM visit v GROUP BY v.pet_id
 ```
 
-The key does not have to be a Ref. Selecting the entity itself, `${City::class}` in place of `${User_.city}` with a `City` component instead of `Ref<City>`, produces a `Map<City, Long>` whose keys carry their data, with no later fetch. That form pays for the join, for the city columns on every row, and for a `GROUP BY` over all of them, and its keys hash across every field rather than the primary key alone. Prefer the Ref form unless you need the records and would have fetched them anyway.
+The key does not have to be a Ref. Selecting the entity itself, `${Pet::class}` in place of `${Visit_.pet}` with a `Pet` component instead of `Ref<Pet>`, produces a `Map<Pet, Long>` whose keys carry their data, with no later fetch. That form pays for the join, for the pet columns on every row, and for a `GROUP BY` over all of them, and its keys hash across every field rather than the primary key alone. Prefer the Ref form unless you need the records and would have fetched them anyway.
 
-This is not the same as [`resultGroupedBy`](queries.md#grouped-results). That variant does not change the SQL: it runs the same select and groups the hydrated rows, returning each city with the users that belong to it. Reach for it when you want the records themselves, and aggregate in the database, as above, when you only want a number per group.
+This is not the same as [`resultGroupedBy`](queries.md#grouped-results). That variant does not change the SQL: it runs the same select and groups the hydrated rows, returning each pet with the visits that belong to it. Reach for it when you want the records themselves, and aggregate in the database, as above, when you only want a number per group.
 
 ---
 

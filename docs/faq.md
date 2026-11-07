@@ -596,8 +596,8 @@ Storm uses snake_case by default. `birthDate` maps to `birth_date`. Use `@DbColu
 Upsert (INSERT ... ON CONFLICT) is a database-specific feature. Storm delegates to the dialect module for your database to generate the correct SQL. Without the dialect dependency, Storm cannot produce the upsert syntax.
 
 1. Ensure you have included the dialect dependency for your database.
-2. Verify your table has a primary key or unique constraint.
-3. Pass default `0` (Kotlin) or `null` (Java) for the primary key.
+2. Verify your table has a primary key constraint. Upsert resolves the conflict on the primary key; on MySQL and MariaDB any unique key also triggers the update.
+3. Assign the key on the entity (`@PK(generation = NONE)`) when the row is identified by a value from the source. With a generated key, the default `0` (Kotlin) or `null` (Java) always inserts and a set id updates. A row identified by another unique column needs a [SQL template](upserts.md#rows-identified-by-another-unique-column).
 
 ### Refs won't fetch
 

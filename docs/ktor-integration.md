@@ -207,7 +207,14 @@ Use `transaction { }` to group writes into a single atomic operation. The transa
 post("/users") {
     val request = call.receive<CreateUserRequest>()
     val user = transaction {
-        call.orm insert User(email = request.email, name = request.name)
+        val city = call.orm.entity(City::class).getById(request.cityId)
+        call.orm insert User(
+            email = request.email,
+            birthDate = request.birthDate,
+            street = request.street,
+            postalCode = request.postalCode,
+            city = city
+        )
     }
     call.respond(HttpStatusCode.Created, user)
 }
@@ -633,11 +640,11 @@ A database block inherits the plugin-level `customize` unless it sets its own, s
 
 ## Schema Validation
 
-Storm can validate entity definitions against the live database schema at startup. This catches common mapping errors (missing columns, type mismatches, nullability differences) before your application serves its first request. Validation runs in `fail` mode by default; set it to `warn` or `none` in the plugin or in `application.conf` to relax it:
+Storm can validate entity definitions against the live database schema at startup. This catches common mapping errors (missing columns, type mismatches, nullability differences) before your application serves its first request. Validation runs in `fail` mode by default; set it to `warn`, `load` or `none` in the plugin or in `application.conf` to relax it:
 
 ```kotlin
 install(Storm) {
-    schemaValidation = "warn"   // "none", "warn", or "fail"
+    schemaValidation = "warn"   // "none", "load", "warn", or "fail"
 }
 ```
 
@@ -655,6 +662,7 @@ storm {
 |------|----------|
 | `fail` | Block startup if any entity definitions do not match the database schema (default). |
 | `warn` | Log mismatches at startup without blocking. Useful while the schema is still evolving. |
+| `load` | Load the schema without validating it, which Storm uses for [advice and optimization](advice.md#loading-the-schema). |
 | `none` | Skip validation. Suitable when schemas are managed entirely by migrations. |
 
 See [Validation](validation.md) for details on what is validated and how to interpret the output.
@@ -855,7 +863,14 @@ fun Application.module() {
             // Ad-hoc write through the template; the infix insert needs no repository interface.
             val request = call.receive<CreateUserRequest>()
             val user = transaction {
-                call.orm insert User(email = request.email, name = request.name)
+                val city = call.orm.entity(City::class).getById(request.cityId)
+                call.orm insert User(
+                    email = request.email,
+                    birthDate = request.birthDate,
+                    street = request.street,
+                    postalCode = request.postalCode,
+                    city = city
+                )
             }
             call.respond(HttpStatusCode.Created, user)
         }
@@ -902,7 +917,7 @@ storm {
 
 1. **Use the zero-config setup.** Define your DataSource in `application.conf` and let the plugin handle the rest. This keeps database configuration external and environment-specific.
 2. **Use `transaction { }` for writes.** Reads work without explicit transactions, but writes should always be wrapped to ensure atomicity.
-3. **Register frequently-used repositories at startup.** The `stormRepositories { register(...) }` DSL creates proxy instances once, avoiding per-request overhead.
+3. **Let auto-registration create repositories.** With `autoRegisterRepositories` (the default), the plugin creates every repository from the compile-time type index at installation. Any other repository is created on first access and cached for the lifetime of the application, so `call.repository<T>()` never creates one per request.
 4. **Use `call.orm` in routes.** It is the most concise access pattern for ad-hoc entity operations.
-5. **Schema validation catches mapping errors early.** Set `schemaMode = "warn"` during development to surface mismatches between your entities and the database without blocking startup.
+5. **Schema validation catches mapping errors early.** Set `schemaValidation = "warn"` in the plugin (or `storm.validation.schemaMode = "warn"` in `application.conf`) during development to surface mismatches between your entities and the database without blocking startup.
 6. **Hot reload is safe.** Storm's stateless `ORMTemplate` has no proxied state or open sessions. The plugin closes the DataSource on `ApplicationStopped`, so Ktor's development mode auto-reload works without connection leaks.

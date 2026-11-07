@@ -4,24 +4,26 @@ import {
   K, T, S, C, F, N, A, P, QK, QQ, QC,
 } from '../../components/tutorial/tutorialTheme';
 
-// Tutorial: Ktor integration, Exposed vs Storm. Knowledge-mapping for the
-// shared audience: Kotlin-native services. Storm facts verified against
-// docs/ktor-integration.md (install(Storm), orm extensions, reads without
-// transactions, coroutine-propagated transaction blocks).
+// Tutorial: Ktor integration, Exposed vs Storm. Storm facts verified against
+// docs/ktor-integration.md and storm-ktor (install(Storm), repository<T>(),
+// entity(User::class), transactional { } routes, ktor-server-di registration,
+// development mode turning on advice in Storm.kt) and storm-kotlin Transactions.kt
+// (suspend transaction, onCommit, cancellation, completion on the block's dispatcher).
 
 const TITLE = 'Ktor Services: Exposed and Storm Side by Side';
 const DESC =
-  'Ktor is home ground for both libraries. Exposed connects a Database and ' +
-  'wraps every route operation in a transaction; Storm installs as a plugin, ' +
-  'reads without ceremony, and its suspend transactions ride the coroutine context.';
+  'Exposed connects a Database and needs a transaction around every operation, reads ' +
+  'included. Storm installs as a Ktor plugin, reads without a transaction, and its ' +
+  'suspend transaction { } and transactional { } routes cover the writes.';
 
 const CODE_EXPOSED_KTOR = [
   K('fun '), T('Application'), P('.'), F('module'), P('() {\n'),
   P('    '), T('Database'), P('.'), F('connect'), P('('), F('hikariDataSource'), P('())\n\n'),
   P('    routing {\n'),
   P('        '), F('get'), P('('), S('"/users/{id}"'), P(') {\n'),
-  P('            '), K('val '), P('user = '), F('suspendTransaction'), P(' {   '), C('// every operation needs a transaction\n'),
-  P('                '), T('User'), P('.'), F('findById'), P('(call.parameters.'), F('getOrFail'), P('('), S('"id"'), P(').'), F('toInt'), P('())\n'),
+  P('            '), K('val '), P('id = call.parameters.'), F('getOrFail'), P('('), S('"id"'), P(').'), F('toInt'), P('()\n'),
+  P('            '), K('val '), P('user = '), F('suspendTransaction'), P(' {   '), C('// every operation runs in a transaction\n'),
+  P('                '), T('User'), P('.'), F('findById'), P('(id)?.'), F('toResponse'), P('()\n'),
   P('            }\n'),
   P('            call.'), F('respond'), P('(user ?: '), T('HttpStatusCode'), P('.'), T('NotFound'), P(')\n'),
   P('        }\n'),
@@ -32,7 +34,7 @@ const CODE_EXPOSED_KTOR = [
 const CODE_STORM_KTOR = [
   K('interface '), T('UserRepository'), P(' : '), T('EntityRepository'), P('<'), T('User'), P(', '), T('Int'), P('>\n\n'),
   K('fun '), T('Application'), P('.'), F('module'), P('() {\n'),
-  P('    '), F('install'), P('('), T('Storm'), P(')   '), C('// pool from application.conf; repositories register automatically\n\n'),
+  P('    '), F('install'), P('('), T('Storm'), P(')   '), C('// pool from application.conf, repositories from the type index\n\n'),
   P('    routing {\n'),
   P('        '), F('get'), P('('), S('"/users/{id}"'), P(') {\n'),
   P('            '), K('val '), P('users = '), F('repository'), P('<'), T('UserRepository'), P('>()\n'),
@@ -44,17 +46,18 @@ const CODE_STORM_KTOR = [
 ].join('');
 
 const CODE_STORM_WRITE = [
-  F('post'), P('('), S('"/orders"'), P(') {\n'),
-  P('    '), K('val '), P('request = call.'), F('receive'), P('<'), T('CreateOrderRequest'), P('>()\n'),
-  P('    '), K('val '), P('orders = '), F('repository'), P('<'), T('OrderRepository'), P('>()\n'),
-  P('    '), K('val '), P('inventory = '), F('repository'), P('<'), T('InventoryRepository'), P('>()\n\n'),
-  P('    '), K('val '), P('order = '), F('transaction'), P(' {   '), C('// suspend-friendly, rides the coroutine context\n'),
-  P('        '), K('val '), P('order = orders.'), F('insertAndFetch'), P('(request.'), F('toOrder'), P('())\n'),
-  P('        inventory.'), F('decrease'), P('(order.product, order.quantity)\n'),
-  P('        '), F('onCommit'), P(' { events.'), F('publish'), P('('), T('OrderCreated'), P('(order)) }\n'),
-  P('        order\n'),
+  F('post'), P('('), S('"/owners/{id}/pets"'), P(') {\n'),
+  P('    '), K('val '), P('request = call.'), F('receive'), P('<'), T('NewPetRequest'), P('>()\n'),
+  P('    '), K('val '), P('owner = '), F('entity'), P('('), T('Owner'), P('::'), K('class'), P(').'), F('getById'), P('(call.parameters.'), F('getOrFail'), P('('), S('"id"'), P(').'), F('toInt'), P('())\n'),
+  P('    '), K('val '), P('pets = '), F('repository'), P('<'), T('PetRepository'), P('>()\n'),
+  P('    '), K('val '), P('visits = '), F('repository'), P('<'), T('VisitRepository'), P('>()\n\n'),
+  P('    '), K('val '), P('pet = '), F('transaction'), P(' {\n'),
+  P('        '), K('val '), P('pet = pets.'), F('insertAndFetch'), P('(request.'), F('toPet'), P('(owner))\n'),
+  P('        visits.'), F('insert'), P('(request.'), F('firstVisit'), P('(pet))\n'),
+  P('        '), F('onCommit'), P(' { mailer.'), F('sendWelcome'), P('(owner, pet) }\n'),
+  P('        pet\n'),
   P('    }\n\n'),
-  P('    call.'), F('respond'), P('('), T('HttpStatusCode'), P('.'), T('Created'), P(', order)\n'),
+  P('    call.'), F('respond'), P('('), T('HttpStatusCode'), P('.'), T('Created'), P(', pet)\n'),
   P('}'),
 ].join('');
 
@@ -64,41 +67,43 @@ ${navHtml('tutorials')}
 <div class="art">
   <div class="crumbs"><a href="/tutorials/">Tutorials</a><span class="sep">/</span>Exposed vs Storm: Ktor</div>
   <h1>Ktor services, <span class="grad">side by side</span></h1>
-  <p class="dek">Ktor is home ground for both libraries: coroutine-native, annotation-free, Kotlin all the way down. The integration styles differ in where the ceremony sits.</p>
+  <p class="dek">Both libraries are written for Kotlin and run in coroutine-based Ktor services. They differ in where transactions are required and in how the data layer reaches the routes.</p>
   <div class="meta"><span>Series · Exposed to Storm</span><span>5 min read</span><span>Kotlin</span></div>
 
   <h2><span class="hno">01</span>The task</h2>
-  <p>A Ktor service with a read endpoint and a write endpoint: fetch a user by id, and create an order atomically with an inventory update, publishing an event only after the commit.</p>
+  <p>A Ktor service with a read endpoint and a write endpoint: fetch a user by id, and register a pet together with its first visit in one transaction, sending a welcome mail only after the commit.</p>
 
   <h2><span class="hno">02</span>The Exposed way</h2>
-  <p>Exposed connects a <code>Database</code> at startup and wraps route operations in transactions, with <code>suspendTransaction</code> keeping things coroutine-friendly:</p>
+  <p>Exposed connects a <code>Database</code> at startup. Every operation runs inside a transaction block, and <code>suspendTransaction</code> is the form for coroutines:</p>
   ${editor({file: 'Application.kt', tag: 'Kotlin · Exposed + Ktor', code: CODE_EXPOSED_KTOR})}
-  <p>This works well, and it is how a large share of Ktor services are built today. The ceremony is the transaction wrapper: Exposed requires one around every operation, including single reads, so it appears in every route.</p>
+  <p>Many Ktor services are built this way. Exposed requires the transaction block for every operation, including a single read, so every route that touches the database has one.</p>
 
   <h2><span class="hno">03</span>The Storm way</h2>
-  <p>Storm ships a Ktor plugin. <code>install(Storm)</code> builds the connection pool from <code>application.conf</code> and automatically registers every repository interface from the compile-time index, created eagerly so a broken definition fails at startup. Route handlers fetch them with a bare <code>repository&lt;T&gt;()</code>, no registration block, no lookup ceremony:</p>
+  <p>Storm ships a Ktor plugin. <code>install(Storm)</code> builds the connection pool from <code>application.conf</code> and registers every repository interface in the compile-time type index. It creates them during installation, so a broken definition fails at startup. Route handlers get them with <code>repository&lt;T&gt;()</code>:</p>
   ${editor({file: 'Application.kt', tag: 'Kotlin · Storm + Ktor', code: CODE_STORM_KTOR})}
-  <p>Repositories are stateless, so each read borrows a pooled connection just for the query; there is no transaction wrapper because none is needed. For quick endpoints, bare <code>entity&lt;User&gt;()</code> and <code>projection&lt;T&gt;()</code> extensions skip even the interface. Transactions appear where atomicity matters, and because they are suspend functions propagated through the coroutine context, they compose with Ktor naturally:</p>
+  <p>A read outside a transaction borrows a pooled connection for the one query and returns it. For endpoints without custom queries, <code>entity(User::class)</code> and <code>projection(OwnerSummary::class)</code> give a repository without declaring an interface. Writes that belong together go in a <code>transaction</code> block, a suspend function that carries the transaction in the coroutine context:</p>
   ${editor({file: 'Routes.kt', tag: 'Kotlin · Storm + Ktor', code: CODE_STORM_WRITE})}
-  <p>The <code>onCommit</code> callback keeps the event publication out of the transaction, so a rollback never announces an order that does not exist. See the <a class="tlink" href="/tutorials/exposed-transactions">transactions comparison</a> for the full mapping.</p>
-  <p>For applications with a service layer, the plugin exposes the template and every repository through Ktor's built-in dependency injection, each under its own interface type: services resolve them with <code>by dependencies</code>. Koin users keep the same wiring with a few lines of application code; the integration docs include the recipe.</p>
+  <p><code>onCommit</code> runs after the commit, so a rollback never sends the mail. The block runs on Storm's transaction dispatcher and completes there, and a cancelled call stops the statement the block is waiting on. To give every route in a group its own transaction without code in the handlers, wrap the routes in <code>transactional { }</code>. See the <a class="tlink" href="/tutorials/exposed-transactions">transactions comparison</a> for the full mapping.</p>
+  <p>Services that take their dependencies through Ktor's dependency injection resolve the template and each repository with <code>by dependencies</code>: the plugin registers them under their own types.</p>
+  <p>In Ktor's development mode the plugin also turns on performance and design advice in the log, such as a <code>DISTINCT</code> over a to-many join or a deep offset. The <a class="tlink" href="/tutorials/advice">advice tutorial</a> walks through it.</p>
 
   <h2><span class="hno">04</span>The translation table</h2>
   <table class="cmp">
     <tr><th>Exposed + Ktor</th><th>Storm + Ktor</th></tr>
     <tr><td><code>Database.connect(dataSource)</code> at startup</td><td><code>install(Storm)</code>, pool from <code>application.conf</code></td></tr>
-    <tr><td><code>suspendTransaction { }</code> around every operation</td><td>Reads bare; <code>transaction { }</code> where atomicity matters</td></tr>
-    <tr><td>Query logic in table objects and DAO companions</td><td>Repository interfaces, auto-registered at install, fetched via <code>repository&lt;T&gt;()</code></td></tr>
-    <tr><td>Results used inside the transaction (DAO) or mapped out</td><td>Plain values, returned and serialized directly</td></tr>
-    <tr><td>Side effects after commit by hand</td><td><code>onCommit { }</code> in the block</td></tr>
+    <tr><td><code>suspendTransaction { }</code> around every operation</td><td>Reads without a transaction; <code>transaction { }</code> or <code>transactional { }</code> routes for writes</td></tr>
+    <tr><td>Table objects and DAO entities</td><td>Repository interfaces, registered at install, fetched with <code>repository&lt;T&gt;()</code></td></tr>
+    <tr><td>DAO entities used inside the transaction, or mapped to response types</td><td>Entities are plain values, serialized directly</td></tr>
+    <tr><td><code>StatementInterceptor.afterCommit</code>, registered on the transaction</td><td><code>onCommit { }</code> in the block</td></tr>
   </table>
 
   <h2><span class="hno">05</span>Keep going</h2>
-  <p>The reference documentation covers the mechanics in depth:</p>
+  <p>The reference documentation covers the details:</p>
   <div class="refs">
     <a href="/docs/ktor-integration">Ktor Integration</a>
     <a href="/docs/transactions">Transactions</a>
     <a href="/docs/serialization">Serialization</a>
+    <a href="/docs/advice">Statement Advice</a>
   </div>
   <div class="cta">
     <a href="/docs/getting-started" class="btn primary">Get started →</a>

@@ -96,7 +96,7 @@ Individual statements answer what ran. They do not answer what one unit of work 
 A scope records the statements a call executes and reports them as one summary:
 
 ```
-SQL (GET /owners): 12 statements, 8 fetches, 214 ms in database over 61 ms elapsed (peak 4 concurrent), 678 ms total
+SQL (GET /owners): 19 statements, 8 fetches, 142 ms in database over 61 ms elapsed (peak 4 concurrent), 678 ms total
 	96 ms  6408 rows  7x  Visit         VisitService.kt:88  SELECT v.id, v.visit_date FROM visit v WHERE v.pet_id = ?
 	28 ms     8 rows  8x  City   fetch  OwnerView.kt:31     SELECT c.id, c.name FROM city c WHERE c.id = ?
 	18 ms   112 rows  4x  Pet           PetService.kt:52    SELECT p.id, p.name FROM pet p WHERE p.owner_id = ?
@@ -116,14 +116,14 @@ The headline separates three durations:
 
 | Number | Meaning |
 |--------|---------|
-| `214 ms in database` | The summed database time of every statement: from prepare to the statement's return. |
+| `142 ms in database` | The summed database time of every statement: from prepare to the statement's return. |
 | `over 61 ms elapsed` | The time during which at least one statement was in flight. |
 | `peak 4 concurrent` | The most statements in flight at once. |
 | `678 ms total` | How long the call took. |
 
 A unit of work past the recording limit lists its first statements in the table, and every statement past the limit is still timed, keeping no statement: the database time covers all of them and is exact, and the closing line says what the rest spent and on what, heaviest first, `(135 statements not recorded, 5075 ms: 120 INSERT of Reminder 4800 ms, 15 SELECT of Visit 275 ms)`, which says what to raise the limit for or look at. A unit of work that runs more than a thousand operation and type pairs past the limit counts the rest per operation, as `of other types`. The elapsed time and the concurrency cover the recorded statements alone, so past the limit they are marked `+` as lower bounds.
 
-Summed database time exceeds elapsed time whenever statements run concurrently, which is why both appear. The concurrency clause is omitted when nothing overlapped. And `214 ms in database` against `678 ms total` says most of that call was spent somewhere other than the database. Consuming a streamed read counts on the `total` side of that comparison, not the database side: a stream held open while the application works through it is the application's time.
+Summed database time exceeds elapsed time whenever statements run concurrently, which is why both appear. The concurrency clause is omitted when nothing overlapped. And `142 ms in database` against `678 ms total` says most of that call was spent somewhere other than the database. Consuming a streamed read counts on the `total` side of that comparison, not the database side: a stream held open while the application works through it is the application's time.
 
 A summary closes with advice where the unit of work repeated across its transactions what it could have done once, counted from every execution, past the table's recording limit too, so a repeat in a long task is advised on with its full count and time even where the table lists only its first statements: ten or more fetches of one type, or the same single-row read or write run ten or more times. A repeat inside one transaction is reported by the transaction when it completes, in the [advice log](#the-advice-log), and the summary leaves the executions a transaction advised on to it, so it counts the part no single transaction saw, such as a loop that opens a transaction per item, and says how many transactions they ran in; a shape whose executions were all advised per transaction drops out of the summary's advice, while its row stays in the table. It also says where related writes each committed on their own: a write outside any transaction to an entity that references an entity an earlier untransacted write wrote, such as an owner and then its pet, which leaves the owner behind when the pet fails.
 
@@ -307,15 +307,15 @@ A number with a unit (`200ms`, `2s`), a bare number of milliseconds, or an ISO-8
 
 ```
 SQL slow (SELECT Pet): 1840 ms in database, 3 rows, PetService.kt:42
-	SELECT p.id, p.name, p.owner_id, o.id, o.first_name, o.city_id, c.id, c.name
+	SELECT p.id, p.name, p.owner_id, o.first_name, o.city_id, c.name
 	FROM pet p
 	INNER JOIN owner o ON o.id = p.owner_id
 	INNER JOIN city c ON c.id = o.city_id
 	WHERE o.city_id IN (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-	shape: 9b34305d1a7c4e02 (typically 6.0 ms, 306x)  parameters: 32 (typically 3)  comment: traceparent='00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01'
+	shape: 9b34305d1a7c4e02 (typically 6.0 ms, 306x)  parameters: 32 (typically 3)  lengths: 5  comment: traceparent='00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01'
 ```
 
-The statement is printed as sent, in full; the example is abridged to fit the page.
+The statement is printed as sent, in full; the example is abridged to fit the page. It comes from a database that renders an `IN` list as a placeholder per value. On PostgreSQL the list binds as one array, `o.city_id = ANY(?)`, and counts as one parameter (see [IN Lists](queries.md#in-lists)).
 
 The decision is made where the statement returns from the database, on the thread that executed it. That is what makes the line cheap and complete at once: the call site is walked only for the executions that turned out slow, at no cost to the rest, so every slow line names its caller without the per-execution stack walk that makes call sites an opt-in for the performance log; and the log follows no request, entry point or coroutine context, so an execution on a background worker or a dispatcher thread is reported the same as one inside a request. The line is written when the execution completes, so it also carries the rows.
 
@@ -326,6 +326,7 @@ Reading the line, headline first:
 - **`PetService.kt:42`** is the application frame that caused the execution, subject to the same `call-site-skip` setting the performance log uses.
 - **`shape: 9b34305d1a7c4e02 (typically 6.0 ms, 306x)`** is the answer to the question a slow statement raises first: is this statement always this slow, or was it these parameters? The shape is the statement's template identity, the same `storm.shape` the metrics are tagged with, and stable across parameter expansion, so an `IN` list of 3 and one of 32 are one shape. While the slow log is on, each shape keeps a baseline of what it typically costs over its recent minutes (a geometric mean, which an outlier barely moves; reported once eight other executions back it). `typically 6.0 ms, 306x` says the shape is normally fast and this execution was not: look at the values, or at a plan that changed. `typically 310 ms` with no multiplier says the statement is always this slow: look at the query, the graph its type declares (see [Entity Design](entity-design.md)) and its indexes.
 - **`parameters: 32 (typically 3)`** is the parameter profile, safe to print in production: the count this execution bound against what the shape typically binds, shown when they differ by half or double. It names an oversized `IN` list, the commonest way a fast shape turns slow, without printing a value.
+- **`lengths: 5`** is the number of lengths the shape's `IN` list has rendered with so far, shown when it is more than one. Each length is a different statement to the database; from eight lengths the line carries [advice](advice.md#in-list-shapes) on it.
 - **`comment: traceparent='…'`** is the SQL comment the statement carried, when a [`SqlCommenter`](spring-integration.md#observability) is configured. It is the key that joins this line to the database's own record of the same execution; see below.
 - **`advice: …`** follows on a line of its own where the statement's own shape says why it reads more than it needs to: a searched column no index serves, a `distinct` over a join that repeats rows, the count behind a page, or a deep offset. The first line says what is wrong, and each line below it, indented one level deeper, holds one more part: `fix:` the remedy, `or:` an alternative, and facts such as `at:` the call site, `cost:` what each execution costs, `index:` and `covering:` for an index, `longest idle:` for a transaction. The last line, `see:`, links to its section of [Statement Advice](advice.md), which says what the advice means and what to use instead.
 

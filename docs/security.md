@@ -19,26 +19,26 @@ The most important security property of Storm is that **all values are parameter
 <TabItem value="kotlin" label="Kotlin" default>
 
 ```kotlin
-// The 'email' value is sent as a JDBC parameter, not interpolated into SQL.
-val user = userRepository.find(User_.email eq email)
+// The 'name' value is sent as a JDBC parameter, not interpolated into SQL.
+val matches = pets.findAll(Pet_.name eq name)
 ```
 
 Generated SQL:
 ```sql
-SELECT ... FROM "user" WHERE "email" = ?
+SELECT ... FROM pet p WHERE p.name = ?
 ```
 
 </TabItem>
 <TabItem value="java" label="Java">
 
 ```java
-// The 'email' value is sent as a JDBC parameter, not interpolated into SQL.
-User user = userRepository.find(User_.email.eq(email));
+// The 'name' value is sent as a JDBC parameter, not interpolated into SQL.
+List<Pet> matches = pets.findAllBy(Pet_.name, name);
 ```
 
 Generated SQL:
 ```sql
-SELECT ... FROM "user" WHERE "email" = ?
+SELECT ... FROM pet p WHERE p.name = ?
 ```
 
 </TabItem>
@@ -56,19 +56,22 @@ When using SQL templates directly, embedded values are also parameterized:
 <TabItem value="kotlin" label="Kotlin" default>
 
 ```kotlin
-// Both 'status' and 'minAge' become JDBC parameters.
-val users = orm.query { "SELECT * FROM user WHERE status = $status AND age > $minAge" }
-    .resultList<User>()
+// Both 'name' and 'bornAfter' become JDBC parameters.
+val matches = orm.query { """
+    SELECT ${Pet::class} FROM ${Pet::class}
+    WHERE ${Pet_.name} = $name AND ${Pet_.birthDate} > $bornAfter
+""" }.resultList<Pet>()
 ```
 
 </TabItem>
 <TabItem value="java" label="Java">
 
 ```java
-// Both 'status' and 'minAge' become JDBC parameters.
-List<User> users = orm.query(RAW."""
-        SELECT * FROM user WHERE status = \{status} AND age > \{minAge}""")
-    .getResultList(User.class);
+// Both 'name' and 'bornAfter' become JDBC parameters.
+List<Pet> matches = orm.query(RAW."""
+        SELECT \{Pet.class} FROM \{Pet.class}
+        WHERE \{Pet_.name} = \{name} AND \{Pet_.birthDate} > \{bornAfter}""")
+    .getResultList(Pet.class);
 ```
 
 </TabItem>
@@ -344,20 +347,20 @@ Use projections to expose different views of the same table to different user ro
 
 ```kotlin
 // Full entity (for admin users).
-data class User(
-    @PK val id: Int,
-    val name: String,
-    val email: String,
-    val socialSecurityNumber: String,
-    val salary: BigDecimal
+data class Owner(
+    @PK val id: Int = 0,
+    val firstName: String,
+    val lastName: String,
+    val address: Address,
+    val telephone: String?
 ) : Entity<Int>
 
-// Restricted projection (for regular users).
-@DbTable("user")
-data class UserPublicView(
+// Restricted projection (for regular users): no address or telephone.
+@DbTable("owner")
+data class OwnerPublicView(
     @PK val id: Int,
-    val name: String,
-    val email: String
+    val firstName: String,
+    val lastName: String
 ) : Projection<Int>
 ```
 
@@ -366,20 +369,20 @@ data class UserPublicView(
 
 ```java
 // Full entity (for admin users).
-public record User(
-    @PK int id,
-    String name,
-    String email,
-    String socialSecurityNumber,
-    BigDecimal salary
+public record Owner(
+    @PK Integer id,
+    String firstName,
+    String lastName,
+    Address address,
+    @Nullable String telephone
 ) implements Entity<Integer> {}
 
-// Restricted projection (for regular users).
-@DbTable("user")
-public record UserPublicView(
-    @PK int id,
-    String name,
-    String email
+// Restricted projection (for regular users): no address or telephone.
+@DbTable("owner")
+public record OwnerPublicView(
+    @PK Integer id,
+    String firstName,
+    String lastName
 ) implements Projection<Integer> {}
 ```
 
@@ -394,20 +397,20 @@ Use an entity callback to enforce write-level access control by validating or re
 <TabItem value="kotlin" label="Kotlin" default>
 
 ```kotlin
-class WriteAccessCallback : EntityCallback<User> {
+class WriteAccessCallback : EntityCallback<Owner> {
 
-    override fun beforeUpdate(entity: User): User {
+    override fun beforeUpdate(entity: Owner): Owner {
         val currentRole = SecurityContext.currentUserRole()
         if (currentRole != "ADMIN") {
-            throw PersistenceException("Only administrators can modify user records.")
+            throw PersistenceException("Only administrators can modify owner records.")
         }
         return entity
     }
 
-    override fun beforeRemove(entity: User) {
+    override fun beforeRemove(entity: Owner) {
         val currentRole = SecurityContext.currentUserRole()
         if (currentRole != "ADMIN") {
-            throw PersistenceException("Only administrators can delete user records.")
+            throw PersistenceException("Only administrators can delete owner records.")
         }
     }
 }
@@ -417,22 +420,22 @@ class WriteAccessCallback : EntityCallback<User> {
 <TabItem value="java" label="Java">
 
 ```java
-public class WriteAccessCallback implements EntityCallback<User> {
+public class WriteAccessCallback implements EntityCallback<Owner> {
 
     @Override
-    public User beforeUpdate(User entity) {
+    public Owner beforeUpdate(Owner entity) {
         String currentRole = SecurityContext.currentUserRole();
         if (!"ADMIN".equals(currentRole)) {
-            throw new PersistenceException("Only administrators can modify user records.");
+            throw new PersistenceException("Only administrators can modify owner records.");
         }
         return entity;
     }
 
     @Override
-    public void beforeRemove(User entity) {
+    public void beforeRemove(Owner entity) {
         String currentRole = SecurityContext.currentUserRole();
         if (!"ADMIN".equals(currentRole)) {
-            throw new PersistenceException("Only administrators can delete user records.");
+            throw new PersistenceException("Only administrators can delete owner records.");
         }
     }
 }

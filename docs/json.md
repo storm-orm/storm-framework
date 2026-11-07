@@ -171,9 +171,11 @@ record User(@PK Integer id,
 
 ## JSON Aggregation
 
-JSON aggregation solves the problem of loading one-to-many or many-to-many relationships in a single query. Instead of issuing separate queries or relying on lazy loading, you can use SQL aggregation functions like `JSON_OBJECTAGG` to collect related rows into a JSON array within the main query result. Storm then deserializes that array back into a typed collection on the result object.
+JSON aggregation solves the problem of loading one-to-many or many-to-many relationships in a single query. Instead of issuing separate queries or relying on lazy loading, you can use SQL aggregation functions like `JSON_ARRAYAGG` to collect related rows into a JSON array within the main query result. Storm then deserializes that array back into a typed collection on the result object.
 
 This approach eliminates N+1 query problems for relationship loading at the cost of shifting serialization work to both the database and the application layer. It works best when the aggregated collection is moderate in size (see the performance section below).
+
+The example below reads every user with the names of their roles. It joins the `UserRole` link table and the `Role` table, aggregates the role names per user into a JSON array, and groups by the user.
 
 <Tabs groupId="language">
 <TabItem value="kotlin" label="Kotlin" default>
@@ -181,14 +183,15 @@ This approach eliminates N+1 query problems for relationship loading at the cost
 ```kotlin
 data class RolesByUser(
     val user: User,
-    @Json val roles: List<Role>
+    @Json val roles: List<String>
 )
 
 interface UserRepository : EntityRepository<User, Int> {
 
     fun getUserRoles(): List<RolesByUser> =
-        select(RolesByUser::class) { "${User::class}, JSON_OBJECTAGG(${Role::class})" }
+        select(RolesByUser::class) { "${User::class}, JSON_ARRAYAGG(${Role::class}.name) AS roles" }
             .innerJoin<UserRole>().on<User>()
+            .innerJoin<Role>().on<UserRole>()
             .groupBy(User_.id)
             .resultList
 }
@@ -197,16 +200,17 @@ interface UserRepository : EntityRepository<User, Int> {
 </TabItem>
 <TabItem value="java" label="Java">
 
-The same aggregation pattern applies in Java using string templates. The `JSON_OBJECTAGG` function collects related entities into a JSON object that Storm deserializes into the annotated `@Json` field.
+The same aggregation pattern applies in Java using string templates. `JSON_ARRAYAGG` collects the role names into a JSON array that Storm deserializes into the annotated `@Json` field.
 
 ```java
-record RolesByUser(User user, @Json List<Role> roles) {}
+record RolesByUser(User user, @Json List<String> roles) {}
 
 interface UserRepository extends EntityRepository<User, Integer> {
 
     default List<RolesByUser> getUserRoles() {
-        return select(RolesByUser.class, RAW."\{User.class}, JSON_OBJECTAGG(\{Role.class})")
+        return select(RolesByUser.class, RAW."\{User.class}, JSON_ARRAYAGG(\{Role.class}.name) AS roles")
             .innerJoin(UserRole.class).on(User.class)
+            .innerJoin(Role.class).on(UserRole.class)
             .groupBy(User_.id)
             .getResultList();
     }
@@ -215,6 +219,25 @@ interface UserRepository extends EntityRepository<User, Integer> {
 
 </TabItem>
 </Tabs>
+
+To aggregate whole objects rather than single values, build each element with `JSON_OBJECT` inside `JSON_ARRAYAGG`, one key per property, and declare the field as a list of that type, such as `@Json val roles: List<Role>`. `JSON_OBJECTAGG` builds a single object of key/value pairs, which fits a `Map` field, not a list.
+
+## Deserialization Options
+
+`@Json` takes two attributes that make deserialization stricter. Both default to `false`.
+
+| Attribute | Effect |
+|-----------|--------|
+| `failOnUnknown` | Fail when the JSON holds a property the target type does not declare. With the default, unknown properties are ignored. |
+| `failOnMissing` | With Jackson, fail when a property the constructor requires is missing from the JSON. With kotlinx.serialization, fail on a null or unknown value for a property that has a default, rather than falling back to the default. |
+
+```kotlin
+data class User(
+    @PK val id: Int = 0,
+    val email: String,
+    @Json(failOnUnknown = true) val address: Address
+) : Entity<Int>
+```
 
 ---
 
@@ -272,7 +295,7 @@ Fetch one-to-many or many-to-many relationships in a single query using JSON agg
 
 ## JSON Aggregation Performance
 
-JSON aggregation (`JSON_OBJECTAGG`, `JSON_ARRAYAGG`) is suitable for mappings with a **moderate size**. For larger datasets or extensive mappings, split queries into separate parts to avoid:
+JSON aggregation (`JSON_ARRAYAGG`, `JSON_OBJECTAGG`) is suitable for mappings with a **moderate size**. For larger datasets or extensive mappings, split queries into separate parts to avoid:
 
 - Memory pressure from large JSON documents
 - Slow serialization/deserialization
@@ -298,18 +321,17 @@ Instead of aggregating all roles per user:
 data class RolesByUser(val user: User, @Json val roles: List<Role>)
 ```
 
-Query separately:
+Read the role links in a query of their own, and let Storm group them by user:
 
 ```kotlin
-// Fetch users
-val users = orm.findAll<User>()
-
-// Batch fetch roles and group by user
-val rolesByUser = orm.findAll(UserRole_.user inList users)
-    .groupBy({ it.user }, { it.role })
+// One query for the role links of the users you hold; each UserRole carries its role
+val rolesByUser: Map<User, List<UserRole>> = orm.entity(UserRole::class)
+    .select()
+    .where(UserRole_.user inList users)
+    .resultGroupedBy(UserRole_.user)
 ```
 
-This approach gives you control over pagination, caching, and memory usage.
+The grouping happens while Storm hydrates the rows, so the SQL is an ordinary select without a `GROUP BY` and no JSON is built or parsed. Because `users` can be a single page, the roles query pages along with it, which gives you control over pagination, caching, and memory usage. See [Grouped Results](queries.md#grouped-results).
 
 ---
 
