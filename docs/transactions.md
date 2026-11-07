@@ -607,7 +607,7 @@ transaction(isolation = SERIALIZABLE) {
 
 ### Rerunning a Transaction
 
-A deadlock, a serialization failure or an optimistic lock conflict fails with a `TransientPersistenceException`: the failure stems from concurrent activity, and running the whole transaction again may succeed. The dialect recognises its database's codes, so the classification is the same on every database. A lock wait that runs out, a lost connection and a failed commit are not transient. See [Deadlocks and Serialization Failures](error-handling.md#deadlocks-and-serialization-failures).
+A deadlock, a serialization failure or an optimistic lock conflict fails with a `TransientPersistenceException`: the failure stems from concurrent activity, and running the whole transaction again may succeed. The dialect recognises its database's codes, so the classification is the same on every database, and the same whether a statement reports the failure or the commit does, as a database that detects a serialization conflict only at commit reports it. A lock wait that runs out and a lost connection, including one lost during the commit, are not transient. See [Deadlocks and Serialization Failures](error-handling.md#deadlocks-and-serialization-failures).
 
 `retries` reruns the block on such a failure. It counts the reruns after the first attempt, so `retries = 2` runs the block up to three times, and it defaults to `0`:
 
@@ -619,7 +619,7 @@ transaction(isolation = SERIALIZABLE, retries = 2) {
 }
 ```
 
-`transactionBlocking` takes the same parameter. The rerun decides on Storm's classification of the failure, not on the type of the exception, so it holds under any exception mapper: under Spring the failure surfaces as a `TransientDataAccessException` and the block still reruns. Every other failure leaves the block at the attempt it occurred in. When the last attempt fails, its exception leaves the block with the earlier attempts' failures as suppressed. Each rerun logs one line at INFO on the `st.orm.transaction` logger, naming the attempt and the failure.
+`transactionBlocking` takes the same parameter. The rerun decides on Storm's classification of the failure, not on the type of the exception, so it holds under any exception mapper: under Spring the failure surfaces as a `TransientDataAccessException` and the block still reruns. A block whose commit fails transiently reruns too, also when Spring's transaction manager runs the commit for it. Every other failure leaves the block at the attempt it occurred in. When the last attempt fails, its exception leaves the block with the earlier attempts' failures as suppressed. Each rerun logs one line at INFO on the `st.orm.transaction` logger, naming the attempt and the failure.
 
 Each attempt is a transaction of its own. The timeout counts from the start of the attempt, and the callbacks an attempt registers fire by that attempt's outcome: a failed attempt fires its `onRollback` and `onCompletion(false)`, and `onCommit` fires for the attempt that committed only. Between attempts the block pauses for a short, jittered time that grows per attempt: the suspend variant waits with `delay`, the blocking variant sleeps. A cancelled coroutine or an interrupted thread stops the reruns.
 
@@ -1432,7 +1432,7 @@ Callbacks registered in a scope that joins an outer transaction are deferred to 
 
 ### Rerunning on a Transient Failure
 
-A deadlock, a serialization failure or an optimistic lock conflict fails with a `TransientPersistenceException`: running the whole transaction again may succeed. The `transaction` entry points take the number of reruns after the first attempt, in front of the block; `0` runs the block once:
+A deadlock, a serialization failure or an optimistic lock conflict fails with a `TransientPersistenceException`: running the whole transaction again may succeed. A serialization failure the commit reports counts the same as one a statement reports. The `transaction` entry points take the number of reruns after the first attempt, in front of the block; `0` runs the block once:
 
 ```java
 transaction(TransactionOptions.defaults().withIsolation(SERIALIZABLE), 2, tx -> {

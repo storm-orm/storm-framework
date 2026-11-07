@@ -101,4 +101,13 @@ public class OracleTransientFailureConformanceTest extends AbstractTransientFail
     protected List<String> lockWaitTimeoutStatements() {
         return List.of("SELECT id FROM " + TABLE + " WHERE id = 1 FOR UPDATE WAIT 1");
     }
+
+    /**
+     * Oracle's serializable isolation is snapshot isolation: it refuses a write to a row another transaction changed
+     * after the snapshot, but not a cycle of reads and writes to different rows, so both transactions commit.
+     */
+    @Override
+    protected WriteSkewReport writeSkewReport() {
+        return WriteSkewReport.NONE;
+    }
 }

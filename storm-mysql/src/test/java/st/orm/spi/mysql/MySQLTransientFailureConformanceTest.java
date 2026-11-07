@@ -62,4 +62,13 @@ public class MySQLTransientFailureConformanceTest extends AbstractTransientFailu
         return List.of("SET SESSION innodb_lock_wait_timeout = 1",
                 "UPDATE " + TABLE + " SET amount = amount + 1 WHERE id = 1");
     }
+
+    /**
+     * MySQL serializes with locks: a serializable read takes a shared lock, so each write waits for the lock the
+     * other transaction's read holds, and the database ends one of them at that statement as a deadlock.
+     */
+    @Override
+    protected WriteSkewReport writeSkewReport() {
+        return WriteSkewReport.STATEMENT;
+    }
 }
