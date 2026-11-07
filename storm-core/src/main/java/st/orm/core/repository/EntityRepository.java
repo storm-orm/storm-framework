@@ -1269,6 +1269,39 @@ public interface EntityRepository<E extends Entity<ID>, ID> extends Repository {
     void insert(Stream<E> entities, int batchSize, boolean ignoreAutoGenerate);
 
     /**
+     * Inserts a stream of entities into the database in batches of the given size and returns the primary keys of
+     * the inserted entities.
+     *
+     * <p>The stream is consumed batch by batch: each batch is inserted as it is read from the stream. The keys come
+     * back in the order of the entities.</p>
+     *
+     * @param entities the entities to insert. Each entity must not be null and must conform to the model constraints.
+     * @param batchSize the number of entities to insert per batch.
+     * @return the primary keys of the inserted entities, in the order of the entities.
+     * @throws PersistenceException if the insert fails due to database issues, such as connectivity problems,
+     *                              constraint violations, or invalid entity data.
+     * @since 1.16
+     */
+    List<ID> insertAndFetchIds(Stream<E> entities, int batchSize);
+
+    /**
+     * Inserts a stream of entities into the database in batches of the given size and returns the inserted entities
+     * as they exist in the database.
+     *
+     * <p>The stream is consumed batch by batch: each batch is inserted as it is read from the stream. The entities are
+     * fetched once the last batch is inserted, so the returned entities include the state the database applied
+     * during the insert, such as primary keys, default values or triggers.</p>
+     *
+     * @param entities the entities to insert. Each entity must not be null and must conform to the model constraints.
+     * @param batchSize the number of entities to insert per batch.
+     * @return the inserted entities as they exist in the database.
+     * @throws PersistenceException if the insert fails due to database issues, such as connectivity problems,
+     *                              constraint violations, or invalid entity data.
+     * @since 1.16
+     */
+    List<E> insertAndFetch(Stream<E> entities, int batchSize);
+
+    /**
      * Updates a stream of entities in the database using the default batch size.
      *
      * <p>This method updates entities provided in a stream, optimizing the update process by batching them
@@ -1297,6 +1330,25 @@ public interface EntityRepository<E extends Entity<ID>, ID> extends Repository {
      *                              constraints, connectivity issues, or if any entity in the stream is null.
      */
     void update(Stream<E> entities, int batchSize);
+
+    /**
+     * Updates a stream of entities in the database in batches of the given size and returns the updated entities as
+     * they exist in the database.
+     *
+     * <p>The stream is consumed batch by batch: each batch is updated as it is read from the stream. The entities are
+     * fetched once the last batch is updated, so the returned entities reflect the state the database applied during
+     * the update, such as versions or timestamps. The order of the returned entities is not guaranteed to match the
+     * order of the stream.</p>
+     *
+     * @param entities the entities to update. Each entity must not be null, must already exist in the database, and
+     *                 must conform to the model constraints.
+     * @param batchSize the number of entities to update per batch.
+     * @return the updated entities as they exist in the database.
+     * @throws PersistenceException if the update fails due to database issues, such as connectivity problems,
+     *                              constraint violations, or invalid entity data.
+     * @since 1.16
+     */
+    List<E> updateAndFetch(Stream<E> entities, int batchSize);
 
     /**
      * Inserts or updates a stream of entities in the database in batches.
@@ -1330,6 +1382,42 @@ public interface EntityRepository<E extends Entity<ID>, ID> extends Repository {
      *                              problems, constraints violations, or invalid entity data.
      */
     void upsert(Stream<E> entities, int batchSize);
+
+    /**
+     * Inserts or updates a stream of entities in the database in batches of the given size and returns the primary
+     * keys of the upserted entities.
+     *
+     * <p>The stream is consumed batch by batch: each batch is upserted as it is read from the stream. The order of the
+     * returned keys is not guaranteed to match the order of the stream.</p>
+     *
+     * @param entities the entities to insert or update. Each entity must not be null and must contain valid data for
+     *                 insertion or update.
+     * @param batchSize the number of entities to upsert per batch.
+     * @return the primary keys of the upserted entities.
+     * @throws PersistenceException if the upsert fails due to database issues, such as connectivity problems,
+     *                              constraint violations, or invalid entity data.
+     * @since 1.16
+     */
+    List<ID> upsertAndFetchIds(Stream<E> entities, int batchSize);
+
+    /**
+     * Inserts or updates a stream of entities in the database in batches of the given size and returns the upserted
+     * entities as they exist in the database.
+     *
+     * <p>The stream is consumed batch by batch: each batch is upserted as it is read from the stream. The entities are
+     * fetched once the last batch is upserted, so the returned entities reflect the state the database applied during
+     * the upsert, such as generated primary keys, versions or default values. The order of the returned entities is
+     * not guaranteed to match the order of the stream.</p>
+     *
+     * @param entities the entities to insert or update. Each entity must not be null and must contain valid data for
+     *                 insertion or update.
+     * @param batchSize the number of entities to upsert per batch.
+     * @return the upserted entities as they exist in the database.
+     * @throws PersistenceException if the upsert fails due to database issues, such as connectivity problems,
+     *                              constraint violations, or invalid entity data.
+     * @since 1.16
+     */
+    List<E> upsertAndFetch(Stream<E> entities, int batchSize);
 
     /**
      * Removes a stream of entities from the database in batches.

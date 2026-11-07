@@ -393,6 +393,16 @@ public final class EntityRepositoryImpl<E extends Entity<ID>, ID> implements Ent
     }
 
     @Override
+    public List<ID> insertAndFetchIds(Stream<E> entities, int batchSize) {
+        return core.insertAndFetchIds(entities, batchSize);
+    }
+
+    @Override
+    public List<E> insertAndFetch(Stream<E> entities, int batchSize) {
+        return core.insertAndFetch(entities, batchSize);
+    }
+
+    @Override
     public void update(Stream<E> entities) {
         core.update(entities);
     }
@@ -403,6 +413,11 @@ public final class EntityRepositoryImpl<E extends Entity<ID>, ID> implements Ent
     }
 
     @Override
+    public List<E> updateAndFetch(Stream<E> entities, int batchSize) {
+        return core.updateAndFetch(entities, batchSize);
+    }
+
+    @Override
     public void upsert(Stream<E> entities) {
         core.upsert(entities);
     }
@@ -410,6 +425,16 @@ public final class EntityRepositoryImpl<E extends Entity<ID>, ID> implements Ent
     @Override
     public void upsert(Stream<E> entities, int batchSize) {
         core.upsert(entities, batchSize);
+    }
+
+    @Override
+    public List<ID> upsertAndFetchIds(Stream<E> entities, int batchSize) {
+        return core.upsertAndFetchIds(entities, batchSize);
+    }
+
+    @Override
+    public List<E> upsertAndFetch(Stream<E> entities, int batchSize) {
+        return core.upsertAndFetch(entities, batchSize);
     }
 
     @Override

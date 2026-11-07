@@ -33,6 +33,7 @@ import java.util.Date;
 import java.util.HashSet;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.stream.Stream;
 import org.jspecify.annotations.Nullable;
 import st.orm.Entity;
 import st.orm.NoResultException;
@@ -166,11 +167,11 @@ public class MySQLEntityRepositoryImpl<E extends Entity<ID>, ID>
     }
 
     @Override
-    public List<ID> upsertAndFetchIds(Iterable<E> entities) {
+    public List<ID> upsertAndFetchIds(Stream<E> entities, int batchSize) {
         if (generationStrategy == SEQUENCE) {
             throw new PersistenceException("MySQL does not support sequence-based generation.");
         }
-        return super.upsertAndFetchIds(entities);
+        return super.upsertAndFetchIds(entities, batchSize);
     }
 
     @Override
@@ -243,9 +244,9 @@ public class MySQLEntityRepositoryImpl<E extends Entity<ID>, ID>
     }
 
     @Override
-    public List<ID> insertAndFetchIds(Iterable<E> entities) {
+    public List<ID> insertAndFetchIds(Stream<E> entities, int batchSize) {
         if (generationStrategy != SEQUENCE) {
-            return super.insertAndFetchIds(entities);
+            return super.insertAndFetchIds(entities, batchSize);
         }
         throw new PersistenceException("MySQL does not support sequence-based generation.");
     }

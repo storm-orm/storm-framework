@@ -17,6 +17,7 @@ package st.orm.template
 
 import io.kotest.matchers.shouldBe
 import kotlinx.coroutines.flow.asFlow
+import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.runBlocking
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
@@ -36,7 +37,7 @@ import javax.sql.DataSource
 
 /**
  * A flow write with a batch size executes one batch per that many entities, also for a batch size above the
- * default of 1000. The writes run against a data source that counts the batches its prepared statements execute.
+ * default of 1000, and so does a fetching flow write before it fetches. The writes run against a data source that counts the batches its prepared statements execute.
  */
 class FlowBatchSizeTest {
 
@@ -150,5 +151,98 @@ class FlowBatchSizeTest {
         val existing = existingItems(2500)
         batchesOf { items.remove(existing.asFlow(), 2500) } shouldBe 1
         items.count() shouldBe 0
+    }
+
+    @Test
+    fun `insertAndFetchIds flow executes one batch per batch size above the default`() {
+        var ids = emptyList<Int>()
+        batchesOf { ids = items.insertAndFetchIds(newItems(2500).asFlow(), 2500).toList() } shouldBe 1
+        ids.size shouldBe 2500
+        ids.toSet().size shouldBe 2500
+    }
+
+    @Test
+    fun `insertAndFetchIds flow executes one batch per batch size below the default`() {
+        var ids = emptyList<Int>()
+        batchesOf { ids = items.insertAndFetchIds(newItems(2500).asFlow(), 700).toList() } shouldBe 4
+        ids.size shouldBe 2500
+    }
+
+    @Test
+    fun `insertAndFetch flow executes one batch per batch size above the default`() {
+        var inserted = emptyList<FlowItem>()
+        batchesOf { inserted = items.insertAndFetch(newItems(2500).asFlow(), 2500).toList() } shouldBe 1
+        inserted.size shouldBe 2500
+        inserted.all { it.id != 0 } shouldBe true
+    }
+
+    @Test
+    fun `insertAndFetch flow executes one batch per batch size below the default`() {
+        var inserted = emptyList<FlowItem>()
+        batchesOf { inserted = items.insertAndFetch(newItems(2500).asFlow(), 700).toList() } shouldBe 4
+        inserted.size shouldBe 2500
+    }
+
+    @Test
+    fun `updateAndFetch flow executes one batch per batch size above the default`() {
+        val existing = existingItems(2500)
+        var updated = emptyList<FlowItem>()
+        batchesOf {
+            updated = items.updateAndFetch(existing.map { it.copy(name = "updated") }.asFlow(), 2500).toList()
+        } shouldBe 1
+        updated.size shouldBe 2500
+        updated.all { it.name == "updated" } shouldBe true
+    }
+
+    @Test
+    fun `updateAndFetch flow executes one batch per batch size below the default`() {
+        val existing = existingItems(2500)
+        var updated = emptyList<FlowItem>()
+        batchesOf {
+            updated = items.updateAndFetch(existing.map { it.copy(name = "updated") }.asFlow(), 700).toList()
+        } shouldBe 4
+        updated.size shouldBe 2500
+    }
+
+    @Test
+    fun `upsertAndFetchIds flow executes one batch per batch size above the default`() {
+        val existing = existingItems(2500)
+        var ids = emptyList<Int>()
+        batchesOf {
+            ids = items.upsertAndFetchIds(existing.map { it.copy(name = "upserted") }.asFlow(), 2500).toList()
+        } shouldBe 1
+        ids.toSet() shouldBe existing.map { it.id }.toSet()
+        items.findAll().all { it.name == "upserted" } shouldBe true
+    }
+
+    @Test
+    fun `upsertAndFetchIds flow executes one batch per batch size below the default`() {
+        val existing = existingItems(2500)
+        var ids = emptyList<Int>()
+        batchesOf {
+            ids = items.upsertAndFetchIds(existing.map { it.copy(name = "upserted") }.asFlow(), 700).toList()
+        } shouldBe 4
+        ids.size shouldBe 2500
+    }
+
+    @Test
+    fun `upsertAndFetch flow executes one batch per batch size above the default`() {
+        val existing = existingItems(2500)
+        var upserted = emptyList<FlowItem>()
+        batchesOf {
+            upserted = items.upsertAndFetch(existing.map { it.copy(name = "upserted") }.asFlow(), 2500).toList()
+        } shouldBe 1
+        upserted.size shouldBe 2500
+        upserted.all { it.name == "upserted" } shouldBe true
+    }
+
+    @Test
+    fun `upsertAndFetch flow executes one batch per batch size below the default`() {
+        val existing = existingItems(2500)
+        var upserted = emptyList<FlowItem>()
+        batchesOf {
+            upserted = items.upsertAndFetch(existing.map { it.copy(name = "upserted") }.asFlow(), 700).toList()
+        } shouldBe 4
+        upserted.size shouldBe 2500
     }
 }

@@ -43,6 +43,7 @@ import st.orm.core.template.Column;
 import st.orm.core.template.Model;
 import st.orm.core.template.ORMTemplate;
 import st.orm.core.template.PreparedQuery;
+import st.orm.core.template.Query;
 import st.orm.core.template.TemplateString;
 import st.orm.core.template.impl.ConsumedQueries;
 
@@ -111,6 +112,26 @@ public class OnConflictEntityRepositoryImpl<E extends Entity<ID>, ID>
                 .map(st -> combine(TemplateString.of("DO UPDATE SET "), st))
                 .orElse(TemplateString.of("DO NOTHING"));
         return flatten(combine(TemplateString.of("\nON CONFLICT ("), TemplateString.of(conflictTarget), raw(") \0", assignments)));
+    }
+
+    /**
+     * Creates the upsert of the entities as one multi-row statement that returns the primary key of each row it
+     * writes, in the order of the entities, whether the statement inserted the row or updated it.
+     *
+     * @param entities the entities to upsert.
+     * @return the query that upserts the entities and returns their primary keys.
+     * @since 1.16
+     */
+    protected Query upsertReturningQuery(Iterable<E> entities) {
+        var versionAware = new AtomicBoolean();
+        // Keys read back from the statement are generated keys, and a generated key is a single column.
+        String primaryKeyName = primaryKeyColumns.getFirst().qualifiedName(ormTemplate.dialect());
+        return intercept(sql -> sql.versionAware(versionAware.getPlain()), () ->
+                ormTemplate.query(flatten(raw("""
+                    INSERT INTO \0
+                    VALUES \0\0
+                    RETURNING %s""".formatted(primaryKeyName), model.type(), entities,
+                        onConflictClause(versionAware)))).managed());
     }
 
     @Override
