@@ -313,6 +313,18 @@ public class MSSQLServerSqlDialect extends DefaultSqlDialect {
     }
 
     /**
+     * Returns {@code 2098}: SQL Server takes at most 2100 parameters in a request, and the driver's prepared
+     * execution takes two of them for itself, so a statement binds at most 2098 values.
+     *
+     * @return {@code 2098}.
+     * @since 1.16
+     */
+    @Override
+    public int maxBindParameters() {
+        return 2_098;
+    }
+
+    /**
      * Renders the optimizer hints as one {@code OPTION (...)} clause, SQL Server's query hints.
      *
      * @param hints the hint texts, in the order they were added.
