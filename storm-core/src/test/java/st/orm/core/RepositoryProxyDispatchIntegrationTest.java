@@ -61,6 +61,15 @@ public class RepositoryProxyDispatchIntegrationTest {
         }
     }
 
+    // Interfaces with a method no implementation serves: abstract, neither built in nor given a body.
+    interface UnservedEntityRepository extends EntityRepository<City, Integer> {
+        City findSomehow(int id);
+    }
+
+    interface UnservedProjectionRepository extends ProjectionRepository<PetView, Integer> {
+        PetView findSomehow(int id);
+    }
+
     // EntityRepository dispatch
 
     @Test
@@ -166,6 +175,24 @@ public class RepositoryProxyDispatchIntegrationTest {
     }
 
     // Proxy identity methods
+
+    @Test
+    public void testUnservedEntityRepositoryMethodIsRefused() {
+        var orm = ORMTemplate.of(dataSource);
+        var repository = orm.repository(UnservedEntityRepository.class);
+        assertEquals("Sun Paririe", repository.getById(1).name());
+        var e = assertThrows(UnsupportedOperationException.class, () -> repository.findSomehow(1));
+        assertTrue(e.getMessage().contains("findSomehow"), e.getMessage());
+    }
+
+    @Test
+    public void testUnservedProjectionRepositoryMethodIsRefused() {
+        var orm = ORMTemplate.of(dataSource);
+        var repository = orm.repository(UnservedProjectionRepository.class);
+        assertTrue(repository.count() > 0);
+        var e = assertThrows(UnsupportedOperationException.class, () -> repository.findSomehow(1));
+        assertTrue(e.getMessage().contains("findSomehow"), e.getMessage());
+    }
 
     @Test
     public void testProxyHashCodeIsIdentityBased() {

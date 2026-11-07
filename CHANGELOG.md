@@ -28,6 +28,7 @@ for the CLI, to [npm](https://www.npmjs.com/package/@storm-orm/cli)
 - A statement that fails once its transaction's deadline has passed completes the block with `TransactionTimedOutException` on every driver, including one that reports the cancellation of the statement rather than a timeout (#858).
 - The slow statement log reports a statement stopped by the cancellation of its transaction in one line at `DEBUG`, without the statement or its advice, instead of as a failed slow statement (#858).
 - Fixed a `null` value in a template condition failing with a `NullPointerException` instead of binding as SQL `NULL`.
+- Fixed a repository method no implementation serves failing with `IllegalArgumentException` on Java 21 to 23 instead of the `UnsupportedOperationException` naming the method that Java 24 and later throw (#868).
 - `TemplateString` declares its values nullable, `List<@Nullable Object>`, as a template holds a `null` value where one is bound.
 - Renamed `TransactionContext.takeFreshTransaction()` to `beginsTransaction()`, which a custom transaction context implements.
 - Added `suggest`, the `search` for input typed as you go (#741, #856). Every word matches at the start of a word, the same rows on every database; an empty input matches no rows. Short words are handled per column, for `search` and `suggest` alike: see the `Match` entry below. `storm.search.min_term_length` sets the length a substring index serves.
