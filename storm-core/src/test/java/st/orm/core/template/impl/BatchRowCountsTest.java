@@ -33,6 +33,7 @@ import java.sql.Statement;
 import java.util.Arrays;
 import java.util.List;
 import java.util.UUID;
+import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.function.IntUnaryOperator;
 import javax.sql.DataSource;
 import org.junit.jupiter.api.BeforeEach;
@@ -40,9 +41,11 @@ import org.junit.jupiter.api.Test;
 import org.springframework.jdbc.datasource.DriverManagerDataSource;
 import st.orm.DbTable;
 import st.orm.Entity;
+import st.orm.OptimisticLockException;
 import st.orm.PK;
 import st.orm.PersistenceException;
 import st.orm.UnexpectedRowCountException;
+import st.orm.Version;
 import st.orm.core.model.polymorphic.JoinedAnimal;
 import st.orm.core.model.polymorphic.JoinedCat;
 import st.orm.core.model.polymorphic.JoinedDog;
@@ -59,7 +62,11 @@ class BatchRowCountsTest {
     @DbTable("batch_tag")
     public record BatchTag(@PK Integer id, String name) implements Entity<Integer> {}
 
+    @DbTable("versioned_tag")
+    public record VersionedTag(@PK Integer id, String name, @Version int version) implements Entity<Integer> {}
+
     private volatile IntUnaryOperator reportedCount = IntUnaryOperator.identity();
+    private final List<String> prepared = new CopyOnWriteArrayList<>();
     private ORMTemplate orm;
 
     @BeforeEach
@@ -68,31 +75,44 @@ class BatchRowCountsTest {
         try (var connection = h2.getConnection(); var statement = connection.createStatement()) {
             statement.execute("CREATE TABLE batch_tag (id INTEGER PRIMARY KEY, name VARCHAR(50) NOT NULL)");
             statement.execute("INSERT INTO batch_tag (id, name) VALUES (1, 'first'), (2, 'second'), (3, 'third')");
+            statement.execute("CREATE TABLE versioned_tag (id INTEGER PRIMARY KEY, name VARCHAR(50) NOT NULL, version INTEGER NOT NULL)");
+            statement.execute("INSERT INTO versioned_tag (id, name, version) VALUES (1, 'first', 0), (2, 'second', 0)");
             statement.execute("CREATE TABLE joined_animal (id INTEGER AUTO_INCREMENT PRIMARY KEY, dtype VARCHAR(50) NOT NULL, name VARCHAR(255))");
             statement.execute("CREATE TABLE joined_cat (id INTEGER PRIMARY KEY, indoor BOOLEAN NOT NULL, FOREIGN KEY (id) REFERENCES joined_animal (id))");
             statement.execute("CREATE TABLE joined_dog (id INTEGER PRIMARY KEY, weight INTEGER NOT NULL, FOREIGN KEY (id) REFERENCES joined_animal (id))");
-            statement.execute("INSERT INTO joined_animal (dtype, name) VALUES ('JoinedCat', 'Whiskers'), ('JoinedCat', 'Luna')");
-            statement.execute("INSERT INTO joined_cat (id, indoor) VALUES (1, true), (2, false)");
+            statement.execute("INSERT INTO joined_animal (dtype, name) VALUES ('JoinedCat', 'Whiskers'), ('JoinedCat', 'Luna'), ('JoinedCat', 'Milo'), ('JoinedDog', 'Rex')");
+            statement.execute("INSERT INTO joined_cat (id, indoor) VALUES (1, true), (2, false), (3, true)");
+            statement.execute("INSERT INTO joined_dog (id, weight) VALUES (4, 30)");
         }
         orm = ORMTemplate.of(reporting(h2));
     }
 
-    /** Wraps the data source so the counts of every batch its prepared statements execute pass through the test's choice. */
+    /**
+     * Wraps the data source so the counts of every batch its prepared statements execute pass through the test's
+     * choice, and the statements it prepares are recorded.
+     */
     private DataSource reporting(DataSource target) {
-        return proxy(DataSource.class, target, (method, result) -> result instanceof Connection connection
-                ? proxy(Connection.class, connection, (connectionMethod, connectionResult) ->
-                        connectionResult instanceof PreparedStatement statement
-                                ? proxy(PreparedStatement.class, statement, (statementMethod, statementResult) ->
-                                        statementMethod.getName().equals("executeBatch")
-                                                ? Arrays.stream((int[]) statementResult).map(reportedCount).toArray()
-                                                : statementResult)
-                                : connectionResult)
+        return proxy(DataSource.class, target, (method, arguments, result) -> result instanceof Connection connection
+                ? proxy(Connection.class, connection, (connectionMethod, connectionArguments, connectionResult) -> {
+                    if (!(connectionResult instanceof PreparedStatement statement)) {
+                        return connectionResult;
+                    }
+                    prepared.add(String.valueOf(connectionArguments[0]).strip());
+                    return proxy(PreparedStatement.class, statement, (statementMethod, statementArguments, statementResult) ->
+                            statementMethod.getName().equals("executeBatch")
+                                    ? Arrays.stream((int[]) statementResult).map(reportedCount).toArray()
+                                    : statementResult);
+                })
                 : result);
     }
 
     @FunctionalInterface
     private interface Observer {
-        Object observe(Method method, Object result);
+        Object observe(Method method, Object[] arguments, Object result);
+    }
+
+    private long preparedStartingWith(String prefix) {
+        return prepared.stream().filter(sql -> sql.toUpperCase().startsWith(prefix)).count();
     }
 
     @SuppressWarnings("unchecked")
@@ -105,7 +125,7 @@ class BatchRowCountsTest {
                     } catch (InvocationTargetException e) {
                         throw e.getTargetException();
                     }
-                    return observer.observe(method, result);
+                    return observer.observe(method, arguments, result);
                 });
     }
 
@@ -174,16 +194,62 @@ class BatchRowCountsTest {
         reportedCount = count -> SUCCESS_NO_INFO;
         animals.remove(List.of(new JoinedCat(1, "Whiskers", true), new JoinedCat(2, "Luna", false)));
         reportedCount = IntUnaryOperator.identity();
-        assertEquals(0, animals.count());
+        assertEquals(2, animals.count());
     }
 
     @Test
     void joinedBatchUpdateWithCountWithoutInfoMovesChangedType() {
         var animals = orm.entity(JoinedAnimal.class);
         reportedCount = count -> SUCCESS_NO_INFO;
-        animals.update(List.of(new JoinedCat(1, "Whiskers", false), new JoinedDog(2, "Luna", 12)));
+        prepared.clear();
+        animals.update(List.of(new JoinedCat(1, "Whiskers", false), new JoinedDog(2, "Luna", 12),
+                new JoinedCat(3, "Milo", false), new JoinedCat(4, "Rex", true)));
         reportedCount = IntUnaryOperator.identity();
+        // One statement per extension table for each subtype in the batch, however many entities it holds.
+        assertEquals(4, preparedStartingWith("DELETE"), prepared.toString());
         assertEquals(new JoinedCat(1, "Whiskers", false), animals.getById(1));
         assertEquals(new JoinedDog(2, "Luna", 12), animals.getById(2));
+        assertEquals(new JoinedCat(3, "Milo", false), animals.getById(3));
+        assertEquals(new JoinedCat(4, "Rex", true), animals.getById(4));
+    }
+
+    @Test
+    void joinedBatchUpdateWithReportedCountsMovesChangedTypeWithOneStatementPerTable() {
+        var animals = orm.entity(JoinedAnimal.class);
+        prepared.clear();
+        animals.update(List.of(new JoinedDog(1, "Whiskers", 3), new JoinedDog(2, "Luna", 12),
+                new JoinedCat(3, "Milo", false)));
+        // The subtype changed for two dogs: one statement deletes their rows from the other extension table.
+        assertEquals(1, preparedStartingWith("DELETE"), prepared.toString());
+        assertEquals(new JoinedDog(1, "Whiskers", 3), animals.getById(1));
+        assertEquals(new JoinedDog(2, "Luna", 12), animals.getById(2));
+        assertEquals(new JoinedCat(3, "Milo", false), animals.getById(3));
+    }
+
+    @Test
+    void versionedBatchUpdateWithReportedCountsRunsNoExtraStatement() {
+        var tags = orm.entity(VersionedTag.class);
+        prepared.clear();
+        tags.update(List.of(new VersionedTag(1, "one", 0), new VersionedTag(2, "two", 0)));
+        assertEquals(1, prepared.size(), prepared.toString());
+        assertEquals(1, tags.getById(1).version());
+    }
+
+    @Test
+    void versionedBatchUpdateConflictWithReportedCountsIsOptimisticLock() {
+        var tags = orm.entity(VersionedTag.class);
+        assertThrows(OptimisticLockException.class,
+                () -> tags.update(List.of(new VersionedTag(1, "one", 0), new VersionedTag(2, "stale", 7))));
+    }
+
+    @Test
+    void versionedBatchUpdateWithCountWithoutInfoCannotVerifyLocking() {
+        var tags = orm.entity(VersionedTag.class);
+        reportedCount = count -> SUCCESS_NO_INFO;
+        var failure = assertThrows(PersistenceException.class,
+                () -> tags.update(List.of(new VersionedTag(1, "one", 0), new VersionedTag(2, "stale", 7))));
+        assertFalse(failure instanceof OptimisticLockException);
+        assertTrue(failure.getMessage().contains("VersionedTag"), failure.getMessage());
+        assertTrue(failure.getMessage().contains("cannot verify optimistic locking"), failure.getMessage());
     }
 }

@@ -18,7 +18,9 @@ package st.orm.core.template.impl;
 import static java.sql.Statement.SUCCESS_NO_INFO;
 import static st.orm.core.template.TemplateString.raw;
 import static st.orm.core.template.impl.BatchRowCounts.allSucceeded;
+import static st.orm.core.template.impl.BatchRowCounts.anyUnknown;
 import static st.orm.core.template.impl.BatchRowCounts.knownAffected;
+import static st.orm.core.template.impl.BatchRowCounts.unverifiedVersionFailure;
 import static st.orm.core.template.impl.RecordReflection.getExtensionFieldNames;
 import static st.orm.core.template.impl.RecordReflection.hasDiscriminator;
 import static st.orm.spi.SqlOperation.DELETE;
@@ -404,6 +406,36 @@ public final class JoinedEntityHelper {
         return totalDeleted;
     }
 
+    /**
+     * Deletes the extension table rows of the ids from the extension tables of every subtype except the given one,
+     * or of every subtype when none is given, with one statement per extension table.
+     */
+    private static void deleteExtensionRows(
+            QueryTemplate queryTemplate,
+            Class<?> sealedType,
+            @Nullable Class<?> exceptType,
+            List<?> ids
+    ) throws SqlTemplateException {
+        for (Class<?> subtype : REFLECTION.getPermittedSubclasses(sealedType)) {
+            if (subtype == exceptType) {
+                continue;
+            }
+            // Skip subtypes without extension fields only when a discriminator exists.
+            // When no discriminator, every subtype has an extension table (even PK-only) as type marker.
+            if (!hasExtensionFields(subtype, sealedType) && hasDiscriminator(sealedType)) {
+                continue;
+            }
+            queryTemplate.query(raw("""
+                    DELETE FROM \0
+                    WHERE \0""", subtype, ids))
+                    .managed().executeUpdate();
+        }
+    }
+
+    private static <E extends Entity<ID>, ID> List<ID> ids(List<E> entities) {
+        return entities.stream().map(Entity::id).toList();
+    }
+
     @SuppressWarnings("unchecked")
     private static <E> E reconstructWithPk(E entity, Object generatedPk) {
         var recordType = REFLECTION.getRecordType(entity.getClass());
@@ -663,6 +695,10 @@ public final class JoinedEntityHelper {
                 .managed())) {
             entities.forEach(baseQuery::addBatch);
             int[] result = baseQuery.executeBatch();
+            if (baseQuery.isVersionAware() && anyUnknown(result)) {
+                throw ExceptionHelper.getExceptionTransformer(queryTemplate, UPDATE, sealedType)
+                        .apply(unverifiedVersionFailure(sealedType));
+            }
             if (!allSucceeded(result, 1)) {
                 throw batchRowCountFailure(queryTemplate, UPDATE, sealedType, "Batch update of base table '%s' failed for entity %s. This may indicate a constraint violation, trigger interference, or that the target row does not exist.".formatted(model.name(), sealedType.getSimpleName()), result);
             }
@@ -692,18 +728,26 @@ public final class JoinedEntityHelper {
                     subtypeEntities.forEach(extQuery::addBatch);
                     int[] extResult = extQuery.executeBatch();
                     needInsert = new ArrayList<>();
+                    List<E> unknown = new ArrayList<>();
                     for (int i = 0; i < extResult.length; i++) {
                         if (extResult[i] == 0) {
                             needInsert.add(subtypeEntities.get(i));
                         } else if (extResult[i] == SUCCESS_NO_INFO) {
-                            // The driver does not report whether the update found the row. A row in the extension table of
-                            // another subtype marks a changed type, whose extension row is still to be inserted.
-                            if (deleteOtherExtensionRows(queryTemplate, sealedType, concreteType, subtypeEntities.get(i).id()) > 0) {
-                                needInsert.add(subtypeEntities.get(i));
-                            }
+                            unknown.add(subtypeEntities.get(i));
                         } else if (extResult[i] != 1) {
                             throw rowCountFailure(queryTemplate, UPDATE, sealedType, "Batch update of extension table failed for entity %s (subtype %s). This may indicate a constraint violation, trigger interference, or that the target row does not exist. %d rows were affected.".formatted(sealedType.getSimpleName(), concreteType.getSimpleName(), extResult[i]), 1, extResult[i]);
                         }
+                    }
+                    if (!needInsert.isEmpty()) {
+                        // The type changed: the row of the previous subtype goes, the row of this one is inserted below.
+                        deleteExtensionRows(queryTemplate, sealedType, concreteType, ids(needInsert));
+                    }
+                    if (!unknown.isEmpty()) {
+                        // The driver does not report whether the update found the row, so whether the type changed is
+                        // unknown. The extension rows of these entities are written again: one statement per extension
+                        // table, this subtype's included, removes them, and the insert below writes the row of this type.
+                        deleteExtensionRows(queryTemplate, sealedType, null, ids(unknown));
+                        needInsert.addAll(unknown);
                     }
                 }
             } else {
@@ -719,11 +763,6 @@ public final class JoinedEntityHelper {
             }
             // Insert extension rows for entities where the UPDATE returned 0 (type changed).
             if (!needInsert.isEmpty()) {
-                if (extensionFields) {
-                    for (E entity : needInsert) {
-                        deleteOtherExtensionRows(queryTemplate, sealedType, concreteType, entity.id());
-                    }
-                }
                 var insertBindVars = queryTemplate.createBindVars();
                 try (var insertQuery = ConsumedQueries.prepare(queryTemplate.query(raw("""
                         INSERT INTO \0

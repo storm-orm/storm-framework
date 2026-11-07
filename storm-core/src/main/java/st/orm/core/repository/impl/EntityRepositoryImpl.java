@@ -24,7 +24,9 @@ import static st.orm.core.spi.Providers.deleteFrom;
 import static st.orm.core.spi.Providers.updateFrom;
 import static st.orm.core.template.TemplateString.raw;
 import static st.orm.core.template.impl.BatchRowCounts.allSucceeded;
+import static st.orm.core.template.impl.BatchRowCounts.anyUnknown;
 import static st.orm.core.template.impl.BatchRowCounts.knownAffected;
+import static st.orm.core.template.impl.BatchRowCounts.unverifiedVersionFailure;
 import static st.orm.spi.SqlOperation.DELETE;
 import static st.orm.spi.SqlOperation.INSERT;
 import static st.orm.spi.SqlOperation.UPDATE;
@@ -1332,19 +1334,26 @@ public class EntityRepositoryImpl<E extends Entity<ID>, ID>
      * parameter limit so that {@code rows × bound columns} never exceeds what a single statement can carry.
      */
     private int multiRowInsertChunkSize() {
-        return multiRowInsertChunkSize(false);
+        return multiRowInsertChunkSize(false, defaultBatchSize);
     }
 
-    private int multiRowInsertChunkSize(boolean ignoreAutoGenerate) {
+    /**
+     * Chunk size for the multi-row insert path. Bounded by the batch size and by the dialect's bind parameter limit
+     * so that {@code rows × bound columns} never exceeds what a single statement can carry.
+     *
+     * @param ignoreAutoGenerate true if the primary key is bound although it is generated.
+     * @param batchSize the number of entities the caller asked to insert per batch.
+     */
+    private int multiRowInsertChunkSize(boolean ignoreAutoGenerate, int batchSize) {
         int boundColumns = (int) model.declaredColumns().stream()
                 .filter(Column::insertable)
                 .filter(column -> ignoreAutoGenerate || column.generation() == NONE)
                 .count();
         if (boundColumns == 0) {
-            return defaultBatchSize;
+            return batchSize;
         }
         int maxRows = Math.max(1, ormTemplate.dialect().maxBindParameters() / boundColumns);
-        return Math.min(defaultBatchSize, maxRows);
+        return Math.min(batchSize, maxRows);
     }
 
     /**
@@ -1780,7 +1789,7 @@ public class EntityRepositoryImpl<E extends Entity<ID>, ID>
         if (supportsMultiRowInsert()) {
             // A dialect that can return keys from a multi-row insert necessarily supports the statement form; the
             // keyless path reuses that capability rather than introducing a separate one.
-            int chunkSize = Math.min(batchSize, multiRowInsertChunkSize(ignoreAutoGenerate));
+            int chunkSize = multiRowInsertChunkSize(ignoreAutoGenerate, batchSize);
             chunked(entities, chunkSize).forEach(batch -> insertMultiRow(batch, ignoreAutoGenerate));
             return;
         }
@@ -2091,6 +2100,9 @@ public class EntityRepositoryImpl<E extends Entity<ID>, ID>
                     .forEach(e -> cache.remove(e.id()));
         }
         int[] result = query.executeBatch();
+        if (query.isVersionAware() && anyUnknown(result)) {
+            throw failure(UPDATE, unverifiedVersionFailure(model.type()));
+        }
         if (query.isVersionAware() && IntStream.of(result).anyMatch(r -> r == 0)) {
             throw failure(UPDATE, new OptimisticLockException("Batch update of %s failed due to optimistic lock. One or more entities may have been modified or deleted by another transaction.".formatted(model.type().getSimpleName())));
         } else if (!allSucceeded(result, 1)) {

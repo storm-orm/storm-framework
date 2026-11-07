@@ -19,13 +19,15 @@ import static java.sql.Statement.SUCCESS_NO_INFO;
 
 import java.sql.Statement;
 import java.util.stream.IntStream;
+import st.orm.PersistenceException;
 
 /**
  * Checks the per-statement row counts a driver reports for a batch.
  *
  * <p>A driver may report {@link Statement#SUCCESS_NO_INFO} for a statement that succeeded without a known
  * row count. Such a count is a success. {@link Statement#EXECUTE_FAILED} and every count other than the
- * expected ones are failures.</p>
+ * expected ones are failures, and so is an unknown count in a versioned update, where a count of zero marks a
+ * version conflict.</p>
  *
  * @since 1.16
  */
@@ -64,6 +66,29 @@ public final class BatchRowCounts {
      */
     public static boolean allSucceeded(int[] counts, int... expected) {
         return IntStream.of(counts).allMatch(count -> isSuccess(count, expected));
+    }
+
+    /**
+     * Returns whether the driver reported a success without a known count for any statement of the batch.
+     *
+     * @param counts the counts the driver reported, one per statement of the batch.
+     * @return {@code true} if any count is unknown.
+     */
+    public static boolean anyUnknown(int[] counts) {
+        return IntStream.of(counts).anyMatch(count -> count == SUCCESS_NO_INFO);
+    }
+
+    /**
+     * Returns the failure of a versioned batch update whose counts the driver did not report. A count of zero marks
+     * a version conflict, so without the counts the batch cannot tell a conflict from a success.
+     *
+     * @param type the entity type of the batch.
+     * @return the failure.
+     */
+    public static PersistenceException unverifiedVersionFailure(Class<?> type) {
+        return new PersistenceException(("Batch update of %s cannot verify optimistic locking because the driver did "
+                + "not report update counts for the batch. Configure the driver to report the update count of every "
+                + "statement in a batch, or update the entities one at a time.").formatted(type.getSimpleName()));
     }
 
     /**
