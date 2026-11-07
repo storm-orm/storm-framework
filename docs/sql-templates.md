@@ -72,7 +72,7 @@ data class PetWithOwner(
 val pets = orm.query { """
     SELECT ${PetWithOwner::class}
     FROM ${PetWithOwner::class}
-    WHERE ${Owner_.city} = $city
+    WHERE ${Owner_.address.city} = $city
 """ }.resultList<PetWithOwner>()
 ```
 
@@ -91,7 +91,7 @@ record PetWithOwner(
 List<PetWithOwner> pets = orm.query(RAW."""
         SELECT \{PetWithOwner.class}
         FROM \{PetWithOwner.class}
-        WHERE \{Owner_.city} = \{city}""")
+        WHERE \{Owner_.address.city} = \{city}""")
     .getResultList(PetWithOwner.class);
 ```
 
@@ -144,10 +144,17 @@ data class City(
     @FK val country: Country
 ) : Entity<Int>
 
-data class User(
-    @PK val id: Int,
-    val email: String,
+data class Address(
+    val street: String?,
     @FK val city: City
+)
+
+data class Owner(
+    @PK val id: Int,
+    val firstName: String,
+    val lastName: String,
+    val address: Address,
+    val telephone: String?
 ) : Entity<Int>
 ```
 
@@ -155,8 +162,8 @@ This query:
 
 ```kotlin
 orm.query { """
-    SELECT ${User::class}
-    FROM ${User::class}
+    SELECT ${Owner::class}
+    FROM ${Owner::class}
 """ }
 ```
 
@@ -174,9 +181,14 @@ record City(@PK Integer id,
             @FK Country country
 ) implements Entity<Integer> {}
 
-record User(@PK Integer id,
-            String email,
-            @FK City city
+record Address(@Nullable String street,
+               @FK City city) {}
+
+record Owner(@PK Integer id,
+             String firstName,
+             String lastName,
+             Address address,
+             @Nullable String telephone
 ) implements Entity<Integer> {}
 ```
 
@@ -184,8 +196,8 @@ This query:
 
 ```java
 orm.query(RAW."""
-    SELECT \{User.class}
-    FROM \{User.class}""")
+    SELECT \{Owner.class}
+    FROM \{Owner.class}""")
 ```
 
 </TabItem>
@@ -194,32 +206,33 @@ orm.query(RAW."""
 Generates:
 
 ```sql
-SELECT u.id, u.email, u.city_id, c.name, c.country_id, co.name, co.code
-FROM "user" u
-INNER JOIN city c ON u.city_id = c.id
+SELECT o.id, o.first_name, o.last_name, o.street, o.city_id, c.name, c.country_id,
+       co.name, co.code, o.telephone
+FROM owner o
+INNER JOIN city c ON o.city_id = c.id
 INNER JOIN country co ON c.country_id = co.id
 ```
 
-Storm traverses the record type graph, following `@FK` annotations to generate the necessary joins. The ON clauses are derived automatically from the foreign key relationships.
+Storm traverses the record type graph, through the embedded `Address` and along the `@FK` annotations, to generate the necessary joins. The ON clauses are derived automatically from the foreign key relationships.
 
 ### Nullable FKs Become LEFT JOINs
 
-When an `@FK` field is nullable, Storm generates a LEFT JOIN instead of an INNER JOIN:
+When an `@FK` field is nullable, Storm generates a LEFT JOIN instead of an INNER JOIN. With the address's city optional:
 
 ```kotlin
-data class User(
-    @PK val id: Int,
-    val email: String,
-    @FK val city: City?  // Nullable FK
-) : Entity<Int>
+data class Address(
+    val street: String? = null,
+    @FK val city: City? = null  // Nullable FK
+)
 ```
 
 Generates:
 
 ```sql
-SELECT u.id, u.email, u.city_id, c.name, c.country_id, co.name, co.code
-FROM "user" u
-LEFT JOIN city c ON u.city_id = c.id
+SELECT o.id, o.first_name, o.last_name, o.street, o.city_id, c.name, c.country_id,
+       co.name, co.code, o.telephone
+FROM owner o
+LEFT JOIN city c ON o.city_id = c.id
 LEFT JOIN country co ON c.country_id = co.id
 ```
 
@@ -227,14 +240,15 @@ Nullability propagates through the relationship chain. If `city` is nullable, al
 
 ### Join Ordering
 
-Storm automatically orders joins so that LEFT JOINs appear after INNER JOINs. This prevents unintended filtering effects that can occur when outer joins precede inner joins.
+Storm automatically orders joins so that LEFT JOINs appear after INNER JOINs. This prevents unintended filtering effects that can occur when outer joins precede inner joins. Selecting a `Visit`, whose pet has a required type and an optional owner:
 
 ```
-FROM "user" u
-INNER JOIN department d ON u.department_id = d.id    -- INNER joins first
-INNER JOIN company co ON d.company_id = co.id
-LEFT JOIN city c ON u.city_id = c.id                 -- LEFT joins last
-LEFT JOIN country cn ON c.country_id = cn.id
+FROM visit v
+INNER JOIN pet p ON v.pet_id = p.id               -- INNER joins first
+INNER JOIN pet_type pt ON p.type_id = pt.id
+LEFT JOIN owner o ON p.owner_id = o.id            -- LEFT joins last
+LEFT JOIN city c ON o.city_id = c.id
+LEFT JOIN country co ON c.country_id = co.id
 ```
 
 ### Disabling Auto-Joins
@@ -243,9 +257,9 @@ Use `from(Class, autoJoin = false)` to disable automatic join generation:
 
 ```kotlin
 orm.query { """
-    SELECT ${User::class}
-    FROM ${from(User::class, autoJoin = false)}
-    JOIN ${table(City::class)} ON ${User_.city} = ${City_.id}
+    SELECT ${Owner::class}
+    FROM ${from(Owner::class, autoJoin = false)}
+    JOIN ${table(City::class)} ON ${Owner_.address.city} = ${City_.id}
 """ }
 ```
 

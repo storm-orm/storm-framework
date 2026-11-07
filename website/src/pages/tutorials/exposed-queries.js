@@ -17,37 +17,38 @@ const DESC =
 
 const CODE_EXPOSED_QUERIES = [
   C('// Filtering\n'),
-  K('val '), P('atAcme = '), F('transaction'), P(' {\n'),
-  P('    '), T('Users'), P('.'), F('selectAll'), P('()\n'),
-  P('        .'), F('where'), P(' { '), T('Users'), P('.email '), K('like'), P(' '), S('"%@acme.io"'), P(' }\n'),
-  P('        .'), F('map'), P(' { it['), T('Users'), P('.email] to it['), T('Users'), P('.name] }\n'),
+  K('val '), P('davises = '), F('transaction'), P(' {\n'),
+  P('    '), T('Owners'), P('.'), F('selectAll'), P('()\n'),
+  P('        .'), F('where'), P(' { '), T('Owners'), P('.lastName '), K('like'), P(' '), S('"Dav%"'), P(' }\n'),
+  P('        .'), F('map'), P(' { it['), T('Owners'), P('.firstName] to it['), T('Owners'), P('.lastName] }\n'),
   P('}\n\n'),
   C('// Aggregating: select the columns, group, map the rows\n'),
-  K('val '), P('perCity = '), F('transaction'), P(' {\n'),
-  P('    '), T('Users'), P('.'), F('select'), P('('), T('Users'), P('.cityId, '), T('Users'), P('.id.'), F('count'), P('())\n'),
-  P('        .'), F('groupBy'), P('('), T('Users'), P('.cityId)\n'),
-  P('        .'), F('map'), P(' { it['), T('Users'), P('.cityId] to it['), T('Users'), P('.id.'), F('count'), P('()] }\n'),
+  K('val '), P('perOwner = '), F('transaction'), P(' {\n'),
+  P('    '), T('Pets'), P('.'), F('select'), P('('), T('Pets'), P('.ownerId, '), T('Pets'), P('.id.'), F('count'), P('())\n'),
+  P('        .'), F('groupBy'), P('('), T('Pets'), P('.ownerId)\n'),
+  P('        .'), F('map'), P(' { it['), T('Pets'), P('.ownerId] to it['), T('Pets'), P('.id.'), F('count'), P('()] }\n'),
   P('}'),
 ].join('');
 
 const CODE_STORM_QUERIES = [
-  K('val '), P('users = orm.'), F('entity'), P('('), T('User'), P('::'), K('class'), P(')\n\n'),
-  C('// Filtering: the rows come back as User values\n'),
-  K('val '), P('atAcme = users.'), F('findAll'), P('('), T('User_'), P('.email '), K('like'), P(' '), S('"%@acme.io"'), P(')\n\n'),
+  K('val '), P('owners = orm.'), F('entity'), P('('), T('Owner'), P('::'), K('class'), P(')\n'),
+  K('val '), P('pets = orm.'), F('entity'), P('('), T('Pet'), P('::'), K('class'), P(')\n\n'),
+  C('// Filtering: the rows come back as Owner values\n'),
+  K('val '), P('davises = owners.'), F('findAll'), P('('), T('Owner_'), P('.lastName '), K('like'), P(' '), S('"Dav%"'), P(')\n\n'),
   C('// Aggregating: your select clause, a typed filter and grouping\n'),
-  K('data class '), T('CityCount'), P('('), K('val '), P('city: '), T('City'), P(', '), K('val '), P('count: '), T('Long'), P(')\n\n'),
-  K('val '), P('perCity = users\n'),
-  P('    .'), F('select'), P('('), T('CityCount'), P('::'), K('class'), P(') { '), S('"${City::class}, COUNT(*)"'), P(' }\n'),
-  P('    .'), F('groupBy'), P('('), T('User_'), P('.city)\n'),
+  K('data class '), T('OwnerCount'), P('('), K('val '), P('owner: '), T('Owner'), P(', '), K('val '), P('count: '), T('Long'), P(')\n\n'),
+  K('val '), P('perOwner = pets\n'),
+  P('    .'), F('select'), P('('), T('OwnerCount'), P('::'), K('class'), P(') { '), S('"${Owner::class}, COUNT(*)"'), P(' }\n'),
+  P('    .'), F('groupBy'), P('('), T('Pet_'), P('.owner)\n'),
   P('    .resultList'),
 ].join('');
 
 const SQL_STORM_QUERIES = [
-  QC('-- the aggregate: City expands to its columns, the join comes from the model'), '\n',
-  QK('SELECT'), ' c.id, c.name, c.population, ', QK('COUNT'), '(*)\n',
-  QK('FROM'), ' "user" u\n',
-  QK('INNER JOIN'), ' city c ', QK('ON'), ' u.city_id = c.id\n',
-  QK('GROUP BY'), ' c.id',
+  QC('-- the aggregate: Owner expands to its columns, the join comes from the model'), '\n',
+  QK('SELECT'), ' o.id, o.first_name, o.last_name, ', QK('COUNT'), '(*)\n',
+  QK('FROM'), ' pet p\n',
+  QK('INNER JOIN'), ' owner o ', QK('ON'), ' p.owner_id = o.id\n',
+  QK('GROUP BY'), ' o.id',
 ].join('');
 
 const CODE_EXPOSED_EXEC = [
@@ -96,10 +97,10 @@ ${navHtml('tutorials')}
 
   <h2><span class="hno">02</span>The everyday queries</h2>
   <p>Exposed's DSL writes filters and aggregates with compile-checked columns:</p>
-  ${editor({file: 'UserService.kt', tag: 'Kotlin · Exposed', code: CODE_EXPOSED_QUERIES})}
-  <p>The Storm versions read much the same. The rows hydrate into your types, so there is no mapping step, and the join in the aggregate comes from the <code>@FK</code> on <code>User</code>:</p>
-  ${editor({file: 'UserService.kt', tag: 'Kotlin · Storm', code: CODE_STORM_QUERIES, sql: SQL_STORM_QUERIES})}
-  <p><code>groupBy(User_.city)</code> groups by the city's key, in the form each database accepts. For text search over columns, Storm has <code>search</code> and <code>suggest</code> predicates; see <a class="tlink" href="/tutorials/search">Search and suggest</a>.</p>
+  ${editor({file: 'OwnerService.kt', tag: 'Kotlin · Exposed', code: CODE_EXPOSED_QUERIES})}
+  <p>The Storm versions read much the same. The rows hydrate into your types, so there is no mapping step, and the join in the aggregate comes from the <code>@FK</code> on <code>Pet</code>:</p>
+  ${editor({file: 'OwnerService.kt', tag: 'Kotlin · Storm', code: CODE_STORM_QUERIES, sql: SQL_STORM_QUERIES})}
+  <p><code>groupBy(Pet_.owner)</code> groups by the owner's key, in the form each database accepts. For text search over columns, Storm has <code>search</code> and <code>suggest</code> predicates; see <a class="tlink" href="/tutorials/search">Search and suggest</a>.</p>
 
   <h2><span class="hno">03</span>SQL as text</h2>
   <p>Exposed's DSL covers window functions too. When a query is written as SQL text, Exposed runs it with <code>exec()</code>, which binds the arguments you pass as column type and value pairs and hands the JDBC <code>ResultSet</code> to your code:</p>
@@ -111,8 +112,8 @@ ${navHtml('tutorials')}
   <h2><span class="hno">04</span>The translation table</h2>
   <table class="cmp">
     <tr><th>Exposed</th><th>Storm</th></tr>
-    <tr><td><code>selectAll().where { col like x }</code> plus <code>map</code></td><td><code>findAll(User_.email like x)</code></td></tr>
-    <tr><td><code>select(columns).groupBy(col)</code> plus <code>map</code></td><td><code>select(CityCount::class) { ... }.groupBy(...)</code>, typed rows</td></tr>
+    <tr><td><code>selectAll().where { col like x }</code> plus <code>map</code></td><td><code>findAll(Owner_.lastName like x)</code></td></tr>
+    <tr><td><code>select(columns).groupBy(col)</code> plus <code>map</code></td><td><code>select(OwnerCount::class) { ... }.groupBy(...)</code>, typed rows</td></tr>
     <tr><td><code>exec(sql, args) { resultSet -> ... }</code></td><td><code>query { sql }.resultList&lt;T&gt;()</code></td></tr>
     <tr><td>Every statement inside <code>transaction { }</code></td><td>Repositories read without one; <code>transaction { }</code> where atomicity matters</td></tr>
   </table>

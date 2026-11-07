@@ -16,67 +16,67 @@ const DESC =
   'joined in the same query, a Ref field loads when your code asks.';
 
 const CODE_EXPOSED_DAO = [
-  K('object '), T('Users'), P(' : '), T('IntIdTable'), P('('), S('"user"'), P(') {\n'),
-  P('    '), K('val '), P('name = '), F('varchar'), P('('), S('"name"'), P(', '), N('100'), P(')\n'),
-  P('    '), K('val '), P('city = '), F('reference'), P('('), S('"city_id"'), P(', '), T('Cities'), P(')\n'),
+  K('object '), T('Pets'), P(' : '), T('IntIdTable'), P('('), S('"pet"'), P(') {\n'),
+  P('    '), K('val '), P('name = '), F('varchar'), P('('), S('"name"'), P(', '), N('30'), P(')\n'),
+  P('    '), K('val '), P('owner = '), F('reference'), P('('), S('"owner_id"'), P(', '), T('Owners'), P(')\n'),
   P('}\n\n'),
-  K('class '), T('User'), P('(id: '), T('EntityID'), P('<'), T('Int'), P('>) : '), T('IntEntity'), P('(id) {\n'),
-  P('    '), K('companion object'), P(' : '), T('IntEntityClass'), P('<'), T('User'), P('>('), T('Users'), P(')\n'),
-  P('    '), K('var '), P('name '), K('by'), P(' '), T('Users'), P('.name\n'),
-  P('    '), K('var '), P('city '), K('by'), P(' '), T('City'), P(' '), K('referencedOn'), P(' '), T('Users'), P('.city   '), C('// loads lazily, on first read\n'),
+  K('class '), T('Pet'), P('(id: '), T('EntityID'), P('<'), T('Int'), P('>) : '), T('IntEntity'), P('(id) {\n'),
+  P('    '), K('companion object'), P(' : '), T('IntEntityClass'), P('<'), T('Pet'), P('>('), T('Pets'), P(')\n'),
+  P('    '), K('var '), P('name '), K('by'), P(' '), T('Pets'), P('.name\n'),
+  P('    '), K('var '), P('owner '), K('by'), P(' '), T('Owner'), P(' '), K('referencedOn'), P(' '), T('Pets'), P('.owner   '), C('// loads lazily, on first read\n'),
   P('}'),
 ].join('');
 
 const CODE_EXPOSED_LOOP = [
-  C('// Lazy by default: each city loads when first read\n'),
+  C('// Lazy by default: each owner loads when first read\n'),
   K('val '), P('lines = '), F('transaction'), P(' {\n'),
-  P('    '), T('User'), P('.'), F('all'), P('().'), F('map'), P(' { '), S('"${it.name} lives in ${it.city.name}"'), P(' }   '), C('// 1 + N\n'),
+  P('    '), T('Pet'), P('.'), F('all'), P('().'), F('map'), P(' { '), S('"${it.name} belongs to ${it.owner.lastName}"'), P(' }   '), C('// 1 + N\n'),
   P('}\n\n'),
   C('// The fix: eager loading, added at this call site\n'),
   K('val '), P('fixed = '), F('transaction'), P(' {\n'),
-  P('    '), T('User'), P('.'), F('all'), P('().'), F('with'), P('('), T('User'), P('::city)\n'),
-  P('        .'), F('map'), P(' { '), S('"${it.name} lives in ${it.city.name}"'), P(' }\n'),
+  P('    '), T('Pet'), P('.'), F('all'), P('().'), F('with'), P('('), T('Pet'), P('::owner)\n'),
+  P('        .'), F('map'), P(' { '), S('"${it.name} belongs to ${it.owner.lastName}"'), P(' }\n'),
   P('}'),
 ].join('');
 
 const SQL_EXPOSED_LOOP = [
-  QC('-- without with(): one query per city on first read'), '\n',
-  QK('SELECT'), ' ... ', QK('FROM'), ' "user"\n',
-  QK('SELECT'), ' ... ', QK('FROM'), ' city ', QK('WHERE'), ' city.id = ', QQ('?'), '\n',
-  QK('SELECT'), ' ... ', QK('FROM'), ' city ', QK('WHERE'), ' city.id = ', QQ('?'), '\n',
+  QC('-- without with(): one query per owner on first read'), '\n',
+  QK('SELECT'), ' ... ', QK('FROM'), ' pet\n',
+  QK('SELECT'), ' ... ', QK('FROM'), ' owner ', QK('WHERE'), ' owner.id = ', QQ('?'), '\n',
+  QK('SELECT'), ' ... ', QK('FROM'), ' owner ', QK('WHERE'), ' owner.id = ', QQ('?'), '\n',
   QC('-- ...'), '\n\n',
-  QC('-- with(User::city): the references batch into a second query'), '\n',
-  QK('SELECT'), ' ... ', QK('FROM'), ' "user"\n',
-  QK('SELECT'), ' ... ', QK('FROM'), ' city ', QK('WHERE'), ' city.id ', QK('IN'), ' (', QQ('?'), ', ', QQ('?'), ', ', QQ('?'), ')',
+  QC('-- with(Pet::owner): the references batch into a second query'), '\n',
+  QK('SELECT'), ' ... ', QK('FROM'), ' pet\n',
+  QK('SELECT'), ' ... ', QK('FROM'), ' owner ', QK('WHERE'), ' owner.id ', QK('IN'), ' (', QQ('?'), ', ', QQ('?'), ', ', QQ('?'), ')',
 ].join('');
 
 const CODE_STORM_MODEL = [
   C('// The loading policy is declared once, in the model\n'),
-  K('data class '), T('User'), P('(\n'),
+  K('data class '), T('Pet'), P('(\n'),
   P('    '), A('@PK'), P(' '), K('val '), P('id: '), T('Int'), P(' = '), N('0'), P(',\n'),
   P('    '), K('val '), P('name: '), T('String'), P(',\n'),
-  P('    '), A('@FK'), P(' '), K('val '), P('city: '), T('City'), P(',   '), C('// entity field: joined in the same query\n'),
+  P('    '), A('@FK'), P(' '), K('val '), P('owner: '), T('Owner'), P(',   '), C('// entity field: joined in the same query\n'),
   P(') : '), T('Entity'), P('<'), T('Int'), P('>\n\n'),
-  K('val '), P('lines = orm.'), F('entity'), P('('), T('User'), P('::'), K('class'), P(').'), F('findAll'), P('()\n'),
-  P('    .'), F('map'), P(' { '), S('"${it.name} lives in ${it.city.name}"'), P(' }   '), C('// no database access in the loop'),
+  K('val '), P('lines = orm.'), F('entity'), P('('), T('Pet'), P('::'), K('class'), P(').'), F('findAll'), P('()\n'),
+  P('    .'), F('map'), P(' { '), S('"${it.name} belongs to ${it.owner.lastName}"'), P(' }   '), C('// no database access in the loop'),
 ].join('');
 
 const SQL_STORM_MODEL = [
   QC('-- one query, for every caller'), '\n',
-  QK('SELECT'), ' u.id, u.name, c.id, c.name\n',
-  QK('FROM'), ' "user" u\n',
-  QK('INNER JOIN'), ' city c ', QK('ON'), ' u.city_id = c.id',
+  QK('SELECT'), ' p.id, p.name, o.id, o.first_name, o.last_name\n',
+  QK('FROM'), ' pet p\n',
+  QK('INNER JOIN'), ' owner o ', QK('ON'), ' p.owner_id = o.id',
 ].join('');
 
 const CODE_STORM_REF = [
   C('// Laziness, where you want it, is a field type\n'),
-  K('data class '), T('User'), P('(\n'),
+  K('data class '), T('Pet'), P('(\n'),
   P('    '), A('@PK'), P(' '), K('val '), P('id: '), T('Int'), P(' = '), N('0'), P(',\n'),
   P('    '), K('val '), P('name: '), T('String'), P(',\n'),
-  P('    '), A('@FK'), P(' '), K('val '), P('city: '), T('Ref'), P('<'), T('City'), P('>,   '), C('// reads city_id, joins nothing\n'),
+  P('    '), A('@FK'), P(' '), K('val '), P('owner: '), T('Ref'), P('<'), T('Owner'), P('>,   '), C('// reads owner_id, joins nothing\n'),
   P(') : '), T('Entity'), P('<'), T('Int'), P('>\n\n'),
-  K('val '), P('user = orm.'), F('entity'), P('('), T('User'), P('::'), K('class'), P(').'), F('getById'), P('('), N('1'), P(')\n'),
-  K('val '), P('city = user.city.'), F('fetch'), P('()   '), C('// loads the city here, one query'),
+  K('val '), P('pet = orm.'), F('entity'), P('('), T('Pet'), P('::'), K('class'), P(').'), F('getById'), P('('), N('1'), P(')\n'),
+  K('val '), P('owner = pet.owner.'), F('fetch'), P('()   '), C('// loads the owner here, one query'),
 ].join('');
 
 const BODY = `
@@ -89,11 +89,11 @@ ${navHtml('tutorials')}
   <div class="meta"><span>Series · Exposed to Storm</span><span>5 min read</span><span>Kotlin</span></div>
 
   <h2><span class="hno">01</span>The task</h2>
-  <p>Render 50 users with the name of the city each lives in. Two tables, one foreign key. The question is when the city loads.</p>
+  <p>Render 50 pets with the last name of each pet's owner. Two tables, one foreign key. The question is when the owner loads.</p>
 
   <h2><span class="hno">02</span>The Exposed way</h2>
   <p>Exposed's DAO layer models the relation with a delegated property. The reference is lazy by design and loads when first read:</p>
-  ${editor({file: 'User.kt', tag: 'Kotlin · Exposed DAO', code: CODE_EXPOSED_DAO})}
+  ${editor({file: 'Pet.kt', tag: 'Kotlin · Exposed DAO', code: CODE_EXPOSED_DAO})}
   <p>Read in a loop, each reference loads with its own query. The remedy is <code>.with()</code>, which loads all the references in one <code>IN</code> query:</p>
   ${editor({file: 'FeedService.kt', tag: 'Kotlin · Exposed DAO', code: CODE_EXPOSED_LOOP, sql: SQL_EXPOSED_LOOP})}
   <p>The mechanism is efficient. The decision sits at the call site: each query that reads the relation has to add <code>.with()</code>, and a query without it looks almost the same as one with it, while one runs two statements and the other 1 + N. References loaded this way are cached in the transaction that loaded them, so results that leave the transaction need their data read first.</p>
@@ -103,7 +103,7 @@ ${navHtml('tutorials')}
   ${editor({file: 'FeedService.kt', tag: 'Kotlin · Storm', code: CODE_STORM_MODEL, sql: SQL_STORM_MODEL})}
   <p>There is no eager-loading call to add, because the field is not lazy. Where deferring the load is the right choice, that is also a field type:</p>
   ${editor({file: 'Entities.kt', tag: 'Kotlin · Storm', code: CODE_STORM_REF})}
-  <p>A loop that fetches a <code>Ref</code> per row is an N+1 you can see in the code. A query that needs the cities resolves them in the same statement with <code>select().fetch(User_.city)</code>, and in development the advice log reports a loop of single fetches (<a class="tlink" href="/tutorials/advice">Statement advice</a>). The <a class="tlink" href="/tutorials/n-plus-one">JPA edition of this tutorial</a> covers both in more depth, and query counts are one-line assertions with <a class="tlink" href="/tutorials/testing">SqlCapture</a>.</p>
+  <p>A loop that fetches a <code>Ref</code> per row is an N+1 you can see in the code. A query that needs the owners resolves them in the same statement with <code>select().fetch(Pet_.owner)</code>, and in development the advice log reports a loop of single fetches (<a class="tlink" href="/tutorials/advice">Statement advice</a>). The <a class="tlink" href="/tutorials/n-plus-one">JPA edition of this tutorial</a> covers both in more depth, and query counts are one-line assertions with <a class="tlink" href="/tutorials/testing">SqlCapture</a>.</p>
 
   <h2><span class="hno">04</span>Side by side</h2>
   <table class="cmp">

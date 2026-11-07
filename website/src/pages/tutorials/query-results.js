@@ -103,7 +103,7 @@ ${navHtml('tutorials')}
   <h2><span class="hno">03</span>The Storm way</h2>
   <p>In Storm a result type is a data class whose constructor matches the selected columns by position. The query builder takes it with a select clause of your own, and the filter and grouping stay metamodel paths:</p>
   ${editor({file: 'ReportService.kt', tag: 'Kotlin · Storm', code: CODE_STORM_BUILDER, sql: SQL_STORM_BUILDER})}
-  <p>The result is a list of immutable <code>CityCount</code> values, ready to serialize. <code>groupBy</code> also takes a relationship, such as <code>User_.city</code>, and then groups by the related row's key in the form each database accepts.</p>
+  <p>The result is a list of immutable <code>CityCount</code> values, ready to serialize. <code>groupBy</code> also takes a relationship, such as <code>Pet_.owner</code>, and then groups by the related row's key in the form each database accepts.</p>
 
   <h2><span class="hno">04</span>Full SQL maps the same way</h2>
   <p>A SQL template maps its rows by position too, onto a class defined next to the query:</p>

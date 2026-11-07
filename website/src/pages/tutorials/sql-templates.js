@@ -44,19 +44,19 @@ const SQL_STORM_QUERY = [
 
 const CODE_STORM_TEMPLATE = [
   C('// A type expands to its columns, or to its table and joins\n'),
-  K('val '), P('users = orm.'), F('query'), P(' { '), S('"""'), P('\n'),
-  P('    '), K('SELECT'), P(' '), T('${User::class}'), P('\n'),
-  P('    '), K('FROM'), P(' '), T('${User::class}'), P('\n'),
-  P('    '), K('WHERE'), P(' '), T('${User_.city.name}'), P(' = '), T('$cityName'), P('\n'),
-  S('"""'), P(' }.'), F('resultList'), P('<'), T('User'), P('>()'),
+  K('val '), P('owners = orm.'), F('query'), P(' { '), S('"""'), P('\n'),
+  P('    '), K('SELECT'), P(' '), T('${Owner::class}'), P('\n'),
+  P('    '), K('FROM'), P(' '), T('${Owner::class}'), P('\n'),
+  P('    '), K('WHERE'), P(' '), T('${Owner_.address.city.name}'), P(' = '), T('$cityName'), P('\n'),
+  S('"""'), P(' }.'), F('resultList'), P('<'), T('Owner'), P('>()'),
 ].join('');
 
 const SQL_STORM_TEMPLATE = [
-  QC('-- User expands to its columns and those of its city, FROM gains the @FK join,'), '\n',
-  QC('-- and User_.city.name resolves to the city alias'), '\n',
-  QK('SELECT'), ' u.id, u.email, u.birth_date, u.street, u.postal_code, c.id, c.name, c.population\n',
-  QK('FROM'), ' "user" u\n',
-  QK('INNER JOIN'), ' city c ', QK('ON'), ' u.city_id = c.id\n',
+  QC('-- Owner expands to its columns and those of its city, FROM gains the @FK join,'), '\n',
+  QC('-- and Owner_.address.city.name resolves to the city alias'), '\n',
+  QK('SELECT'), ' o.id, o.first_name, o.last_name, o.street, c.id, c.name, c.population, o.telephone\n',
+  QK('FROM'), ' owner o\n',
+  QK('LEFT JOIN'), ' city c ', QK('ON'), ' o.city_id = c.id\n',
   QK('WHERE'), ' c.name = ', QQ('?'),
 ].join('');
 
@@ -71,7 +71,7 @@ const CODE_STORM_DATA = [
   K('val '), P('pets = orm.'), F('query'), P(' { '), S('"""'), P('\n'),
   P('    '), K('SELECT'), P(' '), T('${PetWithOwner::class}'), P('\n'),
   P('    '), K('FROM'), P(' '), T('${PetWithOwner::class}'), P('\n'),
-  P('    '), K('WHERE'), P(' '), T('${Owner_.city}'), P(' = '), T('$city'), P('\n'),
+  P('    '), K('WHERE'), P(' '), T('${Owner_.address.city}'), P(' = '), T('$city'), P('\n'),
   S('"""'), P(' }.'), F('resultList'), P('<'), T('PetWithOwner'), P('>()'),
 ].join('');
 
@@ -85,7 +85,7 @@ ${navHtml('tutorials')}
   <div class="meta"><span>Series · JPA to Storm</span><span>6 min read</span><span>Kotlin</span></div>
 
   <h2><span class="hno">01</span>The task</h2>
-  <p>A report ranks cities by population with a window function, <code>RANK() OVER</code>, and the team writes it in the database's SQL. A second query reads users by the name of their city, and should not repeat the column list and the join by hand.</p>
+  <p>A report ranks cities by population with a window function, <code>RANK() OVER</code>, and the team writes it in the database's SQL. A second query reads owners by the name of their city, and should not repeat the column list and the join by hand.</p>
 
   <h2><span class="hno">02</span>The JPA way</h2>
   <p>JPA runs SQL through a native query. Spring Data maps its rows onto an interface projection:</p>
@@ -99,7 +99,7 @@ ${navHtml('tutorials')}
 
   <h2><span class="hno">04</span>Templates that know your model</h2>
   <p>A template also takes entity types and metamodel paths. A type in the select list expands to its columns; in the FROM clause it expands to its table and the joins its <code>@FK</code> fields declare. A metamodel path resolves to the column on the right alias:</p>
-  ${editor({file: 'UserService.kt', tag: 'Kotlin · Storm', code: CODE_STORM_TEMPLATE, sql: SQL_STORM_TEMPLATE})}
+  ${editor({file: 'OwnerService.kt', tag: 'Kotlin · Storm', code: CODE_STORM_TEMPLATE, sql: SQL_STORM_TEMPLATE})}
   <p>The parts you write stay SQL, and the column lists and joins come from the model in the same statement. A renamed field changes the metamodel, so a path to it no longer compiles.</p>
 
   <h2><span class="hno">05</span>One-off result shapes</h2>

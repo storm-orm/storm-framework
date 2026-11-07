@@ -131,12 +131,12 @@ Optional<User> user = orm.query(RAW."""
 
 Storm supports two forms of metamodel references: **nested paths** and **short form**. They resolve differently: a nested path is always unambiguous, while a short form can fail at runtime if the table it names appears more than once in the entity graph.
 
-Consider an entity graph where `User` has a `city` field pointing to `City`, which has a `country` field pointing to `Country`:
+Consider an entity graph where `Owner` has an embedded `address` whose `city` field points to `City`, which has a `country` field pointing to `Country`:
 
 ```
-┌────────┐       ┌────────┐       ┌──────────┐
-│  User  │──────►│  City  │──────►│ Country  │
-└────────┘ city  └────────┘country└──────────┘
+┌─────────┐              ┌────────┐       ┌──────────┐
+│  Owner  │─────────────►│  City  │──────►│ Country  │
+└─────────┘ address.city └────────┘country└──────────┘
 ```
 
 ### Nested Paths (Fully Qualified)
@@ -144,29 +144,30 @@ Consider an entity graph where `User` has a `city` field pointing to `City`, whi
 Nested paths traverse from the root entity through relationships by chaining field accessors:
 
 ```kotlin
-// Start from User, traverse city → country → name
-User_.city.country.name eq "United States"
+// Start from Owner, traverse address → city → country → name
+Owner_.address.city.country.name eq "United States"
 ```
 
-Each step in the path corresponds to a foreign key relationship in your entity model:
+Each step in the path corresponds to a field in your entity model:
 
 ```
-User_.city          → User has FK to City
-      .country      → City has FK to Country
-             .name  → Country.name column
+Owner_.address                    → Owner embeds Address
+              .city               → Address has FK to City
+                   .country       → City has FK to Country
+                           .name  → Country.name column
 ```
 
 **Why nested paths are always unambiguous:**
 
-When you write `User_.city.country.name`, Storm knows exactly which tables to join and in what order. Even if `Country` appears multiple times in your entity graph (e.g., via different relationships), the nested path explicitly identifies which occurrence you mean.
+When you write `Owner_.address.city.country.name`, Storm knows exactly which tables to join and in what order. Even if `Country` appears multiple times in your entity graph (e.g., via different relationships), the nested path explicitly identifies which occurrence you mean.
 
-Storm automatically generates the necessary JOINs based on the path. For the example above:
+Storm automatically generates the necessary JOINs based on the path. For the example above, the address's city is nullable, so the city and everything joined through it use outer joins:
 
 ```sql
 SELECT ...
-FROM "user" u
-INNER JOIN city c ON u.city_id = c.id
-INNER JOIN country co ON c.country_id = co.id
+FROM owner o
+LEFT JOIN city c ON o.city_id = c.id
+LEFT JOIN country co ON c.country_id = co.id
 WHERE co.name = 'United States'
 ```
 
@@ -292,7 +293,7 @@ val users = orm.entity(User::class)
 
 When resolving a metamodel reference, Storm follows this order:
 
-1. **Nested path.** If a path is specified (e.g., `User_.city.country`), use the alias for that specific traversal.
+1. **Nested path.** If a path is specified (e.g., `Owner_.address.city.country`), use the alias for that specific traversal.
 2. **Unique table lookup.** If short form (e.g., `Country_`), check whether the entity graph or registered joins hold a single occurrence of the table that you could mean.
 3. **Error.** If more than one distinct occurrence exists, throw an exception indicating the ambiguity.
 
@@ -342,9 +343,10 @@ A path is not the only way to reach the referenced table. Naming the table by ty
 A reference may point back at a table already on the path, either at the record that declares it or through a longer cycle. Such a path joins the table to itself, and each occurrence is joined under its own alias, so a predicate or ordering resolves against the occurrence the path reached:
 
 ```kotlin
-// Users invited by Alice. The user table is joined to itself once.
-User_.invitedBy.name eq "Alice"
-// SELECT ... FROM "user" u LEFT JOIN "user" u1 ON u.invited_by_id = u1.id WHERE u1.name = ?
+// Given an Owner with @FK val referredBy: Ref<Owner>?
+// Owners referred by Alice. The owner table is joined to itself once.
+Owner_.referredBy.firstName eq "Alice"
+// SELECT ... FROM owner o LEFT JOIN owner o1 ON o.referred_by_id = o1.id WHERE o1.first_name = ?
 ```
 
 A nullable reference is joined with an outer join, so ordering by a column beyond it keeps rows whose reference is null.
@@ -352,19 +354,19 @@ A nullable reference is joined with an outer join, so ordering by a column beyon
 **The typed metamodel navigates a cycle two hops deep.** Generated metamodels construct their children eagerly, so a class cannot reference itself without recursing forever. The generator therefore emits two classes for a cyclic type, a reference metamodel and a navigation metamodel, and breaks the cycle at a navigation leaf below them:
 
 ```
-User_.invitedBy                             reference metamodel, with navigation children (id, name, invitedBy)
-User_.invitedBy.name                        compiles
-User_.invitedBy.invitedBy.name              compiles, joining the user table to itself twice
-User_.invitedBy.invitedBy.invitedBy         exists, but is a navigation leaf and has no children
-User_.invitedBy.invitedBy.invitedBy.name    does not compile
+Owner_.referredBy                                   reference metamodel, with navigation children (id, firstName, ..., referredBy)
+Owner_.referredBy.firstName                         compiles
+Owner_.referredBy.referredBy.firstName              compiles, joining the owner table to itself twice
+Owner_.referredBy.referredBy.referredBy             exists, but is a navigation leaf and has no children
+Owner_.referredBy.referredBy.referredBy.firstName   does not compile
 ```
 
 **The query engine itself has no depth limit.** To navigate a cycle beyond the generated depth, name the path as a string; the engine adds one join per hop:
 
 ```kotlin
-orm.entity(User::class)
+orm.entity(Owner::class)
     .select()
-    .where(Metamodel.of(User::class.java, "invitedBy.invitedBy.invitedBy.name") eq "Alice")
+    .where(Metamodel.of(Owner::class.java, "referredBy.referredBy.referredBy.firstName") eq "Alice")
     .resultList
 ```
 

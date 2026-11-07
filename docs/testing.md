@@ -538,15 +538,15 @@ Statements are captured around execution, so each carries its duration and a sta
 
 ```java
 capture.record(() -> {
-    List<Owner> owners = orm.entity(Owner.class).select()
-            .fetch(Owner_.city)
+    List<Pet> pets = orm.entity(Pet.class).select()
+            .fetch(Pet_.owner)
             .getResultList();
-    owners.forEach(owner -> owner.city().fetch());
+    pets.forEach(pet -> pet.owner().fetch());
 });
 assertEquals(0, capture.count(CapturedSql.Origin.FETCH));
 ```
 
-Without the `fetch(Owner_.city)` the same assertion fails with one resolution per distinct city, which is the regression such a test exists to catch.
+Without the `fetch(Pet_.owner)` the same assertion fails with one resolution per distinct owner, which is the regression such a test exists to catch.
 
 Query the capture results using `count()`, `statements()`, or their filtered variants:
 

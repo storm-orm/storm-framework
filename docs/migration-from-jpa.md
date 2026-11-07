@@ -32,24 +32,25 @@ The following example demonstrates migrating a complete JPA entity with relation
 
 ```java
 @Entity
-@Table(name = "user")
-public class User {
+@Table(name = "pet")
+public class Pet {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
-    private Long id;
-
-    @Column(nullable = false, unique = true)
-    private String email;
+    private Integer id;
 
     @Column(nullable = false)
     private String name;
 
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "city_id")
-    private City city;
+    @Column(name = "birth_date", nullable = false)
+    private LocalDate birthDate;
 
-    @Column(name = "created_at")
-    private LocalDateTime createdAt;
+    @ManyToOne(fetch = FetchType.LAZY, optional = false)
+    @JoinColumn(name = "type_id")
+    private PetType type;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "owner_id")
+    private Owner owner;
 
     // Getters and setters (15+ lines omitted)...
 }
@@ -61,31 +62,31 @@ public class User {
 <TabItem value="kotlin" label="Kotlin" default>
 
 ```kotlin
-data class User(
-    @PK val id: Long = 0,
-    val email: String,
+data class Pet(
+    @PK val id: Int = 0,
     val name: String,
-    @FK val city: City?,
-    val createdAt: LocalDateTime?
-) : Entity<Long>
+    val birthDate: LocalDate,
+    @FK val type: PetType,
+    @FK val owner: Owner?
+) : Entity<Int>
 ```
 
-Storm derives the table name (`user`) from the class name and column names (`email`, `name`, `city_id`, `created_at`) from the field names, both using camelCase-to-snake_case conversion. The `@PK` annotation marks the primary key, and `@FK` marks the foreign key relationship. No `@Column`, `@Table`, `@GeneratedValue`, or `@JoinColumn` annotations are needed because the defaults match. The default value `id: Long = 0` tells Storm that the ID is auto-generated.
+Storm derives the table name (`pet`) from the class name and column names (`name`, `birth_date`, `type_id`, `owner_id`) from the field names, both using camelCase-to-snake_case conversion. The `@PK` annotation marks the primary key, and `@FK` marks the foreign key relationships. No `@Column`, `@Table`, `@GeneratedValue`, or `@JoinColumn` annotations are needed because the defaults match. The default value `id: Int = 0` tells Storm that the ID is auto-generated.
 
 </TabItem>
 <TabItem value="java" label="Java">
 
 ```java
-record User(
-    @PK Long id,
-    String email,
+record Pet(
+    @PK Integer id,
     String name,
-    @Nullable @FK City city,
-    @Nullable LocalDateTime createdAt
-) implements Entity<Long> {}
+    LocalDate birthDate,
+    @FK PetType type,
+    @Nullable @FK Owner owner
+) implements Entity<Integer> {}
 ```
 
-Storm derives the table name (`user`) from the class name and column names (`email`, `name`, `city_id`, `created_at`) from the field names, both using camelCase-to-snake_case conversion. The `@PK` annotation marks the primary key, and `@FK` marks the foreign key relationship. No `@Column`, `@Table`, `@GeneratedValue`, or `@JoinColumn` annotations are needed because the defaults match. Passing `null` for the ID tells Storm that the ID is auto-generated.
+Storm derives the table name (`pet`) from the class name and column names (`name`, `birth_date`, `type_id`, `owner_id`) from the field names, both using camelCase-to-snake_case conversion. The `@PK` annotation marks the primary key, and `@FK` marks the foreign key relationships. No `@Column`, `@Table`, `@GeneratedValue`, or `@JoinColumn` annotations are needed because the defaults match. Passing `null` for the ID tells Storm that the ID is auto-generated.
 
 </TabItem>
 </Tabs>
@@ -94,14 +95,14 @@ Storm derives the table name (`user`) from the class name and column names (`ema
 
 ```java
 @Repository
-public interface UserRepository extends JpaRepository<User, Long> {
+public interface PetRepository extends JpaRepository<Pet, Integer> {
 
-    Optional<User> findByEmail(String email);
+    List<Pet> findByName(String name);
 
-    List<User> findByCityOrderByNameAsc(City city);
+    List<Pet> findByOwnerOrderByNameAsc(Owner owner);
 
-    @Query("SELECT u FROM User u WHERE u.createdAt > :since")
-    List<User> findRecentUsers(@Param("since") LocalDateTime since);
+    @Query("SELECT p FROM Pet p WHERE p.birthDate > :since")
+    List<Pet> findBornAfter(@Param("since") LocalDate since);
 }
 ```
 
@@ -111,19 +112,19 @@ public interface UserRepository extends JpaRepository<User, Long> {
 <TabItem value="kotlin" label="Kotlin" default>
 
 ```kotlin
-interface UserRepository : EntityRepository<User, Long> {
+interface PetRepository : EntityRepository<Pet, Int> {
 
-    fun findByEmail(email: String): User? =
-        find(User_.email eq email)
+    fun findByName(name: String): List<Pet> =
+        findAll(Pet_.name eq name)
 
-    fun findByCity(city: City): List<User> =
+    fun findByOwner(owner: Owner): List<Pet> =
         select()
-            .where(User_.city eq city)
-            .orderBy(User_.name)
+            .where(Pet_.owner eq owner)
+            .orderBy(Pet_.name)
             .resultList
 
-    fun findRecentUsers(since: LocalDateTime): List<User> =
-        findAll(User_.createdAt gt since)
+    fun findBornAfter(since: LocalDate): List<Pet> =
+        findAll(Pet_.birthDate greater since)
 }
 ```
 
@@ -131,24 +132,24 @@ interface UserRepository : EntityRepository<User, Long> {
 <TabItem value="java" label="Java">
 
 ```java
-interface UserRepository extends EntityRepository<User, Long> {
+interface PetRepository extends EntityRepository<Pet, Integer> {
 
-    default Optional<User> findByEmail(String email) {
+    default List<Pet> findByName(String name) {
         return select()
-            .where(User_.email, EQUALS, email)
-            .getOptionalResult();
-    }
-
-    default List<User> findByCity(City city) {
-        return select()
-            .where(User_.city, EQUALS, city)
-            .orderBy(User_.name)
+            .where(Pet_.name, EQUALS, name)
             .getResultList();
     }
 
-    default List<User> findRecentUsers(LocalDateTime since) {
+    default List<Pet> findByOwner(Owner owner) {
         return select()
-            .where(User_.createdAt, GREATER_THAN, since)
+            .where(Pet_.owner, EQUALS, owner)
+            .orderBy(Pet_.name)
+            .getResultList();
+    }
+
+    default List<Pet> findBornAfter(LocalDate since) {
+        return select()
+            .where(Pet_.birthDate, GREATER_THAN, since)
             .getResultList();
     }
 }
@@ -350,13 +351,13 @@ val cityName = user.city.fetch().name
 
 JPA approach:
 ```java
-@OneToMany(mappedBy = "user")
-private List<Order> orders;
+@OneToMany(mappedBy = "owner")
+private List<Pet> pets;
 ```
 
 Storm approach (query the "many" side):
 ```kotlin
-val orders = orm.findAll(Order_.user eq user)
+val pets = orm.findAll(Pet_.owner eq owner)
 ```
 
 Without child collections there is also nothing to cascade over. Persisting a graph of related entities is a per-call decision made with [write sets](write-sets.md); [JPA Cascades vs Write Sets](jpa-cascades-vs-write-sets.md) walks through the translation and the reasoning behind it.
