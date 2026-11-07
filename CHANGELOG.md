@@ -78,6 +78,10 @@ for the CLI, to [npm](https://www.npmjs.com/package/@storm-orm/cli)
 - Fixed `TransactionDispatchers.shutdown()`, after which a suspending transaction was refused on Java 24 and up.
 - Fixed a lazily resolved template setting failing with `NullPointerException: supplier` when several threads read it first at once, and a call site naming GraalVM's frame, or skipping an application package under `st.orm.` (#782).
 - Fixed a converter error naming the field's type instead of the record that declares the field.
+- Added bulk `removeById`: `removeById(Iterable)`, `removeById(Stream)` and `removeById(Stream, batchSize)` in Java, `removeById(Iterable)` and suspending `removeById(Flow)` and `removeById(Flow, batchSize)` in Kotlin (#862). Like `removeByRef`, it is idempotent and removes each batch with one `DELETE ... WHERE id IN (...)`, joined inheritance included.
+- The documentation of batch `remove(entities)` states its strict contract: an entity whose row is gone throws `UnexpectedRowCountException`, as `remove(entity)` does; `removeById` and `removeByRef` are the idempotent counterparts (#862).
+- Fixed batch writes failing on a driver that reports `Statement.SUCCESS_NO_INFO` for a successful statement whose row count it does not know (#862). `EXECUTE_FAILED` and other counts still fail. A batch update of a joined entity with such a count checks the other extension tables for a changed type.
+- Fixed the Kotlin `remove`, `removeByRef` and `removeById` flows with a batch size above the default splitting each batch at the default size.
 
 ## [1.15.0] - 2026-10-15
 

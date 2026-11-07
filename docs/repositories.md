@@ -152,6 +152,33 @@ Storm rejects a DELETE or UPDATE built without a condition, throwing a `Persiste
 
 Storm uses dirty checking to determine which columns to include in the UPDATE statement. See [Dirty Checking](dirty-checking.md) for configuration details.
 
+### Removing by Id or Ref
+
+`remove(entity)` and `remove(entities)` are strict: holding an entity implies that its row exists, so a row that is gone throws an `UnexpectedRowCountException`. `removeById` and `removeByRef` are their idempotent counterparts: an id or ref without a row is not an error. Use them for a removal that may race with a concurrent delete or may run more than once. Both take a single key or many: a collection, a Java `Stream` or a Kotlin `Flow`, removed in batches with one DELETE per batch.
+
+<Tabs groupId="language">
+<TabItem value="kotlin" label="Kotlin" default>
+
+```kotlin
+val users = orm.entity(User::class)
+users.removeById(userId)
+users.removeById(listOf(1, 2, 3))
+users.removeByRef(userRefs)
+```
+
+</TabItem>
+<TabItem value="java" label="Java">
+
+```java
+var users = orm.entity(User.class);
+users.removeById(userId);
+users.removeById(List.of(1, 2, 3));
+users.removeByRef(userRefs);
+```
+
+</TabItem>
+</Tabs>
+
 ### Updating Columns by Condition
 
 `update(entity)` writes an entity you read. To set a few columns on rows you have not read, use the `update()` builder, the counterpart of `delete()`: `set` names the columns through the metamodel and the conditions select the rows, in one statement.

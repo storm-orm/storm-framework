@@ -293,7 +293,7 @@ A write set also pulls in unsaved entities reachable from the ones you pass, so 
 
 ### Remove Callbacks
 
-`beforeRemove` and `afterRemove` receive an entity, so they fire where the operation has one: `remove(entity)` and its collection and stream forms. `removeById`, `removeByRef`, `removeAll`, the `removeByRef` collection forms, and the `delete()` query builder identify rows by key or by predicate rather than by entity, so there is no entity to hand to a callback and these callbacks do not fire.
+`beforeRemove` and `afterRemove` receive an entity, so they fire where the operation has one: `remove(entity)` and its collection and stream forms. `removeById`, `removeByRef`, `removeAll`, the `removeById` and `removeByRef` collection forms, and the `delete()` query builder identify rows by key or by predicate rather than by entity, so there is no entity to hand to a callback and these callbacks do not fire.
 
 This follows the same principle as the "after" callback state above. Removing by key is one statement; reading the row first so a callback could observe it would make every removal by id a select plus a delete. Where a callback needs the entity, remove by entity.
 

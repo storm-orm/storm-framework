@@ -6,6 +6,7 @@ import io.kotest.matchers.nulls.shouldBeNull
 import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.types.shouldBeInstanceOf
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.runBlocking
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.extension.ExtendWith
@@ -541,6 +542,35 @@ internal open class PolymorphicTest(
         val refs = ids.map { id -> Ref.of(JoinedAnimal::class.java, id) }
         animals.removeByRef(refs)
         animals.count() shouldBe before - 2
+    }
+
+    @Test
+    fun `batch removeById joined animals`() {
+        val animals = orm.entity(JoinedAnimal::class)
+        val ids = animals.insertAndFetchIds(
+            listOf(
+                JoinedCat(name = "IdCat", indoor = true),
+                JoinedDog(name = "IdDog", weight = 7),
+            ),
+        )
+        val before = animals.count()
+        animals.removeById(ids + 99999)
+        animals.count() shouldBe before - 2
+    }
+
+    @Test
+    fun `batch removeById flow joined animals`(): Unit = runBlocking {
+        val animals = orm.entity(JoinedAnimal::class)
+        val ids = animals.insertAndFetchIds(
+            listOf(
+                JoinedCat(name = "IdFlowCat", indoor = false),
+                JoinedDog(name = "IdFlowDog", weight = 9),
+            ),
+        )
+        val before = animals.count()
+        animals.removeById(flowOf(ids[0], 99999, ids[1]), 2)
+        animals.count() shouldBe before - 2
+        ids.forEach { animals.findById(it).shouldBeNull() }
     }
 
     // Batch DML Tests for Joined Table Inheritance without @Discriminator

@@ -75,7 +75,7 @@ orm.entity(User.class).update(updatedUsers);
 
 ### Batch Remove
 
-Batch removes delete multiple entities in a single round-trip. Storm generates a batched DELETE using each entity's primary key.
+Batch removes delete multiple entities in a single round-trip. Storm generates a batched DELETE using each entity's primary key. Like `remove(entity)`, a batch remove is strict: holding an entity implies that its row exists, so an entity whose row is gone fails the batch with an `UnexpectedRowCountException`.
 
 <Tabs groupId="language">
 <TabItem value="kotlin" label="Kotlin" default>
@@ -92,6 +92,31 @@ orm.removeAll<User>()
 
 ```java
 orm.entity(User.class).remove(users);
+```
+
+</TabItem>
+</Tabs>
+
+When a row may already be gone, remove by id or by ref. `removeById` and `removeByRef` are the idempotent counterparts of `remove`: an id or ref without a row is not an error, so they suit a removal that may race with a concurrent delete or may run more than once. Both take a collection, a stream in Java and a flow in Kotlin, and remove each batch of keys with one DELETE.
+
+<Tabs groupId="language">
+<TabItem value="kotlin" label="Kotlin" default>
+
+```kotlin
+val users = orm.entity(User::class)
+users.removeById(listOf(1, 2, 3))
+users.removeByRef(userRefs)
+users.removeById(idFlow, 500)
+```
+
+</TabItem>
+<TabItem value="java" label="Java">
+
+```java
+var users = orm.entity(User.class);
+users.removeById(List.of(1, 2, 3));
+users.removeByRef(userRefs);
+users.removeById(idStream, 500);
 ```
 
 </TabItem>

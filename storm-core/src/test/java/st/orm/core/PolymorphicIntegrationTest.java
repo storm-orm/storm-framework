@@ -12,6 +12,7 @@ import static st.orm.Operator.LIKE;
 
 import java.util.List;
 import java.util.Optional;
+import java.util.stream.Stream;
 import javax.sql.DataSource;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -662,6 +663,46 @@ public class PolymorphicIntegrationTest {
                 .toList();
         animals.removeByRef(refs);
         assertEquals(before - 2, animals.count());
+    }
+
+    @Test
+    public void testBatchRemoveByIdJoinedAnimals() {
+        var orm = ORMTemplate.of(dataSource);
+        var animals = orm.entity(JoinedAnimal.class);
+        var ids = animals.insertAndFetchIds(List.of(
+                new JoinedCat(null, "IdCat", true),
+                new JoinedDog(null, "IdDog", 7)
+        ));
+        long before = animals.count();
+        // The concrete type of an id is unknown, so every extension table is cleared for it.
+        animals.removeById(ids);
+        assertEquals(before - 2, animals.count());
+        assertTrue(animals.findAllById(ids).isEmpty());
+    }
+
+    @Test
+    public void testBatchRemoveByIdJoinedAnimalsExistingAndMissingIds() {
+        var orm = ORMTemplate.of(dataSource);
+        var animals = orm.entity(JoinedAnimal.class);
+        var id = animals.insertAndFetchId(new JoinedCat(null, "IdMixedCat", false));
+        long before = animals.count();
+        animals.removeById(Stream.of(id, 99999), 1);
+        assertEquals(before - 1, animals.count());
+        assertFalse(animals.findById(id).isPresent());
+    }
+
+    @Test
+    public void testBatchRemoveByIdNodscAnimals() {
+        var orm = ORMTemplate.of(dataSource);
+        var animals = orm.entity(NodscAnimal.class);
+        var ids = animals.insertAndFetchIds(List.of(
+                new NodscCat(null, "IdCat", true),
+                new NodscDog(null, "IdDog", 22),
+                new NodscBird(null, "IdBird")
+        ));
+        long before = animals.count();
+        animals.removeById(List.of(ids.get(0), ids.get(1), ids.get(2), 99999));
+        assertEquals(before - 3, animals.count());
     }
 
     // Batch DML Tests for Joined Table Inheritance without @Discriminator

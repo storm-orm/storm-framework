@@ -164,6 +164,8 @@ internal class EntityRepositoryImpl<E, ID : Any>(
 
     override fun removeByRef(refs: Iterable<Ref<E>>) = core.removeByRef(refs)
 
+    override fun removeById(ids: Iterable<ID>) = core.removeById(ids)
+
     override suspend fun countById(ids: Flow<ID>): Long = ids.chunked(core.defaultChunkSize)
         .map { chunk -> core.countById(chunk.stream()) }
         .fold(0L) { acc, v -> acc + v }
@@ -244,11 +246,17 @@ internal class EntityRepositoryImpl<E, ID : Any>(
         .collect { core.remove(it) }
 
     override suspend fun remove(entities: Flow<E>, batchSize: Int) = entities.chunked(batchSize)
-        .collect { core.remove(it) }
+        .collect { core.remove(it.stream(), batchSize) }
 
     override suspend fun removeByRef(refs: Flow<Ref<E>>) = refs.chunked(core.defaultBatchSize)
         .collect { core.removeByRef(it) }
 
     override suspend fun removeByRef(refs: Flow<Ref<E>>, batchSize: Int) = refs.chunked(batchSize)
-        .collect { core.removeByRef(it) }
+        .collect { core.removeByRef(it.stream(), batchSize) }
+
+    override suspend fun removeById(ids: Flow<ID>) = ids.chunked(core.defaultBatchSize)
+        .collect { core.removeById(it) }
+
+    override suspend fun removeById(ids: Flow<ID>, batchSize: Int) = ids.chunked(batchSize)
+        .collect { core.removeById(it.stream(), batchSize) }
 }

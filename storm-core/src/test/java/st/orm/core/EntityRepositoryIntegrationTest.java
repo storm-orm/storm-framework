@@ -30,13 +30,17 @@ import st.orm.NoResultException;
 import st.orm.PK;
 import st.orm.PersistenceException;
 import st.orm.Ref;
+import st.orm.UnexpectedRowCountException;
 import st.orm.core.model.Address;
 import st.orm.core.model.City;
 import st.orm.core.model.Owner;
 import st.orm.core.model.OwnerPrimaryPet;
 import st.orm.core.model.Pet;
 import st.orm.core.model.PetType;
+import st.orm.core.model.VetSpecialty;
+import st.orm.core.model.VetSpecialtyPK;
 import st.orm.core.template.ORMTemplate;
+import st.orm.core.template.SqlInterceptor;
 
 /**
  * Extended integration tests for {@code EntityRepositoryImpl} to cover methods that are currently
@@ -633,6 +637,108 @@ public class EntityRepositoryIntegrationTest {
                 2
         );
         assertEquals(before - 2, cities.count());
+    }
+
+    // removeById(Iterable<ID>), removeById(Stream<ID>), removeById(Stream<ID>, int batchSize)
+
+    @Test
+    public void testRemoveByIdIterable() {
+        var orm = ORMTemplate.of(dataSource);
+        var cities = orm.entity(City.class);
+        var id1 = cities.insertAndFetchId(City.builder().name("IdIterableDelA").build());
+        var id2 = cities.insertAndFetchId(City.builder().name("IdIterableDelB").build());
+        long before = cities.count();
+        cities.removeById(List.of(id1, id2));
+        assertEquals(before - 2, cities.count());
+        assertTrue(cities.findById(id1).isEmpty());
+        assertTrue(cities.findById(id2).isEmpty());
+    }
+
+    @Test
+    public void testRemoveByIdIterableMissingIds() {
+        var orm = ORMTemplate.of(dataSource);
+        var cities = orm.entity(City.class);
+        long before = cities.count();
+        assertDoesNotThrow(() -> cities.removeById(List.of(99998, 99999)));
+        assertEquals(before, cities.count());
+    }
+
+    @Test
+    public void testRemoveByIdIterableExistingAndMissingIds() {
+        var orm = ORMTemplate.of(dataSource);
+        var cities = orm.entity(City.class);
+        var id = cities.insertAndFetchId(City.builder().name("IdMixedDel").build());
+        long before = cities.count();
+        assertDoesNotThrow(() -> cities.removeById(List.of(id, 99999)));
+        assertEquals(before - 1, cities.count());
+        assertTrue(cities.findById(id).isEmpty());
+    }
+
+    @Test
+    public void testRemoveByIdTwiceIsIdempotent() {
+        var orm = ORMTemplate.of(dataSource);
+        var cities = orm.entity(City.class);
+        var ids = cities.insertAndFetchIds(List.of(
+                City.builder().name("IdTwiceDelA").build(),
+                City.builder().name("IdTwiceDelB").build()));
+        long before = cities.count();
+        cities.removeById(ids);
+        assertDoesNotThrow(() -> cities.removeById(ids));
+        assertEquals(before - 2, cities.count());
+    }
+
+    @Test
+    public void testRemoveByIdStream() {
+        var orm = ORMTemplate.of(dataSource);
+        var cities = orm.entity(City.class);
+        var id1 = cities.insertAndFetchId(City.builder().name("IdStreamDelA").build());
+        var id2 = cities.insertAndFetchId(City.builder().name("IdStreamDelB").build());
+        long before = cities.count();
+        cities.removeById(Stream.of(id1, 99999, id2));
+        assertEquals(before - 2, cities.count());
+    }
+
+    @Test
+    public void testRemoveByIdStreamWithBatchSizeRemovesEachBatchWithOneStatement() {
+        var orm = ORMTemplate.of(dataSource);
+        var cities = orm.entity(City.class);
+        var id1 = cities.insertAndFetchId(City.builder().name("IdBatchDelA").build());
+        var id2 = cities.insertAndFetchId(City.builder().name("IdBatchDelB").build());
+        var id3 = cities.insertAndFetchId(City.builder().name("IdBatchDelC").build());
+        long before = cities.count();
+        List<String> statements = new ArrayList<>();
+        SqlInterceptor.intercept(sql -> {
+            statements.add(sql.statement());
+            return sql;
+        }, () -> cities.removeById(Stream.of(id1, id2, 99999, id3), 2));
+        assertEquals(before - 3, cities.count());
+        var deletes = statements.stream().filter(statement -> statement.strip().toUpperCase().startsWith("DELETE")).toList();
+        assertEquals(2, deletes.size(), deletes.toString());
+        assertTrue(deletes.stream().allMatch(statement -> statement.toUpperCase().contains(" IN ")), deletes.toString());
+    }
+
+    @Test
+    public void testRemoveByIdIterableCompoundPrimaryKey() {
+        var orm = ORMTemplate.of(dataSource);
+        var vetSpecialties = orm.entity(VetSpecialty.class);
+        var id = new VetSpecialtyPK(1, 3);
+        vetSpecialties.insert(new VetSpecialty(id));
+        long before = vetSpecialties.count();
+        vetSpecialties.removeById(List.of(id, new VetSpecialtyPK(99, 99)));
+        assertEquals(before - 1, vetSpecialties.count());
+        assertTrue(vetSpecialties.findById(id).isEmpty());
+    }
+
+    // remove(Iterable<E>) is strict
+
+    @Test
+    public void testBatchRemoveOfMissingEntityThrows() {
+        var orm = ORMTemplate.of(dataSource);
+        var cities = orm.entity(City.class);
+        var id = cities.insertAndFetchId(City.builder().name("StrictBatchDel").build());
+        assertThrows(UnexpectedRowCountException.class, () -> cities.remove(List.of(
+                City.builder().id(id).name("StrictBatchDel").build(),
+                City.builder().id(99999).name("Missing").build())));
     }
 
     // insertAndFetchIds(Iterable<E>)

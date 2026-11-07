@@ -11,6 +11,7 @@ import static st.orm.template.Transactions.transaction;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.Optional;
+import java.util.stream.Stream;
 import javax.sql.DataSource;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -770,6 +771,31 @@ public class RepositoryTest {
         repo.removeByRef(List.of(repo.ref(inserted1.id()), repo.ref(inserted2.id())));
         assertFalse(repo.findById(inserted1.id()).isPresent());
         assertFalse(repo.findById(inserted2.id()).isPresent());
+    }
+
+    @Test
+    public void testEntityRemoveByIdIterable() {
+        var localOrm = ORMTemplate.of(dataSource);
+        var repo = localOrm.entity(City.class);
+        var inserted1 = repo.insertAndFetch(new City(null, "ToDeleteId1"));
+        var inserted2 = repo.insertAndFetch(new City(null, "ToDeleteId2"));
+        long before = repo.count();
+        repo.removeById(List.of(inserted1.id(), 99999, inserted2.id()));
+        assertEquals(before - 2, repo.count());
+        assertFalse(repo.findById(inserted1.id()).isPresent());
+        assertFalse(repo.findById(inserted2.id()).isPresent());
+    }
+
+    @Test
+    public void testEntityRemoveByIdStream() {
+        var localOrm = ORMTemplate.of(dataSource);
+        var repo = localOrm.entity(City.class);
+        var inserted1 = repo.insertAndFetch(new City(null, "ToDeleteIdStream1"));
+        var inserted2 = repo.insertAndFetch(new City(null, "ToDeleteIdStream2"));
+        long before = repo.count();
+        repo.removeById(Stream.of(inserted1.id(), 99999));
+        repo.removeById(Stream.of(inserted2.id(), 99998), 1);
+        assertEquals(before - 2, repo.count());
     }
 
     // ProjectionRepository - additional default methods

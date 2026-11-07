@@ -939,6 +939,24 @@ internal open class EntityRepositoryTest(
     }
 
     @Test
+    fun `removeById with iterable should remove entities and skip missing ids`() {
+        val repo = orm.entity(City::class)
+        val ids = repo.insertAndFetchIds(listOf(City(name = "IdDelA"), City(name = "IdDelB")))
+        val before = repo.count()
+        repo.removeById(ids + 99999)
+        repo.count() shouldBe before - 2
+        ids.forEach { repo.findById(it).shouldBeNull() }
+    }
+
+    @Test
+    fun `removeById with iterable of missing ids should not fail`() {
+        val repo = orm.entity(City::class)
+        val before = repo.count()
+        repo.removeById(listOf(99998, 99999))
+        repo.count() shouldBe before
+    }
+
+    @Test
     fun `removeAll should remove all entities`() {
         val repo = orm.entity(Visit::class)
         repo.removeAll()
@@ -1032,6 +1050,27 @@ internal open class EntityRepositoryTest(
         val newCities = repo.insertAndFetch(listOf(City(name = "RefFlowDelA"), City(name = "RefFlowDelB")))
         repo.removeByRef(newCities.map { repo.ref(it) }.asFlow())
         newCities.forEach { repo.findById(it.id).shouldBeNull() }
+    }
+
+    @Test
+    fun `removeById flow should remove entities and skip missing ids`(): Unit = runBlocking {
+        val repo = orm.entity(City::class)
+        val ids = repo.insertAndFetchIds(listOf(City(name = "IdFlowDelA"), City(name = "IdFlowDelB")))
+        val before = repo.count()
+        repo.removeById((ids + 99999).asFlow())
+        repo.count() shouldBe before - 2
+        ids.forEach { repo.findById(it).shouldBeNull() }
+    }
+
+    @Test
+    fun `removeById flow with batch size should remove entities and skip missing ids`(): Unit = runBlocking {
+        val repo = orm.entity(City::class)
+        val ids = repo.insertAndFetchIds(
+            listOf(City(name = "IdFlowBatchDelA"), City(name = "IdFlowBatchDelB"), City(name = "IdFlowBatchDelC")),
+        )
+        val before = repo.count()
+        repo.removeById(flowOf(ids[0], 99999, ids[1], ids[2]), 2)
+        repo.count() shouldBe before - 3
     }
 
     @Test
