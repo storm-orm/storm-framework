@@ -18,9 +18,13 @@ package st.orm.core.spi;
 import java.sql.SQLException;
 import java.sql.SQLTimeoutException;
 import java.util.ArrayList;
+import java.util.Collections;
+import java.util.IdentityHashMap;
 import java.util.List;
+import java.util.Set;
 import java.util.function.Consumer;
 import org.jspecify.annotations.Nullable;
+import st.orm.IllegalTransactionStateException;
 import st.orm.Transaction;
 import st.orm.TransactionCallbackException;
 import st.orm.TransactionOptions;
@@ -84,9 +88,78 @@ public final class TransactionRunner {
      */
     public static <R extends @Nullable Object, E extends Exception> R execute(TransactionOptions options,
                                                      Block<R, E> block) throws E {
+        return execute(options, block, null);
+    }
+
+    /**
+     * Executes the given block within a transaction scope built from the given options, running it again, up to
+     * {@code retries} times, after an attempt that failed transiently.
+     *
+     * <p>Each attempt is a transaction of its own, with the timeout of the options counted from its start, and
+     * settles its own callbacks by its own outcome. The block must own its physical transaction, which
+     * {@link TransactionRetries#check(TransactionOptions, int)} verifies before the first attempt. Between attempts
+     * the calling thread sleeps for a short, jittered pause; an interrupt during the pause ends the reruns. The
+     * failure of the last attempt leaves the block with the failures of the attempts before it as suppressed.</p>
+     *
+     * @param options the fully resolved transaction options.
+     * @param retries the number of reruns after the first attempt; {@code 0} runs the block once.
+     * @param block the transactional logic to execute.
+     * @return the result of the attempt that completed.
+     * @param <R> the result type.
+     * @param <E> the checked exception type thrown by the block, if any.
+     * @throws IllegalArgumentException if {@code retries} is negative.
+     * @throws IllegalTransactionStateException if {@code retries} is positive and the block does not own its
+     *                                          physical transaction.
+     * @since 1.16
+     */
+    public static <R extends @Nullable Object, E extends Exception> R execute(TransactionOptions options,
+                                                                              int retries,
+                                                                              Block<R, E> block) throws E {
+        TransactionRetries.check(options, retries);
+        if (retries == 0) {
+            return execute(options, block, null);
+        }
+        List<Throwable> failures = new ArrayList<>();
+        for (int rerun = 0; ; rerun++) {
+            var attempt = new Attempt();
+            try {
+                return execute(options, block, attempt);
+            } catch (Throwable failure) {
+                if (!attempt.transientFailure || rerun == retries) {
+                    TransactionRetries.withEarlierFailures(failure, failures);
+                    throw failure;
+                }
+                failures.add(failure);
+                TransactionRetries.logRerun(rerun + 1, retries, failure);
+                try {
+                    Thread.sleep(TransactionRetries.pauseMillis(rerun + 1));
+                } catch (InterruptedException interrupted) {
+                    Thread.currentThread().interrupt();
+                    failures.removeLast();
+                    failure.addSuppressed(interrupted);
+                    TransactionRetries.withEarlierFailures(failure, failures);
+                    throw failure;
+                }
+            }
+        }
+    }
+
+    /**
+     * The outcome of one attempt of a block that reruns: whether it failed transiently.
+     */
+    private static final class Attempt {
+        boolean transientFailure;
+    }
+
+    private static <R extends @Nullable Object, E extends Exception> R execute(TransactionOptions options,
+                                                                               Block<R, E> block,
+                                                                               @Nullable Attempt attempt) throws E {
         var scope = TransactionScope.open(options, false);
         var parentCallbacks = CURRENT_CALLBACKS.get();
-        if (isJoining(options.propagation()) && scope.parent() != null && parentCallbacks != null) {
+        // A block joins the callbacks of the enclosing block only when it joins that block's transaction; a block
+        // inside one that runs without a transaction starts a transaction of its own and settles its own callbacks.
+        if (isJoining(options.propagation()) && scope.parent() != null && scope.parent().runsInTransaction()
+                && parentCallbacks != null) {
             // Joining an outer transaction block: delegate callbacks to the outer holder; do not fire here.
             R result;
             try {
@@ -137,6 +210,9 @@ public final class TransactionRunner {
             } finally {
                 scope.close();
             }
+            if (attempt != null) {
+                attempt.transientFailure = TransactionRetries.isTransient(scope, wrapped);
+            }
             try {
                 complete(scope, callbacks, joinedExternal, mayDefer, mayMark, false);
             } catch (Throwable callbackException) {
@@ -154,6 +230,9 @@ public final class TransactionRunner {
                 scope.close();
             }
         } catch (Throwable completionException) {
+            if (attempt != null) {
+                attempt.transientFailure = TransactionRetries.isTransient(scope, completionException);
+            }
             try {
                 complete(scope, callbacks, joinedExternal, mayDefer, mayMark, false);
             } catch (Throwable callbackException) {
@@ -224,18 +303,17 @@ public final class TransactionRunner {
 
     /**
      * Returns whether a failure is a statement timeout: a {@link SQLTimeoutException} in its cause chain, or any
-     * database failure once the deadline has passed.
+     * database failure once the deadline has passed. Each cause is visited once, so a chain whose causes form a
+     * cycle ends.
      */
     private static boolean timedOut(Throwable e, boolean pastDeadline) {
-        for (Throwable cause = e; cause != null; cause = cause.getCause()) {
+        Set<Throwable> visited = Collections.newSetFromMap(new IdentityHashMap<>());
+        for (Throwable cause = e; cause != null && visited.add(cause); cause = cause.getCause()) {
             if (cause instanceof SQLTimeoutException) {
                 return true;
             }
             if (pastDeadline && cause instanceof SQLException) {
                 return true;
-            }
-            if (cause.getCause() == cause) {
-                break;
             }
         }
         return false;

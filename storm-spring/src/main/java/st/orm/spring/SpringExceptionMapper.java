@@ -16,6 +16,9 @@
 package st.orm.spring;
 
 import java.sql.SQLException;
+import java.util.Collections;
+import java.util.IdentityHashMap;
+import java.util.Set;
 import javax.sql.DataSource;
 import org.jspecify.annotations.Nullable;
 import org.springframework.dao.ConcurrencyFailureException;
@@ -139,8 +142,13 @@ public class SpringExceptionMapper implements ExceptionMapper {
         return translated;
     }
 
+    /**
+     * Returns the first {@code SQLException} in the cause chain, visiting each cause once, so a chain whose causes
+     * form a cycle ends.
+     */
     private static @Nullable SQLException findSqlException(Throwable cause) {
-        for (Throwable current = cause; current != null; current = current.getCause()) {
+        Set<Throwable> visited = Collections.newSetFromMap(new IdentityHashMap<>());
+        for (Throwable current = cause; current != null && visited.add(current); current = current.getCause()) {
             if (current instanceof SQLException sqlException) {
                 return sqlException;
             }

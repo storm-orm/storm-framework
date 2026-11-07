@@ -17,8 +17,8 @@ package st.orm;
 
 /**
  * Thrown when a transaction block cannot open against the transaction state it finds: {@code MANDATORY} without
- * a transaction, {@code NEVER} inside one, or a joining block that states a stricter isolation level than the
- * transaction it joins runs at.
+ * a transaction, {@code NEVER} inside one, a joining block that states a stricter isolation level than the
+ * transaction it joins runs at, or a block that states retries but does not own its physical transaction.
  *
  * <p>The refusal happens when the block opens, before any of its statements run. A joined block runs on the
  * connection of the transaction it joins, whose isolation level cannot change once it is open; a block may state

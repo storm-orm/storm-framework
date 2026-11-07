@@ -15,6 +15,9 @@
  */
 package st.orm.core.spi;
 
+import java.util.Collections;
+import java.util.IdentityHashMap;
+import java.util.Set;
 import java.util.function.Consumer;
 import org.jspecify.annotations.Nullable;
 import st.orm.PersistenceException;
@@ -184,6 +187,7 @@ public final class TransactionScope {
     private boolean rollbackOnly;       // Buffered until materialization; guarded by this.
     private boolean rollbackInherited;  // Set when the mark came from a joined inner scope; guarded by this.
     private volatile boolean cancelled;
+    private @Nullable Set<Throwable> transientFailures; // Guarded by this.
 
     private TransactionScope(TransactionOptions options, boolean suspendMode, @Nullable TransactionScope parent) {
         this.options = options;
@@ -422,6 +426,40 @@ public final class TransactionScope {
     }
 
     /**
+     * Records a failure the framework classified as transient while this scope was current: the failure as it
+     * occurred and the exception the exception mapper translated it to. The failure is recorded on this scope and
+     * on every enclosing scope, so a block that reruns on a transient failure recognises one raised in a block it
+     * encloses, whatever the type the mapper chose.
+     *
+     * @param failure the failure classified as transient.
+     * @since 1.16
+     */
+    public void recordTransientFailure(Throwable failure) {
+        for (var scope = this; scope != null; scope = scope.parent) {
+            scope.addTransientFailure(failure);
+        }
+    }
+
+    private synchronized void addTransientFailure(Throwable failure) {
+        if (transientFailures == null) {
+            transientFailures = Collections.newSetFromMap(new IdentityHashMap<>());
+        }
+        transientFailures.add(failure);
+    }
+
+    /**
+     * Returns whether the given exception is one {@linkplain #recordTransientFailure(Throwable) recorded} as a
+     * transient failure while this scope, or a scope it encloses, was current.
+     *
+     * @param failure the exception to look up, by identity.
+     * @return {@code true} if the exception was recorded as a transient failure.
+     * @since 1.16
+     */
+    public synchronized boolean isTransientFailure(Throwable failure) {
+        return transientFailures != null && transientFailures.contains(failure);
+    }
+
+    /**
      * Returns whether this scope was {@linkplain #cancel() cancelled}.
      *
      * @return {@code true} if the scope was cancelled.
@@ -582,16 +620,20 @@ public final class TransactionScope {
                 || propagation == TransactionPropagation.REQUIRED
                 || propagation == TransactionPropagation.SUPPORTS
                 || propagation == TransactionPropagation.MANDATORY;
-        return joiningPropagation && parent != null && parent.isTransactional();
+        return joiningPropagation && parent != null && parent.runsInTransaction();
     }
 
     /**
-     * Returns whether this scope runs in a transaction, by its propagation; {@code SUPPORTS} takes after its
-     * parent. Whether an outermost {@code SUPPORTS} scope joins an externally managed transaction is known only
-     * to the provider that materializes it, so it is assumed to: a rollback-only mark that travels one block too
-     * far is the safer error.
+     * Returns whether this scope runs in a transaction, by its propagation: {@code REQUIRED}, {@code REQUIRES_NEW},
+     * {@code NESTED} and {@code MANDATORY} do, {@code NOT_SUPPORTED} and {@code NEVER} do not, and {@code SUPPORTS}
+     * takes after its parent. Whether an outermost {@code SUPPORTS} scope joins an externally managed transaction
+     * is known only to the provider that materializes it, so it is assumed to: a rollback-only mark that travels
+     * one block too far is the safer error.
+     *
+     * @return {@code true} if a statement in this scope runs in a transaction.
+     * @since 1.16
      */
-    private boolean isTransactional() {
+    public boolean runsInTransaction() {
         var propagation = options.propagation();
         if (propagation == null) {
             return true;
@@ -599,7 +641,7 @@ public final class TransactionScope {
         return switch (propagation) {
             case REQUIRED, REQUIRES_NEW, NESTED, MANDATORY -> true;
             case NOT_SUPPORTED, NEVER -> false;
-            case SUPPORTS -> parent == null || parent.isTransactional();
+            case SUPPORTS -> parent == null || parent.runsInTransaction();
         };
     }
 
