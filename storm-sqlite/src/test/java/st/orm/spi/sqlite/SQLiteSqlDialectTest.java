@@ -6,6 +6,7 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import java.sql.SQLException;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -349,5 +350,23 @@ class SQLiteSqlDialectTest {
         // LIKE is not supported for multi-column, so it falls back to the default which throws.
         assertThrows(SqlTemplateException.class,
                 () -> dialect.multiColumnExpression(Operator.LIKE, values, v -> "?"));
+    }
+
+    // Transient failures
+
+    @Test
+    void aBusySnapshotIsTransient() {
+        assertTrue(dialect.isTransientFailure(
+                new SQLException("[SQLITE_BUSY_SNAPSHOT] Another database connection has already written", null, 5)));
+    }
+
+    @Test
+    void aPlainBusyIsNotTransient() {
+        assertFalse(dialect.isTransientFailure(new SQLException("[SQLITE_BUSY] The database file is locked", null, 5)));
+    }
+
+    @Test
+    void aBusyWithoutMessageIsNotTransient() {
+        assertFalse(dialect.isTransientFailure(new SQLException(null, null, 5)));
     }
 }
