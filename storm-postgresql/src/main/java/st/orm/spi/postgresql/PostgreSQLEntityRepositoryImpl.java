@@ -22,12 +22,12 @@ import static st.orm.core.template.impl.StringTemplates.flatten;
 
 import java.util.List;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.stream.Stream;
 import st.orm.Entity;
 import st.orm.core.repository.EntityRepository;
 import st.orm.core.repository.impl.OnConflictEntityRepositoryImpl;
 import st.orm.core.template.Model;
 import st.orm.core.template.ORMTemplate;
-import st.orm.core.template.Query;
 
 /**
  * Implementation of {@link EntityRepository} for PostgreSQL.
@@ -68,26 +68,13 @@ public class PostgreSQLEntityRepositoryImpl<E extends Entity<ID>, ID>
      * Overrides to use SEQUENCE-specific RETURNING clause for batch fetch IDs when applicable.
      */
     @Override
-    public List<ID> upsertAndFetchIds(Iterable<E> entities) {
+    public List<ID> upsertAndFetchIds(Stream<E> entities, int batchSize) {
         if (generationStrategy != SEQUENCE) {
-            return super.upsertAndFetchIds(entities);
+            return super.upsertAndFetchIds(entities, batchSize);
         }
         // SEQUENCE path: use a single query with RETURNING clause instead of batched prepared statements.
-        return upsertAndFetchIdsPartitioned(entities,
-                (chunk, entityCache) -> upsertPartitionAndFetchIds(chunk, entityCache, this::getUpsertQuery));
-    }
-
-    private Query getUpsertQuery(Iterable<E> entities) {
-        var versionAware = new AtomicBoolean();
-        assert primaryKeyColumns.size() == 1;
-        var primaryKeyColumn = primaryKeyColumns.getFirst();
-        String pkName = primaryKeyColumn.qualifiedName(ormTemplate.dialect());
-        return intercept(sql -> sql.versionAware(versionAware.getPlain()), () ->
-                ormTemplate.query(flatten(raw("""
-                    INSERT INTO \0
-                    VALUES \0\0
-                    RETURNING %s""".formatted(pkName), model.type(), entities, onConflictClause(versionAware)))).managed()
-                        );
+        return upsertAndFetchIdsPartitioned(entities, batchSize,
+                (chunk, entityCache) -> upsertPartitionAndFetchIds(chunk, entityCache, this::upsertReturningQuery));
     }
 
     @Override

@@ -874,8 +874,12 @@ abstract class BaseRepositoryImpl<E extends Data, ID> implements Repository {
      * @param size the maximum number of elements to include in each slice. If {@code size} is
      * {@code Integer.MAX_VALUE}, only one slice will be returned.
      * @return a stream of slices, where each slice contains up to {@code size} elements from the original stream.
+     * @throws IllegalArgumentException if {@code size} is not positive.
      */
     protected static <X> Stream<List<X>> chunked(Stream<X> stream, int size) {
+        if (size <= 0) {
+            throw new IllegalArgumentException("size must be > 0");
+        }
         if (size == MAX_VALUE) {
             return Stream.of(stream.toList());
         }

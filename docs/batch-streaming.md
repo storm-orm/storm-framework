@@ -155,22 +155,32 @@ orm.entity(User.class).upsert(users);  // Inserts new, updates existing
 
 ### Batch Size
 
-Storm automatically groups batch operations for optimal performance. Batch operations have overloaded methods that accept a batch size parameter, giving you control over how many rows are grouped together before being sent to the database. Smaller batches reduce memory usage, while larger batches reduce network round-trips. The default batch size works well for most cases.
+Storm automatically groups batch operations for optimal performance, in batches of 1000 by default. The stream form of a batch operation in Java and its flow form in Kotlin accept a batch size parameter, giving you control over how many rows are grouped together before being sent to the database. Smaller batches reduce memory usage, while larger batches reduce network round-trips. The default batch size works well for most cases.
+
+The fetching writes, `insertAndFetchIds`, `insertAndFetch`, `updateAndFetch`, `upsertAndFetchIds` and `upsertAndFetch`, take a batch size the same way. In Java they consume the stream batch by batch and return a list: the ids come from the writes, and the entities are fetched once the last batch is written. In Kotlin the flow emits the results of each batch once that batch is written.
+
+Where Storm writes a batch as one multi-row statement, that statement carries the values of all its rows, so it takes at most the batch size in rows and at most the rows whose values fit the database's bind parameter limit.
 
 <Tabs groupId="language">
 <TabItem value="kotlin" label="Kotlin" default>
 
 ```kotlin
+val users = orm.entity(User::class)
 // Insert in batches of 500
-orm.entity(User::class).insert(users, 500)
+users.insert(newUsers.asFlow(), 500)
+// Insert in batches of 2500 and read the inserted users back
+val inserted = users.insertAndFetch(newUsers.asFlow(), 2500).toList()
 ```
 
 </TabItem>
 <TabItem value="java" label="Java">
 
 ```java
+var users = orm.entity(User.class);
 // Insert in batches of 500
-orm.entity(User.class).insert(users, 500);
+users.insert(newUsers.stream(), 500);
+// Insert in batches of 2500 and read the inserted users back
+List<User> inserted = users.insertAndFetch(newUsers.stream(), 2500);
 ```
 
 </TabItem>

@@ -29,6 +29,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Objects;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.stream.Stream;
 import st.orm.Entity;
 import st.orm.PersistenceException;
 import st.orm.SqlTemplateException;
@@ -46,6 +47,9 @@ import st.orm.core.template.impl.JoinedEntityHelper;
  */
 public class MSSQLServerEntityRepositoryImpl<E extends Entity<ID>, ID>
         extends MergeEntityRepositoryImpl<E, ID> {
+
+    /** The most rows SQL Server takes in the {@code VALUES} list of an insert. */
+    private static final int MAX_INSERT_VALUES_ROWS = 1000;
 
     public MSSQLServerEntityRepositoryImpl(ORMTemplate ormTemplate, Model<E, ID> model) {
         super(ormTemplate, model);
@@ -162,9 +166,9 @@ public class MSSQLServerEntityRepositoryImpl<E extends Entity<ID>, ID>
      * the OUTPUT INSERTED clause on the MERGE statement.</p>
      */
     @Override
-    public List<ID> upsertAndFetchIds(Iterable<E> entities) {
+    public List<ID> upsertAndFetchIds(Stream<E> entities, int batchSize) {
         if (generationStrategy != SEQUENCE) {
-            return super.upsertAndFetchIds(entities);
+            return super.upsertAndFetchIds(entities, batchSize);
         }
         if (!primaryKeyColumns.getFirst().sequence().isEmpty()) {
             //
@@ -187,7 +191,7 @@ public class MSSQLServerEntityRepositoryImpl<E extends Entity<ID>, ID>
                     "Use the column's DEFAULT constraint for sequence values instead.");
         }
         // SEQUENCE path with empty sequence: use a single query with OUTPUT clause instead of batched prepared statements.
-        return upsertAndFetchIdsPartitioned(entities,
+        return upsertAndFetchIdsPartitioned(entities, batchSize,
                 (chunk, entityCache) -> upsertPartitionAndFetchIds(chunk, entityCache, this::getUpsertQuery));
     }
 
@@ -225,12 +229,16 @@ public class MSSQLServerEntityRepositoryImpl<E extends Entity<ID>, ID>
         var primaryKeyColumn = primaryKeyColumns.getFirst();
         String primaryKeyName = primaryKeyColumn.qualifiedName(ormTemplate.dialect());
         // Phase 1: Base table INSERT with OUTPUT INSERTED.
-        var query = ormTemplate.query(raw("""
-            INSERT INTO \0
-            OUTPUT INSERTED.%s
-            VALUES \0""".formatted(primaryKeyName), model.type(), entities))
-                .managed();
-        List<ID> ids = query.getResultList(model.primaryKeyType());
+        // A statement takes at most the rows whose values fit the bind parameter limit.
+        List<ID> ids = chunked(entities.stream(), multiRowInsertChunkSize(false, Math.max(1, entities.size())))
+                .flatMap(chunk -> ormTemplate.query(raw("""
+                        INSERT INTO \0
+                        OUTPUT INSERTED.%s
+                        VALUES \0""".formatted(primaryKeyName), model.type(), chunk))
+                        .managed()
+                        .getResultList(model.primaryKeyType())
+                        .stream())
+                .toList();
         // Phase 2: Extension table INSERTs.
         JoinedEntityHelper.insertExtensionTables(ormTemplate, model, entities, ids);
         return ids;
@@ -257,12 +265,26 @@ public class MSSQLServerEntityRepositoryImpl<E extends Entity<ID>, ID>
     }
 
     @Override
-    public List<ID> insertAndFetchIds(Iterable<E> entities) {
+    public List<ID> insertAndFetchIds(Stream<E> entities, int batchSize) {
         if (generationStrategy == NONE) {
-            return super.insertAndFetchIds(entities);
+            return super.insertAndFetchIds(entities, batchSize);
         }
         // Also use MSSQLServer specific logic for AUTO_INCREMENT as MSSQLServer does not support generated keys in batch mode.
-        List<E> transformed = toStream(entities)
+        return chunked(entities, multiRowInsertChunkSize(false, batchSize),
+                batch -> insertAndFetchIdsOutput(batch).stream()).toList();
+    }
+
+    /**
+     * SQL Server takes at most 1000 rows in the {@code VALUES} list of an insert, so a multi-row statement takes at
+     * most that many rows on top of the batch size and the bind parameter limit.
+     */
+    @Override
+    protected int multiRowInsertChunkSize(boolean ignoreAutoGenerate, int batchSize) {
+        return Math.min(MAX_INSERT_VALUES_ROWS, super.multiRowInsertChunkSize(ignoreAutoGenerate, batchSize));
+    }
+
+    private List<ID> insertAndFetchIdsOutput(List<E> batch) {
+        List<E> transformed = batch.stream()
                 .map(this::fireBeforeInsert)
                 .map(this::validateInsert)
                 .toList();

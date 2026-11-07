@@ -534,9 +534,17 @@ users.removeById(idStream);
 users.removeById(idStream, batchSize);
 users.removeByRef(refStream);
 users.removeByRef(refStream, batchSize);
+
+// Fetching writes via Stream: written batch by batch, returned as a list. The ids come from the
+// writes; the entities are fetched once the last batch is written.
+List<Integer> ids = users.insertAndFetchIds(userStream, batchSize);
+List<User> inserted = users.insertAndFetch(userStream, batchSize);
+List<User> updated = users.updateAndFetch(userStream, batchSize);
+List<Integer> ids = users.upsertAndFetchIds(userStream, batchSize);
+List<User> upserted = users.upsertAndFetch(userStream, batchSize);
 ```
 
-Stream operations are lazy: entities are retrieved and processed as consumed. `batchSize`/`chunkSize` control how many items go to the database per batch.
+Stream operations are lazy: entities are retrieved and processed as consumed. `batchSize`/`chunkSize` control how many items go to the database per batch; the iterable forms take the default of 1000. A batch written as one multi-row statement also stays within the database's bind parameter limit, so it may take fewer rows than `batchSize`.
 
 ## Streams and the Connection
 
