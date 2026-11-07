@@ -398,11 +398,11 @@ A reference carries the target's primary key: `ref.id()` returns it without fetc
 ```kotlin
 // No join: the key is already on the user row, exactly as user.city.id() reads it without fetching.
 orm.entity(User::class).select().where(User_.city.id eq 42).resultList
-// SELECT ... FROM user u WHERE u.city_id = ?
+// SELECT ... FROM "user" u WHERE u.city_id = ?
 
 // Joins: the name is not part of the reference, exactly as user.city.fetch().name needs the target.
 orm.entity(User::class).select().where(User_.city.name eq "Sunnyvale").resultList
-// SELECT ... FROM user u INNER JOIN city c ON u.city_id = c.id WHERE c.name = ?
+// SELECT ... FROM "user" u INNER JOIN city c ON u.city_id = c.id WHERE c.name = ?
 ```
 
 This is the same column the reference itself resolves to, so `User_.city.id eq 42` and `User_.city eq refById<City>(42)` produce identical SQL. It is also the same column an entity foreign key resolves its primary key to, so a path means the same thing whether the relationship is declared as an entity or as a `Ref`.
@@ -597,7 +597,7 @@ The database does the aggregating, so one row per city comes back and the refere
 Naming the foreign key path selects the key column on the user table itself, so the referenced table is never joined:
 
 ```sql
-SELECT u.city_id, COUNT(*) FROM user u GROUP BY u.city_id
+SELECT u.city_id, COUNT(*) FROM "user" u GROUP BY u.city_id
 ```
 
 The key does not have to be a Ref. Selecting the entity itself, `${City::class}` in place of `${User_.city}` with a `City` component instead of `Ref<City>`, produces a `Map<City, Long>` whose keys carry their data, with no later fetch. That form pays for the join, for the city columns on every row, and for a `GROUP BY` over all of them, and its keys hash across every field rather than the primary key alone. Prefer the Ref form unless you need the records and would have fetched them anyway.

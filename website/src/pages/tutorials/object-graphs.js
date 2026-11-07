@@ -8,9 +8,9 @@ import {
 
 const TITLE = 'Persisting Object Graphs: JPA Cascades vs Storm Write Sets';
 const DESC =
-  'JPA cascades configure, once per mapping, how far every persist travels. A ' +
-  'Storm write set makes that decision per call: pass the entities, and unsaved ' +
-  'parents are discovered, dependency-ordered, and keyed automatically.';
+  'JPA cascades set, once per mapping, how far every persist travels. A Storm ' +
+  'write set decides per call: pass the entities, and Storm inserts their unsaved ' +
+  'parents first, in dependency order, with the generated keys filled in.';
 
 const CODE_JPA_MODEL = [
   C('// The graph lives in the mapping: collections point down, cascade rides them\n'),
@@ -45,7 +45,7 @@ const SQL_JPA_PERSIST = [
   QK('INSERT INTO'), ' pet (name, owner_id) ', QK('VALUES'), ' (', QQ('?'), ', ', QQ('?'), ')\n',
   QK('INSERT INTO'), ' pet (name, owner_id) ', QK('VALUES'), ' (', QQ('?'), ', ', QQ('?'), ')\n\n',
   QC('-- the provider walked owner.pets; every persist that reaches an Owner,'), '\n',
-  QC('-- from any call site, cascades exactly the same way'),
+  QC('-- from any call site, cascades the same way'),
 ].join('');
 
 const CODE_STORM_MODEL = [
@@ -106,40 +106,40 @@ ${navHtml('tutorials')}
 <div class="art">
   <div class="crumbs"><a href="/tutorials/">Tutorials</a><span class="sep">/</span>Object graphs</div>
   <h1>Persisting object graphs: <span class="grad">cascades vs write sets</span></h1>
-  <p class="dek">An object graph spanning several tables must reach the database in dependency order, with generated keys flowing from parents to children. JPA and Storm both solve it. They start from opposite ends.</p>
+  <p class="dek">An object graph across several tables has to reach the database in dependency order, with generated keys passed from parents to children. JPA and Storm both handle it, from opposite directions.</p>
   <div class="meta"><span>Series · JPA to Storm</span><span>6 min read</span><span>Kotlin</span></div>
 
   <h2><span class="hno">01</span>The task</h2>
-  <p>An <code>Owner</code> with two <code>Pet</code>s, one of which has a <code>Visit</code>. Four rows across three tables: the owner first, then the pets carrying the generated owner key, then the visit carrying a pet key. Whatever tool you use has to order the writes and move the keys.</p>
+  <p>An <code>Owner</code> with two <code>Pet</code>s, one of which has a <code>Visit</code>. Four rows across three tables: the owner first, then the pets with the generated owner key, then the visit with a pet key. The tool has to order the writes and pass the keys along.</p>
 
   <h2><span class="hno">02</span>The JPA way</h2>
-  <p>In JPA the graph is a class model with associations in both directions, and cascade configuration on those associations decides how far each operation travels:</p>
+  <p>In JPA the graph is a class model with associations in both directions. Cascade settings on the associations decide how far each operation travels:</p>
   ${editor({file: 'Model.kt', tag: 'Kotlin · JPA', code: CODE_JPA_MODEL})}
-  <p>Persisting the graph is one call on the root. <code>persist</code> makes the owner managed, propagates along every association marked <code>CascadeType.PERSIST</code>, and the provider writes the statements at flush time, assigning each generated key to the managed instances:</p>
+  <p>Persisting the graph is one call on the root. <code>persist</code> makes the owner managed and follows every association marked <code>CascadeType.PERSIST</code>. The provider writes the statements at flush time and assigns each generated key to the managed instances:</p>
   ${editor({file: 'RegistrationService.kt', tag: 'Kotlin · JPA', code: CODE_JPA_PERSIST, sql: SQL_JPA_PERSIST})}
-  <p>Two things carried that graph. The parent-to-child collections, kept consistent with the child-to-parent references by the <code>addPet</code> helper. And the mapping, where the cascade lives: it is declared once and applies to every call site in the application. That is genuinely convenient, and it is also a decision you can no longer make per use case.</p>
+  <p>Two things carry that graph. The parent-to-child collections, which the <code>addPet</code> helper keeps consistent with the child-to-parent references. And the mapping, which holds the cascade: declared once, it applies to every call site in the application.</p>
 
   <h2><span class="hno">03</span>The Storm way</h2>
-  <p>Storm entities are immutable values that model rows, so they reference only their parents, exactly as the foreign key columns do. No collections, no back-references, no helpers keeping the two sides in sync:</p>
+  <p>Storm entities are immutable values that model rows, so they reference only their parents, as the foreign key columns do. There are no collections or back-references to keep in sync:</p>
   ${editor({file: 'Model.kt', tag: 'Kotlin · Storm', code: CODE_STORM_MODEL})}
-  <p>A write set applies one operation to a heterogeneous collection of entities. Pass the leaves; unsaved parents are discovered through the foreign key fields:</p>
+  <p>A write set applies one operation to a mixed collection of entities. Pass the leaves; Storm finds the unsaved parents through the foreign key fields:</p>
   ${editor({file: 'RegistrationService.kt', tag: 'Kotlin · Storm', code: CODE_STORM_INSERT, sql: SQL_STORM_INSERT})}
-  <p>The owner was never passed. <code>insert</code> extends the entities you supply with every unsaved entity reachable through their foreign key fields, the <em>discovered members</em>; Storm calls this <em>insert discovery</em>. Storm orders the result by foreign key dependencies, executes one batch per entity type per level, and propagates generated keys by instance identity: both pets hold the same <code>owner</code> instance, so both rows receive the same key. Nothing on <code>Owner</code> says that pets depend on it; the pet values say so themselves.</p>
-  <p>One difference follows from immutability. JPA assigns generated keys to your instances; Storm values never change, so the <code>AndFetch</code> variants return the persisted state:</p>
+  <p>The owner was never passed. <code>insert</code> adds every unsaved entity reachable through the foreign key fields of the entities you supply; Storm calls these the <em>discovered members</em>, and the step <em>insert discovery</em>. It orders the writes by foreign key dependencies, runs one batch per entity type per level, and passes generated keys by instance identity: both pets hold the same <code>owner</code> instance, so both rows get the same key. <code>Owner</code> does not declare that pets depend on it; the pet values do.</p>
+  <p>JPA assigns generated keys to your instances. Storm values do not change, so the <code>AndFetch</code> variants return the persisted state:</p>
   ${editor({file: 'RegistrationService.kt', tag: 'Kotlin · Storm', code: CODE_STORM_FETCH})}
 
   <h2><span class="hno">04</span>Cascades point down, write sets point up</h2>
-  <p>The deeper difference is one of direction. A JPA model references in both directions because cascades travel parent to child, along the collections. A Storm value references only upward: a pet names its owner because the pet row holds the foreign key, and that is the only graph there is. Insert discovery therefore needs no configuration, a value declares its own dependencies. And delete discovery deliberately does not exist, because a value never names its children.</p>
-  <p>Behind that sits a difference of philosophy. In JPA, persistence is a property of the object model: you configure once how operations travel, and the session derives the writes from state at flush time. In Storm, persistence is an operation on values: a single call whose inputs fully determine what happens. Neither is free. Storm's price is that every call site states its intent; there is no per-association default to set once and rely on. JPA's price is action at a distance: the call site alone does not tell you what will be written, because the mapping and the session state complete the sentence.</p>
+  <p>A JPA model references in both directions because cascades travel from parent to child, along the collections. A Storm value references only upward: a pet names its owner because the pet row holds the foreign key, and that is the whole graph. Insert discovery needs no configuration, since a value declares its own dependencies. There is no delete discovery, because a value never names its children.</p>
+  <p>In JPA you configure once how operations travel, and the session derives the writes from entity state at flush time. In Storm a write is a call whose arguments determine what is written. Each has a cost. In Storm every call site states what it writes; there is no per-association default to set once. In JPA the call site alone does not show what will be written; the mapping and the session state decide the rest.</p>
   <div class="note">A write set executes several statements and is not atomic by itself. Wrap it in <code>transaction { }</code> when the graph must commit or fail as one. Keys correlate by instance, not by equality: a <code>copy()</code> of an unsaved parent describes a second row.</div>
 
   <h2><span class="hno">05</span>Updates, deletes, and orphanRemoval</h2>
-  <p>The other actions follow the same contract. Where <code>merge</code> with <code>CascadeType.MERGE</code> walks the associations and decides insert-or-update from entity state, Storm splits the decision into explicit actions: <code>update</code> for rows you know exist, <a href="/docs/upserts">upsert</a> when the database should resolve it atomically. Both write exactly the entities you pass, and <code>update</code> rejects unsaved members instead of quietly inserting them.</p>
-  <p>That includes the case that trips JPA instincts hardest: an updated owner held inside a pet you pass to <code>update</code> is not written. A keyed referenced entity contributes only its primary key, and there is no session that will flush the owner later. When both changed, name both: <code>update(pet, owner)</code>. Each row is written with its own dirty check, so unchanged members still cost nothing.</p>
-  <p>There is no cascade that insert has and update lacks; one rule covers every action: a write set writes the entities you name, plus the entities your values make necessary. An unsaved owner is necessary, the pet row cannot be written without its key, so holding it is unambiguous intent to create it. A keyed owner is never necessary: it already provides the foreign key value, and beyond that it is whatever snapshot was hydrated when the pet was read. Writing it anyway would silently overwrite newer state with a stale copy. JPA can afford to walk the graph on merge because the session identity-maps entities; without a session, a snapshot is not write intent.</p>
+  <p>The other actions follow the same contract. Where <code>merge</code> with <code>CascadeType.MERGE</code> walks the associations and decides insert-or-update from entity state, Storm splits the decision into explicit actions: <code>update</code> for rows you know exist, <a href="/docs/upserts">upsert</a> when the database should resolve it atomically. Both write exactly the entities you pass, and <code>update</code> rejects unsaved members instead of inserting them.</p>
+  <p>This differs from JPA in one case: an updated owner held inside a pet you pass to <code>update</code> is not written. A keyed referenced entity contributes only its primary key, and there is no session to flush the owner later. When both changed, pass both: <code>update(pet, owner)</code>. Each row goes through its own dirty check, so unchanged members are skipped.</p>
+  <p>One rule covers every action: a write set writes the entities you name, plus the entities your values make necessary. An unsaved owner is necessary, because the pet row cannot be written without its key. A keyed owner never is: it already provides the foreign key value, and beyond that it is the snapshot that was read with the pet. Writing it would overwrite newer state with a stale copy. JPA can walk the graph on merge because the session tracks one instance per row; without a session, a snapshot does not say what to write.</p>
   <p><code>remove</code> deletes the entities you name, children before parents. What it does not do is walk the graph looking for dependents:</p>
   ${editor({file: 'CleanupService.kt', tag: 'Kotlin · Storm', code: CODE_STORM_REMOVE})}
-  <p><code>orphanRemoval</code> has no counterpart by design: Storm entities hold no child collections, so there is no collection mutation to react to. Declare the reaction where the database can enforce it for every writer, on the constraint, or delete rows explicitly.</p>
+  <p><code>orphanRemoval</code> has no counterpart: Storm entities hold no child collections, so there is no collection change to react to. Declare the reaction on the constraint, where the database enforces it for every writer, or delete the rows explicitly.</p>
 
   <h2><span class="hno">06</span>Side by side</h2>
   <table class="cmp">

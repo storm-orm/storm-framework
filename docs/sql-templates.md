@@ -194,8 +194,8 @@ orm.query(RAW."""
 Generates:
 
 ```sql
-SELECT u.id, u.email, c.id, c.name, co.id, co.name, co.code
-FROM user u
+SELECT u.id, u.email, u.city_id, c.name, c.country_id, co.name, co.code
+FROM "user" u
 INNER JOIN city c ON u.city_id = c.id
 INNER JOIN country co ON c.country_id = co.id
 ```
@@ -217,8 +217,8 @@ data class User(
 Generates:
 
 ```sql
-SELECT u.id, u.email, c.id, c.name, co.id, co.name, co.code
-FROM user u
+SELECT u.id, u.email, u.city_id, c.name, c.country_id, co.name, co.code
+FROM "user" u
 LEFT JOIN city c ON u.city_id = c.id
 LEFT JOIN country co ON c.country_id = co.id
 ```
@@ -230,7 +230,7 @@ Nullability propagates through the relationship chain. If `city` is nullable, al
 Storm automatically orders joins so that LEFT JOINs appear after INNER JOINs. This prevents unintended filtering effects that can occur when outer joins precede inner joins.
 
 ```
-FROM user u
+FROM "user" u
 INNER JOIN department d ON u.department_id = d.id    -- INNER joins first
 INNER JOIN company co ON d.company_id = co.id
 LEFT JOIN city c ON u.city_id = c.id                 -- LEFT joins last

@@ -35,8 +35,14 @@ function buildBody(version) {
       : '') +
     P('    ') + F('id') + P('(') + S('"st.orm"') + P(') version ') + S(`"${version}"`) + P('\n') +
     P('}\n\n') +
+    F('repositories') + P(' { ') + F('mavenCentral') + P('() }\n\n') +
+    F('kotlin') + P(' { ') + F('jvmToolchain') + P('(') + N('21') + P(') }\n\n') +
+    F('application') + P(' {\n') +
+    P('    mainClass = ') + S('"io.ktor.server.netty.EngineMain"') + P('   ') + C('// reads application.conf\n') +
+    P('}\n\n') +
     F('dependencies') + P(' {\n') +
     P('    ') + F('implementation') + P('(') + S('"st.orm:storm-ktor"') + P(')\n') +
+    P('    ') + F('implementation') + P('(') + S('"com.zaxxer:HikariCP:6.2.1"') + P(')') + P('   ') + C('// the pool the plugin builds\n') +
     P('    ') + F('runtimeOnly') + P('(') + S('"st.orm:storm-h2"') + P(')\n') +
     P('    ') + F('runtimeOnly') + P('(') + S('"com.h2database:h2:2.3.232"') + P(')\n\n') +
     P('    ') + F('implementation') + P('(') + S('"io.ktor:ktor-server-netty"') + P(')\n') +
@@ -44,7 +50,6 @@ function buildBody(version) {
     P('    ') + F('implementation') + P('(') + S('"io.ktor:ktor-serialization-jackson"') + P(')\n') +
     P('    ') + F('implementation') + P('(') + S('"st.orm:storm-jackson2"') + P(')\n\n') +
     P('    ') + F('testImplementation') + P('(') + S('"st.orm:storm-ktor-test"') + P(')\n') +
-    P('    ') + F('testImplementation') + P('(') + S('"com.h2database:h2"') + P(')\n') +
     P('}');
 
   // One DDL script per supported database (DATABASE_VARIANTS in the shared
@@ -89,13 +94,17 @@ function buildBody(version) {
 
   const conf =
     C('# src/main/resources/application.conf\n') +
+    P('ktor {\n') +
+    P('    deployment { port = ') + N('8080') + P(' }\n') +
+    P('    application { modules = [ ApplicationKt.module ] }\n') +
+    P('}\n\n') +
     P('storm {\n') +
     P('    datasource {\n') +
-    P('        jdbcUrl = ') + S("\"jdbc:h2:mem:bookmarks;DB_CLOSE_DELAY=-1;INIT=RUNSCRIPT FROM 'classpath:schema.sql'\"") + P('\n') +
+    P('        jdbcUrl = ') + S('"jdbc:h2:mem:bookmarks;DB_CLOSE_DELAY=-1"') + P('\n') +
     P('        username = ') + S('"sa"') + P('\n') +
     P('        password = ') + S('""') + P('\n') +
     P('    }\n') +
-    P('    validation { schemaMode = ') + S('"warn"') + P(' }') + P('   ') + C('# log any entity/schema mismatch\n') +
+    P('    validation { schemaMode = ') + S('"warn"') + P(' }') + P('   ') + C('# log entity/schema mismatches\n') +
     P('}');
 
   const repo =
@@ -109,11 +118,14 @@ function buildBody(version) {
 
   const app =
     C('// Application.kt\n') +
-    K('fun ') + F('main') + P('() {\n') +
-    P('    ') + F('embeddedServer') + P('(') + T('Netty') + P(', port = ') + N('8080') + P(') { ') + F('module') + P('() }.') + F('start') + P('(wait = ') + K('true') + P(')\n') +
-    P('}\n\n') +
+    K('fun ') + F('main') + P('(args: ') + T('Array') + P('<') + T('String') + P('>) = ') + T('EngineMain') + P('.') + F('main') + P('(args)\n\n') +
     K('fun ') + T('Application') + P('.') + F('module') + P('() {\n') +
-    P('    ') + F('install') + P('(') + T('Storm') + P(')') + P('                     ') + C('// reads storm.datasource; auto-registers repositories\n') +
+    P('    ') + F('install') + P('(') + T('Storm') + P(') {') + P('   ') + C('// reads storm.datasource, registers the repositories\n') +
+    P('        ') + C('// runs once at startup, before schema validation\n') +
+    P('        ') + F('migration') + P(' { dataSource ->\n') +
+    P('            dataSource.connection.') + F('use') + P(' { it.') + F('createStatement') + P('().') + F('execute') + P('(') + S('"RUNSCRIPT FROM \'classpath:schema.sql\'"') + P(') }\n') +
+    P('        }\n') +
+    P('    }\n') +
     P('    ') + F('install') + P('(') + T('ContentNegotiation') + P(') {\n') +
     P('        ') + F('jackson') + P(' { ') + F('registerModule') + P('(') + T('StormModule') + P('()) }\n') +
     P('    }\n') +
@@ -155,7 +167,7 @@ function buildBody(version) {
     F('repository') + P('<') + T('BookmarkRepository') + P('>().') + F('findAll') + P('()');
   const listSql =
     QC('-- one query, no N+1: the folder is joined in\n') +
-    QK('SELECT') + ' b.id, b.url, b.title, f.id, f.name\n' +
+    QK('SELECT') + ' b.id, b.url, b.title, b.folder_id, f.name\n' +
     QK('FROM') + ' bookmark b\n' +
     QK('INNER JOIN') + ' folder f ' + QK('ON') + ' b.folder_id = f.id';
 
@@ -180,11 +192,10 @@ function buildBody(version) {
     P('        ') + F('install') + P('(') + T('ContentNegotiation') + P(') { ') + F('jackson') + P(' { ') + F('registerModule') + P('(') + T('StormModule') + P('()) } }\n') +
     P('        ') + F('routing') + P(' { ') + F('bookmarkRoutes') + P('() }\n') +
     P('    }\n\n') +
-    P('    scope.stormSqlCapture.') + F('run') + P(' {\n') +
-    P('        client.') + F('post') + P('(') + S('"/bookmarks"') + P(') {\n') +
-    P('            ') + F('contentType') + P('(') + T('ContentType') + P('.Application.Json)\n') +
-    P('            ') + F('setBody') + P('(') + S('"""{"url":"https://orm.st","title":"Storm","folderId":1}"""') + P(')\n') +
-    P('        }\n') +
+    P('    ') + C('// the scope captures the SQL of every call the application handles\n') +
+    P('    client.') + F('post') + P('(') + S('"/bookmarks"') + P(') {\n') +
+    P('        ') + F('contentType') + P('(') + T('ContentType') + P('.Application.Json)\n') +
+    P('        ') + F('setBody') + P('(') + S('"""{"url":"https://orm.st","title":"Storm","folderId":1}"""') + P(')\n') +
     P('    }\n') +
     P('    ') + F('assertEquals') + P('(') + N('1') + P(', scope.stormSqlCapture.') + F('count') + P('(') + T('Operation') + P('.INSERT))\n') +
     P('}');
@@ -195,23 +206,23 @@ ${navHtml('tutorials')}
 <div class="art">
   <div class="crumbs"><a href="/">Home</a><span class="sep">/</span><a href="/tutorials/">Tutorials</a><span class="sep">/</span>Build a REST API</div>
   <h1>Build a REST API<br><span class="grad">from scratch.</span></h1>
-  <p class="dek">Start with an empty project and finish with a running, tested REST API: two entities, their relationship loaded in a single query, CRUD routes over Ktor, and a test that asserts the exact SQL. About twenty minutes end to end.</p>
+  <p class="dek">Start with an empty project and finish with a running, tested REST API: two entities, their relationship loaded in one query, CRUD routes on Ktor, and a test that asserts on the SQL. It takes about twenty minutes.</p>
   <div class="meta"><span>Kotlin</span><span>Ktor 3</span><span>~20 min</span></div>
 
   <div class="note">New to Storm? The <a href="/quickstart">five-minute quickstart</a> covers just install, entity, and query. This tutorial builds the whole app around them.</div>
 
   <h2><span class="hno">1</span>Create the project</h2>
-  <p>Start a plain Kotlin/Gradle project and add Ktor and Storm. The Ktor plugin manages the Ktor artifact versions, and the Storm Gradle plugin imports Storm's BOM and wires the metamodel processor and compiler plugin, so most dependencies need no version. We use H2 so there is nothing to install.</p>
+  <p>Start a plain Kotlin Gradle project and add Ktor and Storm. The Ktor plugin manages the Ktor versions, and the Storm plugin imports Storm's BOM and wires the metamodel processor and the compiler plugin, so most dependencies need no version. The Storm Ktor plugin builds its connection pool with HikariCP, which you add yourself. The database is H2, so there is nothing to install. Ktor's <code>EngineMain</code> starts the server and reads <code>application.conf</code>.</p>
   ${editor({
     file: 'build.gradle.kts',
     tag: 'Gradle · Kotlin DSL',
     copy: true,
     variants: KOTLIN_VARIANTS.map((v) => ({label: v.label, code: gradleFor(v), selected: v.selected})),
   })}
-  <p>Assembling it by hand is the point of this tutorial. When you are starting real work instead, the <a class="tlink" href="/templates/kotlin-ktor">Ktor starter template</a> is this project already assembled: the same plugin block, two entities with their migration, a repository query, a service, two endpoints and their tests. Press <b>Use this template</b> on GitHub and it runs on H2 before you change a line.</p>
+  <p>Assembling it by hand is the point of this tutorial. When you are starting real work instead, the <a class="tlink" href="/templates/kotlin-ktor">Ktor starter template</a> is a project like this one, already assembled: two entities with their migration, a repository query, a service, two endpoints and their tests. Press <b>Use this template</b> on GitHub and it runs on H2 before you change a line.</p>
 
   <h2><span class="hno">2</span>Create the schema</h2>
-  <p>Storm maps to an existing schema rather than generating one, which keeps migrations under your control. For this tutorial a small script is enough; H2 runs it on startup, so there is no migration tool to set up yet. On another database, pick it in the block below.</p>
+  <p>Storm maps to an existing schema and does not generate one, so migrations stay under your control. For this tutorial a small script is enough: the application runs it on the in-memory database at startup (step 6), so there is no migration tool to set up yet. For another database, pick it in the block below and run the script yourself.</p>
   ${editor({
     file: 'schema.sql',
     tag: 'SQL',
@@ -220,37 +231,37 @@ ${navHtml('tutorials')}
   })}
 
   <h2><span class="hno">3</span>Model the domain</h2>
-  <p>Two immutable data classes. A <code>Bookmark</code> belongs to a <code>Folder</code>; marking that reference <code>@FK</code> is the whole relationship. Field names map to columns automatically, so <code>folder</code> becomes the <code>folder_id</code> column.</p>
+  <p>Two immutable data classes. A <code>Bookmark</code> belongs to a <code>Folder</code>, and the <code>@FK</code> on that field declares the relationship. Field names map to column names, and a foreign key field maps to its <code>_id</code> column, so <code>folder</code> maps to <code>folder_id</code>.</p>
   ${editor({file: 'model.kt', tag: 'Kotlin', code: entities, copy: true})}
 
   <h2><span class="hno">4</span>Point Storm at the database</h2>
-  <p>The Storm Ktor plugin reads its DataSource from <code>application.conf</code>. No wiring code: <code>install(Storm)</code> builds a connection pool and, because the metamodel processor already indexed them, registers your repositories.</p>
+  <p>The <code>ktor</code> section tells <code>EngineMain</code> the port and the module to load. The <code>storm</code> section configures the Storm plugin: <code>install(Storm)</code> builds a connection pool from <code>storm.datasource</code> and registers the repositories the metamodel processor indexed at compile time. Schema validation in <code>warn</code> mode logs any mismatch between the entities and the tables.</p>
   ${editor({file: 'application.conf', tag: 'HOCON', code: conf, copy: true})}
 
   <h2><span class="hno">5</span>Add a repository</h2>
-  <p>Extend <code>EntityRepository</code> and every CRUD method comes for free. Add your own one-line queries on top; <code>Bookmark_</code> is the compile-time metamodel, so a typo in a field name fails to compile. <code>FolderRepository</code> shows the minimal case: one line, nothing to implement.</p>
+  <p>An interface that extends <code>EntityRepository</code> inherits the CRUD methods. Add your own queries as default methods; <code>Bookmark_</code> is the generated metamodel, so a misspelled field fails to compile. <code>FolderRepository</code> declares nothing of its own.</p>
   ${editor({file: 'Repositories.kt', tag: 'Kotlin', code: repo, copy: true})}
 
   <h2><span class="hno">6</span>Wire up the application</h2>
-  <p>A standard Ktor <code>main</code> and module. Install Storm, register Storm's Jackson module so entities serialize cleanly, and mount the routes.</p>
+  <p>The module installs Storm, registers Storm's Jackson module for entity serialization, and mounts the routes. The <code>migration</code> hook runs the schema script once, after the pool is built and before schema validation. A real project runs Flyway or Liquibase there.</p>
   ${editor({file: 'Application.kt', tag: 'Kotlin', code: app, copy: true})}
 
   <h2><span class="hno">7</span>Write the routes</h2>
-  <p>Read straight from the ORM, write inside <code>transaction { }</code>. Because Ktor and Storm are both coroutine-based, the transaction rides the request's coroutine with no proxies or annotations. <code>repository&lt;T&gt;()</code> is an extension available right in the handler.</p>
+  <p>Reads call the repository directly; writes run inside <code>transaction { }</code>. The transaction is a suspend function, so it runs in the request's coroutine. <code>repository&lt;T&gt;()</code> is an extension you can call in any handler.</p>
   ${editor({file: 'Routes.kt', tag: 'Kotlin', code: routes, copy: true})}
-  <p>The list endpoint is where Storm earns its keep. One call, one query: the folder for every bookmark is joined in, so there is no N+1 to discover later. Toggle <b>Show SQL</b> to see exactly what runs.</p>
+  <p>The list endpoint runs one query. The folder of every bookmark is joined in, so the list does not issue a query per bookmark. Toggle <b>Show SQL</b> to see the statement.</p>
   ${editor({file: 'BookmarkRepository.kt', tag: 'Kotlin', code: listCode, sql: listSql, copy: true})}
 
   <h2><span class="hno">8</span>Run it</h2>
-  <p>Start the server and exercise it with curl. The created bookmark comes back with its full folder object, loaded in the same query that fetched the bookmark.</p>
+  <p>Start the server and call it with curl. Each bookmark in the response includes its folder.</p>
   ${editor({file: 'terminal', tag: 'shell', code: run, copy: true})}
 
   <h2><span class="hno">9</span>Test it</h2>
-  <p><code>storm-ktor-test</code> spins up an in-memory database from your schema script and captures the SQL. Here we assert the create path is a single INSERT, so an accidental N+1 or extra round-trip fails the build rather than slipping into production.</p>
+  <p><code>testStormApplication</code> from <code>storm-ktor-test</code> creates an in-memory database, runs your schema script, and captures the SQL of every call the application handles. This test asserts that creating a bookmark writes one row with one INSERT. <code>count()</code> and <code>statements()</code> on the capture pin down the rest of the request.</p>
   ${editor({file: 'BookmarkRoutesTest.kt', tag: 'Kotlin · test', code: test, copy: true})}
 
   <h2><span class="hno">✓</span>You built it</h2>
-  <p>An empty folder to a running, tested API: two entities, a joined relationship, four routes, and a repository, with no persistence context, no proxies, and no N+1. From here:</p>
+  <p>You went from an empty project to a running, tested API: two entities, a relationship loaded with a join, four routes and a repository. From here:</p>
   <div class="refs">
     <a href="/docs/relationships">Relationships</a>
     <a href="/docs/repositories">Repositories</a>

@@ -4,68 +4,59 @@ import {
   K, T, S, C, F, N, A, P, QK, QQ, QC,
 } from '../../components/tutorial/tutorialTheme';
 
-// Tutorial: upserts, JPA vs Storm.
+// Tutorial: upserts, JPA vs Storm. Storm facts verified against
+// OnConflictEntityRepositoryImpl, MergeEntityRepositoryImpl, MySQLEntityRepositoryImpl
+// and EntityRepositoryImpl.isUpsertUpdate/isUpsertInsert: the conflict target is
+// the primary key on every dialect; an auto-generated key routes to insert (default
+// id) or update (id set). SQL shape from PostgreSQLEntityRepositoryConformanceTest.
 
-const TITLE = 'Upserts Without the Workarounds: JPA vs Storm';
+const TITLE = 'Upserts in One Statement: JPA vs Storm';
 const DESC =
-  'JPA has no upsert: the usual find-then-save pattern is two statements and one ' +
-  'race condition. Storm generates the database\'s native upsert syntax, atomic ' +
-  'and portable across PostgreSQL, MySQL, Oracle, SQL Server, SQLite and H2.';
+  'Spring Data JPA saves an entity with an assigned key through merge(): a SELECT, ' +
+  'then an INSERT or UPDATE. Storm sends the database\'s own upsert, resolved on ' +
+  'the primary key, on PostgreSQL, MySQL, MariaDB, Oracle, SQL Server, SQLite and H2.';
+
+const CODE_CITY = [
+  K('data class '), T('City'), P('(\n'),
+  P('    '), A('@PK'), P('(generation = '), T('NONE'), P(') '), K('val '), P('code: '), T('String'), P(',   '), C('// assigned by the source\n'),
+  P('    '), K('val '), P('name: '), T('String'), P(',\n'),
+  P('    '), K('val '), P('population: '), T('Long'), P(',\n'),
+  P(') : '), T('Entity'), P('<'), T('String'), P('>'),
+].join('');
 
 const CODE_JPA_UPSERT = [
-  C('// The common JPA workaround: check, then write. Two statements, one race.\n'),
   A('@Transactional'), P('\n'),
-  K('fun '), F('importUser'), P('(email: '), T('String'), P(', name: '), T('String'), P(', city: '), T('City'), P(') {\n'),
-  P('    '), K('val '), P('existing = userRepository.'), F('findByEmail'), P('(email)\n'),
-  P('    '), K('if'), P(' (existing == '), K('null'), P(') {\n'),
-  P('        userRepository.'), F('save'), P('('), T('User'), P('(email = email, name = name, city = city))\n'),
-  P('    } '), K('else'), P(' {\n'),
-  P('        existing.name = name\n'),
-  P('        existing.city = city\n'),
-  P('    }\n'),
+  K('fun '), F('importCity'), P('(row: '), T('CityRow'), P(') {\n'),
+  P('    '), C('// The key is assigned, so save() calls merge(): it reads the row first\n'),
+  P('    cityRepository.'), F('save'), P('('), T('City'), P('(row.code, row.name, row.population))\n'),
   P('}'),
 ].join('');
 
 const SQL_JPA_UPSERT = [
-  QC('-- two statements with a gap between them'), '\n',
-  QK('SELECT'), ' u.* ', QK('FROM'), ' user u ', QK('WHERE'), ' u.email = ', QQ('?'), '\n',
-  QK('INSERT INTO'), ' user (email, name, city_id) ', QK('VALUES'), ' (', QQ('?'), ', ', QQ('?'), ', ', QQ('?'), ')\n\n',
-  QC('-- two concurrent imports both see "no row" in the gap:'), '\n',
-  QC('-- one insert succeeds, the other dies on the unique constraint'),
+  QK('SELECT'), ' ... ', QK('FROM'), ' city ', QK('WHERE'), ' code = ', QQ('?'), '\n',
+  QK('INSERT INTO'), ' city (...) ', QK('VALUES'), ' (...)   ', QC('-- or UPDATE, when the row exists'), '\n\n',
+  QC('-- two imports of a new code both find no row;'), '\n',
+  QC('-- the second INSERT fails on the primary key'),
 ].join('');
 
 const CODE_STORM_UPSERT = [
-  C('// One statement, resolved by the database, safe under concurrency\n'),
-  K('val '), P('user = orm '), K('upsert '), T('User'), P('(\n'),
-  P('    email = '), S('"alice@example.com"'), P(',\n'),
-  P('    name = '), S('"Alice"'), P(',\n'),
-  P('    city = city,\n'),
-  P(')\n'),
-  C('// user.id is populated whether the row was inserted or updated'),
+  K('val '), P('city = orm '), K('upsert '), T('City'), P('(code = '), S('"NL-AMS"'), P(', name = '), S('"Amsterdam"'), P(', population = '), N('931_298'), P(')'),
 ].join('');
 
 const SQL_STORM_UPSERT = [
-  QC('-- PostgreSQL dialect'), '\n',
-  QK('INSERT INTO'), ' "user" (email, name, city_id) ', QK('VALUES'), ' (', QQ('?'), ', ', QQ('?'), ', ', QQ('?'), ')\n',
-  QK('ON CONFLICT'), ' (email) ', QK('DO UPDATE'), '\n',
-  QK('SET'), ' name = excluded.name, city_id = excluded.city_id\n\n',
-  QC('-- MySQL/MariaDB: INSERT ... ON DUPLICATE KEY UPDATE'), '\n',
-  QC('-- Oracle, SQL Server, H2: MERGE INTO ...'),
+  QC('-- PostgreSQL'), '\n',
+  QK('INSERT INTO'), ' city (code, name, population)\n',
+  QK('VALUES'), ' (', QQ('?'), ', ', QQ('?'), ', ', QQ('?'), ')\n',
+  QK('ON CONFLICT'), ' (code) ', QK('DO UPDATE SET'), ' name = EXCLUDED.name, population = EXCLUDED.population\n\n',
+  QC('-- SQLite: ON CONFLICT (code) DO UPDATE'), '\n',
+  QC('-- MySQL, MariaDB: INSERT ... ON DUPLICATE KEY UPDATE'), '\n',
+  QC('-- Oracle, SQL Server, H2: MERGE INTO city t ... ON (t.code = src.code)'),
 ].join('');
 
 const CODE_STORM_BATCH = [
-  C('// Synchronize an external source: insert the new, update the known\n'),
-  K('val '), P('users = imported.'), F('map'), P(' { row ->\n'),
-  P('    '), T('User'), P('(email = row.email, name = row.name, city = '), F('resolveCity'), P('(row.city))\n'),
-  P('}\n\n'),
-  P('orm '), K('upsert'), P(' users   '), C('// one batched statement, not a loop'),
-].join('');
-
-const CODE_STORM_TX = [
-  C('// Upserts compose with transactions like any other write\n'),
+  K('val '), P('cities = rows.'), F('map'), P(' { '), T('City'), P('(it.code, it.name, it.population) }\n\n'),
   F('transaction'), P(' {\n'),
-  P('    '), K('val '), P('city = orm '), K('insert '), T('City'), P('(name = '), S('"Sunnyvale"'), P(', population = '), N('161_884'), P(')\n'),
-  P('    '), K('val '), P('user = orm '), K('upsert '), T('User'), P('(email = '), S('"alice@example.com"'), P(', name = '), S('"Alice"'), P(', city = city)\n'),
+  P('    orm.'), F('entity'), P('('), T('City'), P('::'), K('class'), P(').'), F('upsert'), P('(cities)   '), C('// JDBC batches of 1000 rows\n'),
   P('}'),
 ].join('');
 
@@ -74,48 +65,46 @@ ${navHtml('tutorials')}
 
 <div class="art">
   <div class="crumbs"><a href="/tutorials/">Tutorials</a><span class="sep">/</span>Upserts</div>
-  <h1>Upserts without <span class="grad">the workarounds</span></h1>
-  <p class="dek">Insert if missing, update if present: one of the most common write patterns, and one JPA never got a first-class answer for. Storm delegates it to the database, where it is atomic.</p>
-  <div class="meta"><span>Series · JPA to Storm</span><span>5 min read</span><span>Kotlin</span></div>
+  <h1>Upserts in <span class="grad">one statement</span></h1>
+  <p class="dek">Insert the row if it is new, update it if it exists. Spring Data JPA does this by reading the row first. Storm sends the database's own upsert statement, keyed on the primary key.</p>
+  <div class="meta"><span>Series · JPA to Storm</span><span>4 min read</span><span>Kotlin</span></div>
 
   <h2><span class="hno">01</span>The task</h2>
-  <p>A webhook delivers user records, possibly more than once. An import job synchronizes rows from an external system. In both cases the same logical record may arrive repeatedly, and the write must be idempotent: create the row the first time, update it every time after, and survive two deliveries arriving at once.</p>
+  <p>A nightly job imports cities from a reference dataset. Each row carries the code the dataset assigns, and the same code arrives every night. The write has to insert a new code, update a known one, and stay correct when two imports run at once.</p>
+  ${editor({file: 'City.kt', tag: 'Kotlin · Storm', code: CODE_CITY})}
 
   <h2><span class="hno">02</span>The JPA way</h2>
-  <p>JPA has no upsert operation. <code>merge()</code> sounds like one but is not: it copies detached state into the session and still decides insert-or-update by looking first. So most codebases end up with this:</p>
+  <p>The JPA specification has no upsert. With an assigned key, Spring Data's <code>save()</code> treats the entity as existing and calls <code>merge()</code>, which loads the row before it writes:</p>
   ${editor({file: 'ImportService.kt', tag: 'Kotlin · JPA', code: CODE_JPA_UPSERT, sql: SQL_JPA_UPSERT})}
-  <p>The check and the write are separate statements, so two concurrent requests can both find nothing and both insert. One wins, the other throws <code>DataIntegrityViolationException</code>, and now you are writing retry logic or taking pessimistic locks for a write that the database could have resolved on its own. The alternative is a hand-written native query per database dialect.</p>
+  <p>The read and the write are two statements. Two imports of the same new code can both read nothing, and the second insert fails with a constraint violation. Hibernate 6.3 added <code>StatelessSession.upsert()</code>, which writes one statement keyed on the id; it runs outside the persistence context, so it is a second API next to the repositories.</p>
 
   <h2><span class="hno">03</span>The Storm way</h2>
-  <p>Storm treats upsert as a first-class repository operation and generates the native conflict syntax of whatever database you are on:</p>
+  <p><code>upsert</code> is a repository operation, and the dialect writes the statement:</p>
   ${editor({file: 'ImportService.kt', tag: 'Kotlin · Storm', code: CODE_STORM_UPSERT, sql: SQL_STORM_UPSERT})}
-  <p>The database resolves the conflict atomically in one statement: no race window, no retry logic, no application-level locking. Conflict detection rides on the table's unique constraints, in this case the unique index on <code>email</code>. The returned entity carries the database-generated id either way.</p>
-  <div class="note">Upsert needs two things: the dialect module for your database on the classpath (for example <code>storm-postgresql</code>), and a primary key or unique constraint for the database to detect the conflict. On MySQL and MariaDB, any unique constraint can trigger the update branch, so be deliberate when a table has several. See <a href="/docs/upserts">Upserts</a> for the failure modes.</div>
+  <p>The database decides between insert and update inside one statement, so concurrent imports of the same code do not collide. Kotlin's <code>orm upsert</code> returns the row as stored; <code>upsert</code> on the repository returns nothing and skips the read.</p>
+  <div class="note">The conflict target is the primary key on every database. An entity whose key the database generates has nothing to conflict on before it is inserted: <code>upsert</code> inserts it while its id is <code>0</code> and updates it once the id is set. MySQL and MariaDB are the exception, since <code>ON DUPLICATE KEY UPDATE</code> also fires on any unique key, so be deliberate when a table has several. Upsert needs the dialect module for your database, such as <code>storm-postgresql</code>. See <a href="/docs/upserts">Upserts</a>.</div>
 
   <h2><span class="hno">04</span>Batches</h2>
-  <p>Synchronization jobs rarely process one record. Passing a list combines JDBC batching with the native upsert syntax, which is dramatically faster than a loop:</p>
-  ${editor({file: 'SyncJob.kt', tag: 'Kotlin · Storm', code: CODE_STORM_BATCH})}
+  <p>A list goes through the same statement, sent as JDBC batches of 1000 rows. Inside a transaction the whole import commits together:</p>
+  ${editor({file: 'CityImport.kt', tag: 'Kotlin · Storm', code: CODE_STORM_BATCH})}
+  <p>Calling <code>upsert</code> once per row in a loop sends each row in its own round trip. In development, Storm's <a class="tlink" href="/docs/advice#repeated-write">statement advice</a> reports a single-row write repeated ten or more times and names the list form. The <a class="tlink" href="/tutorials/advice">advice tutorial</a> shows how to read it.</p>
 
-  <h2><span class="hno">05</span>Inside a transaction</h2>
-  <p>Upserts participate in transactions like every other write, so multi-step imports stay atomic:</p>
-  ${editor({file: 'ImportService.kt', tag: 'Kotlin · Storm', code: CODE_STORM_TX})}
-
-  <h2><span class="hno">06</span>Side by side</h2>
+  <h2><span class="hno">05</span>Side by side</h2>
   <table class="cmp">
     <tr><th></th><th>JPA with Hibernate</th><th>Storm</th></tr>
-    <tr><td>Upsert operation</td><td>None; find-then-save or a native query per dialect</td><td><code>orm upsert entity</code>, one statement</td></tr>
-    <tr><td>Concurrency</td><td>Race window between check and write</td><td>Atomic; the database resolves the conflict</td></tr>
-    <tr><td>Portability</td><td>Native SQL differs per database</td><td>Dialects generate <code>ON CONFLICT</code>, <code>ON DUPLICATE KEY</code>, or <code>MERGE</code></td></tr>
-    <tr><td>Batches</td><td>Loop over single writes</td><td>One batched upsert statement</td></tr>
+    <tr><td>Upsert</td><td><code>save()</code> with an assigned key: SELECT, then INSERT or UPDATE. <code>StatelessSession.upsert()</code> since 6.3</td><td><code>orm upsert city</code>, one statement</td></tr>
+    <tr><td>Concurrent writes of a new key</td><td>The read and the write can interleave</td><td>The database resolves the conflict</td></tr>
+    <tr><td>SQL</td><td>Generated by Hibernate per dialect</td><td><code>ON CONFLICT</code>, <code>ON DUPLICATE KEY UPDATE</code> or <code>MERGE</code>, per dialect</td></tr>
+    <tr><td>Lists</td><td><code>saveAll()</code>, a read per entity</td><td><code>upsert(cities)</code>, JDBC-batched</td></tr>
   </table>
 
-  <h2><span class="hno">07</span>Keep going</h2>
-  <p>The reference documentation covers the mechanics in depth:</p>
+  <h2><span class="hno">06</span>Keep going</h2>
+  <p>The reference documentation covers the details:</p>
   <div class="refs">
     <a href="/docs/upserts">Upserts</a>
+    <a href="/docs/batch-streaming">Batch and Streaming</a>
     <a href="/docs/dialects">Dialects</a>
-    <a href="/docs/transactions">Transactions</a>
-    <a href="/docs/repositories">Repositories</a>
+    <a href="/docs/advice#repeated-write">Statement Advice</a>
   </div>
   <div class="cta">
     <a href="/docs/getting-started" class="btn primary">Get started →</a>

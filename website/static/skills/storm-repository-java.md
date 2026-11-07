@@ -270,7 +270,8 @@ User fetched = users.getByRef(userRef);                   // throws if not found
 users.update(new User(user.id(), user.email(), "Alice Johnson", user.city()));
 User updated = users.updateAndFetch(new User(user.id(), user.email(), "Alice Johnson", user.city()));
 
-// Upsert (insert or update)
+// Upsert (insert or update), resolved on the primary key on every dialect; MySQL/MariaDB also on any unique key.
+// Generated key: null id inserts, a set id updates. A row identified by another unique column needs a SQL template.
 users.upsert(new User(1, "alice@example.com", "Alice", city));
 User upserted = users.upsertAndFetch(new User(1, "alice@example.com", "Alice", city));
 int id = users.upsertAndFetchId(new User(1, "alice@example.com", "Alice", city));

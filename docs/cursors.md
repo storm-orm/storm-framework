@@ -13,24 +13,27 @@ A `Window` names the rows it ended and started on through `next()` and `previous
 <TabItem value="kotlin" label="Kotlin" default>
 
 ```kotlin
-// Server: serialize the position into the response
-val cursor: String? = window.nextCursor()
+// Server: serialize the position into the response; null when no rows follow the window
+val nextCursor: String? = window.nextCursor()
 
 // Client sends the cursor back with the next request
 // Server: the ordering is code, the position is the client's cursor, the size is the client's parameter
-val next = userRepository.scroll(Scrollable.of(User_.id, size).sortBy(User_.email).from(cursor))
+fun nextWindow(cursor: String, size: Int): Window<User> =
+    userRepository.scroll(Scrollable.of(User_.id, size).sortBy(User_.email).from(cursor))
 ```
 
 </TabItem>
 <TabItem value="java" label="Java">
 
 ```java
-// Server: serialize the position into the response
-String cursor = window.nextCursor();
+// Server: serialize the position into the response; null when no rows follow the window
+String nextCursor = window.nextCursor();
 
 // Client sends the cursor back with the next request
 // Server: the ordering is code, the position is the client's cursor, the size is the client's parameter
-var next = userRepository.scroll(Scrollable.of(User_.id, size).sortBy(User_.email).from(cursor));
+Window<User> nextWindow(String cursor, int size) {
+    return userRepository.scroll(Scrollable.of(User_.id, size).sortBy(User_.email).from(cursor));
+}
 ```
 
 </TabItem>

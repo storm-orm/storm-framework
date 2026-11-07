@@ -307,7 +307,8 @@ val fetched: User = users.getByRef(userRef)                   // throws if not f
 orm update user.copy(name = "Alice Johnson")
 val updated: User = users.updateAndFetch(user.copy(name = "Alice Johnson"))
 
-// Upsert (insert or update)
+// Upsert (insert or update), resolved on the primary key on every dialect; MySQL/MariaDB also on any unique key.
+// Generated key: id 0 inserts, a set id updates. A row identified by another unique column needs a SQL template.
 orm upsert User(id = 1, email = "alice@example.com", name = "Alice", city = city)
 val upserted: User = users.upsertAndFetch(User(id = 1, email = "alice@example.com", name = "Alice", city = city))
 

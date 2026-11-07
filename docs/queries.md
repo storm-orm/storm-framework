@@ -665,7 +665,7 @@ A grouping states what one row stands for. `groupBy` accepts the entity you want
 .groupBy(User_.city)      // one row per city
 .groupBy(User_.city.id)   // the same relationship, so the same grouping
 .groupBy(User_.id)        // one row per user
-.groupBy(User_.name)      // one row per distinct name: a value, not an identity
+.groupBy(User_.birthDate) // one row per distinct birth date: a value, not an identity
 ```
 
 The first three name an identity. The relationship, the key beyond it, and the query root's own key all say the same thing, and a reference says it too. The last names a value, and groups by that value literally.
@@ -691,7 +691,7 @@ orm.entity(User::class)
 
 ```sql
 -- PostgreSQL, MySQL, SQLite, H2
-SELECT c.id, c.name, c.population, COUNT(*) FROM user u INNER JOIN city c ON u.city_id = c.id GROUP BY c.id
+SELECT c.id, c.name, c.population, COUNT(*) FROM "user" u INNER JOIN city c ON u.city_id = c.id GROUP BY c.id
 
 -- SQL Server, Oracle
 ... GROUP BY c.id, c.name, c.population

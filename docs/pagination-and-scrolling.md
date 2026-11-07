@@ -53,7 +53,7 @@ For direct offset/limit control, use `offset` and `limit` on the query builder. 
 ```kotlin
 val results = orm.entity(User::class)
     .select()
-    .orderBy(User_.createdAt)
+    .orderBy(User_.email)
     .offset(20)
     .limit(10)
     .resultList
@@ -65,7 +65,7 @@ val results = orm.entity(User::class)
 ```java
 List<User> results = orm.entity(User.class)
     .select()
-    .orderBy(User_.createdAt)
+    .orderBy(User_.email)
     .offset(20)
     .limit(10)
     .getResultList();
@@ -192,15 +192,15 @@ Sort orders are specified on the `Pageable` using `sortBy` (ascending) and `sort
 
 ```kotlin
 // Single column, ascending
-val pageable = Pageable.ofSize(10).sortBy(User_.createdAt)
+val pageable = Pageable.ofSize(10).sortBy(User_.birthDate)
 
 // Single column, descending
-val pageable = Pageable.ofSize(10).sortByDescending(User_.createdAt)
+val pageable = Pageable.ofSize(10).sortByDescending(User_.birthDate)
 
 // Multi-column: last name ascending, then first name descending
 val pageable = Pageable.ofSize(10)
-    .sortBy(User_.lastName)
-    .sortByDescending(User_.firstName)
+    .sortBy(Owner_.lastName)
+    .sortByDescending(Owner_.firstName)
 ```
 
 </TabItem>
@@ -208,15 +208,15 @@ val pageable = Pageable.ofSize(10)
 
 ```java
 // Single column, ascending
-Pageable pageable = Pageable.ofSize(10).sortBy(User_.createdAt);
+Pageable pageable = Pageable.ofSize(10).sortBy(User_.birthDate);
 
 // Single column, descending
-Pageable pageable = Pageable.ofSize(10).sortByDescending(User_.createdAt);
+Pageable pageable = Pageable.ofSize(10).sortByDescending(User_.birthDate);
 
 // Multi-column: last name ascending, then first name descending
 Pageable pageable = Pageable.ofSize(10)
-    .sortBy(User_.lastName)
-    .sortByDescending(User_.firstName);
+    .sortBy(Owner_.lastName)
+    .sortByDescending(Owner_.firstName);
 ```
 
 </TabItem>
@@ -228,7 +228,7 @@ For the full `Page` and `Pageable` API reference, see [Repositories: Offset-Base
 
 Scrolling navigates by keyset and returns a `Window<R>`: the results in the request's sort order, two flags that say whether rows exist after and before the window, and the tokens that continue from it. There is no total count and no page number.
 
-Under the hood, scrolling remembers the row a window ended on and asks the database for the rows after it, or the row it started on and the rows before it. The database seeks to that row through an index instead of scanning and discarding skipped rows, so performance stays constant regardless of depth.
+Scrolling remembers the row a window ended on and asks the database for the rows after it, or the row it started on and the rows before it. The database seeks to that row through an index instead of scanning and discarding skipped rows, so performance stays constant regardless of depth.
 
 A scroll request is a `Scrollable`: an ordering, a window size, and optionally the position to continue from.
 
@@ -243,9 +243,10 @@ A scroll request is a `Scrollable`: an ordering, a window size, and optionally t
 // First window, twenty users ordered by id
 val window: Window<User> = userRepository.scroll(Scrollable.of(User_.id, 20))
 
-// The window after it, and the window before it, both in id order
-val next: Window<User> = userRepository.scroll(window.next())
-val previous: Window<User> = userRepository.scroll(next.previous())
+// The window after it, and the window before it, both in id order;
+// next() and previous() are null when the window is empty
+val next: Window<User>? = window.next()?.let { userRepository.scroll(it) }
+val previous: Window<User>? = next?.previous()?.let { userRepository.scroll(it) }
 
 // Newest first: the key descending
 val latest = userRepository.scroll(Scrollable.of(User_.id, 20).descending())
@@ -342,8 +343,8 @@ val latest = postRepository.select()
     .scroll(Scrollable.of(Post_.id, 20).sortByDescending(Post_.createdAt).descending())
 
 // The next and the previous window, both in the same order as the window they came from
-val next = postRepository.select().scroll(window.next())
-val previous = postRepository.select().scroll(window.previous())
+val next = window.next()?.let { postRepository.select().scroll(it) }
+val previous = window.previous()?.let { postRepository.select().scroll(it) }
 ```
 
 </TabItem>
@@ -392,47 +393,41 @@ CREATE INDEX idx_post_created_id ON post (created_at, id);
 
 ### Sorting by a Joined Table
 
-A sort field may belong to any table in the query, as a field passed to `orderBy` may. The key addresses a row of the result, so it belongs to the queried table, and `scroll` needs the query narrowed back to it after a join.
+A sort field may belong to any table in the query, as a field passed to `orderBy` may. A table the queried entity reaches through a foreign key is part of the query already, so its fields sort through their path:
 
 <Tabs groupId="language">
 <TabItem value="kotlin" label="Kotlin" default>
 
 ```kotlin
-// Most voted first, scrolled by the movie's id
-val window = movieRepository.select()
-    .innerJoin<Rating>().on<Movie>()
-    .narrow<Movie>()
-    .scroll(Scrollable.of(Movie_.id, 20).sortByDescending(Rating_.votes))
+// Visits in order of the pet's name, scrolled by the visit's id
+val window = visitRepository.select()
+    .scroll(Scrollable.of(Visit_.id, 20).sortBy(Visit_.pet.name))
 ```
 
 </TabItem>
 <TabItem value="java" label="Java">
 
 ```java
-// Most voted first, scrolled by the movie's id
-var window = movieRepository.select()
-    .innerJoin(Rating.class).on(Movie.class)
-    .narrow(Movie.class)
-    .scroll(Scrollable.of(Movie_.id, 20).sortByDescending(Rating_.votes));
+// Visits in order of the pet's name, scrolled by the visit's id
+var window = visitRepository.select()
+    .scroll(Scrollable.of(Visit_.id, 20).sortBy(Visit_.pet.name));
 ```
 
 </TabItem>
 </Tabs>
 
-A field of a table that is not part of the query fails when the query is built, naming the table. The join must not repeat rows: each row of the result is addressed by its key, so a join that yields one row per related row, such as a movie's credits, belongs in a semi-join instead.
+A table joined explicitly serves sort fields as well. The key addresses a row of the result, so it belongs to the queried table, and `scroll` needs the query narrowed back to it with `narrow` after the join. A field of a table that is not part of the query fails when the query is built, naming the table. The join must not repeat rows: each row of the result is addressed by its key, so a join that yields one row per related row, such as an owner's pets, belongs in a semi-join instead.
 
 ### Ranking Before the Sort Fields
 
-`orderFirst` puts the rows matching a condition first, and `scroll` follows it: the keys `orderFirst` added lead the ordering, before the sort fields and the key, so a search can list an exact title first, then titles starting with the input, then the rest by votes, a window at a time. See [Ranking the Matches](search.md#ranking-the-matches).
+`orderFirst` puts the rows matching a condition first, and `scroll` follows it: the keys `orderFirst` added lead the ordering, before the sort fields and the key, so a search can list owners whose last name equals the input first, then those whose last name starts with it, then the rest by first name, a window at a time. See [Ranking the Matches](search.md#ranking-the-matches).
 
 ```kotlin
-movieRepository.select()
-    .innerJoin<Rating>().on<Movie>()
-    .where(search(input, Movie_.title))
-    .orderFirst(Movie_.title eqIgnoreCase input)
-    .orderFirst(Movie_.title startsWithIgnoreCase input)
-    .narrow<Movie>()
-    .scroll(Scrollable.of(Movie_.id, 20).sortByDescending(Rating_.votes))
+ownerRepository.select()
+    .where(search(input, Owner_.lastName))
+    .orderFirst(Owner_.lastName eqIgnoreCase input)
+    .orderFirst(Owner_.lastName startsWithIgnoreCase input)
+    .scroll(Scrollable.of(Owner_.id, 20).sortBy(Owner_.firstName))
 ```
 
 Each rank is the expression `CASE WHEN <predicate> THEN 0 ELSE 1 END`. A window reads it from its rows like a sort field, its position and cursor carry it after the sort fields and the key, and the next window compares the expression with it. As with any `orderFirst`, no index serves the expression, so each window sorts every row the query finds. A plain `orderBy` before `scroll` is still refused, since the `Scrollable` states the sort fields.
@@ -477,9 +472,11 @@ val window: Window<OrderSummary> = orm.selectFrom<Order, OrderSummary> {
 .scroll(Scrollable.of(Order_.city.key(), 20))
 
 // The custom select type navigates like an entity: the key is read from the row
-val next = orm.selectFrom<Order, OrderSummary> { ... }
-    .groupBy(Order_.city)
-    .scroll(window.next())
+val next = window.next()?.let {
+    orm.selectFrom<Order, OrderSummary> { ... }
+        .groupBy(Order_.city)
+        .scroll(it)
+}
 ```
 
 </TabItem>

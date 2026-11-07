@@ -145,13 +145,13 @@ Upsert operations are the primary reason most applications need a dialect. Witho
 
 | Database | SQL Strategy | Conflict Detection |
 |----------|--------------|--------------------|
-| Oracle | `MERGE INTO ...` | Explicit match conditions |
-| MS SQL Server | `MERGE INTO ...` | Explicit match conditions |
-| PostgreSQL | `INSERT ... ON CONFLICT DO UPDATE` | Targets a specific unique constraint or index |
-| MySQL | `INSERT ... ON DUPLICATE KEY UPDATE` | Primary key or any unique constraint |
-| MariaDB | `INSERT ... ON DUPLICATE KEY UPDATE` | Primary key or any unique constraint |
-| SQLite | `INSERT ... ON CONFLICT DO UPDATE` | Targets a specific unique constraint |
-| H2 | `MERGE INTO ...` | Explicit match conditions |
+| Oracle | `MERGE INTO ...` | Matches on the primary key |
+| MS SQL Server | `MERGE INTO ...` | Matches on the primary key |
+| PostgreSQL | `INSERT ... ON CONFLICT (pk) DO UPDATE` | The primary key |
+| MySQL | `INSERT ... ON DUPLICATE KEY UPDATE` | The primary key or any unique key |
+| MariaDB | `INSERT ... ON DUPLICATE KEY UPDATE` | The primary key or any unique key |
+| SQLite | `INSERT ... ON CONFLICT (pk) DO UPDATE` | The primary key |
+| H2 | `MERGE INTO ...` | Matches on the primary key |
 
 See [Upserts](upserts.md) for usage examples.
 

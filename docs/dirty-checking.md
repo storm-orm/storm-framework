@@ -104,7 +104,7 @@ In `OFF` mode, Storm bypasses dirty checking entirely. Every call to `update()` 
 val user = orm.find(User_.id eq 1)
 val updatedUser = user.copy(name = "New Name")
 
-// Always generates: UPDATE user SET email=?, name=?, city_id=? WHERE id=?
+// Always generates: UPDATE "user" SET email=?, name=?, city_id=? WHERE id=?
 // All columns are included, even though only 'name' changed
 orm update updatedUser
 ```
@@ -151,7 +151,7 @@ orm update user  // No SQL executed - entity unchanged
 
 // Scenario 2: Any field changed
 val updated = user.copy(name = "Bob")
-orm update updated  // UPDATE user SET email=?, name=?, city_id=? WHERE id=?
+orm update updated  // UPDATE "user" SET email=?, name=?, city_id=? WHERE id=?
                     // Full row update, even though only 'name' changed
 ```
 
@@ -207,12 +207,12 @@ val user = orm.get(User_.id eq 1)  // {id=1, email="a@b.com", name="Alice", bio=
 // Only name changed
 val updated = user.copy(name = "Bob")
 orm update updated
-// UPDATE user SET name=? WHERE id=?
+// UPDATE "user" SET name=? WHERE id=?
 
 // Multiple fields changed
 val updated2 = user.copy(name = "Bob", email = "bob@example.com")
 orm update updated2
-// UPDATE user SET name=?, email=? WHERE id=?
+// UPDATE "user" SET name=?, email=? WHERE id=?
 ```
 
 ### Why Use Field-Level Updates?
@@ -242,16 +242,16 @@ The trade-off with FIELD mode is that it generates different SQL statements depe
 ├──────────────────────────────────────────────────────────────────┤
 │                                                                  │
 │  Change: name only                                               │
-│  SQL:    UPDATE user SET name=? WHERE id=?                       │
+│  SQL:    UPDATE "user" SET name=? WHERE id=?                     │
 │                                                                  │
 │  Change: email only                                              │
-│  SQL:    UPDATE user SET email=? WHERE id=?                      │
+│  SQL:    UPDATE "user" SET email=? WHERE id=?                    │
 │                                                                  │
 │  Change: name + email                                            │
-│  SQL:    UPDATE user SET name=?, email=? WHERE id=?              │
+│  SQL:    UPDATE "user" SET name=?, email=? WHERE id=?            │
 │                                                                  │
 │  Change: name + email + city_id                                  │
-│  SQL:    UPDATE user SET name=?, email=?, city_id=? WHERE id=?   │
+│  SQL:    UPDATE "user" SET name=?, email=?, city_id=? WHERE id=? │
 │                                                                  │
 │  ... potentially many more combinations ...                      │
 │                                                                  │
@@ -424,15 +424,15 @@ Storm enforces a **maximum number of UPDATE shapes per entity**. Once this limit
 │                    Max Shapes Protection                            │
 ├─────────────────────────────────────────────────────────────────────┤
 │                                                                     │
-│  Shape 1:  UPDATE user SET name=? WHERE id=?                        │
-│  Shape 2:  UPDATE user SET email=? WHERE id=?                       │
-│  Shape 3:  UPDATE user SET name=?, email=? WHERE id=?               │
-│  Shape 4:  UPDATE user SET city_id=? WHERE id=?                     │
-│  Shape 5:  UPDATE user SET name=?, city_id=? WHERE id=?             │
+│  Shape 1:  UPDATE "user" SET name=? WHERE id=?                      │
+│  Shape 2:  UPDATE "user" SET email=? WHERE id=?                     │
+│  Shape 3:  UPDATE "user" SET name=?, email=? WHERE id=?             │
+│  Shape 4:  UPDATE "user" SET city_id=? WHERE id=?                   │
+│  Shape 5:  UPDATE "user" SET name=?, city_id=? WHERE id=?           │
 │  ─────────────────────────────────────────────────────────────────  │
 │  LIMIT REACHED (small default, e.g., 5)                             │
 │  ─────────────────────────────────────────────────────────────────  │
-│  Shape 6+: UPDATE user SET name=?, email=?, city_id=? WHERE id=?    │
+│  Shape 6+: UPDATE "user" SET name=?, email=?, city_id=? WHERE id=?  │
 │            (Falls back to full-row update)                          │
 │                                                                     │
 └─────────────────────────────────────────────────────────────────────┘
@@ -580,7 +580,7 @@ val user = orm.get(User_.id eq 1)     // Storm observes User state
 val city = orm.get(City_.id eq 100)   // Storm observes City state
 
 // Raw SQL mutation - Storm clears all observed state
-orm.execute("UPDATE user SET name = 'Changed' WHERE id = 1")
+orm.execute("UPDATE "user" SET name = 'Changed' WHERE id = 1")
 
 // All observed state is now invalidated
 orm update user.copy(email = "new@example.com")  // Falls back to full-row update
@@ -607,7 +607,7 @@ data class User(
 val user = orm.find(User_.id eq 1)
 // With FIELD mode: only changed columns in Address are updated
 orm update user.copy(address = user.address.copy(city = "New City"))
-// UPDATE user SET city=? WHERE id=?
+// UPDATE "user" SET city=? WHERE id=?
 ```
 
 ### 4. Generated Metamodel Improves Performance

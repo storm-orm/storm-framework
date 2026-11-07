@@ -454,7 +454,7 @@ pets.remove(somePet);
 
 ### Generated SQL
 
-Storm automatically includes the discriminator column in SELECT queries and populates it during inserts. The discriminator value is derived from the record's class name (or from `@Discriminator` if customized). On UPDATE and DELETE, the discriminator is not included in the SET or WHERE clause because the primary key is sufficient to identify the row.
+Storm automatically includes the discriminator column in SELECT queries and writes it during inserts. The discriminator value is derived from the record's class name (or from `@Discriminator` if customized). On UPDATE and DELETE, the discriminator is not included in the SET or WHERE clause because the primary key is sufficient to identify the row.
 
 The table below shows the SQL generated for each operation. Because all subtypes share one table, every operation is a single SQL statement.
 
@@ -462,22 +462,24 @@ The table below shows the SQL generated for each operation. Because all subtypes
   Operation       Generated SQL
   ─────────       ─────────────
 
-  SELECT all      SELECT p.id, p.dtype, p.name, p.indoor, p.weight
+  SELECT all      SELECT p.dtype, p.id, p.name, p.indoor, p.weight
                   FROM pet p
 
   INSERT Cat      INSERT INTO pet (dtype, name, indoor)
-                  VALUES ('Cat', 'Bella', true)
+                  VALUES (?, ?, ?)          -- 'Cat', 'Bella', true
 
   INSERT Dog      INSERT INTO pet (dtype, name, weight)
-                  VALUES ('Dog', 'Buddy', 25)
+                  VALUES (?, ?, ?)          -- 'Dog', 'Buddy', 25
 
   UPDATE          UPDATE pet
-                  SET name = 'Sir Whiskers', indoor = true
-                  WHERE id = 1
+                  SET name = ?, indoor = ?  -- 'Sir Whiskers', true
+                  WHERE id = ?              -- 1
 
   DELETE          DELETE FROM pet
-                  WHERE id = 1
+                  WHERE id = ?              -- 1
 ```
+
+The discriminator is the first column of the SELECT, so Storm reads it before the columns it selects the subtype for. An INSERT binds the discriminator value as a parameter, like every other value.
 
 Notice that INSERT only includes the columns relevant to the concrete subtype. Columns belonging to other subtypes are omitted entirely (they default to NULL in the database). The SELECT, by contrast, always includes all columns from all subtypes, because the query does not know in advance which subtypes will appear in the result set.
 

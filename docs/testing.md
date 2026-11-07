@@ -537,10 +537,12 @@ Statements are captured around execution, so each carries its duration and a sta
 `origin` is what makes the cost of resolving references assertable. A reference the query did not resolve is selected as its foreign key column and resolved on demand, one statement per reference, and such a statement is shaped exactly like a primary key lookup the test could have written itself. Asserting `count(FETCH) == 0` pins the query down to the shape its fetch plan produces:
 
 ```java
-List<Owner> owners = capture.execute(() -> orm.entity(Owner.class).select()
-        .fetch(Owner_.city)
-        .getResultList());
-owners.forEach(owner -> owner.city().fetch());
+capture.record(() -> {
+    List<Owner> owners = orm.entity(Owner.class).select()
+            .fetch(Owner_.city)
+            .getResultList();
+    owners.forEach(owner -> owner.city().fetch());
+});
 assertEquals(0, capture.count(CapturedSql.Origin.FETCH));
 ```
 

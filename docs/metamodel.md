@@ -164,7 +164,7 @@ Storm automatically generates the necessary JOINs based on the path. For the exa
 
 ```sql
 SELECT ...
-FROM user u
+FROM "user" u
 INNER JOIN city c ON u.city_id = c.id
 INNER JOIN country co ON c.country_id = co.id
 WHERE co.name = 'United States'
@@ -344,7 +344,7 @@ A reference may point back at a table already on the path, either at the record 
 ```kotlin
 // Users invited by Alice. The user table is joined to itself once.
 User_.invitedBy.name eq "Alice"
-// SELECT ... FROM user u LEFT JOIN user u1 ON u.invited_by_id = u1.id WHERE u1.name = ?
+// SELECT ... FROM "user" u LEFT JOIN "user" u1 ON u.invited_by_id = u1.id WHERE u1.name = ?
 ```
 
 A nullable reference is joined with an outer join, so ordering by a column beyond it keeps rows whose reference is null.

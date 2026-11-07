@@ -20,11 +20,11 @@ ${navHtml('tutorials')}
   <h1>Familiar Tasks.<br><span class="grad">Simpler Solutions.</span></h1>
   <p class="sub">Task-focused tutorials for engineers coming from JPA, Hibernate, or Exposed, plus how-to recipes for Storm itself. Each comparison takes a persistence task you already know, shows both approaches side by side, and lets you inspect the SQL they produce.</p>
   <div class="catnav">
-    <a href="" class="on" data-all="1" aria-current="true">All<b>24</b></a>
+    <a href="" class="on" data-all="1" aria-current="true">All<b>26</b></a>
     <a href="#start-here">Start here<b>1</b></a>
     <a href="#from-jpa">From JPA<b>10</b></a>
     <a href="#from-exposed">From Exposed<b>7</b></a>
-    <a href="#storm-way">The Storm way<b>6</b></a>
+    <a href="#storm-way">The Storm way<b>8</b></a>
   </div>
   ${heroArt('tutorials', {priority: true})}
 </div>
@@ -33,7 +33,7 @@ ${navHtml('tutorials')}
 <div class="cards">
   <a class="tcard" href="/tutorials/build-a-rest-api" style="grid-column:1 / -1">
     <div class="tt">Build a REST API from scratch<span class="arrow">→</span></div>
-    <div class="td">Empty project to a running, tested API: two entities, their relationship loaded in a single query, CRUD routes on Ktor, and a test that asserts the SQL. The whole end-to-end path in about twenty minutes.</div>
+    <div class="td">Empty project to a running, tested API: two entities, their relationship loaded in one query, CRUD routes on Ktor, and a test that asserts on the SQL. About twenty minutes.</div>
     <div class="tm"><span>Kotlin</span><span>Ktor 3</span><span>~20 min</span></div>
   </a>
 </div>
@@ -42,52 +42,52 @@ ${navHtml('tutorials')}
 <div class="cards">
   <a class="tcard" href="/tutorials/n-plus-one">
     <div class="tt">Solving the N+1 problem<span class="arrow">→</span></div>
-    <div class="td">Why JPA list queries degrade into 1 + N selects, what JOIN FETCH and entity graphs actually fix, and how Storm removes the problem by making loading policy part of the entity model.</div>
+    <div class="td">Why a JPA list query over a lazy relation runs 1 + N selects, what JOIN FETCH, entity graphs and batch fetching change, and how Storm decides loading in the entity model.</div>
     <div class="tm"><span>JPA to Storm</span><span>7 min read</span><span>Kotlin</span></div>
   </a>
   <a class="tcard" href="/tutorials/projections">
     <div class="tt">Projections: read-only views on your data<span class="arrow">→</span></div>
-    <div class="td">JPA entities are read-write, and @Immutable is a runtime convention. A Storm projection models a read-only view on the data, a table subset or a database view, built to be nested, filtered, and reused.</div>
-    <div class="tm"><span>JPA to Storm</span><span>6 min read</span><span>Kotlin</span></div>
+    <div class="td">A Storm projection is a read-only type over a table, a database view or a SQL query, with a repository without write methods, typed predicates and nesting. In JPA the same job falls to Hibernate's @Immutable and @Subselect.</div>
+    <div class="tm"><span>JPA to Storm</span><span>5 min read</span><span>Kotlin</span></div>
   </a>
   <a class="tcard" href="/tutorials/query-results">
-    <div class="tt">Typed query results without the mapping layer<span class="arrow">→</span></div>
-    <div class="td">JPA shapes custom results with proxies and constructor expressions that resolve at runtime. In Storm, any data class is a result type: define it next to the query and rows map by position.</div>
+    <div class="tt">Typed query results without an entity<span class="arrow">→</span></div>
+    <div class="td">Spring Data JPA shapes custom results with interface projections and constructor expressions. In Storm, any data class whose constructor matches the selected columns is a result type, for the query builder and for full SQL.</div>
     <div class="tm"><span>JPA to Storm</span><span>5 min read</span><span>Kotlin</span></div>
   </a>
   <a class="tcard" href="/tutorials/pagination">
     <div class="tt">Pagination and keyset scrolling<span class="arrow">→</span></div>
-    <div class="td">Offset pages scan deeper as users page further, and every request pays for a count. Storm offers classic pages when the UI needs them and cursor-based scrolling with REST-ready cursors when it does not.</div>
+    <div class="td">Offset pages cost more the deeper they go, and a total takes a count query. Storm reads pages and slices by offset, scrolls by keyset with cursors a client sends back, and logs advice when a count is slow or an offset is deep.</div>
     <div class="tm"><span>JPA to Storm</span><span>6 min read</span><span>Kotlin</span></div>
   </a>
   <a class="tcard" href="/tutorials/upserts">
-    <div class="tt">Upserts without the workarounds<span class="arrow">→</span></div>
-    <div class="td">JPA's find-then-save pattern is two statements and one race condition. Storm generates the database's native upsert syntax: atomic, batched, and portable across all major databases.</div>
-    <div class="tm"><span>JPA to Storm</span><span>5 min read</span><span>Kotlin</span></div>
+    <div class="tt">Upserts in one statement<span class="arrow">→</span></div>
+    <div class="td">Spring Data JPA saves an entity with an assigned key by reading it first. Storm sends the database's own upsert, keyed on the primary key, on every supported database.</div>
+    <div class="tm"><span>JPA to Storm</span><span>4 min read</span><span>Kotlin</span></div>
   </a>
   <a class="tcard" href="/tutorials/optimistic-locking">
     <div class="tt">Optimistic locking with immutable entities<span class="arrow">→</span></div>
-    <div class="td">JPA checks the version at flush time, far from the code that made the change. Storm checks it on the update statement itself, and immutable values make conflict handling ordinary code.</div>
+    <div class="td">JPA checks the version when the persistence context flushes, usually at commit. Storm checks it on the update call, with the version the entity carries, and transaction(retries = 2) reruns a block that lost a conflict.</div>
     <div class="tm"><span>JPA to Storm</span><span>5 min read</span><span>Kotlin</span></div>
   </a>
   <a class="tcard" href="/tutorials/transactions">
-    <div class="tt">Transactions without the proxy rules<span class="arrow">→</span></div>
-    <div class="td">@Transactional works through proxies, with rules around self-invocation and visibility that fail silently. Storm's transaction blocks make the scope visible, add onCommit callbacks, and stay coroutine-aware.</div>
+    <div class="tt">Transactions as blocks<span class="arrow">→</span></div>
+    <div class="td">@Transactional applies through a proxy, which skips self-invocation in its default mode. Storm's transaction blocks put the scope in the code, register onCommit callbacks inline, rerun on deadlocks with retries, and run as suspend functions.</div>
     <div class="tm"><span>JPA to Storm</span><span>6 min read</span><span>Kotlin</span></div>
   </a>
   <a class="tcard" href="/tutorials/mapped-collections">
     <div class="tt">Mapped collections vs queried associations<span class="arrow">→</span></div>
-    <div class="td">owner.pets is one property access, and that is genuinely convenient. Storm queries the association instead: one line that loads when you decide, composes with filters and paging, and survives the join table growing columns.</div>
+    <div class="td">owner.pets is one property access. Storm queries the association instead: one line that loads when you call it, takes filters, paging and many owners at once, and keeps working when the join table gains columns.</div>
     <div class="tm"><span>JPA to Storm</span><span>6 min read</span><span>Kotlin</span></div>
   </a>
   <a class="tcard" href="/tutorials/object-graphs">
     <div class="tt">Persisting object graphs: cascades vs write sets<span class="arrow">→</span></div>
-    <div class="td">CascadeType configures, once per mapping, how far every persist travels. A Storm write set decides per call: pass the entities, and unsaved parents are discovered, dependency-ordered, and keyed by instance identity.</div>
+    <div class="td">CascadeType configures, once per mapping, how far every persist travels. A Storm write set decides per call: pass the entities, and Storm inserts their unsaved parents first, in dependency order, with generated keys filled in.</div>
     <div class="tm"><span>JPA to Storm</span><span>6 min read</span><span>Kotlin</span></div>
   </a>
   <a class="tcard" href="/tutorials/sql-templates">
-    <div class="tt">Full SQL without giving up safety<span class="arrow">→</span></div>
-    <div class="td">Native queries return untyped rows and invite concatenation. Storm's SQL templates bind interpolated values safely, map rows to data classes, and expand your entities into columns and joins.</div>
+    <div class="tt">Full SQL with your model<span class="arrow">→</span></div>
+    <div class="td">A native query is SQL text the entity model does not see. Storm's SQL templates bind interpolated values as parameters, map rows onto data classes, and expand entity types and metamodel paths into columns, joins and aliases.</div>
     <div class="tm"><span>JPA to Storm</span><span>6 min read</span><span>Kotlin</span></div>
   </a>
 </div>
@@ -96,72 +96,82 @@ ${navHtml('tutorials')}
 <div class="cards">
   <a class="tcard" href="/tutorials/exposed-entities">
     <div class="tt">One model instead of three<span class="arrow">→</span></div>
-    <div class="td">Exposed earned its reputation, and on type safety the two are equals. The difference is where knowledge lives: joins and mappings travel with every query, while Storm declares the model once, which compounds on large schemas.</div>
-    <div class="tm"><span>Exposed to Storm</span><span>6 min read</span><span>Kotlin</span></div>
+    <div class="td">Exposed and Storm are both type-safe Kotlin data layers. They differ in where joins and row mappings live: Exposed writes them with each query, Storm declares them once in the data class.</div>
+    <div class="tm"><span>Exposed to Storm</span><span>5 min read</span><span>Kotlin</span></div>
   </a>
   <a class="tcard" href="/tutorials/exposed-ktor">
     <div class="tt">Ktor services, side by side<span class="arrow">→</span></div>
-    <div class="td">Home ground for both. Exposed connects a Database and wraps every route operation in a transaction; Storm installs as a plugin, reads without ceremony, and its suspend transactions ride the coroutine context.</div>
+    <div class="td">Exposed needs a transaction around every operation, reads included. Storm installs as a plugin, reads without one, and covers writes with suspend transaction { } blocks and transactional { } routes.</div>
     <div class="tm"><span>Exposed to Storm</span><span>5 min read</span><span>Kotlin</span></div>
   </a>
   <a class="tcard" href="/tutorials/exposed-n-plus-one">
     <div class="tt">Eager loading and N+1<span class="arrow">→</span></div>
-    <div class="td">Exposed's .with() batches references efficiently, one call site at a time, a step above the SQL it runs. Storm puts loading policy in the model, so there is nothing to remember and nothing to forget.</div>
+    <div class="td">Exposed DAO references load lazily, and .with() batches them into one query at each call site. Storm decides loading in the model: an entity field is joined, a Ref field loads when your code asks.</div>
     <div class="tm"><span>Exposed to Storm</span><span>5 min read</span><span>Kotlin</span></div>
   </a>
   <a class="tcard" href="/tutorials/exposed-transactions">
     <div class="tt">Transactions translate almost one to one<span class="arrow">→</span></div>
-    <div class="td">Exposed and Storm agree that transactions are explicit blocks. A translation table for the settings you know, plus the places they differ: propagation per block, onCommit callbacks, and built-in retry on the Exposed side.</div>
+    <div class="td">Exposed and Storm agree that transactions are explicit blocks. A translation table for the settings you know, plus where they differ: what reruns and timeouts cover, propagation per block, and after-commit callbacks.</div>
     <div class="tm"><span>Exposed to Storm</span><span>5 min read</span><span>Kotlin</span></div>
   </a>
   <a class="tcard" href="/tutorials/exposed-queries">
     <div class="tt">Queries and full SQL<span class="arrow">→</span></div>
-    <div class="td">The everyday queries translate almost line by line. The gap opens past the DSL: exec() hands you a raw ResultSet, while Storm's SQL templates keep typed rows and bind-safe parameters.</div>
+    <div class="td">Everyday Exposed queries translate to Storm almost line by line, without the row mapping. For SQL written as text, exec() hands you the ResultSet; Storm's SQL templates map rows onto data classes and bind interpolated values.</div>
     <div class="tm"><span>Exposed to Storm</span><span>5 min read</span><span>Kotlin</span></div>
   </a>
   <a class="tcard" href="/tutorials/exposed-upserts">
     <div class="tt">Upserts and batching<span class="arrow">→</span></div>
-    <div class="td">Both libraries generate native, dialect-aware upserts, so this is mostly a translation guide. Exposed offers finer control over the update branch; Storm works at the entity level and returns hydrated values.</div>
+    <div class="td">Both libraries write the database's own upsert. Exposed can target any unique index and shape the update per call; Storm resolves on the primary key and returns the entity.</div>
     <div class="tm"><span>Exposed to Storm</span><span>4 min read</span><span>Kotlin</span></div>
   </a>
   <a class="tcard" href="/tutorials/exposed-schema">
     <div class="tt">Who owns the schema<span class="arrow">→</span></div>
-    <div class="td">Exposed generates DDL from table objects, excellent early on. Storm is schema-first: migrations own the schema and validateSchema() catches drift at startup or in CI. A winner on each side.</div>
+    <div class="td">Exposed creates tables from its table objects, which suits prototypes. Storm leaves the schema to your migrations and validates the entities against it at startup.</div>
     <div class="tm"><span>Exposed to Storm</span><span>4 min read</span><span>Kotlin</span></div>
   </a>
 </div>
 
 <div class="shead" id="storm-way"><span class="mark">//</span>The Storm way<span class="sdesc">Already using Storm? Task recipes, no comparisons, straight to the point.</span></div>
 <div class="cards">
+  <a class="tcard" href="/tutorials/search">
+    <div class="tt">Search and suggest on your own database<span class="arrow">→</span></div>
+    <div class="td">A search page and a type-ahead box with two predicates. Input goes in as typed, matches the same way on every database, finds owners through their pets, and runs on an ordinary trigram index.</div>
+    <div class="tm"><span>The Storm way</span><span>7 min read</span><span>Kotlin</span></div>
+  </a>
+  <a class="tcard" href="/tutorials/advice">
+    <div class="tt">Statement advice: what to change, and why<span class="arrow">→</span></div>
+    <div class="td">Storm builds every statement, so it knows the shape, the entity graph, the indexes and what each transaction repeated. The log names the problem, the fix and the trade-off, at no cost per execution.</div>
+    <div class="tm"><span>The Storm way</span><span>8 min read</span><span>Kotlin</span></div>
+  </a>
   <a class="tcard" href="/tutorials/testing">
     <div class="tt">Testing your data layer with @StormTest<span class="arrow">→</span></div>
-    <div class="td">One annotation gives you an in-memory database, schema scripts, and injected parameters. Assert results and the SQL that produced them, then run the same tests against PostgreSQL with one attribute.</div>
+    <div class="td">One annotation gives you an in-memory database, schema scripts, per-test rollback and injected parameters. Assert results and the SQL that produced them, then run the same tests against PostgreSQL with one attribute.</div>
     <div class="tm"><span>The Storm way</span><span>4 min read</span><span>Kotlin</span></div>
   </a>
   <a class="tcard" href="/tutorials/streaming">
     <div class="tt">Streaming large result sets<span class="arrow">→</span></div>
-    <div class="td">Process millions of rows with constant memory: resultFlow streams rows as they arrive, structured concurrency cleans up cursors, and lists or Flows batch the write direction.</div>
+    <div class="td">Process millions of rows in bounded memory: resultFlow streams rows as they arrive, windows(size) frees the connection for loops that write, and lists or Flows batch the write direction.</div>
     <div class="tm"><span>The Storm way</span><span>4 min read</span><span>Kotlin</span></div>
   </a>
   <a class="tcard" href="/tutorials/sealed-entities">
     <div class="tt">Sealed entity hierarchies<span class="arrow">→</span></div>
-    <div class="td">Map a Kotlin sealed interface to a table: subtypes are data classes, the discriminator picks the type on read, and when over results is exhaustive, checked by the compiler.</div>
+    <div class="td">Map a Kotlin sealed interface to one table: subtypes are data classes, the discriminator picks the type on read, each subtype is an entity of its own, and when over results is exhaustive.</div>
     <div class="tm"><span>The Storm way</span><span>4 min read</span><span>Kotlin</span></div>
   </a>
   <a class="tcard" href="/tutorials/json-columns">
-    <div class="tt">JSON columns without the fuss<span class="arrow">→</span></div>
-    <div class="td">Mark a field @Json and maps, lists, and structured objects serialize automatically. JSON aggregation goes further: a one-to-many loaded in a single query.</div>
+    <div class="tt">JSON columns in relational entities<span class="arrow">→</span></div>
+    <div class="td">Mark a field @Json and maps, lists and structured objects are written as JSON and read back typed. JSON aggregation loads a one-to-many in a single query.</div>
     <div class="tm"><span>The Storm way</span><span>4 min read</span><span>Kotlin</span></div>
   </a>
   <a class="tcard" href="/tutorials/auditing">
     <div class="tt">Auditing with entity callbacks<span class="arrow">→</span></div>
-    <div class="td">Stamp createdAt and updatedAt automatically. Because entities are immutable, before-hooks return a transformed copy: explicit, testable, no hidden mutation.</div>
+    <div class="td">Stamp createdAt and updatedAt with an EntityCallback. Entities are immutable, so a before-hook returns a changed copy; the entity, the template, Spring or Ktor registers it.</div>
     <div class="tm"><span>The Storm way</span><span>4 min read</span><span>Kotlin</span></div>
   </a>
   <a class="tcard" href="/tutorials/observability">
     <div class="tt">Seeing what Storm does<span class="arrow">→</span></div>
-    <div class="td">The SQL log shows every statement where it executes, TRACE makes the output copy-paste executable, and per-call summaries show what each request or listener cost the database.</div>
-    <div class="tm"><span>The Storm way</span><span>3 min read</span><span>Kotlin</span></div>
+    <div class="td">The SQL log shows every statement where it executes, TRACE adds the values, per-request summaries show what a call cost, and the slow statement log names the execution that took too long.</div>
+    <div class="tm"><span>The Storm way</span><span>4 min read</span><span>Kotlin</span></div>
   </a>
 </div>
 

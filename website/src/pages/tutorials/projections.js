@@ -5,20 +5,20 @@ import {
 } from '../../components/tutorial/tutorialTheme';
 
 // Tutorial: read models with Projection. A Storm Projection is a read-only
-// view on the data (a table subset or a database view), modeled as a
-// first-class type. Custom per-query result shapes are covered in the
+// view on the data (a table subset, a database view or a SQL query), modeled
+// as a first-class type. Custom per-query result shapes are covered in the
 // query-results and sql-templates tutorials instead.
 
 const TITLE = 'Projections: Read-Only Views on Your Data';
 const DESC =
-  'A Storm projection is a read-only view on your data, sometimes a subset of ' +
-  'a table, sometimes a database view, modeled as a first-class record with its ' +
-  'own repository, type-safe queries, and nesting. JPA has no equivalent concept.';
+  'A Storm projection is a read-only type over a table, a database view or a ' +
+  'SQL query, with its own repository, typed predicates and nesting. In JPA the ' +
+  'same job falls to Hibernate annotations on entities and Spring Data projections.';
 
 const CODE_JPA_IMMUTABLE = [
-  C('// The closest JPA gets: an entity over a view, made read-only by convention\n'),
+  C('// An entity over a view, read-only through a Hibernate annotation\n'),
   A('@Entity'), P('\n'),
-  A('@Immutable'), P('   '), C('// Hibernate-specific, not JPA\n'),
+  A('@Immutable'), P('\n'),
   A('@Table'), P('(name = '), S('"owner_address_view"'), P(')\n'),
   K('class '), T('OwnerAddressView'), P('(\n'),
   P('    '), A('@Id'), P(' '), K('var '), P('id: '), T('Int'), P('? = '), K('null'), P(',\n'),
@@ -29,7 +29,7 @@ const CODE_JPA_IMMUTABLE = [
 ].join('');
 
 const CODE_STORM_SUBSET = [
-  C('// A read-only view on the owner table: just these columns, no writes.\n'),
+  C('// Three columns of the owner table, read-only\n'),
   A('@DbTable'), P('('), S('"owner"'), P(')\n'),
   K('data class '), T('OwnerSummary'), P('(\n'),
   P('    '), A('@PK'), P(' '), K('val '), P('id: '), T('Int'), P(',\n'),
@@ -39,8 +39,7 @@ const CODE_STORM_SUBSET = [
 ].join('');
 
 const CODE_STORM_VIEW = [
-  C('// Database views map the same way; the class name matches the view here,\n'),
-  C('// so no @DbTable is needed (OwnerAddressView -> owner_address_view)\n'),
+  C('// The class name maps to the view: OwnerAddressView -> owner_address_view\n'),
   K('data class '), T('OwnerAddressView'), P('(\n'),
   P('    '), A('@PK'), P(' '), K('val '), P('id: '), T('Int'), P(',\n'),
   P('    '), K('val '), P('fullName: '), T('String'), P(',\n'),
@@ -50,44 +49,19 @@ const CODE_STORM_VIEW = [
 ].join('');
 
 const CODE_STORM_QUERY = [
-  K('val '), P('owners = orm.'), F('projection'), P('<'), T('OwnerSummary'), P('>().'), F('findAll'), P('()\n\n'),
-  C('// Filters are type-checked against the generated metamodel.\n'),
-  K('val '), P('smiths = orm.'), F('projection'), P('<'), T('OwnerSummary'), P('>().'), F('select'), P('()\n'),
-  P('    .'), F('where'), P('('), T('OwnerSummary_'), P('.lastName, '), T('EQUALS'), P(', '), S('"Smith"'), P(')\n'),
-  P('    .resultList'),
+  K('val '), P('ownerSummaries = orm.'), F('projection'), P('('), T('OwnerSummary'), P('::'), K('class'), P(')\n\n'),
+  K('val '), P('all = ownerSummaries.'), F('findAll'), P('()\n'),
+  K('val '), P('smiths = ownerSummaries.'), F('findAll'), P('('), T('OwnerSummary_'), P('.lastName '), K('eq'), P(' '), S('"Smith"'), P(')'),
 ].join('');
 
 const SQL_STORM_QUERY = [
-  QC('-- findAll(): only the projected columns leave the database'), '\n',
-  QK('SELECT'), ' o.id, o.first_name, o.last_name ', QK('FROM'), ' owner o\n\n',
-  QC('-- where(OwnerSummary_.lastName, EQUALS, "Smith")'), '\n',
-  QK('SELECT'), ' o.id, o.first_name, o.last_name ', QK('FROM'), ' owner o ', QK('WHERE'), ' o.last_name = ', QQ('?'),
-].join('');
-
-const CODE_STORM_PQ = [
-  C('// A read model backed by SQL you control.\n'),
-  A('@ProjectionQuery'), P('('), S('"""\n    SELECT o.id, o.first_name, o.last_name, COUNT(p.id) AS pet_count\n    FROM owner o\n    LEFT JOIN pet p ON p.owner_id = o.id\n    GROUP BY o.id, o.first_name, o.last_name\n"""'), P(')\n'),
-  K('data class '), T('OwnerWithPetCount'), P('(\n'),
-  P('    '), A('@PK'), P(' '), K('val '), P('id: '), T('Int'), P(',\n'),
-  P('    '), K('val '), P('firstName: '), T('String'), P(',\n'),
-  P('    '), K('val '), P('lastName: '), T('String'), P(',\n'),
-  P('    '), K('val '), P('petCount: '), T('Int'), P(',\n'),
-  P(') : '), T('Projection'), P('<'), T('Int'), P('>\n\n'),
-  C('// Type-safe predicates apply on top, even on the aggregate\n'),
-  K('val '), P('prolificOwners = orm.'), F('projection'), P('<'), T('OwnerWithPetCount'), P('>()\n'),
-  P('    .'), F('findAll'), P('('), T('OwnerWithPetCount_'), P('.petCount '), K('greaterEq'), P(' '), N('3'), P(')'),
-].join('');
-
-const SQL_STORM_PQ = [
-  QC('-- the projection query runs as a derived table; predicates apply on top'), '\n',
-  QK('SELECT'), ' x.id, x.first_name, x.last_name, x.pet_count\n',
-  QK('FROM'), ' (\n',
-  '    ', QK('SELECT'), ' o.id, o.first_name, o.last_name, ', QK('COUNT'), '(p.id) ', QK('AS'), ' pet_count\n',
-  '    ', QK('FROM'), ' owner o\n',
-  '    ', QK('LEFT JOIN'), ' pet p ', QK('ON'), ' p.owner_id = o.id\n',
-  '    ', QK('GROUP BY'), ' o.id, o.first_name, o.last_name\n',
-  ') x\n',
-  QK('WHERE'), ' x.pet_count >= ', QQ('?'),
+  QC('-- findAll(): the projection\'s columns only'), '\n',
+  QK('SELECT'), ' os.id, os.first_name, os.last_name\n',
+  QK('FROM'), ' owner os\n\n',
+  QC('-- findAll(OwnerSummary_.lastName eq "Smith")'), '\n',
+  QK('SELECT'), ' os.id, os.first_name, os.last_name\n',
+  QK('FROM'), ' owner os\n',
+  QK('WHERE'), ' os.last_name = ', QQ('?'),
 ].join('');
 
 const CODE_STORM_NESTED = [
@@ -95,20 +69,44 @@ const CODE_STORM_NESTED = [
   K('data class '), T('PetView'), P('(\n'),
   P('    '), A('@PK'), P(' '), K('val '), P('id: '), T('Int'), P(',\n'),
   P('    '), K('val '), P('name: '), T('String'), P(',\n'),
-  P('    '), A('@FK'), P(' '), K('val '), P('owner: '), T('OwnerSummary'), P(',   '), C('// a projection nested in a projection\n'),
+  P('    '), A('@FK'), P(' '), K('val '), P('owner: '), T('OwnerSummary'), P(',   '), C('// a projection inside a projection\n'),
   P(') : '), T('Projection'), P('<'), T('Int'), P('>\n\n'),
-  C('// Predicates follow the nested path, checked at compile time\n'),
-  K('val '), P('smithsPets = orm.'), F('projection'), P('<'), T('PetView'), P('>().'), F('select'), P('()\n'),
-  P('    .'), F('where'), P('('), T('PetView_'), P('.owner.lastName, '), T('EQUALS'), P(', '), S('"Smith"'), P(')\n'),
-  P('    .resultList'),
+  C('// The predicate follows the path into the nested projection\n'),
+  K('val '), P('smithsPets = orm.'), F('projection'), P('('), T('PetView'), P('::'), K('class'), P(')\n'),
+  P('    .'), F('findAll'), P('('), T('PetView_'), P('.owner.lastName '), K('eq'), P(' '), S('"Smith"'), P(')'),
 ].join('');
 
 const SQL_STORM_NESTED = [
-  QC('-- the nested projection joins in the same query, no N+1'), '\n',
-  QK('SELECT'), ' p.id, p.name, o.id, o.first_name, o.last_name\n',
-  QK('FROM'), ' pet p\n',
-  QK('INNER JOIN'), ' owner o ', QK('ON'), ' p.owner_id = o.id\n',
-  QK('WHERE'), ' o.last_name = ', QQ('?'),
+  QC('-- the nested projection is joined into the same statement'), '\n',
+  QK('SELECT'), ' pv.id, pv.name, os.id, os.first_name, os.last_name\n',
+  QK('FROM'), ' pet pv\n',
+  QK('INNER JOIN'), ' owner os ', QK('ON'), ' pv.owner_id = os.id\n',
+  QK('WHERE'), ' os.last_name = ', QQ('?'),
+].join('');
+
+const CODE_STORM_PQ = [
+  A('@ProjectionQuery'), P('('), S('"""\n    SELECT o.id, o.first_name, o.last_name, COUNT(p.id) AS pet_count\n    FROM owner o\n    LEFT JOIN pet p ON p.owner_id = o.id\n    GROUP BY o.id, o.first_name, o.last_name\n"""'), P(')\n'),
+  K('data class '), T('OwnerWithPetCount'), P('(\n'),
+  P('    '), A('@PK'), P(' '), K('val '), P('id: '), T('Int'), P(',\n'),
+  P('    '), K('val '), P('firstName: '), T('String'), P(',\n'),
+  P('    '), K('val '), P('lastName: '), T('String'), P(',\n'),
+  P('    '), K('val '), P('petCount: '), T('Int'), P(',\n'),
+  P(') : '), T('Projection'), P('<'), T('Int'), P('>\n\n'),
+  C('// A typed predicate on the aggregate\n'),
+  K('val '), P('ownersWithThreePets = orm.'), F('projection'), P('('), T('OwnerWithPetCount'), P('::'), K('class'), P(')\n'),
+  P('    .'), F('findAll'), P('('), T('OwnerWithPetCount_'), P('.petCount '), K('greaterEq'), P(' '), N('3'), P(')'),
+].join('');
+
+const SQL_STORM_PQ = [
+  QC('-- the projection query is the derived table; the predicate applies on top'), '\n',
+  QK('SELECT'), ' owpc.id, owpc.first_name, owpc.last_name, owpc.pet_count\n',
+  QK('FROM'), ' (\n',
+  '    ', QK('SELECT'), ' o.id, o.first_name, o.last_name, ', QK('COUNT'), '(p.id) ', QK('AS'), ' pet_count\n',
+  '    ', QK('FROM'), ' owner o\n',
+  '    ', QK('LEFT JOIN'), ' pet p ', QK('ON'), ' p.owner_id = o.id\n',
+  '    ', QK('GROUP BY'), ' o.id, o.first_name, o.last_name\n',
+  ') owpc\n',
+  QK('WHERE'), ' owpc.pet_count >= ', QQ('?'),
 ].join('');
 
 const BODY = `
@@ -117,41 +115,43 @@ ${navHtml('tutorials')}
 <div class="art">
   <div class="crumbs"><a href="/tutorials/">Tutorials</a><span class="sep">/</span>Projections</div>
   <h1>Projections: read-only <span class="grad">views on your data</span></h1>
-  <p class="dek">Most of an application only reads. A Storm projection models that read-only view of the data as a first-class type, sometimes over a table, sometimes over a database view, with the write API gone by construction.</p>
-  <div class="meta"><span>Series · JPA to Storm</span><span>6 min read</span><span>Kotlin</span></div>
+  <p class="dek">A Storm projection is a read-only type over a table, a database view or a SQL query. It has a repository without write methods, takes typed predicates, and nests in other types.</p>
+  <div class="meta"><span>Series · JPA to Storm</span><span>5 min read</span><span>Kotlin</span></div>
 
   <h2><span class="hno">01</span>The task</h2>
-  <p>An owners list screen needs three columns of the <code>owner</code> table. A reporting screen reads from a database view the DBA maintains. Neither should ever write, and both deserve to be modeled as real types with real queries, not as ad-hoc result shapes scattered across repository methods.</p>
+  <p>A reporting screen reads a database view the DBA maintains. An owners list reads three columns of a wide <code>owner</code> table. A dashboard lists owners with their number of pets. None of them writes.</p>
 
   <h2><span class="hno">02</span>The JPA way</h2>
-  <p>JPA has entities, and entities are read-write. The usual approximation of a read model is an entity mapped over a view, marked immutable:</p>
+  <p>JPA's mapped type is the entity, and an entity is read-write. Hibernate's <code>@Immutable</code> marks one read-only, which is the usual mapping for a view:</p>
   ${editor({file: 'OwnerAddressView.kt', tag: 'Kotlin · JPA', code: CODE_JPA_IMMUTABLE})}
-  <p>It works, but read-onliness is a runtime convention, not a property of the type. <code>@Immutable</code> is Hibernate-specific, the instances still live in the persistence context, and updates are silently skipped rather than rejected by the compiler. For the other half of the task, a narrow read-only slice of a table, there is no good answer at all: mapping a second entity onto the same table leaves the persistence context managing two disconnected representations of the same row, both of them writable.</p>
+  <p><code>@Immutable</code> is Hibernate's, not JPA's. Hibernate does not write changes to such an entity, and its instances are still managed by the persistence context. A Spring Data repository over it offers <code>save()</code> unless you declare a narrower one with only the find methods. For a subset of a table, Spring Data's interface and class projections shape the result of a repository method. For a read model backed by SQL, Hibernate has <code>@Subselect</code>.</p>
 
   <h2><span class="hno">03</span>The Storm way</h2>
-  <p>Storm separates the concept. An <code>Entity</code> is read-write; a <code>Projection</code> is a read-only view on the data. It can map a subset of a table's columns:</p>
-  ${editor({file: 'OwnerSummary.kt', tag: 'Kotlin · Storm', code: CODE_STORM_SUBSET})}
-  <p>Or a database view:</p>
+  <p>Storm has a type for it. An <code>Entity</code> is read-write; a <code>Projection</code> is read-only. A projection can map a database view:</p>
   ${editor({file: 'OwnerAddressView.kt', tag: 'Kotlin · Storm', code: CODE_STORM_VIEW})}
-  <p>Projections get their own repository with the full read API: <code>findAll</code>, <code>findById</code>, counting, paging, and the type-safe query builder. There is no <code>insert</code>, <code>update</code>, or <code>delete</code> to misuse; read-onliness is enforced by the type system, not by an annotation the runtime promises to respect:</p>
+  <p>Or a subset of a table's columns:</p>
+  ${editor({file: 'OwnerSummary.kt', tag: 'Kotlin · Storm', code: CODE_STORM_SUBSET})}
+  <p>A subset projection is a second type to keep in step with the table, so start with the entity and add one where the width of the entity shows in the slow statement log or the performance log.</p>
+  <p>A projection's repository has the read API: <code>findAll</code>, <code>findById</code>, counting, pages, slices, scrolling and the query builder. It has no <code>insert</code>, <code>update</code> or <code>remove</code>, so a write does not compile:</p>
   ${editor({file: 'OwnerService.kt', tag: 'Kotlin · Storm', code: CODE_STORM_QUERY, sql: SQL_STORM_QUERY})}
-  <p>The record selects exactly its own fields, serializes directly to JSON with no proxy surprises, and <code>OwnerSummary_.lastName</code> is checked by the compiler against the generated metamodel.</p>
+  <p>The results are immutable data classes, not proxies, and <code>OwnerSummary_.lastName</code> is a path in the generated metamodel.</p>
 
-  <h2><span class="hno">04</span>Read models are built for reuse</h2>
-  <p>Because a projection is a modeled type rather than a query result, the rest of the codebase can lean on it. Projections compose: other projections and entities can reference them with <code>@FK</code>, Storm joins them in the same query, and where predicates follow the nested path with compile-time checking:</p>
+  <h2><span class="hno">04</span>Nesting and SQL-backed projections</h2>
+  <p>An entity or another projection can reference a projection through <code>@FK</code>. Storm joins it into the same statement, and a predicate follows the path:</p>
   ${editor({file: 'PetView.kt', tag: 'Kotlin · Storm', code: CODE_STORM_NESTED, sql: SQL_STORM_NESTED})}
-  <p>The nested <code>OwnerSummary</code> instances are shared per id across the result list, so a thousand pets owned by fifty owners hydrate into fifty owner objects. See the <a class="tlink" href="/tutorials/n-plus-one">N+1 tutorial</a> for how that sharing works.</p>
-  <p>A projection can also be backed by SQL of its own via <code>@ProjectionQuery</code> and still behave like any other queryable type. Storm runs the annotated SQL as a derived table, so type-safe predicates work on top of it, including on the aggregate, with no HAVING gymnastics:</p>
+  <p>Within one query, equal owner rows hydrate into one <code>OwnerSummary</code> instance, so a thousand pets of fifty owners hold fifty owner objects. The <a class="tlink" href="/tutorials/n-plus-one">N+1 tutorial</a> shows the same sharing for entities.</p>
+  <p><code>@ProjectionQuery</code> backs a projection with SQL of its own. Storm reads that SQL as a derived table, so a typed predicate applies to its columns, the aggregate included:</p>
   ${editor({file: 'OwnerWithPetCount.kt', tag: 'Kotlin · Storm', code: CODE_STORM_PQ, sql: SQL_STORM_PQ})}
-  <div class="note">A projection is not a DTO trick; it is a modeled, reusable view on your data. When all you need is a custom result shape for one query, Storm has lighter tools: see <a href="/tutorials/query-results">Typed query results</a> for case-by-case result mapping and <a href="/tutorials/sql-templates">SQL templates</a> for one-off shapes inside full SQL.</div>
+  <div class="note">A projection is a reusable read model. For a result shape that serves one query, a plain data class is enough: see <a href="/tutorials/query-results">Typed query results</a> for mapping by position, and <a href="/tutorials/sql-templates">SQL templates</a> for shapes inside full SQL.</div>
 
   <h2><span class="hno">05</span>Side by side</h2>
   <table class="cmp">
     <tr><th></th><th>JPA with Hibernate</th><th>Storm</th></tr>
-    <tr><td>Read-only concept</td><td>None in JPA; Hibernate's <code>@Immutable</code> by convention</td><td><code>Projection</code>: the write API does not exist</td></tr>
-    <tr><td>Subset of a table</td><td>No good option; second entities conflict</td><td><code>@DbTable</code> points the projection at the table</td></tr>
-    <tr><td>Database views</td><td>Entity over the view, still managed state</td><td>A projection, plain immutable records</td></tr>
-    <tr><td>Reuse</td><td>Entity semantics wherever it goes</td><td>Nests in other types, filters with typed predicates, own repository</td></tr>
+    <tr><td>Read-only type</td><td>An entity with Hibernate's <code>@Immutable</code></td><td><code>Projection</code>: its repository has no write methods</td></tr>
+    <tr><td>Database view</td><td>An entity mapped over the view</td><td>A projection named after the view</td></tr>
+    <tr><td>Subset of a table</td><td>An interface or class projection per repository method</td><td>A projection with <code>@DbTable</code> and its own repository</td></tr>
+    <tr><td>SQL-backed read model</td><td>Hibernate's <code>@Subselect</code></td><td><code>@ProjectionQuery</code>, filtered as a derived table</td></tr>
+    <tr><td>Instances</td><td>Managed entities, or projection proxies</td><td>Immutable data classes</td></tr>
   </table>
 
   <h2><span class="hno">06</span>Keep going</h2>
