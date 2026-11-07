@@ -259,7 +259,9 @@ private suspend fun <T> runAttempt(
     val parentCallbacks = currentContext[CallbacksKey]?.callbacks
     // A block joins the callbacks of the enclosing block only when it joins that block's transaction; a block inside
     // one that runs without a transaction starts a transaction of its own and settles its own callbacks.
-    if (resolvedPropagation.isJoining && parentScope != null && parentScope.runsInTransaction() &&
+    if (resolvedPropagation.isJoining &&
+        parentScope != null &&
+        parentScope.runsInTransaction() &&
         parentCallbacks != null
     ) {
         // Joining an outer transaction block: delegate callbacks to the outer holder; do not fire here.
