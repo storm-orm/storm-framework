@@ -4,9 +4,9 @@ import {editor, K, T, S, C, F, P} from '../../components/tutorial/tutorialTheme'
 
 const TITLE = 'Stop hiding my SQL: why ORM queries should stay visible';
 const DESC =
-  'SQL is the one interface every relational database and every backend ' +
-  "engineer already shares. An ORM's job is to make it type-safe, not to " +
-  'replace it with a second query language.';
+  'SQL is the interface every relational database and every backend engineer ' +
+  'already share. An ORM should make it type-safe and leave it in place, ' +
+  'without a second query language on top.';
 const SLUG = 'stop-hiding-my-sql';
 const DATE = '2026-01-20';
 
@@ -24,20 +24,19 @@ const BODY = `
 <div class="art">
   <div class="crumbs"><a href="/blog/">Blog</a><span class="sep">/</span>Stop hiding my SQL</div>
   <h1><span class="grad">Stop hiding</span> my SQL</h1>
-  <p class="dek">Somewhere along the way, hiding SQL became the default definition of a good ORM. It is worth questioning that, because SQL was rarely the part that caused the pain.</p>
+  <p class="dek">Somewhere along the way, hiding SQL became the default definition of a good ORM. That deserves a second look, since SQL was rarely the part that caused the pain.</p>
   <div class="meta"><span>January 20, 2026</span><span>SQL</span><span>4 min read</span></div>
 
   <h2>The second query language problem</h2>
-  <p>To hide SQL, an ORM gives you something to write instead: JPQL, a criteria builder, or a fluent DSL that models joins and predicates as method calls. A DSL is a good thing to have, and ST/ORM has one. The problem starts when it becomes the only safe path and SQL becomes the unsafe escape hatch, because that path always ends somewhere. You hit an aggregate, a window function, a recursive CTE, or a database-specific feature the abstraction never modeled, and you drop to a native query. At which point you are writing SQL anyway, except now it is a raw string with no type safety, because the safe path only covered the cases that did not need it.</p>
+  <p>To hide SQL, an ORM has to give you something else to write: JPQL, a criteria builder, or a fluent DSL that models joins and predicates as method calls. A DSL is a good thing to have, and ST/ORM has one. Trouble starts when the DSL is the only safe path and SQL is treated as the unsafe escape hatch, because that path always ends somewhere. An aggregate, a window function, a recursive CTE, or a database-specific feature the abstraction never modeled sends you to a native query. You end up writing SQL anyway, as a raw string with no type safety, since the safe path only covered the cases that did not need it.</p>
 
   <h2>SQL was never the weak point</h2>
-  <p>SQL is declarative, portable enough for real work, and understood by almost every backend engineer who works near a relational database. It is one of the most durable interfaces in our field. The weak point in hand-written database code was never the SQL itself. It was the stuff around it: column names as bare strings that no compiler checks, parameters concatenated into the query by hand, result sets mapped to objects by index one brittle line at a time, and mappings that drift silently when the query changes.</p>
-  <p>So fix that part. Leave the SQL alone.</p>
+  <p>SQL is declarative, portable enough for real work, and understood by almost every backend engineer who works near a relational database. It is one of the most durable interfaces in our field. What made hand-written database code fragile was everything around the SQL: column names as bare strings that no compiler checks, parameters concatenated into the query by hand, result sets mapped to objects by index one brittle line at a time, and mappings that drift silently when the query changes. That surrounding code is the part worth fixing, and the SQL can stay as it is.</p>
 
   <h2>Type the SQL, do not bury it</h2>
-  <p>ST/ORM's SQL templates, the piece that <a class="tlink" href="/blog/why-we-built-storm">started the whole project</a>, let you write real SQL with type-safe interpolation and automatic result mapping. Column references go through the generated metamodel, so a renamed field, a broken path, or a wrong type is a compile error, not a runtime surprise. Interpolated values become bind parameters, so a value is never concatenated into the SQL text. Results map to plain data classes and records. Take a window function, the kind of query a DSL will not express for you, and none of the safety goes away:</p>
+  <p>ST/ORM's SQL templates, the piece that <a class="tlink" href="/blog/why-we-built-storm">started the whole project</a>, let you write real SQL with type-safe interpolation and automatic result mapping. Column references go through the generated metamodel, so a renamed field, a broken path, or a wrong type fails at compile time instead of at runtime. Interpolated values become bind parameters and are never concatenated into the SQL text. Results map to plain data classes and records. A window function is the kind of query a DSL will not express for you, and written as a template it keeps all of that safety:</p>
   ${editor({file: 'ReportService.kt', tag: 'Kotlin · ST/ORM', code: CODE_SQL_TEMPLATE})}
-  <p>For the boring, high-volume queries there is a concise DSL, so you are not writing SQL for a find-by-id. The DSL is there for the common queries; the template is there when SQL is the clearest language for the job. Neither is the fallback for the other, so everything your database can do stays one line away.</p>
+  <p>For the boring, high-volume queries there is a concise DSL, so a find-by-id does not need any SQL. Use the DSL for the common queries and a template when SQL is the clearest way to express the job. Neither one is a fallback for the other, and everything your database can do stays one line away.</p>
 
   <div class="cta">
     <a href="/docs/sql-templates" class="btn primary">SQL templates →</a>

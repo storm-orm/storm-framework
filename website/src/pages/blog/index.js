@@ -9,9 +9,8 @@ import {TUT_CSS, navHtml, FOOT_HTML, heroArt} from '../../components/tutorial/tu
 
 const TITLE = 'ST/ORM Blog · Design decisions and deep dives';
 const DESC =
-  'The design decisions behind ST/ORM, deep dives into how it works, and the ' +
-  'thinking that shapes the API. Plain values, explicit SQL, and no hidden ' +
-  'state, argued one decision at a time.';
+  'Posts on the design decisions behind ST/ORM and how it works inside, from ' +
+  'entities as plain values to keeping SQL in view.';
 
 // Kept newest-first in this array, but rendered oldest-first on the page so the
 // hub reads top to bottom in series order, starting from the origin post.
@@ -22,7 +21,7 @@ const POSTS = [
     tag: 'Opinion',
     title: 'The M in ORM stands for …',
     blurb:
-      'Ask what the M stands for and everyone answers mapping. Watch what the tools wearing the name actually do, and the answer looks more like management. You should get to want one without the other.',
+      'Everyone says the M stands for mapping. Look at what the tools carrying the name actually do and a lot of it is management. We think you should be able to have the mapping without the management.',
   },
   {
     slug: 'should-you-use-an-orm',
@@ -30,7 +29,7 @@ const POSTS = [
     tag: 'Opinion',
     title: "Why shouldn't we use an ORM?",
     blurb:
-      'The strongest arguments against ORMs are really arguments against ORMs that hide SQL. Take the concealment away and most of the case dissolves.',
+      'The strongest arguments against ORMs turn out to be arguments against ORMs that hide SQL, and an ORM that keeps SQL in view answers most of them.',
   },
   {
     slug: 'why-we-didnt-choose-exposed',
@@ -38,7 +37,7 @@ const POSTS = [
     tag: 'Comparison',
     title: "Why we didn't choose Exposed",
     blurb:
-      'We build in Kotlin, so why not build ST/ORM on JetBrains Exposed? Exposed is excellent at modeling a database. ST/ORM draws the boundary differently: the model stays in the database, and application code gets plain, typed records.',
+      'We build in Kotlin, and JetBrains Exposed is excellent at modeling a database, so building ST/ORM on top of it was a fair question. ST/ORM draws the boundary in a different place: the model stays in the database, and application code works with plain, typed records.',
   },
   {
     slug: 'dirty-checking-without-proxies',
@@ -46,7 +45,7 @@ const POSTS = [
     tag: 'Internals',
     title: 'Dirty checking without proxies',
     blurb:
-      'You do not need bytecode enhancement or a session-bound proxy to write only the columns that changed. You need the value before and the value after.',
+      'To write only the columns that changed, ST/ORM compares the value before with the value after. No bytecode enhancement or session-bound proxy is involved.',
   },
   {
     slug: 'static-metamodel',
@@ -54,7 +53,7 @@ const POSTS = [
     tag: 'Internals',
     title: 'The static metamodel',
     blurb:
-      'Every entity gets a companion generated at compile time. It makes column and path references type-checked, and it lets queries and hydration run on generated code instead of reflection.',
+      'Each entity gets a companion class generated at compile time, which type-checks column and path references and lets queries and hydration run on generated code instead of reflection.',
   },
   {
     slug: 'three-abstractions',
@@ -62,7 +61,7 @@ const POSTS = [
     tag: 'Design',
     title: 'Three abstractions and nothing else',
     blurb:
-      'Entity, Repository, SQL Template. A model you can hold in your head is a model that does not surprise you.',
+      'ST/ORM has three concepts: Entity, Repository and SQL Template. We kept the model that small so you can hold all of it in your head.',
   },
   {
     slug: 'stop-hiding-my-sql',
@@ -70,7 +69,7 @@ const POSTS = [
     tag: 'SQL',
     title: 'Stop hiding my SQL',
     blurb:
-      'SQL is the one interface every database and every backend engineer already shares. Type it and keep it in view, do not replace it with a second query language.',
+      'SQL is the interface every database and every backend engineer already shares. We think it should be typed and kept in view, instead of replaced by a second query language.',
   },
   {
     slug: 'n-plus-one-query-problem',
@@ -78,7 +77,7 @@ const POSTS = [
     tag: 'Hibernate',
     title: 'The N+1 problem, and loading you can see',
     blurb:
-      'You do not fix N+1 by remembering a fetch clause. You fix it by making loading a decision the code shows you, and one you can assert in a test.',
+      'A fetch clause fixes N+1 only until the next query forgets it. ST/ORM makes loading a decision the code shows you, and one you can assert in a test.',
   },
   {
     slug: 'lazyinitializationexception',
@@ -86,7 +85,7 @@ const POSTS = [
     tag: 'Hibernate',
     title: "LazyInitializationException, and what it's telling you",
     blurb:
-      'The most-googled Hibernate error is not a bug in your code. It is a lazy promise coming due after the session closed, and value entities cannot throw it.',
+      'The most-googled Hibernate error comes from a lazy load that runs after the session has closed, rather than from a bug in your code. Value entities cannot throw it.',
   },
   {
     slug: 'entities-should-be-values',
@@ -94,7 +93,7 @@ const POSTS = [
     tag: 'Design',
     title: 'Entities are just data',
     blurb:
-      'An entity in ST/ORM is a plain record: a value with no session and no hidden state. Here is what that buys you across your application, without giving up dirty checking or lazy loading.',
+      'An entity in ST/ORM is a plain record, a value with no session and no hidden state. This post covers what that gets you across an application, and how dirty checking and lazy loading still work.',
   },
   {
     slug: 'data-layer-first-principles',
@@ -102,7 +101,7 @@ const POSTS = [
     tag: 'Design',
     title: 'A first-principles approach to your data layer',
     blurb:
-      'The most concise way to describe a table turns out to be the carrier of your data, and the contract for querying the entire relation graph.',
+      'Describe a table in its most concise form and you get the type that carries your data, which is also the contract for querying the entire relation graph.',
   },
   {
     slug: 'why-we-built-storm',
@@ -110,7 +109,7 @@ const POSTS = [
     tag: 'Origin',
     title: 'Why we built ST/ORM',
     blurb:
-      'If you have worked with JPA and Hibernate long enough, you probably know the feeling. Most of the time, things are fine. Then the model grows, the codebase gets larger, and there is some drama. One day we got the opportunity to start over. That is where our story starts.',
+      'If you have worked with JPA and Hibernate long enough, you probably know the feeling. Most of the time things are fine, then the model and the codebase grow and there is some drama. When we got the opportunity to start over, we took it, and that is where this story starts.',
   },
 ];
 
@@ -183,7 +182,7 @@ ${navHtml('blog')}
 
 <div class="pagehero">
   <h1>Ideas behind<br><span class="grad">the framework.</span></h1>
-  <p class="sub">Design decisions, deep dives, and the reasoning that shapes ST/ORM.</p>
+  <p class="sub">Notes on the design decisions in ST/ORM and on how it works inside.</p>
 ${filterBar}
 ${heroArt('blog', {priority: true})}
 </div>
