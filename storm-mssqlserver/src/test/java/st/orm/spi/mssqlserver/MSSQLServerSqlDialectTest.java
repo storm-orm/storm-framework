@@ -5,6 +5,7 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import java.sql.SQLException;
 import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
@@ -401,5 +402,19 @@ class MSSQLServerSqlDialectTest {
     void optimizerHintsShareOneOptionClauseAtTheEnd() {
         assertFalse(dialect.applyOptimizerHintAfterKeyword());
         assertEquals("OPTION (RECOMPILE, MAXDOP 1)", dialect.optimizerHint(List.of("RECOMPILE", "MAXDOP 1")));
+    }
+
+    // Transient failures
+
+    @Test
+    void deadlocksAndUpdateConflictsAreTransient() {
+        assertTrue(dialect.isTransientFailure(new SQLException("deadlock victim", "40001", 1205)));
+        assertTrue(dialect.isTransientFailure(new SQLException("snapshot update conflict", "S0002", 3960)));
+        assertTrue(dialect.isTransientFailure(new SQLException("memory-optimized update conflict", "S0001", 41302)));
+    }
+
+    @Test
+    void aLockTimeoutIsNotTransient() {
+        assertFalse(dialect.isTransientFailure(new SQLException("lock request time out", "S00051", 1222)));
     }
 }

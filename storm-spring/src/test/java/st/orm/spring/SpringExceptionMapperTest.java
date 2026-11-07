@@ -249,6 +249,14 @@ class SpringExceptionMapperTest {
         assertSame(conflict, translated.getCause());
     }
 
+    @Test
+    void sqlFailureTheTranslatorAlreadyTranslatesAsTransientKeepsItsType() {
+        SpringExceptionMapper mapper = new SpringExceptionMapper();
+        var deadlock = new SQLTransactionRollbackException("Deadlock found when trying to get lock", "40001", 1213);
+        var translated = assertInstanceOf(TransientDataAccessException.class, mapper.map(deadlock, context(true)));
+        assertEquals(mapper.map(deadlock, emptyContext()).getClass(), translated.getClass());
+    }
+
     private static ExceptionContext emptyContext() {
         return context(false);
     }

@@ -23,7 +23,9 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.sql.BatchUpdateException;
 import java.sql.SQLException;
+import java.sql.SQLNonTransientConnectionException;
 import java.sql.SQLRecoverableException;
+import java.sql.SQLTransientConnectionException;
 import java.util.ArrayList;
 import java.util.List;
 import org.junit.jupiter.api.Test;
@@ -47,13 +49,17 @@ class TransientFailureClassificationTest {
 
     private final List<ExceptionContext> contexts = new ArrayList<>();
 
-    private RuntimeException map(Throwable failure, ExceptionMapper mapper) {
+    private RuntimeException map(Throwable failure, SqlDialect dialect, ExceptionMapper mapper) {
         ExceptionMapper recording = (cause, context) -> {
             contexts.add(context);
             return mapper.map(cause, context);
         };
-        return ExceptionHelper.getExceptionTransformer(null, DIALECT, recording,
+        return ExceptionHelper.getExceptionTransformer(null, dialect, recording,
                 new JdbcTransactionTemplateProviderImpl()).apply(failure);
+    }
+
+    private RuntimeException map(Throwable failure, ExceptionMapper mapper) {
+        return map(failure, DIALECT, mapper);
     }
 
     private RuntimeException map(Throwable failure) {
@@ -117,6 +123,35 @@ class TransientFailureClassificationTest {
         assertFalse(map(lost) instanceof TransientPersistenceException);
         var recoverable = new SQLRecoverableException("closed", "40001");
         assertFalse(map(recoverable) instanceof TransientPersistenceException);
+        var nonTransientConnection = new SQLNonTransientConnectionException("refused", "40001");
+        assertFalse(map(nonTransientConnection) instanceof TransientPersistenceException);
+        var transientConnection = new SQLTransientConnectionException("timed out", "40001");
+        assertFalse(map(transientConnection) instanceof TransientPersistenceException);
+    }
+
+    @Test
+    void aClassificationThatFailsLeavesTheFailureNotTransientAndTravelsWithIt() {
+        var classificationFailure = new IllegalStateException("classification failed");
+        var failingDialect = new DefaultSqlDialect() {
+            @Override
+            public boolean isTransientFailure(SQLException exception) {
+                throw classificationFailure;
+            }
+        };
+        var serializationFailure = new SQLException("could not serialize", "40001");
+        var mapped = map(serializationFailure, failingDialect, ExceptionMapper.defaultMapper());
+        assertFalse(mapped instanceof TransientPersistenceException);
+        assertSame(serializationFailure, mapped.getCause());
+        assertTrue(List.of(serializationFailure.getSuppressed()).contains(classificationFailure));
+        assertFalse(contexts.getFirst().transientFailure());
+    }
+
+    @Test
+    void aCauseChainThatLoopsIsWalkedOnce() {
+        var first = new PersistenceException("first");
+        var second = new PersistenceException("second", first);
+        first.initCause(second);
+        assertFalse(map(first) instanceof TransientPersistenceException);
     }
 
     @Test
