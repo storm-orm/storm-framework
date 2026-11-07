@@ -508,4 +508,40 @@ internal open class TransactionCallbackTest(
         }
         afterRollback shouldBe false
     }
+
+    @Test
+    fun `callbacks of a block that starts its own transaction inside one without fire by its own outcome`(): Unit = runBlocking {
+        val events = mutableListOf<String>()
+        transaction(propagation = NOT_SUPPORTED) {
+            assertThrows<IllegalStateException> {
+                transaction(propagation = REQUIRED) {
+                    onCommit { events += "commit" }
+                    onRollback { events += "rollback" }
+                    orm.removeAll<Visit>()
+                    throw IllegalStateException("Inner failure.")
+                }
+            }
+            events shouldBe listOf("rollback")
+        }
+        events shouldBe listOf("rollback")
+        orm.exists<Visit>().shouldBeTrue()
+    }
+
+    @Test
+    fun `callbacks of a blocking block that starts its own transaction inside one without fire by its own outcome`() {
+        val events = mutableListOf<String>()
+        transactionBlocking(propagation = NOT_SUPPORTED) {
+            assertThrows<IllegalStateException> {
+                transactionBlocking(propagation = REQUIRED) {
+                    onCommit { events += "commit" }
+                    onRollback { events += "rollback" }
+                    orm.removeAll<Visit>()
+                    throw IllegalStateException("Inner failure.")
+                }
+            }
+            events shouldBe listOf("rollback")
+        }
+        events shouldBe listOf("rollback")
+        orm.exists<Visit>().shouldBeTrue()
+    }
 }

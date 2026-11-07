@@ -25,12 +25,14 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.asContextElement
 import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.job
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
+import st.orm.IllegalTransactionStateException
 import st.orm.TransactionIsolation
 import st.orm.TransactionOptions
 import st.orm.TransactionPropagation
@@ -42,6 +44,7 @@ import st.orm.TransactionPropagation.REQUIRED
 import st.orm.TransactionPropagation.REQUIRES_NEW
 import st.orm.TransactionPropagation.SUPPORTS
 import st.orm.core.spi.ConnectionGuard
+import st.orm.core.spi.TransactionRetries
 import st.orm.core.spi.TransactionRunner
 import st.orm.core.spi.TransactionScope
 import st.orm.template.impl.TransactionCallbacks
@@ -65,6 +68,22 @@ import kotlin.coroutines.CoroutineContext
  * | `REQUIRES_NEW`    | Commits only the new (inner) tx                  | Rolls back only the inner tx; outer stays active                 | Commits the outer tx (inner work stays committed)    | Rolls back the outer tx; inner-committed work remains               |
  * | `NESTED`          | Releases the JDBC savepoint—inner changes are now visible to the outer transaction  | Rolls back to savepoint—undoes just inner work, outer stays open | Commits entire tx (savepoints dropped, all work kept) | Rolls back entire tx (including inner work, regardless of savepoint) |
  *
+ * ## Retries
+ *
+ * With [retries] above `0`, an attempt that fails transiently runs again, up to [retries] times. A failure is transient
+ * as the framework classifies it: a deadlock, a serialization failure or an optimistic lock conflict, whatever type the
+ * template's exception mapper translates it to. Every other failure leaves the block on the attempt it occurred in.
+ * Each attempt is a transaction of its own: the timeout counts from the start of the attempt, and the callbacks an
+ * attempt registered fire by that attempt's outcome, so `onCommit` runs only for the attempt that committed. Between
+ * attempts the block pauses for a short, jittered time that grows per attempt; the thread sleeps, and an interrupt ends
+ * the reruns. When the last attempt fails, its failure leaves the block with the earlier attempts' failures as
+ * suppressed.
+ *
+ * A rerun starts the transaction over, so the block must start its own: `REQUIRES_NEW`, or `REQUIRED` or `NESTED`
+ * while no transaction is active. A block that joins an active transaction, including one an external transaction
+ * manager owns, or runs without one fails at its start with [IllegalTransactionStateException] when [retries]
+ * is positive. A block that may be rerun touches nothing outside the database except through `onCommit`.
+ *
  * @param propagation    Controls how this call participates in an existing transaction:
  *                       - `REQUIRED` (default): join or start if none
  *                       - `REQUIRES_NEW`: suspend outer, start fresh
@@ -75,6 +94,8 @@ import kotlin.coroutines.CoroutineContext
  * provider's default.
  * @param readOnly       Whether the transaction is read-only. If `null`, no mode is requested and the connection
  *                       keeps the mode it arrives with.
+ * @param retries        The number of reruns after the first attempt when an attempt fails transiently; `0` runs the
+ *                       block once. See "Retries" above. Since 1.16.
  * @param block          The transactional logic to execute.
  * @return The result of executing [block].
  * @throws st.orm.PersistenceException if transaction execution fails.
@@ -85,6 +106,7 @@ public fun <T> transactionBlocking(
     isolation: TransactionIsolation? = null,
     timeoutSeconds: Int? = null,
     readOnly: Boolean? = null,
+    retries: Int = 0,
     block: Transaction.() -> T,
 ): T {
     val options = localTransactionOptions.get() ?: globalTransactionOptions.get()
@@ -96,7 +118,7 @@ public fun <T> transactionBlocking(
     )
     // The blocking orchestration lives once, in core's TransactionRunner; wrap the language-neutral handle in
     // the Kotlin Transaction so the receiver keeps its suspend-friendly callback overloads.
-    return TransactionRunner.execute<T, RuntimeException>(scopeOptions) { transaction ->
+    return TransactionRunner.execute<T, RuntimeException>(scopeOptions, retries) { transaction ->
         block(transaction.asKotlinTransaction())
     }
 }
@@ -135,6 +157,22 @@ public fun <T> transactionBlocking(
  * | `REQUIRES_NEW`    | Commits only the new (inner) tx                  | Rolls back only the inner tx; outer stays active                 | Commits outer tx (inner stays committed)             | Rolls back outer tx; inner-committed work remains                  |
  * | `NESTED`          | Releases the JDBC savepoint—inner changes are now visible to the outer transaction  | Rolls back to savepoint—undoes just inner work, outer stays open | Commits entire tx (savepoints dropped, all work kept) | Rolls back entire tx (including inner work, regardless of savepoint) |
  *
+ * ## Retries
+ *
+ * With [retries] above `0`, an attempt that fails transiently runs again, up to [retries] times. A failure is transient
+ * as the framework classifies it: a deadlock, a serialization failure or an optimistic lock conflict, whatever type the
+ * template's exception mapper translates it to. Every other failure leaves the block on the attempt it occurred in.
+ * Each attempt is a transaction of its own: the timeout counts from the start of the attempt, and the callbacks an
+ * attempt registered fire by that attempt's outcome, so `onCommit` runs only for the attempt that committed. Between
+ * attempts the block pauses for a short, jittered time that grows per attempt; the coroutine suspends in `delay`, and a
+ * cancellation ends the reruns. When the last attempt fails, its failure leaves the block with the earlier attempts'
+ * failures as suppressed.
+ *
+ * A rerun starts the transaction over, so the block must start its own: `REQUIRES_NEW`, or `REQUIRED` or `NESTED`
+ * while no transaction is active. A block that joins an active transaction, including one an external transaction
+ * manager owns, or runs without one fails at its start with [IllegalTransactionStateException] when [retries]
+ * is positive. A block that may be rerun touches nothing outside the database except through `onCommit`.
+ *
  * @param dispatcher        The [CoroutineDispatcher] in which to run the transaction.
  *                          For example, `Dispatchers.IO`.
  * @param propagation       Controls how this call participates in an existing transaction:
@@ -158,6 +196,7 @@ public suspend fun <T> transaction(
     isolation: TransactionIsolation? = null,
     timeoutSeconds: Int? = null,
     readOnly: Boolean? = null,
+    retries: Int = 0,
     block: suspend Transaction.() -> T,
 ): T {
     val currentContext = currentCoroutineContext()
@@ -171,10 +210,58 @@ public suspend fun <T> transaction(
         timeoutSeconds ?: options.timeoutSeconds,
         readOnly ?: options.readOnly,
     )
+    TransactionRetries.check(scopeOptions, retries)
+    if (retries == 0) {
+        return runAttempt(dispatcher, options, resolvedPropagation, scopeOptions, null, block)
+    }
+    val failures = mutableListOf<Throwable>()
+    var rerun = 0
+    while (true) {
+        val attempt = Attempt()
+        try {
+            return runAttempt(dispatcher, options, resolvedPropagation, scopeOptions, attempt, block)
+        } catch (failure: Throwable) {
+            if (!attempt.transientFailure || rerun == retries) {
+                throw TransactionRetries.withEarlierFailures(failure, failures)
+            }
+            failures += failure
+            rerun++
+            TransactionRetries.logRerun(rerun, retries, failure)
+            // A cancellation during the pause ends the reruns and leaves the block with the coroutine's own
+            // cancellation, as any cancelled coroutine does.
+            delay(TransactionRetries.pauseMillis(rerun))
+        }
+    }
+}
+
+/**
+ * The outcome of one attempt of a block that reruns: whether it failed transiently.
+ */
+private class Attempt {
+    var transientFailure: Boolean = false
+}
+
+/**
+ * Runs one attempt of a suspending transactional block, recording on [attempt], when given, whether it failed
+ * transiently.
+ */
+private suspend fun <T> runAttempt(
+    dispatcher: CoroutineDispatcher,
+    options: TransactionDefaults,
+    resolvedPropagation: TransactionPropagation,
+    scopeOptions: TransactionOptions,
+    attempt: Attempt?,
+    block: suspend Transaction.() -> T,
+): T {
+    val currentContext = currentCoroutineContext()
     val parentScope = TransactionScope.current()
     val scope = TransactionScope.create(scopeOptions, true, parentScope)
     val parentCallbacks = currentContext[CallbacksKey]?.callbacks
-    if (resolvedPropagation.isJoining && parentScope != null && parentCallbacks != null) {
+    // A block joins the callbacks of the enclosing block only when it joins that block's transaction; a block inside
+    // one that runs without a transaction starts a transaction of its own and settles its own callbacks.
+    if (resolvedPropagation.isJoining && parentScope != null && parentScope.runsInTransaction() &&
+        parentCallbacks != null
+    ) {
         // Joining an outer transaction block: delegate callbacks to the outer holder; do not fire here.
         val elements = CallbacksKey(parentCallbacks) +
             TransactionScope.holder().asContextElement(scope) +
@@ -255,6 +342,7 @@ public suspend fun <T> transaction(
     }
     val failure = outcome.failure
     if (failure != null) {
+        attempt?.transientFailure = failure !is CancellationException && TransactionRetries.isTransient(scope, failure)
         try {
             callbacks.settle(outcome.mayDefer, outcome.mayMark, committed = false)
         } catch (callbackException: Throwable) {

@@ -39,6 +39,7 @@ import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeoutException;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.logging.Logger;
 import javax.sql.DataSource;
 import org.jspecify.annotations.Nullable;
@@ -175,14 +176,14 @@ public abstract class AbstractTransientFailureConformanceTest {
         var orm = template(dataSource);
         var options = new TransactionOptions(REQUIRED, null, TIMEOUT_SECONDS, false);
         var failures = runConcurrently(options,
-                (transaction, barrier) -> {
+                (transaction, rendezvous) -> {
                     add(orm, 1, 1);
-                    barrier.await(TIMEOUT_SECONDS, SECONDS);
+                    rendezvous.await();
                     add(orm, 2, 1);
                 },
-                (transaction, barrier) -> {
+                (transaction, rendezvous) -> {
                     add(orm, 2, 10);
-                    barrier.await(TIMEOUT_SECONDS, SECONDS);
+                    rendezvous.await();
                     add(orm, 1, 10);
                 });
         int winner = assertOneTransientFailure(failures);
@@ -197,6 +198,95 @@ public abstract class AbstractTransientFailureConformanceTest {
         assumeTrue(reason.isEmpty(), reason.orElse(""));
         assertOneSerializationFailure(dataSource,
                 new TransactionOptions(REQUIRED, SERIALIZABLE, TIMEOUT_SECONDS, false));
+    }
+
+    @Test
+    public void aDeadlockedTransactionRerunsAndCommits() throws Exception {
+        var reason = deadlockUnsupportedReason();
+        assumeTrue(reason.isEmpty(), reason.orElse(""));
+        var orm = template(dataSource);
+        var outcomes = runConcurrently(new TransactionOptions(REQUIRED, null, TIMEOUT_SECONDS, false), 1,
+                (transaction, rendezvous) -> {
+                    add(orm, 1, 1);
+                    rendezvous.await();
+                    add(orm, 2, 1);
+                },
+                (transaction, rendezvous) -> {
+                    add(orm, 2, 10);
+                    rendezvous.await();
+                    add(orm, 1, 10);
+                });
+        assertOneRerunAndBothCommit(outcomes);
+        assertEquals(11, amount(orm, 1), "both transactions' writes to row 1");
+        assertEquals(11, amount(orm, 2), "both transactions' writes to row 2");
+    }
+
+    @Test
+    public void aSerializationFailureRerunsAndCommits() throws Exception {
+        var reason = serializationFailureUnsupportedReason();
+        assumeTrue(reason.isEmpty(), reason.orElse(""));
+        assertOneSerializationFailureReruns(template(dataSource));
+    }
+
+    @Test
+    public void aTransientFailureAMapperTranslatesToItsOwnTypeStillReruns() throws Exception {
+        var reason = serializationFailureUnsupportedReason();
+        assumeTrue(reason.isEmpty(), reason.orElse(""));
+        var orm = ORMTemplate.builder(dataSource)
+                .connectionProvider(new JdbcConnectionProviderImpl())
+                .transactionTemplateProvider(new JdbcTransactionTemplateProviderImpl())
+                .exceptionMapper((failure, context) -> context.transientFailure() ? new MappedFailure(failure) : null)
+                .build();
+        assertOneSerializationFailureReruns(orm);
+    }
+
+    @Test
+    public void aConstraintViolationIsNotRerun() {
+        var orm = template(dataSource);
+        var attempts = new AtomicInteger();
+        var thrown = assertThrows(PersistenceException.class, () -> TransactionRunner.<Object, RuntimeException>execute(
+                new TransactionOptions(REQUIRED, null, TIMEOUT_SECONDS, false), 2,
+                transaction -> {
+                    attempts.incrementAndGet();
+                    return execute(orm, "INSERT INTO " + TABLE + " (id, amount) VALUES (1, 0)");
+                }));
+        assertNotTransient(thrown);
+        assertEquals(1, attempts.get(), "a failure that is not transient leaves the block at once");
+    }
+
+    /**
+     * A failure type of a mapper's own, outside Storm's hierarchy.
+     */
+    private static final class MappedFailure extends RuntimeException {
+        MappedFailure(Throwable cause) {
+            super(cause);
+        }
+    }
+
+    /**
+     * Runs the serialization case with each transaction rerunning once, and asserts that the transaction that lost
+     * ran again on the winner's write and committed, so the row holds both writes.
+     */
+    private void assertOneSerializationFailureReruns(ORMTemplate orm) throws Exception {
+        boolean singleWriter = singleWriter();
+        var firstCommitted = new CountDownLatch(1);
+        var outcomes = runConcurrently(new TransactionOptions(REQUIRED, SERIALIZABLE, TIMEOUT_SECONDS, false), 1,
+                (transaction, rendezvous) -> {
+                    transaction.onCommit(firstCommitted::countDown);
+                    amount(orm, 1);
+                    rendezvous.await();
+                    add(orm, 1, 1);
+                },
+                (transaction, rendezvous) -> {
+                    amount(orm, 1);
+                    rendezvous.await();
+                    if (singleWriter && !firstCommitted.await(TIMEOUT_SECONDS, SECONDS)) {
+                        throw new TimeoutException("The first transaction did not commit.");
+                    }
+                    add(orm, 1, 10);
+                });
+        assertOneRerunAndBothCommit(outcomes);
+        assertEquals(11, amount(orm, 1), "both transactions' writes");
     }
 
     /**
@@ -217,15 +307,15 @@ public abstract class AbstractTransientFailureConformanceTest {
         boolean singleWriter = singleWriter();
         var firstCommitted = new CountDownLatch(1);
         var failures = runConcurrently(options,
-                (transaction, barrier) -> {
+                (transaction, rendezvous) -> {
                     transaction.onCommit(firstCommitted::countDown);
                     amount(orm, 1);
-                    barrier.await(TIMEOUT_SECONDS, SECONDS);
+                    rendezvous.await();
                     add(orm, 1, 1);
                 },
-                (transaction, barrier) -> {
+                (transaction, rendezvous) -> {
                     amount(orm, 1);
-                    barrier.await(TIMEOUT_SECONDS, SECONDS);
+                    rendezvous.await();
                     if (singleWriter && !firstCommitted.await(TIMEOUT_SECONDS, SECONDS)) {
                         throw new TimeoutException("The first transaction did not commit.");
                     }
@@ -322,9 +412,25 @@ public abstract class AbstractTransientFailureConformanceTest {
 
     @FunctionalInterface
     private interface ConcurrentWork {
-        void run(Transaction transaction, CyclicBarrier barrier)
+        void run(Transaction transaction, Rendezvous rendezvous)
                 throws InterruptedException, BrokenBarrierException, TimeoutException;
     }
+
+    /**
+     * The point where the two transactions wait for each other. A rerun meets no one there, as the other transaction
+     * is done by then, so it passes straight through.
+     */
+    @FunctionalInterface
+    private interface Rendezvous {
+        void await() throws InterruptedException, BrokenBarrierException, TimeoutException;
+    }
+
+    /**
+     * What a transaction run by {@link #runConcurrently(TransactionOptions, int, ConcurrentWork, ConcurrentWork)}
+     * ended with: the failure that left it, {@code null} when it committed, and how often it ran, committed and
+     * rolled back.
+     */
+    private record Outcome(@Nullable Throwable failure, int attempts, int commits, int rollbacks) {}
 
     /**
      * Runs the two pieces of work each in a transaction of its own, on a thread of its own, and returns what each
@@ -333,31 +439,77 @@ public abstract class AbstractTransientFailureConformanceTest {
      */
     private static List<@Nullable Throwable> runConcurrently(TransactionOptions options, ConcurrentWork first,
                                                              ConcurrentWork second) throws InterruptedException {
+        List<@Nullable Throwable> failures = new ArrayList<>();
+        for (var outcome : runConcurrently(options, 0, first, second)) {
+            failures.add(outcome.failure());
+        }
+        return failures;
+    }
+
+    /**
+     * Runs the two pieces of work each in a transaction of its own that reruns up to {@code retries} times, on a
+     * thread of its own, and returns what each ended with. The first attempts meet at a barrier; reruns pass it.
+     */
+    private static List<Outcome> runConcurrently(TransactionOptions options, int retries, ConcurrentWork first,
+                                                 ConcurrentWork second) throws InterruptedException {
         var barrier = new CyclicBarrier(2);
+        Rendezvous meeting = () -> barrier.await(TIMEOUT_SECONDS, SECONDS);
+        Rendezvous passing = () -> { };
         try (var executor = Executors.newFixedThreadPool(2)) {
             List<Future<?>> futures = new ArrayList<>();
-            for (var work : List.of(first, second)) {
-                futures.add(executor.submit(() -> TransactionRunner.<Object, Exception>execute(options, transaction -> {
-                    work.run(transaction, barrier);
-                    return null;
-                })));
+            List<AtomicInteger> attempts = List.of(new AtomicInteger(), new AtomicInteger());
+            List<AtomicInteger> commits = List.of(new AtomicInteger(), new AtomicInteger());
+            List<AtomicInteger> rollbacks = List.of(new AtomicInteger(), new AtomicInteger());
+            var works = List.of(first, second);
+            for (int index = 0; index < works.size(); index++) {
+                var work = works.get(index);
+                var attempt = attempts.get(index);
+                var commit = commits.get(index);
+                var rollback = rollbacks.get(index);
+                futures.add(executor.submit(() -> TransactionRunner.<Object, Exception>execute(options, retries,
+                        transaction -> {
+                            boolean rerun = attempt.incrementAndGet() > 1;
+                            transaction.onCommit(commit::incrementAndGet);
+                            transaction.onRollback(rollback::incrementAndGet);
+                            work.run(transaction, rerun ? passing : meeting);
+                            return null;
+                        })));
             }
-            List<@Nullable Throwable> failures = new ArrayList<>();
-            for (var future : futures) {
+            List<Outcome> outcomes = new ArrayList<>();
+            for (int index = 0; index < futures.size(); index++) {
+                Throwable failure = null;
                 try {
-                    future.get(2L * TIMEOUT_SECONDS, SECONDS);
-                    failures.add(null);
+                    futures.get(index).get(2L * TIMEOUT_SECONDS, SECONDS);
                 } catch (ExecutionException e) {
                     assertFalse(e.getCause() instanceof BrokenBarrierException
                             || e.getCause() instanceof TimeoutException,
                             () -> "both transactions reach the barrier: " + e.getCause());
-                    failures.add(e.getCause());
+                    failure = e.getCause();
                 } catch (TimeoutException e) {
                     throw new AssertionError("The transactions did not complete.", e);
                 }
+                outcomes.add(new Outcome(failure, attempts.get(index).get(), commits.get(index).get(),
+                        rollbacks.get(index).get()));
             }
-            return failures;
+            return outcomes;
         }
+    }
+
+    /**
+     * Asserts that both transactions committed, one at its first attempt and the other at its second, after a first
+     * attempt that rolled back, and that each transaction fired {@code onCommit} once.
+     */
+    private static void assertOneRerunAndBothCommit(List<Outcome> outcomes) {
+        for (var outcome : outcomes) {
+            if (outcome.failure() != null) {
+                throw new AssertionError("Both transactions commit: " + outcomes, outcome.failure());
+            }
+            assertEquals(1, outcome.commits(), () -> "onCommit fires once per transaction: " + outcomes);
+            assertEquals(outcome.attempts() - 1, outcome.rollbacks(),
+                    () -> "onRollback fires once per failed attempt: " + outcomes);
+        }
+        assertEquals(List.of(1, 2), outcomes.stream().map(Outcome::attempts).sorted().toList(),
+                () -> "one transaction reruns once: " + outcomes);
     }
 
     private static Object add(ORMTemplate orm, int id, int amount) {

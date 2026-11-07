@@ -688,7 +688,7 @@ The performance log reports the pattern as `writes-without-transaction` advice. 
 
 **Use `Transactions.transaction(...)` for programmatic transactions** (Storm 1.13 and later). It has the same semantics as Kotlin's `transaction { }` blocks:
 
-- all seven propagation modes, isolation, timeout, read-only, rollback-only, and commit/rollback callbacks;
+- all seven propagation modes, isolation, timeout, read-only, rollback-only, retries on transient failures, and commit/rollback callbacks;
 - the block is value-returning (void blocks `return null`);
 - checked exceptions propagate to the caller unchanged;
 - the transaction binds to the first `ORMTemplate` that executes inside it.
@@ -707,7 +707,9 @@ transaction(REQUIRES_NEW, tx -> {
 
 **Keep a transaction's work on its thread.** A transaction is bound to the thread that runs it. Work handed to an `ExecutorService` or a parallel stream runs outside it: its statements commit on their own and do not see the transaction's uncommitted changes. Keep the work on the transaction's thread, or open a transaction inside the task.
 
-**Rerun a transaction on `TransientPersistenceException` only.** A deadlock, a serialization failure (SQL state `40001` or the database's own code for it) and an optimistic lock conflict (`OptimisticLockException` is a subtype) throw it: running the whole transaction again may succeed. Rerun the block that owns the transaction from its start, never the failed statement alone, never a block that joined an outer transaction. A lock wait timeout, a lost connection and a failed commit are not transient; never rerun on them. A rerun repeats the block's side effects, so every effect outside the database goes in `tx.onCommit(...)`. Under the Spring Boot starters the failure surfaces as a `TransientDataAccessException`.
+**Rerun with `retries`, never by hand.** `transaction(2, tx -> ...)`, `transaction(REQUIRES_NEW, 2, tx -> ...)` and `transaction(options, 2, tx -> ...)` rerun the block up to two more times on a transient failure: a deadlock, a serialization failure or an optimistic lock conflict (`TransientPersistenceException`, `OptimisticLockException` is a subtype). Each attempt is its own transaction, with its own timeout and callbacks; `onCommit` fires for the committing attempt only. Only a block that starts its transaction takes a count: `REQUIRES_NEW`, or `REQUIRED`/`NESTED` with no transaction active. A joined block (including one inside a Spring-managed transaction) or one without a transaction throws `IllegalTransactionStateException`; put the count on the outer block. The count is not part of `TransactionOptions` and is never inherited. A lock wait timeout, a lost connection and a failed commit are not transient and are never rerun. Under the Spring Boot starters the failure surfaces as a `TransientDataAccessException`, and `retries` still reruns on it. Never write a rerun loop by hand.
+
+**A block that may be rerun touches nothing outside the database except through `tx.onCommit(...)`.** A side effect that must not be lost goes into an outbox row written in the transaction: `onCommit` runs at most once, and a crash between the commit and the callback loses it. State the block mutates outside itself (a captured list or counter) and writes outside the database made from the block itself repeat once per attempt. Each failed attempt fires its own `onRollback`, so a counter there counts attempts.
 
 ### Spring Boot
 **Both styles work and cooperate.** `@Transactional` on service methods is first-class. Storm's `transaction(...)` blocks run through Spring's transaction managers when the template is Spring-composed (the starter does this automatically), so a Storm block inside a `@Transactional` method joins it.

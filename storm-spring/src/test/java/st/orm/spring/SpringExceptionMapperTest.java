@@ -28,6 +28,7 @@ import java.util.Optional;
 import javax.sql.DataSource;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.Timeout;
 import org.springframework.boot.jdbc.DataSourceBuilder;
 import org.springframework.core.io.ClassPathResource;
 import org.springframework.dao.ConcurrencyFailureException;
@@ -120,6 +121,17 @@ class SpringExceptionMapperTest {
         var other = new IllegalStateException("no sql");
         var translatedOther = assertInstanceOf(StormSystemException.class, mapper.map(other, emptyContext()));
         assertSame(other, translatedOther.getCause());
+    }
+
+    @Test
+    @Timeout(10)
+    void aFailureWhoseCausesFormACycleTranslatesWithoutHanging() {
+        SpringExceptionMapper mapper = new SpringExceptionMapper(dataSource);
+        var first = new IllegalStateException("first");
+        var second = new IllegalStateException("second", first);
+        first.initCause(second);
+        var translated = assertInstanceOf(StormSystemException.class, mapper.map(first, emptyContext()));
+        assertSame(first, translated.getCause());
     }
 
     @Test

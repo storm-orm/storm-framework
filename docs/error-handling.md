@@ -160,26 +160,18 @@ The exception includes a reference to the entity that caused the conflict, acces
 
 When two transactions conflict, the database ends one of them. In a deadlock, each transaction waits for a row the other one holds. In a serialization failure, a transaction at `REPEATABLE_READ` or `SERIALIZABLE` writes a row that another transaction changed after it was read. Storm throws `TransientPersistenceException` for both. The dialect recognises the codes its database reports, so the type is the same on every database. `OptimisticLockException` is a subtype: a version conflict is concurrent activity too.
 
-The type is the signal to run the whole transaction again. The transaction the failure occurred in cannot commit its work, so rerun the block from its start, never the failed statement alone. Rerun the block that owns the transaction: a block that joined an outer transaction fails with it, and the outer block is the one to run again.
+The type is the signal to run the whole transaction again. The transaction the failure occurred in cannot commit its work, so the block reruns from its start, never the failed statement alone. `retries` on the transactional block does this: it states the number of reruns after the first attempt, and Storm reruns the block on a transient failure only, each attempt in a transaction of its own. A block that joins an outer transaction, or runs without one, refuses `retries` with `IllegalTransactionStateException`, since only the block that starts the transaction can start it over.
 
-A rerun repeats everything the block does. Its database writes rolled back with the failed attempt, but anything else it did happens again: a message sent, a call to another service, a change to state the block captured. Put such side effects in [`onCommit`](transactions.md#transaction-callbacks), which runs only for the attempt that committed.
+A rerun repeats everything the block does. Its database writes rolled back with the failed attempt, but anything else it did happens again: a message sent, a call to another service, a change to state the block captured. A block that may be rerun touches nothing outside the database except through [`onCommit`](transactions.md#transaction-callbacks), which runs only for the attempt that committed; a side effect that must not be lost goes into an outbox row written in the transaction, since `onCommit` runs at most once. See [Rerunning a Transaction](transactions.md#rerunning-a-transaction).
 
 <Tabs groupId="language">
 <TabItem value="kotlin" label="Kotlin" default>
 
 ```kotlin
-var attempt = 0
-while (true) {
-    try {
-        transactionBlocking(isolation = SERIALIZABLE) {
-            inventoryRepository.decrease(productId, quantity)
-            val order = orderRepository.insertAndFetch(newOrder)
-            onCommit { emailService.sendOrderConfirmation(order) }
-        }
-        break
-    } catch (exception: TransientPersistenceException) {
-        if (++attempt == 3) throw exception
-    }
+transactionBlocking(isolation = SERIALIZABLE, retries = 2) {
+    inventoryRepository.decrease(productId, quantity)
+    val order = orderRepository.insertAndFetch(newOrder)
+    onCommit { emailService.sendOrderConfirmation(order) }
 }
 ```
 
@@ -187,29 +179,22 @@ while (true) {
 <TabItem value="java" label="Java">
 
 ```java
-for (int attempt = 1; ; attempt++) {
-    try {
-        transaction(TransactionOptions.defaults().withIsolation(SERIALIZABLE), tx -> {
-            inventoryRepository.decrease(productId, quantity);
-            Order order = orderRepository.insertAndFetch(newOrder);
-            tx.onCommit(() -> emailService.sendOrderConfirmation(order));
-            return order;
-        });
-        break;
-    } catch (TransientPersistenceException exception) {
-        if (attempt == 3) {
-            throw exception;
-        }
-    }
-}
+transaction(TransactionOptions.defaults().withIsolation(SERIALIZABLE), 2, tx -> {
+    inventoryRepository.decrease(productId, quantity);
+    Order order = orderRepository.insertAndFetch(newOrder);
+    tx.onCommit(() -> emailService.sendOrderConfirmation(order));
+    return order;
+});
 ```
 
 </TabItem>
 </Tabs>
 
+When the last attempt fails, its exception leaves the block with the earlier attempts' failures as suppressed. The rerun decides on Storm's classification of the failure, not on the type of the exception thrown, so it holds when an exception mapper translates the failure to another hierarchy.
+
 Only failures on which the database gave up the transaction's work are transient. A lock wait that runs out is not: some databases answer it by rolling back only the statement that waited. A lost connection and a failed commit are not either: whether the transaction committed is unknown, and running it again could apply it twice.
 
-With the Spring Boot starter, exception translation turns these failures into Spring's `TransientDataAccessException` subtypes, such as `ConcurrencyFailureException`. See [Exception Translation](spring-integration.md#exception-translation).
+With the Spring Boot starter, exception translation turns these failures into Spring's `TransientDataAccessException` subtypes, such as `ConcurrencyFailureException`, and `retries` reruns on them all the same. See [Exception Translation](spring-integration.md#exception-translation).
 
 ### Writes That Affect No Row
 
@@ -367,7 +352,7 @@ Catching `PersistenceException` at a high level can hide programming errors like
 
 ### Ignoring OptimisticLockException
 
-When using `@Version` columns, always have a strategy for handling `OptimisticLockException`. Common approaches include running the transaction again, which reloads the entity, or returning a conflict response to the client and letting them resolve it. A rerun follows the rules of [Deadlocks and Serialization Failures](#deadlocks-and-serialization-failures).
+When using `@Version` columns, always have a strategy for handling `OptimisticLockException`. Common approaches include running the transaction again with `retries`, which reloads the entity, or returning a conflict response to the client and letting them resolve it. A rerun follows the rules of [Deadlocks and Serialization Failures](#deadlocks-and-serialization-failures).
 
 ### Not Closing Streams
 

@@ -607,25 +607,29 @@ transaction(isolation = SERIALIZABLE) {
 
 ### Rerunning a Transaction
 
-A deadlock, a serialization failure or an optimistic lock conflict fails with a `TransientPersistenceException`: the failure stems from concurrent activity, and running the whole transaction again may succeed. The type is the signal to rerun; the dialect recognises its database's codes, so it is the same on every database. A lock wait that runs out, a lost connection and a failed commit are not of this type. See [Deadlocks and Serialization Failures](error-handling.md#deadlocks-and-serialization-failures).
+A deadlock, a serialization failure or an optimistic lock conflict fails with a `TransientPersistenceException`: the failure stems from concurrent activity, and running the whole transaction again may succeed. The dialect recognises its database's codes, so the classification is the same on every database. A lock wait that runs out, a lost connection and a failed commit are not transient. See [Deadlocks and Serialization Failures](error-handling.md#deadlocks-and-serialization-failures).
 
-Rerun the block that owns the transaction, from its start. A block that joined an outer transaction fails with it, so the outer block is the one to run again. A rerun repeats every side effect of the block: its database writes rolled back with the failed attempt, but a message it sent or a service it called happens again. Side effects belong in `onCommit`, which runs only for the attempt that committed.
+`retries` reruns the block on such a failure. It counts the reruns after the first attempt, so `retries = 2` runs the block up to three times, and it defaults to `0`:
 
 ```kotlin
-var attempt = 0
-while (true) {
-    try {
-        transaction(isolation = SERIALIZABLE) {
-            inventoryRepository.decrease(productId, requestedQuantity)
-            val created = orderRepository.insertAndFetch(order)
-            onCommit { emailService.sendOrderConfirmation(created) }
-        }
-        break
-    } catch (exception: TransientPersistenceException) {
-        if (++attempt == 3) throw exception
-    }
+transaction(isolation = SERIALIZABLE, retries = 2) {
+    inventoryRepository.decrease(productId, requestedQuantity)
+    val created = orderRepository.insertAndFetch(order)
+    onCommit { emailService.sendOrderConfirmation(created) }
 }
 ```
+
+`transactionBlocking` takes the same parameter. The rerun decides on Storm's classification of the failure, not on the type of the exception, so it holds under any exception mapper: under Spring the failure surfaces as a `TransientDataAccessException` and the block still reruns. Every other failure leaves the block at the attempt it occurred in. When the last attempt fails, its exception leaves the block with the earlier attempts' failures as suppressed. Each rerun logs one line at INFO on the `st.orm.transaction` logger, naming the attempt and the failure.
+
+Each attempt is a transaction of its own. The timeout counts from the start of the attempt, and the callbacks an attempt registers fire by that attempt's outcome: a failed attempt fires its `onRollback` and `onCompletion(false)`, and `onCommit` fires for the attempt that committed only. Between attempts the block pauses for a short, jittered time that grows per attempt: the suspend variant waits with `delay`, the blocking variant sleeps. A cancelled coroutine or an interrupted thread stops the reruns.
+
+A rerun starts the transaction over, so only a block that starts its own transaction can take `retries`: `REQUIRES_NEW`, or `REQUIRED` or `NESTED` while no transaction is active. A block that joins an active transaction, including one Spring manages, or that runs without a transaction fails at its start with `IllegalTransactionStateException` when `retries` is above `0`; state the count on the block that starts the transaction. The count is not a transaction option: it is never inherited from thread or global defaults, and holds only for the block that states it.
+
+A block that may be rerun touches nothing outside the database except through `onCommit`. Its database writes roll back with the failed attempt, but anything else it does happens again: a message sent, a call to another service, a change to state the block captured. `onCommit` keeps such work out of the failed attempts, within limits:
+
+- **It runs at most once.** A crash between the commit and the callback loses it. A side effect that must not be lost goes into an outbox row written in the transaction, which a separate process delivers after the commit.
+- **Captured state repeats.** A block that adds to a list or a counter it captured from outside adds again on every attempt. Build such state inside the block, or reset it at its start.
+- **Writes outside the database repeat.** A file written, a cache updated or a request sent from the block itself, rather than from `onCommit`, happens once per attempt.
 
 ### Transaction Timeout
 
@@ -739,6 +743,8 @@ transaction {
     }
 }
 ```
+
+In a block with [`retries`](#rerunning-a-transaction), every failed attempt fires its own `onRollback`, so a counter such as `orders.failed` counts failed attempts, not failed orders.
 
 Both variants work identically with `transactionBlocking`:
 
@@ -1422,11 +1428,24 @@ transaction(tx -> {
 });
 ```
 
-Callbacks registered in a scope that joins an outer transaction are deferred to the outermost physical transaction's completion; `REQUIRES_NEW` scopes fire their own callbacks independently. The three kinds share one registration order: callbacks run in the order they were registered after the transaction has fully completed, skipping the ones that do not apply to the outcome. `onCompletion` receives whether the transaction committed, which is the variant for work that has to happen either way. If a callback throws, the remaining callbacks still execute and the failures surface as a `TransactionCallbackException` whose cause is the first one, with the rest suppressed; `isCommitted()` tells a failed side effect apart from a failed transaction, which need opposite responses, since retrying the former repeats work that already succeeded.
+Callbacks registered in a scope that joins an outer transaction are deferred to the outermost physical transaction's completion; `REQUIRES_NEW` scopes fire their own callbacks independently. In a block with retries each attempt fires its own callbacks, so the `onRollback` above logs once per failed attempt. The three kinds share one registration order: callbacks run in the order they were registered after the transaction has fully completed, skipping the ones that do not apply to the outcome. `onCompletion` receives whether the transaction committed, which is the variant for work that has to happen either way. If a callback throws, the remaining callbacks still execute and the failures surface as a `TransactionCallbackException` whose cause is the first one, with the rest suppressed; `isCommitted()` tells a failed side effect apart from a failed transaction, which need opposite responses, since retrying the former repeats work that already succeeded.
 
 ### Rerunning on a Transient Failure
 
-A deadlock, a serialization failure or an optimistic lock conflict fails with a `TransientPersistenceException`, the signal that running the whole transaction again may succeed. Rerun the block that owns the transaction, from its start; a rerun repeats every side effect of the block, so side effects belong in `tx.onCommit`, which runs only for the attempt that committed. See [Deadlocks and Serialization Failures](error-handling.md#deadlocks-and-serialization-failures).
+A deadlock, a serialization failure or an optimistic lock conflict fails with a `TransientPersistenceException`: running the whole transaction again may succeed. The `transaction` entry points take the number of reruns after the first attempt, in front of the block; `0` runs the block once:
+
+```java
+transaction(TransactionOptions.defaults().withIsolation(SERIALIZABLE), 2, tx -> {
+    inventory.decrease(productId, requestedQuantity);
+    var created = orders.insertAndFetch(order);
+    tx.onCommit(() -> mail.sendOrderConfirmation(created));
+    return created;
+});
+```
+
+`transaction(2, tx -> ...)` and `transaction(REQUIRES_NEW, 2, tx -> ...)` take the count with the default options or a propagation. The count is not part of `TransactionOptions`, so it is never inherited from thread or global defaults. The rerun decides on Storm's classification of the failure, not on the exception's type, so it holds under Spring's exception translation and any other mapper. Each attempt is a transaction of its own with its own timeout and callbacks; between attempts the thread sleeps for a short, jittered pause that grows per attempt, and an interrupt stops the reruns. When the last attempt fails, its exception leaves the block with the earlier attempts' failures as suppressed. A block that joins an active transaction, including a Spring-managed one, or runs without one is refused at its start with `IllegalTransactionStateException`.
+
+A block that may be rerun touches nothing outside the database except through `tx.onCommit`, and a side effect that must not be lost goes into an outbox row written in the transaction. The Kotlin tab's [Rerunning a Transaction](#rerunning-a-transaction) covers what `onCommit` does not: it runs at most once, captured state the block mutates and writes outside the database repeat per attempt. See [Deadlocks and Serialization Failures](error-handling.md#deadlocks-and-serialization-failures).
 
 ### Registering from Nested Code
 

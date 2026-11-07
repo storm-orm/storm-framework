@@ -19,6 +19,8 @@ import static java.util.Objects.requireNonNull;
 
 import java.util.concurrent.atomic.AtomicReference;
 import org.jspecify.annotations.Nullable;
+import st.orm.IllegalTransactionStateException;
+import st.orm.PersistenceException;
 import st.orm.TransactionOptions;
 import st.orm.TransactionPropagation;
 import st.orm.core.spi.TransactionRunner;
@@ -41,6 +43,9 @@ import st.orm.core.spi.TransactionRunner;
  *     tx.onCommit(() -> log.info("audit committed"));
  *     return audit.insertAndFetch(entry);
  * });
+ *
+ * // Runs up to three times when an attempt fails with a deadlock or a serialization failure.
+ * transaction(2, tx -> accounts.update(account));
  * }
  *
  * <p>The transaction subsystem is provider-driven: standalone templates run on Storm's JDBC transactions, and
@@ -94,7 +99,7 @@ public final class Transactions {
      * @return the result of the block.
      * @param <R> the result type.
      * @param <E> the checked exception type thrown by the block, if any.
-     * @throws st.orm.PersistenceException if transaction execution fails.
+     * @throws PersistenceException if transaction execution fails.
      */
     public static <R extends @Nullable Object, E extends Exception> R transaction(TransactionBlock<R, E> block) throws E {
         return transaction(TransactionOptions.defaults(), block);
@@ -108,7 +113,7 @@ public final class Transactions {
      * @return the result of the block.
      * @param <R> the result type.
      * @param <E> the checked exception type thrown by the block, if any.
-     * @throws st.orm.PersistenceException if transaction execution fails.
+     * @throws PersistenceException if transaction execution fails.
      */
     public static <R extends @Nullable Object, E extends Exception> R transaction(TransactionPropagation propagation,
                                                          TransactionBlock<R, E> block) throws E {
@@ -125,7 +130,7 @@ public final class Transactions {
      * @return the result of the block.
      * @param <R> the result type.
      * @param <E> the checked exception type thrown by the block, if any.
-     * @throws st.orm.PersistenceException if transaction execution fails.
+     * @throws PersistenceException if transaction execution fails.
      */
     public static <R extends @Nullable Object, E extends Exception> R transaction(TransactionOptions options,
                                                          TransactionBlock<R, E> block) throws E {
@@ -133,6 +138,91 @@ public final class Transactions {
         requireNonNull(block, "block");
         var resolved = merge(options, currentDefaults());
         return TransactionRunner.execute(resolved, block::execute);
+    }
+
+    /**
+     * Executes the given block within a database transaction with the surrounding default options, running it
+     * again, up to {@code retries} times, after an attempt that failed transiently.
+     *
+     * @param retries the number of reruns after the first attempt; {@code 0} runs the block once.
+     * @param block the transactional logic to execute.
+     * @return the result of the attempt that committed.
+     * @param <R> the result type.
+     * @param <E> the checked exception type thrown by the block, if any.
+     * @throws IllegalTransactionStateException if {@code retries} is positive and the block does not start its
+     *                                          own transaction.
+     * @throws PersistenceException if transaction execution fails.
+     * @see #transaction(TransactionOptions, int, TransactionBlock)
+     * @since 1.16
+     */
+    public static <R extends @Nullable Object, E extends Exception> R transaction(int retries,
+                                                                                 TransactionBlock<R, E> block) throws E {
+        return transaction(TransactionOptions.defaults(), retries, block);
+    }
+
+    /**
+     * Executes the given block within a database transaction with the given propagation, running it again, up to
+     * {@code retries} times, after an attempt that failed transiently.
+     *
+     * @param propagation how the block relates to an already active transaction.
+     * @param retries the number of reruns after the first attempt; {@code 0} runs the block once.
+     * @param block the transactional logic to execute.
+     * @return the result of the attempt that committed.
+     * @param <R> the result type.
+     * @param <E> the checked exception type thrown by the block, if any.
+     * @throws IllegalTransactionStateException if {@code retries} is positive and the block does not start its
+     *                                          own transaction.
+     * @throws PersistenceException if transaction execution fails.
+     * @see #transaction(TransactionOptions, int, TransactionBlock)
+     * @since 1.16
+     */
+    public static <R extends @Nullable Object, E extends Exception> R transaction(TransactionPropagation propagation,
+                                                                                 int retries,
+                                                                                 TransactionBlock<R, E> block) throws E {
+        return transaction(TransactionOptions.defaults().withPropagation(propagation), retries, block);
+    }
+
+    /**
+     * Executes the given block within a database transaction with the given options, running it again, up to
+     * {@code retries} times, after an attempt that failed transiently. Options left {@code null} are inherited
+     * from the surrounding defaults, as with {@link #transaction(TransactionOptions, TransactionBlock)}; the
+     * retry count is never inherited and holds for this block alone.
+     *
+     * <p>An attempt reruns only when it failed transiently, as the framework classified the failure: a deadlock, a
+     * serialization failure or an optimistic lock conflict, whatever type the template's exception mapper
+     * translates it to. Every other failure leaves the block on the attempt it occurred in. Each attempt is a
+     * transaction of its own: the timeout counts from the start of the attempt, and the callbacks an attempt
+     * registered fire by that attempt's outcome, so {@code onCommit} runs only for the attempt that committed.
+     * Between attempts the thread sleeps for a short, jittered pause that grows per attempt; an interrupt ends the
+     * reruns. When the last attempt fails, its failure leaves the block with the earlier attempts' failures as
+     * suppressed.</p>
+     *
+     * <p>A rerun starts the transaction over, so the block must start its own: {@code REQUIRES_NEW}, or
+     * {@code REQUIRED} or {@code NESTED} while no transaction is active. A block that joins an active transaction,
+     * including one an external transaction manager owns, or runs without one is refused at its start with an
+     * {@link IllegalTransactionStateException} when {@code retries} is positive.</p>
+     *
+     * <p>A block that may be rerun touches nothing outside the database except through {@code onCommit}.</p>
+     *
+     * @param options the transaction options.
+     * @param retries the number of reruns after the first attempt; {@code 0} runs the block once.
+     * @param block the transactional logic to execute.
+     * @return the result of the attempt that committed.
+     * @param <R> the result type.
+     * @param <E> the checked exception type thrown by the block, if any.
+     * @throws IllegalArgumentException if {@code retries} is negative.
+     * @throws IllegalTransactionStateException if {@code retries} is positive and the block does not start its
+     *                                          own transaction.
+     * @throws PersistenceException if transaction execution fails.
+     * @since 1.16
+     */
+    public static <R extends @Nullable Object, E extends Exception> R transaction(TransactionOptions options,
+                                                                                 int retries,
+                                                                                 TransactionBlock<R, E> block) throws E {
+        requireNonNull(options, "options");
+        requireNonNull(block, "block");
+        var resolved = merge(options, currentDefaults());
+        return TransactionRunner.execute(resolved, retries, block::execute);
     }
 
     /**

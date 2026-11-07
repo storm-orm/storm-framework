@@ -54,7 +54,9 @@ public final class ExceptionHelper {
      *
      * <p>The SQL statement and transaction description are attached to the original failure as a suppressed
      * exception, so every mapper receives full diagnostics; the mapper only decides the thrown type. The dialect
-     * classifies the failure before the mapper sees it ({@link ExceptionContext#transientFailure()}). If
+     * classifies the failure before the mapper sees it ({@link ExceptionContext#transientFailure()}), and a failure
+     * classified transient is recorded on the active transaction scope, so a block that reruns on a transient
+     * failure recognises it whatever the mapper throws. If
      * the mapper itself fails or returns {@code null}, the failure is wrapped in a {@link PersistenceException} with
      * the mapper failure suppressed; diagnostic mapping must never mask the original error.</p>
      *
@@ -117,20 +119,34 @@ public final class ExceptionHelper {
                     dataType,
                     transactionDescription,
                     e instanceof TransientPersistenceException || isTransientFailure(e, dialect));
+            RuntimeException thrown;
             try {
                 var mapped = exceptionMapper.map(e, context);
-                if (mapped != null) {
-                    return mapped;
-                }
-                return new PersistenceException(e);
+                thrown = mapped != null ? mapped : new PersistenceException(e);
             } catch (Throwable mapperFailure) {
                 var fallback = e instanceof PersistenceException persistenceException
                         ? persistenceException
                         : new PersistenceException(e);
                 fallback.addSuppressed(mapperFailure);
-                return fallback;
+                thrown = fallback;
             }
+            if (context.transientFailure()) {
+                recordTransientFailure(e, thrown);
+            }
+            return thrown;
         };
+    }
+
+    /**
+     * Records the transient failure and the exception it is thrown as on the transaction scope active on this
+     * thread, so the block that reruns on a transient failure recognises it whatever type the mapper chose.
+     */
+    private static void recordTransientFailure(Throwable failure, RuntimeException thrown) {
+        var scope = TransactionScope.current();
+        if (scope != null) {
+            scope.recordTransientFailure(failure);
+            scope.recordTransientFailure(thrown);
+        }
     }
 
     /**
