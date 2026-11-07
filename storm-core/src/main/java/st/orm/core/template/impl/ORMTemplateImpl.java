@@ -292,19 +292,19 @@ public final class ORMTemplateImpl extends QueryTemplateImpl implements ORMTempl
             if (method.getDeclaringClass().isAssignableFrom(Repository.class)) {
                 return method.invoke(repository, args);
             }
-            if (EntityRepository.class.isAssignableFrom(method.getDeclaringClass())) {
+            if (method.getDeclaringClass().isAssignableFrom(EntityRepository.class)) {
                 if (entityRepository == null) {
                     throw new UnsupportedOperationException("EntityRepository not available for %s. Ensure the type implements the Entity interface and has a valid @DbTable annotation.".formatted(type.getName()));
                 }
                 return method.invoke(entityRepository, args);
             }
-            if (ProjectionRepository.class.isAssignableFrom(method.getDeclaringClass())) {
+            if (method.getDeclaringClass().isAssignableFrom(ProjectionRepository.class)) {
                 if (projectionRepository == null) {
                     throw new UnsupportedOperationException("ProjectionRepository not available for %s. Ensure the type implements the Projection interface and has a valid @DbTable annotation.".formatted(type.getName()));
                 }
                 return method.invoke(projectionRepository, args);
             }
-            throw new UnsupportedOperationException("Unsupported repository method '%s' for type %s. This method is not available for the repository type associated with this class.".formatted(method.getName(), type.getName()));
+            throw new UnsupportedOperationException("Unsupported repository method '%s' for type %s: no repository implementation serves it.".formatted(method.getName(), type.getName()));
         } catch (InvocationTargetException e) {
             var target = e.getTargetException();
             if (target instanceof Exception ex) {
