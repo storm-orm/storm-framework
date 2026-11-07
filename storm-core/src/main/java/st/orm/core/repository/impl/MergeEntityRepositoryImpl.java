@@ -23,6 +23,7 @@ import static st.orm.core.template.TemplateString.raw;
 import static st.orm.core.template.TemplateString.wrap;
 import static st.orm.core.template.Templates.bindVar;
 import static st.orm.core.template.Templates.table;
+import static st.orm.core.template.impl.BatchRowCounts.allSucceeded;
 import static st.orm.core.template.impl.StringTemplates.flatten;
 import static st.orm.spi.SqlOperation.INSERT;
 
@@ -36,7 +37,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
-import java.util.stream.IntStream;
 import org.jspecify.annotations.Nullable;
 import st.orm.BindVars;
 import st.orm.Entity;
@@ -329,7 +329,7 @@ public abstract class MergeEntityRepositoryImpl<E extends Entity<ID>, ID> extend
                     .forEach(e -> cache.remove(e.id()));
         }
         int[] result = query.executeBatch();
-        if (IntStream.of(result).anyMatch(r -> r != 0 && r != 1 && r != 2)) {
+        if (!allSucceeded(result, 0, 1, 2)) {
             throw failure(INSERT, new PersistenceException(upsertFailureMessage(batch.size())));
         }
         // Entities on the MERGE path always carry their primary key: auto-generated keys are routed to insert or

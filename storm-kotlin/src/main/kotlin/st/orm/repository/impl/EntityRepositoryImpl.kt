@@ -164,6 +164,8 @@ internal class EntityRepositoryImpl<E, ID : Any>(
 
     override fun removeByRef(refs: Iterable<Ref<E>>) = core.removeByRef(refs)
 
+    override fun removeById(ids: Iterable<ID>) = core.removeById(ids)
+
     override suspend fun countById(ids: Flow<ID>): Long = ids.chunked(core.defaultChunkSize)
         .map { chunk -> core.countById(chunk.stream()) }
         .fold(0L) { acc, v -> acc + v }
@@ -187,10 +189,10 @@ internal class EntityRepositoryImpl<E, ID : Any>(
         .collect { core.insert(it, ignoreAutoGenerate) }
 
     override suspend fun insert(entities: Flow<E>, batchSize: Int) = entities.chunked(batchSize)
-        .collect { core.insert(it) }
+        .collect { core.insert(it.stream(), batchSize) }
 
     override suspend fun insert(entities: Flow<E>, batchSize: Int, ignoreAutoGenerate: Boolean) = entities.chunked(batchSize)
-        .collect { core.insert(it, ignoreAutoGenerate) }
+        .collect { core.insert(it.stream(), batchSize, ignoreAutoGenerate) }
 
     override fun insertAndFetchIds(entities: Flow<E>): Flow<ID> = entities.chunked(core.defaultBatchSize)
         .flatMapConcat { core.insertAndFetchIds(it).asFlow() }
@@ -211,7 +213,7 @@ internal class EntityRepositoryImpl<E, ID : Any>(
         .collect { core.update(it) }
 
     override suspend fun update(entities: Flow<E>, batchSize: Int) = entities.chunked(batchSize)
-        .collect { core.update(it) }
+        .collect { core.update(it.stream(), batchSize) }
 
     override fun updateAndFetch(entities: Flow<E>): Flow<E> = entities.chunked(core.defaultBatchSize)
         .flatMapConcat { core.updateAndFetch(it).asFlow() }
@@ -223,7 +225,7 @@ internal class EntityRepositoryImpl<E, ID : Any>(
         .collect { core.upsert(it) }
 
     override suspend fun upsert(entities: Flow<E>, batchSize: Int) = entities.chunked(batchSize)
-        .collect { core.upsert(it) }
+        .collect { core.upsert(it.stream(), batchSize) }
 
     override fun upsertAndFetchIds(entities: Flow<E>): Flow<ID> = entities.chunked(core.defaultBatchSize)
         .flatMapConcat { core.upsertAndFetchIds(it).asFlow() }
@@ -244,11 +246,17 @@ internal class EntityRepositoryImpl<E, ID : Any>(
         .collect { core.remove(it) }
 
     override suspend fun remove(entities: Flow<E>, batchSize: Int) = entities.chunked(batchSize)
-        .collect { core.remove(it) }
+        .collect { core.remove(it.stream(), batchSize) }
 
     override suspend fun removeByRef(refs: Flow<Ref<E>>) = refs.chunked(core.defaultBatchSize)
         .collect { core.removeByRef(it) }
 
     override suspend fun removeByRef(refs: Flow<Ref<E>>, batchSize: Int) = refs.chunked(batchSize)
-        .collect { core.removeByRef(it) }
+        .collect { core.removeByRef(it.stream(), batchSize) }
+
+    override suspend fun removeById(ids: Flow<ID>) = ids.chunked(core.defaultBatchSize)
+        .collect { core.removeById(it) }
+
+    override suspend fun removeById(ids: Flow<ID>, batchSize: Int) = ids.chunked(batchSize)
+        .collect { core.removeById(it.stream(), batchSize) }
 }

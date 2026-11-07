@@ -23,6 +23,10 @@ import static st.orm.core.repository.impl.StreamSupport.partitioned;
 import static st.orm.core.spi.Providers.deleteFrom;
 import static st.orm.core.spi.Providers.updateFrom;
 import static st.orm.core.template.TemplateString.raw;
+import static st.orm.core.template.impl.BatchRowCounts.allSucceeded;
+import static st.orm.core.template.impl.BatchRowCounts.anyUnknown;
+import static st.orm.core.template.impl.BatchRowCounts.knownAffected;
+import static st.orm.core.template.impl.BatchRowCounts.unverifiedFailure;
 import static st.orm.spi.SqlOperation.DELETE;
 import static st.orm.spi.SqlOperation.INSERT;
 import static st.orm.spi.SqlOperation.UPDATE;
@@ -67,6 +71,7 @@ import st.orm.core.template.PreparedQuery;
 import st.orm.core.template.Query;
 import st.orm.core.template.QueryBuilder;
 import st.orm.core.template.QueryPlan;
+import st.orm.core.template.QueryTemplate;
 import st.orm.core.template.TemplateString;
 import st.orm.core.template.Templates;
 import st.orm.core.template.impl.ConsumedQueries;
@@ -457,7 +462,7 @@ public class EntityRepositoryImpl<E extends Entity<ID>, ID>
      * @return the failure.
      */
     private UnexpectedRowCountException batchRowCountFailure(String description, int[] result) {
-        int affected = IntStream.of(result).filter(count -> count > 0).sum();
+        int affected = knownAffected(result);
         return new UnexpectedRowCountException("%s of %s failed. %d rows were affected for a batch of %d."
                 .formatted(description, model.type().getSimpleName(), affected, result.length), result.length, affected);
     }
@@ -1329,19 +1334,26 @@ public class EntityRepositoryImpl<E extends Entity<ID>, ID>
      * parameter limit so that {@code rows × bound columns} never exceeds what a single statement can carry.
      */
     private int multiRowInsertChunkSize() {
-        return multiRowInsertChunkSize(false);
+        return multiRowInsertChunkSize(false, defaultBatchSize);
     }
 
-    private int multiRowInsertChunkSize(boolean ignoreAutoGenerate) {
+    /**
+     * Chunk size for the multi-row insert path. Bounded by the batch size and by the dialect's bind parameter limit
+     * so that {@code rows × bound columns} never exceeds what a single statement can carry.
+     *
+     * @param ignoreAutoGenerate true if the primary key is bound although it is generated.
+     * @param batchSize the number of entities the caller asked to insert per batch.
+     */
+    private int multiRowInsertChunkSize(boolean ignoreAutoGenerate, int batchSize) {
         int boundColumns = (int) model.declaredColumns().stream()
                 .filter(Column::insertable)
                 .filter(column -> ignoreAutoGenerate || column.generation() == NONE)
                 .count();
         if (boundColumns == 0) {
-            return defaultBatchSize;
+            return batchSize;
         }
         int maxRows = Math.max(1, ormTemplate.dialect().maxBindParameters() / boundColumns);
-        return Math.min(defaultBatchSize, maxRows);
+        return Math.min(batchSize, maxRows);
     }
 
     /**
@@ -1630,14 +1642,16 @@ public class EntityRepositoryImpl<E extends Entity<ID>, ID>
     /**
      * Removes a collection of entities from the database in batches.
      *
-     * <p>This method processes the provided entities in batches to optimize performance when handling larger collections,
-     * reducing database overhead. For each entity in the collection, the method removes the corresponding record from
-     * the database, if it exists. Batch processing ensures efficient handling of removals, particularly for large data sets.</p>
+     * <p>Like {@link #remove(Entity)}, this method is strict: every entity must exist in the database, because
+     * possessing the entity implies the caller expects it to exist. An entity whose removal affects a row count other
+     * than one fails the batch with an {@link UnexpectedRowCountException}. To remove entities that may already be
+     * gone, use {@link #removeById(Iterable)} or {@link #removeByRef(Iterable)}, which are idempotent.</p>
      *
-     * @param entities an iterable collection of entities to be removed. Each entity in the collection must be non-null
-     *                 and represent a valid database record for removal.
-     * @throws PersistenceException if the removal operation fails due to database issues, such as connectivity problems
-     *                              or constraints violations.
+     * @param entities the entities to remove. Each entity must exist in the database.
+     * @throws UnexpectedRowCountException if the removal of an entity affects a row count other than one, such as
+     *                                     for an entity that does not exist.
+     * @throws PersistenceException if the removal fails due to database issues, such as connectivity problems or
+     *                              constraint violations.
      */
     @Override
     public void remove(Iterable<E> entities) {
@@ -1645,20 +1659,36 @@ public class EntityRepositoryImpl<E extends Entity<ID>, ID>
     }
 
     /**
-     * Removes a collection of entities from the database in batches.
+     * Removes the entities identified by the refs from the database in batches.
      *
-     * <p>This method processes the provided entities in batches to optimize performance when handling larger collections,
-     * reducing database overhead. For each entity in the collection, the method removes the corresponding record from
-     * the database, if it exists. Batch processing ensures efficient handling of removals, particularly for large data sets.</p>
+     * <p>Like {@link #removeByRef(Ref)}, this method is idempotent: a ref without a row is not an error, so it suits
+     * removals that may race with a concurrent delete or may run more than once. Each batch is removed with a single
+     * statement per table.</p>
      *
-     * @param refs an iterable collection of entities to be removed. Each entity in the collection must be non-null
-     *             and represent a valid database record for removal.
-     * @throws PersistenceException if the removal operation fails due to database issues, such as connectivity problems
-     *                              or constraints violations.
+     * @param refs the refs of the entities to remove.
+     * @throws PersistenceException if the removal fails due to database issues, such as connectivity problems or
+     *                              constraint violations.
      */
     @Override
     public void removeByRef(Iterable<Ref<E>> refs) {
         removeByRef(toStream(refs), defaultBatchSize);
+    }
+
+    /**
+     * Removes the entities identified by the ids from the database in batches.
+     *
+     * <p>Like {@link #removeById(Object)}, this method is idempotent: an id without a row is not an error, so it suits
+     * removals that may race with a concurrent delete or may run more than once. Each batch is removed with a single
+     * statement per table.</p>
+     *
+     * @param ids the ids of the entities to remove.
+     * @throws PersistenceException if the removal fails due to database issues, such as connectivity problems or
+     *                              constraint violations.
+     * @since 1.16
+     */
+    @Override
+    public void removeById(Iterable<ID> ids) {
+        removeById(toStream(ids), defaultBatchSize);
     }
 
     // Stream based methods. These methods operate in multiple batches.
@@ -1759,7 +1789,7 @@ public class EntityRepositoryImpl<E extends Entity<ID>, ID>
         if (supportsMultiRowInsert()) {
             // A dialect that can return keys from a multi-row insert necessarily supports the statement form; the
             // keyless path reuses that capability rather than introducing a separate one.
-            int chunkSize = Math.min(batchSize, multiRowInsertChunkSize(ignoreAutoGenerate));
+            int chunkSize = multiRowInsertChunkSize(ignoreAutoGenerate, batchSize);
             chunked(entities, chunkSize).forEach(batch -> insertMultiRow(batch, ignoreAutoGenerate));
             return;
         }
@@ -1827,7 +1857,7 @@ public class EntityRepositoryImpl<E extends Entity<ID>, ID>
                 .map(e -> validateInsert(e, ignoreAutoGenerate))
                 .forEach(query::addBatch);
         int[] result = query.executeBatch();
-        if (IntStream.of(result).anyMatch(r -> r != 1)) {
+        if (!allSucceeded(result, 1)) {
             throw failure(INSERT, batchRowCountFailure("Batch insert", result));
         }
         return transformed;
@@ -2070,9 +2100,12 @@ public class EntityRepositoryImpl<E extends Entity<ID>, ID>
                     .forEach(e -> cache.remove(e.id()));
         }
         int[] result = query.executeBatch();
+        if (query.isVersionAware() && anyUnknown(result)) {
+            throw failure(UPDATE, unverifiedFailure(model.type(), "optimistic locking"));
+        }
         if (query.isVersionAware() && IntStream.of(result).anyMatch(r -> r == 0)) {
             throw failure(UPDATE, new OptimisticLockException("Batch update of %s failed due to optimistic lock. One or more entities may have been modified or deleted by another transaction.".formatted(model.type().getSimpleName())));
-        } else if (IntStream.of(result).anyMatch(r -> r != 1)) {
+        } else if (!allSucceeded(result, 1)) {
             throw failure(UPDATE, batchRowCountFailure("Batch update", result));
         }
         fireAfterUpdate(batch);
@@ -2346,15 +2379,16 @@ public class EntityRepositoryImpl<E extends Entity<ID>, ID>
     /**
      * Removes a stream of entities from the database in batches.
      *
-     * <p>This method processes the provided stream of entities in batches to optimize performance for larger
-     * data sets, reducing database overhead during removal. For each entity in the stream, the method removes
-     * the corresponding record from the database, if it exists. Batch processing allows efficient handling
-     * of removals, particularly for large collections of entities.</p>
+     * <p>Like {@link #remove(Entity)}, this method is strict: every entity must exist in the database, because
+     * possessing the entity implies the caller expects it to exist. An entity whose removal affects a row count other
+     * than one fails the batch with an {@link UnexpectedRowCountException}. To remove entities that may already be
+     * gone, use {@link #removeById(Stream)} or {@link #removeByRef(Stream)}, which are idempotent.</p>
      *
-     * @param entities a stream of entities to be removed. Each entity in the stream must be non-null and represent
-     *                 a valid database record for removal.
-     * @throws PersistenceException if the removal operation fails due to database issues, such as connectivity problems
-     *                              or constraints violations.
+     * @param entities the entities to remove. Each entity must exist in the database.
+     * @throws UnexpectedRowCountException if the removal of an entity affects a row count other than one, such as
+     *                                     for an entity that does not exist.
+     * @throws PersistenceException if the removal fails due to database issues, such as connectivity problems or
+     *                              constraint violations.
      */
     @Override
     public void remove(Stream<E> entities) {
@@ -2362,20 +2396,19 @@ public class EntityRepositoryImpl<E extends Entity<ID>, ID>
     }
 
     /**
-     * Removes a stream of entities from the database in configurable batch sizes.
+     * Removes a stream of entities from the database in batches of the given size.
      *
-     * <p>This method processes the provided stream of entities in batches, with the size of each batch specified
-     * by the `batchSize` parameter. This allows for control over the number of entities removed in each database
-     * operation, optimizing performance and memory usage based on system requirements. For each entity in the
-     * stream, the method removes the corresponding record from the database, if it exists.</p>
+     * <p>Like {@link #remove(Entity)}, this method is strict: every entity must exist in the database, because
+     * possessing the entity implies the caller expects it to exist. An entity whose removal affects a row count other
+     * than one fails the batch with an {@link UnexpectedRowCountException}. To remove entities that may already be
+     * gone, use {@link #removeById(Stream, int)} or {@link #removeByRef(Stream, int)}, which are idempotent.</p>
      *
-     * @param entities a stream of entities to be removed. Each entity in the stream must be non-null and represent
-     *                 a valid database record for removal.
-     * @param batchSize the number of entities to process in each batch. Larger batch sizes may improve performance
-     *                  but require more memory, while smaller batch sizes may reduce memory usage but increase
-     *                  the number of database operations.
-     * @throws PersistenceException if the removal operation fails due to database issues, such as connectivity problems
-     *                              or constraints violations.
+     * @param entities the entities to remove. Each entity must exist in the database.
+     * @param batchSize the number of entities to remove per batch.
+     * @throws UnexpectedRowCountException if the removal of an entity affects a row count other than one, such as
+     *                                     for an entity that does not exist.
+     * @throws PersistenceException if the removal fails due to database issues, such as connectivity problems or
+     *                              constraint violations.
      */
     @Override
     public void remove(Stream<E> entities, int batchSize) {
@@ -2408,7 +2441,7 @@ public class EntityRepositoryImpl<E extends Entity<ID>, ID>
                         .filter(e -> !model.isDefaultPrimaryKey(e.id()))
                         .forEach(e -> cache.remove(e.id())));
                 int[] result = query.executeBatch();
-                if (IntStream.of(result).anyMatch(r -> r != 1)) {
+                if (!allSucceeded(result, 1)) {
                     throw failure(DELETE, batchRowCountFailure("Batch remove", result));
                 }
                 fireAfterRemove(chunk);
@@ -2417,17 +2450,15 @@ public class EntityRepositoryImpl<E extends Entity<ID>, ID>
     }
 
     /**
-     * Removes a stream of entities from the database in batches.
+     * Removes the entities identified by a stream of refs from the database in batches.
      *
-     * <p>This method processes the provided stream of entities in batches to optimize performance for larger
-     * data sets, reducing database overhead during removal. For each entity in the stream, the method removes
-     * the corresponding record from the database, if it exists. Batch processing allows efficient handling
-     * of removals, particularly for large collections of entities.</p>
+     * <p>Like {@link #removeByRef(Ref)}, this method is idempotent: a ref without a row is not an error, so it suits
+     * removals that may race with a concurrent delete or may run more than once. Each batch is removed with a single
+     * statement per table.</p>
      *
-     * @param refs a stream of entities to be removed. Each entity in the stream must be non-null and represent
-     *             a valid database record for removal.
-     * @throws PersistenceException if the removal operation fails due to database issues, such as connectivity problems
-     *                              or constraints violations.
+     * @param refs the refs of the entities to remove.
+     * @throws PersistenceException if the removal fails due to database issues, such as connectivity problems or
+     *                              constraint violations.
      */
     @Override
     public void removeByRef(Stream<Ref<E>> refs) {
@@ -2435,47 +2466,94 @@ public class EntityRepositoryImpl<E extends Entity<ID>, ID>
     }
 
     /**
-     * Removes a stream of entities from the database in configurable batch sizes.
+     * Removes the entities identified by a stream of refs from the database in batches of the given size.
      *
-     * <p>This method processes the provided stream of entities in batches, with the size of each batch specified
-     * by the `batchSize` parameter. This allows for control over the number of entities removed in each database
-     * operation, optimizing performance and memory usage based on system requirements. For each entity in the
-     * stream, the method removes the corresponding record from the database, if it exists.</p>
+     * <p>Like {@link #removeByRef(Ref)}, this method is idempotent: a ref without a row is not an error, so it suits
+     * removals that may race with a concurrent delete or may run more than once. Each batch is removed with a single
+     * statement per table.</p>
      *
-     * @param refs a stream of entities to be removed. Each entity in the stream must be non-null and represent
-     *              valid database record for removal.
-     * @param batchSize the number of entities to process in each batch. Larger batch sizes may improve performance
-     *                  but require more memory, while smaller batch sizes may reduce memory usage but increase
-     *                  the number of database operations.
-     * @throws PersistenceException if the removal operation fails due to database issues, such as connectivity problems
-     *                              or constraints violations.
+     * @param refs the refs of the entities to remove.
+     * @param batchSize the number of refs to remove per batch.
+     * @throws PersistenceException if the removal fails due to database issues, such as connectivity problems or
+     *                              constraint violations.
      */
     @Override
     public void removeByRef(Stream<Ref<E>> refs, int batchSize) {
-        if (model.isJoinedInheritance()) {
-            var entityCache = entityCache();
-            chunked(refs, batchSize).forEach(chunk -> {
-                //noinspection unchecked
-                entityCache.ifPresent(cache -> chunk.stream()
-                        .filter(r -> !model.isDefaultPrimaryKey((ID) r.id()))
-                        .forEach(r -> cache.remove((ID) r.id())));
-                JoinedEntityHelper.removeBatchByRef(ormTemplate, model, chunk);
-            });
-            return;
-        }
+        //noinspection unchecked
+        removeByKey(refs, batchSize, ref -> (ID) ref.id(), JoinedEntityHelper::removeBatchByRef);
+    }
+
+    /**
+     * Removes the entities identified by a stream of ids from the database in batches.
+     *
+     * <p>Like {@link #removeById(Object)}, this method is idempotent: an id without a row is not an error, so it suits
+     * removals that may race with a concurrent delete or may run more than once. Each batch is removed with a single
+     * statement per table.</p>
+     *
+     * @param ids the ids of the entities to remove.
+     * @throws PersistenceException if the removal fails due to database issues, such as connectivity problems or
+     *                              constraint violations.
+     * @since 1.16
+     */
+    @Override
+    public void removeById(Stream<ID> ids) {
+        removeById(ids, defaultBatchSize);
+    }
+
+    /**
+     * Removes the entities identified by a stream of ids from the database in batches of the given size.
+     *
+     * <p>Like {@link #removeById(Object)}, this method is idempotent: an id without a row is not an error, so it suits
+     * removals that may race with a concurrent delete or may run more than once. Each batch is removed with a single
+     * statement per table.</p>
+     *
+     * @param ids the ids of the entities to remove.
+     * @param batchSize the number of ids to remove per batch.
+     * @throws PersistenceException if the removal fails due to database issues, such as connectivity problems or
+     *                              constraint violations.
+     * @since 1.16
+     */
+    @Override
+    public void removeById(Stream<ID> ids, int batchSize) {
+        removeByKey(ids, batchSize, Function.identity(), JoinedEntityHelper::removeBatchById);
+    }
+
+    /**
+     * Removes the rows identified by the keys, ids or refs, in batches of the given size, with one statement per
+     * batch. A key without a row is not an error. The entity cache evicts the removed ids.
+     *
+     * @param keys the ids or refs of the entities to remove.
+     * @param batchSize the number of keys to remove per batch.
+     * @param idOfKey returns the id a key identifies.
+     * @param joinedRemove removes a batch of keys of an entity with joined inheritance.
+     * @param <K> the key type.
+     */
+    private <K> void removeByKey(Stream<K> keys, int batchSize, Function<K, ID> idOfKey,
+                                 JoinedBatchRemove<E, ID, K> joinedRemove) {
         var entityCache = entityCache();
-        chunked(refs, batchSize).forEach(chunk -> {
-            //noinspection unchecked
+        chunked(keys, batchSize).forEach(chunk -> {
             entityCache.ifPresent(cache -> chunk.stream()
-                    .filter(r -> !model.isDefaultPrimaryKey((ID) r.id()))
-                    .forEach(r -> cache.remove((ID) r.id())));
-            // Don't use query builder to prevent WHERE IN clause.
-            ormTemplate.query(TemplateString.raw("""
-                    DELETE FROM \0
-                    WHERE \0""", model.type(), chunk))
-                    .managed()
-                    .executeUpdate();
+                    .map(idOfKey)
+                    .filter(id -> !model.isDefaultPrimaryKey(id))
+                    .forEach(cache::remove));
+            if (model.isJoinedInheritance()) {
+                joinedRemove.remove(ormTemplate, model, chunk);
+                return;
+            }
+            ormTemplate.query(deleteByKeyStatement(chunk)).managed().executeUpdate();
         });
+    }
+
+    /**
+     * Removes a batch of keys, ids or refs, of an entity with joined inheritance.
+     *
+     * @param <E> the entity type.
+     * @param <ID> the primary key type.
+     * @param <K> the key type.
+     */
+    @FunctionalInterface
+    private interface JoinedBatchRemove<E extends Entity<ID>, ID, K> {
+        void remove(QueryTemplate queryTemplate, Model<E, ID> model, List<K> keys);
     }
 
     /**

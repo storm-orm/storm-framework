@@ -132,7 +132,7 @@ Unlike Kotlin, Java has no `select(predicate)` / `delete(predicate)` shorthand a
 - **Read (throw):** `getById()`, `getByRef()`, `getBy(key, value)`
 - **Exists/Count:** `count()`, `exists()`, `existsById()`, `existsByRef()`, `existsBy(field, value)`, `countBy(field, value)`. Prefer the `exists` forms over a count for a yes/no question: `exists` stops at the first matching row, a count visits every match, so `exists` is faster and never slower. Never write `countBy(...) > 0` or `getResultCount() > 0`.
 - **Write:** `insert()`, `insertAndFetch()`, `update()`, `updateAndFetch()`, `upsert()`, `upsertAndFetch()`
-- **Remove:** `remove(entity)`, `removeById(id)`, `removeByRef(ref)`, `removeAll()`, `removeAllBy(field, value)`, `remove(Iterable)`, `removeByRef(Iterable)`, `remove(Stream)`, `removeByRef(Stream)`
+- **Remove:** `remove(entity)`, `removeById(id)`, `removeByRef(ref)`, `removeAll()`, `removeAllBy(field, value)`, `remove(Iterable)`, `removeById(Iterable)`, `removeByRef(Iterable)`, `remove(Stream)`, `removeById(Stream)`, `removeByRef(Stream)`
 - **Pagination:** `page()`, `pageRef()`, `scroll()`, `windows()`
 
 **Level 2: the builder** returns `QueryBuilder` for chaining ordering, pagination, or joins:
@@ -146,6 +146,8 @@ Terminal operations: `.getResultList()`, `.getSingleResult()`, `.getOptionalResu
 **`find` returns `Optional`, `get` throws.** No result gives an empty `Optional` from `find` and a `NoResultException` from `get`.
 
 **A write expects one row per entity.** An `insert`, `update` or `remove` that affects another count throws `UnexpectedRowCountException` with both counts; a `@Version` update that affects none throws `OptimisticLockException`. Under the Spring Boot starters these surface as `IncorrectUpdateSemanticsDataAccessException` and `OptimisticLockingFailureException`, and every other statement failure as a `DataAccessException`.
+
+**`remove` is strict, `removeById` and `removeByRef` are idempotent.** `remove(entity)` and `remove(entities)` throw `UnexpectedRowCountException` when a row is gone: holding the entity implies it exists. `removeById` and `removeByRef`, single or bulk, skip a key without a row, so use them for a removal that may race with a concurrent delete or run more than once. Each batch of keys is one `DELETE` with an `IN` list.
 
 **`remove` acts on what you hold, `delete` builds a query.** `remove` operates on entities or ids you already have and executes immediately. `delete` builds a query that deletes rows by criteria and returns `QueryBuilder`:
 ```java
@@ -277,6 +279,7 @@ int id = users.upsertAndFetchId(new User(1, "alice@example.com", "Alice", city))
 users.remove(user);
 users.removeById(user.id());
 users.removeByRef(userRef);
+users.removeById(List.of(1, 2, 3));     // bulk, an id without a row is skipped
 users.removeAll();
 ```
 
@@ -527,6 +530,8 @@ users.remove(userStream);
 users.remove(userStream, batchSize);
 users.upsert(userStream);
 users.upsert(userStream, batchSize);
+users.removeById(idStream);
+users.removeById(idStream, batchSize);
 users.removeByRef(refStream);
 users.removeByRef(refStream, batchSize);
 ```
@@ -551,7 +556,7 @@ transaction(tx -> {
 });
 ```
 
-**Never feed a `getResultStream()` of the current transaction into a batch write.** The last line above is the trap that passes small tests. A batch that executes after the stream has been read to its end is allowed, and a batch that executes while rows remain is refused, so the outcome depends on batch size versus row count. This applies to `insert`, `update`, `upsert`, `remove`, `removeByRef`, `insertAndFetch` and `countById`. Feed them an in-memory stream, or iterate in windows.
+**Never feed a `getResultStream()` of the current transaction into a batch write.** The last line above is the trap that passes small tests. A batch that executes after the stream has been read to its end is allowed, and a batch that executes while rows remain is refused, so the outcome depends on batch size versus row count. This applies to `insert`, `update`, `upsert`, `remove`, `removeById`, `removeByRef`, `insertAndFetch` and `countById`. Feed them an in-memory stream, or iterate in windows.
 
 **Use `windows(size)` for a loop that needs the database.** Each window is fetched by one statement that has closed before the window is handed over, and there is nothing to close. One batched write per window costs one statement rather than one per row:
 

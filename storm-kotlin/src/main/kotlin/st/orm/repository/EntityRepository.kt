@@ -21,9 +21,11 @@ import st.orm.Entity
 import st.orm.Metamodel
 import st.orm.Page
 import st.orm.Pageable
+import st.orm.PersistenceException
 import st.orm.Ref
 import st.orm.Scrollable
 import st.orm.Slice
+import st.orm.UnexpectedRowCountException
 import st.orm.Window
 import st.orm.template.*
 import kotlin.reflect.KClass
@@ -970,32 +972,45 @@ public interface EntityRepository<E, ID : Any> : Repository where E : Entity<ID>
     /**
      * Removes a collection of entities from the database in batches.
      *
+     * Like [remove] of a single entity, this method is strict: every entity must exist in the database, because
+     * possessing the entity implies the caller expects it to exist. An entity whose removal affects a row count other
+     * than one fails the batch with an [UnexpectedRowCountException]. To remove entities that may already be gone, use
+     * [removeById] or [removeByRef], which are idempotent.
      *
-     * This method processes the provided entities in batches to optimize performance when handling larger collections,
-     * reducing database overhead. For each entity in the collection, the method removes the corresponding record from
-     * the database, if it exists. Batch processing ensures efficient handling of removals, particularly for large data sets.
-     *
-     * @param entities an iterable collection of entities to be removed. Each entity in the collection must be non-null
-     * and represent a valid database record for removal.
-     * @throws st.orm.PersistenceException if the removal operation fails due to database issues, such as connectivity problems
-     * or constraints violations.
+     * @param entities the entities to remove. Each entity must exist in the database.
+     * @throws UnexpectedRowCountException if the removal of an entity affects a row count other than one, such as for
+     * an entity that does not exist.
+     * @throws PersistenceException if the removal fails due to database issues, such as connectivity problems or
+     * constraint violations.
      */
     public fun remove(entities: Iterable<E>)
 
     /**
-     * Removes a collection of entities from the database in batches.
+     * Removes the entities identified by the refs from the database in batches.
      *
+     * Like [removeByRef] of a single ref, this method is idempotent: a ref without a row is not an error, so it suits
+     * removals that may race with a concurrent delete or may run more than once. Each batch is removed with a single
+     * statement per table.
      *
-     * This method processes the provided entities in batches to optimize performance when handling larger collections,
-     * reducing database overhead. For each entity in the collection, the method removes the corresponding record from
-     * the database, if it exists. Batch processing ensures efficient handling of removals, particularly for large data sets.
-     *
-     * @param refs an iterable collection of entities to be removed. Each entity in the collection must be non-null
-     * and represent a valid database record for removal.
-     * @throws st.orm.PersistenceException if the removal operation fails due to database issues, such as connectivity problems
-     * or constraints violations.
+     * @param refs the refs of the entities to remove.
+     * @throws PersistenceException if the removal fails due to database issues, such as connectivity problems or
+     * constraint violations.
      */
     public fun removeByRef(refs: Iterable<Ref<E>>)
+
+    /**
+     * Removes the entities identified by the ids from the database in batches.
+     *
+     * Like [removeById] of a single id, this method is idempotent: an id without a row is not an error, so it suits
+     * removals that may race with a concurrent delete or may run more than once. Each batch is removed with a single
+     * statement per table.
+     *
+     * @param ids the ids of the entities to remove.
+     * @throws PersistenceException if the removal fails due to database issues, such as connectivity problems or
+     * constraint violations.
+     * @since 1.16
+     */
+    public fun removeById(ids: Iterable<ID>)
 
     /**
      * Counts the number of entities identified by the provided flow of IDs using the default batch size.
@@ -1359,36 +1374,91 @@ public interface EntityRepository<E, ID : Any> : Repository where E : Entity<ID>
     /**
      * Removes a flow of entities from the database in batches.
      *
-     * @param entities a flow of entities to be removed.
-     * @throws st.orm.PersistenceException if the removal operation fails.
+     * Like [remove] of a single entity, this method is strict: every entity must exist in the database, because
+     * possessing the entity implies the caller expects it to exist. An entity whose removal affects a row count other
+     * than one fails the batch with an [UnexpectedRowCountException]. To remove entities that may already be gone, use
+     * [removeById] or [removeByRef], which are idempotent.
+     *
+     * @param entities the entities to remove. Each entity must exist in the database.
+     * @throws UnexpectedRowCountException if the removal of an entity affects a row count other than one, such as for
+     * an entity that does not exist.
+     * @throws PersistenceException if the removal fails due to database issues, such as connectivity problems or
+     * constraint violations.
      */
     public suspend fun remove(entities: Flow<E>)
 
     /**
-     * Removes a flow of entities from the database in configurable batch sizes.
+     * Removes a flow of entities from the database in batches of the given size.
      *
-     * @param entities a flow of entities to be removed.
-     * @param batchSize the number of entities to process in each batch.
-     * @throws st.orm.PersistenceException if the removal operation fails.
+     * Like [remove] of a single entity, this method is strict: every entity must exist in the database, because
+     * possessing the entity implies the caller expects it to exist. An entity whose removal affects a row count other
+     * than one fails the batch with an [UnexpectedRowCountException]. To remove entities that may already be gone, use
+     * [removeById] or [removeByRef], which are idempotent.
+     *
+     * @param entities the entities to remove. Each entity must exist in the database.
+     * @param batchSize the number of entities to remove per batch.
+     * @throws UnexpectedRowCountException if the removal of an entity affects a row count other than one, such as for
+     * an entity that does not exist.
+     * @throws PersistenceException if the removal fails due to database issues, such as connectivity problems or
+     * constraint violations.
      */
     public suspend fun remove(entities: Flow<E>, batchSize: Int)
 
     /**
-     * Removes a flow of entities from the database in batches.
+     * Removes the entities identified by a flow of refs from the database in batches.
      *
-     * @param refs a flow of entities to be removed.
-     * @throws st.orm.PersistenceException if the removal operation fails.
+     * Like [removeByRef] of a single ref, this method is idempotent: a ref without a row is not an error, so it suits
+     * removals that may race with a concurrent delete or may run more than once. Each batch is removed with a single
+     * statement per table.
+     *
+     * @param refs the refs of the entities to remove.
+     * @throws PersistenceException if the removal fails due to database issues, such as connectivity problems or
+     * constraint violations.
      */
     public suspend fun removeByRef(refs: Flow<Ref<E>>)
 
     /**
-     * Removes a flow of entities from the database in configurable batch sizes.
+     * Removes the entities identified by a flow of refs from the database in batches of the given size.
      *
-     * @param refs a flow of entities to be removed.
-     * @param batchSize the number of entities to process in each batch.
-     * @throws st.orm.PersistenceException if the removal operation fails.
+     * Like [removeByRef] of a single ref, this method is idempotent: a ref without a row is not an error, so it suits
+     * removals that may race with a concurrent delete or may run more than once. Each batch is removed with a single
+     * statement per table.
+     *
+     * @param refs the refs of the entities to remove.
+     * @param batchSize the number of refs to remove per batch.
+     * @throws PersistenceException if the removal fails due to database issues, such as connectivity problems or
+     * constraint violations.
      */
     public suspend fun removeByRef(refs: Flow<Ref<E>>, batchSize: Int)
+
+    /**
+     * Removes the entities identified by a flow of ids from the database in batches.
+     *
+     * Like [removeById] of a single id, this method is idempotent: an id without a row is not an error, so it suits
+     * removals that may race with a concurrent delete or may run more than once. Each batch is removed with a single
+     * statement per table.
+     *
+     * @param ids the ids of the entities to remove.
+     * @throws PersistenceException if the removal fails due to database issues, such as connectivity problems or
+     * constraint violations.
+     * @since 1.16
+     */
+    public suspend fun removeById(ids: Flow<ID>)
+
+    /**
+     * Removes the entities identified by a flow of ids from the database in batches of the given size.
+     *
+     * Like [removeById] of a single id, this method is idempotent: an id without a row is not an error, so it suits
+     * removals that may race with a concurrent delete or may run more than once. Each batch is removed with a single
+     * statement per table.
+     *
+     * @param ids the ids of the entities to remove.
+     * @param batchSize the number of ids to remove per batch.
+     * @throws PersistenceException if the removal fails due to database issues, such as connectivity problems or
+     * constraint violations.
+     * @since 1.16
+     */
+    public suspend fun removeById(ids: Flow<ID>, batchSize: Int)
 
     // Kotlin specific DSL
 

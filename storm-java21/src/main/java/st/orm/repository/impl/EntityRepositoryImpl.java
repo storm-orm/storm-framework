@@ -348,6 +348,11 @@ public final class EntityRepositoryImpl<E extends Entity<ID>, ID> implements Ent
     }
 
     @Override
+    public void removeById(Iterable<ID> ids) {
+        core.removeById(ids);
+    }
+
+    @Override
     public long countById(Stream<ID> ids) {
         return core.countById(ids);
     }
@@ -425,6 +430,16 @@ public final class EntityRepositoryImpl<E extends Entity<ID>, ID> implements Ent
     @Override
     public void removeByRef(Stream<Ref<E>> refs, int batchSize) {
         core.removeByRef(refs, batchSize);
+    }
+
+    @Override
+    public void removeById(Stream<ID> ids) {
+        core.removeById(ids);
+    }
+
+    @Override
+    public void removeById(Stream<ID> ids, int batchSize) {
+        core.removeById(ids, batchSize);
     }
 
     @Override

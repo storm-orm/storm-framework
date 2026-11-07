@@ -35,6 +35,7 @@ import st.orm.PersistenceException;
 import st.orm.Ref;
 import st.orm.Scrollable;
 import st.orm.Slice;
+import st.orm.UnexpectedRowCountException;
 import st.orm.Window;
 import st.orm.template.Model;
 import st.orm.template.QueryBuilder;
@@ -1400,30 +1401,45 @@ public interface EntityRepository<E extends Entity<ID>, ID> extends Repository {
     /**
      * Removes a collection of entities from the database in batches.
      *
-     * <p>This method processes the provided entities in batches to optimize performance when handling larger collections,
-     * reducing database overhead. For each entity in the collection, the method removes the corresponding record from
-     * the database, if it exists. Batch processing ensures efficient handling of removals, particularly for large data sets.</p>
+     * <p>Like {@link #remove(Entity)}, this method is strict: every entity must exist in the database, because
+     * possessing the entity implies the caller expects it to exist. An entity whose removal affects a row count other
+     * than one fails the batch with an {@link UnexpectedRowCountException}. To remove entities that may already be
+     * gone, use {@link #removeById(Iterable)} or {@link #removeByRef(Iterable)}, which are idempotent.</p>
      *
-     * @param entities an iterable collection of entities to be removed. Each entity in the collection must be non-null
-     *                 and represent a valid database record for removal.
-     * @throws PersistenceException if the removal operation fails due to database issues, such as connectivity problems
-     *                              or constraints violations.
+     * @param entities the entities to remove. Each entity must exist in the database.
+     * @throws UnexpectedRowCountException if the removal of an entity affects a row count other than one, such as
+     *                                     for an entity that does not exist.
+     * @throws PersistenceException if the removal fails due to database issues, such as connectivity problems or
+     *                              constraint violations.
      */
     void remove(Iterable<E> entities);
 
     /**
-     * Removes a collection of entities from the database in batches.
+     * Removes the entities identified by the refs from the database in batches.
      *
-     * <p>This method processes the provided entities in batches to optimize performance when handling larger collections,
-     * reducing database overhead. For each entity in the collection, the method removes the corresponding record from
-     * the database, if it exists. Batch processing ensures efficient handling of removals, particularly for large data sets.</p>
+     * <p>Like {@link #removeByRef(Ref)}, this method is idempotent: a ref without a row is not an error, so it suits
+     * removals that may race with a concurrent delete or may run more than once. Each batch is removed with a single
+     * statement per table.</p>
      *
-     * @param refs an iterable collection of entities to be removed. Each entity in the collection must be non-null
-     *             and represent a valid database record for removal.
-     * @throws PersistenceException if the removal operation fails due to database issues, such as connectivity problems
-     *                              or constraints violations.
+     * @param refs the refs of the entities to remove.
+     * @throws PersistenceException if the removal fails due to database issues, such as connectivity problems or
+     *                              constraint violations.
      */
     void removeByRef(Iterable<Ref<E>> refs);
+
+    /**
+     * Removes the entities identified by the ids from the database in batches.
+     *
+     * <p>Like {@link #removeById(Object)}, this method is idempotent: an id without a row is not an error, so it suits
+     * removals that may race with a concurrent delete or may run more than once. Each batch is removed with a single
+     * statement per table.</p>
+     *
+     * @param ids the ids of the entities to remove.
+     * @throws PersistenceException if the removal fails due to database issues, such as connectivity problems or
+     *                              constraint violations.
+     * @since 1.16
+     */
+    void removeById(Iterable<ID> ids);
 
     // Stream based methods.
     //
@@ -1618,34 +1634,89 @@ public interface EntityRepository<E extends Entity<ID>, ID> extends Repository {
     /**
      * Removes a stream of entities from the database in batches.
      *
-     * @param entities a stream of entities to be removed.
-     * @throws PersistenceException if the removal operation fails.
+     * <p>Like {@link #remove(Entity)}, this method is strict: every entity must exist in the database, because
+     * possessing the entity implies the caller expects it to exist. An entity whose removal affects a row count other
+     * than one fails the batch with an {@link UnexpectedRowCountException}. To remove entities that may already be
+     * gone, use {@link #removeById(Stream)} or {@link #removeByRef(Stream)}, which are idempotent.</p>
+     *
+     * @param entities the entities to remove. Each entity must exist in the database.
+     * @throws UnexpectedRowCountException if the removal of an entity affects a row count other than one, such as
+     *                                     for an entity that does not exist.
+     * @throws PersistenceException if the removal fails due to database issues, such as connectivity problems or
+     *                              constraint violations.
      */
     void remove(Stream<E> entities);
 
     /**
-     * Removes a stream of entities from the database in configurable batch sizes.
+     * Removes a stream of entities from the database in batches of the given size.
      *
-     * @param entities a stream of entities to be removed.
-     * @param batchSize the number of entities to process in each batch.
-     * @throws PersistenceException if the removal operation fails.
+     * <p>Like {@link #remove(Entity)}, this method is strict: every entity must exist in the database, because
+     * possessing the entity implies the caller expects it to exist. An entity whose removal affects a row count other
+     * than one fails the batch with an {@link UnexpectedRowCountException}. To remove entities that may already be
+     * gone, use {@link #removeById(Stream, int)} or {@link #removeByRef(Stream, int)}, which are idempotent.</p>
+     *
+     * @param entities the entities to remove. Each entity must exist in the database.
+     * @param batchSize the number of entities to remove per batch.
+     * @throws UnexpectedRowCountException if the removal of an entity affects a row count other than one, such as
+     *                                     for an entity that does not exist.
+     * @throws PersistenceException if the removal fails due to database issues, such as connectivity problems or
+     *                              constraint violations.
      */
     void remove(Stream<E> entities, int batchSize);
 
     /**
-     * Removes a stream of entities from the database in batches.
+     * Removes the entities identified by a stream of refs from the database in batches.
      *
-     * @param refs a stream of entities to be removed.
-     * @throws PersistenceException if the removal operation fails.
+     * <p>Like {@link #removeByRef(Ref)}, this method is idempotent: a ref without a row is not an error, so it suits
+     * removals that may race with a concurrent delete or may run more than once. Each batch is removed with a single
+     * statement per table.</p>
+     *
+     * @param refs the refs of the entities to remove.
+     * @throws PersistenceException if the removal fails due to database issues, such as connectivity problems or
+     *                              constraint violations.
      */
     void removeByRef(Stream<Ref<E>> refs);
 
     /**
-     * Removes a stream of entities from the database in configurable batch sizes.
+     * Removes the entities identified by a stream of refs from the database in batches of the given size.
      *
-     * @param refs a stream of entities to be removed.
-     * @param batchSize the number of entities to process in each batch.
-     * @throws PersistenceException if the removal operation fails.
+     * <p>Like {@link #removeByRef(Ref)}, this method is idempotent: a ref without a row is not an error, so it suits
+     * removals that may race with a concurrent delete or may run more than once. Each batch is removed with a single
+     * statement per table.</p>
+     *
+     * @param refs the refs of the entities to remove.
+     * @param batchSize the number of refs to remove per batch.
+     * @throws PersistenceException if the removal fails due to database issues, such as connectivity problems or
+     *                              constraint violations.
      */
     void removeByRef(Stream<Ref<E>> refs, int batchSize);
+
+    /**
+     * Removes the entities identified by a stream of ids from the database in batches.
+     *
+     * <p>Like {@link #removeById(Object)}, this method is idempotent: an id without a row is not an error, so it suits
+     * removals that may race with a concurrent delete or may run more than once. Each batch is removed with a single
+     * statement per table.</p>
+     *
+     * @param ids the ids of the entities to remove.
+     * @throws PersistenceException if the removal fails due to database issues, such as connectivity problems or
+     *                              constraint violations.
+     * @since 1.16
+     */
+    void removeById(Stream<ID> ids);
+
+    /**
+     * Removes the entities identified by a stream of ids from the database in batches of the given size.
+     *
+     * <p>Like {@link #removeById(Object)}, this method is idempotent: an id without a row is not an error, so it suits
+     * removals that may race with a concurrent delete or may run more than once. Each batch is removed with a single
+     * statement per table.</p>
+     *
+     * @param ids the ids of the entities to remove.
+     * @param batchSize the number of ids to remove per batch.
+     * @throws PersistenceException if the removal fails due to database issues, such as connectivity problems or
+     *                              constraint violations.
+     * @since 1.16
+     */
+    void removeById(Stream<ID> ids, int batchSize);
 }
