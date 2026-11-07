@@ -198,19 +198,15 @@ class BatchRowCountsTest {
     }
 
     @Test
-    void joinedBatchUpdateWithCountWithoutInfoMovesChangedType() {
+    void joinedBatchUpdateWithCountWithoutInfoCannotVerifySubtype() {
         var animals = orm.entity(JoinedAnimal.class);
         reportedCount = count -> SUCCESS_NO_INFO;
-        prepared.clear();
-        animals.update(List.of(new JoinedCat(1, "Whiskers", false), new JoinedDog(2, "Luna", 12),
-                new JoinedCat(3, "Milo", false), new JoinedCat(4, "Rex", true)));
+        var failure = assertThrows(PersistenceException.class,
+                () -> animals.update(List.of(new JoinedCat(1, "Whiskers", false), new JoinedDog(2, "Luna", 12))));
         reportedCount = IntUnaryOperator.identity();
-        // One statement per extension table for each subtype in the batch, however many entities it holds.
-        assertEquals(4, preparedStartingWith("DELETE"), prepared.toString());
-        assertEquals(new JoinedCat(1, "Whiskers", false), animals.getById(1));
-        assertEquals(new JoinedDog(2, "Luna", 12), animals.getById(2));
-        assertEquals(new JoinedCat(3, "Milo", false), animals.getById(3));
-        assertEquals(new JoinedCat(4, "Rex", true), animals.getById(4));
+        assertTrue(failure.getMessage().contains("JoinedAnimal"), failure.getMessage());
+        assertTrue(failure.getMessage().contains("cannot verify the subtype of each row"), failure.getMessage());
+        assertEquals(0, preparedStartingWith("DELETE"), prepared.toString());
     }
 
     @Test

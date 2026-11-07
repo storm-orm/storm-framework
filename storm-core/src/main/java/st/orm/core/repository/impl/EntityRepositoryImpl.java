@@ -26,7 +26,7 @@ import static st.orm.core.template.TemplateString.raw;
 import static st.orm.core.template.impl.BatchRowCounts.allSucceeded;
 import static st.orm.core.template.impl.BatchRowCounts.anyUnknown;
 import static st.orm.core.template.impl.BatchRowCounts.knownAffected;
-import static st.orm.core.template.impl.BatchRowCounts.unverifiedVersionFailure;
+import static st.orm.core.template.impl.BatchRowCounts.unverifiedFailure;
 import static st.orm.spi.SqlOperation.DELETE;
 import static st.orm.spi.SqlOperation.INSERT;
 import static st.orm.spi.SqlOperation.UPDATE;
@@ -2101,7 +2101,7 @@ public class EntityRepositoryImpl<E extends Entity<ID>, ID>
         }
         int[] result = query.executeBatch();
         if (query.isVersionAware() && anyUnknown(result)) {
-            throw failure(UPDATE, unverifiedVersionFailure(model.type()));
+            throw failure(UPDATE, unverifiedFailure(model.type(), "optimistic locking"));
         }
         if (query.isVersionAware() && IntStream.of(result).anyMatch(r -> r == 0)) {
             throw failure(UPDATE, new OptimisticLockException("Batch update of %s failed due to optimistic lock. One or more entities may have been modified or deleted by another transaction.".formatted(model.type().getSimpleName())));

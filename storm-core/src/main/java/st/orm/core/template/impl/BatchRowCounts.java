@@ -26,8 +26,9 @@ import st.orm.PersistenceException;
  *
  * <p>A driver may report {@link Statement#SUCCESS_NO_INFO} for a statement that succeeded without a known
  * row count. Such a count is a success. {@link Statement#EXECUTE_FAILED} and every count other than the
- * expected ones are failures, and so is an unknown count in a versioned update, where a count of zero marks a
- * version conflict.</p>
+ * expected ones are failures, and so is an unknown count in a batch that decides from its counts: a versioned update,
+ * where a count of zero marks a version conflict, and the update of a joined entity's extension rows, where it marks
+ * a changed subtype.</p>
  *
  * @since 1.16
  */
@@ -79,16 +80,18 @@ public final class BatchRowCounts {
     }
 
     /**
-     * Returns the failure of a versioned batch update whose counts the driver did not report. A count of zero marks
-     * a version conflict, so without the counts the batch cannot tell a conflict from a success.
+     * Returns the failure of a batch update that decides from its counts and whose counts the driver did not report.
+     * A versioned update reads a count of zero as a version conflict, and the update of a joined entity's extension
+     * rows reads it as a changed subtype, so without the counts neither can tell that case from a success.
      *
      * @param type the entity type of the batch.
+     * @param unverified what the batch cannot verify, such as {@code "optimistic locking"}.
      * @return the failure.
      */
-    public static PersistenceException unverifiedVersionFailure(Class<?> type) {
-        return new PersistenceException(("Batch update of %s cannot verify optimistic locking because the driver did "
-                + "not report update counts for the batch. Configure the driver to report the update count of every "
-                + "statement in a batch, or update the entities one at a time.").formatted(type.getSimpleName()));
+    public static PersistenceException unverifiedFailure(Class<?> type, String unverified) {
+        return new PersistenceException(("Batch update of %s cannot verify %s because the driver did not report "
+                + "update counts for the batch. Configure the driver to report the update count of every statement "
+                + "in a batch, or update the entities one at a time.").formatted(type.getSimpleName(), unverified));
     }
 
     /**

@@ -15,12 +15,11 @@
  */
 package st.orm.core.template.impl;
 
-import static java.sql.Statement.SUCCESS_NO_INFO;
 import static st.orm.core.template.TemplateString.raw;
 import static st.orm.core.template.impl.BatchRowCounts.allSucceeded;
 import static st.orm.core.template.impl.BatchRowCounts.anyUnknown;
 import static st.orm.core.template.impl.BatchRowCounts.knownAffected;
-import static st.orm.core.template.impl.BatchRowCounts.unverifiedVersionFailure;
+import static st.orm.core.template.impl.BatchRowCounts.unverifiedFailure;
 import static st.orm.core.template.impl.RecordReflection.getExtensionFieldNames;
 import static st.orm.core.template.impl.RecordReflection.hasDiscriminator;
 import static st.orm.spi.SqlOperation.DELETE;
@@ -408,12 +407,12 @@ public final class JoinedEntityHelper {
 
     /**
      * Deletes the extension table rows of the ids from the extension tables of every subtype except the given one,
-     * or of every subtype when none is given, with one statement per extension table.
+     * with one statement per extension table.
      */
     private static void deleteExtensionRows(
             QueryTemplate queryTemplate,
             Class<?> sealedType,
-            @Nullable Class<?> exceptType,
+            Class<?> exceptType,
             List<?> ids
     ) throws SqlTemplateException {
         for (Class<?> subtype : REFLECTION.getPermittedSubclasses(sealedType)) {
@@ -697,7 +696,7 @@ public final class JoinedEntityHelper {
             int[] result = baseQuery.executeBatch();
             if (baseQuery.isVersionAware() && anyUnknown(result)) {
                 throw ExceptionHelper.getExceptionTransformer(queryTemplate, UPDATE, sealedType)
-                        .apply(unverifiedVersionFailure(sealedType));
+                        .apply(unverifiedFailure(sealedType, "optimistic locking"));
             }
             if (!allSucceeded(result, 1)) {
                 throw batchRowCountFailure(queryTemplate, UPDATE, sealedType, "Batch update of base table '%s' failed for entity %s. This may indicate a constraint violation, trigger interference, or that the target row does not exist.".formatted(model.name(), sealedType.getSimpleName()), result);
@@ -727,13 +726,14 @@ public final class JoinedEntityHelper {
                         .managed())) {
                     subtypeEntities.forEach(extQuery::addBatch);
                     int[] extResult = extQuery.executeBatch();
+                    if (anyUnknown(extResult)) {
+                        throw ExceptionHelper.getExceptionTransformer(queryTemplate, UPDATE, sealedType)
+                                .apply(unverifiedFailure(sealedType, "the subtype of each row"));
+                    }
                     needInsert = new ArrayList<>();
-                    List<E> unknown = new ArrayList<>();
                     for (int i = 0; i < extResult.length; i++) {
                         if (extResult[i] == 0) {
                             needInsert.add(subtypeEntities.get(i));
-                        } else if (extResult[i] == SUCCESS_NO_INFO) {
-                            unknown.add(subtypeEntities.get(i));
                         } else if (extResult[i] != 1) {
                             throw rowCountFailure(queryTemplate, UPDATE, sealedType, "Batch update of extension table failed for entity %s (subtype %s). This may indicate a constraint violation, trigger interference, or that the target row does not exist. %d rows were affected.".formatted(sealedType.getSimpleName(), concreteType.getSimpleName(), extResult[i]), 1, extResult[i]);
                         }
@@ -741,13 +741,6 @@ public final class JoinedEntityHelper {
                     if (!needInsert.isEmpty()) {
                         // The type changed: the row of the previous subtype goes, the row of this one is inserted below.
                         deleteExtensionRows(queryTemplate, sealedType, concreteType, ids(needInsert));
-                    }
-                    if (!unknown.isEmpty()) {
-                        // The driver does not report whether the update found the row, so whether the type changed is
-                        // unknown. The extension rows of these entities are written again: one statement per extension
-                        // table, this subtype's included, removes them, and the insert below writes the row of this type.
-                        deleteExtensionRows(queryTemplate, sealedType, null, ids(unknown));
-                        needInsert.addAll(unknown);
                     }
                 }
             } else {
