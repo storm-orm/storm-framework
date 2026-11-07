@@ -16,9 +16,12 @@
 package st.orm;
 
 /**
- * Thrown when an optimistic locking conflict occurs.
+ * Thrown when an optimistic locking conflict occurs: the row changed, or was removed, after the entity was read.
+ *
+ * <p>A conflict stems from concurrent activity, so this is a {@link TransientPersistenceException}: running the whole
+ * transaction again, which reads the entity again, may succeed.</p>
  */
-public class OptimisticLockException extends PersistenceException {
+public class OptimisticLockException extends TransientPersistenceException {
 
     /**
      * The object that caused the exception

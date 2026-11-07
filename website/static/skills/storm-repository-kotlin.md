@@ -855,6 +855,8 @@ Two placement rules apply, and they are separate concerns:
 
 **A transaction does one thing at a time.** Its single connection serves one caller, so never run statements of one transaction concurrently with `launch` or `async`: Storm refuses a statement issued while another coroutine still holds the connection (`Concurrent access on ...`). `withContext(Dispatchers.IO)` is fine, because it suspends the caller until it returns. Await each unit before starting the next, or give parallel work its own transactions.
 
+**Rerun a transaction on `TransientPersistenceException` only.** A deadlock, a serialization failure (SQL state `40001` or the database's own code for it) and an optimistic lock conflict (`OptimisticLockException` is a subtype) throw it: running the whole transaction again may succeed. Rerun the block that owns the transaction from its start, never the failed statement alone, never a block that joined an outer transaction. A lock wait timeout, a lost connection and a failed commit are not transient; never rerun on them. A rerun repeats the block's side effects, so every effect outside the database goes in `onCommit { }`. Under the Spring Boot starters the failure surfaces as a `TransientDataAccessException`.
+
 ### Spring Boot
 
 **Exclude Storm's Spring transaction integration when using suspend `transaction { }`.** Spring's transaction context is thread-bound and coroutines are not, so Storm fails fast with "Suspend mode is not supported when spring-managed transactions are enabled". Keep the integration (the default) when using `@Transactional` or `transactionBlocking { }` that must join Spring-managed transactions:

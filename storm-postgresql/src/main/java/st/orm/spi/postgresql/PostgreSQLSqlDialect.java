@@ -450,4 +450,19 @@ public class PostgreSQLSqlDialect extends DefaultSqlDialect {
     public String computedOnce(String expression) {
         return "(SELECT " + expression + ")";
     }
+
+    /**
+     * Recognises the SQL states PostgreSQL reports for the conflicts it aborts the transaction for: {@code 40001},
+     * serialization failure, and {@code 40P01}, deadlock detected. A lock wait that runs out of
+     * {@code lock_timeout}, {@code 55P03}, is not transient.
+     *
+     * @param exception one error of the failure's chain.
+     * @return {@code true} if the error reports a serialization failure or a deadlock.
+     * @since 1.16
+     */
+    @Override
+    public boolean isTransientFailure(SQLException exception) {
+        String sqlState = exception.getSQLState();
+        return "40001".equals(sqlState) || "40P01".equals(sqlState);
+    }
 }

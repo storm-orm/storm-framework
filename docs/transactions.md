@@ -521,7 +521,7 @@ Time    Transaction A                   Transaction B
  t8                                     [COMMIT]
 ```
 
-Use this level when correctness is critical and you cannot tolerate any anomalies. Be prepared for lower throughput and potential retry logic for failed transactions:
+Use this level when correctness is critical and you cannot tolerate any anomalies. Be prepared for lower throughput and for transactions that fail with a `TransientPersistenceException` and need to run again (see [Rerunning a Transaction](#rerunning-a-transaction)):
 
 ```kotlin
 transaction(isolation = SERIALIZABLE) {
@@ -601,6 +601,28 @@ transaction(isolation = SERIALIZABLE) {
         // pass this check and oversell
         inventoryRepository.decrease(productId, requestedQuantity)
         orderRepository.create(order)
+    }
+}
+```
+
+### Rerunning a Transaction
+
+A deadlock, a serialization failure or an optimistic lock conflict fails with a `TransientPersistenceException`: the failure stems from concurrent activity, and running the whole transaction again may succeed. The type is the signal to rerun; the dialect recognises its database's codes, so it is the same on every database. A lock wait that runs out, a lost connection and a failed commit are not of this type. See [Deadlocks and Serialization Failures](error-handling.md#deadlocks-and-serialization-failures).
+
+Rerun the block that owns the transaction, from its start. A block that joined an outer transaction fails with it, so the outer block is the one to run again. A rerun repeats every side effect of the block: its database writes rolled back with the failed attempt, but a message it sent or a service it called happens again. Side effects belong in `onCommit`, which runs only for the attempt that committed.
+
+```kotlin
+var attempt = 0
+while (true) {
+    try {
+        transaction(isolation = SERIALIZABLE) {
+            inventoryRepository.decrease(productId, requestedQuantity)
+            val created = orderRepository.insertAndFetch(order)
+            onCommit { emailService.sendOrderConfirmation(created) }
+        }
+        break
+    } catch (exception: TransientPersistenceException) {
+        if (++attempt == 3) throw exception
     }
 }
 ```
@@ -1401,6 +1423,10 @@ transaction(tx -> {
 ```
 
 Callbacks registered in a scope that joins an outer transaction are deferred to the outermost physical transaction's completion; `REQUIRES_NEW` scopes fire their own callbacks independently. The three kinds share one registration order: callbacks run in the order they were registered after the transaction has fully completed, skipping the ones that do not apply to the outcome. `onCompletion` receives whether the transaction committed, which is the variant for work that has to happen either way. If a callback throws, the remaining callbacks still execute and the failures surface as a `TransactionCallbackException` whose cause is the first one, with the rest suppressed; `isCommitted()` tells a failed side effect apart from a failed transaction, which need opposite responses, since retrying the former repeats work that already succeeded.
+
+### Rerunning on a Transient Failure
+
+A deadlock, a serialization failure or an optimistic lock conflict fails with a `TransientPersistenceException`, the signal that running the whole transaction again may succeed. Rerun the block that owns the transaction, from its start; a rerun repeats every side effect of the block, so side effects belong in `tx.onCommit`, which runs only for the attempt that committed. See [Deadlocks and Serialization Failures](error-handling.md#deadlocks-and-serialization-failures).
 
 ### Registering from Nested Code
 

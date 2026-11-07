@@ -614,6 +614,29 @@ public interface SqlDialect {
     }
 
     /**
+     * Returns whether the error reports a failure that stems from concurrent activity, on which the database gave up
+     * the transaction's work: a deadlock or a serialization failure. Running the whole transaction again may succeed,
+     * and the exception mapper receives the failure classified as transient.
+     *
+     * <p>Storm asks for every {@code SQLException} in the chain of a statement's failure, the causes as well as the
+     * next exceptions a driver chains to a batch failure; one recognised error classifies the failure. A chain that
+     * reports a lost connection, under SQL state class {@code 08}, is never transient: whether the transaction
+     * committed is unknown. A failed commit is not asked about, for the same reason.</p>
+     *
+     * <p>The default recognises SQL state {@code 40001}, serialization failure. A dialect adds the codes its database
+     * reports for a deadlock or a serialization failure. It leaves out the errors after which the outcome is unknown,
+     * such as SQL states {@code 40002} and {@code 40003}, and a lock wait timeout, which some databases answer by
+     * rolling back only the statement.</p>
+     *
+     * @param exception one error of the failure's chain.
+     * @return {@code true} if the error reports a deadlock or a serialization failure, {@code false} otherwise.
+     * @since 1.16
+     */
+    default boolean isTransientFailure(SQLException exception) {
+        return "40001".equals(exception.getSQLState());
+    }
+
+    /**
      * Returns {@code true} if the lock hint should be applied after the FROM clause, {@code false} to apply the lock
      * hint at the end of the query.
      *

@@ -398,7 +398,8 @@ public final class PreparedStatementTemplateImpl implements PreparedStatementTem
                     setParameters(preparedStatement, parameters, dialect);
                 } else {
                     bindVariables.setBatchListener(getBatchListener(preparedStatement, parameters, dialect,
-                            getExceptionTransformer(sql, strategies.exceptionMapper(), transactionTemplateProvider)));
+                            getExceptionTransformer(sql, dialect, strategies.exceptionMapper(),
+                                    transactionTemplateProvider)));
                 }
                 success = true;
             } finally {
@@ -460,7 +461,8 @@ public final class PreparedStatementTemplateImpl implements PreparedStatementTem
                     setParameters(preparedStatement, parameters, dialect);
                 } else {
                     bindVariables.setBatchListener(getBatchListener(preparedStatement, parameters, dialect,
-                            getExceptionTransformer(sql, strategies.exceptionMapper(), transactionTemplateProvider)));
+                            getExceptionTransformer(sql, dialect, strategies.exceptionMapper(),
+                                    transactionTemplateProvider)));
                 }
                 success = true;
                 return StatementLease.of(preparedStatement);
@@ -779,7 +781,8 @@ public final class PreparedStatementTemplateImpl implements PreparedStatementTem
                 refFactory,
                 strategies.transactionTemplateProvider(),
                 strategies.queryObserver(),
-                getExceptionTransformer(sql, strategies.exceptionMapper(), strategies.transactionTemplateProvider()),
+                getExceptionTransformer(sql, dialect, strategies.exceptionMapper(),
+                        strategies.transactionTemplateProvider()),
                 sql.operation(),
                 sql.upsert(),
                 sql.dataType().orElse(null),

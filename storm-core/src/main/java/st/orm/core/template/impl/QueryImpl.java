@@ -1193,8 +1193,6 @@ class QueryImpl implements Query, KeyedQuery {
                     }
                     action.accept(row);
                     return true;
-                } catch (SQLException e) {
-                    throw exceptionTransformer.apply(new PersistenceException(e));
                 } catch (Exception e) {
                     throw exceptionTransformer.apply(e);
                 }
@@ -1241,8 +1239,6 @@ class QueryImpl implements Query, KeyedQuery {
                     }
                     action.accept(mapper.newInstance(args));
                     return true;
-                } catch (SQLException e) {
-                    throw exceptionTransformer.apply(new PersistenceException(e));
                 } catch (Exception e) {
                     throw exceptionTransformer.apply(e);
                 }
