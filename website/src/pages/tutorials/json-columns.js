@@ -94,7 +94,7 @@ ${navHtml('tutorials')}
   <h2><span class="hno">04</span>One-to-many in one query</h2>
   <p>The same conversion reads the result of a JSON aggregate. The database collects the related rows of each group into a JSON array, and Storm reads the array into a typed list, so the one-to-many loads in one round trip:</p>
   ${editor({file: 'OwnerRepository.kt', tag: 'Kotlin · Storm', code: CODE_JSON_AGG, sql: SQL_JSON_AGG})}
-  <p>This fits a collection of moderate size that the caller uses whole. When a collection can grow without bound, or has to be paged, read it with a second query instead, such as <code>orm.findAll(Pet_.owner inList owners)</code>. The <a class="tlink" href="/docs/json">JSON docs</a> give the limits and when to split.</p>
+  <p>This fits a collection of moderate size that the caller uses whole. When a collection can grow without bound, or has to be paged, read it with a second query instead: <code>orm.entity(Pet::class).select().where(Pet_.owner inList owners).resultGroupedBy(Pet_.owner)</code> returns each owner with their pets as a map, grouped while Storm reads the rows. The <a class="tlink" href="/docs/json">JSON docs</a> give the limits and when to split.</p>
 
   <h2><span class="hno">05</span>Keep going</h2>
   <p>The reference documentation covers the mechanics in depth:</p>

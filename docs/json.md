@@ -321,18 +321,17 @@ Instead of aggregating all roles per user:
 data class RolesByUser(val user: User, @Json val roles: List<Role>)
 ```
 
-Query separately:
+Read the role links in a query of their own, and let Storm group them by user:
 
 ```kotlin
-// Fetch users
-val users = orm.findAll<User>()
-
-// Batch fetch roles and group by user
-val rolesByUser = orm.findAll(UserRole_.user inList users)
-    .groupBy({ it.user }, { it.role })
+// One query for the role links of the users you hold; each UserRole carries its role
+val rolesByUser: Map<User, List<UserRole>> = orm.entity(UserRole::class)
+    .select()
+    .where(UserRole_.user inList users)
+    .resultGroupedBy(UserRole_.user)
 ```
 
-This approach gives you control over pagination, caching, and memory usage.
+The grouping happens while Storm hydrates the rows, so the SQL is an ordinary select without a `GROUP BY` and no JSON is built or parsed. Because `users` can be a single page, the roles query pages along with it, which gives you control over pagination, caching, and memory usage. See [Grouped Results](queries.md#grouped-results).
 
 ---
 
