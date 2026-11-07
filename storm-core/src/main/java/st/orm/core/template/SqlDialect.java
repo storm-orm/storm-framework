@@ -618,10 +618,12 @@ public interface SqlDialect {
      * the transaction's work: a deadlock or a serialization failure. Running the whole transaction again may succeed,
      * and the exception mapper receives the failure classified as transient.
      *
-     * <p>Storm asks for every {@code SQLException} in the chain of a statement's failure, the causes as well as the
-     * next exceptions a driver chains to a batch failure; one recognised error classifies the failure. A chain that
-     * reports a lost connection, under SQL state class {@code 08}, is never transient: whether the transaction
-     * committed is unknown. A failed commit is not asked about, for the same reason.</p>
+     * <p>Storm asks for every {@code SQLException} in the chain of a statement's failure, or of a commit's failure,
+     * the causes as well as the next exceptions a driver chains to a batch failure; one recognised error classifies
+     * the failure. A database that detects a serialization conflict only when the transaction commits reports it from
+     * the commit, and the transaction did not commit. A chain that reports a lost connection, under SQL state class
+     * {@code 08}, is never transient, a connection lost during the commit included: whether the transaction committed
+     * is unknown.</p>
      *
      * <p>The default recognises SQL state {@code 40001}, serialization failure. A dialect adds the codes its database
      * reports for a deadlock or a serialization failure. It leaves out the errors after which the outcome is unknown,

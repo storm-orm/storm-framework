@@ -30,4 +30,13 @@ public class H2TransientFailureConformanceTest extends AbstractTransientFailureC
     protected List<String> lockWaitTimeoutStatements() {
         return List.of("SET LOCK_TIMEOUT 1000", "UPDATE " + TABLE + " SET amount = amount + 1 WHERE id = 1");
     }
+
+    /**
+     * H2 refuses a serializable transaction's write to a row another transaction changed after it read it, but not a
+     * cycle of reads and writes to different rows, so both transactions commit.
+     */
+    @Override
+    protected WriteSkewReport writeSkewReport() {
+        return WriteSkewReport.NONE;
+    }
 }

@@ -15,6 +15,7 @@
  */
 package st.orm.tck;
 
+import static java.util.concurrent.TimeUnit.MINUTES;
 import static java.util.concurrent.TimeUnit.SECONDS;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -46,6 +47,7 @@ import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.Timeout;
 import st.orm.PersistenceException;
 import st.orm.Transaction;
 import st.orm.TransactionOptions;
@@ -73,11 +75,40 @@ import st.orm.core.template.TemplateString;
  * gone, and a lock wait timeout, which some databases answer by rolling back only the statement. The lock wait
  * case takes the statements that make the database give up waiting from {@link #lockWaitTimeoutStatements()}.</p>
  *
+ * <p>The write skew case runs two serializable transactions that each read the row the other one writes, and only
+ * then write, so neither write conflicts with another write: the conflict is a read/write dependency cycle across
+ * the two. Where the database reports it, at a statement or at the commit, is a property of the database, which
+ * each database states through {@link #writeSkewReport()}; a failure reported at the commit is transient as one
+ * reported at a statement is, and a block that states retries reruns on it.</p>
+ *
  * <p>A database that cannot produce a case says so through {@link #deadlockUnsupportedReason()} or
  * {@link #serializationFailureUnsupportedReason()}, which skips that case with the reason as its message. The
  * suite creates its own table, {@value #TABLE}, and runs without the per-test rollback, as the cases commit.</p>
  */
+@Timeout(value = 5, unit = MINUTES)
 public abstract class AbstractTransientFailureConformanceTest {
+
+    /**
+     * Where a database reports the conflict of two serializable transactions that each read the row the other one
+     * writes.
+     */
+    public enum WriteSkewReport {
+
+        /**
+         * A statement of one of the transactions fails, as a deadlock or a serialization failure.
+         */
+        STATEMENT,
+
+        /**
+         * The statements of both transactions run, and the commit of one of them fails with a serialization failure.
+         */
+        COMMIT,
+
+        /**
+         * Both transactions commit: the database's serializable isolation lets the dependency cycle through.
+         */
+        NONE
+    }
 
     /**
      * The table the suite creates and fills with two rows, {@code 1} and {@code 2}, both with amount {@code 0}.
@@ -148,6 +179,11 @@ public abstract class AbstractTransientFailureConformanceTest {
     protected boolean singleWriter() {
         return false;
     }
+
+    /**
+     * Where the database reports the conflict of the write skew case: at a statement, at the commit, or not at all.
+     */
+    protected abstract WriteSkewReport writeSkewReport();
 
     /**
      * The statements that, run in order in a transaction, make the database give up waiting for the lock on row
@@ -238,6 +274,132 @@ public abstract class AbstractTransientFailureConformanceTest {
                 .exceptionMapper((failure, context) -> context.transientFailure() ? new MappedFailure(failure) : null)
                 .build();
         assertOneSerializationFailureReruns(orm);
+    }
+
+    @Test
+    public void aWriteSkewIsReportedWhereTheDatabaseReportsIt() throws Exception {
+        var orm = template(dataSource);
+        var report = writeSkewReport();
+        var outcomes = runWriteSkew(orm, 0);
+        if (report == WriteSkewReport.NONE) {
+            assertBothCommitAtOnce(outcomes);
+            assertEquals(1, amount(orm, 1), "the first transaction's write");
+            assertEquals(10, amount(orm, 2), "the second transaction's write");
+            return;
+        }
+        var failures = outcomes.stream().map(WriteSkewOutcome::outcome).map(Outcome::failure).toList();
+        int winner = assertOneTransientFailure(failures);
+        var loser = outcomes.get(1 - winner);
+        assertEquals(report == WriteSkewReport.COMMIT, loser.bodies() == loser.outcome().attempts(),
+                () -> "the conflict is reported " + (report == WriteSkewReport.COMMIT
+                        ? "at the commit, after the block's statements all ran"
+                        : "at a statement") + ": " + outcomes);
+        assertEquals(winner == 0 ? 1 : 0, amount(orm, 1), "the winner's write alone");
+        assertEquals(winner == 1 ? 10 : 0, amount(orm, 2), "the winner's write alone");
+    }
+
+    @Test
+    public void aWriteSkewRerunsAndCommits() throws Exception {
+        assertWriteSkewReruns(template(dataSource));
+    }
+
+    @Test
+    public void aWriteSkewAMapperTranslatesToItsOwnTypeStillReruns() throws Exception {
+        assertWriteSkewReruns(ORMTemplate.builder(dataSource)
+                .connectionProvider(new JdbcConnectionProviderImpl())
+                .transactionTemplateProvider(new JdbcTransactionTemplateProviderImpl())
+                .exceptionMapper((failure, context) -> context.transientFailure() ? new MappedFailure(failure) : null)
+                .build());
+    }
+
+    /**
+     * Runs the write skew case with each transaction rerunning once, and asserts that the transaction that lost ran
+     * again and committed, so both rows hold their writes, wherever the database reported the conflict.
+     */
+    private void assertWriteSkewReruns(ORMTemplate orm) throws Exception {
+        var outcomes = runWriteSkew(orm, 1);
+        if (writeSkewReport() == WriteSkewReport.NONE) {
+            assertBothCommitAtOnce(outcomes);
+        } else {
+            assertOneRerunAndBothCommit(outcomes.stream().map(WriteSkewOutcome::outcome).toList());
+        }
+        assertEquals(1, amount(orm, 1), "the first transaction's write");
+        assertEquals(10, amount(orm, 2), "the second transaction's write");
+    }
+
+    private static void assertBothCommitAtOnce(List<WriteSkewOutcome> outcomes) {
+        for (var outcome : outcomes) {
+            if (outcome.outcome().failure() != null) {
+                throw new AssertionError("Both transactions commit: " + outcomes, outcome.outcome().failure());
+            }
+            assertEquals(1, outcome.outcome().attempts(), () -> "neither transaction reruns: " + outcomes);
+        }
+    }
+
+    /**
+     * What a transaction of the write skew case ended with, and how many of its attempts ran all their statements.
+     */
+    private record WriteSkewOutcome(Outcome outcome, int bodies) {}
+
+    /**
+     * Runs two serializable transactions on two threads: the first reads row {@code 2} and writes row {@code 1}, the
+     * second reads row {@code 1} and writes row {@code 2}. Both read before either writes, and both write before
+     * either commits, so the database meets the cycle with both transactions still open. A transaction that cannot
+     * write yet, as on a database that serializes with locks, releases the other one when it fails. On a database
+     * with {@linkplain #singleWriter() one writer at a time}, the second transaction writes once the first one
+     * committed.
+     */
+    private List<WriteSkewOutcome> runWriteSkew(ORMTemplate orm, int retries) throws InterruptedException {
+        boolean singleWriter = singleWriter();
+        var firstCommitted = new CountDownLatch(1);
+        List<CountDownLatch> written = List.of(new CountDownLatch(1), new CountDownLatch(1));
+        List<AtomicInteger> attempts = List.of(new AtomicInteger(), new AtomicInteger());
+        List<AtomicInteger> bodies = List.of(new AtomicInteger(), new AtomicInteger());
+        var outcomes = runConcurrently(new TransactionOptions(REQUIRED, SERIALIZABLE, TIMEOUT_SECONDS, false), retries,
+                (transaction, rendezvous) -> {
+                    boolean first = attempts.get(0).incrementAndGet() == 1;
+                    transaction.onCommit(firstCommitted::countDown);
+                    amount(orm, 2);
+                    rendezvous.await();
+                    try {
+                        add(orm, 1, 1);
+                    } finally {
+                        written.get(0).countDown();
+                    }
+                    if (first && !singleWriter) {
+                        awaitLatch(written.get(1), "The second transaction did not write.");
+                    }
+                    bodies.get(0).incrementAndGet();
+                },
+                (transaction, rendezvous) -> {
+                    boolean first = attempts.get(1).incrementAndGet() == 1;
+                    amount(orm, 1);
+                    rendezvous.await();
+                    if (first && singleWriter) {
+                        awaitLatch(firstCommitted, "The first transaction did not commit.");
+                    }
+                    try {
+                        add(orm, 2, 10);
+                    } finally {
+                        written.get(1).countDown();
+                    }
+                    if (first && !singleWriter) {
+                        awaitLatch(written.get(0), "The first transaction did not write.");
+                    }
+                    bodies.get(1).incrementAndGet();
+                });
+        List<WriteSkewOutcome> result = new ArrayList<>();
+        for (int index = 0; index < outcomes.size(); index++) {
+            result.add(new WriteSkewOutcome(outcomes.get(index), bodies.get(index).get()));
+        }
+        return result;
+    }
+
+    private static void awaitLatch(CountDownLatch latch, String message)
+            throws InterruptedException, TimeoutException {
+        if (!latch.await(TIMEOUT_SECONDS, SECONDS)) {
+            throw new TimeoutException(message);
+        }
     }
 
     @Test

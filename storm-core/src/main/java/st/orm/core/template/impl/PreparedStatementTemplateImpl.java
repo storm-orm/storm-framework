@@ -18,6 +18,7 @@ package st.orm.core.template.impl;
 import static java.util.Objects.requireNonNullElseGet;
 import static st.orm.core.spi.Providers.getSqlDialect;
 import static st.orm.core.template.SqlTemplate.PS;
+import static st.orm.core.template.impl.ExceptionHelper.getCommitExceptionTransformer;
 import static st.orm.core.template.impl.ExceptionHelper.getExceptionTransformer;
 import static st.orm.core.template.impl.LazySupplier.lazy;
 import static st.orm.core.template.impl.RecordValidation.validate;
@@ -356,6 +357,8 @@ public final class PreparedStatementTemplateImpl implements PreparedStatementTem
         var connectionProvider = strategies.connectionProvider();
         assert connectionProvider != null;
         var transactionTemplateProvider = strategies.transactionTemplateProvider();
+        // A transaction this template opens commits through the template's dialect and exception mapper.
+        var commitExceptionTransformer = getCommitExceptionTransformer(dialect, strategies.exceptionMapper());
         return (sql, unsafe) -> {
             if (!unsafe) {
                 sql.unsafeWarning().ifPresent(warning -> {
@@ -367,7 +370,7 @@ public final class PreparedStatementTemplateImpl implements PreparedStatementTem
             var bindVariables = sql.bindVariables().orElse(null);
             var generatedKeys = sql.generatedKeys();
             var transactionContext = TransactionScope.resolveContext(transactionTemplateProvider,
-                    strategies.queryObserver());
+                    strategies.queryObserver(), commitExceptionTransformer);
             refuseWriteInReadOnlyTransaction(sql, transactionContext);
             Connection connection = connectionProvider.getConnection(dataSource, transactionContext);
             PreparedStatement preparedStatement = null;

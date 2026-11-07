@@ -20,9 +20,11 @@ package st.orm;
  * lock conflict. Running the whole transaction again may succeed.
  *
  * <p>The database failures of this type are the ones on which the database gave up the transaction's work because
- * another transaction conflicted with it; the dialect classifies them from the error the database reports. A failure
- * after which the outcome of the transaction is unknown, such as a lost connection or a failed commit, is not of this
- * type, and neither is a lock wait timeout, which some databases answer by rolling back only the statement.</p>
+ * another transaction conflicted with it; the dialect classifies them from the error the database reports, whether a
+ * statement reports it or the commit does, as a database that detects a serialization conflict only when the
+ * transaction commits reports it. A failure after which the outcome of the transaction is unknown, a lost connection,
+ * including one lost during the commit, is not of this type, and neither is a lock wait timeout, which some databases
+ * answer by rolling back only the statement.</p>
  *
  * <p>Rerun the transaction, never the statement alone: the transaction the failure occurred in cannot commit the work
  * it did. A rerun repeats every side effect of the transactional block, so an effect outside the database belongs in

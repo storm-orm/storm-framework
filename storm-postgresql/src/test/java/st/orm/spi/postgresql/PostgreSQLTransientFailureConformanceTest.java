@@ -56,4 +56,13 @@ public class PostgreSQLTransientFailureConformanceTest extends AbstractTransient
     protected List<String> lockWaitTimeoutStatements() {
         return List.of("SET LOCAL lock_timeout = '1s'", "UPDATE " + TABLE + " SET amount = amount + 1 WHERE id = 1");
     }
+
+    /**
+     * PostgreSQL tracks the rows a serializable transaction read and detects the read/write dependency cycle when the
+     * first of the two transactions commits: the commit of the second fails with a serialization failure.
+     */
+    @Override
+    protected WriteSkewReport writeSkewReport() {
+        return WriteSkewReport.COMMIT;
+    }
 }

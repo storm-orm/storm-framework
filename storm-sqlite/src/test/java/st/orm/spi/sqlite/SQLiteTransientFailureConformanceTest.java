@@ -48,4 +48,13 @@ public class SQLiteTransientFailureConformanceTest extends AbstractTransientFail
     protected List<String> lockWaitTimeoutStatements() {
         return List.of("UPDATE " + TABLE + " SET amount = amount + 1 WHERE id = 1");
     }
+
+    /**
+     * SQLite has one writer at a time: the second transaction writes once the first one committed, and its write
+     * fails, as its snapshot is older than the first one's commit.
+     */
+    @Override
+    protected WriteSkewReport writeSkewReport() {
+        return WriteSkewReport.STATEMENT;
+    }
 }

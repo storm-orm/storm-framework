@@ -15,10 +15,13 @@
  */
 package st.orm.core.spi;
 
+import static java.util.Objects.requireNonNull;
+
 import java.util.Collections;
 import java.util.IdentityHashMap;
 import java.util.Set;
 import java.util.function.Consumer;
+import java.util.function.Function;
 import org.jspecify.annotations.Nullable;
 import st.orm.PersistenceException;
 import st.orm.TransactionOptions;
@@ -119,24 +122,22 @@ public final class TransactionScope {
      * provider's own current context is returned, which covers externally managed transactions.</p>
      *
      * @param provider the transaction template provider of the executing template.
+     * @param queryObserver the query observer of the executing template, or {@code null} to observe nothing.
+     * @param commitExceptionTransformer maps a failure of the commit of a transaction the template opens to the
+     *                                   exception thrown to the caller, as the template maps a statement's failure.
      * @return the transaction context to execute under, or {@code null} when no transaction is active.
      * @throws PersistenceException if the active scope is owned by a different provider.
+     * @since 1.16
      */
-    public static @Nullable TransactionContext resolveContext(TransactionTemplateProvider provider,
-                                                               @Nullable QueryObserver queryObserver) {
+    public static @Nullable TransactionContext resolveContext(
+            TransactionTemplateProvider provider,
+            @Nullable QueryObserver queryObserver,
+            Function<Throwable, RuntimeException> commitExceptionTransformer) {
         var scope = current();
         if (scope != null) {
-            return scope.getOrMaterializeContext(provider, queryObserver);
+            return scope.getOrMaterializeContext(provider, queryObserver, commitExceptionTransformer);
         }
         return provider.getTransactionTemplate().currentContext().orElse(null);
-    }
-
-    /**
-     * Resolves the transaction context without a query observer; physical transactions opened through this
-     * path are not observed.
-     */
-    public static @Nullable TransactionContext resolveContext(TransactionTemplateProvider provider) {
-        return resolveContext(provider, null);
     }
 
     /**
@@ -183,6 +184,8 @@ public final class TransactionScope {
 
     private volatile @Nullable TransactionTemplateProvider owner;
     private volatile @Nullable TransactionHandle handle;
+    // Set with the handle, by the template that materialized the scope; guarded by this.
+    private @Nullable Function<Throwable, RuntimeException> commitExceptionTransformer;
     private QueryObserver.@Nullable TransactionObservation observation;
     private boolean rollbackOnly;       // Buffered until materialization; guarded by this.
     private boolean rollbackInherited;  // Set when the mark came from a joined inner scope; guarded by this.
@@ -304,28 +307,23 @@ public final class TransactionScope {
     }
 
     /**
-     * Returns the transaction context of this scope, materializing it through the given provider if needed.
-     *
-     * @param provider the transaction template provider of the executing template.
-     * @return the transaction context of this scope.
-     * @throws PersistenceException if this scope, or an outer scope it must join, is owned by a different provider.
-     */
-    public synchronized TransactionContext getOrMaterializeContext(TransactionTemplateProvider provider) {
-        return getOrMaterializeContext(provider, null);
-    }
-
-    /**
      * Returns the transaction context of this scope, materializing it through the given provider if needed and
      * reporting a newly opened physical transaction to the given query observer.
      *
+     * <p>The scope keeps the given transformer when it materializes, and so does every enclosing scope it
+     * materializes with it: a failure of the commit is mapped by the template that opened the transaction.</p>
+     *
      * @param provider the transaction template provider of the executing template.
      * @param queryObserver the query observer of the executing template, or {@code null} to observe nothing.
+     * @param commitExceptionTransformer maps a failure of the commit to the exception thrown to the caller.
      * @return the transaction context of this scope.
      * @throws PersistenceException if this scope, or an outer scope it must join, is owned by a different provider.
-     * @since 1.13
+     * @since 1.16
      */
-    public synchronized TransactionContext getOrMaterializeContext(TransactionTemplateProvider provider,
-                                                                   @Nullable QueryObserver queryObserver) {
+    public synchronized TransactionContext getOrMaterializeContext(
+            TransactionTemplateProvider provider,
+            @Nullable QueryObserver queryObserver,
+            Function<Throwable, RuntimeException> commitExceptionTransformer) {
         var existingHandle = handle;
         if (existingHandle != null) {
             if (owner != provider) {
@@ -337,7 +335,9 @@ public final class TransactionScope {
         // place before this scope opens. This preserves the semantics of eagerly entered transaction blocks: joining
         // propagations share the outer transaction, MANDATORY finds it, NEVER detects it, and REQUIRES_NEW suspends
         // it. The provider-identity check happens naturally in the ancestor's own materialization.
-        TransactionContext outerContext = parent != null ? parent.getOrMaterializeContext(provider, queryObserver) : null;
+        TransactionContext outerContext = parent != null
+                ? parent.getOrMaterializeContext(provider, queryObserver, commitExceptionTransformer)
+                : null;
         var template = provider.getTransactionTemplate();
         if (options.propagation() != null) {
             template = template.propagation(options.propagation());
@@ -357,6 +357,7 @@ public final class TransactionScope {
             newHandle.status().setRollbackOnly();
         }
         this.owner = provider;
+        this.commitExceptionTransformer = commitExceptionTransformer;
         this.handle = newHandle;
         if (cancelled) {
             // Cancelled before its first statement: the frame refuses it. Nothing runs yet, so nothing waits on the
@@ -550,6 +551,11 @@ public final class TransactionScope {
      * When the scope was never materialized this is a no-op, except that a rollback outcome is propagated to the
      * parent scope when this scope's propagation joins the outer transaction.</p>
      *
+     * <p>A failure of the commit passes the exception transformer of the template that materialized the scope, as
+     * a failure of one of its statements does: the dialect classifies it, a transient one is recorded on the scope
+     * current on this thread, and the template's exception mapper decides the exception thrown. A failure of a
+     * rollback, and an {@link Error}, are thrown unmapped.</p>
+     *
      * <p>This method does not uninstall the scope from the current thread; callers opened via {@link #open(TransactionOptions, boolean)}
      * must additionally call {@link #close()}.</p>
      *
@@ -565,7 +571,10 @@ public final class TransactionScope {
                 currentHandle.complete(rollback);
             } catch (Throwable completionFailure) {
                 closeObservation(currentObservation, true, completionFailure);
-                throw completionFailure;
+                if (rollback || completionFailure instanceof Error) {
+                    throw completionFailure;
+                }
+                throw requireNonNull(commitExceptionTransformer).apply(completionFailure);
             }
             closeObservation(currentObservation, rollback || rollbackOnly, null);
             return;

@@ -109,4 +109,13 @@ public class MSSQLServerTransientFailureConformanceTest extends AbstractTransien
             return connection;
         }
     }
+
+    /**
+     * SQL Server serializes with locks: a serializable read takes a shared range lock, so each write waits for the
+     * lock the other transaction's read holds, and the database ends one of them at that statement as a deadlock.
+     */
+    @Override
+    protected WriteSkewReport writeSkewReport() {
+        return WriteSkewReport.STATEMENT;
+    }
 }

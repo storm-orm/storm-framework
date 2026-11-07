@@ -71,4 +71,13 @@ public class MariaDBTransientFailureConformanceTest extends AbstractTransientFai
     public void aWriteConflictWithTheSnapshotIsTransient() throws Exception {
         assertOneSerializationFailure(dataSource, new TransactionOptions(REQUIRED, REPEATABLE_READ, 60, false));
     }
+
+    /**
+     * MariaDB serializes with locks: a serializable read takes a shared lock, so each write waits for the lock the
+     * other transaction's read holds, and the database ends one of them at that statement as a deadlock.
+     */
+    @Override
+    protected WriteSkewReport writeSkewReport() {
+        return WriteSkewReport.STATEMENT;
+    }
 }

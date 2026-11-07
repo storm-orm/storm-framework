@@ -101,15 +101,37 @@ public final class ExceptionHelper {
                 template.transactionTemplateProvider());
     }
 
+    /**
+     * Returns a transformer that maps a failure of a transaction's commit to the exception thrown to the caller via
+     * the given exception mapper, as a statement's failure is mapped: the dialect classifies the failure, under the
+     * same guard against a lost connection, and a failure classified transient is recorded on the active transaction
+     * scope. A database that detects a serialization conflict only when the transaction commits reports it here.
+     *
+     * <p>The mapper receives no statement and no transaction description: the transaction has completed by the time
+     * its commit fails.</p>
+     *
+     * @param dialect the dialect of the template that opened the transaction, which classifies the failure.
+     * @param exceptionMapper the exception mapper configured on that template.
+     * @return the exception transformer.
+     * @since 1.16
+     */
+    public static Function<Throwable, RuntimeException> getCommitExceptionTransformer(
+            SqlDialect dialect,
+            ExceptionMapper exceptionMapper) {
+        return getExceptionTransformer(SqlOperation.UNDEFINED, null, null, dialect, exceptionMapper, null);
+    }
+
     private static Function<Throwable, RuntimeException> getExceptionTransformer(
             SqlOperation operation,
             @Nullable Class<? extends Data> dataType,
             @Nullable Sql sql,
             SqlDialect dialect,
             ExceptionMapper exceptionMapper,
-            TransactionTemplateProvider transactionTemplateProvider) {
+            @Nullable TransactionTemplateProvider transactionTemplateProvider) {
         return e -> {
-            String transactionDescription = currentTransactionDescription(transactionTemplateProvider);
+            String transactionDescription = transactionTemplateProvider != null
+                    ? currentTransactionDescription(transactionTemplateProvider)
+                    : null;
             if (sql != null) {
                 e.addSuppressed(new SqlTemplateException(buildSqlDetail(sql, transactionDescription)));
             }
