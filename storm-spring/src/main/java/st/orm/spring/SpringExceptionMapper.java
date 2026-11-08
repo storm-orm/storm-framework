@@ -34,6 +34,7 @@ import org.springframework.jdbc.UncategorizedSQLException;
 import org.springframework.jdbc.support.SQLErrorCodeSQLExceptionTranslator;
 import org.springframework.jdbc.support.SQLExceptionSubclassTranslator;
 import org.springframework.jdbc.support.SQLExceptionTranslator;
+import org.springframework.util.ClassUtils;
 import st.orm.IllegalTransactionStateException;
 import st.orm.IntegrityViolation;
 import st.orm.IntegrityViolationException;
@@ -89,6 +90,9 @@ import st.orm.spi.ExceptionMapper;
  */
 public class SpringExceptionMapper implements ExceptionMapper {
 
+    private static final boolean WEB_PRESENT =
+            ClassUtils.isPresent("org.springframework.web.ErrorResponse", SpringExceptionMapper.class.getClassLoader());
+
     private final SQLExceptionTranslator translator;
 
     /**
@@ -112,11 +116,7 @@ public class SpringExceptionMapper implements ExceptionMapper {
         SQLException sqlException = findSqlException(cause);
         if (sqlException == null || cause instanceof IntegrityViolationException) {
             return switch (cause) {
-                case IntegrityViolationException violation
-                        when violation.violations().getFirst() instanceof IntegrityViolation.Unique ->
-                        new DuplicateKeyException(violation.getMessage(), violation);
-                case IntegrityViolationException violation ->
-                        new DataIntegrityViolationException(violation.getMessage(), violation);
+                case IntegrityViolationException violation -> translated(violation);
                 case OptimisticLockException conflict ->
                         new OptimisticLockingFailureException(conflict.getMessage(), conflict);
                 case TransientPersistenceException transientFailure ->
@@ -154,6 +154,24 @@ public class SpringExceptionMapper implements ExceptionMapper {
             }
         }
         return translated;
+    }
+
+    /**
+     * Returns the translation of the violation: with spring-web on the classpath a type that also carries the status
+     * the violation answers a web client with, and otherwise the plain type.
+     */
+    private static DataAccessException translated(IntegrityViolationException violation) {
+        return WEB_PRESENT ? IntegrityViolationResponses.translated(violation) : plain(violation);
+    }
+
+    /**
+     * Returns the translation of the violation without a status: {@code DuplicateKeyException} for a unique violation
+     * and {@code DataIntegrityViolationException} for the other kinds.
+     */
+    static DataAccessException plain(IntegrityViolationException violation) {
+        return violation.violations().getFirst() instanceof IntegrityViolation.Unique
+                ? new DuplicateKeyException(violation.getMessage(), violation)
+                : new DataIntegrityViolationException(violation.getMessage(), violation);
     }
 
     /**

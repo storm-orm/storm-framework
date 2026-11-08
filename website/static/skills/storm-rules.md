@@ -88,7 +88,7 @@ Every rule has one authority and is checked there, once.
 - **Never restate a column limit in an annotation.** `validate(entity)` returns every value that does not fit its column and `validateOrThrow(entity)` throws them. Both use the schema loaded at startup. Call them where every problem should be shown at once; a write does not call them.
 - **Never run an exists-query before an insert.** It races. Declare the constraint and insert.
 - **Handle the answer as `IntegrityViolationException`**, matching the sealed `IntegrityViolation` record and the metamodel field: `e.violations(Owner_.telephone).any { it is Unique }`, never a vendor error code or message. Under the Spring starters it is the cause of a `DataIntegrityViolationException`.
-- **A conflict with other rows (`Unique`, `ForeignKey`, `Referenced`) is a 409; a value that breaks its own rule is a 400.**
+- **A conflict with other rows (`Unique`, `ForeignKey`, `Referenced`) is a 409; a value that breaks its own rule is a 400; a null the database refused is a 500.** Spring MVC applies these without code; a handler is only for field errors in the body. Ktor: `install(StatusPages) { stormIntegrityViolations() }`.
 
 ### Query and Template Rules
 

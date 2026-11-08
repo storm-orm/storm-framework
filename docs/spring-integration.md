@@ -647,6 +647,69 @@ The failures Storm's own logic detects translate to the types Spring's other dat
 
 An [`IntegrityViolationException`](error-handling.md#integrity-violations), a value that breaks a rule of its table, translates to `DuplicateKeyException` for a `Unique` violation and to `DataIntegrityViolationException` for the other kinds, whether the database refused the write or `validateOrThrow` found the violation first. The Storm exception stays the cause, so a handler reads the violations and the fields they resolve to from `getCause()`.
 
+With spring-web on the classpath, each of these also implements `ErrorResponse`, so Spring MVC answers the client without application code: 400 for a value that breaks a rule of its own, which is anything found before the write and a length, numeric range or check the database refused, and 409 for a duplicate, a missing parent row or a row still referenced. A null the database refused keeps the plain type and answers 500, as any unhandled failure does: the field is nullable where the column is not, which schema validation reports. The response names no table, constraint or statement. An `@ExceptionHandler` of the application takes precedence, and service code catches the same types as before.
+
+The status comes by itself; a body that lists the fields is the application's:
+
+<Tabs groupId="language">
+<TabItem value="kotlin" label="Kotlin" default>
+
+```kotlin
+data class FieldError(val fields: List<String>, val kind: String?, val maxLength: Int?)
+
+@RestControllerAdvice
+class ViolationHandler {
+
+    @ExceptionHandler(DataIntegrityViolationException::class)
+    fun handle(exception: DataIntegrityViolationException): ProblemDetail {
+        val cause = exception.cause
+        if (exception !is ErrorResponse || cause !is IntegrityViolationException) {
+            throw exception
+        }
+        return exception.body.apply {
+            setProperty("errors", cause.violations().map { violation ->
+                FieldError(violation.fields().map { it.fieldPath() }, violation::class.simpleName, (violation as? Length)?.maxLength())
+            })
+        }
+    }
+}
+```
+
+</TabItem>
+<TabItem value="java" label="Java">
+
+```java
+public record FieldError(List<String> fields, String kind, @Nullable Integer maxLength) {
+
+    static FieldError of(IntegrityViolation violation) {
+        return new FieldError(
+                violation.fields().stream().map(Metamodel::fieldPath).toList(),
+                violation.getClass().getSimpleName(),
+                violation instanceof Length length ? length.maxLength() : null);
+    }
+}
+
+@RestControllerAdvice
+class ViolationHandler {
+
+    @ExceptionHandler(DataIntegrityViolationException.class)
+    ProblemDetail handle(DataIntegrityViolationException exception) {
+        if (!(exception instanceof ErrorResponse response)
+                || !(exception.getCause() instanceof IntegrityViolationException cause)) {
+            throw exception;
+        }
+        ProblemDetail problem = response.getBody();
+        problem.setProperty("errors", cause.violations().stream().map(FieldError::of).toList());
+        return problem;
+    }
+}
+```
+
+</TabItem>
+</Tabs>
+
+Field names are the entity's paths; where the request body has another shape, map them here.
+
 The exceptions of Storm's transaction API stay Storm types: `TransactionTimedOutException`, `IllegalTransactionStateException`, `UnexpectedRollbackException`, `ReadOnlyTransactionException` and `TransactionCallbackException`. A `transaction` block raises them itself, also when Spring manages the transaction, so a statement that detects one raises the same type. A retry setup that should retry optimistic lock failures as well as transient ones names the Spring types alone:
 
 ```kotlin

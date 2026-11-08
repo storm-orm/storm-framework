@@ -245,7 +245,7 @@ The kind is read from the error code or SQL state, which a database keeps stable
 
 The database refuses a write for one constraint at a time, so a violation it reports comes alone. A constraint the database checks at commit, a deferred constraint, is reported from the commit, with the kind and the constraint and no fields. One violation is found before any statement runs: a null in a field whose column refuses it, which Storm has always refused when it reads the entity's values for a write, is reported as a `NotNull` violation on the field. That is the type-based guard, not `validate`; a write never checks lengths or precision.
 
-The same exception passes through the template's exception mapper like any failure the database reported, so a mapper translates it to its own type; the [Spring integration](spring-integration.md#exception-translation) translates a `UNIQUE` violation to `DuplicateKeyException` and the other kinds to `DataIntegrityViolationException`.
+The same exception passes through the template's exception mapper like any failure the database reported, so a mapper translates it to its own type; the [Spring integration](spring-integration.md#exception-translation) translates a `UNIQUE` violation to `DuplicateKeyException` and the other kinds to `DataIntegrityViolationException`. At a web endpoint a violation answers with a status that says whose fault it is: see [In a Web Application](data-validation.md#in-a-web-application).
 
 ### Checking an Entity Before the Write
 

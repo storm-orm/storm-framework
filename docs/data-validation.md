@@ -217,10 +217,18 @@ A limit is known when `validate` found the violation; the database does not repo
 
 ## In a Web Application
 
-The response status says whose fault the failure is. A value that breaks a rule of its own, such as one too long, is the client's to correct: 400. A conflict with other rows, such as a duplicate or a reference to a row that does not exist, is a 409.
+A violation that reaches a Spring or Ktor endpoint answers the client with a status that says whose fault it is:
 
-- **Spring Boot:** a `Unique` violation translates to `DuplicateKeyException` and the other kinds to `DataIntegrityViolationException`, the first extending the second. A handler for `DataIntegrityViolationException` reads the violations from `getCause()`.
-- **Ktor:** a `StatusPages` handler for `IntegrityViolationException` covers every kind. See [Error Handling](ktor-integration.md#error-handling).
+| Violation | Status |
+|---|---|
+| A value that breaks a rule of its own: anything found before the write, and a length, numeric range or check the database refused | 400 |
+| A conflict with other rows: a duplicate, a reference to a row that does not exist, a row still referenced | 409 |
+| A null the database refused: the field is nullable where the column is not, which schema validation reports | 500 |
+
+No response names a table, a constraint or a statement.
+
+- **Spring Boot** applies the status without application code. A handler of your own adds the field errors. See [Exception Translation](spring-integration.md#exception-translation).
+- **Ktor** answers with the status and the field errors from one line in `StatusPages`. See [Error Handling](ktor-integration.md#error-handling).
 
 ---
 

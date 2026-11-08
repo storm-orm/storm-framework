@@ -104,65 +104,46 @@ const ROUTE_KTOR = [
 ].join('');
 
 const HANDLER_SPRING_KT = [
-  K('data'), P(' '), K('class'), P(' '), T('Problem'), P('('), K('val'), P(' field: '), T('String'),
-  P(', '), K('val'), P(' kind: '), T('String'), P('?, '), K('val'), P(' limit: '), T('Int'), P('?)\n\n'),
+  K('data'), P(' '), K('class'), P(' '), T('FieldError'), P('('), K('val'), P(' fields: '), T('List'),
+  P('<'), T('String'), P('>, '), K('val'), P(' kind: '), T('String'), P('?, '), K('val'), P(' maxLength: '),
+  T('Int'), P('?)\n\n'),
   A('@RestControllerAdvice'), P('\n'),
   K('class'), P(' '), T('ViolationHandler'), P(' {\n\n    '), A('@ExceptionHandler'), P('('), T('DataIntegrityViolationException'),
   P('::'), K('class'), P(')\n    '), K('fun'), P(' '), F('handle'), P('(exception: '), T('DataIntegrityViolationException'),
-  P('): '), T('ResponseEntity'), P('<'), T('List'), P('<'), T('Problem'), P('>> {\n        '),
-  K('val'), P(' violations = (exception.cause '), K('as'), P('? '), T('IntegrityViolationException'),
-  P(')?.'), F('violations'), P('() ?: '), K('throw'), P(' exception\n        '), K('val'), P(' conflict = violations.any { it '),
-  K('is'), P(' '), T('Unique'), P(' || it '), K('is'), P(' '), T('ForeignKey'), P(' || it '), K('is'),
-  P(' '), T('Referenced'), P(' }\n        '), K('return'), P(' '), T('ResponseEntity'), P('\n            .'),
-  F('status'), P('('), K('if'), P(' (conflict) '), T('HttpStatus'), P('.'), T('CONFLICT'), P(' '),
-  K('else'), P(' '), T('HttpStatus'), P('.'), T('BAD_REQUEST'), P(')\n            .'), F('body'),
-  P('(violations.map { violation ->\n                '), T('Problem'), P('(\n                    field = violation.'),
-  F('fields'), P('().joinToString { it.'), F('fieldPath'), P('() },\n                    kind = violation::'),
-  K('class'), P('.simpleName,\n                    limit = (violation '), K('as'), P('? '), T('Length'),
-  P(')?.'), F('maxLength'), P('(),\n                )\n            })\n    }\n}'),
+  P('): '), T('ProblemDetail'), P(' {\n        '), K('val'), P(' cause = exception.cause\n        '),
+  K('if'), P(' (exception !'), K('is'), P(' '), T('ErrorResponse'), P(' || cause !'), K('is'),
+  P(' '), T('IntegrityViolationException'), P(') {\n            '), K('throw'), P(' exception\n        }\n        '),
+  K('return'), P(' exception.body.apply {\n            '), F('setProperty'), P('('), S('"errors"'),
+  P(', cause.'), F('violations'), P('().map { violation ->\n                '), T('FieldError'),
+  P('(violation.'), F('fields'), P('().map { it.'), F('fieldPath'), P('() }, violation::'), K('class'),
+  P('.simpleName, (violation '), K('as'), P('? '), T('Length'), P(')?.'), F('maxLength'), P('())\n            })\n        }\n    }\n}'),
 ].join('');
 
 const HANDLER_SPRING_JAVA = [
-  K('public'), P(' '), K('record'), P(' '), T('Problem'), P('('), T('String'), P(' field, '), T('String'),
-  P(' kind, '), A('@Nullable'), P(' '), T('Integer'), P(' limit) {\n\n    '), K('static'), P(' '),
-  T('Problem'), P(' '), F('of'), P('('), T('IntegrityViolation'), P(' violation) {\n        '),
-  K('return'), P(' '), K('new'), P(' '), T('Problem'), P('(\n                violation.'), F('fields'),
-  P('().'), F('stream'), P('().'), F('map'), P('('), T('Metamodel'), P('::fieldPath).'), F('collect'),
-  P('('), F('joining'), P('('), S('", "'), P(')),\n                violation.'), F('getClass'),
-  P('().'), F('getSimpleName'), P('(),\n                violation '), K('instanceof'), P(' '),
-  T('Length'), P(' length ? length.'), F('maxLength'), P('() : '), K('null'), P(');\n    }\n}\n\n'),
+  K('public'), P(' '), K('record'), P(' '), T('FieldError'), P('('), T('List'), P('<'), T('String'),
+  P('> fields, '), T('String'), P(' kind, '), A('@Nullable'), P(' '), T('Integer'), P(' maxLength) {\n\n    '),
+  K('static'), P(' '), T('FieldError'), P(' '), F('of'), P('('), T('IntegrityViolation'), P(' violation) {\n        '),
+  K('return'), P(' '), K('new'), P(' '), T('FieldError'), P('(\n                violation.'), F('fields'),
+  P('().'), F('stream'), P('().'), F('map'), P('('), T('Metamodel'), P('::fieldPath).'), F('toList'),
+  P('(),\n                violation.'), F('getClass'), P('().'), F('getSimpleName'), P('(),\n                violation '),
+  K('instanceof'), P(' '), T('Length'), P(' length ? length.'), F('maxLength'), P('() : '), K('null'),
+  P(');\n    }\n}\n\n'),
   A('@RestControllerAdvice'), P('\n'),
   K('class'), P(' '), T('ViolationHandler'), P(' {\n\n    '), A('@ExceptionHandler'), P('('), T('DataIntegrityViolationException'),
-  P('.'), K('class'), P(')\n    '), T('ResponseEntity'), P('<'), T('List'), P('<'), T('Problem'),
-  P('>> '), F('handle'), P('('), T('DataIntegrityViolationException'), P(' exception) {\n        '),
-  K('if'), P(' (!(exception.'), F('getCause'), P('() '), K('instanceof'), P(' '), T('IntegrityViolationException'),
-  P(' cause)) {\n            '), K('throw'), P(' exception;\n        }\n        '), K('boolean'),
-  P(' conflict = cause.'), F('violations'), P('().'), F('stream'), P('()\n                .'),
-  F('anyMatch'), P('(v -> v '), K('instanceof'), P(' '), T('Unique'), P(' || v '), K('instanceof'),
-  P(' '), T('ForeignKey'), P(' || v '), K('instanceof'), P(' '), T('Referenced'), P(');\n        '),
-  K('return'), P(' '), T('ResponseEntity'), P('\n                .'), F('status'), P('(conflict ? '),
-  T('HttpStatus'), P('.'), T('CONFLICT'), P(' : '), T('HttpStatus'), P('.'), T('BAD_REQUEST'),
-  P(')\n                .'), F('body'), P('(cause.'), F('violations'), P('().'), F('stream'), P('().'),
-  F('map'), P('('), T('Problem'), P('::of).'), F('toList'), P('());\n    }\n}'),
+  P('.'), K('class'), P(')\n    '), T('ProblemDetail'), P(' '), F('handle'), P('('), T('DataIntegrityViolationException'),
+  P(' exception) {\n        '), K('if'), P(' (!(exception '), K('instanceof'), P(' '), T('ErrorResponse'),
+  P(' response)\n                || !(exception.'), F('getCause'), P('() '), K('instanceof'), P(' '),
+  T('IntegrityViolationException'), P(' cause)) {\n            '), K('throw'), P(' exception;\n        }\n        '),
+  T('ProblemDetail'), P(' problem = response.'), F('getBody'), P('();\n        problem.'), F('setProperty'),
+  P('('), S('"errors"'), P(', cause.'), F('violations'), P('().'), F('stream'), P('().'), F('map'),
+  P('('), T('FieldError'), P('::of).'), F('toList'), P('());\n        '), K('return'), P(' problem;\n    }\n}'),
 ].join('');
 
 const HANDLER_KTOR = [
-  A('@Serializable'), P('\n'),
-  K('data'), P(' '), K('class'), P(' '), T('Problem'), P('('), K('val'), P(' field: '), T('String'),
-  P(', '), K('val'), P(' kind: '), T('String'), P('?, '), K('val'), P(' limit: '), T('Int'), P('?)\n\n'),
   K('fun'), P(' '), T('Application'), P('.'), F('violationPages'), P('() {\n    '), F('install'),
-  P('('), T('StatusPages'), P(') {\n        '), F('exception'), P('<'), T('RequestValidationException'),
-  P('> { call, cause ->\n            call.'), F('respond'), P('('), T('HttpStatusCode'), P('.'),
-  T('BadRequest'), P(', cause.reasons)\n        }\n        '), F('exception'), P('<'), T('IntegrityViolationException'),
-  P('> { call, cause ->\n            '), K('val'), P(' conflict = cause.'), F('violations'), P('().any { it '),
-  K('is'), P(' '), T('Unique'), P(' || it '), K('is'), P(' '), T('ForeignKey'), P(' || it '), K('is'),
-  P(' '), T('Referenced'), P(' }\n            call.'), F('respond'), P('(\n                '),
-  K('if'), P(' (conflict) '), T('HttpStatusCode'), P('.'), T('Conflict'), P(' '), K('else'), P(' '),
-  T('HttpStatusCode'), P('.'), T('BadRequest'), P(',\n                cause.'), F('violations'),
-  P('().map { violation ->\n                    '), T('Problem'), P('(\n                        field = violation.'),
-  F('fields'), P('().joinToString { it.'), F('fieldPath'), P('() },\n                        kind = violation::'),
-  K('class'), P('.simpleName,\n                        limit = (violation '), K('as'), P('? '),
-  T('Length'), P(')?.'), F('maxLength'), P('(),\n                    )\n                },\n            )\n        }\n    }\n}'),
+  P('('), T('StatusPages'), P(') {\n        '), F('stormIntegrityViolations'), P('()\n        '),
+  F('exception'), P('<'), T('RequestValidationException'), P('> { call, cause ->\n            call.'),
+  F('respond'), P('('), T('HttpStatusCode'), P('.'), T('BadRequest'), P(', cause.reasons)\n        }\n    }\n}'),
 ].join('');
 
 const BODY = `
@@ -208,23 +189,24 @@ ${navHtml('tutorials')}
   <h2><span class="hno">05</span>The duplicate</h2>
   <p>The route has no query asking whether the number is taken. Two requests could both get the answer no and both insert. The unique constraint lets exactly one through, so the insert runs and the database decides. Storm reads the refusal and states it in terms of the entity: a <code>Unique</code> violation on the <code>telephone</code> field.</p>
 
-  <h2><span class="hno">06</span>One handler</h2>
-  <p>A violation has the same shape whether <code>validateOrThrow</code> found it or the database reported it, so one handler answers both. The status says whose fault it is: a conflict with other rows is a 409, and a value that breaks a rule of its own is a 400.</p>
+  <h2><span class="hno">06</span>The answer to the client</h2>
+  <p>A violation has the same shape whether <code>validateOrThrow</code> found it or the database reported it, and the status says whose fault it is: a conflict with other rows is a 409, and a value that breaks a rule of its own is a 400. With the Spring Boot starter the status needs no code at all, and a handler only adds the fields. In Ktor, one line answers with both:</p>
   ${editor({variants: [
     {label: 'Spring · Kotlin', file: 'ViolationHandler.kt', tag: 'Kotlin · Spring', code: HANDLER_SPRING_KT, selected: true},
     {label: 'Spring · Java', file: 'ViolationHandler.java', tag: 'Java · Spring', code: HANDLER_SPRING_JAVA},
     {label: 'Ktor', file: 'StatusPages.kt', tag: 'Kotlin · Ktor', code: HANDLER_KTOR},
   ]})}
-  <p>With the Spring Boot starters, the exception arrives as Spring's <code>DataIntegrityViolationException</code>, or its subclass <code>DuplicateKeyException</code> for a <code>Unique</code> violation, with Storm's exception as the cause. In Ktor, it arrives as itself.</p>
+  <p>With the Spring Boot starter, the exception arrives as Spring's <code>DataIntegrityViolationException</code>, or its subclass <code>DuplicateKeyException</code> for a <code>Unique</code> violation, with Storm's exception as the cause. A service catches those types as usual.</p>
 
   <h2><span class="hno">07</span>What the client receives</h2>
   <table class="cmp">
     <tr><th>The form sent</th><th>Who answered</th><th>Response</th></tr>
     <tr><td>A blank first name</td><td>The request type</td><td>400 from the framework's validator</td></tr>
     <tr><td>A telephone number with letters</td><td>The request type</td><td>400 from the framework's validator</td></tr>
-    <tr><td>A first name of 31 characters</td><td><code>validateOrThrow</code></td><td>400 <code>[{"field":"firstName","kind":"Length","limit":30}]</code></td></tr>
-    <tr><td>A number another owner has</td><td>The database</td><td>409 <code>[{"field":"telephone","kind":"Unique","limit":null}]</code></td></tr>
+    <tr><td>A first name of 31 characters</td><td><code>validateOrThrow</code></td><td>400, with <code>fields: ["firstName"]</code>, <code>kind: "Length"</code> and <code>maxLength: 30</code></td></tr>
+    <tr><td>A number another owner has</td><td>The database</td><td>409, with <code>fields: ["telephone"]</code> and <code>kind: "Unique"</code></td></tr>
   </table>
+  <p>No response names a table, a constraint or a statement.</p>
 
   <h2><span class="hno">08</span>Keep going</h2>
   <p>The reference documentation covers the details:</p>
