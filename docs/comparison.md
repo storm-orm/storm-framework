@@ -56,6 +56,7 @@ _All comparisons on this page last reviewed 2026-07-15 against: Hibernate ORM 7.
 |---------|-------|-----|-------------|---------|------|------|--------|---------|-------|
 | Transactions | Both | Both | Declarative | Both | Programmatic | Both | Both | Both<sup>6</sup> | Required |
 | Schema validation | Yes | Yes | Via JPA | No | N/A<sup>5</sup> | No | No | Yes | No |
+| Database violation reported as | Typed, with fields<sup>12</sup> | Exception with constraint name (Hibernate) | Spring data access types | Wrapped driver exception | Exception with SQL state | Wrapped driver exception | Typed, with path | Wrapped driver exception | Driver exception |
 | Java support | Yes | Yes | Yes | Yes | Yes | Yes | Yes | No | No |
 | Kotlin support | First-class | Good | Good | Good | Good | Good | First-class | Native | Native |
 | Coroutines | Yes | No | No | No | No | No | No | Yes | Limited |
@@ -65,6 +66,8 @@ _All comparisons on this page last reviewed 2026-07-15 against: Hibernate ORM 7.
 | Community | New | Huge | Huge | Large | Medium | Medium | Small | Medium | Small |
 
 <sup>5</sup> jOOQ generates code from the database schema, so schema validation is inherent in its code generation step.
+
+<sup>12</sup> Storm reads column limits from the database schema for `validate`. A library that checks limits before the write declares them itself: on the entity, in a table definition, or in generated code.
 
 <sup>6</sup> Exposed requires `transaction {}` blocks natively, but supports declarative `@Transactional` via its Spring integration module.
 

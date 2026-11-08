@@ -648,7 +648,7 @@ Controls whether record (structural) validation runs when Storm first encounters
 
 ### storm.validation.schema_mode {#schema-validation}
 
-Controls whether schema validation runs at startup (Spring Boot and Ktor; for programmatic use, see [Validation](validation.md#programmatic-api)).
+Controls whether schema validation runs at startup (Spring Boot and Ktor; for programmatic use, see [Schema Validation](validation.md#programmatic-api)).
 
 | Value | Behavior |
 |-------|----------|
@@ -665,7 +665,7 @@ Validation runs after all singleton beans are initialized, so migrations execute
 
 When `true`, schema validation warnings (type narrowing, nullability mismatches, missing unique/foreign key constraints) are promoted to errors. This is useful in CI environments where any schema drift should be caught.
 
-See [Validation](validation.md) for a complete list of what each validation level checks.
+See [Schema Validation](validation.md) for a complete list of what each validation level checks.
 
 ---
 

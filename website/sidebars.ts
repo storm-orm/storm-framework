@@ -69,6 +69,7 @@ const sidebars: SidebarsConfig = {
             'polymorphism',
             'entity-lifecycle',
             'serialization',
+            'data-validation',
             'validation',
           ],
         },

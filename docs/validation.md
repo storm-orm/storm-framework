@@ -1,7 +1,9 @@
 import Tabs from '@theme/Tabs';
 import TabItem from '@theme/TabItem';
 
-# Validation
+# Schema Validation
+
+This page covers checking entity definitions against the database. To check the values an application writes, see [Validating Data](data-validation.md).
 
 Storm validates your entity and projection definitions at two levels: structural validation ensures your records follow the ORM's rules (valid primary key types, correct use of annotations, no circular dependencies), while schema validation compares your definitions against the actual database to catch mismatches before they surface as runtime errors.
 
@@ -61,7 +63,7 @@ storm:
 
 ---
 
-## Schema Validation
+## Schema Validation {#schema-validation}
 
 Schema validation compares your entity and projection definitions against the actual database schema. It catches mismatches before they surface as runtime errors, similar to Hibernate's `ddl-auto=validate`. Storm never modifies the schema; it only reports mismatches.
 

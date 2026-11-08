@@ -91,7 +91,7 @@ ${navHtml('tutorials')}
   <h2><span class="hno">05</span>Keep going</h2>
   <p>The reference documentation covers the details:</p>
   <div class="refs">
-    <a href="/docs/validation">Validation</a>
+    <a href="/docs/validation">Schema Validation</a>
     <a href="/docs/ktor-integration#schema-validation">Ktor Schema Validation</a>
     <a href="/docs/advice#loading-the-schema">Loading the Schema</a>
     <a href="/docs/testing">Testing</a>

@@ -198,6 +198,10 @@ Yes. Storm supports any type as a primary key, including `UUID`. When using UUID
 data class User(@PK val id: UUID = UUID.randomUUID(), val name: String) : Entity<UUID>
 ```
 
+### How do I validate input?
+
+Each rule has one home. Product rules go on the request type, invariants in the record's constructor, column limits stay in the schema and are checked with `validate` or `validateOrThrow`, and rules that depend on other rows stay in the database, which Storm reports as an `IntegrityViolationException` naming the kind and the field. See [Validating Data](data-validation.md).
+
 ---
 
 ## Data Classes

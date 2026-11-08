@@ -440,7 +440,7 @@ Each `V*__.sql` file contains the DDL for that migration step. Flyway runs them 
 
 ### Recommended Schema Validation Configuration
 
-Storm's schema validation (see [Validation](validation.md)) acts as a safety net that catches drift between your entity definitions and the actual database structure. Use different modes depending on the environment:
+Storm's schema validation (see [Schema Validation](validation.md)) acts as a safety net that catches drift between your entity definitions and the actual database structure. Use different modes depending on the environment:
 
 ```yaml
 # Development: warn on mismatches but allow startup
@@ -660,6 +660,68 @@ storm:
 ```
 
 This validates all entity definitions against the database schema at startup and blocks if any mismatches are found. See [Configuration: Schema Validation](configuration.md#schema-validation) for details on the checks performed, warning vs. error severity, strict mode, and `@DbIgnore` for suppressing known mismatches.
+
+## Bean Validation on Entities
+
+Hibernate runs Bean Validation on entities at flush. Storm has no flush and validates nothing on its own, so each annotation moves to where its rule belongs. See [Validating Data](data-validation.md).
+
+- **`@Valid` stays on the request type.** Required fields, formats and product limits are checked there, before an entity is built.
+- **`@Size` and `@Digits` that restate a column go away.** `validate` and `validateOrThrow` read the limits from the schema.
+- **An invariant moves to the record's constructor**, so an invalid entity cannot exist.
+
+To keep annotations on entities during a migration, a short `EntityCallback` runs a `Validator` on every write:
+
+<Tabs groupId="language">
+<TabItem value="kotlin" label="Kotlin" default>
+
+```kotlin
+class BeanValidationCallback(private val validator: Validator) : EntityCallback<Entity<*>> {
+    override fun beforeInsert(entity: Entity<*>): Entity<*> = validated(entity)
+    override fun beforeUpdate(entity: Entity<*>): Entity<*> = validated(entity)
+
+    private fun validated(entity: Entity<*>): Entity<*> {
+        val violations = validator.validate(entity)
+        if (violations.isNotEmpty()) {
+            throw ConstraintViolationException(violations)
+        }
+        return entity
+    }
+}
+```
+
+</TabItem>
+<TabItem value="java" label="Java">
+
+```java
+public class BeanValidationCallback implements EntityCallback<Entity<?>> {
+    private final Validator validator;
+
+    public BeanValidationCallback(Validator validator) {
+        this.validator = validator;
+    }
+
+    @Override
+    public Entity<?> beforeInsert(Entity<?> entity) {
+        return validated(entity);
+    }
+
+    @Override
+    public Entity<?> beforeUpdate(Entity<?> entity) {
+        return validated(entity);
+    }
+
+    private Entity<?> validated(Entity<?> entity) {
+        var violations = validator.validate(entity);
+        if (!violations.isEmpty()) {
+            throw new ConstraintViolationException(violations);
+        }
+        return entity;
+    }
+}
+```
+
+</TabItem>
+</Tabs>
 
 ## What You Gain
 

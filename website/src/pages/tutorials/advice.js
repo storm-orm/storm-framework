@@ -214,7 +214,7 @@ ${navHtml('tutorials')}
     <a href="/docs/advice">Statement Advice</a>
     <a href="/docs/sql-logging">SQL Logging</a>
     <a href="/docs/entity-design">Entity Design</a>
-    <a href="/docs/validation">Validation</a>
+    <a href="/docs/validation">Schema Validation</a>
   </div>
   <div class="cta">
     <a href="/docs/getting-started" class="btn primary">Get started →</a>

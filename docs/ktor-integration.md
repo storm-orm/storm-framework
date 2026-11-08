@@ -669,7 +669,7 @@ storm {
 | `load` | Load the schema without validating it, which Storm uses for [advice and optimization](advice.md#loading-the-schema). |
 | `none` | Skip validation. Suitable when schemas are managed entirely by migrations. |
 
-See [Validation](validation.md) for details on what is validated and how to interpret the output.
+See [Schema Validation](validation.md) for details on what is validated and how to interpret the output.
 
 ---
 

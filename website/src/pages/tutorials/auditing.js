@@ -90,7 +90,7 @@ ${navHtml('tutorials')}
   <div class="refs">
     <a href="/docs/entity-lifecycle">Entity Lifecycle</a>
     <a href="/docs/entities">Entities</a>
-    <a href="/docs/validation">Validation</a>
+    <a href="/docs/validation">Schema Validation</a>
   </div>
   <div class="cta">
     <a href="/docs/getting-started" class="btn primary">Get started →</a>
