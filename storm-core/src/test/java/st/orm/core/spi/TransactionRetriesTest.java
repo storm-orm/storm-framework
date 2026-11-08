@@ -315,7 +315,7 @@ public class TransactionRetriesTest {
 
     @Test
     void aTransientFailureAMapperTranslatesToItsOwnTypeReruns() {
-        var mapped = template((failure, context) -> context.transientFailure() ? new MappedFailure(failure) : null);
+        var mapped = template((failure, context) -> failure instanceof TransientPersistenceException ? new MappedFailure(failure) : null);
         CONFLICTS.set(1);
         var attempts = new AtomicInteger();
         run(REQUIRED, 1, transaction -> {

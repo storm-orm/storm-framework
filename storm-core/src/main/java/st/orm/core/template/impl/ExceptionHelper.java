@@ -54,16 +54,14 @@ public final class ExceptionHelper {
      * caller via the given exception mapper.
      *
      * <p>The SQL statement and transaction description are attached to the original failure as a suppressed
-     * exception, so every mapper receives full diagnostics; the mapper only decides the thrown type. The dialect
-     * classifies the failure before the mapper sees it ({@link ExceptionContext#transientFailure()}), and a failure
-     * classified transient is recorded on the active transaction scope, so a block that reruns on a transient
-     * failure recognises it whatever the mapper throws. If
-     * the mapper itself fails or returns {@code null}, the failure is wrapped in a {@link PersistenceException} with
-     * the mapper failure suppressed; diagnostic mapping must never mask the original error.</p>
-     *
-     * <p>A failure the dialect classifies as an integrity violation, a write the database refused for a constraint,
-     * reaches the mapper as an {@link IntegrityViolationException} naming the kind of rule and the entity's fields,
-     * with the database's error as its cause.</p>
+     * exception, so every mapper receives full diagnostics; the mapper only decides the thrown type. The failure
+     * reaches the mapper as the type that says what the database reported: a {@link TransientPersistenceException}
+     * for a deadlock or a serialization failure and an {@link IntegrityViolationException} for a write the database
+     * refused for a constraint, each with the database's error as its cause. A transient failure is recorded on the
+     * active transaction scope, so a block that reruns on a transient failure recognises it whatever the mapper
+     * throws. If the mapper itself fails or returns {@code null}, the failure is wrapped in a
+     * {@link PersistenceException} with the mapper failure suppressed; diagnostic mapping must never mask the
+     * original error.</p>
      *
      * @param sql the SQL statement to attach, or {@code null} when no statement is associated.
      * @param dialect the dialect the statement was generated with, which classifies the failure.
@@ -147,17 +145,12 @@ public final class ExceptionHelper {
             if (sql != null) {
                 e.addSuppressed(new SqlTemplateException(buildSqlDetail(sql, transactionDescription)));
             }
-            // A violation the database reported reaches the mapper named in terms of the entity, with the database's
-            // error, and the diagnostics attached to it, as its cause.
-            Throwable failure = integrityViolations != null
-                    ? integrityViolations.translate(e, operation, integrityType(sql, dataType))
-                    : e;
+            Throwable failure = classified(e, operation, dataType, sql, dialect, integrityViolations);
             var context = new ExceptionContextImpl(
                     operation,
                     sql != null ? sql.statement() : null,
                     dataType,
-                    transactionDescription,
-                    failure instanceof TransientPersistenceException || isTransientFailure(failure, dialect));
+                    transactionDescription);
             RuntimeException thrown;
             try {
                 var mapped = exceptionMapper.map(failure, context);
@@ -169,8 +162,8 @@ public final class ExceptionHelper {
                 fallback.addSuppressed(mapperFailure);
                 thrown = fallback;
             }
-            if (context.transientFailure()) {
-                recordTransientFailure(failure, thrown);
+            if (failure instanceof TransientPersistenceException) {
+                recordTransientFailure(thrown);
             }
             return thrown;
         };
@@ -190,13 +183,35 @@ public final class ExceptionHelper {
     }
 
     /**
-     * Records the transient failure and the exception it is thrown as on the transaction scope active on this
-     * thread, so the block that reruns on a transient failure recognises it whatever type the mapper chose.
+     * Returns the failure as the type that says what the database reported: a {@link TransientPersistenceException}
+     * for a failure running the transaction again may overcome, an {@link IntegrityViolationException} for a value the
+     * database refused, and the failure itself otherwise. Whether a transaction may run again decides first, so a
+     * batch that reports both reruns.
      */
-    private static void recordTransientFailure(Throwable failure, RuntimeException thrown) {
+    private static Throwable classified(Throwable failure,
+                                        SqlOperation operation,
+                                        @Nullable Class<? extends Data> dataType,
+                                        @Nullable Sql sql,
+                                        SqlDialect dialect,
+                                        @Nullable IntegrityViolations integrityViolations) {
+        if (failure instanceof TransientPersistenceException) {
+            return failure;
+        }
+        if (isTransientFailure(failure, dialect)) {
+            return new TransientPersistenceException(failure);
+        }
+        return integrityViolations != null
+                ? integrityViolations.translate(failure, operation, integrityType(sql, dataType))
+                : failure;
+    }
+
+    /**
+     * Records the exception a transient failure is thrown as on the transaction scope active on this thread, so the
+     * block that reruns on a transient failure recognises it whatever type the mapper chose.
+     */
+    private static void recordTransientFailure(RuntimeException thrown) {
         var scope = TransactionScope.current();
         if (scope != null) {
-            scope.recordTransientFailure(failure);
             scope.recordTransientFailure(thrown);
         }
     }
@@ -212,21 +227,20 @@ public final class ExceptionHelper {
         boolean recognised = false;
         for (Throwable cause = failure; cause != null && visited.add(cause); cause = cause.getCause()) {
             if (cause instanceof SQLException sqlException) {
-                for (SQLException next = sqlException; next != null; next = next.getNextException()) {
-                    if (next != sqlException && !visited.add(next)) {
-                        break;
-                    }
+                SQLException next = sqlException;
+                do {
                     if (isConnectionFailure(next)) {
                         return false;
                     }
                     try {
-                        recognised |= dialect.isTransientFailure(next);
+                        recognised |= dialect.sqlFailureClassifier().isTransient(next);
                     } catch (RuntimeException classificationFailure) {
                         // Never let classification mask the original exception; it travels along with it.
                         failure.addSuppressed(classificationFailure);
                         return false;
                     }
-                }
+                    next = next.getNextException();
+                } while (next != null && visited.add(next));
             }
         }
         return recognised;
@@ -269,8 +283,7 @@ public final class ExceptionHelper {
     private record ExceptionContextImpl(SqlOperation operation,
                                         @Nullable String statementText,
                                         @Nullable Class<? extends Data> affectedType,
-                                        @Nullable String description,
-                                        boolean transientFailure) implements ExceptionContext {
+                                        @Nullable String description) implements ExceptionContext {
         @Override
         public Optional<String> statement() {
             return Optional.ofNullable(statementText);

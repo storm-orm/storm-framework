@@ -20,7 +20,7 @@ import java.util.Optional;
 import java.util.regex.Pattern;
 import st.orm.core.template.IntegrityFailure;
 import st.orm.core.template.IntegrityFailure.Kind;
-import st.orm.spi.mysql.MySQLIntegrityFailureClassifier;
+import st.orm.spi.mysql.MySQLSqlFailureClassifier;
 
 /**
  * Reads the errors MariaDB reports for a constraint as MySQL's are read, and error {@code 4025}, the code MariaDB
@@ -28,13 +28,28 @@ import st.orm.spi.mysql.MySQLIntegrityFailureClassifier;
  *
  * @since 1.16
  */
-public final class MariaDBIntegrityFailureClassifier extends MySQLIntegrityFailureClassifier {
+public final class MariaDBSqlFailureClassifier extends MySQLSqlFailureClassifier {
 
     /** {@code CONSTRAINT `owner_age_ck` failed for `db`.`owner`}. */
     private static final Pattern CHECK_CONSTRAINT = Pattern.compile("CONSTRAINT `([^`]+)` failed for `[^`]*`\\.`([^`]+)`");
 
+    /**
+     * Recognises the deadlock MySQL reports, error {@code 1213}, and error {@code 1020}, {@code ER_CHECKREAD}: with
+     * {@code innodb_snapshot_isolation}, on by default since MariaDB 11.6, a transaction that writes a row another
+     * transaction changed after its snapshot fails with it, and MariaDB rolls the transaction back. A lock wait
+     * timeout, error {@code 1205}, is not transient.
+     *
+     * @param exception one error of the failure's chain.
+     * @return {@code true} if the error reports a deadlock or a write conflict with the transaction's snapshot.
+     * @since 1.16
+     */
     @Override
-    public Optional<IntegrityFailure> classify(SQLException exception) {
+    public boolean isTransient(SQLException exception) {
+        return super.isTransient(exception) || exception.getErrorCode() == 1020;
+    }
+
+    @Override
+    public Optional<IntegrityFailure> integrityFailure(SQLException exception) {
         if (exception.getErrorCode() == 4025) {
             var failure = IntegrityFailure.of(Kind.CHECK);
             var matcher = CHECK_CONSTRAINT.matcher(exception.getMessage() == null ? "" : exception.getMessage());
@@ -43,6 +58,6 @@ public final class MariaDBIntegrityFailureClassifier extends MySQLIntegrityFailu
             }
             return Optional.of(failure);
         }
-        return super.classify(exception);
+        return super.integrityFailure(exception);
     }
 }

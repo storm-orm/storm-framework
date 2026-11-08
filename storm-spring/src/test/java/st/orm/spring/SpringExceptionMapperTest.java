@@ -293,7 +293,7 @@ class SpringExceptionMapperTest {
         SpringExceptionMapper mapper = new SpringExceptionMapper(dataSource);
         var conflict = new OptimisticLockException("stale");
         var translated = assertInstanceOf(OptimisticLockingFailureException.class,
-                mapper.map(conflict, context(true)));
+                mapper.map(conflict, emptyContext()));
         assertSame(conflict, translated.getCause());
     }
 
@@ -301,7 +301,7 @@ class SpringExceptionMapperTest {
     void transientStormFailureTranslatesToConcurrencyFailure() {
         SpringExceptionMapper mapper = new SpringExceptionMapper(dataSource);
         var failure = new TransientPersistenceException("conflict");
-        var translated = assertInstanceOf(ConcurrencyFailureException.class, mapper.map(failure, context(true)));
+        var translated = assertInstanceOf(ConcurrencyFailureException.class, mapper.map(failure, emptyContext()));
         assertSame(failure, translated.getCause());
     }
 
@@ -311,24 +311,29 @@ class SpringExceptionMapperTest {
         // in the transient branch when the dialect classified it.
         SpringExceptionMapper mapper = new SpringExceptionMapper();
         var conflict = new SQLException("Snapshot isolation transaction aborted due to update conflict.", "S0002", 3960);
-        assertInstanceOf(DataAccessException.class, mapper.map(conflict, emptyContext()));
-        var translated = assertInstanceOf(ConcurrencyFailureException.class, mapper.map(conflict, context(true)));
+        var translated = assertInstanceOf(ConcurrencyFailureException.class,
+                mapper.map(new TransientPersistenceException(conflict), emptyContext()));
         assertSame(conflict, translated.getCause());
+    }
+
+    @Test
+    void sqlFailureTheDialectDoesNotClassifyAsTransientKeepsTheTranslatorsType() {
+        SpringExceptionMapper mapper = new SpringExceptionMapper();
+        var failure = new SQLException("Snapshot isolation transaction aborted due to update conflict.", "S0002", 3960);
+        var translated = assertInstanceOf(DataAccessException.class, mapper.map(failure, emptyContext()));
+        assertFalse(translated instanceof ConcurrencyFailureException);
     }
 
     @Test
     void sqlFailureTheTranslatorAlreadyTranslatesAsTransientKeepsItsType() {
         SpringExceptionMapper mapper = new SpringExceptionMapper();
         var deadlock = new SQLTransactionRollbackException("Deadlock found when trying to get lock", "40001", 1213);
-        var translated = assertInstanceOf(TransientDataAccessException.class, mapper.map(deadlock, context(true)));
+        var translated = assertInstanceOf(TransientDataAccessException.class,
+                mapper.map(new TransientPersistenceException(deadlock), emptyContext()));
         assertEquals(mapper.map(deadlock, emptyContext()).getClass(), translated.getClass());
     }
 
     private static ExceptionContext emptyContext() {
-        return context(false);
-    }
-
-    private static ExceptionContext context(boolean transientFailure) {
         return new ExceptionContext() {
             @Override
             public SqlOperation operation() {
@@ -348,11 +353,6 @@ class SpringExceptionMapperTest {
             @Override
             public Optional<String> transactionDescription() {
                 return Optional.empty();
-            }
-
-            @Override
-            public boolean transientFailure() {
-                return transientFailure;
             }
         };
     }

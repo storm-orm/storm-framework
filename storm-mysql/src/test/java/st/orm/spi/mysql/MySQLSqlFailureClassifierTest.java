@@ -20,12 +20,12 @@ import st.orm.core.template.IntegrityFailure;
 /**
  * What the MySQL classifier reads from the errors MySQL reports for a constraint.
  */
-class MySQLIntegrityFailureTest {
+class MySQLSqlFailureClassifierTest {
 
-    private final MySQLIntegrityFailureClassifier classifier = new MySQLIntegrityFailureClassifier();
+    private final MySQLSqlFailureClassifier classifier = new MySQLSqlFailureClassifier();
 
     private IntegrityFailure classify(int errorCode, String message) {
-        return classifier.classify(new SQLException(message, "23000", errorCode)).orElseThrow();
+        return classifier.integrityFailure(new SQLException(message, "23000", errorCode)).orElseThrow();
     }
 
     @Test
@@ -104,8 +104,15 @@ class MySQLIntegrityFailureTest {
     }
 
     @Test
+    void aMessageWithoutNamesKeepsTheKind() {
+        assertNull(classify(1062, "changed").constraint());
+        assertEquals(REFERENCED, classify(1451, "changed").kind());
+        assertTrue(classify(1048, "changed").columns().isEmpty());
+    }
+
+    @Test
     void anotherErrorIsNotAViolation() {
-        assertTrue(classifier.classify(new SQLException("Deadlock found", "40001", 1213)).isEmpty());
-        assertTrue(classifier.classify(new SQLException(null, "23000", 1062)).isPresent());
+        assertTrue(classifier.integrityFailure(new SQLException("Deadlock found", "40001", 1213)).isEmpty());
+        assertTrue(classifier.integrityFailure(new SQLException(null, "23000", 1062)).isPresent());
     }
 }

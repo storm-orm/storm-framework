@@ -38,7 +38,6 @@ import java.util.UUID;
 import java.util.function.Function;
 import java.util.regex.Pattern;
 import org.jspecify.annotations.Nullable;
-import st.orm.IntegrityViolationException;
 import st.orm.Operator;
 import st.orm.SqlTemplateException;
 import st.orm.core.spi.JsonString;
@@ -615,44 +614,17 @@ public interface SqlDialect {
     }
 
     /**
-     * Returns whether the error reports a failure that stems from concurrent activity, on which the database gave up
-     * the transaction's work: a deadlock or a serialization failure. Running the whole transaction again may succeed,
-     * and the exception mapper receives the failure classified as transient.
+     * Returns the classifier of the errors the dialect's database reports. Storm asks it whether a failure of a
+     * statement or a commit is transient, and what rule of a table a refused write broke.
      *
-     * <p>Storm asks for every {@code SQLException} in the chain of a statement's failure, or of a commit's failure,
-     * the causes as well as the next exceptions a driver chains to a batch failure; one recognised error classifies
-     * the failure. A database that detects a serialization conflict only when the transaction commits reports it from
-     * the commit, and the transaction did not commit. A chain that reports a lost connection, under SQL state class
-     * {@code 08}, is never transient, a connection lost during the commit included: whether the transaction committed
-     * is unknown.</p>
+     * <p>The default is {@link SqlFailureClassifier#STANDARD}, which recognises the SQL states the standard assigns.
+     * A dialect returns the classifier that reads its database's own codes and names.</p>
      *
-     * <p>The default recognises SQL state {@code 40001}, serialization failure. A dialect adds the codes its database
-     * reports for a deadlock or a serialization failure. It leaves out the errors after which the outcome is unknown,
-     * such as SQL states {@code 40002} and {@code 40003}, and a lock wait timeout, which some databases answer by
-     * rolling back only the statement.</p>
-     *
-     * @param exception one error of the failure's chain.
-     * @return {@code true} if the error reports a deadlock or a serialization failure, {@code false} otherwise.
+     * @return the classifier of the database's errors.
      * @since 1.16
      */
-    default boolean isTransientFailure(SQLException exception) {
-        return "40001".equals(exception.getSQLState());
-    }
-
-    /**
-     * Returns the classifier of the errors the dialect's database reports when it refused a value for a rule of its
-     * table. Storm asks it for every {@code SQLException} in the chain of a statement's failure, or of a commit's
-     * failure, as it asks {@link #isTransientFailure(SQLException)}, resolves the names the failure carries to the
-     * entity's fields and throws an {@link IntegrityViolationException}.
-     *
-     * <p>The default is {@link IntegrityFailureClassifier#STANDARD}, which recognises the SQL states the standard
-     * assigns and names nothing. A dialect returns the classifier that reads its database's own codes and names.</p>
-     *
-     * @return the classifier of the database's integrity failures.
-     * @since 1.16
-     */
-    default IntegrityFailureClassifier integrityFailureClassifier() {
-        return IntegrityFailureClassifier.STANDARD;
+    default SqlFailureClassifier sqlFailureClassifier() {
+        return SqlFailureClassifier.STANDARD;
     }
 
     /**

@@ -57,8 +57,8 @@ import st.orm.spi.ExceptionMapper;
  * {@code SQLException} subclass and SQL state translation. This gives Storm repositories the same exception
  * semantics as Spring's other data access integrations: deadlocks and lock timeouts surface as
  * {@code TransientDataAccessException} subtypes (enabling retry setups), constraint violations as
- * {@code DataIntegrityViolationException} subtypes, and so on. A failure the dialect classifies as transient
- * ({@link ExceptionContext#transientFailure()}), a deadlock or a serialization failure, translates to a
+ * {@code DataIntegrityViolationException} subtypes, and so on. A {@link TransientPersistenceException}, a deadlock
+ * or a serialization failure as the dialect's classifier reads it, translates to a
  * {@link TransientDataAccessException} even where the translator knows no code for it: to
  * {@link ConcurrencyFailureException} then.</p>
  *
@@ -142,7 +142,7 @@ public class SpringExceptionMapper implements ExceptionMapper {
         if (translated == null) {
             translated = new UncategorizedSQLException(task, sql, sqlException);
         }
-        if (context.transientFailure() && !(translated instanceof TransientDataAccessException)) {
+        if (cause instanceof TransientPersistenceException && !(translated instanceof TransientDataAccessException)) {
             translated = new ConcurrencyFailureException(translated.getMessage(), sqlException);
         }
         // The translated exception keeps the SQLException as its cause, but drops any wrapper between the

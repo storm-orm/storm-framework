@@ -12,13 +12,13 @@ import org.junit.jupiter.api.Test;
 /**
  * What the MariaDB classifier reads from the errors MariaDB reports for a constraint, beyond what MySQL's reads.
  */
-class MariaDBIntegrityFailureTest {
+class MariaDBSqlFailureClassifierTest {
 
-    private final MariaDBIntegrityFailureClassifier classifier = new MariaDBIntegrityFailureClassifier();
+    private final MariaDBSqlFailureClassifier classifier = new MariaDBSqlFailureClassifier();
 
     @Test
     void aCheckViolationNamesTheConstraintAndTheTable() {
-        var failure = classifier.classify(new SQLException(
+        var failure = classifier.integrityFailure(new SQLException(
                 "CONSTRAINT `iv_parent_amount_ck` failed for `test`.`iv_parent`", "23000", 4025)).orElseThrow();
         assertEquals(CHECK, failure.kind());
         assertEquals("iv_parent_amount_ck", failure.constraint());
@@ -27,17 +27,17 @@ class MariaDBIntegrityFailureTest {
 
     @Test
     void aCheckViolationWithoutTheNamesIsStillOne() {
-        var failure = classifier.classify(new SQLException(null, "23000", 4025)).orElseThrow();
+        var failure = classifier.integrityFailure(new SQLException(null, "23000", 4025)).orElseThrow();
         assertEquals(CHECK, failure.kind());
         assertNull(failure.constraint());
     }
 
     @Test
     void theOtherErrorsAreReadAsMySQLReadsThem() {
-        var failure = classifier.classify(new SQLException(
+        var failure = classifier.integrityFailure(new SQLException(
                 "Duplicate entry 'A' for key 'iv_parent_code_uk'", "23000", 1062)).orElseThrow();
         assertEquals(UNIQUE, failure.kind());
         assertEquals("iv_parent_code_uk", failure.constraint());
-        assertTrue(classifier.classify(new SQLException("Deadlock found", "40001", 1213)).isEmpty());
+        assertTrue(classifier.integrityFailure(new SQLException("Deadlock found", "40001", 1213)).isEmpty());
     }
 }

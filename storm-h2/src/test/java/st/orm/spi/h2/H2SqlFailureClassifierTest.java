@@ -20,12 +20,12 @@ import st.orm.core.template.IntegrityFailure;
 /**
  * What the H2 classifier reads from the errors H2 reports for a constraint.
  */
-class H2IntegrityFailureTest {
+class H2SqlFailureClassifierTest {
 
-    private final H2IntegrityFailureClassifier classifier = new H2IntegrityFailureClassifier();
+    private final H2SqlFailureClassifier classifier = new H2SqlFailureClassifier();
 
     private IntegrityFailure classify(int errorCode, String message) {
-        return classifier.classify(new SQLException(message, String.valueOf(errorCode), errorCode)).orElseThrow();
+        return classifier.integrityFailure(new SQLException(message, String.valueOf(errorCode), errorCode)).orElseThrow();
     }
 
     @Test
@@ -98,8 +98,16 @@ class H2IntegrityFailureTest {
     }
 
     @Test
+    void aMessageWithoutNamesKeepsTheKind() {
+        assertEquals(UNIQUE, classify(23505, "changed").kind());
+        assertEquals(REFERENCED, classify(23503, "changed").kind());
+        assertNull(classify(23513, "changed").constraint());
+        assertTrue(classify(23502, "changed").columns().isEmpty());
+    }
+
+    @Test
     void anotherErrorIsNotAViolation() {
-        assertTrue(classifier.classify(new SQLException("Table not found", "42S02", 42102)).isEmpty());
-        assertTrue(classifier.classify(new SQLException(null, "23505", 23505)).isPresent());
+        assertTrue(classifier.integrityFailure(new SQLException("Table not found", "42S02", 42102)).isEmpty());
+        assertTrue(classifier.integrityFailure(new SQLException(null, "23505", 23505)).isPresent());
     }
 }

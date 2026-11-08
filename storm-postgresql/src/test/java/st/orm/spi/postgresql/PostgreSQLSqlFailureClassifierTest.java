@@ -21,9 +21,9 @@ import org.postgresql.util.ServerErrorMessage;
  * What the PostgreSQL classifier reads from the errors PostgreSQL reports for a constraint: the SQL state decides the
  * kind, and the server's error fields, which the driver exposes, carry the names.
  */
-class PostgreSQLIntegrityFailureTest {
+class PostgreSQLSqlFailureClassifierTest {
 
-    private final PostgreSQLIntegrityFailureClassifier classifier = new PostgreSQLIntegrityFailureClassifier();
+    private final PostgreSQLSqlFailureClassifier classifier = new PostgreSQLSqlFailureClassifier();
 
     /**
      * Builds the driver's exception from the fields the server sends: the severity, SQL state, message and, where
@@ -39,7 +39,7 @@ class PostgreSQLIntegrityFailureTest {
 
     @Test
     void aUniqueViolationCarriesTheConstraintAndTheTable() {
-        var failure = classifier.classify(serverError("23505",
+        var failure = classifier.integrityFailure(serverError("23505",
                 "duplicate key value violates unique constraint \"iv_parent_code_uk\"",
                 "tiv_parent", "niv_parent_code_uk", "spublic")).orElseThrow();
         assertEquals(UNIQUE, failure.kind());
@@ -50,7 +50,7 @@ class PostgreSQLIntegrityFailureTest {
 
     @Test
     void aForeignKeyViolationCarriesTheConstraintAndTheReferencingTable() {
-        var failure = classifier.classify(serverError("23503",
+        var failure = classifier.integrityFailure(serverError("23503",
                 "update or delete on table \"iv_parent\" violates foreign key constraint \"iv_child_parent_fk\" on table \"iv_child\"",
                 "tiv_child", "niv_child_parent_fk")).orElseThrow();
         assertEquals(FOREIGN_KEY, failure.kind());
@@ -60,7 +60,7 @@ class PostgreSQLIntegrityFailureTest {
 
     @Test
     void aNullCarriesTheColumn() {
-        var failure = classifier.classify(serverError("23502",
+        var failure = classifier.integrityFailure(serverError("23502",
                 "null value in column \"code\" of relation \"iv_parent\" violates not-null constraint",
                 "tiv_parent", "ccode")).orElseThrow();
         assertEquals(NOT_NULL, failure.kind());
@@ -70,7 +70,7 @@ class PostgreSQLIntegrityFailureTest {
 
     @Test
     void aCheckViolationCarriesTheConstraint() {
-        var failure = classifier.classify(serverError("23514",
+        var failure = classifier.integrityFailure(serverError("23514",
                 "new row for relation \"iv_parent\" violates check constraint \"iv_parent_amount_ck\"",
                 "tiv_parent", "niv_parent_amount_ck")).orElseThrow();
         assertEquals(CHECK, failure.kind());
@@ -79,7 +79,7 @@ class PostgreSQLIntegrityFailureTest {
 
     @Test
     void aValueTooLongCarriesNoColumn() {
-        var failure = classifier.classify(serverError("22001",
+        var failure = classifier.integrityFailure(serverError("22001",
                 "value too long for type character varying(5)")).orElseThrow();
         assertEquals(LENGTH, failure.kind());
         assertTrue(failure.columns().isEmpty());
@@ -88,16 +88,16 @@ class PostgreSQLIntegrityFailureTest {
 
     @Test
     void aNumericOverflowIsOutOfRange() {
-        assertEquals(NUMERIC_RANGE, classifier.classify(serverError("22003",
+        assertEquals(NUMERIC_RANGE, classifier.integrityFailure(serverError("22003",
                 "numeric field overflow")).orElseThrow().kind());
     }
 
     @Test
     void anErrorWithoutServerFieldsKeepsTheKind() {
-        var failure = classifier.classify(new SQLException("duplicate", "23505")).orElseThrow();
+        var failure = classifier.integrityFailure(new SQLException("duplicate", "23505")).orElseThrow();
         assertEquals(UNIQUE, failure.kind());
         assertNull(failure.constraint());
-        var withoutServerError = classifier.classify(
+        var withoutServerError = classifier.integrityFailure(
                 new PSQLException("duplicate", PSQLState.UNIQUE_VIOLATION)).orElseThrow();
         assertEquals(UNIQUE, withoutServerError.kind());
         assertNull(withoutServerError.constraint());
@@ -105,6 +105,6 @@ class PostgreSQLIntegrityFailureTest {
 
     @Test
     void anotherErrorIsNotAViolation() {
-        assertTrue(classifier.classify(new SQLException("deadlock", "40P01")).isEmpty());
+        assertTrue(classifier.integrityFailure(new SQLException("deadlock", "40P01")).isEmpty());
     }
 }

@@ -172,7 +172,6 @@ class CommitFailureClassificationTest {
                 }));
         assertSame(failure, thrown.getCause().getCause(), "the database's error is in the chain");
         var context = contexts.getLast();
-        assertTrue(context.transientFailure());
         assertTrue(context.statement().isEmpty(), "a commit has no statement");
         assertTrue(context.transactionDescription().isEmpty(), "the transaction has completed");
         assertEquals(0, amount(), "the transaction did not commit");
@@ -215,7 +214,6 @@ class CommitFailureClassificationTest {
                     return null;
                 }));
         assertFalse(thrown instanceof TransientPersistenceException);
-        assertFalse(contexts.getLast().transientFailure());
     }
 
     @Test
@@ -263,7 +261,7 @@ class CommitFailureClassificationTest {
 
     @Test
     void aCustomMapperDecidesTheTypeOfATransientCommitFailureAndTheBlockStillReruns() {
-        var mapped = template((cause, context) -> context.transientFailure()
+        var mapped = template((cause, context) -> cause instanceof TransientPersistenceException
                 ? new MappedFailure(cause)
                 : ExceptionMapper.defaultMapper().map(cause, context));
         dataSource.failures.add(serializationFailure());

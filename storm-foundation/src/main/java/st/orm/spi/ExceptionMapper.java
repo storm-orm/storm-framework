@@ -15,21 +15,22 @@
  */
 package st.orm.spi;
 
+import st.orm.IntegrityViolationException;
 import st.orm.PersistenceException;
 import st.orm.TransientPersistenceException;
 
 /**
  * Maps failures raised during query execution to the runtime exception thrown to the caller.
  *
- * <p>The default mapper wraps failures in {@link PersistenceException}, and a failure that stems from concurrent
- * activity in {@link TransientPersistenceException}. Integrations may translate to platform exception hierarchies
+ * <p>The default mapper throws a {@link PersistenceException} as it is and wraps any other failure in one. Integrations may translate to platform exception hierarchies
  * instead, such as Spring's {@code DataAccessException}.</p>
  *
  * <p>Exception mappers are configured per ORM template via the template builder; they are deliberately not
  * discovered through the {@code ServiceLoader} mechanism. The framework enriches the failure with SQL diagnostics
- * (as a suppressed exception on the cause) and has the dialect classify it ({@link ExceptionContext#transientFailure()})
- * before invoking the mapper, so the mapper receives the failure as reported and only decides the exception type
- * that is thrown.</p>
+ * (as a suppressed exception on the cause) and classifies it before invoking the mapper: a deadlock or a serialization
+ * failure arrives as a {@link TransientPersistenceException} and a write the database refused for a constraint as an
+ * {@link IntegrityViolationException}, each with the driver's exception as its cause. The mapper only decides the
+ * exception type that is thrown.</p>
  *
  * <p>The failures Storm's own logic detects after a statement ran pass through the mapper as well: an optimistic
  * lock conflict, a single result that is missing or not unique, a write that affected no row. Their context names
@@ -45,8 +46,8 @@ public interface ExceptionMapper {
     /**
      * Maps the given failure to the runtime exception that is thrown to the caller.
      *
-     * @param cause the failure; typically a {@code SQLException} or {@link PersistenceException}. The framework has
-     *              already attached SQL diagnostics as a suppressed exception where available.
+     * @param cause the failure; typically a {@link PersistenceException}, or a {@code SQLException} the framework
+     *              could not classify. The framework has already attached SQL diagnostics as a suppressed exception where available.
      * @param context the execution context of the failure; never {@code null}.
      * @return the exception to throw; never {@code null}.
      */
@@ -55,24 +56,14 @@ public interface ExceptionMapper {
     /**
      * Returns the default exception mapper.
      *
-     * <p>The default mapper wraps a failure that stems from concurrent activity
-     * ({@link ExceptionContext#transientFailure()}) in a new {@link TransientPersistenceException}, unless it is
-     * one already. It passes any other {@link PersistenceException} through unchanged and wraps any other failure in
-     * a new {@link PersistenceException}.</p>
+     * <p>The default mapper passes a {@link PersistenceException} through unchanged and wraps any other failure in a
+     * new {@link PersistenceException}.</p>
      *
      * @return the default exception mapper.
      */
     static ExceptionMapper defaultMapper() {
-        return (cause, context) -> {
-            if (cause instanceof TransientPersistenceException transientFailure) {
-                return transientFailure;
-            }
-            if (context.transientFailure()) {
-                return new TransientPersistenceException(cause);
-            }
-            return cause instanceof PersistenceException persistenceException
-                    ? persistenceException
-                    : new PersistenceException(cause);
-        };
+        return (cause, context) -> cause instanceof PersistenceException persistenceException
+                ? persistenceException
+                : new PersistenceException(cause);
     }
 }

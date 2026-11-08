@@ -35,7 +35,7 @@ import org.jspecify.annotations.Nullable;
  * @param columns the columns the error names, as the database spells them; empty when it names none.
  * @param primaryKey {@code true} when the violated constraint is the table's primary key, which a database may
  *                   report under a name of its own rather than the constraint's.
- * @see IntegrityFailureClassifier
+ * @see SqlFailureClassifier
  * @since 1.16
  */
 public record IntegrityFailure(Kind kind,

@@ -15,7 +15,6 @@
  */
 package st.orm.spi.mysql;
 
-import java.sql.SQLException;
 import java.util.List;
 import java.util.Locale;
 import java.util.Set;
@@ -25,12 +24,12 @@ import st.orm.Operator;
 import st.orm.PersistenceException;
 import st.orm.StormConfig;
 import st.orm.core.spi.DefaultSqlDialect;
-import st.orm.core.template.IntegrityFailureClassifier;
 import st.orm.core.template.SqlDialect;
+import st.orm.core.template.SqlFailureClassifier;
 
 public class MySQLSqlDialect extends DefaultSqlDialect {
 
-    private static final IntegrityFailureClassifier INTEGRITY_FAILURE_CLASSIFIER = new MySQLIntegrityFailureClassifier();
+    private static final SqlFailureClassifier SQL_FAILURE_CLASSIFIER = new MySQLSqlFailureClassifier();
 
     public MySQLSqlDialect() {
     }
@@ -475,29 +474,13 @@ public class MySQLSqlDialect extends DefaultSqlDialect {
     }
 
     /**
-     * Recognises error {@code 1213}, {@code ER_LOCK_DEADLOCK}, on which MySQL rolls back the transaction. MySQL
-     * serializes with locks, so a conflict under serializable isolation surfaces as this deadlock as well.
-     *
-     * <p>The error code decides, not the SQL state: the MySQL driver reports a lock wait timeout, error
-     * {@code 1205}, under SQL state {@code 40001} too, while MySQL rolls back only the statement that waited.</p>
-     *
-     * @param exception one error of the failure's chain.
-     * @return {@code true} if the error reports a deadlock.
-     * @since 1.16
-     */
-    @Override
-    public boolean isTransientFailure(SQLException exception) {
-        return exception.getErrorCode() == 1213;
-    }
-
-    /**
-     * Returns the classifier of the errors the database reports for a constraint.
+     * Returns the classifier of the errors the database reports.
      *
      * @return the classifier.
      * @since 1.16
      */
     @Override
-    public IntegrityFailureClassifier integrityFailureClassifier() {
-        return INTEGRITY_FAILURE_CLASSIFIER;
+    public SqlFailureClassifier sqlFailureClassifier() {
+        return SQL_FAILURE_CLASSIFIER;
     }
 }

@@ -31,12 +31,12 @@ import java.util.regex.Pattern;
 import st.orm.Operator;
 import st.orm.StormConfig;
 import st.orm.core.spi.DefaultSqlDialect;
-import st.orm.core.template.IntegrityFailureClassifier;
 import st.orm.core.template.SqlDialect;
+import st.orm.core.template.SqlFailureClassifier;
 
 public class H2SqlDialect extends DefaultSqlDialect {
 
-    private static final IntegrityFailureClassifier INTEGRITY_FAILURE_CLASSIFIER = new H2IntegrityFailureClassifier();
+    private static final SqlFailureClassifier SQL_FAILURE_CLASSIFIER = new H2SqlFailureClassifier();
 
     public H2SqlDialect() {
     }
@@ -256,28 +256,13 @@ public class H2SqlDialect extends DefaultSqlDialect {
     }
 
     /**
-     * Recognises error {@code 40001}, {@code DEADLOCK_1}, which H2 reports, under SQL state {@code 40001}, both for a
-     * deadlock and for a write that conflicts with a serializable or repeatable read transaction's snapshot; H2
-     * rolls the transaction back on it. A lock wait that runs out of {@code LOCK_TIMEOUT}, error {@code 50200}, is
-     * not transient.
-     *
-     * @param exception one error of the failure's chain.
-     * @return {@code true} if the error reports a deadlock or a serialization conflict.
-     * @since 1.16
-     */
-    @Override
-    public boolean isTransientFailure(SQLException exception) {
-        return exception.getErrorCode() == 40001;
-    }
-
-    /**
-     * Returns the classifier of the errors the database reports for a constraint.
+     * Returns the classifier of the errors the database reports.
      *
      * @return the classifier.
      * @since 1.16
      */
     @Override
-    public IntegrityFailureClassifier integrityFailureClassifier() {
-        return INTEGRITY_FAILURE_CLASSIFIER;
+    public SqlFailureClassifier sqlFailureClassifier() {
+        return SQL_FAILURE_CLASSIFIER;
     }
 }

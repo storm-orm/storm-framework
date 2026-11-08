@@ -15,12 +15,11 @@
  */
 package st.orm.spi.mariadb;
 
-import java.sql.SQLException;
 import java.util.Locale;
 import java.util.Optional;
 import java.util.Set;
 import st.orm.StormConfig;
-import st.orm.core.template.IntegrityFailureClassifier;
+import st.orm.core.template.SqlFailureClassifier;
 import st.orm.spi.mysql.MySQLSqlDialect;
 
 /**
@@ -60,7 +59,7 @@ import st.orm.spi.mysql.MySQLSqlDialect;
  */
 public class MariaDBSqlDialect extends MySQLSqlDialect {
 
-    private static final IntegrityFailureClassifier INTEGRITY_FAILURE_CLASSIFIER = new MariaDBIntegrityFailureClassifier();
+    private static final SqlFailureClassifier SQL_FAILURE_CLASSIFIER = new MariaDBSqlFailureClassifier();
 
     public MariaDBSqlDialect() {
     }
@@ -228,28 +227,13 @@ public class MariaDBSqlDialect extends MySQLSqlDialect {
     }
 
     /**
-     * Recognises the deadlock MySQL reports, error {@code 1213}, and error {@code 1020}, {@code ER_CHECKREAD}: with
-     * {@code innodb_snapshot_isolation}, on by default since MariaDB 11.6, a transaction that writes a row another
-     * transaction changed after its snapshot fails with it, and MariaDB rolls the transaction back. A lock wait
-     * timeout, error {@code 1205}, is not transient.
-     *
-     * @param exception one error of the failure's chain.
-     * @return {@code true} if the error reports a deadlock or a write conflict with the transaction's snapshot.
-     * @since 1.16
-     */
-    @Override
-    public boolean isTransientFailure(SQLException exception) {
-        return super.isTransientFailure(exception) || exception.getErrorCode() == 1020;
-    }
-
-    /**
-     * Returns the classifier of the errors the database reports for a constraint.
+     * Returns the classifier of the errors the database reports.
      *
      * @return the classifier.
      * @since 1.16
      */
     @Override
-    public IntegrityFailureClassifier integrityFailureClassifier() {
-        return INTEGRITY_FAILURE_CLASSIFIER;
+    public SqlFailureClassifier sqlFailureClassifier() {
+        return SQL_FAILURE_CLASSIFIER;
     }
 }

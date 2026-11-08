@@ -15,7 +15,6 @@
  */
 package st.orm.spi.mssqlserver;
 
-import java.sql.SQLException;
 import java.util.List;
 import java.util.Locale;
 import java.util.Set;
@@ -24,12 +23,12 @@ import java.util.regex.Pattern;
 import st.orm.StormConfig;
 import st.orm.core.spi.DefaultSqlDialect;
 import st.orm.core.template.Column;
-import st.orm.core.template.IntegrityFailureClassifier;
 import st.orm.core.template.SqlDialect;
+import st.orm.core.template.SqlFailureClassifier;
 
 public class MSSQLServerSqlDialect extends DefaultSqlDialect {
 
-    private static final IntegrityFailureClassifier INTEGRITY_FAILURE_CLASSIFIER = new MSSQLServerIntegrityFailureClassifier();
+    private static final SqlFailureClassifier SQL_FAILURE_CLASSIFIER = new MSSQLServerSqlFailureClassifier();
 
     public MSSQLServerSqlDialect() {
     }
@@ -365,30 +364,13 @@ public class MSSQLServerSqlDialect extends DefaultSqlDialect {
     }
 
     /**
-     * Recognises the errors SQL Server aborts the transaction with when another transaction conflicts with it:
-     * {@code 1205}, chosen as deadlock victim, which also covers a conflict under serializable isolation, as SQL
-     * Server serializes with locks; {@code 3960}, snapshot isolation transaction aborted due to update conflict; and
-     * {@code 41302}, the update conflict of a transaction on a memory-optimized table. A lock request that runs out
-     * of {@code LOCK_TIMEOUT}, {@code 1222}, is not transient: SQL Server cancels only the statement.
-     *
-     * @param exception one error of the failure's chain.
-     * @return {@code true} if the error reports a deadlock or an update conflict.
-     * @since 1.16
-     */
-    @Override
-    public boolean isTransientFailure(SQLException exception) {
-        int errorCode = exception.getErrorCode();
-        return errorCode == 1205 || errorCode == 3960 || errorCode == 41302;
-    }
-
-    /**
-     * Returns the classifier of the errors the database reports for a constraint.
+     * Returns the classifier of the errors the database reports.
      *
      * @return the classifier.
      * @since 1.16
      */
     @Override
-    public IntegrityFailureClassifier integrityFailureClassifier() {
-        return INTEGRITY_FAILURE_CLASSIFIER;
+    public SqlFailureClassifier sqlFailureClassifier() {
+        return SQL_FAILURE_CLASSIFIER;
     }
 }

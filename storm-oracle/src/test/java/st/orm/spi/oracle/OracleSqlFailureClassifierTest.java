@@ -1,6 +1,7 @@
 package st.orm.spi.oracle;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static st.orm.core.template.IntegrityFailure.Kind.CHECK;
 import static st.orm.core.template.IntegrityFailure.Kind.FOREIGN_KEY;
@@ -18,12 +19,12 @@ import st.orm.core.template.IntegrityFailure;
 /**
  * What the Oracle classifier reads from the errors Oracle reports for a constraint.
  */
-class OracleIntegrityFailureTest {
+class OracleSqlFailureClassifierTest {
 
-    private final OracleIntegrityFailureClassifier classifier = new OracleIntegrityFailureClassifier();
+    private final OracleSqlFailureClassifier classifier = new OracleSqlFailureClassifier();
 
     private IntegrityFailure classify(int errorCode, String message) {
-        return classifier.classify(new SQLException(message, "23000", errorCode)).orElseThrow();
+        return classifier.integrityFailure(new SQLException(message, "23000", errorCode)).orElseThrow();
     }
 
     @Test
@@ -85,13 +86,20 @@ class OracleIntegrityFailureTest {
         var failure = classify(2091, "ORA-02091: transaction rolled back\nORA-02291: integrity constraint (TEST.IV_DEFERRED_PARENT_FK) violated - parent key not found\n");
         assertEquals(FOREIGN_KEY, failure.kind());
         assertEquals("IV_DEFERRED_PARENT_FK", failure.constraint());
-        assertTrue(classifier.classify(new SQLException("ORA-02091: transaction rolled back\n", "40000", 2091)).isEmpty());
-        assertTrue(classifier.classify(new SQLException("ORA-02091: transaction rolled back\nORA-00060: deadlock detected\n", "40000", 2091)).isEmpty());
+        assertTrue(classifier.integrityFailure(new SQLException("ORA-02091: transaction rolled back\n", "40000", 2091)).isEmpty());
+        assertTrue(classifier.integrityFailure(new SQLException("ORA-02091: transaction rolled back\nORA-00060: deadlock detected\n", "40000", 2091)).isEmpty());
+    }
+
+    @Test
+    void aMessageWithoutNamesKeepsTheKind() {
+        assertEquals(UNIQUE, classify(1, "changed").kind());
+        assertNull(classify(1, "changed").constraint());
+        assertTrue(classify(1400, "changed").columns().isEmpty());
     }
 
     @Test
     void anotherErrorIsNotAViolation() {
-        assertTrue(classifier.classify(new SQLException("ORA-00060: deadlock detected", "61000", 60)).isEmpty());
-        assertTrue(classifier.classify(new SQLException(null, "23000", 1)).isPresent());
+        assertTrue(classifier.integrityFailure(new SQLException("ORA-00060: deadlock detected", "61000", 60)).isEmpty());
+        assertTrue(classifier.integrityFailure(new SQLException(null, "23000", 1)).isPresent());
     }
 }

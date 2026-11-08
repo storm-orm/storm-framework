@@ -194,7 +194,7 @@ internal class TransactionRetriesTest {
     @Test
     fun `a transient failure a mapper translates to its own type still reruns`(): Unit = runBlocking {
         val mapped = ORMTemplate.builder(dataSource)
-            .exceptionMapper { failure, context -> if (context.transientFailure()) RetryableFailure(failure) else null }
+            .exceptionMapper { failure, context -> if (failure is TransientPersistenceException) RetryableFailure(failure) else null }
             .build()
         RetryConflicts.remaining.set(1)
         var attempts = 0

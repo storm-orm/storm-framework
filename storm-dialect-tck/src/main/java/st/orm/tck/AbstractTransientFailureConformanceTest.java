@@ -271,7 +271,7 @@ public abstract class AbstractTransientFailureConformanceTest {
         var orm = ORMTemplate.builder(dataSource)
                 .connectionProvider(new JdbcConnectionProviderImpl())
                 .transactionTemplateProvider(new JdbcTransactionTemplateProviderImpl())
-                .exceptionMapper((failure, context) -> context.transientFailure() ? new MappedFailure(failure) : null)
+                .exceptionMapper((failure, context) -> failure instanceof TransientPersistenceException ? new MappedFailure(failure) : null)
                 .build();
         assertOneSerializationFailureReruns(orm);
     }
@@ -308,7 +308,7 @@ public abstract class AbstractTransientFailureConformanceTest {
         assertWriteSkewReruns(ORMTemplate.builder(dataSource)
                 .connectionProvider(new JdbcConnectionProviderImpl())
                 .transactionTemplateProvider(new JdbcTransactionTemplateProviderImpl())
-                .exceptionMapper((failure, context) -> context.transientFailure() ? new MappedFailure(failure) : null)
+                .exceptionMapper((failure, context) -> failure instanceof TransientPersistenceException ? new MappedFailure(failure) : null)
                 .build());
     }
 

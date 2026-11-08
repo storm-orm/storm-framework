@@ -19,12 +19,12 @@ import st.orm.core.template.IntegrityFailure;
 /**
  * What the SQLite classifier reads from the constraint violations SQLite reports.
  */
-class SQLiteIntegrityFailureTest {
+class SQLiteSqlFailureClassifierTest {
 
-    private final SQLiteIntegrityFailureClassifier classifier = new SQLiteIntegrityFailureClassifier();
+    private final SQLiteSqlFailureClassifier classifier = new SQLiteSqlFailureClassifier();
 
     private IntegrityFailure classify(String message) {
-        return classifier.classify(new SQLException(message, "", 19)).orElseThrow();
+        return classifier.integrityFailure(new SQLException(message, "", 19)).orElseThrow();
     }
 
     @Test
@@ -67,21 +67,30 @@ class SQLiteIntegrityFailureTest {
 
     @Test
     void anotherConstraintOrErrorIsNotAViolation() {
-        assertTrue(classifier.classify(new SQLException("[SQLITE_CONSTRAINT_TRIGGER] A trigger raised", "", 19)).isEmpty());
-        assertTrue(classifier.classify(new SQLException("[SQLITE_BUSY] The database file is locked", "", 5)).isEmpty());
-        assertTrue(classifier.classify(new SQLException(null, "", 19)).isEmpty());
+        assertTrue(classifier.integrityFailure(new SQLException("[SQLITE_CONSTRAINT_TRIGGER] A trigger raised", "", 19)).isEmpty());
+        assertTrue(classifier.integrityFailure(new SQLException("[SQLITE_BUSY] The database file is locked", "", 5)).isEmpty());
+        assertTrue(classifier.integrityFailure(new SQLException(null, "", 19)).isEmpty());
     }
 
     @Test
     void theDriversResultCodeDecidesBeforeTheMessage() {
         // The driver's exception carries the extended code; its message need not name it.
         var fromDriver = new SQLiteException("UNIQUE constraint failed: iv_parent.code", SQLiteErrorCode.SQLITE_CONSTRAINT_UNIQUE);
-        var failure = classifier.classify(fromDriver).orElseThrow();
+        var failure = classifier.integrityFailure(fromDriver).orElseThrow();
         assertEquals(UNIQUE, failure.kind());
         assertEquals(List.of("code"), failure.columns());
-        assertEquals(FOREIGN_KEY, classifier.classify(new SQLiteException("FOREIGN KEY constraint failed",
+        assertEquals(FOREIGN_KEY, classifier.integrityFailure(new SQLiteException("FOREIGN KEY constraint failed",
                 SQLiteErrorCode.SQLITE_CONSTRAINT_FOREIGNKEY)).orElseThrow().kind());
-        assertTrue(classifier.classify(new SQLiteException("busy", SQLiteErrorCode.SQLITE_BUSY)).isEmpty());
+        assertTrue(classifier.integrityFailure(new SQLiteException("busy", SQLiteErrorCode.SQLITE_BUSY)).isEmpty());
+    }
+
+    @Test
+    void aMessageWithoutNamesKeepsTheKind() {
+        assertTrue(classifier.integrityFailure(new SQLException("[SQLITE_CONSTRAINT_UNIQUE] changed", "", 19)).orElseThrow().columns().isEmpty());
+        assertNull(classifier.integrityFailure(new SQLException("[SQLITE_CONSTRAINT_CHECK] changed", "", 19)).orElseThrow().constraint());
+        assertTrue(classifier.integrityFailure(new SQLiteException("changed", SQLiteErrorCode.SQLITE_CONSTRAINT_PRIMARYKEY)).orElseThrow().primaryKey());
+        assertEquals(NOT_NULL, classifier.integrityFailure(new SQLiteException("changed", SQLiteErrorCode.SQLITE_CONSTRAINT_NOTNULL)).orElseThrow().kind());
+        assertEquals(CHECK, classifier.integrityFailure(new SQLiteException("changed", SQLiteErrorCode.SQLITE_CONSTRAINT_CHECK)).orElseThrow().kind());
     }
 
     @Test

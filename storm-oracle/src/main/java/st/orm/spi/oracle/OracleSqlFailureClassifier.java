@@ -21,7 +21,7 @@ import java.util.regex.Pattern;
 import org.jspecify.annotations.Nullable;
 import st.orm.core.template.IntegrityFailure;
 import st.orm.core.template.IntegrityFailure.Kind;
-import st.orm.core.template.IntegrityFailureClassifier;
+import st.orm.core.template.SqlFailureClassifier;
 
 /**
  * Reads the errors Oracle reports for a constraint, by error code: {@code ORA-00001} unique constraint violated,
@@ -37,7 +37,7 @@ import st.orm.core.template.IntegrityFailureClassifier;
  *
  * @since 1.16
  */
-public final class OracleIntegrityFailureClassifier implements IntegrityFailureClassifier {
+public final class OracleSqlFailureClassifier implements SqlFailureClassifier {
 
     /** The error a commit reports when a deferred constraint fails: {@code ORA-02091: transaction rolled back}. */
     private static final int TRANSACTION_ROLLED_BACK = 2091;
@@ -51,22 +51,40 @@ public final class OracleIntegrityFailureClassifier implements IntegrityFailureC
     /** The table and column of {@code cannot insert NULL into ("APP"."OWNER"."EMAIL")} and {@code value too large for column "APP"."OWNER"."EMAIL"}. */
     private static final Pattern TABLE_COLUMN = Pattern.compile("\"[^\"]+\"\\.\"([^\"]+)\"\\.\"([^\"]+)\"");
 
+    /**
+     * Recognises {@code ORA-00060}, deadlock detected while waiting for resource, and {@code ORA-08177}, can't
+     * serialize access for this transaction. Oracle rolls back the statement that failed, not the transaction, but
+     * the transaction cannot complete its work: the conflict repeats on every retry of the statement, and Oracle's
+     * remedy is to roll back and run the transaction again, which Storm's transaction does when the failure leaves
+     * it. A lock wait that runs out of its {@code WAIT} clause, {@code ORA-30006}, and a {@code NOWAIT} lock that is
+     * busy, {@code ORA-00054}, are not transient.
+     *
+     * @param exception one error of the failure's chain.
+     * @return {@code true} if the error reports a deadlock or a serialization failure.
+     * @since 1.16
+     */
     @Override
-    public Optional<IntegrityFailure> classify(SQLException exception) {
+    public boolean isTransient(SQLException exception) {
+        int errorCode = exception.getErrorCode();
+        return errorCode == 60 || errorCode == 8177;
+    }
+
+    @Override
+    public Optional<IntegrityFailure> integrityFailure(SQLException exception) {
         String message = exception.getMessage() == null ? "" : exception.getMessage();
         int errorCode = exception.getErrorCode();
         if (errorCode == TRANSACTION_ROLLED_BACK) {
             var nested = NESTED_ERROR.matcher(message);
             // The first code is the rollback's own; the one after it is the constraint's.
             if (nested.find() && nested.find()) {
-                return classify(Integer.parseInt(nested.group(1)), message.substring(nested.start()));
+                return integrityFailure(Integer.parseInt(nested.group(1)), message.substring(nested.start()));
             }
             return Optional.empty();
         }
-        return classify(errorCode, message);
+        return integrityFailure(errorCode, message);
     }
 
-    private static Optional<IntegrityFailure> classify(int errorCode, String message) {
+    private static Optional<IntegrityFailure> integrityFailure(int errorCode, String message) {
         return switch (errorCode) {
             case 1 -> Optional.of(IntegrityFailure.of(Kind.UNIQUE).withConstraint(constraint(message)));
             case 2291 -> Optional.of(IntegrityFailure.of(Kind.FOREIGN_KEY).withConstraint(constraint(message)));

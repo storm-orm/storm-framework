@@ -21,7 +21,6 @@ import static st.orm.Operator.GREATER_THAN_OR_EQUAL;
 import static st.orm.Operator.LESS_THAN;
 import static st.orm.Operator.LESS_THAN_OR_EQUAL;
 
-import java.sql.SQLException;
 import java.util.List;
 import java.util.Locale;
 import java.util.Optional;
@@ -31,12 +30,12 @@ import st.orm.Operator;
 import st.orm.StormConfig;
 import st.orm.core.spi.DefaultSqlDialect;
 import st.orm.core.template.Column;
-import st.orm.core.template.IntegrityFailureClassifier;
 import st.orm.core.template.SqlDialect;
+import st.orm.core.template.SqlFailureClassifier;
 
 public class OracleSqlDialect extends DefaultSqlDialect {
 
-    private static final IntegrityFailureClassifier INTEGRITY_FAILURE_CLASSIFIER = new OracleIntegrityFailureClassifier();
+    private static final SqlFailureClassifier SQL_FAILURE_CLASSIFIER = new OracleSqlFailureClassifier();
 
     public OracleSqlDialect() {
     }
@@ -386,31 +385,13 @@ public class OracleSqlDialect extends DefaultSqlDialect {
     }
 
     /**
-     * Recognises {@code ORA-00060}, deadlock detected while waiting for resource, and {@code ORA-08177}, can't
-     * serialize access for this transaction. Oracle rolls back the statement that failed, not the transaction, but
-     * the transaction cannot complete its work: the conflict repeats on every retry of the statement, and Oracle's
-     * remedy is to roll back and run the transaction again, which Storm's transaction does when the failure leaves
-     * it. A lock wait that runs out of its {@code WAIT} clause, {@code ORA-30006}, and a {@code NOWAIT} lock that is
-     * busy, {@code ORA-00054}, are not transient.
-     *
-     * @param exception one error of the failure's chain.
-     * @return {@code true} if the error reports a deadlock or a serialization failure.
-     * @since 1.16
-     */
-    @Override
-    public boolean isTransientFailure(SQLException exception) {
-        int errorCode = exception.getErrorCode();
-        return errorCode == 60 || errorCode == 8177;
-    }
-
-    /**
-     * Returns the classifier of the errors the database reports for a constraint.
+     * Returns the classifier of the errors the database reports.
      *
      * @return the classifier.
      * @since 1.16
      */
     @Override
-    public IntegrityFailureClassifier integrityFailureClassifier() {
-        return INTEGRITY_FAILURE_CLASSIFIER;
+    public SqlFailureClassifier sqlFailureClassifier() {
+        return SQL_FAILURE_CLASSIFIER;
     }
 }

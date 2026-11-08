@@ -49,9 +49,9 @@ import st.orm.SqlTemplateException;
 import st.orm.core.template.Column;
 import st.orm.core.template.IntegrityFailure;
 import st.orm.core.template.IntegrityFailure.Kind;
-import st.orm.core.template.IntegrityFailureClassifier;
 import st.orm.core.template.Model;
 import st.orm.core.template.SqlDialect;
+import st.orm.core.template.SqlFailureClassifier;
 import st.orm.core.template.impl.DatabaseSchema.DbForeignKey;
 import st.orm.core.template.impl.DatabaseSchema.DbIndex;
 import st.orm.core.template.impl.DatabaseSchema.DbUniqueKey;
@@ -60,7 +60,7 @@ import st.orm.spi.SqlOperation;
 /**
  * Reports a value that breaks a rule of its table in terms of the entity.
  *
- * <p>A failure the database reported is classified by the dialect's {@link IntegrityFailureClassifier}, which reads
+ * <p>A failure the database reported is classified by the dialect's {@link SqlFailureClassifier}, which reads
  * the kind of rule and the names the error carries, and resolved here to the entity's fields: a column the error
  * names is looked up in the model, a constraint it names in the schema loaded at startup. No metadata is read here.
  * Where the schema is not loaded, or the template runs on a connection rather than a data source, a violation keeps
@@ -72,7 +72,7 @@ public final class IntegrityViolations {
 
     private static final Logger LOGGER = LoggerFactory.getLogger("st.orm.validation");
 
-    private final IntegrityFailureClassifier classifier;
+    private final SqlFailureClassifier classifier;
     private final @Nullable DataSource dataSource;
     private final @Nullable ModelBuilder modelBuilder;
 
@@ -85,7 +85,7 @@ public final class IntegrityViolations {
      * @param modelBuilder the models of the entities, or {@code null} when no entity is known.
      */
     public IntegrityViolations(SqlDialect dialect, @Nullable DataSource dataSource, @Nullable ModelBuilder modelBuilder) {
-        this.classifier = requireNonNull(dialect.integrityFailureClassifier(), "integrityFailureClassifier");
+        this.classifier = requireNonNull(dialect.sqlFailureClassifier(), "sqlFailureClassifier");
         this.dataSource = dataSource;
         this.modelBuilder = modelBuilder;
     }
@@ -118,13 +118,11 @@ public final class IntegrityViolations {
         Set<Throwable> visited = Collections.newSetFromMap(new IdentityHashMap<>());
         for (Throwable cause = failure; cause != null && visited.add(cause); cause = cause.getCause()) {
             if (cause instanceof SQLException sqlException) {
-                for (SQLException next = sqlException; next != null; next = next.getNextException()) {
-                    if (next != sqlException && !visited.add(next)) {
-                        break;
-                    }
+                SQLException next = sqlException;
+                do {
                     Optional<IntegrityFailure> classified;
                     try {
-                        classified = classifier.classify(next);
+                        classified = classifier.integrityFailure(next);
                     } catch (RuntimeException classificationFailure) {
                         // Never let classification mask the original exception; it travels along with it.
                         failure.addSuppressed(classificationFailure);
@@ -136,7 +134,8 @@ public final class IntegrityViolations {
                                 "%s refused by the database: %s".formatted(describe(operation), describe(violation)),
                                 List.of(violation), failure);
                     }
-                }
+                    next = next.getNextException();
+                } while (next != null && visited.add(next));
             }
         }
         return failure;

@@ -33,10 +33,12 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.Supplier;
 import javax.sql.DataSource;
 import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.Timeout;
 import org.slf4j.LoggerFactory;
 import org.springframework.jdbc.datasource.DriverManagerDataSource;
 import st.orm.Data;
@@ -53,10 +55,10 @@ import st.orm.SqlTemplateException;
 import st.orm.UK;
 import st.orm.core.spi.DefaultSqlDialect;
 import st.orm.core.template.IntegrityFailure;
-import st.orm.core.template.IntegrityFailureClassifier;
 import st.orm.core.template.Model;
 import st.orm.core.template.ORMTemplate;
 import st.orm.core.template.QueryTemplate;
+import st.orm.core.template.SqlFailureClassifier;
 import st.orm.core.template.TemplateString;
 import st.orm.spi.SqlOperation;
 
@@ -94,8 +96,13 @@ class IntegrityViolationsTest {
      */
     static class NamingDialect extends DefaultSqlDialect {
         @Override
-        public IntegrityFailureClassifier integrityFailureClassifier() {
-            return NamingDialect::classify;
+        public SqlFailureClassifier sqlFailureClassifier() {
+            return new SqlFailureClassifier() {
+                @Override
+                public Optional<IntegrityFailure> integrityFailure(SQLException exception) {
+                    return classify(exception);
+                }
+            };
         }
 
         private static Optional<IntegrityFailure> classify(SQLException exception) {
@@ -255,8 +262,13 @@ class IntegrityViolationsTest {
         // A database that names the referencing table on a delete, under the kind of a foreign key violation.
         var namingTheChild = new IntegrityViolations(new DefaultSqlDialect() {
             @Override
-            public IntegrityFailureClassifier integrityFailureClassifier() {
-                return exception -> Optional.of(IntegrityFailure.of(FOREIGN_KEY).withTable("iv_child"));
+            public SqlFailureClassifier sqlFailureClassifier() {
+                return new SqlFailureClassifier() {
+                    @Override
+                    public Optional<IntegrityFailure> integrityFailure(SQLException exception) {
+                        return Optional.of(IntegrityFailure.of(FOREIGN_KEY).withTable("iv_child"));
+                    }
+                };
             }
         }, dataSource, ModelBuilder.newInstance());
         orm.entity(Parent.class).insert(new Parent(1, "A", null, null));
@@ -352,9 +364,12 @@ class IntegrityViolationsTest {
     void aFailingClassificationNeverMasksTheError() {
         var failing = new IntegrityViolations(new DefaultSqlDialect() {
             @Override
-            public IntegrityFailureClassifier integrityFailureClassifier() {
-                return exception -> {
-                    throw new IllegalStateException("classification failed");
+            public SqlFailureClassifier sqlFailureClassifier() {
+                return new SqlFailureClassifier() {
+                    @Override
+                    public Optional<IntegrityFailure> integrityFailure(SQLException exception) {
+                        throw new IllegalStateException("classification failed");
+                    }
                 };
             }
         }, dataSource, ModelBuilder.newInstance());
@@ -559,9 +574,9 @@ class IntegrityViolationsTest {
         var kinds = Map.of("23505", UNIQUE, "23503", FOREIGN_KEY, "23502", NOT_NULL, "23514", CHECK, "22001", LENGTH,
                 "22003", NUMERIC_RANGE);
         kinds.forEach((state, kind) -> assertEquals(kind,
-                IntegrityFailureClassifier.STANDARD.classify(new SQLException("refused", state)).orElseThrow().kind()));
-        assertTrue(IntegrityFailureClassifier.STANDARD.classify(new SQLException("syntax", "42000")).isEmpty());
-        assertTrue(IntegrityFailureClassifier.STANDARD.classify(new SQLException("no state")).isEmpty());
+                SqlFailureClassifier.STANDARD.integrityFailure(new SQLException("refused", state)).orElseThrow().kind()));
+        assertTrue(SqlFailureClassifier.STANDARD.integrityFailure(new SQLException("syntax", "42000")).isEmpty());
+        assertTrue(SqlFailureClassifier.STANDARD.integrityFailure(new SQLException("no state")).isEmpty());
     }
 
     @Test
@@ -598,6 +613,74 @@ class IntegrityViolationsTest {
         assertEquals("Cannot validate Parent: the model is not Storm's own.", thrown.getMessage());
     }
 
+    private IntegrityViolations reporting(IntegrityFailure failure) {
+        return new IntegrityViolations(new DefaultSqlDialect() {
+            @Override
+            public SqlFailureClassifier sqlFailureClassifier() {
+                return new SqlFailureClassifier() {
+                    @Override
+                    public Optional<IntegrityFailure> integrityFailure(SQLException exception) {
+                        return Optional.of(failure);
+                    }
+                };
+            }
+        }, dataSource, ModelBuilder.newInstance());
+    }
+
+    private IntegrityViolation translated(IntegrityFailure failure, SqlOperation operation, Class<? extends Data> type) {
+        return assertInstanceOf(IntegrityViolationException.class,
+                reporting(failure).translate(new SQLException("refused"), operation, type)).violations().getFirst();
+    }
+
+    @Test
+    void aConstraintIsPlacedOnlyWhereTheSchemaSaysItBelongs() {
+        // The constraint is the child's own, so it cannot be a row of the child that others reference.
+        var referenced = translated(IntegrityFailure.of(REFERENCED).withConstraint("iv_child_parent_fk"), INSERT, Child.class);
+        assertInstanceOf(IntegrityViolation.Referenced.class, referenced);
+        assertEquals(List.of(), referenced.fields());
+        // A kind no foreign key lookup applies to keeps what it was.
+        assertInstanceOf(IntegrityViolation.NotNull.class,
+                translated(IntegrityFailure.of(NOT_NULL).withConstraint("iv_child_parent_fk"), INSERT, Parent.class));
+        // A foreign key the error does not place stays one, on the entity's own table or with none named.
+        assertInstanceOf(IntegrityViolation.ForeignKey.class, translated(IntegrityFailure.of(FOREIGN_KEY), INSERT, Child.class));
+        assertInstanceOf(IntegrityViolation.ForeignKey.class,
+                translated(IntegrityFailure.of(FOREIGN_KEY).withTable("IV_CHILD"), INSERT, Child.class));
+    }
+
+    @Test
+    void aResolutionWithoutModelsKeepsTheType() {
+        var error = new SQLException("duplicate", "23505", 23505);
+        var violation = assertInstanceOf(IntegrityViolationException.class,
+                IntegrityViolations.of(new NamingDialect()).translate(error, INSERT, Parent.class)).violations().getFirst();
+        assertEquals(Parent.class, violation.type());
+        assertNull(violation.table());
+    }
+
+    @Test
+    @Timeout(10)
+    void aChainOfNextExceptionsThatLoopsEnds() {
+        var first = new SQLException("first", "42000");
+        var second = new SQLException("second", "42000");
+        first.setNextException(second);
+        second.setNextException(first);
+        assertSame(first, naming.translate(first, INSERT, Parent.class));
+        var duplicate = new SQLException("third", "23505", 23505);
+        var head = new SQLException("head", "42000");
+        head.setNextException(duplicate);
+        assertInstanceOf(IntegrityViolationException.class, naming.translate(head, INSERT, Parent.class),
+                "an error further down the chain classifies the failure");
+    }
+
+    /** {@code iv_parent} with values no column limit applies to. */
+    @DbTable("iv_parent")
+    public record LooseParent(@PK(generation = NONE) @Nullable Integer id, Integer code, Integer amount) implements Entity<Integer> {}
+
+    @Test
+    void validateComparesOnlyWhatALimitAppliesTo() {
+        assertEquals(List.of(), orm.entity(LooseParent.class).validate(new LooseParent(1, 123456, 123456)));
+        assertEquals(List.of(), orm.entity(Parent.class).validate(new Parent(null, "A", null, null)), "a key may be generated");
+    }
+
     @Test
     void validateOrThrowThrowsEveryViolationAndReturnsForAFit() {
         var parents = orm.entity(Parent.class);
@@ -608,6 +691,69 @@ class IntegrityViolationsTest {
         assertTrue(thrown.getMessage().startsWith("Parent does not fit its table: Value too long for code of Parent in iv_parent: at most 5 characters."),
                 thrown.getMessage());
         parents.validateOrThrow(new Parent(1, "A", null, null));
+    }
+
+    /** A compound key. */
+    public record ParentKey(Integer tenant, Integer number) {}
+
+    /** A record with a compound key whose constructor refuses a blank code. */
+    @DbTable("iv_compound")
+    public record StrictCompound(@PK(generation = NONE) ParentKey id, String code) implements Entity<ParentKey> {
+        public StrictCompound {
+            if (code.isBlank()) {
+                throw new IllegalArgumentException("Code must not be blank.");
+            }
+        }
+    }
+
+    /** A compound key with a part that may be absent from a row. */
+    public record OptionalPartKey(@Nullable Integer tenant, Integer number) {}
+
+    /** A record whose compound key may be incomplete in a row, and whose constructor refuses a blank code. */
+    @DbTable("iv_compound")
+    public record StrictOptionalKey(@PK(generation = NONE) OptionalPartKey id, String code) implements Entity<OptionalPartKey> {
+        public StrictOptionalKey {
+            if (code.isBlank()) {
+                throw new IllegalArgumentException("Code must not be blank.");
+            }
+        }
+    }
+
+    /** A result without a primary key whose constructor refuses a blank code. */
+    public record StrictCode(String code) {
+        public StrictCode {
+            if (code.isBlank()) {
+                throw new IllegalArgumentException("Code must not be blank.");
+            }
+        }
+    }
+
+    private static SqlTemplateException readFailure(Supplier<?> read) {
+        var thrown = assertThrows(PersistenceException.class, read::get);
+        return assertInstanceOf(SqlTemplateException.class, thrown.getCause());
+    }
+
+    @Test
+    void aRowAConstructorRejectsNamesItsCompoundKey() throws SQLException {
+        try (var connection = dataSource.getConnection(); var statement = connection.createStatement()) {
+            statement.execute("CREATE TABLE iv_compound (tenant INTEGER NOT NULL, number INTEGER NOT NULL, code VARCHAR(5) NOT NULL, PRIMARY KEY (tenant, number))");
+            statement.execute("INSERT INTO iv_compound (tenant, number, code) VALUES (7, 8, ' ')");
+        }
+        var failure = readFailure(() -> orm.entity(StrictCompound.class).findAll());
+        assertEquals("Failed to create a new instance of StrictCompound for primary key ParentKey[tenant=7, number=8].", failure.getMessage());
+        assertInstanceOf(IllegalArgumentException.class, failure.getCause());
+    }
+
+    @Test
+    void aResultWithoutAPrimaryKeyNamesTheTypeAlone() {
+        var failure = readFailure(() -> orm.query(TemplateString.of("SELECT ' '")).getResultList(StrictCode.class));
+        assertEquals("Failed to create a new instance of StrictCode.", failure.getMessage());
+    }
+
+    @Test
+    void aRowWithoutAPrimaryKeyValueNamesTheTypeAlone() {
+        var failure = readFailure(() -> orm.query(TemplateString.of("SELECT NULL, 8, ' '")).getResultList(StrictOptionalKey.class));
+        assertEquals("Failed to create a new instance of StrictOptionalKey.", failure.getMessage());
     }
 
     @Test

@@ -23,7 +23,7 @@ import java.util.regex.Pattern;
 import org.jspecify.annotations.Nullable;
 import st.orm.core.template.IntegrityFailure;
 import st.orm.core.template.IntegrityFailure.Kind;
-import st.orm.core.template.IntegrityFailureClassifier;
+import st.orm.core.template.SqlFailureClassifier;
 
 /**
  * Reads the errors MySQL reports for a constraint, by error code: {@code 1062} duplicate entry, {@code 1452} a
@@ -40,7 +40,7 @@ import st.orm.core.template.IntegrityFailureClassifier;
  *
  * @since 1.16
  */
-public class MySQLIntegrityFailureClassifier implements IntegrityFailureClassifier {
+public class MySQLSqlFailureClassifier implements SqlFailureClassifier {
 
     /** A name in single quotes, as MySQL quotes a key or a column: {@code 'owner.owner_email_uk'}. */
     private static final Pattern QUOTED = Pattern.compile("'([^']*)'");
@@ -48,8 +48,24 @@ public class MySQLIntegrityFailureClassifier implements IntegrityFailureClassifi
     /** The constraint and referencing table of {@code a foreign key constraint fails (`db`.`pet`, CONSTRAINT `pet_owner_fk` ...)}. */
     private static final Pattern FOREIGN_KEY_CONSTRAINT = Pattern.compile("\\(`[^`]*`\\.`([^`]+)`, CONSTRAINT `([^`]+)`");
 
+    /**
+     * Recognises error {@code 1213}, {@code ER_LOCK_DEADLOCK}, on which MySQL rolls back the transaction. MySQL
+     * serializes with locks, so a conflict under serializable isolation surfaces as this deadlock as well.
+     *
+     * <p>The error code decides, not the SQL state: the MySQL driver reports a lock wait timeout, error
+     * {@code 1205}, under SQL state {@code 40001} too, while MySQL rolls back only the statement that waited.</p>
+     *
+     * @param exception one error of the failure's chain.
+     * @return {@code true} if the error reports a deadlock.
+     * @since 1.16
+     */
     @Override
-    public Optional<IntegrityFailure> classify(SQLException exception) {
+    public boolean isTransient(SQLException exception) {
+        return exception.getErrorCode() == 1213;
+    }
+
+    @Override
+    public Optional<IntegrityFailure> integrityFailure(SQLException exception) {
         String message = exception.getMessage() == null ? "" : exception.getMessage();
         return switch (exception.getErrorCode()) {
             case 1062 -> {

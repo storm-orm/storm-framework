@@ -35,12 +35,12 @@ import st.orm.Operator;
 import st.orm.StormConfig;
 import st.orm.core.spi.DefaultSqlDialect;
 import st.orm.core.spi.JsonString;
-import st.orm.core.template.IntegrityFailureClassifier;
 import st.orm.core.template.SqlDialect;
+import st.orm.core.template.SqlFailureClassifier;
 
 public class PostgreSQLSqlDialect extends DefaultSqlDialect {
 
-    private static final IntegrityFailureClassifier INTEGRITY_FAILURE_CLASSIFIER = new PostgreSQLIntegrityFailureClassifier();
+    private static final SqlFailureClassifier SQL_FAILURE_CLASSIFIER = new PostgreSQLSqlFailureClassifier();
 
     public PostgreSQLSqlDialect() {
     }
@@ -455,28 +455,13 @@ public class PostgreSQLSqlDialect extends DefaultSqlDialect {
     }
 
     /**
-     * Recognises the SQL states PostgreSQL reports for the conflicts it aborts the transaction for: {@code 40001},
-     * serialization failure, and {@code 40P01}, deadlock detected. A lock wait that runs out of
-     * {@code lock_timeout}, {@code 55P03}, is not transient.
-     *
-     * @param exception one error of the failure's chain.
-     * @return {@code true} if the error reports a serialization failure or a deadlock.
-     * @since 1.16
-     */
-    @Override
-    public boolean isTransientFailure(SQLException exception) {
-        String sqlState = exception.getSQLState();
-        return "40001".equals(sqlState) || "40P01".equals(sqlState);
-    }
-
-    /**
-     * Returns the classifier of the errors the database reports for a constraint.
+     * Returns the classifier of the errors the database reports.
      *
      * @return the classifier.
      * @since 1.16
      */
     @Override
-    public IntegrityFailureClassifier integrityFailureClassifier() {
-        return INTEGRITY_FAILURE_CLASSIFIER;
+    public SqlFailureClassifier sqlFailureClassifier() {
+        return SQL_FAILURE_CLASSIFIER;
     }
 }

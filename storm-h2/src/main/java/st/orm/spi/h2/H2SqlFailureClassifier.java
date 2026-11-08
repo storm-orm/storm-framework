@@ -21,7 +21,7 @@ import java.util.regex.Pattern;
 import org.jspecify.annotations.Nullable;
 import st.orm.core.template.IntegrityFailure;
 import st.orm.core.template.IntegrityFailure.Kind;
-import st.orm.core.template.IntegrityFailureClassifier;
+import st.orm.core.template.SqlFailureClassifier;
 
 /**
  * Reads the errors H2 reports for a constraint, by error code: {@code 23505} unique index or primary key violation,
@@ -36,7 +36,7 @@ import st.orm.core.template.IntegrityFailureClassifier;
  *
  * @since 1.16
  */
-public final class H2IntegrityFailureClassifier implements IntegrityFailureClassifier {
+public final class H2SqlFailureClassifier implements SqlFailureClassifier {
 
     /** {@code Unique index or primary key violation: "PUBLIC.OWNER_EMAIL_UK ON PUBLIC.OWNER(EMAIL ...) ..."}. */
     private static final Pattern UNIQUE_VIOLATION = Pattern.compile("\"(?:PRIMARY KEY|(?:[^\".]+\\.)?([^\" ]+)) ON (?:[^\".]+\\.)?([^\"(]+)\\(");
@@ -53,8 +53,23 @@ public final class H2IntegrityFailureClassifier implements IntegrityFailureClass
     /** The type of {@code Value too long for column "AMOUNT DECIMAL(5, 2)"}, which H2 reports for a number as well. */
     private static final Pattern NUMERIC_COLUMN = Pattern.compile("for column \"[^\" ]+ (?:DECIMAL|NUMERIC|DECFLOAT|NUMBER|DEC)\\b");
 
+    /**
+     * Recognises error {@code 40001}, {@code DEADLOCK_1}, which H2 reports, under SQL state {@code 40001}, both for a
+     * deadlock and for a write that conflicts with a serializable or repeatable read transaction's snapshot; H2
+     * rolls the transaction back on it. A lock wait that runs out of {@code LOCK_TIMEOUT}, error {@code 50200}, is
+     * not transient.
+     *
+     * @param exception one error of the failure's chain.
+     * @return {@code true} if the error reports a deadlock or a serialization conflict.
+     * @since 1.16
+     */
     @Override
-    public Optional<IntegrityFailure> classify(SQLException exception) {
+    public boolean isTransient(SQLException exception) {
+        return exception.getErrorCode() == 40001;
+    }
+
+    @Override
+    public Optional<IntegrityFailure> integrityFailure(SQLException exception) {
         String message = exception.getMessage() == null ? "" : exception.getMessage();
         return switch (exception.getErrorCode()) {
             case 23505 -> {

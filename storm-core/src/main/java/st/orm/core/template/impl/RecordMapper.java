@@ -570,20 +570,14 @@ final class RecordMapper {
             }
 
             /**
-             * Returns the failure of a row's construction naming the row's primary key, when the row has one and
-             * the failure stems from the constructor rather than from the mapping of the row's values.
+             * Returns the failure of a row's construction naming the row's primary key, when the row has one.
              */
             private SqlTemplateException forRow(SqlTemplateException failure, @Nullable Object primaryKey) {
-                if (primaryKey == null || failure.getCause() == null
-                        || failure.getCause() instanceof SqlTemplateException) {
+                if (primaryKey == null) {
                     return failure;
                 }
-                var named = new SqlTemplateException("%s for primary key %s.".formatted(
+                return new SqlTemplateException("%s for primary key %s.".formatted(
                         failure.getMessage().replaceAll("\\.$", ""), primaryKey), failure.getCause());
-                for (var suppressed : failure.getSuppressed()) {
-                    named.addSuppressed(suppressed);
-                }
-                return named;
             }
 
             /**

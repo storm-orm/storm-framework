@@ -732,12 +732,8 @@ public final class PreparedStatementTemplateImpl implements PreparedStatementTem
             // A null in a field whose column refuses it, found while the statement read the entity's values: the
             // statement does not exist yet, so the mapper receives the violation without one.
             throw getExceptionTransformer(null, dialect, strategies.exceptionMapper(),
-                    strategies.transactionTemplateProvider(), integrityViolations(dialect)).apply(e);
+                    strategies.transactionTemplateProvider(), integrityViolations).apply(e);
         }
-    }
-
-    private IntegrityViolations integrityViolations(SqlDialect dialect) {
-        return dialect == this.dialect ? integrityViolations : new IntegrityViolations(dialect, dataSource, modelBuilder);
     }
 
     /**
@@ -777,7 +773,7 @@ public final class PreparedStatementTemplateImpl implements PreparedStatementTem
             }
             var bindVariables = sql.bindVariables().orElse(null);
             var exceptionTransformer = getExceptionTransformer(sql, dialect, strategies.exceptionMapper(),
-                    strategies.transactionTemplateProvider(), integrityViolations(dialect));
+                    strategies.transactionTemplateProvider(), integrityViolations);
             if (bindVariables == null) {
                 return new QueryPlanImpl(sql, List.of(), List.of(), bound -> createQuery(bound, dialect),
                         exceptionTransformer);
@@ -801,7 +797,7 @@ public final class PreparedStatementTemplateImpl implements PreparedStatementTem
                 strategies.transactionTemplateProvider(),
                 strategies.queryObserver(),
                 getExceptionTransformer(sql, dialect, strategies.exceptionMapper(),
-                        strategies.transactionTemplateProvider(), integrityViolations(dialect)),
+                        strategies.transactionTemplateProvider(), integrityViolations),
                 sql.operation(),
                 sql.upsert(),
                 sql.dataType().orElse(null),

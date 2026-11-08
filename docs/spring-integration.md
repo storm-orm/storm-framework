@@ -654,7 +654,7 @@ The exceptions of Storm's transaction API stay Storm types: `TransactionTimedOut
 fun updateStudy(study: Study) = transactionBlocking { studyRepository.update(study) }
 ```
 
-A custom `ExceptionMapper` receives these failures too, with the operation and, for a write, the entity type as its context, so a mapper of your own translates them the same way. The context's `transientFailure()` says whether the failure stems from concurrent activity, as the dialect classified it.
+A custom `ExceptionMapper` receives these failures too, with the operation and, for a write, the entity type as its context, so a mapper of your own translates them the same way. A deadlock or serialization failure reaches it as a `TransientPersistenceException` and a write the database refused as an `IntegrityViolationException`, each with the driver's exception as the cause.
 
 Translation applies to the templates composed with it: the starter's auto-configured template, the templates an `OrmTemplateFactory` creates, and templates created with `SpringOrmTemplate.of` (Java) or `springOrmTemplate` (Kotlin). Disable it with `storm.exception-translation.enabled=false`, define your own `ExceptionMapper` bean, or compose the template yourself with the builder and leave the mapper out.
 

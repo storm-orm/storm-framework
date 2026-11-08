@@ -29,19 +29,20 @@ import java.sql.SQLTransientConnectionException;
 import java.util.ArrayList;
 import java.util.List;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.Timeout;
 import st.orm.OptimisticLockException;
 import st.orm.PersistenceException;
 import st.orm.TransientPersistenceException;
 import st.orm.core.spi.DefaultSqlDialect;
 import st.orm.core.spi.JdbcTransactionTemplateProviderImpl;
 import st.orm.core.template.SqlDialect;
+import st.orm.core.template.SqlFailureClassifier;
 import st.orm.spi.ExceptionContext;
 import st.orm.spi.ExceptionMapper;
 
 /**
- * The dialect classifies a statement's failure before the exception mapper sees it: the mapper receives the failure
- * as reported, with {@link ExceptionContext#transientFailure()} set, and the default mapper throws
- * {@link TransientPersistenceException} for it.
+ * The dialect's classifier reads a statement's failure before the exception mapper sees it: the mapper receives a
+ * transient failure as a {@link TransientPersistenceException} with the database's error as its cause.
  */
 class TransientFailureClassificationTest {
 
@@ -67,20 +68,29 @@ class TransientFailureClassificationTest {
     }
 
     @Test
+    @Timeout(10)
+    void aChainOfNextExceptionsThatLoopsEnds() {
+        var first = new SQLException("first", "42000");
+        var second = new SQLException("second", "42000");
+        first.setNextException(second);
+        second.setNextException(first);
+        assertFalse(map(first) instanceof TransientPersistenceException);
+    }
+
+    @Test
     void aSerializationFailureIsTransient() {
         var serializationFailure = new SQLException("could not serialize", "40001");
         var mapped = assertInstanceOf(TransientPersistenceException.class, map(serializationFailure));
         assertSame(serializationFailure, mapped.getCause());
-        assertTrue(contexts.getFirst().transientFailure());
     }
 
     @Test
-    void aCustomMapperReceivesTheFailureAsReportedAndCanOverride() {
+    void aCustomMapperReceivesATransientFailureByItsTypeAndCanOverride() {
         var serializationFailure = new SQLException("could not serialize", "40001");
         var overridden = new IllegalStateException("mine");
         var mapped = map(serializationFailure, (cause, context) -> {
-            assertSame(serializationFailure, cause);
-            assertTrue(context.transientFailure());
+            assertInstanceOf(TransientPersistenceException.class, cause);
+            assertSame(serializationFailure, cause.getCause());
             return overridden;
         });
         assertSame(overridden, mapped);
@@ -92,7 +102,6 @@ class TransientFailureClassificationTest {
         var mapped = map(violation);
         assertFalse(mapped instanceof TransientPersistenceException);
         assertSame(violation, mapped.getCause());
-        assertFalse(contexts.getFirst().transientFailure());
     }
 
     @Test
@@ -134,8 +143,13 @@ class TransientFailureClassificationTest {
         var classificationFailure = new IllegalStateException("classification failed");
         var failingDialect = new DefaultSqlDialect() {
             @Override
-            public boolean isTransientFailure(SQLException exception) {
-                throw classificationFailure;
+            public SqlFailureClassifier sqlFailureClassifier() {
+                return new SqlFailureClassifier() {
+                    @Override
+                    public boolean isTransient(SQLException exception) {
+                        throw classificationFailure;
+                    }
+                };
             }
         };
         var serializationFailure = new SQLException("could not serialize", "40001");
@@ -143,7 +157,6 @@ class TransientFailureClassificationTest {
         assertFalse(mapped instanceof TransientPersistenceException);
         assertSame(serializationFailure, mapped.getCause());
         assertTrue(List.of(serializationFailure.getSuppressed()).contains(classificationFailure));
-        assertFalse(contexts.getFirst().transientFailure());
     }
 
     @Test
@@ -155,19 +168,9 @@ class TransientFailureClassificationTest {
     }
 
     @Test
-    void aChainThatLoopsIsWalkedOnce() {
-        var first = new SQLException("first", "42000");
-        var second = new SQLException("second", "42000");
-        first.setNextException(second);
-        second.setNextException(first);
-        assertFalse(map(first) instanceof TransientPersistenceException);
-    }
-
-    @Test
     void anOptimisticLockConflictIsTransientAndPassesThrough() {
         var conflict = new OptimisticLockException("stale");
         assertSame(conflict, map(conflict));
-        assertTrue(contexts.getFirst().transientFailure());
         assertEquals(1, contexts.size());
     }
 }

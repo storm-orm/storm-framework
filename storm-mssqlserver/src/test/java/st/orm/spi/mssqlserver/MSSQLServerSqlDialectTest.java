@@ -408,13 +408,13 @@ class MSSQLServerSqlDialectTest {
 
     @Test
     void deadlocksAndUpdateConflictsAreTransient() {
-        assertTrue(dialect.isTransientFailure(new SQLException("deadlock victim", "40001", 1205)));
-        assertTrue(dialect.isTransientFailure(new SQLException("snapshot update conflict", "S0002", 3960)));
-        assertTrue(dialect.isTransientFailure(new SQLException("memory-optimized update conflict", "S0001", 41302)));
+        assertTrue(dialect.sqlFailureClassifier().isTransient(new SQLException("deadlock victim", "40001", 1205)));
+        assertTrue(dialect.sqlFailureClassifier().isTransient(new SQLException("snapshot update conflict", "S0002", 3960)));
+        assertTrue(dialect.sqlFailureClassifier().isTransient(new SQLException("memory-optimized update conflict", "S0001", 41302)));
     }
 
     @Test
     void aLockTimeoutIsNotTransient() {
-        assertFalse(dialect.isTransientFailure(new SQLException("lock request time out", "S00051", 1222)));
+        assertFalse(dialect.sqlFailureClassifier().isTransient(new SQLException("lock request time out", "S00051", 1222)));
     }
 }

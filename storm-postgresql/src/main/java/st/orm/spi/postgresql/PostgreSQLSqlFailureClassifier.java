@@ -19,7 +19,7 @@ import java.sql.SQLException;
 import java.util.Optional;
 import org.jspecify.annotations.Nullable;
 import st.orm.core.template.IntegrityFailure;
-import st.orm.core.template.IntegrityFailureClassifier;
+import st.orm.core.template.SqlFailureClassifier;
 
 /**
  * Reads the SQL states PostgreSQL reports for a constraint, as the standard assigns them, and the constraint, table
@@ -33,11 +33,26 @@ import st.orm.core.template.IntegrityFailureClassifier;
  *
  * @since 1.16
  */
-public final class PostgreSQLIntegrityFailureClassifier implements IntegrityFailureClassifier {
+public final class PostgreSQLSqlFailureClassifier implements SqlFailureClassifier {
+
+    /**
+     * Recognises the SQL states PostgreSQL reports for the conflicts it aborts the transaction for: {@code 40001},
+     * serialization failure, and {@code 40P01}, deadlock detected. A lock wait that runs out of
+     * {@code lock_timeout}, {@code 55P03}, is not transient.
+     *
+     * @param exception one error of the failure's chain.
+     * @return {@code true} if the error reports a serialization failure or a deadlock.
+     * @since 1.16
+     */
+    @Override
+    public boolean isTransient(SQLException exception) {
+        String sqlState = exception.getSQLState();
+        return "40001".equals(sqlState) || "40P01".equals(sqlState);
+    }
 
     @Override
-    public Optional<IntegrityFailure> classify(SQLException exception) {
-        return STANDARD.classify(exception).map(failure -> {
+    public Optional<IntegrityFailure> integrityFailure(SQLException exception) {
+        return SqlFailureClassifier.super.integrityFailure(exception).map(failure -> {
             var fields = serverErrorFields(exception);
             if (fields == null) {
                 return failure;

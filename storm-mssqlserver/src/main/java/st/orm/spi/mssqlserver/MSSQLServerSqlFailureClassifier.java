@@ -23,7 +23,7 @@ import java.util.regex.Pattern;
 import org.jspecify.annotations.Nullable;
 import st.orm.core.template.IntegrityFailure;
 import st.orm.core.template.IntegrityFailure.Kind;
-import st.orm.core.template.IntegrityFailureClassifier;
+import st.orm.core.template.SqlFailureClassifier;
 
 /**
  * Reads the errors SQL Server reports for a constraint, by error number: {@code 2627} a violated primary key or
@@ -42,7 +42,7 @@ import st.orm.core.template.IntegrityFailureClassifier;
  *
  * @since 1.16
  */
-public final class MSSQLServerIntegrityFailureClassifier implements IntegrityFailureClassifier {
+public final class MSSQLServerSqlFailureClassifier implements SqlFailureClassifier {
 
     /** A name in single quotes: {@code 'owner_email_uk'}, {@code 'dbo.owner'}, {@code 'db.dbo.owner'}. */
     private static final Pattern SINGLE_QUOTED = Pattern.compile("'([^']*)'");
@@ -50,8 +50,25 @@ public final class MSSQLServerIntegrityFailureClassifier implements IntegrityFai
     /** A name in double quotes: {@code "pet_owner_fk"}, {@code "dbo.owner"}. */
     private static final Pattern DOUBLE_QUOTED = Pattern.compile("\"([^\"]*)\"");
 
+    /**
+     * Recognises the errors SQL Server aborts the transaction with when another transaction conflicts with it:
+     * {@code 1205}, chosen as deadlock victim, which also covers a conflict under serializable isolation, as SQL
+     * Server serializes with locks; {@code 3960}, snapshot isolation transaction aborted due to update conflict; and
+     * {@code 41302}, the update conflict of a transaction on a memory-optimized table. A lock request that runs out
+     * of {@code LOCK_TIMEOUT}, {@code 1222}, is not transient: SQL Server cancels only the statement.
+     *
+     * @param exception one error of the failure's chain.
+     * @return {@code true} if the error reports a deadlock or an update conflict.
+     * @since 1.16
+     */
     @Override
-    public Optional<IntegrityFailure> classify(SQLException exception) {
+    public boolean isTransient(SQLException exception) {
+        int errorCode = exception.getErrorCode();
+        return errorCode == 1205 || errorCode == 3960 || errorCode == 41302;
+    }
+
+    @Override
+    public Optional<IntegrityFailure> integrityFailure(SQLException exception) {
         String message = exception.getMessage() == null ? "" : exception.getMessage();
         return switch (exception.getErrorCode()) {
             case 2627 -> {

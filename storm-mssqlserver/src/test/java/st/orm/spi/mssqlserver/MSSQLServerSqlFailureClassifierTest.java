@@ -20,12 +20,12 @@ import st.orm.core.template.IntegrityFailure;
 /**
  * What the SQL Server classifier reads from the errors SQL Server reports for a constraint.
  */
-class MSSQLServerIntegrityFailureTest {
+class MSSQLServerSqlFailureClassifierTest {
 
-    private final MSSQLServerIntegrityFailureClassifier classifier = new MSSQLServerIntegrityFailureClassifier();
+    private final MSSQLServerSqlFailureClassifier classifier = new MSSQLServerSqlFailureClassifier();
 
     private IntegrityFailure classify(int errorCode, String message) {
-        return classifier.classify(new SQLException(message, "23000", errorCode)).orElseThrow();
+        return classifier.integrityFailure(new SQLException(message, "23000", errorCode)).orElseThrow();
     }
 
     @Test
@@ -79,7 +79,7 @@ class MSSQLServerIntegrityFailureTest {
 
     @Test
     void aConflictWithAnUnknownConstraintKindIsNotAViolation() {
-        assertTrue(classifier.classify(new SQLException("The statement has been terminated.", "23000", 547)).isEmpty());
+        assertTrue(classifier.integrityFailure(new SQLException("The statement has been terminated.", "23000", 547)).isEmpty());
     }
 
     @Test
@@ -122,7 +122,16 @@ class MSSQLServerIntegrityFailureTest {
     }
 
     @Test
+    void aMessageWithoutNamesKeepsTheKind() {
+        assertNull(classify(2627, "changed").constraint());
+        assertNull(classify(2601, "changed").table());
+        assertTrue(classify(515, "changed").columns().isEmpty());
+        assertEquals(LENGTH, classify(2628, "changed").kind());
+        assertNull(classifier.integrityFailure(new SQLException(null, "23000", 8152)).orElseThrow().table());
+    }
+
+    @Test
     void anotherErrorIsNotAViolation() {
-        assertTrue(classifier.classify(new SQLException("deadlock victim", "40001", 1205)).isEmpty());
+        assertTrue(classifier.integrityFailure(new SQLException("deadlock victim", "40001", 1205)).isEmpty());
     }
 }

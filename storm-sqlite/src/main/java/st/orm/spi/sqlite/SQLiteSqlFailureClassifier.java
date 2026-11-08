@@ -23,7 +23,7 @@ import java.util.stream.Stream;
 import org.jspecify.annotations.Nullable;
 import st.orm.core.template.IntegrityFailure;
 import st.orm.core.template.IntegrityFailure.Kind;
-import st.orm.core.template.IntegrityFailureClassifier;
+import st.orm.core.template.SqlFailureClassifier;
 
 /**
  * Reads the constraint violations SQLite reports under result code {@code SQLITE_CONSTRAINT}, by the extended result
@@ -37,7 +37,7 @@ import st.orm.core.template.IntegrityFailureClassifier;
  *
  * @since 1.16
  */
-public final class SQLiteIntegrityFailureClassifier implements IntegrityFailureClassifier {
+public final class SQLiteSqlFailureClassifier implements SqlFailureClassifier {
 
     /**
      * The primary result code SQLite reports for a constraint violation; the extended code says which constraint.
@@ -56,8 +56,39 @@ public final class SQLiteIntegrityFailureClassifier implements IntegrityFailureC
     /** The constraint of {@code CHECK constraint failed: owner_age_ck}. */
     private static final Pattern CHECK_CONSTRAINT = Pattern.compile("CHECK constraint failed: ([^)]+?)\\)?$");
 
+    /**
+     * The extended result code of a write in a write-ahead-log transaction whose snapshot another connection wrote
+     * past, which the SQLite driver names at the start of the message.
+     */
+    private static final String SQLITE_BUSY_SNAPSHOT = "[SQLITE_BUSY_SNAPSHOT]";
+
+    /**
+     * The primary result code SQLite reports for a database another connection holds locked.
+     */
+    private static final int SQLITE_BUSY = 5;
+
+    /**
+     * Recognises {@code SQLITE_BUSY_SNAPSHOT}: a transaction in write-ahead-log mode that read a snapshot and then
+     * writes after another connection committed past it. Waiting does not help; the transaction must start over.
+     * The driver reports the primary result code, {@code SQLITE_BUSY}, as the error code and names the extended code
+     * at the start of the message. A plain {@code SQLITE_BUSY} is not transient: it is a lock wait that ran out of
+     * the busy timeout.
+     *
+     * <p>SQLite has one writer at a time, so two transactions never deadlock on rows; the second writer waits for
+     * the busy timeout instead.</p>
+     *
+     * @param exception one error of the failure's chain.
+     * @return {@code true} if the error reports a write past the transaction's snapshot.
+     * @since 1.16
+     */
     @Override
-    public Optional<IntegrityFailure> classify(SQLException exception) {
+    public boolean isTransient(SQLException exception) {
+        String message = exception.getMessage();
+        return exception.getErrorCode() == SQLITE_BUSY && message != null && message.startsWith(SQLITE_BUSY_SNAPSHOT);
+    }
+
+    @Override
+    public Optional<IntegrityFailure> integrityFailure(SQLException exception) {
         String message = exception.getMessage() == null ? "" : exception.getMessage();
         if (exception.getErrorCode() != SQLITE_CONSTRAINT) {
             return Optional.empty();
@@ -109,7 +140,7 @@ public final class SQLiteIntegrityFailureClassifier implements IntegrityFailureC
     private static @Nullable Integer resultCode(SQLException exception) {
         try {
             var resultCode = exception.getClass().getMethod("getResultCode").invoke(exception);
-            return resultCode == null ? null : (Integer) resultCode.getClass().getField("code").get(resultCode);
+            return (Integer) resultCode.getClass().getField("code").get(resultCode);
         } catch (ReflectiveOperationException | RuntimeException e) {
             return null;
         }
@@ -123,7 +154,6 @@ public final class SQLiteIntegrityFailureClassifier implements IntegrityFailureC
         return Stream.of(matcher.group(1).split(","))
                 .map(String::trim)
                 .map(column -> column.substring(column.lastIndexOf('.') + 1))
-                .filter(column -> !column.isEmpty())
                 .toList();
     }
 }
