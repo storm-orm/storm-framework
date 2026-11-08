@@ -251,16 +251,19 @@ public final class SchemaValidator {
          * Returns the schema a model names, reading it on first use.
          */
         DatabaseSchema resolve(String entitySchema) throws SQLException {
-            var schema = resolveSchema(connection, dialect, defaultCatalog, defaultSchema, entitySchema, schemaCache);
+            var schema = SchemaCache.resolve(connection, dialect, defaultCatalog, defaultSchema, entitySchema,
+                    schemaCache);
             byModelSchema.put(entitySchema, schema);
             return schema;
         }
 
         /**
-         * Publishes the indexes of the schemas read for the data source.
+         * Publishes the schemas read for the data source, and their indexes, so the features that read a column's
+         * limits or a constraint's columns read nothing of their own.
          */
         void publish() {
             if (!byModelSchema.isEmpty()) {
+                byModelSchema.forEach((entitySchema, schema) -> SchemaCache.publish(dataSource, entitySchema, schema));
                 IndexCatalog.publish(dataSource, IndexCatalog.of(byModelSchema, dialect));
             }
         }
@@ -465,46 +468,6 @@ public final class SchemaValidator {
         return "Schema validation failed with %d error(s):\n%s\nIf intentional, use @DbIgnore to exclude specific types or fields from validation.".formatted(
                 errors.size(),
                 String.join("\n", errors.stream().map(e -> "  - " + e).toList()));
-    }
-
-    /**
-     * Resolves the {@link DatabaseSchema} for the given entity schema, reading from the database if not already cached.
-     *
-     * <p>On databases that use catalogs as schemas (as indicated by {@link SqlDialect#useCatalogAsSchema()}), the
-     * {@code @DbTable(schema = ...)} value represents a database name, which maps to the JDBC catalog. In that case,
-     * the entity schema is passed as the catalog parameter instead of the schema pattern.</p>
-     */
-    private DatabaseSchema resolveSchema(
-            Connection connection,
-            SqlDialect dialect,
-            @Nullable String defaultCatalog,
-            @Nullable String defaultSchema,
-            String entitySchema,
-            SortedMap<String, DatabaseSchema> schemaCache
-    ) throws SQLException {
-        // Use the entity's schema if specified, otherwise fall back to the connection's default schema.
-        String schemaKey = entitySchema.isEmpty()
-                ? (defaultSchema != null ? defaultSchema : "")
-                : entitySchema;
-        DatabaseSchema cached = schemaCache.get(schemaKey);
-        if (cached != null) {
-            return cached;
-        }
-        String catalog;
-        String schemaPattern;
-        if (!entitySchema.isEmpty() && dialect.useCatalogAsSchema()) {
-            // Database uses catalogs as schemas. The entity's schema represents a
-            // database name, which maps to the JDBC catalog.
-            catalog = entitySchema;
-            schemaPattern = null;
-        } else {
-            catalog = defaultCatalog;
-            schemaPattern = entitySchema.isEmpty() ? defaultSchema : entitySchema;
-        }
-        DatabaseSchema databaseSchema = DatabaseSchema.read(connection, catalog, schemaPattern,
-                    DatabaseSchema.Discovery.of(dialect));
-        schemaCache.put(schemaKey, databaseSchema);
-        return databaseSchema;
     }
 
     /**

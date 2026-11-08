@@ -24,9 +24,12 @@ import java.util.regex.Pattern;
 import st.orm.StormConfig;
 import st.orm.core.spi.DefaultSqlDialect;
 import st.orm.core.template.Column;
+import st.orm.core.template.IntegrityFailureClassifier;
 import st.orm.core.template.SqlDialect;
 
 public class MSSQLServerSqlDialect extends DefaultSqlDialect {
+
+    private static final IntegrityFailureClassifier INTEGRITY_FAILURE_CLASSIFIER = new MSSQLServerIntegrityFailureClassifier();
 
     public MSSQLServerSqlDialect() {
     }
@@ -376,5 +379,16 @@ public class MSSQLServerSqlDialect extends DefaultSqlDialect {
     public boolean isTransientFailure(SQLException exception) {
         int errorCode = exception.getErrorCode();
         return errorCode == 1205 || errorCode == 3960 || errorCode == 41302;
+    }
+
+    /**
+     * Returns the classifier of the errors the database reports for a constraint.
+     *
+     * @return the classifier.
+     * @since 1.16
+     */
+    @Override
+    public IntegrityFailureClassifier integrityFailureClassifier() {
+        return INTEGRITY_FAILURE_CLASSIFIER;
     }
 }

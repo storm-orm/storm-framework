@@ -27,8 +27,11 @@ import java.util.regex.Pattern;
 import st.orm.PersistenceException;
 import st.orm.StormConfig;
 import st.orm.core.spi.DefaultSqlDialect;
+import st.orm.core.template.IntegrityFailureClassifier;
 
 public class SQLiteSqlDialect extends DefaultSqlDialect {
+
+    private static final IntegrityFailureClassifier INTEGRITY_FAILURE_CLASSIFIER = new SQLiteIntegrityFailureClassifier();
 
     public SQLiteSqlDialect() {
     }
@@ -339,5 +342,27 @@ public class SQLiteSqlDialect extends DefaultSqlDialect {
     public boolean isTransientFailure(SQLException exception) {
         String message = exception.getMessage();
         return exception.getErrorCode() == SQLITE_BUSY && message != null && message.startsWith(SQLITE_BUSY_SNAPSHOT);
+    }
+
+    /**
+     * Returns the classifier of the errors the database reports for a constraint.
+     *
+     * @return the classifier.
+     * @since 1.16
+     */
+    @Override
+    public IntegrityFailureClassifier integrityFailureClassifier() {
+        return INTEGRITY_FAILURE_CLASSIFIER;
+    }
+
+    /**
+     * SQLite stores any value whatever the declared size of its column.
+     *
+     * @return {@code false}.
+     * @since 1.16
+     */
+    @Override
+    public boolean enforcesColumnSizes() {
+        return false;
     }
 }

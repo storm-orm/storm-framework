@@ -35,9 +35,12 @@ import st.orm.Operator;
 import st.orm.StormConfig;
 import st.orm.core.spi.DefaultSqlDialect;
 import st.orm.core.spi.JsonString;
+import st.orm.core.template.IntegrityFailureClassifier;
 import st.orm.core.template.SqlDialect;
 
 public class PostgreSQLSqlDialect extends DefaultSqlDialect {
+
+    private static final IntegrityFailureClassifier INTEGRITY_FAILURE_CLASSIFIER = new PostgreSQLIntegrityFailureClassifier();
 
     public PostgreSQLSqlDialect() {
     }
@@ -464,5 +467,16 @@ public class PostgreSQLSqlDialect extends DefaultSqlDialect {
     public boolean isTransientFailure(SQLException exception) {
         String sqlState = exception.getSQLState();
         return "40001".equals(sqlState) || "40P01".equals(sqlState);
+    }
+
+    /**
+     * Returns the classifier of the errors the database reports for a constraint.
+     *
+     * @return the classifier.
+     * @since 1.16
+     */
+    @Override
+    public IntegrityFailureClassifier integrityFailureClassifier() {
+        return INTEGRITY_FAILURE_CLASSIFIER;
     }
 }

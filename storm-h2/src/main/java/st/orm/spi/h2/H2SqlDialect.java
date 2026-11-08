@@ -31,9 +31,12 @@ import java.util.regex.Pattern;
 import st.orm.Operator;
 import st.orm.StormConfig;
 import st.orm.core.spi.DefaultSqlDialect;
+import st.orm.core.template.IntegrityFailureClassifier;
 import st.orm.core.template.SqlDialect;
 
 public class H2SqlDialect extends DefaultSqlDialect {
+
+    private static final IntegrityFailureClassifier INTEGRITY_FAILURE_CLASSIFIER = new H2IntegrityFailureClassifier();
 
     public H2SqlDialect() {
     }
@@ -265,5 +268,16 @@ public class H2SqlDialect extends DefaultSqlDialect {
     @Override
     public boolean isTransientFailure(SQLException exception) {
         return exception.getErrorCode() == 40001;
+    }
+
+    /**
+     * Returns the classifier of the errors the database reports for a constraint.
+     *
+     * @return the classifier.
+     * @since 1.16
+     */
+    @Override
+    public IntegrityFailureClassifier integrityFailureClassifier() {
+        return INTEGRITY_FAILURE_CLASSIFIER;
     }
 }

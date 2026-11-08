@@ -448,7 +448,7 @@ public class GlobalAuditCallback implements EntityCallback<Entity<?>> {
 
 ### Validation
 
-Callbacks can enforce business rules before data reaches the database. Unlike database constraints, callback-level validation can produce domain-specific error messages and catch problems before the SQL round-trip. Both `beforeInsert` and `beforeUpdate` must return the entity, so a validation callback simply returns the original entity unchanged after checking the invariants:
+Callbacks can enforce business rules that apply to writes alone. Unlike database constraints, callback-level validation can produce domain-specific error messages and catch problems before the SQL round-trip. A rule the entity must always satisfy belongs in the record's constructor instead, so an invalid entity cannot exist; a column limit, such as a string's length, needs no code at all: [`validate`](error-handling.md#checking-an-entity-before-the-write) checks an entity against the schema; and a rule that depends on other rows, such as a unique key, is the database's to check, reported as an [`IntegrityViolationException`](error-handling.md#integrity-violations). Both `beforeInsert` and `beforeUpdate` must return the entity, so a validation callback simply returns the original entity unchanged after checking the invariants:
 
 ```java
 public class ArticleValidationCallback implements EntityCallback<Article> {

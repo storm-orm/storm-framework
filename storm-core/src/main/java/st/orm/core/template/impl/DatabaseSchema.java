@@ -15,6 +15,8 @@
  */
 package st.orm.core.template.impl;
 
+import static java.util.Objects.requireNonNullElse;
+
 import java.sql.Connection;
 import java.sql.DatabaseMetaData;
 import java.sql.PreparedStatement;
@@ -71,8 +73,10 @@ public final class DatabaseSchema {
      * @param tableName     the table containing this column.
      * @param columnName    the column name.
      * @param dataType      the SQL type from {@link java.sql.Types}.
-     * @param typeName      the database-specific type name.
+     * @param typeName      the database-specific type name; empty where the driver reports none.
      * @param columnSize    the column size (precision for numeric types, length for character types).
+     * @param decimalDigits the digits after the decimal point of a numeric column, its scale; {@code 0} for a column
+     *                      of another type or a driver that does not report it.
      * @param charOctetLength the most bytes a value of a character column takes, as the driver reports it from the
      *                      column's length and character set; {@code 0} for a column of another type or a driver
      *                      that does not report it.
@@ -88,6 +92,7 @@ public final class DatabaseSchema {
             int dataType,
             String typeName,
             int columnSize,
+            int decimalDigits,
             int charOctetLength,
             boolean nullable,
             boolean autoIncrement,
@@ -374,8 +379,10 @@ public final class DatabaseSchema {
                 // value: reading a later column first closes the stream, and COLUMN_DEF can no longer be read.
                 String columnName = columns.getString("COLUMN_NAME");
                 int dataType = columns.getInt("DATA_TYPE");
-                String typeName = columns.getString("TYPE_NAME");
+                // A driver may report no type name; the column keeps an empty one rather than a null.
+                String typeName = requireNonNullElse(columns.getString("TYPE_NAME"), "");
                 int columnSize = columns.getInt("COLUMN_SIZE");
+                int decimalDigits = columns.getInt("DECIMAL_DIGITS");
                 String columnDef = columns.getString("COLUMN_DEF");
                 int charOctetLength = columns.getInt("CHAR_OCTET_LENGTH");
                 boolean hasDefault = columnDef != null;
@@ -386,7 +393,7 @@ public final class DatabaseSchema {
                 boolean generated = reportsGenerated && "YES".equalsIgnoreCase(columns.getString("IS_GENERATEDCOLUMN"));
 
                 columnsByTable.computeIfAbsent(tableName, k -> new ArrayList<>())
-                        .add(new DbColumn(tableName, columnName, dataType, typeName, columnSize, charOctetLength, nullable, autoIncrement, hasDefault, generated));
+                        .add(new DbColumn(tableName, columnName, dataType, typeName, columnSize, decimalDigits, charOctetLength, nullable, autoIncrement, hasDefault, generated));
             }
         }
         // A database that names its schemas as catalogs has no schema pattern; its catalog is the schema the

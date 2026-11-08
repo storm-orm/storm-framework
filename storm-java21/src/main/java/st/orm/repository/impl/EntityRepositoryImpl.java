@@ -23,6 +23,7 @@ import java.util.Optional;
 import java.util.stream.Stream;
 import st.orm.Data;
 import st.orm.Entity;
+import st.orm.IntegrityViolation;
 import st.orm.Metamodel;
 import st.orm.Page;
 import st.orm.Pageable;
@@ -123,6 +124,16 @@ public final class EntityRepositoryImpl<E extends Entity<ID>, ID> implements Ent
     @Override
     public boolean existsByRef(Ref<E> ref) {
         return core.existsByRef(ref);
+    }
+
+    @Override
+    public List<IntegrityViolation> validate(E entity) {
+        return core.validate(entity);
+    }
+
+    @Override
+    public void validateOrThrow(E entity) {
+        core.validateOrThrow(entity);
     }
 
     @Override

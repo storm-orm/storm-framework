@@ -286,6 +286,30 @@ users.removeAll();
 
 Java records are immutable. For copy-with-modification, consider Lombok `@Builder(toBuilder = true)` or define a `with` method.
 
+## Integrity Violations and Validation
+
+A write the database refuses for a constraint throws `IntegrityViolationException`. Match on the metamodel field and the violation's record type, never on a SQL state or a constraint name:
+
+```java
+try {
+    users.insert(user);
+} catch (IntegrityViolationException e) {
+    if (e.violations(User_.email).stream().anyMatch(v -> v instanceof IntegrityViolation.Unique)) {
+        // The email is taken.
+    }
+    throw e;
+}
+```
+
+`IntegrityViolation` is sealed: `Unique`, `ForeignKey`, `Referenced` (a remove of a row other rows reference), `NotNull`, `Check`, `Length`, `NumericRange`; a pattern switch over them is exhaustive. The fields are set only where the database names the column or the constraint. A database reports one violation per write.
+
+Rules that depend on other rows (unique keys, a foreign key's target) are the database's: never run an exists-query before an insert; let the write fail and catch the violation. Column limits come from the schema, never from an annotation: `validate` checks an entity against them without writing it and returns every violation, with `maxLength()` or `precision()` and `scale()` on each.
+
+```java
+List<IntegrityViolation> violations = users.validate(user);  // empty: every value fits
+users.validateOrThrow(user);                                  // IntegrityViolationException with every violation
+```
+
 ## Ref-Based Operations
 
 ```java

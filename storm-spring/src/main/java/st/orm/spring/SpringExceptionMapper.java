@@ -23,6 +23,8 @@ import javax.sql.DataSource;
 import org.jspecify.annotations.Nullable;
 import org.springframework.dao.ConcurrencyFailureException;
 import org.springframework.dao.DataAccessException;
+import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.dao.DuplicateKeyException;
 import org.springframework.dao.EmptyResultDataAccessException;
 import org.springframework.dao.IncorrectResultSizeDataAccessException;
 import org.springframework.dao.IncorrectUpdateSemanticsDataAccessException;
@@ -33,6 +35,8 @@ import org.springframework.jdbc.support.SQLErrorCodeSQLExceptionTranslator;
 import org.springframework.jdbc.support.SQLExceptionSubclassTranslator;
 import org.springframework.jdbc.support.SQLExceptionTranslator;
 import st.orm.IllegalTransactionStateException;
+import st.orm.IntegrityViolation;
+import st.orm.IntegrityViolationException;
 import st.orm.NoResultException;
 import st.orm.NonUniqueResultException;
 import st.orm.OptimisticLockException;
@@ -68,6 +72,11 @@ import st.orm.spi.ExceptionMapper;
  * {@code OptimisticLockingFailureException} therefore sees Storm's optimistic lock conflicts. Any other failure
  * translates to {@link StormSystemException}, so a caller catches one {@code DataAccessException} hierarchy.</p>
  *
+ * <p>An {@link IntegrityViolationException}, a value that breaks a rule of its table, whether the database refused
+ * the write or Storm found the violation before it, translates to {@link DuplicateKeyException} for an
+ * {@link IntegrityViolation.Unique} violation and to {@link DataIntegrityViolationException} for the other kinds,
+ * with the Storm exception, and the violations and fields it carries, as the cause.</p>
+ *
  * <p>The exceptions of Storm's transaction API pass through unchanged: {@link TransactionTimedOutException},
  * {@link IllegalTransactionStateException}, {@link UnexpectedRollbackException},
  * {@link ReadOnlyTransactionException} and {@link TransactionCallbackException}. A transaction block raises them
@@ -101,8 +110,13 @@ public class SpringExceptionMapper implements ExceptionMapper {
     @Override
     public RuntimeException map(Throwable cause, ExceptionContext context) {
         SQLException sqlException = findSqlException(cause);
-        if (sqlException == null) {
+        if (sqlException == null || cause instanceof IntegrityViolationException) {
             return switch (cause) {
+                case IntegrityViolationException violation
+                        when violation.violations().getFirst() instanceof IntegrityViolation.Unique ->
+                        new DuplicateKeyException(violation.getMessage(), violation);
+                case IntegrityViolationException violation ->
+                        new DataIntegrityViolationException(violation.getMessage(), violation);
                 case OptimisticLockException conflict ->
                         new OptimisticLockingFailureException(conflict.getMessage(), conflict);
                 case TransientPersistenceException transientFailure ->

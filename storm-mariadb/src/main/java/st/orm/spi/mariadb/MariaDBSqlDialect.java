@@ -20,6 +20,7 @@ import java.util.Locale;
 import java.util.Optional;
 import java.util.Set;
 import st.orm.StormConfig;
+import st.orm.core.template.IntegrityFailureClassifier;
 import st.orm.spi.mysql.MySQLSqlDialect;
 
 /**
@@ -58,6 +59,8 @@ import st.orm.spi.mysql.MySQLSqlDialect;
  * <p>The list row is the mirror image and the reason the tuple is kept for it.</p>
  */
 public class MariaDBSqlDialect extends MySQLSqlDialect {
+
+    private static final IntegrityFailureClassifier INTEGRITY_FAILURE_CLASSIFIER = new MariaDBIntegrityFailureClassifier();
 
     public MariaDBSqlDialect() {
     }
@@ -237,5 +240,16 @@ public class MariaDBSqlDialect extends MySQLSqlDialect {
     @Override
     public boolean isTransientFailure(SQLException exception) {
         return super.isTransientFailure(exception) || exception.getErrorCode() == 1020;
+    }
+
+    /**
+     * Returns the classifier of the errors the database reports for a constraint.
+     *
+     * @return the classifier.
+     * @since 1.16
+     */
+    @Override
+    public IntegrityFailureClassifier integrityFailureClassifier() {
+        return INTEGRITY_FAILURE_CLASSIFIER;
     }
 }

@@ -20,10 +20,12 @@ import static st.orm.core.template.impl.ObjectMapperFactory.getObjectMapper;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.util.function.Function;
 import java.util.stream.Stream;
 import java.util.stream.StreamSupport;
 import org.jspecify.annotations.Nullable;
 import st.orm.Data;
+import st.orm.IntegrityViolationException;
 import st.orm.PersistenceException;
 import st.orm.core.spi.RefFactory;
 import st.orm.core.template.PreparedQuery;
@@ -38,6 +40,8 @@ final class PreparedQueryImpl extends QueryImpl implements PreparedQuery {
     /** The lease of the statement, closed with the prepared query. */
     private final StatementLease lease;
     private final BindVarsHandle bindVarsHandle;
+    /** Maps a violation found while a record's values are read for the batch, via the template's exception mapper. */
+    private final Function<Throwable, RuntimeException> exceptionTransformer;
     /** Whether the caller uses and closes the query in the same call, so what it hands back is not watched. */
     private final boolean consumed;
 
@@ -56,6 +60,7 @@ final class PreparedQueryImpl extends QueryImpl implements PreparedQuery {
         this.lease = lease;
         this.statement = lease.statement();
         this.bindVarsHandle = bindVarsHandle;
+        this.exceptionTransformer = environment.exceptionTransformer();
         this.consumed = consumed;
     }
 
@@ -76,7 +81,12 @@ final class PreparedQueryImpl extends QueryImpl implements PreparedQuery {
         if (bindVarsHandle == null) {
             throw new PersistenceException("No bind vars specified for prepared query.");
         }
-        bindVarsHandle.addBatch(record);
+        try {
+            bindVarsHandle.addBatch(record);
+        } catch (IntegrityViolationException e) {
+            // A null in a field whose column refuses it, found while the record's values were read for the batch.
+            throw exceptionTransformer.apply(e);
+        }
     }
 
     /**

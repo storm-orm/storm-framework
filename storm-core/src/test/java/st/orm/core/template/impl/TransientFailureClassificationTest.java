@@ -55,7 +55,7 @@ class TransientFailureClassificationTest {
             return mapper.map(cause, context);
         };
         return ExceptionHelper.getExceptionTransformer(null, dialect, recording,
-                new JdbcTransactionTemplateProviderImpl()).apply(failure);
+                new JdbcTransactionTemplateProviderImpl(), IntegrityViolations.of(dialect)).apply(failure);
     }
 
     private RuntimeException map(Throwable failure, ExceptionMapper mapper) {

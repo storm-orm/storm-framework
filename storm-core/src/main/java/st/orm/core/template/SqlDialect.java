@@ -38,6 +38,7 @@ import java.util.UUID;
 import java.util.function.Function;
 import java.util.regex.Pattern;
 import org.jspecify.annotations.Nullable;
+import st.orm.IntegrityViolationException;
 import st.orm.Operator;
 import st.orm.SqlTemplateException;
 import st.orm.core.spi.JsonString;
@@ -636,6 +637,38 @@ public interface SqlDialect {
      */
     default boolean isTransientFailure(SQLException exception) {
         return "40001".equals(exception.getSQLState());
+    }
+
+    /**
+     * Returns the classifier of the errors the dialect's database reports when it refused a value for a rule of its
+     * table. Storm asks it for every {@code SQLException} in the chain of a statement's failure, or of a commit's
+     * failure, as it asks {@link #isTransientFailure(SQLException)}, resolves the names the failure carries to the
+     * entity's fields and throws an {@link IntegrityViolationException}.
+     *
+     * <p>The default is {@link IntegrityFailureClassifier#STANDARD}, which recognises the SQL states the standard
+     * assigns and names nothing. A dialect returns the classifier that reads its database's own codes and names.</p>
+     *
+     * @return the classifier of the database's integrity failures.
+     * @since 1.16
+     */
+    default IntegrityFailureClassifier integrityFailureClassifier() {
+        return IntegrityFailureClassifier.STANDARD;
+    }
+
+    /**
+     * Returns whether the database refuses a value larger than its column's declared size: a string longer than a
+     * character column's length, or a decimal with more digits before the decimal point than the column's
+     * precision holds. The checks of {@code validate} compare a value with the column's declared size only where
+     * the database would refuse it, so they are never stricter than the database.
+     *
+     * <p>{@code true} by default. A database that stores any value whatever the declared size returns
+     * {@code false}.</p>
+     *
+     * @return {@code true} if the database enforces the declared sizes of its columns.
+     * @since 1.16
+     */
+    default boolean enforcesColumnSizes() {
+        return true;
     }
 
     /**

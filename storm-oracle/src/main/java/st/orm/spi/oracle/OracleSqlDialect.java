@@ -31,9 +31,12 @@ import st.orm.Operator;
 import st.orm.StormConfig;
 import st.orm.core.spi.DefaultSqlDialect;
 import st.orm.core.template.Column;
+import st.orm.core.template.IntegrityFailureClassifier;
 import st.orm.core.template.SqlDialect;
 
 public class OracleSqlDialect extends DefaultSqlDialect {
+
+    private static final IntegrityFailureClassifier INTEGRITY_FAILURE_CLASSIFIER = new OracleIntegrityFailureClassifier();
 
     public OracleSqlDialect() {
     }
@@ -398,5 +401,16 @@ public class OracleSqlDialect extends DefaultSqlDialect {
     public boolean isTransientFailure(SQLException exception) {
         int errorCode = exception.getErrorCode();
         return errorCode == 60 || errorCode == 8177;
+    }
+
+    /**
+     * Returns the classifier of the errors the database reports for a constraint.
+     *
+     * @return the classifier.
+     * @since 1.16
+     */
+    @Override
+    public IntegrityFailureClassifier integrityFailureClassifier() {
+        return INTEGRITY_FAILURE_CLASSIFIER;
     }
 }

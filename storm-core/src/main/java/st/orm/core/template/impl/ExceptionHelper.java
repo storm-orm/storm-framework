@@ -26,6 +26,7 @@ import java.util.Set;
 import java.util.function.Function;
 import org.jspecify.annotations.Nullable;
 import st.orm.Data;
+import st.orm.IntegrityViolationException;
 import st.orm.PersistenceException;
 import st.orm.SqlTemplateException;
 import st.orm.TransientPersistenceException;
@@ -60,25 +61,32 @@ public final class ExceptionHelper {
      * the mapper itself fails or returns {@code null}, the failure is wrapped in a {@link PersistenceException} with
      * the mapper failure suppressed; diagnostic mapping must never mask the original error.</p>
      *
+     * <p>A failure the dialect classifies as an integrity violation, a write the database refused for a constraint,
+     * reaches the mapper as an {@link IntegrityViolationException} naming the kind of rule and the entity's fields,
+     * with the database's error as its cause.</p>
+     *
      * @param sql the SQL statement to attach, or {@code null} when no statement is associated.
      * @param dialect the dialect the statement was generated with, which classifies the failure.
      * @param exceptionMapper the exception mapper configured on the template.
      * @param transactionTemplateProvider the transaction template provider of the template, used to describe the
      *                                    active transaction.
+     * @param integrityViolations resolves an integrity violation the dialect classifies to the entity's fields.
      * @return the exception transformer.
      */
     public static Function<Throwable, RuntimeException> getExceptionTransformer(
             @Nullable Sql sql,
             SqlDialect dialect,
             ExceptionMapper exceptionMapper,
-            TransactionTemplateProvider transactionTemplateProvider) {
+            TransactionTemplateProvider transactionTemplateProvider,
+            IntegrityViolations integrityViolations) {
         return getExceptionTransformer(
                 sql != null ? sql.operation() : SqlOperation.UNDEFINED,
                 sql != null ? sql.affectedType().orElse(null) : null,
                 sql,
                 dialect,
                 exceptionMapper,
-                transactionTemplateProvider);
+                transactionTemplateProvider,
+                integrityViolations);
     }
 
     /**
@@ -98,7 +106,7 @@ public final class ExceptionHelper {
             SqlOperation operation,
             @Nullable Class<? extends Data> dataType) {
         return getExceptionTransformer(operation, dataType, null, template.dialect(), template.exceptionMapper(),
-                template.transactionTemplateProvider());
+                template.transactionTemplateProvider(), null);
     }
 
     /**
@@ -108,7 +116,9 @@ public final class ExceptionHelper {
      * scope. A database that detects a serialization conflict only when the transaction commits reports it here.
      *
      * <p>The mapper receives no statement and no transaction description: the transaction has completed by the time
-     * its commit fails.</p>
+     * its commit fails. A deferred constraint the commit reports as violated reaches the mapper as an
+     * {@link IntegrityViolationException} that names the kind of rule and the constraint, without fields: no
+     * statement names the entity the commit refused.</p>
      *
      * @param dialect the dialect of the template that opened the transaction, which classifies the failure.
      * @param exceptionMapper the exception mapper configured on that template.
@@ -118,7 +128,8 @@ public final class ExceptionHelper {
     public static Function<Throwable, RuntimeException> getCommitExceptionTransformer(
             SqlDialect dialect,
             ExceptionMapper exceptionMapper) {
-        return getExceptionTransformer(SqlOperation.UNDEFINED, null, null, dialect, exceptionMapper, null);
+        return getExceptionTransformer(SqlOperation.UNDEFINED, null, null, dialect, exceptionMapper, null,
+                IntegrityViolations.of(dialect));
     }
 
     private static Function<Throwable, RuntimeException> getExceptionTransformer(
@@ -127,7 +138,8 @@ public final class ExceptionHelper {
             @Nullable Sql sql,
             SqlDialect dialect,
             ExceptionMapper exceptionMapper,
-            @Nullable TransactionTemplateProvider transactionTemplateProvider) {
+            @Nullable TransactionTemplateProvider transactionTemplateProvider,
+            @Nullable IntegrityViolations integrityViolations) {
         return e -> {
             String transactionDescription = transactionTemplateProvider != null
                     ? currentTransactionDescription(transactionTemplateProvider)
@@ -135,28 +147,46 @@ public final class ExceptionHelper {
             if (sql != null) {
                 e.addSuppressed(new SqlTemplateException(buildSqlDetail(sql, transactionDescription)));
             }
+            // A violation the database reported reaches the mapper named in terms of the entity, with the database's
+            // error, and the diagnostics attached to it, as its cause.
+            Throwable failure = integrityViolations != null
+                    ? integrityViolations.translate(e, operation, integrityType(sql, dataType))
+                    : e;
             var context = new ExceptionContextImpl(
                     operation,
                     sql != null ? sql.statement() : null,
                     dataType,
                     transactionDescription,
-                    e instanceof TransientPersistenceException || isTransientFailure(e, dialect));
+                    failure instanceof TransientPersistenceException || isTransientFailure(failure, dialect));
             RuntimeException thrown;
             try {
-                var mapped = exceptionMapper.map(e, context);
-                thrown = mapped != null ? mapped : new PersistenceException(e);
+                var mapped = exceptionMapper.map(failure, context);
+                thrown = mapped != null ? mapped : new PersistenceException(failure);
             } catch (Throwable mapperFailure) {
-                var fallback = e instanceof PersistenceException persistenceException
+                var fallback = failure instanceof PersistenceException persistenceException
                         ? persistenceException
-                        : new PersistenceException(e);
+                        : new PersistenceException(failure);
                 fallback.addSuppressed(mapperFailure);
                 thrown = fallback;
             }
             if (context.transientFailure()) {
-                recordTransientFailure(e, thrown);
+                recordTransientFailure(failure, thrown);
             }
             return thrown;
         };
+    }
+
+    /**
+     * Returns the entity type an integrity violation of the statement resolves against: the type the statement
+     * writes, or, for an upsert in the database's own form, which records no written type, the type the statement
+     * operates on.
+     */
+    private static @Nullable Class<? extends Data> integrityType(@Nullable Sql sql,
+                                                                 @Nullable Class<? extends Data> dataType) {
+        if (dataType != null || sql == null) {
+            return dataType;
+        }
+        return sql.upsert() ? sql.dataType().orElse(null) : null;
     }
 
     /**

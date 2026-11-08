@@ -64,6 +64,8 @@ import st.orm.DbTable;
 import st.orm.DefaultJoinType;
 import st.orm.Entity;
 import st.orm.FK;
+import st.orm.IntegrityViolation;
+import st.orm.IntegrityViolationException;
 import st.orm.Metamodel;
 import st.orm.OptimisticLockException;
 import st.orm.PK;
@@ -507,24 +509,25 @@ public class RepositoryPreparedStatementIntegrationTest {
 
     @Test
     void testInsertPetWithNull() {
-        var e = assertThrows(PersistenceException.class, () -> {
+        var e = assertThrows(IntegrityViolationException.class, () -> {
             var repository = ORMTemplate.of(dataSource).entity(Visit.class);
             //noinspection DataFlowIssue
             Visit visit = new Visit(0, LocalDate.now(), "test", null, Instant.now());
             repository.insert(visit);
         });
-        assertInstanceOf(SqlTemplateException.class, e.getCause());
+        assertInstanceOf(IntegrityViolation.NotNull.class, e.violations().getFirst());
+        assertEquals(List.of("pet"), e.violations().getFirst().fields().stream().map(Metamodel::fieldPath).toList());
     }
 
     @Test
     void testUpdatePetWithNull() {
-        var e = assertThrows(PersistenceException.class, () -> {
+        var e = assertThrows(IntegrityViolationException.class, () -> {
             var repository = ORMTemplate.of(dataSource).entity(Visit.class);
             var visit = repository.getById(1);
             //noinspection DataFlowIssue
             repository.update(new Visit(visit.id(), visit.visitDate(), visit.description(), null, Instant.now()));
         });
-        assertInstanceOf(SqlTemplateException.class, e.getCause());
+        assertInstanceOf(IntegrityViolation.NotNull.class, e.violations().getFirst());
     }
 
     public record AutoDate(String value) {}
@@ -616,23 +619,24 @@ public class RepositoryPreparedStatementIntegrationTest {
 
     @Test
     void testInsertPetRefWithNull() {
-        var e = assertThrows(PersistenceException.class, () -> {
+        var e = assertThrows(IntegrityViolationException.class, () -> {
             var repository = ORMTemplate.of(dataSource).entity(VisitWithNonnullPetRef.class);
             VisitWithNonnullPetRef visit = new VisitWithNonnullPetRef(0, LocalDate.now(), "test", null);
             repository.insert(visit);
         });
-        assertInstanceOf(SqlTemplateException.class, e.getCause());
+        assertInstanceOf(IntegrityViolation.NotNull.class, e.violations().getFirst());
+        assertEquals(List.of("pet"), e.violations().getFirst().fields().stream().map(Metamodel::fieldPath).toList());
     }
 
     @Test
     void testUpdatePetRefWithNull() {
-        var e = assertThrows(PersistenceException.class, () -> {
+        var e = assertThrows(IntegrityViolationException.class, () -> {
             var repository = ORMTemplate.of(dataSource).entity(VisitWithNonnullPetRef.class);
             var visit = repository.getById(1);
             //noinspection DataFlowIssue
             repository.update(new VisitWithNonnullPetRef(visit.id(), visit.visitDate(), visit.description(), null));
         });
-        assertInstanceOf(SqlTemplateException.class, e.getCause());
+        assertInstanceOf(IntegrityViolation.NotNull.class, e.violations().getFirst());
     }
 
     @Builder(toBuilder = true)

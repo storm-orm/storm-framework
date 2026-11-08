@@ -48,6 +48,7 @@ import java.util.function.Supplier;
 import javax.sql.DataSource;
 import org.jspecify.annotations.Nullable;
 import st.orm.BindVars;
+import st.orm.IntegrityViolationException;
 import st.orm.PersistenceException;
 import st.orm.ReadOnlyTransactionException;
 import st.orm.SqlTemplateException;
@@ -210,9 +211,19 @@ public final class PreparedStatementTemplateImpl implements PreparedStatementTem
                                           StormConfig config,
                                           @Nullable SqlDialectProvider matchedProvider,
                                           SqlDialect dialect) {
-        this(createDataSourceProcessor(dataSource, strategies, dialect),
+        this(strategies, dataSource, config, matchedProvider, dialect, ModelBuilder.newInstance());
+    }
+
+    private PreparedStatementTemplateImpl(IntegrationStrategies strategies,
+                                          DataSource dataSource,
+                                          StormConfig config,
+                                          @Nullable SqlDialectProvider matchedProvider,
+                                          SqlDialect dialect,
+                                          ModelBuilder modelBuilder) {
+        this(createDataSourceProcessor(dataSource, strategies, dialect,
+                        new IntegrityViolations(dialect, dataSource, modelBuilder)),
                 dataSource,
-                ModelBuilder.newInstance(), TableAliasResolver.DEFAULT,
+                modelBuilder, TableAliasResolver.DEFAULT,
                 matchedProvider != null ? matchedProvider.getProviderFilter() : null,
                 strategies, config, dialect);
     }
@@ -283,9 +294,21 @@ public final class PreparedStatementTemplateImpl implements PreparedStatementTem
                                           StormConfig config,
                                           @Nullable SqlDialectProvider matchedProvider,
                                           SqlDialect dialect) {
-        this(createConnectionProcessor(connection, strategies, dialect),
+        this(strategies, connection, config, matchedProvider, dialect, ModelBuilder.newInstance());
+    }
+
+    private PreparedStatementTemplateImpl(IntegrationStrategies strategies,
+                                          Connection connection,
+                                          StormConfig config,
+                                          @Nullable SqlDialectProvider matchedProvider,
+                                          SqlDialect dialect,
+                                          ModelBuilder modelBuilder) {
+        // A connection-bound template has no data source to read the schema over: a violation keeps the names the
+        // error carries and resolves to no field.
+        this(createConnectionProcessor(connection, strategies, dialect,
+                        new IntegrityViolations(dialect, null, modelBuilder)),
                 null,
-                ModelBuilder.newInstance(), TableAliasResolver.DEFAULT,
+                modelBuilder, TableAliasResolver.DEFAULT,
                 matchedProvider != null ? matchedProvider.getProviderFilter() : null,
                 strategies, config, dialect);
     }
@@ -353,7 +376,8 @@ public final class PreparedStatementTemplateImpl implements PreparedStatementTem
 
     private static TemplateProcessor createDataSourceProcessor(DataSource dataSource,
                                                                 IntegrationStrategies strategies,
-                                                                SqlDialect dialect) {
+                                                                SqlDialect dialect,
+                                                                IntegrityViolations integrityViolations) {
         var connectionProvider = strategies.connectionProvider();
         assert connectionProvider != null;
         var transactionTemplateProvider = strategies.transactionTemplateProvider();
@@ -402,7 +426,7 @@ public final class PreparedStatementTemplateImpl implements PreparedStatementTem
                 } else {
                     bindVariables.setBatchListener(getBatchListener(preparedStatement, parameters, dialect,
                             getExceptionTransformer(sql, dialect, strategies.exceptionMapper(),
-                                    transactionTemplateProvider)));
+                                    transactionTemplateProvider, integrityViolations)));
                 }
                 success = true;
             } finally {
@@ -424,7 +448,8 @@ public final class PreparedStatementTemplateImpl implements PreparedStatementTem
 
     private static TemplateProcessor createConnectionProcessor(Connection connection,
                                                                 IntegrationStrategies strategies,
-                                                                SqlDialect dialect) {
+                                                                SqlDialect dialect,
+                                                                IntegrityViolations integrityViolations) {
         var transactionTemplateProvider = strategies.transactionTemplateProvider();
         return (sql, unsafe) -> {
             if (!unsafe) {
@@ -465,7 +490,7 @@ public final class PreparedStatementTemplateImpl implements PreparedStatementTem
                 } else {
                     bindVariables.setBatchListener(getBatchListener(preparedStatement, parameters, dialect,
                             getExceptionTransformer(sql, dialect, strategies.exceptionMapper(),
-                                    transactionTemplateProvider)));
+                                    transactionTemplateProvider, integrityViolations)));
                 }
                 success = true;
                 return StatementLease.of(preparedStatement);
@@ -725,7 +750,16 @@ public final class PreparedStatementTemplateImpl implements PreparedStatementTem
             return createQuery(sql, customizedTemplate.dialect());
         } catch (SqlTemplateException e) {
             throw new PersistenceException(e);
+        } catch (IntegrityViolationException e) {
+            // A null in a field whose column refuses it, found while the statement read the entity's values: the
+            // statement does not exist yet, so the mapper receives the violation without one.
+            throw getExceptionTransformer(null, dialect, strategies.exceptionMapper(),
+                    strategies.transactionTemplateProvider(), integrityViolations(dialect)).apply(e);
         }
+    }
+
+    private IntegrityViolations integrityViolations(SqlDialect dialect) {
+        return new IntegrityViolations(dialect, dataSource, modelBuilder);
     }
 
     /**
@@ -764,13 +798,17 @@ public final class PreparedStatementTemplateImpl implements PreparedStatementTem
                 throw new PersistenceException("Cannot compile a plan for a template with fixed parameter values. Pass createBindVars() for the variable parts, or execute the template directly via query().");
             }
             var bindVariables = sql.bindVariables().orElse(null);
+            var exceptionTransformer = getExceptionTransformer(sql, dialect, strategies.exceptionMapper(),
+                    strategies.transactionTemplateProvider(), integrityViolations(dialect));
             if (bindVariables == null) {
-                return new QueryPlanImpl(sql, List.of(), List.of(), bound -> createQuery(bound, dialect));
+                return new QueryPlanImpl(sql, List.of(), List.of(), bound -> createQuery(bound, dialect),
+                        exceptionTransformer);
             }
             if (!(bindVariables instanceof BindVarsImpl bindVars)) {
                 throw new PersistenceException("Cannot compile a plan: unsupported bind variables implementation %s.".formatted(bindVariables.getClass().getName()));
             }
-            return new QueryPlanImpl(sql, bindVars.extractors(), bindVars.valueExtractors(), bound -> createQuery(bound, dialect));
+            return new QueryPlanImpl(sql, bindVars.extractors(), bindVars.valueExtractors(),
+                    bound -> createQuery(bound, dialect), exceptionTransformer);
         } catch (SqlTemplateException e) {
             throw new PersistenceException(e);
         }
@@ -785,7 +823,7 @@ public final class PreparedStatementTemplateImpl implements PreparedStatementTem
                 strategies.transactionTemplateProvider(),
                 strategies.queryObserver(),
                 getExceptionTransformer(sql, dialect, strategies.exceptionMapper(),
-                        strategies.transactionTemplateProvider()),
+                        strategies.transactionTemplateProvider(), integrityViolations(dialect)),
                 sql.operation(),
                 sql.upsert(),
                 sql.dataType().orElse(null),
