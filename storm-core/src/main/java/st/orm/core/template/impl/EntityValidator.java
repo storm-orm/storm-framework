@@ -153,8 +153,8 @@ public final class EntityValidator {
         }
     }
 
-    private static Optional<IntegrityViolation> sizeViolation(Model<?, ?> model, Column column, DbColumn dbColumn,
-                                                              Object value) {
+    static Optional<IntegrityViolation> sizeViolation(Model<?, ?> model, Column column, DbColumn dbColumn,
+                                                      Object value) {
         switch (dbColumn.dataType()) {
             case Types.CHAR, Types.VARCHAR, Types.LONGVARCHAR, Types.NCHAR, Types.NVARCHAR, Types.LONGNVARCHAR -> {
                 // A database counts characters; a string of as many UTF-16 units as the column holds can never hold

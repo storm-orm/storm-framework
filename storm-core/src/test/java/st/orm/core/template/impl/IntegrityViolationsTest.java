@@ -28,6 +28,8 @@ import java.lang.reflect.Proxy;
 import java.math.BigDecimal;
 import java.sql.Connection;
 import java.sql.SQLException;
+import java.sql.Types;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
@@ -54,12 +56,15 @@ import st.orm.Ref;
 import st.orm.SqlTemplateException;
 import st.orm.UK;
 import st.orm.core.spi.DefaultSqlDialect;
+import st.orm.core.spi.MiscountedValue;
+import st.orm.core.template.Column;
 import st.orm.core.template.IntegrityFailure;
 import st.orm.core.template.Model;
 import st.orm.core.template.ORMTemplate;
 import st.orm.core.template.QueryTemplate;
 import st.orm.core.template.SqlFailureClassifier;
 import st.orm.core.template.TemplateString;
+import st.orm.spi.ExceptionContext;
 import st.orm.spi.SqlOperation;
 
 /**
@@ -679,6 +684,46 @@ class IntegrityViolationsTest {
     void validateComparesOnlyWhatALimitAppliesTo() {
         assertEquals(List.of(), orm.entity(LooseParent.class).validate(new LooseParent(1, 123456, 123456)));
         assertEquals(List.of(), orm.entity(Parent.class).validate(new Parent(null, "A", null, null)), "a key may be generated");
+    }
+
+    @Test
+    void validateComparesNoSizeForAColumnTheDatabaseReportsNoneFor() {
+        var model = orm.model(Parent.class);
+        var text = new DatabaseSchema.DbColumn("iv_parent", "code", Types.VARCHAR, "VARCHAR", 0, 0, 0, false, false, false, false);
+        var number = new DatabaseSchema.DbColumn("iv_parent", "amount", Types.NUMERIC, "NUMBER", 0, 0, 0, true, false, false, false);
+        assertEquals(Optional.empty(), EntityValidator.sizeViolation(model, column(model, "code"), text, "ABCDEF"));
+        assertEquals(Optional.empty(), EntityValidator.sizeViolation(model, column(model, "amount"), number, new BigDecimal("1234.5")));
+    }
+
+    private static Column column(Model<?, ?> model, String name) {
+        return model.columns().stream().filter(column -> column.name().equals(name)).findFirst().orElseThrow();
+    }
+
+    @DbTable("iv_parent")
+    public record MiscountedParent(@PK(generation = NONE) Integer id, MiscountedValue code) implements Entity<Integer> {}
+
+    @Test
+    void validateReportsAConverterThatReturnsTheWrongNumberOfValues() {
+        var thrown = assertThrows(PersistenceException.class,
+                () -> orm.entity(MiscountedParent.class).validate(new MiscountedParent(1, new MiscountedValue("A"))));
+        assertTrue(thrown.getMessage().contains("Converter for 'code' returned 2 value(s), expected 1."), thrown.getMessage());
+    }
+
+    @Test
+    void aNullFoundWhileTheStatementIsBuiltReachesTheMapperWithoutAStatement() {
+        var contexts = new ArrayList<ExceptionContext>();
+        var mapped = ORMTemplate.builder(dataSource)
+                .exceptionMapper((cause, context) -> {
+                    contexts.add(context);
+                    return new IllegalStateException("mapped", cause);
+                })
+                .build();
+        var thrown = assertThrows(IllegalStateException.class, () -> mapped.query(TemplateString.raw(
+                "INSERT INTO \0 VALUES \0", Parent.class, new Parent(1, null, null, null))));
+        var violation = assertInstanceOf(IntegrityViolationException.class, thrown.getCause());
+        assertInstanceOf(IntegrityViolation.NotNull.class, violation.violations().getFirst());
+        assertEquals(1, contexts.size());
+        assertTrue(contexts.getFirst().statement().isEmpty());
     }
 
     @Test
