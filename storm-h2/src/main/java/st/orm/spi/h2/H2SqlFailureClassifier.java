@@ -38,8 +38,13 @@ import st.orm.core.template.SqlFailureClassifier;
  */
 public final class H2SqlFailureClassifier implements SqlFailureClassifier {
 
-    /** {@code Unique index or primary key violation: "PUBLIC.OWNER_EMAIL_UK ON PUBLIC.OWNER(EMAIL ...) ..."}. */
-    private static final Pattern UNIQUE_VIOLATION = Pattern.compile("\"(?:PRIMARY KEY|(?:[^\".]+\\.)?([^\" ]+)) ON (?:[^\".]+\\.)?([^\"(]+)\\(");
+    /**
+     * {@code Unique index or primary key violation: "PUBLIC.OWNER_EMAIL_UK ON PUBLIC.OWNER(EMAIL ...) ..."}, which H2
+     * 2.4 writes as {@code "PUBLIC.OWNER_EMAIL_UK INDEX PUBLIC.OWNER_EMAIL_UK_INDEX_4 ON PUBLIC.OWNER(EMAIL ...) ..."}
+     * for a named constraint. The index is the name the schema's metadata reports, so that is the one read.
+     * H2 2.4 also puts the constraint's name before {@code PRIMARY KEY}.
+     */
+    private static final Pattern UNIQUE_VIOLATION = Pattern.compile("\"(?:(?:[^\" ]+ )?PRIMARY KEY|(?:[^\"]+ INDEX )?(?:[^\".]+\\.)?([^\" ]+)) ON (?:[^\".]+\\.)?([^\"(]+)\\(");
 
     /** {@code Referential integrity constraint violation: "PET_OWNER_FK: PUBLIC.PET FOREIGN KEY(OWNER_ID) ..."}. */
     private static final Pattern REFERENTIAL_VIOLATION = Pattern.compile("\"([^\":]+): (?:[^\".]+\\.)?([^\" ]+) FOREIGN KEY");

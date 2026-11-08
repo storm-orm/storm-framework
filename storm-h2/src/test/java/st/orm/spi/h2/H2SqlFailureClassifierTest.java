@@ -38,8 +38,26 @@ class H2SqlFailureClassifierTest {
     }
 
     @Test
+    void aUniqueViolationOfANamedConstraintNamesItsIndexAndTheTable() {
+        var failure = classify(23505, "Unique index or primary key violation: \"PUBLIC.IV_PARENT_CODE_UK INDEX PUBLIC.IV_PARENT_CODE_UK_INDEX_8 ON PUBLIC.IV_PARENT(CODE NULLS FIRST) VALUES ( /* 1 */ 'A' )\"; SQL statement:\nINSERT ... [23505-240]");
+        assertEquals(UNIQUE, failure.kind());
+        assertEquals("IV_PARENT_CODE_UK_INDEX_8", failure.constraint());
+        assertEquals("IV_PARENT", failure.table());
+        assertFalse(failure.primaryKey());
+    }
+
+    @Test
     void aPrimaryKeyViolationIsMarkedAsOne() {
         var failure = classify(23505, "Unique index or primary key violation: \"PRIMARY KEY ON PUBLIC.IV_PARENT(ID) ( /* key:1 */ 1, 'B', NULL)\"; SQL statement:\nINSERT ... [23505-232]");
+        assertEquals(UNIQUE, failure.kind());
+        assertTrue(failure.primaryKey());
+        assertNull(failure.constraint());
+        assertEquals("IV_PARENT", failure.table());
+    }
+
+    @Test
+    void aPrimaryKeyViolationThatNamesItsConstraintIsMarkedAsOne() {
+        var failure = classify(23505, "Unique index or primary key violation: \"PUBLIC.CONSTRAINT_5 PRIMARY KEY ON PUBLIC.IV_PARENT(ID) ( /* key:1 */ 1, 'B', NULL)\"; SQL statement:\nINSERT ... [23505-240]");
         assertEquals(UNIQUE, failure.kind());
         assertTrue(failure.primaryKey());
         assertNull(failure.constraint());
