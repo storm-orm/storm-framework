@@ -56,6 +56,7 @@ import st.orm.Ref;
 import st.orm.SqlTemplateException;
 import st.orm.UK;
 import st.orm.core.spi.DefaultSqlDialect;
+import st.orm.core.spi.JdbcTransactionTemplateProviderImpl;
 import st.orm.core.spi.MiscountedValue;
 import st.orm.core.template.Column;
 import st.orm.core.template.IntegrityFailure;
@@ -65,7 +66,9 @@ import st.orm.core.template.QueryTemplate;
 import st.orm.core.template.SqlFailureClassifier;
 import st.orm.core.template.TemplateString;
 import st.orm.spi.ExceptionContext;
+import st.orm.spi.ExceptionMapper;
 import st.orm.spi.SqlOperation;
+import st.orm.spi.StatementOrigin;
 
 /**
  * The resolution of a database's integrity violation to the entity's fields, and the checks of {@code validate},
@@ -650,6 +653,44 @@ class IntegrityViolationsTest {
         assertInstanceOf(IntegrityViolation.ForeignKey.class, translated(IntegrityFailure.of(FOREIGN_KEY), INSERT, Child.class));
         assertInstanceOf(IntegrityViolation.ForeignKey.class,
                 translated(IntegrityFailure.of(FOREIGN_KEY).withTable("IV_CHILD"), INSERT, Child.class));
+    }
+
+    @Test
+    void aForeignKeyTheReferencingTableDeclaresIsAReferenceToTheRow() {
+        var violation = translated(IntegrityFailure.of(FOREIGN_KEY).withConstraint("iv_child_parent_fk"), SqlOperation.DELETE, Parent.class);
+        assertInstanceOf(IntegrityViolation.Referenced.class, violation);
+        assertTrue("iv_child".equalsIgnoreCase(violation.table()), violation.table());
+    }
+
+    @Test
+    void aForeignKeyTheSchemaDoesNotKnowStaysOneWithoutFields() {
+        var violation = translated(IntegrityFailure.of(FOREIGN_KEY).withConstraint("iv_unknown_fk"), INSERT, Child.class);
+        assertInstanceOf(IntegrityViolation.ForeignKey.class, violation);
+        assertEquals(List.of(), violation.fields());
+    }
+
+    @Test
+    void aUniqueIndexResolvesToTheColumnsItNamesInIndexOrder() {
+        var indexes = List.of(
+                new DatabaseSchema.DbIndex("iv_parent", "iv_parent_uk", "code", 2, true, false),
+                new DatabaseSchema.DbIndex("iv_parent", "iv_parent_uk", null, 3, true, false),
+                new DatabaseSchema.DbIndex("iv_parent", "IV_PARENT_UK", "id", 1, true, false),
+                new DatabaseSchema.DbIndex("iv_parent", "iv_parent_note_uk", "note", 1, true, false),
+                new DatabaseSchema.DbIndex("iv_parent", "iv_parent_uk", "amount", 4, false, false));
+        assertEquals(List.of("id", "code"), IntegrityViolations.uniqueIndexColumns(indexes, "iv_parent_uk"));
+    }
+
+    @Test
+    void anUpsertInTheDatabasesOwnFormResolvesAgainstTheTypeItOperatesOn() {
+        var sql = new SqlImpl(SqlOperation.INSERT, true, "MERGE INTO iv_parent", List.of(), Optional.empty(), List.of(),
+                Optional.empty(), Optional.of(Parent.class), List.of(), List.of(), false, Optional.empty(),
+                StatementOrigin.DIRECT, 0L, List.of(), null);
+        var mapped = ExceptionHelper.getExceptionTransformer(sql, new DefaultSqlDialect(), ExceptionMapper.defaultMapper(),
+                new JdbcTransactionTemplateProviderImpl(), reporting(IntegrityFailure.of(UNIQUE).withColumn("code")))
+                .apply(new SQLException("refused"));
+        var violation = assertInstanceOf(IntegrityViolationException.class, mapped).violations().getFirst();
+        assertEquals(Parent.class, violation.type());
+        assertEquals(List.of("code"), paths(violation));
     }
 
     @Test

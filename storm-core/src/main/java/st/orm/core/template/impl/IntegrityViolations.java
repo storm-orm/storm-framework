@@ -178,12 +178,7 @@ public final class IntegrityViolations {
                 if (uniqueColumns.isEmpty()) {
                     // A unique index that is no constraint, and the primary key on a database that reports it under
                     // the name of its index.
-                    uniqueColumns = schema.getIndexes(model.name()).stream()
-                            .filter(index -> index.unique() && constraint.equalsIgnoreCase(index.indexName())
-                                    && index.columnName() != null)
-                            .sorted(comparingInt(DbIndex::ordinalPosition))
-                            .map(DbIndex::columnName)
-                            .toList();
+                    uniqueColumns = uniqueIndexColumns(schema.getIndexes(model.name()), constraint);
                 }
                 if (!uniqueColumns.isEmpty()) {
                     fields = fieldsOf(model, uniqueColumns);
@@ -226,6 +221,19 @@ public final class IntegrityViolations {
             table = model.name();
         }
         return violation(kind, constraint, table, type, fields);
+    }
+
+    /**
+     * Returns the columns of the unique index of the given name, in index order. A position that holds an expression
+     * names no column.
+     */
+    static List<String> uniqueIndexColumns(List<DbIndex> indexes, String name) {
+        return indexes.stream()
+                .filter(index -> index.unique() && name.equalsIgnoreCase(index.indexName())
+                        && index.columnName() != null)
+                .sorted(comparingInt(DbIndex::ordinalPosition))
+                .map(DbIndex::columnName)
+                .toList();
     }
 
     /**

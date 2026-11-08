@@ -168,6 +168,17 @@ class TransientFailureClassificationTest {
     }
 
     @Test
+    void aMapperThatFailsLeavesTheFailureWrappedWithTheMapperFailureSuppressed() {
+        var failure = new IllegalStateException("failed");
+        var mapperFailure = new IllegalArgumentException("mapper failed");
+        var mapped = assertInstanceOf(PersistenceException.class, map(failure, (cause, context) -> {
+            throw mapperFailure;
+        }));
+        assertSame(failure, mapped.getCause());
+        assertTrue(List.of(mapped.getSuppressed()).contains(mapperFailure));
+    }
+
+    @Test
     void anOptimisticLockConflictIsTransientAndPassesThrough() {
         var conflict = new OptimisticLockException("stale");
         assertSame(conflict, map(conflict));
