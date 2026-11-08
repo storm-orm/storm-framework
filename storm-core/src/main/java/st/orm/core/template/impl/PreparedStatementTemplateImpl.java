@@ -142,6 +142,7 @@ public final class PreparedStatementTemplateImpl implements PreparedStatementTem
     private final SqlTemplate sqlTemplate;
     private final StormConfig config;
     private final SqlDialect dialect;
+    private final IntegrityViolations integrityViolations;
 
     public PreparedStatementTemplateImpl(DataSource dataSource) {
         this(dataSource, StormConfig.defaults());
@@ -211,19 +212,9 @@ public final class PreparedStatementTemplateImpl implements PreparedStatementTem
                                           StormConfig config,
                                           @Nullable SqlDialectProvider matchedProvider,
                                           SqlDialect dialect) {
-        this(strategies, dataSource, config, matchedProvider, dialect, ModelBuilder.newInstance());
-    }
-
-    private PreparedStatementTemplateImpl(IntegrationStrategies strategies,
-                                          DataSource dataSource,
-                                          StormConfig config,
-                                          @Nullable SqlDialectProvider matchedProvider,
-                                          SqlDialect dialect,
-                                          ModelBuilder modelBuilder) {
-        this(createDataSourceProcessor(dataSource, strategies, dialect,
-                        new IntegrityViolations(dialect, dataSource, modelBuilder)),
+        this(createDataSourceProcessor(dataSource, strategies, dialect),
                 dataSource,
-                modelBuilder, TableAliasResolver.DEFAULT,
+                ModelBuilder.newInstance(), TableAliasResolver.DEFAULT,
                 matchedProvider != null ? matchedProvider.getProviderFilter() : null,
                 strategies, config, dialect);
     }
@@ -294,21 +285,9 @@ public final class PreparedStatementTemplateImpl implements PreparedStatementTem
                                           StormConfig config,
                                           @Nullable SqlDialectProvider matchedProvider,
                                           SqlDialect dialect) {
-        this(strategies, connection, config, matchedProvider, dialect, ModelBuilder.newInstance());
-    }
-
-    private PreparedStatementTemplateImpl(IntegrationStrategies strategies,
-                                          Connection connection,
-                                          StormConfig config,
-                                          @Nullable SqlDialectProvider matchedProvider,
-                                          SqlDialect dialect,
-                                          ModelBuilder modelBuilder) {
-        // A connection-bound template has no data source to read the schema over: a violation keeps the names the
-        // error carries and resolves to no field.
-        this(createConnectionProcessor(connection, strategies, dialect,
-                        new IntegrityViolations(dialect, null, modelBuilder)),
+        this(createConnectionProcessor(connection, strategies, dialect),
                 null,
-                modelBuilder, TableAliasResolver.DEFAULT,
+                ModelBuilder.newInstance(), TableAliasResolver.DEFAULT,
                 matchedProvider != null ? matchedProvider.getProviderFilter() : null,
                 strategies, config, dialect);
     }
@@ -331,6 +310,7 @@ public final class PreparedStatementTemplateImpl implements PreparedStatementTem
         this.refFactory = new RefFactoryImpl(this, modelBuilder, providerFilter);
         this.strategies = strategies;
         this.config = config;
+        this.integrityViolations = new IntegrityViolations(dialect, dataSource, modelBuilder);
         this.sqlTemplate = createSqlTemplate();
     }
 
@@ -376,8 +356,7 @@ public final class PreparedStatementTemplateImpl implements PreparedStatementTem
 
     private static TemplateProcessor createDataSourceProcessor(DataSource dataSource,
                                                                 IntegrationStrategies strategies,
-                                                                SqlDialect dialect,
-                                                                IntegrityViolations integrityViolations) {
+                                                                SqlDialect dialect) {
         var connectionProvider = strategies.connectionProvider();
         assert connectionProvider != null;
         var transactionTemplateProvider = strategies.transactionTemplateProvider();
@@ -426,7 +405,7 @@ public final class PreparedStatementTemplateImpl implements PreparedStatementTem
                 } else {
                     bindVariables.setBatchListener(getBatchListener(preparedStatement, parameters, dialect,
                             getExceptionTransformer(sql, dialect, strategies.exceptionMapper(),
-                                    transactionTemplateProvider, integrityViolations)));
+                                    transactionTemplateProvider, IntegrityViolations.of(dialect))));
                 }
                 success = true;
             } finally {
@@ -448,8 +427,7 @@ public final class PreparedStatementTemplateImpl implements PreparedStatementTem
 
     private static TemplateProcessor createConnectionProcessor(Connection connection,
                                                                 IntegrationStrategies strategies,
-                                                                SqlDialect dialect,
-                                                                IntegrityViolations integrityViolations) {
+                                                                SqlDialect dialect) {
         var transactionTemplateProvider = strategies.transactionTemplateProvider();
         return (sql, unsafe) -> {
             if (!unsafe) {
@@ -490,7 +468,7 @@ public final class PreparedStatementTemplateImpl implements PreparedStatementTem
                 } else {
                     bindVariables.setBatchListener(getBatchListener(preparedStatement, parameters, dialect,
                             getExceptionTransformer(sql, dialect, strategies.exceptionMapper(),
-                                    transactionTemplateProvider, integrityViolations)));
+                                    transactionTemplateProvider, IntegrityViolations.of(dialect))));
                 }
                 success = true;
                 return StatementLease.of(preparedStatement);
@@ -759,7 +737,7 @@ public final class PreparedStatementTemplateImpl implements PreparedStatementTem
     }
 
     private IntegrityViolations integrityViolations(SqlDialect dialect) {
-        return new IntegrityViolations(dialect, dataSource, modelBuilder);
+        return dialect == this.dialect ? integrityViolations : new IntegrityViolations(dialect, dataSource, modelBuilder);
     }
 
     /**

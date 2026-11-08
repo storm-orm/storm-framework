@@ -160,6 +160,7 @@ class SpringExceptionMapperTest {
         ORMTemplate orm = ORMTemplate.builder(dataSource)
                 .exceptionMapper(new SpringExceptionMapper(dataSource))
                 .build();
+        orm.loadSchema();
         var thrown = assertThrows(DataIntegrityViolationException.class, () ->
                 orm.entity(PetType.class).validateOrThrow(new PetType(2, null)));
         var violation = assertInstanceOf(IntegrityViolationException.class, thrown.getCause());

@@ -20,21 +20,25 @@ import static st.orm.spi.SqlOperation.DELETE;
 import static st.orm.spi.SqlOperation.INSERT;
 import static st.orm.spi.SqlOperation.UNDEFINED;
 
-import java.io.PrintWriter;
+import ch.qos.logback.classic.Level;
+import ch.qos.logback.classic.Logger;
+import ch.qos.logback.classic.spi.ILoggingEvent;
+import ch.qos.logback.core.read.ListAppender;
+import java.lang.reflect.Proxy;
 import java.math.BigDecimal;
 import java.sql.Connection;
-import java.sql.DriverManager;
 import java.sql.SQLException;
-import java.sql.SQLFeatureNotSupportedException;
-import java.util.HashMap;
+import java.util.Arrays;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.atomic.AtomicInteger;
-import java.util.logging.Logger;
 import javax.sql.DataSource;
 import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.slf4j.LoggerFactory;
+import org.springframework.jdbc.datasource.DriverManagerDataSource;
 import st.orm.Data;
 import st.orm.DbTable;
 import st.orm.Entity;
@@ -50,7 +54,9 @@ import st.orm.UK;
 import st.orm.core.spi.DefaultSqlDialect;
 import st.orm.core.template.IntegrityFailure;
 import st.orm.core.template.IntegrityFailureClassifier;
+import st.orm.core.template.Model;
 import st.orm.core.template.ORMTemplate;
+import st.orm.core.template.QueryTemplate;
 import st.orm.core.template.TemplateString;
 import st.orm.spi.SqlOperation;
 
@@ -120,55 +126,23 @@ class IntegrityViolationsTest {
     }
 
     /**
-     * A data source over the driver manager, as the test needs no pool.
+     * A data source over the driver manager, as the test needs no pool, that counts the connections it hands out.
      */
-    private record UrlDataSource(String url) implements DataSource {
+    private static final class UrlDataSource extends DriverManagerDataSource {
+        private final AtomicInteger connections = new AtomicInteger();
+
+        UrlDataSource(String url) {
+            super(url);
+        }
+
         @Override
         public Connection getConnection() throws SQLException {
-            return DriverManager.getConnection(url);
+            connections.incrementAndGet();
+            return super.getConnection();
         }
 
-        @Override
-        public Connection getConnection(String username, String password) throws SQLException {
-            return getConnection();
-        }
-
-        @Override
-        public PrintWriter getLogWriter() {
-            throw new UnsupportedOperationException();
-        }
-
-        @Override
-        public void setLogWriter(PrintWriter out) {
-            throw new UnsupportedOperationException();
-        }
-
-        @Override
-        public void setLoginTimeout(int seconds) {
-            throw new UnsupportedOperationException();
-        }
-
-        @Override
-        public int getLoginTimeout() {
-            return 0;
-        }
-
-        @Override
-        public Logger getParentLogger() throws SQLFeatureNotSupportedException {
-            throw new SQLFeatureNotSupportedException();
-        }
-
-        @Override
-        public <T> T unwrap(Class<T> iface) throws SQLException {
-            if (iface.isInstance(this)) {
-                return iface.cast(this);
-            }
-            throw new SQLException("Not a wrapper for " + iface.getName() + ".");
-        }
-
-        @Override
-        public boolean isWrapperFor(Class<?> iface) {
-            return iface.isInstance(this);
+        AtomicInteger connections() {
+            return connections;
         }
     }
 
@@ -188,6 +162,7 @@ class IntegrityViolationsTest {
                     + "CONSTRAINT iv_child_parent_fk FOREIGN KEY (parent_id) REFERENCES iv_parent (id))");
         }
         orm = ORMTemplate.of(dataSource);
+        orm.loadSchema(type -> false);
         naming = new IntegrityViolations(new NamingDialect(), dataSource, ModelBuilder.newInstance());
     }
 
@@ -317,25 +292,6 @@ class IntegrityViolationsTest {
         assertFalse(failure.primaryKey());
         assertTrue(failure.withColumn(null).columns().isEmpty());
         assertTrue(failure.ofPrimaryKey().primaryKey());
-    }
-
-    @Test
-    void theSchemaResolvesOncePerKeyAndThroughTheCatalogWhereTheDatabaseNamesSchemasSo() throws SQLException {
-        var catalogDialect = new DefaultSqlDialect() {
-            @Override
-            public boolean useCatalogAsSchema() {
-                return true;
-            }
-        };
-        try (var connection = dataSource.getConnection()) {
-            var cache = new HashMap<String, DatabaseSchema>();
-            var first = SchemaCache.resolve(connection, new DefaultSqlDialect(), connection.getCatalog(), connection.getSchema(), "", cache);
-            assertSame(first, SchemaCache.resolve(connection, new DefaultSqlDialect(), connection.getCatalog(), connection.getSchema(), "", cache));
-            assertTrue(first.tableExists("iv_parent"));
-            // The entity's schema names a catalog the connection does not have: nothing is found, and nothing fails.
-            var other = SchemaCache.resolve(connection, catalogDialect, connection.getCatalog(), connection.getSchema(), "elsewhere", cache);
-            assertFalse(other.tableExists("iv_parent"));
-        }
     }
 
     @Test
@@ -539,19 +495,107 @@ class IntegrityViolationsTest {
     }
 
     @Test
-    void validateRunsTheNullCheckAloneWithoutADataSource() {
-        var violations = EntityValidator.validate(orm.model(Parent.class),
-                new Parent(1, null, null, "0123456789A"), null, new DefaultSqlDialect());
+    void validateRefusesWithoutALoadedSchema() {
+        var unloaded = new UrlDataSource("jdbc:h2:mem:unloaded_" + DB_COUNTER.incrementAndGet() + ";DB_CLOSE_DELAY=-1");
+        var entity = new Parent(1, null, null, "0123456789A");
+        for (var source : Arrays.asList(unloaded, null)) {
+            var thrown = assertThrows(PersistenceException.class,
+                    () -> EntityValidator.validate(orm.model(Parent.class), entity, source, new DefaultSqlDialect()));
+            assertFalse(thrown instanceof IntegrityViolationException);
+            assertTrue(thrown.getMessage().startsWith("Cannot validate Parent: the database schema is not loaded."), thrown.getMessage());
+        }
+        assertEquals(0, unloaded.connections().get(), "a check reads no metadata");
+    }
+
+    @Test
+    void onlyALoadPublishesTheSchema() throws SQLException {
+        var source = new UrlDataSource("jdbc:h2:mem:loaded_" + DB_COUNTER.incrementAndGet() + ";DB_CLOSE_DELAY=-1");
+        try (var connection = source.getConnection(); var statement = connection.createStatement()) {
+            statement.execute("CREATE TABLE iv_parent (id INTEGER PRIMARY KEY, code VARCHAR(5) NOT NULL, amount DECIMAL(5, 2), note VARCHAR(10), CONSTRAINT iv_parent_code_uk UNIQUE (code))");
+        }
+        int connections = source.connections().get();
+        var resolver = new IntegrityViolations(new NamingDialect(), source, ModelBuilder.newInstance());
+        var error = new SQLException("Unique index or primary key violation: \"PUBLIC.IV_PARENT_CODE_UK ON PUBLIC.IV_PARENT(CODE)\"", "23505", 23505);
+        var unresolved = assertInstanceOf(IntegrityViolationException.class, resolver.translate(error, INSERT, Parent.class));
+        assertTrue(unresolved.violations().getFirst().fields().isEmpty(), "no field without a loaded schema");
+        assertEquals("IV_PARENT_CODE_UK", unresolved.violations().getFirst().constraint());
+        assertEquals(connections, source.connections().get(), "a failed write reads no metadata");
+        assertNull(SchemaCache.cached(source, ""));
+
+        SchemaValidator.of(source).validate(List.of(Parent.class));
+        var loaded = SchemaCache.cached(source, "");
+        assertNotNull(loaded, "schema validation publishes what it read");
+        assertEquals(2, loaded.getColumn("iv_parent", "amount").orElseThrow().decimalDigits());
+        connections = source.connections().get();
+        var resolved = assertInstanceOf(IntegrityViolationException.class, resolver.translate(error, INSERT, Parent.class));
+        assertEquals(List.of("code"), paths(resolved.violations().getFirst()));
+        assertEquals(connections, source.connections().get(), "resolving reads what the load kept");
+    }
+
+    @Test
+    void onlyAConstraintTheLoadedSchemaDoesNotKnowIsLogged() throws SQLException {
+        var logger = (Logger) LoggerFactory.getLogger("st.orm.validation");
+        var appender = new ListAppender<ILoggingEvent>();
+        var level = logger.getLevel();
+        appender.start();
+        logger.addAppender(appender);
+        logger.setLevel(Level.DEBUG);
+        try {
+            resolve("INSERT INTO iv_parent (id, code, amount) VALUES (1, 'A', -1)", INSERT, Parent.class);
+            assertEquals(List.of(), appender.list, "a check constraint names no field, by its kind");
+            var unknown = new SQLException("Unique index or primary key violation: \"PUBLIC.NOPE ON PUBLIC.IV_PARENT(CODE)\"", "23505", 23505);
+            naming.translate(unknown, INSERT, Parent.class);
+            assertEquals(1, appender.list.size());
+            assertEquals(Level.DEBUG, appender.list.getFirst().getLevel());
+            assertTrue(appender.list.getFirst().getFormattedMessage().contains("NOPE"), appender.list.toString());
+        } finally {
+            logger.detachAppender(appender);
+            logger.setLevel(level);
+        }
+    }
+
+    @Test
+    void theStandardClassifierReadsTheStatesTheStandardAssigns() {
+        var kinds = Map.of("23505", UNIQUE, "23503", FOREIGN_KEY, "23502", NOT_NULL, "23514", CHECK, "22001", LENGTH,
+                "22003", NUMERIC_RANGE);
+        kinds.forEach((state, kind) -> assertEquals(kind,
+                IntegrityFailureClassifier.STANDARD.classify(new SQLException("refused", state)).orElseThrow().kind()));
+        assertTrue(IntegrityFailureClassifier.STANDARD.classify(new SQLException("syntax", "42000")).isEmpty());
+        assertTrue(IntegrityFailureClassifier.STANDARD.classify(new SQLException("no state")).isEmpty());
+    }
+
+    @Test
+    void aValueOutOfRangeTheDatabaseReportsCarriesNoLimit() {
+        var error = new SQLException("Numeric value out of range", "22003", 22003);
+        var violation = assertInstanceOf(IntegrityViolation.NumericRange.class,
+                assertInstanceOf(IntegrityViolationException.class, naming.translate(error, INSERT, Parent.class))
+                        .violations().getFirst());
+        assertNull(violation.precision());
+        assertNull(violation.scale());
+    }
+
+    @Test
+    void validateRunsOnATemplateThatHoldsNoDataSource() {
+        var lenient = new DefaultSqlDialect() {
+            @Override
+            public boolean enforcesColumnSizes() {
+                return false;
+            }
+        };
+        var template = (QueryTemplate) Proxy.newProxyInstance(QueryTemplate.class.getClassLoader(),
+                new Class<?>[]{QueryTemplate.class}, (proxy, method, arguments) -> lenient);
+        var violations = EntityValidator.validate(orm.model(Parent.class), new Parent(1, null, null, null), template);
         assertEquals(List.of(IntegrityViolation.NotNull.class), violations.stream().map(Object::getClass).toList());
     }
 
     @Test
-    void validateRunsTheNullCheckAloneWhereTheSchemaCannotBeRead() {
-        var broken = new UrlDataSource("jdbc:h2:mem:absent_" + DB_COUNTER.incrementAndGet() + ";IFEXISTS=TRUE");
-        var violations = EntityValidator.validate(orm.model(Parent.class),
-                new Parent(1, null, null, "0123456789A"), broken, new DefaultSqlDialect());
-        assertEquals(List.of(IntegrityViolation.NotNull.class), violations.stream().map(Object::getClass).toList());
-        assertNull(SchemaCache.readOrNull(broken, new DefaultSqlDialect(), ""), "a failed read is not retried");
+    @SuppressWarnings("unchecked")
+    void validateRefusesAModelThatIsNotStormsOwn() {
+        var model = (Model<Parent, Integer>) Proxy.newProxyInstance(Model.class.getClassLoader(),
+                new Class<?>[]{Model.class}, (proxy, method, arguments) -> Parent.class);
+        var thrown = assertThrows(PersistenceException.class, () -> EntityValidator.validate(model,
+                new Parent(1, "A", null, null), dataSource, new DefaultSqlDialect()));
+        assertEquals("Cannot validate Parent: the model is not Storm's own.", thrown.getMessage());
     }
 
     @Test
@@ -564,22 +608,6 @@ class IntegrityViolationsTest {
         assertTrue(thrown.getMessage().startsWith("Parent does not fit its table: Value too long for code of Parent in iv_parent: at most 5 characters."),
                 thrown.getMessage());
         parents.validateOrThrow(new Parent(1, "A", null, null));
-    }
-
-    @Test
-    void theSchemaIsReadOnceAndSharedWithSchemaValidation() throws SQLException {
-        assertNull(SchemaCache.cached(dataSource, ""));
-        orm.entity(Parent.class).validate(new Parent(1, "A", null, null));
-        var read = SchemaCache.cached(dataSource, "");
-        assertNotNull(read);
-        assertSame(read, SchemaCache.read(dataSource, new DefaultSqlDialect(), ""));
-        assertEquals(2, read.getColumn("iv_parent", "amount").orElseThrow().decimalDigits());
-        var validated = new UrlDataSource("jdbc:h2:mem:validated_" + DB_COUNTER.incrementAndGet() + ";DB_CLOSE_DELAY=-1");
-        try (var connection = validated.getConnection(); var statement = connection.createStatement()) {
-            statement.execute("CREATE TABLE iv_parent (id INTEGER PRIMARY KEY, code VARCHAR(5) NOT NULL, amount DECIMAL(5, 2), note VARCHAR(10))");
-        }
-        SchemaValidator.of(validated).validate(List.of(Parent.class));
-        assertNotNull(SchemaCache.cached(validated, ""), "schema validation publishes what it read");
     }
 
     @Test
@@ -606,6 +634,8 @@ class IntegrityViolationsTest {
         assertEquals("Duplicate value.", IntegrityViolations.describe(new IntegrityViolation.Unique(null, null, null, List.of())));
         assertEquals("Reference to a missing row.", IntegrityViolations.describe(new IntegrityViolation.ForeignKey(null, null, null, List.of())));
         assertEquals("Value rejected by a check.", IntegrityViolations.describe(new IntegrityViolation.Check(null, null, null)));
+        assertEquals("Value out of range: at most 5 digits before the decimal point.", IntegrityViolations.describe(
+                new IntegrityViolation.NumericRange(null, null, List.of(), 5, null)));
         assertEquals("Null value.", IntegrityViolations.describe(new IntegrityViolation.NotNull(null, null, List.of())));
         assertTrue(violation.on(Metamodel.of(Parent.class, "code")));
         assertEquals(violation, new IntegrityViolation.Length("iv_parent", Parent.class,

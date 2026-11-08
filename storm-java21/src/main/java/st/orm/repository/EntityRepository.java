@@ -365,11 +365,10 @@ public interface EntityRepository<E extends Entity<ID>, ID> extends Repository {
      * whose column refuses it, a string longer than its character column, and a decimal with more digits before the
      * decimal point than its column holds. An empty list means every value fits its column.
      *
-     * <p>The column limits come from the database schema, read on first use over the template's data source and
-     * kept for its lifetime; no annotation restates them, and a write never reads them. A template without a data
-     * source, or one whose schema cannot be read, runs the null check alone. The checks are never stricter than the
-     * database: a string's length counts code points, and a database that stores any value whatever the declared
-     * size is not checked against it.</p>
+     * <p>The column limits come from the database schema loaded at startup, through schema validation or
+     * {@code loadSchema()}; no annotation restates them, and neither this method nor a write reads the schema. The
+     * checks are never stricter than the database: a string's length counts code points, and a database that stores
+     * any value whatever the declared size is not checked against it and needs no schema.</p>
      *
      * <p>The violations are the same type the database's own refusal of a write reports through
      * {@link IntegrityViolationException}, so one handler serves both. Rules that depend on other rows, such as a
@@ -377,7 +376,7 @@ public interface EntityRepository<E extends Entity<ID>, ID> extends Repository {
      *
      * @param entity the entity to check.
      * @return the violations, empty when every value fits its column.
-     * @throws PersistenceException if the entity's values cannot be read.
+     * @throws PersistenceException if the database schema is not loaded, or the entity's values cannot be read.
      * @since 1.16
      */
     List<IntegrityViolation> validate(E entity);
@@ -389,7 +388,7 @@ public interface EntityRepository<E extends Entity<ID>, ID> extends Repository {
      *
      * @param entity the entity to check.
      * @throws IntegrityViolationException if a value does not fit its column; carries every violation found.
-     * @throws PersistenceException if the entity's values cannot be read.
+     * @throws PersistenceException if the database schema is not loaded, or the entity's values cannot be read.
      * @since 1.16
      */
     void validateOrThrow(E entity);

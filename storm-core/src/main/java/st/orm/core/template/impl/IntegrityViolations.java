@@ -17,6 +17,7 @@ package st.orm.core.template.impl;
 
 import static java.util.Comparator.comparingInt;
 import static java.util.Objects.requireNonNull;
+import static st.orm.core.template.IntegrityFailure.Kind.CHECK;
 import static st.orm.core.template.IntegrityFailure.Kind.FOREIGN_KEY;
 import static st.orm.core.template.IntegrityFailure.Kind.REFERENCED;
 import static st.orm.core.template.impl.ObjectMapperFactory.nullableHint;
@@ -61,10 +62,9 @@ import st.orm.spi.SqlOperation;
  *
  * <p>A failure the database reported is classified by the dialect's {@link IntegrityFailureClassifier}, which reads
  * the kind of rule and the names the error carries, and resolved here to the entity's fields: a column the error
- * names is looked up in the model, a constraint it names in the database schema, which is read on first use over
- * the template's data source and kept for the data source's lifetime. A write that succeeds reads nothing. Where the
- * schema cannot be read, or the template runs on a connection rather than a data source, the violation keeps the
- * names the error carries and resolves to no field.</p>
+ * names is looked up in the model, a constraint it names in the schema loaded at startup. No metadata is read here.
+ * Where the schema is not loaded, or the template runs on a connection rather than a data source, a violation keeps
+ * the names the error carries, and a constraint resolves to no field.</p>
  *
  * @since 1.16
  */
@@ -72,7 +72,6 @@ public final class IntegrityViolations {
 
     private static final Logger LOGGER = LoggerFactory.getLogger("st.orm.validation");
 
-    private final SqlDialect dialect;
     private final IntegrityFailureClassifier classifier;
     private final @Nullable DataSource dataSource;
     private final @Nullable ModelBuilder modelBuilder;
@@ -80,13 +79,12 @@ public final class IntegrityViolations {
     /**
      * Creates the resolution for a template.
      *
-     * @param dialect the dialect whose classifier reads the failures, and whose strategies read the schema.
-     * @param dataSource the data source the schema is read over, or {@code null} for a template without one, whose
-     *                   violations resolve to no field.
+     * @param dialect the dialect whose classifier reads the failures.
+     * @param dataSource the data source whose loaded schema resolves a constraint to its fields, or {@code null} for
+     *                   a template without one.
      * @param modelBuilder the models of the entities, or {@code null} when no entity is known.
      */
     public IntegrityViolations(SqlDialect dialect, @Nullable DataSource dataSource, @Nullable ModelBuilder modelBuilder) {
-        this.dialect = requireNonNull(dialect, "dialect");
         this.classifier = requireNonNull(dialect.integrityFailureClassifier(), "integrityFailureClassifier");
         this.dataSource = dataSource;
         this.modelBuilder = modelBuilder;
@@ -170,7 +168,7 @@ public final class IntegrityViolations {
             fields = fieldsOf(model, failure.columns());
         } else if (failure.primaryKey()) {
             fields = model.columns().stream().filter(Column::primaryKey).map(IntegrityViolations::field).toList();
-        } else if (constraint != null) {
+        } else if (constraint != null && kind != CHECK) {
             var schema = schema(model.schema());
             if (schema != null) {
                 var uniqueColumns = schema.getUniqueKeys(model.name()).stream()
@@ -212,9 +210,10 @@ public final class IntegrityViolations {
                 }
             }
         }
-        if (constraint != null && fields.isEmpty() && kind != REFERENCED && schema(model.schema()) != null) {
-            // The database named a constraint the schema does not know: a misread name, or a constraint the schema
-            // read left out. Either way the violation resolves to no field, which is worth a word to a developer.
+        if (constraint != null && fields.isEmpty() && kind != REFERENCED && kind != CHECK
+                && schema(model.schema()) != null) {
+            // The database named a constraint the loaded schema does not know: a misread name, or a constraint added
+            // since the load. Either way the violation resolves to no field, which is worth a word to a developer.
             LOGGER.debug("Constraint {} reported for {} is not known for table {}; the violation resolves to no field.",
                     constraint, type.getSimpleName(), model.name());
         }
@@ -278,11 +277,11 @@ public final class IntegrityViolations {
     }
 
     /**
-     * Returns the schema the entities of the template live in, read on first use, or {@code null} when the template
-     * has no data source or the schema cannot be read.
+     * Returns the schema the entities of the template live in, or {@code null} when the template has no data source
+     * or the schema is not loaded.
      */
     private @Nullable DatabaseSchema schema(String entitySchema) {
-        return dataSource == null ? null : SchemaCache.readOrNull(dataSource, dialect, entitySchema);
+        return dataSource == null ? null : SchemaCache.cached(dataSource, entitySchema);
     }
 
     /**

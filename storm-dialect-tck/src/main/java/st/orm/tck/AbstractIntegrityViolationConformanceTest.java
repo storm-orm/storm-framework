@@ -121,6 +121,7 @@ public abstract class AbstractIntegrityViolationConformanceTest {
             }
         }
         awaitTables();
+        orm.loadSchema(type -> false);
     }
 
     @AfterEach

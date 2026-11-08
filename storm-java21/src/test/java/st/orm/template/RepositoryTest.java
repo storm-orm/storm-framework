@@ -1232,6 +1232,7 @@ public class RepositoryTest {
 
     @Test
     public void testValidateReportsEveryViolation() {
+        orm.loadSchema();
         var cities = orm.entity(City.class);
         List<IntegrityViolation> violations = cities.validate(new City(null, "A".repeat(256)));
         assertEquals(1, violations.size());
@@ -1246,6 +1247,7 @@ public class RepositoryTest {
 
     @Test
     public void testValidateOrThrowCarriesTheViolations() {
+        orm.loadSchema();
         var cities = orm.entity(City.class);
         var thrown = assertThrows(IntegrityViolationException.class,
                 () -> cities.validateOrThrow(new City(null, "A".repeat(256))));

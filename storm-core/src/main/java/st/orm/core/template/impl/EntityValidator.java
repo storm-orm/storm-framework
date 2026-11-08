@@ -45,12 +45,12 @@ import st.orm.core.template.impl.DatabaseSchema.DbColumn;
  * violation of the entity is reported, as the {@link IntegrityViolation} records a database's own refusal of a write
  * reports, so one handler serves both.
  *
- * <p>The column limits come from the database schema, read on first use over the template's data source through
- * {@link SchemaCache} and kept for the data source's lifetime. The checks are never stricter than the database: a
- * string's length counts code points, a database that stores any value whatever the declared size
- * ({@link SqlDialect#enforcesColumnSizes()}) is not checked against it, and a column the schema does not describe is
- * not checked. Without a data source, or where the schema cannot be read, the null check alone runs. Rules that depend
- * on other rows, a unique key or a foreign key's target, are the database's to check.</p>
+ * <p>The column limits come from the database schema loaded at startup, through schema validation or
+ * {@code loadSchema()}; the check itself reads no metadata, and is refused where the schema is not loaded. The checks
+ * are never stricter than the database: a string's length counts code points, a database that stores any value
+ * whatever the declared size ({@link SqlDialect#enforcesColumnSizes()}) is not checked against it and needs no schema,
+ * and a column the schema does not describe is not checked. Rules that depend on other rows, a unique key or a
+ * foreign key's target, are the database's to check.</p>
  *
  * @since 1.16
  */
@@ -78,9 +78,11 @@ public final class EntityValidator {
      *
      * @param model the entity's model.
      * @param entity the entity to check.
-     * @param dataSource the data source the schema is read over, or {@code null} for a template without one.
+     * @param dataSource the data source whose loaded schema holds the limits, or {@code null} for a template without
+     *                   one.
      * @param dialect the dialect, which states whether the database enforces the declared sizes of its columns.
      * @return the violations, empty when every value fits its column.
+     * @throws PersistenceException if the database enforces column sizes and the schema is not loaded.
      * @param <E> the entity type.
      */
     public static <E extends Data> List<IntegrityViolation> validate(Model<E, ?> model,
@@ -90,9 +92,7 @@ public final class EntityValidator {
         requireNonNull(model, "model");
         requireNonNull(entity, "entity");
         var values = nullableValues(model, entity);
-        var schema = dialect.enforcesColumnSizes() && dataSource != null
-                ? SchemaCache.readOrNull(dataSource, dialect, model.schema())
-                : null;
+        var schema = dialect.enforcesColumnSizes() ? loadedSchema(model, dataSource) : null;
         List<IntegrityViolation> violations = new ArrayList<>();
         for (var entry : values.entrySet()) {
             var column = entry.getKey();
@@ -111,6 +111,18 @@ public final class EntityValidator {
                     .ifPresent(violations::add);
         }
         return List.copyOf(violations);
+    }
+
+    /**
+     * Returns the schema the entity's table lives in. Without it the column limits are unknown, and a check that
+     * compared nothing would read as a value that fits, so the check is refused.
+     */
+    private static DatabaseSchema loadedSchema(Model<?, ?> model, @Nullable DataSource dataSource) {
+        var schema = dataSource == null ? null : SchemaCache.cached(dataSource, model.schema());
+        if (schema == null) {
+            throw new PersistenceException("Cannot validate %s: the database schema is not loaded. Load it at startup with schema mode load, warn or fail, or call loadSchema() on the template; a template without a data source cannot load it.".formatted(model.type().getSimpleName()));
+        }
+        return schema;
     }
 
     /**

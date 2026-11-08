@@ -1158,6 +1158,7 @@ internal open class RepositoryTest(
 
     @Test
     fun `validate reports a value longer than its column and writes nothing`() {
+        orm.loadSchema()
         val cities = orm.entity(City::class)
         val name = metamodel<City, String>(cities.model, "name")
         val violations = cities.validate(City(name = "A".repeat(256)))
@@ -1171,6 +1172,7 @@ internal open class RepositoryTest(
 
     @Test
     fun `validateOrThrow carries every violation`() {
+        orm.loadSchema()
         val cities = orm.entity(City::class)
         val name = metamodel<City, String>(cities.model, "name")
         val thrown = shouldThrow<IntegrityViolationException> { cities.validateOrThrow(City(name = "A".repeat(256))) }

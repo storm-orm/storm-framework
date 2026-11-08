@@ -202,7 +202,7 @@ The no-argument variants discover all entity and projection types on the classpa
 
 On success, a confirmation message is logged at INFO level. On failure, each error is logged at ERROR level, and `validateSchemaOrThrow()` throws a `PersistenceException` with a summary of all errors. Warnings are always logged at WARN level regardless of the outcome.
 
-Validation also loads the schema: Storm keeps what it read for the data source and uses it for advice and optimization, such as naming an index a slow statement lacks. To load the schema without validating it, call `orm.loadSchema()`. Loading is optional, and each call reads the schema anew. See [Loading the schema](advice.md#loading-the-schema).
+Validation also loads the schema: Storm keeps what it read for the data source and uses it for advice and optimization, such as naming an index a slow statement lacks, to resolve an [integrity violation](error-handling.md#integrity-violations) to the entity's fields, and for [`validate`](error-handling.md#checking-an-entity-before-the-write). To load the schema without validating it, call `orm.loadSchema()`. Loading is optional, and each call reads the schema anew. See [Loading the schema](advice.md#loading-the-schema).
 
 Templates created from a raw `Connection` or JPA `EntityManager` do not support schema validation, since they lack the `DataSource` needed to query database metadata.
 
@@ -338,7 +338,7 @@ The `schema-mode` values:
 | `fail` | Mismatches cause startup to fail with a `PersistenceException` (default). |
 | `warn` | Mismatches are logged at WARN level; startup continues. |
 | `load` | The schema is loaded without being validated, which Storm uses for advice and optimization. See [Loading the schema](advice.md#loading-the-schema). |
-| `none` | Schema validation is skipped, and the schema is not loaded. |
+| `none` | Schema validation is skipped, and the schema is not loaded: `validate` refuses to run, and a constraint resolves to no field. |
 
 Validation loads the schema as it reads it, so `fail` and `warn` also give Storm the knowledge `load` gives it.
 
