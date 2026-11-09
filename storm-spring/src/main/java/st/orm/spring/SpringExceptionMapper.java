@@ -23,6 +23,8 @@ import javax.sql.DataSource;
 import org.jspecify.annotations.Nullable;
 import org.springframework.dao.ConcurrencyFailureException;
 import org.springframework.dao.DataAccessException;
+import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.dao.DuplicateKeyException;
 import org.springframework.dao.EmptyResultDataAccessException;
 import org.springframework.dao.IncorrectResultSizeDataAccessException;
 import org.springframework.dao.IncorrectUpdateSemanticsDataAccessException;
@@ -32,7 +34,10 @@ import org.springframework.jdbc.UncategorizedSQLException;
 import org.springframework.jdbc.support.SQLErrorCodeSQLExceptionTranslator;
 import org.springframework.jdbc.support.SQLExceptionSubclassTranslator;
 import org.springframework.jdbc.support.SQLExceptionTranslator;
+import org.springframework.util.ClassUtils;
 import st.orm.IllegalTransactionStateException;
+import st.orm.IntegrityViolation;
+import st.orm.IntegrityViolationException;
 import st.orm.NoResultException;
 import st.orm.NonUniqueResultException;
 import st.orm.OptimisticLockException;
@@ -53,8 +58,8 @@ import st.orm.spi.ExceptionMapper;
  * {@code SQLException} subclass and SQL state translation. This gives Storm repositories the same exception
  * semantics as Spring's other data access integrations: deadlocks and lock timeouts surface as
  * {@code TransientDataAccessException} subtypes (enabling retry setups), constraint violations as
- * {@code DataIntegrityViolationException} subtypes, and so on. A failure the dialect classifies as transient
- * ({@link ExceptionContext#transientFailure()}), a deadlock or a serialization failure, translates to a
+ * {@code DataIntegrityViolationException} subtypes, and so on. A {@link TransientPersistenceException}, a deadlock
+ * or a serialization failure as the dialect's classifier reads it, translates to a
  * {@link TransientDataAccessException} even where the translator knows no code for it: to
  * {@link ConcurrencyFailureException} then.</p>
  *
@@ -68,6 +73,11 @@ import st.orm.spi.ExceptionMapper;
  * {@code OptimisticLockingFailureException} therefore sees Storm's optimistic lock conflicts. Any other failure
  * translates to {@link StormSystemException}, so a caller catches one {@code DataAccessException} hierarchy.</p>
  *
+ * <p>An {@link IntegrityViolationException}, a value that breaks a rule of its table, whether the database refused
+ * the write or Storm found the violation before it, translates to {@link DuplicateKeyException} for an
+ * {@link IntegrityViolation.Unique} violation and to {@link DataIntegrityViolationException} for the other kinds,
+ * with the Storm exception, and the violations and fields it carries, as the cause.</p>
+ *
  * <p>The exceptions of Storm's transaction API pass through unchanged: {@link TransactionTimedOutException},
  * {@link IllegalTransactionStateException}, {@link UnexpectedRollbackException},
  * {@link ReadOnlyTransactionException} and {@link TransactionCallbackException}. A transaction block raises them
@@ -79,6 +89,9 @@ import st.orm.spi.ExceptionMapper;
  * @since 1.13
  */
 public class SpringExceptionMapper implements ExceptionMapper {
+
+    private static final boolean WEB_PRESENT =
+            ClassUtils.isPresent("org.springframework.web.ErrorResponse", SpringExceptionMapper.class.getClassLoader());
 
     private final SQLExceptionTranslator translator;
 
@@ -101,8 +114,9 @@ public class SpringExceptionMapper implements ExceptionMapper {
     @Override
     public RuntimeException map(Throwable cause, ExceptionContext context) {
         SQLException sqlException = findSqlException(cause);
-        if (sqlException == null) {
+        if (sqlException == null || cause instanceof IntegrityViolationException) {
             return switch (cause) {
+                case IntegrityViolationException violation -> translated(violation);
                 case OptimisticLockException conflict ->
                         new OptimisticLockingFailureException(conflict.getMessage(), conflict);
                 case TransientPersistenceException transientFailure ->
@@ -128,7 +142,7 @@ public class SpringExceptionMapper implements ExceptionMapper {
         if (translated == null) {
             translated = new UncategorizedSQLException(task, sql, sqlException);
         }
-        if (context.transientFailure() && !(translated instanceof TransientDataAccessException)) {
+        if (cause instanceof TransientPersistenceException && !(translated instanceof TransientDataAccessException)) {
             translated = new ConcurrencyFailureException(translated.getMessage(), sqlException);
         }
         // The translated exception keeps the SQLException as its cause, but drops any wrapper between the
@@ -140,6 +154,24 @@ public class SpringExceptionMapper implements ExceptionMapper {
             }
         }
         return translated;
+    }
+
+    /**
+     * Returns the translation of the violation: with spring-web on the classpath a type that also carries the status
+     * the violation answers a web client with, and otherwise the plain type.
+     */
+    private static DataAccessException translated(IntegrityViolationException violation) {
+        return WEB_PRESENT ? IntegrityViolationResponses.translated(violation) : plain(violation);
+    }
+
+    /**
+     * Returns the translation of the violation without a status: {@code DuplicateKeyException} for a unique violation
+     * and {@code DataIntegrityViolationException} for the other kinds.
+     */
+    static DataAccessException plain(IntegrityViolationException violation) {
+        return violation.violations().getFirst() instanceof IntegrityViolation.Unique
+                ? new DuplicateKeyException(violation.getMessage(), violation)
+                : new DataIntegrityViolationException(violation.getMessage(), violation);
     }
 
     /**

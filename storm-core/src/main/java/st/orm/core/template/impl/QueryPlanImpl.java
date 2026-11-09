@@ -22,6 +22,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.function.Function;
 import st.orm.Data;
+import st.orm.IntegrityViolationException;
 import st.orm.PersistenceException;
 import st.orm.core.template.Query;
 import st.orm.core.template.QueryPlan;
@@ -43,15 +44,27 @@ final class QueryPlanImpl implements QueryPlan {
     private final List<Function<Data, List<PositionalParameter>>> parameterExtractors;
     private final List<Function<Object, List<PositionalParameter>>> valueParameterExtractors;
     private final Function<Sql, Query> queryFactory;
+    private final Function<Throwable, RuntimeException> exceptionTransformer;
 
+    /**
+     * @param sql the processed statement.
+     * @param parameterExtractors the extractors of the parameters a bound record supplies.
+     * @param valueParameterExtractors the extractors of the parameters a bound value supplies.
+     * @param queryFactory creates the query of a bound statement.
+     * @param exceptionTransformer maps a violation binding a record detects, a null in a field whose column refuses
+     *                             it, to the exception thrown to the caller, via the template's exception mapper
+     *                             with the statement as context.
+     */
     QueryPlanImpl(Sql sql,
                   List<Function<Data, List<PositionalParameter>>> parameterExtractors,
                   List<Function<Object, List<PositionalParameter>>> valueParameterExtractors,
-                  Function<Sql, Query> queryFactory) {
+                  Function<Sql, Query> queryFactory,
+                  Function<Throwable, RuntimeException> exceptionTransformer) {
         this.sql = requireNonNull(sql, "sql");
         this.parameterExtractors = List.copyOf(parameterExtractors);
         this.valueParameterExtractors = List.copyOf(valueParameterExtractors);
         this.queryFactory = requireNonNull(queryFactory, "queryFactory");
+        this.exceptionTransformer = requireNonNull(exceptionTransformer, "exceptionTransformer");
     }
 
     @Override
@@ -70,6 +83,8 @@ final class QueryPlanImpl implements QueryPlan {
             return queryFactory.apply(intercept(sql.parameters(parameters).bindVariables(null)));
         } catch (UncheckedSqlTemplateException e) {
             throw new PersistenceException(e.getCause());
+        } catch (IntegrityViolationException e) {
+            throw exceptionTransformer.apply(e);
         }
     }
 

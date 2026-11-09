@@ -1,5 +1,6 @@
 package st.orm.template
 
+import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.matchers.collections.shouldBeEmpty
 import io.kotest.matchers.collections.shouldContainExactlyInAnyOrder
 import io.kotest.matchers.collections.shouldHaveSize
@@ -7,6 +8,7 @@ import io.kotest.matchers.nulls.shouldBeNull
 import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.shouldNotBe
+import io.kotest.matchers.types.shouldBeInstanceOf
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.runBlocking
 import org.junit.jupiter.api.Test
@@ -17,6 +19,8 @@ import org.springframework.test.context.ContextConfiguration
 import org.springframework.test.context.jdbc.Sql
 import org.springframework.test.context.junit.jupiter.SpringExtension
 import st.orm.Data
+import st.orm.IntegrityViolation
+import st.orm.IntegrityViolationException
 import st.orm.Metamodel
 import st.orm.NoResultException
 import st.orm.PersistenceException
@@ -1150,5 +1154,36 @@ internal open class RepositoryTest(
         val cityPath = metamodel<Owner, City>(ownerRepo.model, "city_id")
         val cityRefs = listOf(Ref.of(City::class.java, city1.id), Ref.of(City::class.java, city2.id))
         ownerRepo.removeAllByRef(cityPath, cityRefs) shouldBe 2
+    }
+
+    @Test
+    fun `validate reports a value longer than its column and writes nothing`() {
+        orm.loadSchema()
+        val cities = orm.entity(City::class)
+        val name = metamodel<City, String>(cities.model, "name")
+        val violations = cities.validate(City(name = "A".repeat(256)))
+        violations.size shouldBe 1
+        val tooLong = violations.first().shouldBeInstanceOf<IntegrityViolation.Length>()
+        tooLong.on(name) shouldBe true
+        tooLong.maxLength() shouldBe 255
+        cities.validate(City(name = "A".repeat(255))) shouldBe emptyList()
+        cities.count() shouldBe 6
+    }
+
+    @Test
+    fun `validateOrThrow carries every violation`() {
+        orm.loadSchema()
+        val cities = orm.entity(City::class)
+        val name = metamodel<City, String>(cities.model, "name")
+        val thrown = shouldThrow<IntegrityViolationException> { cities.validateOrThrow(City(name = "A".repeat(256))) }
+        thrown.violations(name).size shouldBe 1
+        cities.validateOrThrow(City(name = "Fits"))
+    }
+
+    @Test
+    fun `a duplicate key is an integrity violation`() {
+        val petTypes = orm.entity(PetType::class)
+        val thrown = shouldThrow<IntegrityViolationException> { petTypes.insert(PetType(1, "duplicate")) }
+        thrown.violations().first().shouldBeInstanceOf<IntegrityViolation.Unique>()
     }
 }

@@ -21,6 +21,7 @@ Storm uses unchecked exceptions for most error conditions. The root type is `Per
 | `TransientPersistenceException` | `PersistenceException` | The failure stems from concurrent activity, such as a deadlock or a serialization failure, and running the whole transaction again may succeed. See [Deadlocks and Serialization Failures](#deadlocks-and-serialization-failures). |
 | `OptimisticLockException` | `TransientPersistenceException` | An update or delete detects a version conflict (the row was modified by another transaction). |
 | `UnexpectedRowCountException` | `PersistenceException` | An insert, update or remove affects another number of rows than it expects, such as an update of an entity whose row does not exist. Carries the expected and actual row counts. |
+| `IntegrityViolationException` | `PersistenceException` | A value breaks a rule of its table: the database refuses a write for a constraint, a non-nullable field holds null at write time, or `validateOrThrow` finds a value too large for its column. Carries the violations, each with its kind and the entity's fields. See [Integrity Violations](#integrity-violations). |
 | `SchemaValidationException` | `PersistenceException` | Schema validation finds mismatches between entity definitions and the database schema. |
 | `IllegalTransactionStateException` | `PersistenceException` | A transaction block cannot open against the transaction state it finds: `MANDATORY` without a transaction, `NEVER` inside one, or a joined block stating a stricter isolation level than the transaction it joins. |
 | `TransactionTimedOutException` | `PersistenceException` | A transaction exceeds its configured timeout. |
@@ -40,6 +41,7 @@ RuntimeException
       ├── TransientPersistenceException
       │    └── OptimisticLockException
       ├── UnexpectedRowCountException
+      ├── IntegrityViolationException
       ├── SchemaValidationException
       ├── IllegalTransactionStateException
       ├── TransactionTimedOutException
@@ -202,21 +204,21 @@ With the Spring Boot starter, exception translation turns these failures into Sp
 
 An insert, update or remove of an entity expects to affect exactly one row, and a batch one row per entity. When the database reports another count, Storm throws `UnexpectedRowCountException`, with the counts on `getExpectedRowCount()` and `getActualRowCount()`. The usual cause is an update or remove of an entity whose row does not exist, or a trigger that suppressed the write. For an entity with a `@Version` field, an update that affects no row is an `OptimisticLockException` instead.
 
-### Constraint Violations
+### Integrity Violations
 
-Database constraint violations (unique constraints, foreign key constraints, not-null constraints) surface as `PersistenceException` wrapping the underlying JDBC `SQLException`. The original SQL error message and vendor-specific error code are preserved in the exception chain:
+A write the database refuses for a constraint reaches the caller as an `IntegrityViolationException`. Storm reads what the database reports and states it in terms of the entity: each violation is a record of its kind, carrying the fields it resolves to as metamodel keys and, where the database reports them, the constraint and the table. A caller matches on the record type and a field instead of on a vendor error code:
 
 <Tabs groupId="language">
 <TabItem value="kotlin" label="Kotlin" default>
 
 ```kotlin
 try {
-    userRepository.insert(duplicateUser)
-} catch (exception: PersistenceException) {
-    val cause = exception.cause
-    if (cause is java.sql.SQLIntegrityConstraintViolationException) {
-        // Handle duplicate key, foreign key violation, etc.
+    users.insert(user)
+} catch (e: IntegrityViolationException) {
+    if (e.violations(User_.email).any { it is IntegrityViolation.Unique }) {
+        // The email is taken.
     }
+    throw e
 }
 ```
 
@@ -225,17 +227,50 @@ try {
 
 ```java
 try {
-    userRepository.insert(duplicateUser);
-} catch (PersistenceException exception) {
-    Throwable cause = exception.getCause();
-    if (cause instanceof java.sql.SQLIntegrityConstraintViolationException) {
-        // Handle duplicate key, foreign key violation, etc.
+    users.insert(user);
+} catch (IntegrityViolationException e) {
+    if (e.violations(User_.email).stream().anyMatch(v -> v instanceof IntegrityViolation.Unique)) {
+        // The email is taken.
     }
+    throw e;
 }
 ```
 
 </TabItem>
 </Tabs>
+
+`IntegrityViolation` is a sealed interface with a record per kind, each naming the SQL state the standard assigns to it: `Unique` (`23505`), a value another row already holds under a unique key or the primary key; `ForeignKey` (`23503`), a reference to a row that does not exist; `Referenced` (`23503` as well), a row other rows still reference, so it cannot be removed; `NotNull` (`23502`); `Check` (`23514`); `Length` (`22001`), a string longer than its column; and `NumericRange` (`22003`), a number with more digits before the decimal point than its column holds. Each record carries what its kind can report: `Referenced` and `Check` have no fields, `NotNull`, `Length` and `NumericRange` no constraint name, so a Kotlin `when` or a Java pattern switch over the records is exhaustive. A database that reports a violation under a code of its own is read by its dialect, and the driver's exception stays the cause for a caller that needs the code as reported. A compound key resolves to each of its fields. The fields are set only where the database identifies the column or the constraint; a violation whose column the database does not name has no fields, and Storm never infers one. A constraint resolves to its fields through the schema loaded at startup, by schema mode `fail` (the default), `warn` or `load`, or by `loadSchema()`; a failed write never reads the database's metadata, and without a loaded schema the violation keeps its kind and the names the database reported. For a `REFERENCED` violation, `type()` is the type of the removed row and `table()` the table that still references it. The driver's exception stays the cause, with the statement attached as a suppressed exception.
+
+The kind is read from the error code or SQL state, which a database keeps stable across its versions. The constraint, table and column names are read from the error's structured fields where the database has them, and otherwise from the identifiers its message quotes and the SQL terms it carries, which a server configured for another language keeps while it translates the words around them. A message a later version reshapes costs the names and the fields they resolve to, not the kind. Storm's conformance suite runs every kind against every supported database, one of them with its messages in another language.
+
+The database refuses a write for one constraint at a time, so a violation it reports comes alone. A constraint the database checks at commit, a deferred constraint, is reported from the commit, with the kind and the constraint and no fields. One violation is found before any statement runs: a null in a field whose column refuses it, which Storm has always refused when it reads the entity's values for a write, is reported as a `NotNull` violation on the field. That is the type-based guard, not `validate`; a write never checks lengths or precision.
+
+The same exception passes through the template's exception mapper like any failure the database reported, so a mapper translates it to its own type; the [Spring integration](spring-integration.md#exception-translation) translates a `UNIQUE` violation to `DuplicateKeyException` and the other kinds to `DataIntegrityViolationException`. At a web endpoint a violation answers with a status that says whose fault it is: see [In a Web Application](data-validation.md#in-a-web-application).
+
+### Checking an Entity Before the Write
+
+`validate` checks an entity against its columns without writing it and returns every violation found: a null in a non-nullable field, a string longer than its character column, and a decimal with more digits before the decimal point than its column holds. The limits come from the database schema Storm loads at startup, through [schema validation](validation.md) or `loadSchema()`; no annotation restates them, and nothing reads the schema after that. `validateOrThrow` throws the same violations as one `IntegrityViolationException`, through the exception mapper, so a handler that catches a database-reported violation catches these too.
+
+<Tabs groupId="language">
+<TabItem value="kotlin" label="Kotlin" default>
+
+```kotlin
+val violations = users.validate(user)      // empty: every value fits its column
+users.validateOrThrow(user)                // throws IntegrityViolationException with every violation
+```
+
+</TabItem>
+<TabItem value="java" label="Java">
+
+```java
+List<IntegrityViolation> violations = users.validate(user);  // empty: every value fits its column
+users.validateOrThrow(user);                                  // throws IntegrityViolationException with every violation
+```
+
+</TabItem>
+</Tabs>
+
+A `Length` violation carries the column's `maxLength()`, a `NumericRange` violation its `precision()` and `scale()`, so a message can state the limit; a violation the database reported carries none. The checks are never stricter than the database: a string's length counts code points, a database that stores any value whatever the declared size is not checked against it, and a database like that needs no schema. Elsewhere, `validate` without a loaded schema throws a `PersistenceException` saying so, since it could not compare anything. Rules that depend on other rows, a unique key or a foreign key's target, are the database's to check; `validate` leaves them to the write.
 
 ### Schema Validation Errors
 

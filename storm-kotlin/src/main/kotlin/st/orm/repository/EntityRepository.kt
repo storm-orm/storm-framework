@@ -18,6 +18,8 @@ package st.orm.repository
 import kotlinx.coroutines.flow.Flow
 import st.orm.Data
 import st.orm.Entity
+import st.orm.IntegrityViolation
+import st.orm.IntegrityViolationException
 import st.orm.Metamodel
 import st.orm.Page
 import st.orm.Pageable
@@ -442,6 +444,39 @@ public interface EntityRepository<E, ID : Any> : Repository where E : Entity<ID>
     public fun existsByRef(ref: Ref<E>): Boolean
 
     /**
+     * Checks an entity against its columns without writing it, and returns every violation found: a null in a field
+     * whose column refuses it, a string longer than its character column, and a decimal with more digits before the
+     * decimal point than its column holds. An empty list means every value fits its column.
+     *
+     * The column limits come from the database schema loaded at startup, through schema validation or `loadSchema()`;
+     * no annotation restates them, and neither this method nor a write reads the schema. The checks are never stricter
+     * than the database: a string's length counts code points, and a database that stores any value whatever the
+     * declared size is not checked against it and needs no schema.
+     *
+     * The violations are the same type the database's own refusal of a write reports through
+     * [IntegrityViolationException], so one handler serves both. Rules that depend on other rows, such as a unique
+     * key or a foreign key's target, are the database's to check; they are not checked here.
+     *
+     * @param entity the entity to check.
+     * @return the violations, empty when every value fits its column.
+     * @throws PersistenceException if the database schema is not loaded, or the entity's values cannot be read.
+     * @since 1.16
+     */
+    public fun validate(entity: E): List<IntegrityViolation>
+
+    /**
+     * Checks an entity against its columns as [validate] does, and throws when a value does not fit, with every
+     * violation found. The exception passes through the template's exception mapper as a violation the database
+     * reported does, so a handler that catches the one catches the other.
+     *
+     * @param entity the entity to check.
+     * @throws IntegrityViolationException if a value does not fit its column; carries every violation found.
+     * @throws PersistenceException if the database schema is not loaded, or the entity's values cannot be read.
+     * @since 1.16
+     */
+    public fun validateOrThrow(entity: E)
+
+    /**
      * Inserts an entity into the database.
      *
      *
@@ -450,6 +485,8 @@ public interface EntityRepository<E, ID : Any> : Repository where E : Entity<ID>
      * model requirements.
      *
      * @param entity the entity to insert. The entity must satisfy all model constraints.
+     * @throws IntegrityViolationException if the database refuses the entity for a constraint, or a field whose
+     * column refuses a null holds one.
      * @throws st.orm.PersistenceException if the insert operation fails. This can happen due to a variety of reasons,
      * including database constraints violations, connectivity issues, or if the entity parameter is null.
      */

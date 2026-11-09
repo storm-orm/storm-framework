@@ -187,10 +187,10 @@
 
 /* Long inline code (fully qualified class names, Gradle coordinates) is the
    usual cause of a horizontal page scrollbar on a phone. Let it wrap instead;
-   fenced blocks keep their own scroller. */
+   fenced blocks keep their own scroller, and a table scrolls within itself, so
+   code in a cell stays whole. */
 .markdown p code,
-.markdown li code,
-.markdown td code {
+.markdown li code {
   overflow-wrap: anywhere;
 }
 

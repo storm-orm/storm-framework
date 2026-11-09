@@ -20,11 +20,11 @@ ${navHtml('tutorials')}
   <h1>Familiar Tasks.<br><span class="grad">Simpler Solutions.</span></h1>
   <p class="sub">Task-focused tutorials for engineers coming from JPA, Hibernate, or Exposed, plus how-to recipes for Storm itself. Each comparison takes a persistence task you already know, shows both approaches side by side, and lets you inspect the SQL they produce.</p>
   <div class="catnav">
-    <a href="" class="on" data-all="1" aria-current="true">All<b>26</b></a>
+    <a href="" class="on" data-all="1" aria-current="true">All<b>27</b></a>
     <a href="#start-here">Start here<b>1</b></a>
     <a href="#from-jpa">From JPA<b>10</b></a>
     <a href="#from-exposed">From Exposed<b>7</b></a>
-    <a href="#storm-way">The Storm way<b>8</b></a>
+    <a href="#storm-way">The Storm way<b>9</b></a>
   </div>
   ${heroArt('tutorials', {priority: true})}
 </div>
@@ -142,6 +142,11 @@ ${navHtml('tutorials')}
     <div class="tt">Statement advice: what to change, and why<span class="arrow">→</span></div>
     <div class="td">Storm builds every statement, so it knows the shape, the entity graph, the indexes and what each transaction repeated. The log names the problem, the fix and the trade-off, at no cost per execution.</div>
     <div class="tm"><span>The Storm way</span><span>8 min read</span><span>Kotlin</span></div>
+  </a>
+  <a class="tcard" href="/tutorials/validation">
+    <div class="tt">Validate input end to end<span class="arrow">→</span></div>
+    <div class="td">A form posts an owner. The request type rejects product rules, the column rejects a value too long, the unique constraint rejects a duplicate, and one handler answers with the field that failed.</div>
+    <div class="tm"><span>The Storm way</span><span>6 min read</span><span>Kotlin and Java</span></div>
   </a>
   <a class="tcard" href="/tutorials/testing">
     <div class="tt">Testing your data layer with @StormTest<span class="arrow">→</span></div>

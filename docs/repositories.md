@@ -152,6 +152,8 @@ Storm rejects a DELETE or UPDATE built without a condition, throwing a `Persiste
 
 Storm uses dirty checking to determine which columns to include in the UPDATE statement. See [Dirty Checking](dirty-checking.md) for configuration details.
 
+A write the database refuses for a constraint throws an `IntegrityViolationException` naming the kind of rule and the entity's fields, and `validate(entity)` checks an entity against its columns before the write. See [Integrity Violations](error-handling.md#integrity-violations).
+
 ### Removing by Id or Ref
 
 `remove(entity)` and `remove(entities)` are strict: holding an entity implies that its row exists, so a row that is gone throws an `UnexpectedRowCountException`. `removeById` and `removeByRef` are their idempotent counterparts: an id or ref without a row is not an error. Use them for a removal that may race with a concurrent delete or may run more than once. Both take a single key or many: a collection, a Java `Stream` or a Kotlin `Flow`, removed in batches with one DELETE per batch.

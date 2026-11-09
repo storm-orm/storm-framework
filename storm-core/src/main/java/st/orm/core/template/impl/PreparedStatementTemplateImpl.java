@@ -48,6 +48,7 @@ import java.util.function.Supplier;
 import javax.sql.DataSource;
 import org.jspecify.annotations.Nullable;
 import st.orm.BindVars;
+import st.orm.IntegrityViolationException;
 import st.orm.PersistenceException;
 import st.orm.ReadOnlyTransactionException;
 import st.orm.SqlTemplateException;
@@ -141,6 +142,7 @@ public final class PreparedStatementTemplateImpl implements PreparedStatementTem
     private final SqlTemplate sqlTemplate;
     private final StormConfig config;
     private final SqlDialect dialect;
+    private final IntegrityViolations integrityViolations;
 
     public PreparedStatementTemplateImpl(DataSource dataSource) {
         this(dataSource, StormConfig.defaults());
@@ -308,6 +310,7 @@ public final class PreparedStatementTemplateImpl implements PreparedStatementTem
         this.refFactory = new RefFactoryImpl(this, modelBuilder, providerFilter);
         this.strategies = strategies;
         this.config = config;
+        this.integrityViolations = new IntegrityViolations(dialect, dataSource, modelBuilder);
         this.sqlTemplate = createSqlTemplate();
     }
 
@@ -402,7 +405,7 @@ public final class PreparedStatementTemplateImpl implements PreparedStatementTem
                 } else {
                     bindVariables.setBatchListener(getBatchListener(preparedStatement, parameters, dialect,
                             getExceptionTransformer(sql, dialect, strategies.exceptionMapper(),
-                                    transactionTemplateProvider)));
+                                    transactionTemplateProvider, IntegrityViolations.of(dialect))));
                 }
                 success = true;
             } finally {
@@ -465,7 +468,7 @@ public final class PreparedStatementTemplateImpl implements PreparedStatementTem
                 } else {
                     bindVariables.setBatchListener(getBatchListener(preparedStatement, parameters, dialect,
                             getExceptionTransformer(sql, dialect, strategies.exceptionMapper(),
-                                    transactionTemplateProvider)));
+                                    transactionTemplateProvider, IntegrityViolations.of(dialect))));
                 }
                 success = true;
                 return StatementLease.of(preparedStatement);
@@ -725,6 +728,11 @@ public final class PreparedStatementTemplateImpl implements PreparedStatementTem
             return createQuery(sql, customizedTemplate.dialect());
         } catch (SqlTemplateException e) {
             throw new PersistenceException(e);
+        } catch (IntegrityViolationException e) {
+            // A null in a field whose column refuses it, found while the statement read the entity's values: the
+            // statement does not exist yet, so the mapper receives the violation without one.
+            throw getExceptionTransformer(null, dialect, strategies.exceptionMapper(),
+                    strategies.transactionTemplateProvider(), integrityViolations).apply(e);
         }
     }
 
@@ -764,13 +772,17 @@ public final class PreparedStatementTemplateImpl implements PreparedStatementTem
                 throw new PersistenceException("Cannot compile a plan for a template with fixed parameter values. Pass createBindVars() for the variable parts, or execute the template directly via query().");
             }
             var bindVariables = sql.bindVariables().orElse(null);
+            var exceptionTransformer = getExceptionTransformer(sql, dialect, strategies.exceptionMapper(),
+                    strategies.transactionTemplateProvider(), integrityViolations);
             if (bindVariables == null) {
-                return new QueryPlanImpl(sql, List.of(), List.of(), bound -> createQuery(bound, dialect));
+                return new QueryPlanImpl(sql, List.of(), List.of(), bound -> createQuery(bound, dialect),
+                        exceptionTransformer);
             }
             if (!(bindVariables instanceof BindVarsImpl bindVars)) {
                 throw new PersistenceException("Cannot compile a plan: unsupported bind variables implementation %s.".formatted(bindVariables.getClass().getName()));
             }
-            return new QueryPlanImpl(sql, bindVars.extractors(), bindVars.valueExtractors(), bound -> createQuery(bound, dialect));
+            return new QueryPlanImpl(sql, bindVars.extractors(), bindVars.valueExtractors(),
+                    bound -> createQuery(bound, dialect), exceptionTransformer);
         } catch (SqlTemplateException e) {
             throw new PersistenceException(e);
         }
@@ -785,7 +797,7 @@ public final class PreparedStatementTemplateImpl implements PreparedStatementTem
                 strategies.transactionTemplateProvider(),
                 strategies.queryObserver(),
                 getExceptionTransformer(sql, dialect, strategies.exceptionMapper(),
-                        strategies.transactionTemplateProvider()),
+                        strategies.transactionTemplateProvider(), integrityViolations),
                 sql.operation(),
                 sql.upsert(),
                 sql.dataType().orElse(null),

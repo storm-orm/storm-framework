@@ -21,6 +21,7 @@ import kotlinx.coroutines.flow.fold
 import kotlinx.coroutines.flow.map
 import st.orm.Data
 import st.orm.Entity
+import st.orm.IntegrityViolation
 import st.orm.Metamodel
 import st.orm.Page
 import st.orm.Pageable
@@ -77,6 +78,10 @@ internal class EntityRepositoryImpl<E, ID : Any>(
     override fun existsById(id: ID): Boolean = core.existsById(id)
 
     override fun existsByRef(ref: Ref<E>): Boolean = core.existsByRef(ref)
+
+    override fun validate(entity: E): List<IntegrityViolation> = core.validate(entity)
+
+    override fun validateOrThrow(entity: E) = core.validateOrThrow(entity)
 
     override fun insert(entity: E) = core.insert(entity)
 

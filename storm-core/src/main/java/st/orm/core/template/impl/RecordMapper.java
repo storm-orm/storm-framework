@@ -514,7 +514,7 @@ final class RecordMapper {
                         ? resolveEntityCache(transactionContext, type)
                         : null;
         PkInfo pkInfo = compiled.pkInfo();
-        ColumnSkipper columnSkipper = createColumnSkipper(type, compiled, cacheReadEnabled, entityCache,
+        @Nullable ColumnSkipper columnSkipper = createColumnSkipper(type, compiled, cacheReadEnabled, entityCache,
                 interner, transactionContext);
         // Resolved once for the query rather than for every row.
         @SuppressWarnings("unchecked")
@@ -526,7 +526,7 @@ final class RecordMapper {
             }
 
             @Override
-            public ColumnSkipper columnSkipper() {
+            public @Nullable ColumnSkipper columnSkipper() {
                 return columnSkipper;
             }
 
@@ -551,7 +551,13 @@ final class RecordMapper {
                         .adapt(args, 0, false, refFactory, interner, transactionContext)
                         .constructorArgs();
                 // Don't intern top level records.
-                var record = construction.construct(adaptedArgs, 0);
+                T record;
+                try {
+                    record = construction.construct(adaptedArgs, 0);
+                } catch (SqlTemplateException e) {
+                    // A constructor that rejects the row's values names the row, so the data can be found.
+                    throw pkInfo.offset >= 0 ? forRow(e, extractPk(args, pkInfo)) : e;
+                }
                 if (entityCache != null) {
                     // Intern for dirty tracking and/or identity preservation.
                     Entity<?> interned = entityCache.intern((Entity<?>) record);
@@ -564,13 +570,24 @@ final class RecordMapper {
             }
 
             /**
+             * Returns the failure of a row's construction naming the row's primary key, when the row has one.
+             */
+            private SqlTemplateException forRow(SqlTemplateException failure, @Nullable Object primaryKey) {
+                if (primaryKey == null) {
+                    return failure;
+                }
+                return new SqlTemplateException("%s for primary key %s.".formatted(
+                        failure.getMessage().replaceAll("\\.$", ""), primaryKey), failure.getCause());
+            }
+
+            /**
              * Extracts the primary key from args at the configured offset.
              *
              * @param args the flat argument array.
              * @param pkInfo the PK offset and column count information.
              * @return the PK value, or null if any PK column is null or PK cannot be extracted.
              */
-            private Object extractPk(Object[] args, PkInfo pkInfo) throws SqlTemplateException {
+            private @Nullable Object extractPk(Object[] args, PkInfo pkInfo) throws SqlTemplateException {
                 int pkStart = pkInfo.offset;
                 int pkColumnCount = pkInfo.columnCount;
                 if (pkColumnCount == 1) {
@@ -610,8 +627,7 @@ final class RecordMapper {
      * @param transactionContext the transaction context, or null if not in a transaction.
      * @return the column skipper, or {@code null} if no region is eligible.
      */
-    @Nullable
-    private static ColumnSkipper createColumnSkipper(RecordType type,
+    private static @Nullable ColumnSkipper createColumnSkipper(RecordType type,
                                                      Compiled compiled,
                                                      boolean cacheReadEnabled,
                                                      @Nullable EntityCache<Entity<?>, ?> entityCache,
@@ -1174,7 +1190,7 @@ final class RecordMapper {
          * @param pkStart the starting offset for PK columns.
          * @return the PK value, or null if any PK column is null or PK cannot be extracted.
          */
-        private Object extractPk(Object[] flatArgs, int pkStart) throws SqlTemplateException {
+        private @Nullable Object extractPk(Object[] flatArgs, int pkStart) throws SqlTemplateException {
             if (pkColumnCount == 1) {
                 // Simple PK - just return the value.
                 return flatArgs[pkStart];

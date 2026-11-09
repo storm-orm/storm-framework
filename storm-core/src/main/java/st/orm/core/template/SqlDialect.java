@@ -614,28 +614,33 @@ public interface SqlDialect {
     }
 
     /**
-     * Returns whether the error reports a failure that stems from concurrent activity, on which the database gave up
-     * the transaction's work: a deadlock or a serialization failure. Running the whole transaction again may succeed,
-     * and the exception mapper receives the failure classified as transient.
+     * Returns the classifier of the errors the dialect's database reports. Storm asks it whether a failure of a
+     * statement or a commit is transient, and what rule of a table a refused write broke.
      *
-     * <p>Storm asks for every {@code SQLException} in the chain of a statement's failure, or of a commit's failure,
-     * the causes as well as the next exceptions a driver chains to a batch failure; one recognised error classifies
-     * the failure. A database that detects a serialization conflict only when the transaction commits reports it from
-     * the commit, and the transaction did not commit. A chain that reports a lost connection, under SQL state class
-     * {@code 08}, is never transient, a connection lost during the commit included: whether the transaction committed
-     * is unknown.</p>
+     * <p>The default is {@link SqlFailureClassifier#STANDARD}, which recognises the SQL states the standard assigns.
+     * A dialect returns the classifier that reads its database's own codes and names.</p>
      *
-     * <p>The default recognises SQL state {@code 40001}, serialization failure. A dialect adds the codes its database
-     * reports for a deadlock or a serialization failure. It leaves out the errors after which the outcome is unknown,
-     * such as SQL states {@code 40002} and {@code 40003}, and a lock wait timeout, which some databases answer by
-     * rolling back only the statement.</p>
-     *
-     * @param exception one error of the failure's chain.
-     * @return {@code true} if the error reports a deadlock or a serialization failure, {@code false} otherwise.
+     * @return the classifier of the database's errors.
      * @since 1.16
      */
-    default boolean isTransientFailure(SQLException exception) {
-        return "40001".equals(exception.getSQLState());
+    default SqlFailureClassifier sqlFailureClassifier() {
+        return SqlFailureClassifier.STANDARD;
+    }
+
+    /**
+     * Returns whether the database refuses a value larger than its column's declared size: a string longer than a
+     * character column's length, or a decimal with more digits before the decimal point than the column's
+     * precision holds. The checks of {@code validate} compare a value with the column's declared size only where
+     * the database would refuse it, so they are never stricter than the database.
+     *
+     * <p>{@code true} by default. A database that stores any value whatever the declared size returns
+     * {@code false}.</p>
+     *
+     * @return {@code true} if the database enforces the declared sizes of its columns.
+     * @since 1.16
+     */
+    default boolean enforcesColumnSizes() {
+        return true;
     }
 
     /**

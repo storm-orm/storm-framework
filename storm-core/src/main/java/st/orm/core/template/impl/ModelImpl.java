@@ -22,7 +22,6 @@ import static java.util.Optional.ofNullable;
 import static java.util.stream.Collectors.toSet;
 import static st.orm.EnumType.NAME;
 import static st.orm.core.spi.Providers.getORMConverter;
-import static st.orm.core.template.impl.ObjectMapperFactory.nullableHint;
 import static st.orm.core.template.impl.RecordReflection.findQueryColumn;
 import static st.orm.core.template.impl.RecordReflection.getDiscriminatorValue;
 import static st.orm.core.template.impl.RecordReflection.getFkLeaves;
@@ -44,9 +43,11 @@ import java.time.OffsetDateTime;
 import java.util.ArrayList;
 import java.util.Calendar;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.SequencedMap;
 import java.util.Set;
 import java.util.function.BiConsumer;
 import org.jspecify.annotations.Nullable;
@@ -651,7 +652,23 @@ public final class ModelImpl<E extends Data, ID> implements Model<E, ID> {
         requireNonNull(columns, "columns");
         requireNonNull(record, "record");
         requireNonNull(consumer, "consumer");
-        forEachValueOrdered(columns, record, consumer);
+        forEachValueOrdered(columns, record, consumer, true);
+    }
+
+    /**
+     * Collects the values of all columns into an ordered map without refusing a null in a column that does not
+     * accept one, which {@link #values(Data)} refuses as a write does. The check of an entity against its columns
+     * reads every column of the entity through it, the ones that hold a null included.
+     *
+     * @param record the record to extract values from.
+     * @return a map of columns to extracted values, a column whose value is absent mapped to {@code null}.
+     * @throws SqlTemplateException if extraction fails.
+     */
+    SequencedMap<Column, @Nullable Object> nullableValues(E record) throws SqlTemplateException {
+        requireNonNull(record, "record");
+        var values = new LinkedHashMap<Column, @Nullable Object>();
+        forEachValueOrdered(columns(), record, values::put, false);
+        return values;
     }
 
     @Override
@@ -827,7 +844,8 @@ public final class ModelImpl<E extends Data, ID> implements Model<E, ID> {
      */
     private void forEachValueOrdered(List<Column> view,
                                      E record,
-                                     BiConsumer<Column, Object> consumer)
+                                     BiConsumer<Column, Object> consumer,
+                                     boolean refuseNull)
             throws SqlTemplateException {
         var accessors = accessors(record);
         var metamodels = accessors.metamodels();
@@ -889,8 +907,8 @@ public final class ModelImpl<E extends Data, ID> implements Model<E, ID> {
                 continue;
             }
             var value = getValue(metamodel, record);
-            if (value == null && !column.nullable() && !column.primaryKey()) {
-                throw new SqlTemplateException("Cannot write NULL to non-nullable column '%s'. Ensure the entity field has a value before inserting or updating, or %s if NULL is intended.".formatted(column.name(), nullableHint(type())));
+            if (refuseNull && value == null && !column.nullable() && !column.primaryKey()) {
+                throw IntegrityViolations.nullValue(type(), name(), column);
             }
             if (column.foreignKey()) {
                 if (value instanceof Ref<?> ref && polymorphicFkDiscriminatorColumns.containsKey(column.index())) {

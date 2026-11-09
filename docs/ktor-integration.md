@@ -307,17 +307,12 @@ install(StatusPages) {
     exception<OptimisticLockException> { call, _ ->
         call.respond(HttpStatusCode.Conflict)
     }
-    // Constraint violations (unique key, foreign key, not-null) and everything else.
+    // A value that breaks a rule of its table: a duplicate, a missing parent row, a value too long.
+    stormIntegrityViolations()
+    // Everything else.
     exception<PersistenceException> { call, cause ->
-        val constraintViolation = generateSequence<Throwable>(cause) { it.cause }
-            .filterIsInstance<SQLException>()
-            .any { it.sqlState?.startsWith("23") == true }
-        if (constraintViolation) {
-            call.respond(HttpStatusCode.Conflict)
-        } else {
-            application.log.error("Unhandled persistence failure.", cause)
-            call.respond(HttpStatusCode.InternalServerError)
-        }
+        application.log.error("Unhandled persistence failure.", cause)
+        call.respond(HttpStatusCode.InternalServerError)
     }
 }
 ```
@@ -325,7 +320,7 @@ install(StatusPages) {
 A few notes on the recipes:
 
 - **Missing rows.** `getById` throws `NoResultException`; `findById` returns null instead. Prefer `findById` when a missing row is an expected outcome you handle in the route, and `getById` with the recipe when it should uniformly become a 404.
-- **Constraint violations.** Storm wraps the JDBC failure in `PersistenceException` with the driver's `SQLException` as the cause. The recipe walks the cause chain and checks for SQL state class `23` (integrity-constraint violation), which is portable across databases; checking `instanceof SQLIntegrityConstraintViolationException` is not, because some drivers (PostgreSQL, for example) throw a plain `SQLException` subclass with state `23505` instead.
+- **Integrity violations.** `stormIntegrityViolations()` answers an [`IntegrityViolationException`](error-handling.md#integrity-violations) with a status that says whose fault it is and a JSON body of its errors, each with its `fields`, `kind` and `message`, plus `maxLength`, or `precision` and `scale`, where the limit is known. Anything found before the write, and a length, numeric range or check the database refused, is a 400. A duplicate, a reference to a missing row or a row still referenced is a 409. A null the database refused is a 500 and is logged: the field is nullable where the column is not. The body names no table, constraint or statement, and needs no serializer. Pass a function to translate the messages: `stormIntegrityViolations { violation -> translate(violation) }`. Field names are the entity's paths; where the request body has another shape, register your own handler instead. The function needs `io.ktor:ktor-server-status-pages` on the classpath, which the recipe's `install(StatusPages)` already requires.
 - **Optimistic locking.** `OptimisticLockException` carries the conflicting entity via `entity`; include it in the response body if the client can resolve the conflict. Some APIs prefer 412 Precondition Failed over 409 when the client sent a version precondition.
 - **Never leak SQL.** The fallback logs the failure server-side and returns a bare 500; Storm attaches the SQL statement to the exception for diagnostics, which belongs in logs, not in responses.
 - **Ordering with transactions.** StatusPages handles the exception after the route pipeline unwinds, so a `transactional { }` route has already rolled back by the time the error response is rendered.
@@ -665,7 +660,7 @@ storm {
 | `load` | Load the schema without validating it, which Storm uses for [advice and optimization](advice.md#loading-the-schema). |
 | `none` | Skip validation. Suitable when schemas are managed entirely by migrations. |
 
-See [Validation](validation.md) for details on what is validated and how to interpret the output.
+See [Schema Validation](validation.md) for details on what is validated and how to interpret the output.
 
 ---
 

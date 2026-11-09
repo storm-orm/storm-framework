@@ -356,17 +356,17 @@ class SQLiteSqlDialectTest {
 
     @Test
     void aBusySnapshotIsTransient() {
-        assertTrue(dialect.isTransientFailure(
+        assertTrue(dialect.sqlFailureClassifier().isTransient(
                 new SQLException("[SQLITE_BUSY_SNAPSHOT] Another database connection has already written", null, 5)));
     }
 
     @Test
     void aPlainBusyIsNotTransient() {
-        assertFalse(dialect.isTransientFailure(new SQLException("[SQLITE_BUSY] The database file is locked", null, 5)));
+        assertFalse(dialect.sqlFailureClassifier().isTransient(new SQLException("[SQLITE_BUSY] The database file is locked", null, 5)));
     }
 
     @Test
     void aBusyWithoutMessageIsNotTransient() {
-        assertFalse(dialect.isTransientFailure(new SQLException(null, null, 5)));
+        assertFalse(dialect.sqlFailureClassifier().isTransient(new SQLException(null, null, 5)));
     }
 }

@@ -79,6 +79,17 @@ This is the default. Where the developer says otherwise, follow that.
   - An entity read before it ran still holds its old values. Re-read the entities it touched before writing them back: a full-row write of a stale copy puts the old values back over the columns it set (a versioned entity fails its optimistic lock check instead).
   - A column an audit callback stamps on update is `set` in the builder, since callbacks see only operations that carry an entity.
 
+### Validation
+
+Every rule has one authority and is checked there, once.
+
+- **A product rule goes on the request type** (required, format, a limit stricter than the column), with the framework's input validator. Not on the entity.
+- **An invariant goes in the record's constructor** (`init { require(...) }` in Kotlin, a compact constructor in Java). It runs on reads too, so it must hold for existing rows. A rule for writes alone goes in an `EntityCallback`.
+- **Never restate a column limit in an annotation.** `validate(entity)` returns every value that does not fit its column and `validateOrThrow(entity)` throws them. Both use the schema loaded at startup. Call them where every problem should be shown at once; a write does not call them.
+- **Never run an exists-query before an insert.** It races. Declare the constraint and insert.
+- **Handle the answer as `IntegrityViolationException`**, matching the sealed `IntegrityViolation` record and the metamodel field: `e.violations(Owner_.telephone).any { it is Unique }`, never a vendor error code or message. Under the Spring starters it is the cause of a `DataIntegrityViolationException`.
+- **A conflict with other rows (`Unique`, `ForeignKey`, `Referenced`) is a 409; a value that breaks its own rule is a 400; a null the database refused is a 500.** Spring MVC applies these without code; a handler is only for field errors in the body. Ktor: `install(StatusPages) { stormIntegrityViolations() }`.
+
 ### Query and Template Rules
 
 - **Prefer the QueryBuilder and metamodel-based methods** for joins, where clauses, ordering, and pagination. Fall back to SQL templates only when the QueryBuilder cannot express the query.

@@ -52,6 +52,7 @@ DOCS=(
   polymorphism.md
   entity-lifecycle.md
   serialization.md
+  data-validation.md
   validation.md
   # Advanced Topics - Operations
   batch-streaming.md

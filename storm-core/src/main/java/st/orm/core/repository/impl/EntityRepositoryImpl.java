@@ -15,6 +15,7 @@
  */
 package st.orm.core.repository.impl;
 
+import static java.util.Objects.requireNonNull;
 import static java.util.stream.Collectors.joining;
 import static st.orm.GenerationStrategy.IDENTITY;
 import static st.orm.GenerationStrategy.NONE;
@@ -29,6 +30,7 @@ import static st.orm.core.template.impl.BatchRowCounts.knownAffected;
 import static st.orm.core.template.impl.BatchRowCounts.unverifiedFailure;
 import static st.orm.spi.SqlOperation.DELETE;
 import static st.orm.spi.SqlOperation.INSERT;
+import static st.orm.spi.SqlOperation.UNDEFINED;
 import static st.orm.spi.SqlOperation.UPDATE;
 
 import java.util.ArrayList;
@@ -50,6 +52,8 @@ import st.orm.Data;
 import st.orm.Entity;
 import st.orm.EntityCallback;
 import st.orm.GenerationStrategy;
+import st.orm.IntegrityViolation;
+import st.orm.IntegrityViolationException;
 import st.orm.Metamodel;
 import st.orm.NoResultException;
 import st.orm.NonUniqueResultException;
@@ -76,6 +80,7 @@ import st.orm.core.template.TemplateString;
 import st.orm.core.template.Templates;
 import st.orm.core.template.impl.ConsumedQueries;
 import st.orm.core.template.impl.Elements;
+import st.orm.core.template.impl.EntityValidator;
 import st.orm.core.template.impl.JoinedEntityHelper;
 import st.orm.core.template.impl.LazySupplier;
 import st.orm.core.template.impl.SqlInterceptorManager;
@@ -409,6 +414,21 @@ public class EntityRepositoryImpl<E extends Entity<ID>, ID>
             throw new PersistenceException("Primary key must be set when updating %s. Provide a non-default primary key value to identify the row to update.".formatted(model.type().getSimpleName()));
         }
         return entity;
+    }
+
+    @Override
+    public List<IntegrityViolation> validate(E entity) {
+        requireNonNull(entity, "entity");
+        return EntityValidator.validate(model, entity, ormTemplate);
+    }
+
+    @Override
+    public void validateOrThrow(E entity) {
+        var violations = validate(entity);
+        if (!violations.isEmpty()) {
+            throw failure(UNDEFINED, new IntegrityViolationException(
+                    EntityValidator.message(model.type(), violations), violations));
+        }
     }
 
     protected E validateDelete(E entity) {

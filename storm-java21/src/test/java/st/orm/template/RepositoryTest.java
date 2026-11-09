@@ -3,6 +3,7 @@ package st.orm.template;
 import static java.lang.StringTemplate.RAW;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -20,6 +21,8 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.context.ContextConfiguration;
 import org.springframework.test.context.jdbc.Sql;
 import org.springframework.test.context.junit.jupiter.SpringExtension;
+import st.orm.IntegrityViolation;
+import st.orm.IntegrityViolationException;
 import st.orm.NoResultException;
 import st.orm.NonUniqueResultException;
 import st.orm.Page;
@@ -1225,5 +1228,37 @@ public class RepositoryTest {
         assertEquals(0, ownerViews.countBy(OwnerView_.address.city, Ref.of(City.class, 999)));
         assertTrue(ownerViews.existsBy(OwnerView_.address.city, Ref.of(City.class, 2)));
         assertFalse(ownerViews.existsBy(OwnerView_.address.city, Ref.of(City.class, 999)));
+    }
+
+    @Test
+    public void testValidateReportsEveryViolation() {
+        orm.loadSchema();
+        var cities = orm.entity(City.class);
+        List<IntegrityViolation> violations = cities.validate(new City(null, "A".repeat(256)));
+        assertEquals(1, violations.size());
+        var tooLong = assertInstanceOf(IntegrityViolation.Length.class, violations.getFirst());
+        assertTrue(tooLong.on(City_.name));
+        assertEquals(255, tooLong.maxLength());
+        assertEquals(List.of(), cities.validate(new City(null, "A".repeat(255))));
+        var nullName = cities.validate(new City(null, null));
+        assertInstanceOf(IntegrityViolation.NotNull.class, nullName.getFirst());
+        assertEquals(6, cities.count(), "validate writes nothing");
+    }
+
+    @Test
+    public void testValidateOrThrowCarriesTheViolations() {
+        orm.loadSchema();
+        var cities = orm.entity(City.class);
+        var thrown = assertThrows(IntegrityViolationException.class,
+                () -> cities.validateOrThrow(new City(null, "A".repeat(256))));
+        assertEquals(1, thrown.violations(City_.name).size());
+        cities.validateOrThrow(new City(null, "Fits"));
+    }
+
+    @Test
+    public void testADuplicateKeyIsAnIntegrityViolation() {
+        var petTypes = orm.entity(PetType.class);
+        var thrown = assertThrows(IntegrityViolationException.class, () -> petTypes.insert(new PetType(1, "duplicate"), true));
+        assertInstanceOf(IntegrityViolation.Unique.class, thrown.violations().getFirst());
     }
 }

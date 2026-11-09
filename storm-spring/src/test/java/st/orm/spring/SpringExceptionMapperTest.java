@@ -17,12 +17,14 @@ package st.orm.spring;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
 import java.sql.SQLException;
 import java.sql.SQLTransactionRollbackException;
+import java.time.LocalDate;
 import java.util.List;
 import java.util.Optional;
 import javax.sql.DataSource;
@@ -33,6 +35,7 @@ import org.springframework.boot.jdbc.DataSourceBuilder;
 import org.springframework.core.io.ClassPathResource;
 import org.springframework.dao.ConcurrencyFailureException;
 import org.springframework.dao.DataAccessException;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.dao.EmptyResultDataAccessException;
 import org.springframework.dao.IncorrectResultSizeDataAccessException;
@@ -43,6 +46,8 @@ import org.springframework.jdbc.datasource.DataSourceTransactionManager;
 import org.springframework.jdbc.datasource.init.ResourceDatabasePopulator;
 import st.orm.Data;
 import st.orm.IllegalTransactionStateException;
+import st.orm.IntegrityViolation;
+import st.orm.IntegrityViolationException;
 import st.orm.NoResultException;
 import st.orm.NonUniqueResultException;
 import st.orm.OptimisticLockException;
@@ -56,6 +61,7 @@ import st.orm.UnexpectedRowCountException;
 import st.orm.spi.ExceptionContext;
 import st.orm.spi.SqlOperation;
 import st.orm.spring.model.Owner;
+import st.orm.spring.model.Pet;
 import st.orm.spring.model.PetType;
 import st.orm.template.ORMTemplate;
 
@@ -121,6 +127,55 @@ class SpringExceptionMapperTest {
         var other = new IllegalStateException("no sql");
         var translatedOther = assertInstanceOf(StormSystemException.class, mapper.map(other, emptyContext()));
         assertSame(other, translatedOther.getCause());
+    }
+
+    @Test
+    void aUniqueViolationTranslatesToDuplicateKeyExceptionWithTheViolationAsCause() {
+        ORMTemplate orm = ORMTemplate.builder(dataSource)
+                .exceptionMapper(new SpringExceptionMapper(dataSource))
+                .build();
+        var thrown = assertThrows(DuplicateKeyException.class, () ->
+                orm.entity(PetType.class).insert(new PetType(1, "duplicate")));
+        var violation = assertInstanceOf(IntegrityViolationException.class, thrown.getCause());
+        var unique = assertInstanceOf(IntegrityViolation.Unique.class, violation.violations().getFirst());
+        assertEquals(PetType.class, unique.type());
+    }
+
+    @Test
+    void aViolationTheDialectDoesNotRecogniseStillTranslatesThroughSpring() {
+        // The test runs on the default dialect, which classifies the standard SQL states alone; this database
+        // reports a missing parent row under a state of its own, so the failure reaches Spring's translator as
+        // the driver's exception.
+        ORMTemplate orm = ORMTemplate.builder(dataSource)
+                .exceptionMapper(new SpringExceptionMapper(dataSource))
+                .build();
+        var thrown = assertThrows(DataIntegrityViolationException.class, () ->
+                orm.entity(Pet.class).insert(new Pet(0, "Rex", LocalDate.now(), new PetType(999, "missing"), null)));
+        assertFalse(thrown instanceof DuplicateKeyException);
+        assertInstanceOf(SQLException.class, thrown.getCause());
+    }
+
+    @Test
+    void aViolationValidateOrThrowFindsTranslatesToDataIntegrityViolationException() {
+        ORMTemplate orm = ORMTemplate.builder(dataSource)
+                .exceptionMapper(new SpringExceptionMapper(dataSource))
+                .build();
+        orm.loadSchema();
+        var thrown = assertThrows(DataIntegrityViolationException.class, () ->
+                orm.entity(PetType.class).validateOrThrow(new PetType(2, null)));
+        var violation = assertInstanceOf(IntegrityViolationException.class, thrown.getCause());
+        assertInstanceOf(IntegrityViolation.NotNull.class, violation.violations().getFirst());
+    }
+
+    @Test
+    void aNullInANonNullableFieldTranslatesToDataIntegrityViolationException() {
+        ORMTemplate orm = ORMTemplate.builder(dataSource)
+                .exceptionMapper(new SpringExceptionMapper(dataSource))
+                .build();
+        var thrown = assertThrows(DataIntegrityViolationException.class, () ->
+                orm.entity(PetType.class).insert(new PetType(2, null)));
+        var violation = assertInstanceOf(IntegrityViolationException.class, thrown.getCause());
+        assertInstanceOf(IntegrityViolation.NotNull.class, violation.violations().getFirst());
     }
 
     @Test
@@ -238,7 +293,7 @@ class SpringExceptionMapperTest {
         SpringExceptionMapper mapper = new SpringExceptionMapper(dataSource);
         var conflict = new OptimisticLockException("stale");
         var translated = assertInstanceOf(OptimisticLockingFailureException.class,
-                mapper.map(conflict, context(true)));
+                mapper.map(conflict, emptyContext()));
         assertSame(conflict, translated.getCause());
     }
 
@@ -246,7 +301,7 @@ class SpringExceptionMapperTest {
     void transientStormFailureTranslatesToConcurrencyFailure() {
         SpringExceptionMapper mapper = new SpringExceptionMapper(dataSource);
         var failure = new TransientPersistenceException("conflict");
-        var translated = assertInstanceOf(ConcurrencyFailureException.class, mapper.map(failure, context(true)));
+        var translated = assertInstanceOf(ConcurrencyFailureException.class, mapper.map(failure, emptyContext()));
         assertSame(failure, translated.getCause());
     }
 
@@ -256,24 +311,29 @@ class SpringExceptionMapperTest {
         // in the transient branch when the dialect classified it.
         SpringExceptionMapper mapper = new SpringExceptionMapper();
         var conflict = new SQLException("Snapshot isolation transaction aborted due to update conflict.", "S0002", 3960);
-        assertInstanceOf(DataAccessException.class, mapper.map(conflict, emptyContext()));
-        var translated = assertInstanceOf(ConcurrencyFailureException.class, mapper.map(conflict, context(true)));
+        var translated = assertInstanceOf(ConcurrencyFailureException.class,
+                mapper.map(new TransientPersistenceException(conflict), emptyContext()));
         assertSame(conflict, translated.getCause());
+    }
+
+    @Test
+    void sqlFailureTheDialectDoesNotClassifyAsTransientKeepsTheTranslatorsType() {
+        SpringExceptionMapper mapper = new SpringExceptionMapper();
+        var failure = new SQLException("Snapshot isolation transaction aborted due to update conflict.", "S0002", 3960);
+        var translated = assertInstanceOf(DataAccessException.class, mapper.map(failure, emptyContext()));
+        assertFalse(translated instanceof ConcurrencyFailureException);
     }
 
     @Test
     void sqlFailureTheTranslatorAlreadyTranslatesAsTransientKeepsItsType() {
         SpringExceptionMapper mapper = new SpringExceptionMapper();
         var deadlock = new SQLTransactionRollbackException("Deadlock found when trying to get lock", "40001", 1213);
-        var translated = assertInstanceOf(TransientDataAccessException.class, mapper.map(deadlock, context(true)));
+        var translated = assertInstanceOf(TransientDataAccessException.class,
+                mapper.map(new TransientPersistenceException(deadlock), emptyContext()));
         assertEquals(mapper.map(deadlock, emptyContext()).getClass(), translated.getClass());
     }
 
     private static ExceptionContext emptyContext() {
-        return context(false);
-    }
-
-    private static ExceptionContext context(boolean transientFailure) {
         return new ExceptionContext() {
             @Override
             public SqlOperation operation() {
@@ -293,11 +353,6 @@ class SpringExceptionMapperTest {
             @Override
             public Optional<String> transactionDescription() {
                 return Optional.empty();
-            }
-
-            @Override
-            public boolean transientFailure() {
-                return transientFailure;
             }
         };
     }

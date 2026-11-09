@@ -254,7 +254,7 @@ final class IndexCatalog {
 
     /** Returns the bytes a value of the column takes in an index key at most, or {@code 0} where its type is not sized. */
     private static int keyBytes(DatabaseSchema.DbColumn column) {
-        String typeName = column.typeName() == null ? "" : column.typeName().toUpperCase(Locale.ROOT);
+        String typeName = column.typeName().toUpperCase(Locale.ROOT);
         if (typeName.startsWith("ENUM")) {
             return 2;
         }
@@ -327,7 +327,7 @@ final class IndexCatalog {
     private static SortedMap<String, String> fewValuedColumns(DatabaseSchema schema, String tableName) {
         SortedMap<String, String> columns = new TreeMap<>(String.CASE_INSENSITIVE_ORDER);
         for (var column : schema.getColumns(tableName)) {
-            String typeName = column.typeName() == null ? "" : column.typeName().toUpperCase(Locale.ROOT);
+            String typeName = column.typeName().toUpperCase(Locale.ROOT);
             if (typeName.startsWith("ENUM")) {
                 columns.put(column.columnName(), "an ENUM");
             } else if (column.dataType() == Types.BOOLEAN || typeName.equals("BOOLEAN") || typeName.equals("BOOL")) {

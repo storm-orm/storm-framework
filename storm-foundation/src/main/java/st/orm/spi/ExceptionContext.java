@@ -17,7 +17,6 @@ package st.orm.spi;
 
 import java.util.Optional;
 import st.orm.Data;
-import st.orm.TransientPersistenceException;
 
 /**
  * Describes the execution context in which a failure occurred.
@@ -58,17 +57,4 @@ public interface ExceptionContext {
      * not provide a description.
      */
     Optional<String> transactionDescription();
-
-    /**
-     * Returns whether the failure stems from concurrent activity, so that running the whole transaction again may
-     * succeed: the dialect classified the database's error as a deadlock or a serialization failure, or the failure
-     * Storm detected is a {@link TransientPersistenceException}, such as an optimistic lock conflict.
-     *
-     * <p>The default mapper throws a {@link TransientPersistenceException} for such a failure. A mapper that
-     * translates to another hierarchy can translate it to that hierarchy's transient type.</p>
-     *
-     * @return {@code true} if the failure stems from concurrent activity, {@code false} otherwise.
-     * @since 1.16
-     */
-    boolean transientFailure();
 }

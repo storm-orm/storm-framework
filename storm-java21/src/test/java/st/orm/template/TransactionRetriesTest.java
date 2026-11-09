@@ -261,7 +261,7 @@ public class TransactionRetriesTest {
     @Test
     public void aTransientFailureAMapperTranslatesToItsOwnTypeStillReruns() {
         var mapped = ORMTemplate.builder(dataSource)
-                .exceptionMapper((failure, context) -> context.transientFailure() ? new RetryableFailure(failure) : null)
+                .exceptionMapper((failure, context) -> failure instanceof TransientPersistenceException ? new RetryableFailure(failure) : null)
                 .build();
         CONFLICTS.set(1);
         var attempts = new AtomicInteger();

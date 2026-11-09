@@ -319,6 +319,32 @@ users.removeByRef(userRef)
 users.removeById(listOf(1, 2, 3))    // bulk, an id without a row is skipped
 ```
 
+## Integrity Violations and Validation
+
+A write the database refuses for a constraint throws `IntegrityViolationException`. Match on the metamodel field and the violation's record type, never on a SQL state or a constraint name:
+
+```kotlin
+try {
+    users.insert(user)
+} catch (e: IntegrityViolationException) {
+    if (e.violations(User_.email).any { it is IntegrityViolation.Unique }) {
+        // The email is taken.
+    }
+    throw e
+}
+```
+
+`IntegrityViolation` is sealed: `Unique`, `ForeignKey`, `Referenced` (a remove of a row other rows reference), `NotNull`, `Check`, `Length`, `NumericRange`; a `when` over them is exhaustive. The fields are set only where the database names the column or the constraint. A database reports one violation per write.
+
+At a web endpoint a violation answers 400 for a value that breaks its own rule, 409 for a conflict with other rows and 500 for a null the database refused. Spring MVC applies this without code; a handler reads the fields from the `IntegrityViolationException` cause of `DataIntegrityViolationException`. Ktor: `install(StatusPages) { stormIntegrityViolations() }` answers with the status and a JSON body of the field errors.
+
+Rules that depend on other rows (unique keys, a foreign key's target) are the database's: never run an exists-query before an insert; let the write fail and catch the violation. Column limits come from the schema, never from an annotation: `validate` checks an entity against them without writing it and returns every violation, with `maxLength()` or `precision()` and `scale()` on each. The schema must be loaded at startup (`schema-mode` other than `none`, or `loadSchema()`), or `validate` throws and a constraint resolves to no field.
+
+```kotlin
+val violations: List<IntegrityViolation> = users.validate(user)  // empty: every value fits
+users.validateOrThrow(user)                                        // IntegrityViolationException with every violation
+```
+
 ## ORMTemplate Convenience Functions
 
 `ORMTemplate` (via `RepositoryLookup`) provides reified extension functions for quick access without creating a repository first:

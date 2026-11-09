@@ -257,10 +257,11 @@ public final class SchemaValidator {
         }
 
         /**
-         * Publishes the indexes of the schemas read for the data source.
+         * Publishes the schemas read for the data source, and their indexes, for what needs them after startup.
          */
         void publish() {
             if (!byModelSchema.isEmpty()) {
+                byModelSchema.forEach((entitySchema, schema) -> SchemaCache.publish(dataSource, entitySchema, schema));
                 IndexCatalog.publish(dataSource, IndexCatalog.of(byModelSchema, dialect));
             }
         }
