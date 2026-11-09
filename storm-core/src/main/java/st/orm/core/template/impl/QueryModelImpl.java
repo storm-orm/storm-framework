@@ -539,7 +539,7 @@ final class QueryModelImpl implements QueryModel {
             }
             List<String> placeholders = new ArrayList<>(values.size());
             for (var value : values) {
-                placeholders.add(valueExpression(path, valueFunction, compiler.mapParameter(value), operator, compiler));
+                placeholders.add(valueExpression(path, valueFunction, compiler.mapParameter(value)));
             }
             return ColumnComparison.render(operator, column, placeholders, multiValues, compiler::mapParameter, compiler.dialect());
         } catch (IllegalArgumentException e) {
@@ -569,7 +569,7 @@ final class QueryModelImpl implements QueryModel {
         String rendered = FunctionCalls.render(path, toFullyQualifiedColumn(column, navigated));
         String valueFunction = valueFunction(model, metamodel);
         var operator = form.operator();
-        Function<Object, String> value = v -> valueExpression(path, valueFunction, compiler.mapParameter(v), operator, compiler);
+        Function<Object, String> value = v -> valueExpression(path, valueFunction, compiler.mapParameter(v));
         if (operator == null) {
             return compiler.dialect().wordStartMatch(rendered, expression.word(), value::apply);
         }
@@ -665,17 +665,10 @@ final class QueryModelImpl implements QueryModel {
 
     /**
      * Renders a value compared with the path: the bound value passed through the function its query column names and
-     * through the path's function calls, computed once per execution as the dialect renders it
-     * ({@link st.orm.core.template.SqlDialect#computedOnce(String)}). A value inlined as a literal is computed while
-     * planning, and so is the pattern of a case-sensitive starts-with, which a range scan over an ordinary index
-     * takes only as a constant.
+     * through the path's function calls.
      */
-    private String valueExpression(Metamodel<?, ?> path, String valueFunction, String parameter,
-                                   @Nullable Operator operator, TemplateCompiler compiler) {
-        String rendered = FunctionCalls.render(path, applyFunction(valueFunction, parameter));
-        return rendered.equals(parameter) || template.inlineParameters() || operator == Operator.STARTS_WITH
-                ? rendered
-                : compiler.dialect().computedOnce(rendered);
+    private static String valueExpression(Metamodel<?, ?> path, String valueFunction, String parameter) {
+        return FunctionCalls.render(path, applyFunction(valueFunction, parameter));
     }
 
     /**

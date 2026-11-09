@@ -92,8 +92,9 @@ public @interface QueryColumn {
      * the column is compared with a value: the comparison operators, {@code IN}, {@code BETWEEN}, the text operators,
      * {@code search}, {@code suggest} and {@code orderFirst}; a pattern passes through it too, so the function must
      * leave the wildcards and the escape character as they are. A position of a keyset scroll holds the stored value
-     * and is compared as it is. A SQL identifier, optionally qualified by a schema, as {@link SqlFunction} takes.
-     * Empty for a column compared with a value as it is.
+     * and is compared as it is. A function behind a generated column or an index must be deterministic, giving the
+     * same result for the same input. A SQL identifier, optionally qualified by a schema, as {@link SqlFunction}
+     * takes. Empty for a column compared with a value as it is.
      */
     String function() default "";
 }

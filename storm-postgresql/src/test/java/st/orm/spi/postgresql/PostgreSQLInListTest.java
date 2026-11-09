@@ -240,7 +240,7 @@ public class PostgreSQLInListTest {
             // The padded mode repeats the last value to the next power of two; the default keeps every value.
             int placeholders = mode.equals("padded") ? 4 : 3;
             assertEquals(placeholders, sql.get().parameters().size(), sql.get().statement());
-            assertTrue(sql.get().statement().contains("IN (" + "(SELECT lower(?)), ".repeat(placeholders - 1) + "(SELECT lower(?)))"),
+            assertTrue(sql.get().statement().contains("IN (" + "lower(?), ".repeat(placeholders - 1) + "lower(?))"),
                     sql.get().statement());
         }
     }
