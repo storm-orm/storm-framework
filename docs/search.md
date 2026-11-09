@@ -546,7 +546,6 @@ The search compares `LOWER(fold_accents(o.last_name)) LIKE LOWER(fold_accents(?)
 
 - Name the function exactly as the index does. A different function, or the same one applied in another order, is another expression, and the plan falls back to reading every row.
 - The database folds the input too, with its own rules. PostgreSQL's `unaccent` maps `ø` to `o` and `æ` to `ae`, which removing combining marks in the application would leave alone; folding both sides in the database keeps the column and the input in step.
-- On PostgreSQL the input side renders as a scalar subquery, `LOWER((SELECT fold_accents(?)))`, which the database folds once per execution. A prepared statement that PostgreSQL plans for any value would otherwise fold the input again for every row the index returns. A case-sensitive `prefix` keeps `fold_accents(?)`, which the planner folds into the constant an ordinary index needs for its range.
 - The function receives the search pattern, wildcards included, and an accent function leaves them alone, as a function compared through a text operator must.
 
 ### Storing the Folded Text

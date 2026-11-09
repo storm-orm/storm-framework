@@ -227,7 +227,7 @@ Operators (static constants of `st.orm.Operator`): `EQUALS`, `NOT_EQUALS`, `LESS
 **Never speed a search up by changing its predicate.** A case-sensitive operator reads every row as well and changes what matches. An `ILIKE` or a `LOWER(...)` template reads every row just the same.
 
 **Whether accents count is the schema's decision, never the application's.** The search follows the column's collation, which ignores accents on some databases by default and compares them on others. Where a search must ignore accents on a database that compares them, the database removes them through a function an index is built on, and the query names that function with `SqlFunction`:
-- The migration wraps the database's accent-removing function in `fold_accents(text)`, marked immutable so the database accepts it in an index where the original function is not immutable. It indexes `LOWER(fold_accents(column))`.
+- The migration wraps the database's accent-removing function in `fold_accents(text)`, declared deterministic or immutable so the database accepts it in an index where the original function is not. It indexes `LOWER(fold_accents(column))`.
 - The repository declares `SqlFunction<String> foldAccents = SqlFunction.of("fold_accents")` once.
 - The query searches `it.search(input, foldAccents.apply(Owner_.lastName))` and ranks with `orderFirst(it -> it.where(foldAccents.apply(Owner_.lastName), EQUALS_IGNORE_CASE, input))`.
 

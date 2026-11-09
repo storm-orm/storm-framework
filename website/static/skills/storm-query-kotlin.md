@@ -302,7 +302,7 @@ User_.city eq refById<City>(cityId)   // ✅ import st.orm.template.refById
 **Never speed a search up by changing its predicate.** A case-sensitive operator reads every row as well and changes what matches. An `ILIKE` or a `LOWER(...)` template reads every row just the same.
 
 **Whether accents count is the schema's decision, never the application's.** The search follows the column's collation, which ignores accents on some databases by default and compares them on others. Where a search must ignore accents on a database that compares them, the database removes them through a function an index is built on, and the query names that function with `SqlFunction`:
-- The migration wraps the database's accent-removing function in `fold_accents(text)`, marked immutable so the database accepts it in an index where the original function is not immutable. It indexes `LOWER(fold_accents(column))`.
+- The migration wraps the database's accent-removing function in `fold_accents(text)`, declared deterministic or immutable so the database accepts it in an index where the original function is not. It indexes `LOWER(fold_accents(column))`.
 - The repository declares `val foldAccents = SqlFunction.of<String>("fold_accents")` once, with an extension property that reads as a field of the column: `val <T : Data> Navigable<T, String>.folded: Metamodel<T, String> get() = foldAccents(this)`.
 - The query searches `search(input, Owner_.lastName.folded)` and ranks with `orderFirst(Owner_.lastName.folded eqIgnoreCase input)`.
 

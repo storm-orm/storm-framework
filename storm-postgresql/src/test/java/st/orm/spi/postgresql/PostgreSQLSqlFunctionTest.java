@@ -138,10 +138,12 @@ public class PostgreSQLSqlFunctionTest {
     public void theExpressionIndexServesTheSearch(SqlCapture capture) throws SQLException {
         capture.record(() -> search("léon"));
         var captured = capture.statements().getFirst();
-        // The value is computed once per execution, as a subquery, so a reused plan does not fold it for every row.
-        assertTrue(captured.statement().contains("LOWER(fold_accents(t.name)) LIKE LOWER((SELECT fold_accents(?)))"),
+        assertTrue(captured.statement().contains("LOWER(fold_accents(t.name)) LIKE LOWER(fold_accents(?))"),
                 captured.statement());
-        assertTrue(plan(captured).contains("title_name_folded"), plan(captured));
+        String plan = plan(captured);
+        assertTrue(plan.contains("title_name_folded"), plan);
+        // A plan made for the value folds the function into a constant, which is what the planner estimates from.
+        assertTrue(plan.contains("'%leon%'"), plan);
     }
 
     @Test
