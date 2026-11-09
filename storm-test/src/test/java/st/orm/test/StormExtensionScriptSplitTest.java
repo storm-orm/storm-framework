@@ -89,4 +89,70 @@ class StormExtensionScriptSplitTest {
         var statements = splitStatements("create table a (id int)");
         assertEquals(List.of("create table a (id int)"), statements);
     }
+
+    @Test
+    void keepsDollarQuotedBlockWhole() {
+        var statements = splitStatements("""
+                DO $$ BEGIN
+                    perform 1;
+                    perform 2;
+                END $$;
+                select 1;
+                """);
+        assertEquals(List.of("DO $$ BEGIN\n    perform 1;\n    perform 2;\nEND $$", "select 1"), statements);
+    }
+
+    @Test
+    void keepsTaggedDollarQuoteWhole() {
+        var statements = splitStatements("CREATE FUNCTION f() RETURNS int AS $body$ SELECT 1; $body$ LANGUAGE sql;");
+        assertEquals(List.of("CREATE FUNCTION f() RETURNS int AS $body$ SELECT 1; $body$ LANGUAGE sql"), statements);
+    }
+
+    @Test
+    void endsDollarQuoteOnlyAtItsOwnDelimiter() {
+        var statements = splitStatements("select $my_tag1$ a; $$ b; $other$ c; $my_tag1$; select 2;");
+        assertEquals(List.of("select $my_tag1$ a; $$ b; $other$ c; $my_tag1$", "select 2"), statements);
+    }
+
+    @Test
+    void countsDollarQuoteAtTheStartOfTheScriptAsContent() {
+        var statements = splitStatements("$$ a; b $$; select 1;");
+        assertEquals(List.of("$$ a; b $$", "select 1"), statements);
+    }
+
+    @Test
+    void runsUnterminatedDollarQuoteToTheEndOfTheScript() {
+        var statements = splitStatements("DO $$ BEGIN; select 1;");
+        assertEquals(List.of("DO $$ BEGIN; select 1;"), statements);
+    }
+
+    @Test
+    void opensNoDollarQuoteAtPositionalParameter() {
+        var statements = splitStatements("SELECT $1; SELECT $2$; SELECT 3;");
+        assertEquals(List.of("SELECT $1", "SELECT $2$", "SELECT 3"), statements);
+    }
+
+    @Test
+    void opensNoDollarQuoteInsideIdentifier() {
+        var statements = splitStatements("SELECT a$b FROM t; SELECT a$$b; SELECT a_$$ FROM t; SELECT 4;");
+        assertEquals(List.of("SELECT a$b FROM t", "SELECT a$$b", "SELECT a_$$ FROM t", "SELECT 4"), statements);
+    }
+
+    @Test
+    void opensNoDollarQuoteAtLoneDollarSign() {
+        var statements = splitStatements("select $ from a; select $name; select $");
+        assertEquals(List.of("select $ from a", "select $name", "select $"), statements);
+    }
+
+    @Test
+    void commentsAndStringsTakePrecedenceOverDollarQuotes() {
+        var statements = splitStatements("""
+                -- $$ not a quote;
+                select 1;
+                /* $$ nor this; */ select 2;
+                select '$$'; select "$$"; select 5;
+                """);
+        assertEquals(List.of("-- $$ not a quote;\nselect 1", "/* $$ nor this; */ select 2", "select '$$'",
+                "select \"$$\"", "select 5"), statements);
+    }
 }
