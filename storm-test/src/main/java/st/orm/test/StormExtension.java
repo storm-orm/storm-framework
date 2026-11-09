@@ -364,8 +364,8 @@ public class StormExtension implements BeforeAllCallback, BeforeEachCallback, Af
 
     /**
      * Splits a SQL script into individual statements on semicolons, ignoring semicolons that appear inside line
-     * comments, block comments, string literals and quoted identifiers. Fragments that contain only comments and
-     * whitespace are dropped.
+     * comments, block comments, string literals, quoted identifiers and dollar-quoted strings. Fragments that contain
+     * only comments and whitespace are dropped.
      */
     static List<String> splitStatements(String script) {
         var statements = new ArrayList<String>();
@@ -376,6 +376,7 @@ public class StormExtension implements BeforeAllCallback, BeforeEachCallback, Af
         while (i < length) {
             char c = script.charAt(i);
             char next = i + 1 < length ? script.charAt(i + 1) : '\0';
+            String delimiter = c == '$' ? dollarQuoteDelimiter(script, i) : null;
             if (c == '-' && next == '-') {
                 int end = script.indexOf('\n', i);
                 end = end == -1 ? length : end;
@@ -402,6 +403,12 @@ public class StormExtension implements BeforeAllCallback, BeforeEachCallback, Af
                 current.append(script, i, end);
                 hasContent = true;
                 i = end;
+            } else if (delimiter != null) {
+                int end = script.indexOf(delimiter, i + delimiter.length());
+                end = end == -1 ? length : end + delimiter.length();
+                current.append(script, i, end);
+                hasContent = true;
+                i = end;
             } else if (c == ';') {
                 if (hasContent) {
                     statements.add(current.toString().trim());
@@ -419,6 +426,29 @@ public class StormExtension implements BeforeAllCallback, BeforeEachCallback, Af
             statements.add(current.toString().trim());
         }
         return statements;
+    }
+
+    /**
+     * Returns the delimiter of the dollar-quoted string that opens at the dollar sign, {@code $$} or {@code $tag$}, or
+     * null when none opens there: the sign continues an identifier such as {@code a$b}, starts a positional parameter
+     * such as {@code $1}, or stands alone.
+     */
+    private static @Nullable String dollarQuoteDelimiter(String script, int start) {
+        if (start > 0 && (isDollarTagPart(script.charAt(start - 1)) || script.charAt(start - 1) == '$')) {
+            return null;
+        }
+        int end = start + 1;
+        while (end < script.length() && isDollarTagPart(script.charAt(end))) {
+            end++;
+        }
+        if (end == script.length() || script.charAt(end) != '$' || Character.isDigit(script.charAt(start + 1))) {
+            return null;
+        }
+        return script.substring(start, end + 1);
+    }
+
+    private static boolean isDollarTagPart(char c) {
+        return Character.isLetterOrDigit(c) || c == '_';
     }
 
     /**
