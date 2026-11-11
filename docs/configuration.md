@@ -21,7 +21,7 @@ Storm can be configured through `StormConfig`, system properties, Spring Boot's 
 | `storm.validation.record_mode` | `fail` | Record validation mode: `fail`, `warn`, or `none` |
 | `storm.validation.schema_mode` | `fail` | Schema validation mode: `none`, `load`, `warn`, or `fail` (Spring Boot and Ktor) |
 | `storm.validation.strict` | `false` | Treat schema validation warnings as errors |
-| `storm.validation.interpolation_mode` | `warn` | Interpolation safety mode: `warn`, `fail`, or `none` (see [Interpolation Safety](#interpolation-safety)) |
+| `storm.validation.interpolation_mode` | `warn` | Interpolation safety mode: `warn`, `fail`, or `none`; a system property only, since the check runs when a Kotlin template is built, before any template configuration applies (see [Interpolation Safety](#interpolation-safety)) |
 | `storm.sql_log.performance.line_width` | `200` | Display width performance log summary rows aim for; at least 80 |
 | `storm.sql_log.call_site_skip` | — | Comma-separated package prefixes or source file names skipped in SQL log call-site attribution |
 | `storm.sql_log.slow.threshold` | — | Database time above which a single statement execution is reported under `st.orm.sql.slow`, such as `200ms`. In the Spring and Ktor integrations, unset alongside an enabled performance log it takes that log's duration threshold (see [The Slow Statement Log](sql-logging.md#the-slow-statement-log)) |
@@ -96,6 +96,9 @@ storm:
     retention: default
   template-cache:
     size: 2048
+  in-list: auto
+  search:
+    min-term-length: 3
   validation:
     record-mode: fail
     schema-mode: fail
@@ -125,6 +128,10 @@ storm {
     }
     templateCache {
         size = 2048
+    }
+    inList = "auto"
+    search {
+        minTermLength = 3
     }
     validation {
         recordMode = "fail"

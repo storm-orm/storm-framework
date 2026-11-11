@@ -527,6 +527,10 @@ storm {
         size = 256
     }
     ansiEscaping = false
+    inList = "auto"                      # "auto", "padded", or "exact"
+    search {
+        minTermLength = 3                # unset for the dialect's own
+    }
     validation {
         recordMode = "fail"              # "none", "warn", or "fail"
         schemaMode = "warn"              # "none", "load", "warn", or "fail"

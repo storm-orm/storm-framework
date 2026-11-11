@@ -72,6 +72,16 @@ public class StormProperties {
     /** Statement advice configuration. */
     private Advice advice = new Advice();
 
+    /** Search configuration. */
+    private Search search = new Search();
+
+    /**
+     * How an {@code IN} list renders: {@code auto} (default), {@code padded} or {@code exact}.
+     *
+     * @since 1.16
+     */
+    private @Nullable String inList;
+
     /** Whether to enable ANSI escape sequences in Storm's log output. */
     private Boolean ansiEscaping;
 
@@ -128,6 +138,34 @@ public class StormProperties {
 
     /** Sets the validation configuration. */
     public void setValidation(Validation validation) { this.validation = validation; }
+
+    /**
+     * Returns the search configuration.
+     *
+     * @since 1.16
+     */
+    public Search getSearch() { return search; }
+
+    /**
+     * Sets the search configuration.
+     *
+     * @since 1.16
+     */
+    public void setSearch(Search search) { this.search = search; }
+
+    /**
+     * Returns how an {@code IN} list renders, or {@code null} for the default.
+     *
+     * @since 1.16
+     */
+    public @Nullable String getInList() { return inList; }
+
+    /**
+     * Sets how an {@code IN} list renders: {@code auto}, {@code padded} or {@code exact}.
+     *
+     * @since 1.16
+     */
+    public void setInList(@Nullable String inList) { this.inList = inList; }
 
     /** Returns whether ANSI escape sequences are enabled. */
     public Boolean getAnsiEscaping() { return ansiEscaping; }
@@ -257,6 +295,27 @@ public class StormProperties {
 
         /** Sets whether strict validation is enabled. */
         public void setStrict(Boolean strict) { this.strict = strict; }
+    }
+
+    /**
+     * Configuration properties for search.
+     *
+     * <p>Mapped to the {@code storm.search.*} namespace.</p>
+     *
+     * @since 1.16
+     */
+    public static class Search {
+
+        /**
+         * Shortest word, in characters, that the database's substring index serves; unset for the dialect's own.
+         */
+        private @Nullable Integer minTermLength;
+
+        /** Returns the shortest word the substring index serves, or {@code null} for the dialect's own. */
+        public @Nullable Integer getMinTermLength() { return minTermLength; }
+
+        /** Sets the shortest word the substring index serves. */
+        public void setMinTermLength(@Nullable Integer minTermLength) { this.minTermLength = minTermLength; }
     }
 
     /** Tracing configuration. */
@@ -612,6 +671,12 @@ public class StormProperties {
         }
         if (ansiEscaping != null) {
             map.put(StormConfig.ANSI_ESCAPING, ansiEscaping.toString());
+        }
+        if (inList != null) {
+            map.put(StormConfig.IN_LIST, inList.trim());
+        }
+        if (search.getMinTermLength() != null) {
+            map.put(StormConfig.SEARCH_MIN_TERM_LENGTH, search.getMinTermLength().toString());
         }
         if (validation.getRecordMode() != null) {
             map.put(StormConfig.VALIDATION_RECORD_MODE, validation.getRecordMode().trim());
