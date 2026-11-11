@@ -152,7 +152,7 @@ public val Storm: ApplicationPlugin<StormPluginConfig> = createApplicationPlugin
     val ownedDataSources = mutableListOf<DataSource>()
     val dataSource = pluginConfig.dataSource
         ?: createDataSourceFromConfig(application).also { ownedDataSources += it }
-    val stormConfig = pluginConfig.config ?: readStormConfig(application)
+    val stormConfig = pluginStormConfig(application, pluginConfig)
 
     // Run the migration hook (e.g., Flyway) before the ORM template is created and the schema is
     // validated, so validation always sees the migrated schema.

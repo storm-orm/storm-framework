@@ -42,7 +42,6 @@ import st.orm.TransactionOptions;
 import st.orm.core.spi.JdbcConnectionProviderImpl;
 import st.orm.core.spi.JdbcTransactionTemplateProviderImpl;
 import st.orm.core.spi.TransactionRunner;
-import st.orm.core.spi.TransactionScope;
 import st.orm.core.template.ORMTemplate;
 import st.orm.core.template.TemplateString;
 

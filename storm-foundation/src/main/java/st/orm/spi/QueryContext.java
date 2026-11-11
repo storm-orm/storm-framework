@@ -132,35 +132,6 @@ public interface QueryContext {
     }
 
     /**
-     * Returns whether a read maps its rows to an entity or projection, rather than to computed values such as a
-     * count, which a lookup of the rows by key could not replace.
-     *
-     * <p>An implementation that does not know says it does, so advice on a repeated read keeps naming the lookup of
-     * the rows by key.</p>
-     *
-     * @return {@code true} when the read returns rows of a type.
-     * @since 1.16
-     */
-    default boolean readsRecords() {
-        return true;
-    }
-
-    /**
-     * Returns whether a write is one a repository issued for the entities or keys it was given, as an insert,
-     * update or removal of an entity is, rather than a write by condition, which no overload that takes a list
-     * replaces.
-     *
-     * <p>An implementation that does not know says it is not, so no advice on a repeated write names an overload
-     * the write may not have.</p>
-     *
-     * @return {@code true} when the write was made for given entities or keys.
-     * @since 1.16
-     */
-    default boolean repositoryWrite() {
-        return false;
-    }
-
-    /**
      * Returns the SQL statement being executed, with all parameters replaced by placeholders.
      *
      * <p><strong>Note:</strong> this value is high-cardinality; use it for trace attributes only, never as a metric

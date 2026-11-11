@@ -31,7 +31,6 @@ import st.orm.PersistenceException;
 import st.orm.SqlTemplateException;
 import st.orm.TransientPersistenceException;
 import st.orm.core.spi.TransactionContext;
-import st.orm.core.spi.TransactionScope;
 import st.orm.core.spi.TransactionTemplateProvider;
 import st.orm.core.template.QueryTemplate;
 import st.orm.core.template.Sql;

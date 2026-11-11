@@ -23,7 +23,7 @@ import org.jspecify.annotations.Nullable;
 /**
  * A text column of a {@code search} or {@code suggest} with the form a typed word matches it in. A word matches
  * anywhere in the value, at the start of any word in it, as a prefix of the value, or the whole value; every form
- * compares ignoring case, and each renders the same SQL on every database. The default form of {@code search} is
+ * compares ignoring case, and each finds the same rows on every database. The default form of {@code search} is
  * {@link #anywhere(Navigable) anywhere}, that of {@code suggest} is {@link #wordStart(Navigable) wordStart}; a call
  * that states the form states it for every column.
  *
@@ -114,7 +114,8 @@ public sealed interface Match<T extends Data> {
      * the punctuation characters that join or separate the words of a name, a hyphen, an apostrophe, an
      * opening parenthesis, a slash, a colon, a period or a comma, so {@code marie} matches "Anne-Marie" and
      * {@code brien} "O'Brien". It renders as {@code LOWER(column) LIKE LOWER('word%')} and one
-     * {@code LOWER(column) LIKE LOWER('% word%')} per separator, the same on every database.
+     * {@code LOWER(column) LIKE LOWER('% word%')} per separator, or as the one regular expression a database
+     * matches, and finds the same rows on every database.
      *
      * @param path the text column.
      * @param minLength the shortest word, in characters, by which the column takes the words in its form.

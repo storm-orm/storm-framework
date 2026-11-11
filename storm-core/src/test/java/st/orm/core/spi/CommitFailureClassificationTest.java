@@ -51,6 +51,7 @@ import st.orm.TransactionPropagation;
 import st.orm.TransientPersistenceException;
 import st.orm.core.template.ORMTemplate;
 import st.orm.core.template.TemplateString;
+import st.orm.core.template.impl.TransactionScope;
 import st.orm.spi.ExceptionContext;
 import st.orm.spi.ExceptionMapper;
 

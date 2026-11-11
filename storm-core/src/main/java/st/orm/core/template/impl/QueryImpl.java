@@ -60,7 +60,6 @@ import st.orm.PersistenceException;
 import st.orm.Ref;
 import st.orm.SqlTemplateException;
 import st.orm.core.spi.RefFactory;
-import st.orm.core.spi.TransactionScope;
 import st.orm.core.spi.TransactionTemplateProvider;
 import st.orm.core.spi.WeakInterner;
 import st.orm.core.template.PreparedQuery;
@@ -1463,11 +1462,6 @@ class QueryImpl implements Query, KeyedQuery {
         @Override
         public Optional<Class<? extends Data>> dataType() {
             return ofNullable(type);
-        }
-
-        @Override
-        public boolean repositoryWrite() {
-            return call != null && call.writes();
         }
 
         @Override

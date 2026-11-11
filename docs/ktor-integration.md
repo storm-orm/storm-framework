@@ -132,6 +132,7 @@ install(Storm) {
 |--------|---------|-------------|
 | `dataSource` | Created from HOCON | The JDBC DataSource to use. When omitted, a HikariCP pool is created from `storm.datasource.*` in `application.conf`. |
 | `config` | Read from HOCON | A `StormConfig` with ORM properties. When omitted, properties are read from `storm.*` in `application.conf`. |
+| `inList` | From config, else `"auto"` | How an `IN` list renders: `"auto"`, `"padded"` or `"exact"`, as `storm.in_list` states it (see [Configuration](configuration.md)). Set in the configuration read from HOCON, so it is refused beside `config`, which states `storm.in_list` itself. |
 | `migration(...)` | None | A hook that runs after the DataSource is available and before schema validation. The place for Flyway or Liquibase migrations, guaranteeing validation sees the migrated schema. |
 | `schemaValidation` | From config, else `"fail"` | Validates entity definitions against the database schema during installation. `"fail"` (the default) blocks startup on mismatches; `"warn"` logs them; `"load"` loads the schema without validating it, which Storm uses for [advice and optimization](advice.md#loading-the-schema); `"none"` opts out. When not set, the mode is read from `storm.validation.schemaMode` in the application configuration. |
 | `entityCallback(...)` | None | Registers an [entity lifecycle callback](entity-lifecycle.md#ktor-plugin) on the write path: insert, update, upsert and remove. Repeat the call to register several. A callback the entity declares with [`@EntityCallbacks`](entity-lifecycle.md#on-the-entity) applies without an entry here. |
@@ -530,9 +531,6 @@ storm {
     }
     ansiEscaping = false
     inList = "auto"                      # "auto", "padded", or "exact"
-    search {
-        minTermLength = 3                # unset for the dialect's own
-    }
     validation {
         recordMode = "fail"              # "none", "warn", or "fail"
         schemaMode = "warn"              # "none", "load", "warn", or "fail"

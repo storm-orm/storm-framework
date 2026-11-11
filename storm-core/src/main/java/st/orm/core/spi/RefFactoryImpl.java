@@ -29,6 +29,7 @@ import st.orm.core.template.impl.ModelBuilder;
 import st.orm.core.template.impl.ORMTemplateImpl;
 import st.orm.core.template.impl.SqlInterceptorManager;
 import st.orm.core.template.impl.StatementOriginScope;
+import st.orm.core.template.impl.TransactionScope;
 
 /**
  * Implementation of {@link RefFactory}.

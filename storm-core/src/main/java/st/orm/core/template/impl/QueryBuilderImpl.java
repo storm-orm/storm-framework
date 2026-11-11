@@ -514,8 +514,7 @@ abstract class QueryBuilderImpl<T extends Data, R, ID> extends QueryBuilder<T, R
             return TemplateString.combine(template, TemplateString.of("\nWHERE "),
                     wrap(new Where(new TemplateExpression(whereClause), null)));
         }
-        // Which search terms a substring index serves depends on the dialect, so a search resolves its words here.
-        var where = resolveSearches(this.where, queryTemplate.dialect().minimumSearchTermLength());
+        var where = resolveSearches(this.where);
         if (where.isEmpty() && isSingleTableSubtype()) {
             // A statement on a subtype of a single-table hierarchy selects the subtype's rows by the discriminator,
             // which its WHERE clause carries: without a condition, the clause holds the discriminator alone.
@@ -555,10 +554,10 @@ abstract class QueryBuilderImpl<T extends Data, R, ID> extends QueryBuilder<T, R
     }
 
     /**
-     * Returns the WHERE conditions with each search in them resolved for the dialect, or the conditions themselves
-     * when none holds a search.
+     * Returns the WHERE conditions with each search in them resolved, or the conditions themselves when none holds a
+     * search.
      */
-    private static List<Where> resolveSearches(List<Where> where, int minimumSearchTermLength) {
+    private static List<Where> resolveSearches(List<Where> where) {
         List<Where> resolved = null;
         for (int i = 0; i < where.size(); i++) {
             var condition = where.get(i);
@@ -567,7 +566,7 @@ abstract class QueryBuilderImpl<T extends Data, R, ID> extends QueryBuilder<T, R
                 if (resolved == null) {
                     resolved = new ArrayList<>(where);
                 }
-                var node = PredicateNode.resolve(predicate, minimumSearchTermLength);
+                var node = PredicateNode.resolve(predicate);
                 resolved.set(i, new Where(new TemplateExpression(node.toTemplate(), node), condition.bindVars()));
             }
         }

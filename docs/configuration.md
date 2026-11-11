@@ -16,7 +16,6 @@ Storm can be configured through `StormConfig`, system properties, Spring Boot's 
 | `storm.update.max_shapes` | `5` | Maximum UPDATE shapes before fallback to full-row |
 | `storm.entity_cache.retention` | `default` | Cache retention mode: `default` or `light` |
 | `storm.template_cache.size` | `2048` | Maximum number of compiled templates to cache |
-| `storm.search.min_term_length` | dialect | Shortest word, in characters, that the database's substring index serves: `search` and `suggest` test a shorter word only on the rows its longer words found, so they read no table in full and find the same rows. `3` on PostgreSQL, whose trigram index needs three characters; `0` elsewhere, where no index serves a substring. A column's `minLength` plans its short words the same way. It changes no result (see [Indexing a Search](search.md#indexing-a-search)) |
 | `storm.in_list` | `auto` | How an `IN` list renders: `auto` binds the list as one array parameter where the dialect does (PostgreSQL), one statement for every length, and renders a placeholder per value elsewhere; `padded` renders a placeholder per value everywhere, padded to the next power of two, for a database whose plan cache fills with the lengths; `exact` renders a placeholder per value everywhere (see [IN Lists](queries.md#in-lists)) |
 | `storm.validation.record_mode` | `fail` | Record validation mode: `fail`, `warn`, or `none` |
 | `storm.validation.schema_mode` | `fail` | Schema validation mode: `none`, `load`, `warn`, or `fail` (Spring Boot and Ktor) |
@@ -97,8 +96,6 @@ storm:
   template-cache:
     size: 2048
   in-list: auto
-  search:
-    min-term-length: 3
   validation:
     record-mode: fail
     schema-mode: fail
@@ -130,9 +127,6 @@ storm {
         size = 2048
     }
     inList = "auto"
-    search {
-        minTermLength = 3
-    }
     validation {
         recordMode = "fail"
         schemaMode = "fail"

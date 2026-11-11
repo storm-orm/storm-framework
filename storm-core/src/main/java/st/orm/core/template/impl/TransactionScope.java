@@ -13,10 +13,12 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package st.orm.core.spi;
+package st.orm.core.template.impl;
 
 import static java.util.Objects.requireNonNull;
 
+import java.sql.SQLException;
+import java.sql.SQLTimeoutException;
 import java.util.Collections;
 import java.util.IdentityHashMap;
 import java.util.Set;
@@ -26,10 +28,12 @@ import org.jspecify.annotations.Nullable;
 import st.orm.PersistenceException;
 import st.orm.TransactionOptions;
 import st.orm.TransactionPropagation;
+import st.orm.TransactionTimedOutException;
+import st.orm.UnexpectedRollbackException;
+import st.orm.core.spi.ExternalTransactionProvider;
+import st.orm.core.spi.TransactionContext;
 import st.orm.core.spi.TransactionTemplate.TransactionHandle;
-import st.orm.core.template.impl.AdviceLog;
-import st.orm.core.template.impl.CallSiteCapture;
-import st.orm.core.template.impl.SlowStatementLog;
+import st.orm.core.spi.TransactionTemplateProvider;
 import st.orm.spi.QueryObserver;
 
 /**
@@ -141,16 +145,6 @@ public final class TransactionScope {
     }
 
     /**
-     * Returns the transaction context for the given provider without materializing any scope.
-     *
-     * <p>Intended for diagnostic and cache lookups that must observe, but never start, a transaction. Returns the
-     * context of the nearest materialized scope when it is owned by the given provider, or the provider's own
-     * current context when no scope is active.</p>
-     *
-     * @param provider the transaction template provider of the executing template.
-     * @return the active transaction context, or {@code null} when none is active for this provider.
-     */
-    /**
      * Returns whether the calling thread is in a transaction: a transaction block, opened or still to open at its
      * first statement, or a transaction of the provider.
      *
@@ -162,6 +156,16 @@ public final class TransactionScope {
         return CURRENT.get() != null || provider.getTransactionTemplate().currentContext().isPresent();
     }
 
+    /**
+     * Returns the transaction context for the given provider without materializing any scope.
+     *
+     * <p>Intended for diagnostic and cache lookups that must observe, but never start, a transaction. Returns the
+     * context of the nearest materialized scope when it is owned by the given provider, or the provider's own
+     * current context when no scope is active.</p>
+     *
+     * @param provider the transaction template provider of the executing template.
+     * @return the active transaction context, or {@code null} when none is active for this provider.
+     */
     public static @Nullable TransactionContext peekContext(TransactionTemplateProvider provider) {
         var scope = CURRENT.get();
         if (scope != null) {
@@ -624,12 +628,7 @@ public final class TransactionScope {
      * a joining propagation, inside a parent that runs in a transaction.
      */
     private boolean isJoining() {
-        var propagation = options.propagation();
-        boolean joiningPropagation = propagation == null
-                || propagation == TransactionPropagation.REQUIRED
-                || propagation == TransactionPropagation.SUPPORTS
-                || propagation == TransactionPropagation.MANDATORY;
-        return joiningPropagation && parent != null && parent.runsInTransaction();
+        return joinsOutright() && parent != null && parent.runsInTransaction();
     }
 
     /**
@@ -652,6 +651,145 @@ public final class TransactionScope {
             case NOT_SUPPORTED, NEVER -> false;
             case SUPPORTS -> parent == null || parent.runsInTransaction();
         };
+    }
+
+    /**
+     * Post-completion checks that mirror the semantics of eagerly entered transaction frames.
+     *
+     * <p>A scope that never touched a template still fails deterministically when its deadline has passed,
+     * marking a joined outer scope rollback-only. A scope whose rollback-only mark was inherited from a joined
+     * inner scope raises an {@link UnexpectedRollbackException} when its block attempts to commit; materialized
+     * frames raise this from the provider's commit path, this check covers marks that were propagated at the
+     * scope level.</p>
+     */
+    public void afterSuccessfulCompletion() {
+        if (!isMaterialized() && isDeadlineExpired()) {
+            if (joinsOutright() && parent != null) {
+                parent.setRollbackOnly();
+            }
+            throw new TransactionTimedOutException("Did not complete within timeout.");
+        }
+        if (isRollbackInherited()) {
+            throw new UnexpectedRollbackException("Transaction was marked rollback-only by a joined scope.");
+        }
+    }
+
+    /**
+     * Completes the scope after a failed block and returns the exception to throw: the original failure, or a
+     * {@link TransactionTimedOutException} when the failure was a statement timeout. A driver reports one as a
+     * {@link SQLTimeoutException}, or, where it cancels a timed-out statement as it cancels any other, as the
+     * failure of a cancelled statement; so a statement that failed once the frame's deadline had passed, in a
+     * transaction that was not cancelled, timed out whatever the driver says. Completion failures are suppressed
+     * onto the original failure.
+     */
+    public Throwable completeAfterFailure(Throwable e) {
+        String description;
+        boolean expired;
+        try {
+            var context = materializedContext();
+            description = context == null ? null : context.describe().orElse(null);
+            expired = isDeadlineExpired() || (context != null && context.isDeadlineExpired());
+        } catch (Throwable ignore) {
+            description = null;
+            expired = isDeadlineExpired();
+        }
+        try {
+            complete(true); // Suppresses rollback exceptions internally to surface the original error.
+        } catch (Throwable completionException) {
+            e.addSuppressed(completionException);
+        }
+        if (timedOut(e, expired && !isCancelled())) {
+            var base = e.getMessage() == null ? "Did not complete within timeout." : e.getMessage();
+            return new TransactionTimedOutException(description != null ? base + " [" + description + "]" : base, e);
+        }
+        return e;
+    }
+
+    /**
+     * Returns whether a failure is a statement timeout: a {@link SQLTimeoutException} in its cause chain, or any
+     * database failure once the deadline has passed. Each cause is visited once, so a chain whose causes form a
+     * cycle ends.
+     */
+    private static boolean timedOut(Throwable e, boolean pastDeadline) {
+        Set<Throwable> visited = Collections.newSetFromMap(new IdentityHashMap<>());
+        for (Throwable cause = e; cause != null && visited.add(cause); cause = cause.getCause()) {
+            if (cause instanceof SQLTimeoutException) {
+                return true;
+            }
+            if (pastDeadline && cause instanceof SQLException) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * Returns whether the block may sit inside an externally managed transaction it never bound to: its scope
+     * never materialized while its propagation joins whatever transaction surrounds it. Settlement then asks
+     * the {@link ExternalTransactionProvider external transaction providers} whether one is active.
+     *
+     * <p>Must be called before the scope completes, since completing releases the transaction state this
+     * reads.</p>
+     *
+     * @return {@code true} if the block's callbacks may belong to an external transaction.
+     * @since 1.13
+     */
+    public boolean mayDeferToExternal() {
+        return !isMaterialized() && joiningPropagation(options.propagation());
+    }
+
+    /**
+     * Returns whether a rollback demand of an unbound block must be pushed onto the surrounding external
+     * transaction.
+     *
+     * <p>Mirrors the parent-mark propagation: {@code REQUIRED}, {@code SUPPORTS} and
+     * {@code MANDATORY} join the surrounding transaction outright, so their rollback dooms it, while
+     * {@code NESTED} bounds its rollback at a savepoint. A materialized scope delivers the mark through its
+     * own handle, and needs no push here.</p>
+     *
+     * <p>Must be called before the scope completes, since completing releases the transaction state this
+     * reads.</p>
+     *
+     * @return {@code true} if a rollback of the block must mark the surrounding external transaction.
+     * @since 1.13
+     */
+    public boolean mayMarkExternalRollbackOnly() {
+        if (isMaterialized()) {
+            return false;
+        }
+        return joinsOutright();
+    }
+
+    /**
+     * Returns whether a propagation joins whatever transaction surrounds it: {@code REQUIRED}, {@code SUPPORTS},
+     * {@code MANDATORY} and {@code NESTED} do, {@code REQUIRES_NEW}, {@code NOT_SUPPORTED} and {@code NEVER} start
+     * or run without one of their own. An unstated propagation is the provider's default, {@code REQUIRED}.
+     *
+     * @param propagation the propagation, or {@code null} for the provider's default.
+     * @return {@code true} if a block of the propagation joins the surrounding transaction.
+     * @since 1.16
+     */
+    public static boolean joiningPropagation(@Nullable TransactionPropagation propagation) {
+        if (propagation == null) {
+            return true;
+        }
+        return switch (propagation) {
+            case REQUIRED, SUPPORTS, MANDATORY, NESTED -> true;
+            case REQUIRES_NEW, NOT_SUPPORTED, NEVER -> false;
+        };
+    }
+
+    /**
+     * Returns whether this scope's propagation joins the surrounding transaction outright, so that its rollback
+     * dooms that transaction: {@code REQUIRED}, {@code SUPPORTS} and {@code MANDATORY}, while {@code NESTED} bounds
+     * its rollback at a savepoint.
+     */
+    private boolean joinsOutright() {
+        var propagation = options.propagation();
+        return propagation == null
+                || propagation == TransactionPropagation.REQUIRED
+                || propagation == TransactionPropagation.SUPPORTS
+                || propagation == TransactionPropagation.MANDATORY;
     }
 
     private static PersistenceException providerMismatch(TransactionTemplateProvider provider,

@@ -260,7 +260,7 @@ final class ModelFactory {
                 discriminator,   // updatable only when discriminator exists (supports type changes)
                 false,  // not version
                 false,  // not ref
-                "",
+                null,
                 (Metamodel<Data, ?>) Metamodel.root(firstSubtype),
                 null
         ));
@@ -545,7 +545,7 @@ final class ModelFactory {
                         false,
                         false,
                         false,
-                        queryColumn.function(),
+                        queryColumn.function().isEmpty() ? null : queryColumn.function(),
                         metamodel,
                         null
                 ));
@@ -614,7 +614,7 @@ final class ModelFactory {
                     spec.updatable(),
                     spec.version(),
                     spec.ref(),
-                    "",
+                    null,
                     metamodel,
                     secondaryMetamodel
             ));

@@ -24,6 +24,7 @@ module storm.core {
             storm.kotlin,
             storm.ktor,
             storm.mariadb,
+            storm.micrometer,
             storm.mssqlserver,
             storm.mysql,
             storm.oracle,

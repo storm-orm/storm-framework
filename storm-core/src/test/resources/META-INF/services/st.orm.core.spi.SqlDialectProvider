@@ -1,3 +1,4 @@
 st.orm.core.spi.FetchSizeSqlDialectProviderImpl
 st.orm.core.spi.NoPlanPerStatementSqlDialectProviderImpl
 st.orm.core.spi.NoInOverUnionSqlDialectProviderImpl
+st.orm.core.spi.SubstringIndexSqlDialectProviderImpl

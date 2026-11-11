@@ -47,6 +47,15 @@ public class StormPluginConfig {
     public var config: StormConfig? = null
 
     /**
+     * How an `IN` list renders: `"auto"`, `"padded"` or `"exact"`. Configuration key `storm.inList`; when not set,
+     * the dialect's own rendering stays in effect. Set in the configuration read from HOCON, so it is refused beside
+     * [config], which states `storm.in_list` itself.
+     *
+     * @since 1.16
+     */
+    public var inList: String? = null
+
+    /**
      * Optional [st.orm.core.spi.ConnectionProvider] override. When not set, the plugin uses the coroutine-aware
      * provider that binds connections to Storm's programmatic transactions.
      *

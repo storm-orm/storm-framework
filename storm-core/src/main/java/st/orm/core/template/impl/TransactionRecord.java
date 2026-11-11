@@ -22,7 +22,6 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicLong;
 import org.jspecify.annotations.Nullable;
 import st.orm.TransactionPropagation;
-import st.orm.core.spi.TransactionScope;
 import st.orm.spi.QueryContext;
 import st.orm.spi.SqlOperation;
 

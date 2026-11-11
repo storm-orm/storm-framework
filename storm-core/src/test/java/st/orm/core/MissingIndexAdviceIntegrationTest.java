@@ -36,7 +36,6 @@ import java.sql.SQLException;
 import java.time.Duration;
 import java.time.LocalDate;
 import java.util.List;
-import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import java.util.function.Supplier;
@@ -55,11 +54,13 @@ import st.orm.Metamodel;
 import st.orm.PK;
 import st.orm.PersistenceException;
 import st.orm.SqlFunction;
-import st.orm.StormConfig;
 import st.orm.UK;
 import st.orm.core.model.polymorphic.JoinedAdoption;
 import st.orm.core.model.polymorphic.JoinedAnimal;
+import st.orm.core.spi.SqlDialectProvider;
+import st.orm.core.spi.SubstringIndexSqlDialectProviderImpl;
 import st.orm.core.template.ORMTemplate;
+import st.orm.core.template.PreparedStatementTemplate;
 import st.orm.core.template.Sql;
 import st.orm.core.template.SqlInterceptor;
 import st.orm.core.template.TemplateString;
@@ -221,9 +222,12 @@ public class MissingIndexAdviceIntegrationTest {
                 + "database reads customer in full to match it.\nfix: an index on UPPER(last_name) serves it where "
                 + "the database indexes an expression"), advice.getFirst());
         // A dialect with an index for substring matching is pointed to it: the dialect the schema was loaded with.
-        var trigramOrm = ORMTemplate.of(dataSource, StormConfig.of(Map.of(StormConfig.SEARCH_MIN_TERM_LENGTH, "3")));
-        trigramOrm.loadSchema();
-        advice = searchAdvice(() -> trigramOrm.entity(Customer.class).select()
+        // The filter applies to every kind of provider, so only the dialect providers are narrowed.
+        var substringIndexOrm = ORMTemplate.of(dataSource, template -> ((PreparedStatementTemplate) template)
+                .withProviderFilter(provider -> !(provider instanceof SqlDialectProvider)
+                        || provider instanceof SubstringIndexSqlDialectProviderImpl));
+        substringIndexOrm.loadSchema();
+        advice = searchAdvice(() -> substringIndexOrm.entity(Customer.class).select()
                 .where(it -> PredicateBuilderFactory.<Customer, Customer, Integer>suggest("dav", Set.of(), LAST_NAME))
                 .getResultList());
         assertTrue(advice.getFirst().startsWith("no index on customer serves wordStart(last_name), so the database "

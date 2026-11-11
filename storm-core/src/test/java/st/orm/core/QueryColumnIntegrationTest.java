@@ -17,6 +17,7 @@ package st.orm.core;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static st.orm.Operator.EQUALS;
@@ -273,8 +274,8 @@ public class QueryColumnIntegrationTest {
     public void modelReportsTheQueryColumnFunction() throws Exception {
         var model = orm().entity(Owner.class).model();
         assertEquals("upper", model.getColumns(Owner_.lastNameUpper).getFirst().function());
-        assertEquals("", model.getColumns(Owner_.lastNameFolded).getFirst().function());
-        assertEquals("", model.getColumns(Owner_.lastName).getFirst().function());
+        assertNull(model.getColumns(Owner_.lastNameFolded).getFirst().function());
+        assertNull(model.getColumns(Owner_.lastName).getFirst().function());
     }
 
     @QueryColumn(field = "nameFolded", type = String.class, function = "not a function")
