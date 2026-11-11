@@ -21,6 +21,7 @@ import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Represents a captured SQL statement with its operation type and bind variables.
@@ -41,7 +42,7 @@ public record CapturedSql(
         Operation operation,
         boolean upsert,
         String statement,
-        List<Object> parameters,
+        List<@Nullable Object> parameters,
         Origin origin,
         Duration duration,
         long rows,
@@ -50,7 +51,7 @@ public record CapturedSql(
     public CapturedSql(Operation operation,
                        boolean upsert,
                        String statement,
-                       List<Object> parameters,
+                       List<@Nullable Object> parameters,
                        Origin origin,
                        Duration duration,
                        long rows,

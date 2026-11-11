@@ -172,6 +172,7 @@ public final class SqlLog {
      *
      * @param nanos the time the executions spent in the database.
      * @param groups the executions per operation and type, heaviest first.
+     * @since 1.16
      */
     public record Unrecorded(long nanos, List<Group> groups) {
 

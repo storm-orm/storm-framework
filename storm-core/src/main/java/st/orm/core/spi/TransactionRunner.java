@@ -31,6 +31,7 @@ import st.orm.TransactionOptions;
 import st.orm.TransactionPropagation;
 import st.orm.TransactionTimedOutException;
 import st.orm.UnexpectedRollbackException;
+import st.orm.core.template.impl.TransactionRetries;
 
 /**
  * Executes transactional blocks on the pending-scope engine: the single source of the blocking transaction

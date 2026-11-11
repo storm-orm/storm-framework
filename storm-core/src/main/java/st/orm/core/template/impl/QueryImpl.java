@@ -1478,7 +1478,9 @@ class QueryImpl implements Query, KeyedQuery {
             // Looked up without starting a transaction: the identity is that of the record the transaction keeps
             // while transactions are recorded, and unknown otherwise.
             var transactionContext = TransactionScope.peekContext(transactionTemplateProvider);
-            var record = transactionContext == null ? null : transactionContext.transactionRecord();
+            var record = transactionContext instanceof RecordingTransactionContext recording
+                    ? recording.transactionRecord()
+                    : null;
             return record == null ? 0L : record.id();
         }
 

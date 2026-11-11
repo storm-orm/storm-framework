@@ -42,6 +42,7 @@ import st.orm.PersistenceException;
 import st.orm.TransactionPropagation;
 import st.orm.TransactionTimedOutException;
 import st.orm.UnexpectedRollbackException;
+import st.orm.core.template.impl.RecordingTransactionContext;
 import st.orm.core.template.impl.TransactionRecord;
 
 /**
@@ -92,7 +93,7 @@ import st.orm.core.template.impl.TransactionRecord;
  * @see TransactionPropagation for supported transaction propagation modes
  * @since 1.13
  */
-public final class JdbcTransactionContext implements TransactionContext {
+public final class JdbcTransactionContext implements TransactionContext, RecordingTransactionContext {
 
     private static final Logger LOGGER = LoggerFactory.getLogger("st.orm.transaction");
 

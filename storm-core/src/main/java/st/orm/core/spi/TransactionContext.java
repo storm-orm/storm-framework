@@ -18,7 +18,6 @@ package st.orm.core.spi;
 import java.util.Optional;
 import org.jspecify.annotations.Nullable;
 import st.orm.Entity;
-import st.orm.core.template.impl.TransactionRecord;
 
 /**
  * @since 1.5
@@ -93,7 +92,7 @@ public interface TransactionContext {
      *
      * @return {@code true} once, right after this context opened a physical transaction; {@code false} on a joined
      * frame, on a transaction opened elsewhere, and on every later request.
-     * @since 1.14
+     * @since 1.16
      */
     default boolean beginsTransaction() {
         return false;
@@ -209,20 +208,6 @@ public interface TransactionContext {
      * @since 1.15
      */
     default @Nullable ConnectionGuard connectionGuard() {
-        return null;
-    }
-
-    /**
-     * Returns the record of the transaction, which the slow statement log and the advice log credit with each
-     * statement as it closes, or {@code null} when no transaction is active or transactions are not recorded.
-     *
-     * <p>The context releases the record when the connection goes back to the pool, which is when the logs report
-     * what they have to say about the transaction.</p>
-     *
-     * @return the transaction record, or {@code null}.
-     * @since 1.16
-     */
-    default @Nullable TransactionRecord transactionRecord() {
         return null;
     }
 }

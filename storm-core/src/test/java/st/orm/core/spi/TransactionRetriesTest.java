@@ -53,6 +53,7 @@ import st.orm.TransactionTimedOutException;
 import st.orm.TransientPersistenceException;
 import st.orm.core.template.ORMTemplate;
 import st.orm.core.template.TemplateString;
+import st.orm.core.template.impl.TransactionRetries;
 import st.orm.core.testsupport.TestExternalTransactionProvider;
 import st.orm.spi.ExceptionMapper;
 

@@ -63,6 +63,7 @@ import st.orm.core.spi.CacheRetention;
 import st.orm.core.spi.ConnectionGuard;
 import st.orm.core.spi.EntityCache;
 import st.orm.core.spi.TransactionContext;
+import st.orm.core.template.impl.RecordingTransactionContext;
 import st.orm.core.template.impl.TransactionRecord;
 
 /**
@@ -96,7 +97,7 @@ import st.orm.core.template.impl.TransactionRecord;
  *
  * @since 1.13
  */
-public final class SpringTransactionContext implements TransactionContext {
+public final class SpringTransactionContext implements TransactionContext, RecordingTransactionContext {
 
     private static final Logger LOGGER = LoggerFactory.getLogger("st.orm.transaction");
 
