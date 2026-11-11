@@ -19,11 +19,12 @@ import io.ktor.server.application.Application
 import st.orm.StormConfig
 import st.orm.StormConfig.ANSI_ESCAPING
 import st.orm.StormConfig.ENTITY_CACHE_RETENTION
+import st.orm.StormConfig.IN_LIST
+import st.orm.StormConfig.SEARCH_MIN_TERM_LENGTH
 import st.orm.StormConfig.TEMPLATE_CACHE_SIZE
 import st.orm.StormConfig.UPDATE_DEFAULT_MODE
 import st.orm.StormConfig.UPDATE_DIRTY_CHECK
 import st.orm.StormConfig.UPDATE_MAX_SHAPES
-import st.orm.StormConfig.VALIDATION_INTERPOLATION_MODE
 import st.orm.StormConfig.VALIDATION_RECORD_MODE
 import st.orm.StormConfig.VALIDATION_SCHEMA_MODE
 import st.orm.StormConfig.VALIDATION_STRICT
@@ -51,6 +52,10 @@ import st.orm.StormConfig.VALIDATION_STRICT
  *         size = 256
  *     }
  *     ansiEscaping = false
+ *     inList = "auto"
+ *     search {
+ *         minTermLength = 3
+ *     }
  *     validation {
  *         recordMode = "fail"
  *         strict = false
@@ -72,10 +77,11 @@ internal fun readStormConfig(application: Application, prefix: String = "storm",
         ENTITY_CACHE_RETENTION,
         TEMPLATE_CACHE_SIZE,
         ANSI_ESCAPING,
+        IN_LIST,
+        SEARCH_MIN_TERM_LENGTH,
         VALIDATION_RECORD_MODE,
         VALIDATION_SCHEMA_MODE,
         VALIDATION_STRICT,
-        VALIDATION_INTERPOLATION_MODE,
     )
     for (key in keys) {
         // Storm property keys are rooted at "storm."; secondary databases read the same keys relative to their

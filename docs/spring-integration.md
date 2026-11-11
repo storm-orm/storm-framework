@@ -528,9 +528,11 @@ storm:
     retention: default
   template-cache:
     size: 2048
+  in-list: auto
+  search:
+    min-term-length: 3
   validation:
-    skip: false
-    warnings-only: false
+    record-mode: fail
     schema-mode: fail
     strict: false
   exception-translation:

@@ -8,6 +8,8 @@ import io.ktor.server.testing.testApplication
 import org.junit.jupiter.api.Test
 import st.orm.StormConfig
 import st.orm.StormConfig.ENTITY_CACHE_RETENTION
+import st.orm.StormConfig.IN_LIST
+import st.orm.StormConfig.SEARCH_MIN_TERM_LENGTH
 import st.orm.StormConfig.UPDATE_DEFAULT_MODE
 import st.orm.StormConfig.UPDATE_DIRTY_CHECK
 
@@ -42,6 +44,35 @@ internal class StormConfigReaderTest {
             "storm.update.default_mode" to "ENTITY",
         )
         config.getProperty(UPDATE_DEFAULT_MODE) shouldBe "FIELD"
+    }
+
+    @Test
+    fun `reads in-list and search config in camelCase`() {
+        val config = readConfigFromMap(
+            "storm.inList" to "padded",
+            "storm.search.minTermLength" to "4",
+        )
+        config.getProperty(IN_LIST) shouldBe "padded"
+        config.getProperty(SEARCH_MIN_TERM_LENGTH) shouldBe "4"
+    }
+
+    @Test
+    fun `reads in-list and search config in snake_case`() {
+        val config = readConfigFromMap(
+            "storm.in_list" to "exact",
+            "storm.search.min_term_length" to "2",
+        )
+        config.getProperty(IN_LIST) shouldBe "exact"
+        config.getProperty(SEARCH_MIN_TERM_LENGTH) shouldBe "2"
+    }
+
+    @Test
+    fun `named database reads in-list under its own prefix`() {
+        val config = readNamedConfigFromMap(
+            "storm.inList" to "padded",
+            "storm.databases.analytics.inList" to "exact",
+        )
+        config.getProperty(IN_LIST) shouldBe "exact"
     }
 
     @Test
