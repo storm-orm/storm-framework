@@ -40,6 +40,7 @@ import st.orm.core.spi.TransactionContext;
 import st.orm.core.spi.TransactionStatus;
 import st.orm.core.spi.TransactionTemplate;
 import st.orm.core.spi.TransactionTemplateProvider;
+import st.orm.core.template.impl.RecordingTransactionContext;
 import st.orm.core.template.impl.TransactionRecord;
 import st.orm.spring.impl.EntityCaches;
 import st.orm.spring.impl.SpringTransactionContext;
@@ -243,7 +244,8 @@ public class SpringTransactionTemplateProvider implements TransactionTemplatePro
     /**
      * Transaction context bound to Spring's {@code TransactionSynchronizationManager} resources.
      */
-    private static final class SpringLinkedTransactionContext implements TransactionContext {
+    private static final class SpringLinkedTransactionContext
+            implements TransactionContext, RecordingTransactionContext {
         private final Map<Class<? extends Entity<?>>, EntityCache<? extends Entity<?>, ?>> caches = new HashMap<>();
         private final Decorator<?> noopDecorator = resource -> resource;
         private @Nullable TransactionRecord transactionRecord;

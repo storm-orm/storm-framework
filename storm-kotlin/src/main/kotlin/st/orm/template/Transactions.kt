@@ -44,9 +44,9 @@ import st.orm.TransactionPropagation.REQUIRED
 import st.orm.TransactionPropagation.REQUIRES_NEW
 import st.orm.TransactionPropagation.SUPPORTS
 import st.orm.core.spi.ConnectionGuard
-import st.orm.core.spi.TransactionRetries
 import st.orm.core.spi.TransactionRunner
 import st.orm.core.spi.TransactionScope
+import st.orm.core.template.impl.TransactionRetries
 import st.orm.template.impl.TransactionCallbacks
 import java.util.concurrent.atomic.AtomicReference
 import java.util.function.Consumer
@@ -185,6 +185,8 @@ public fun <T> transactionBlocking(
  *                          [st.orm.TransactionTimedOutException]. If `null`, uses the provider's default.
  * @param readOnly          Whether the transaction is read-only. If `null`, no mode is requested and the
  *                          connection keeps the mode it arrives with.
+ * @param retries           The number of reruns after the first attempt when an attempt fails transiently; `0` runs
+ *                          the block once. See "Retries" above. Since 1.16.
  * @param block             The transactional logic to execute, with `this` bound to a [Transaction].
  * @return The result of executing [block].
  * @throws st.orm.PersistenceException if transaction execution or rollback/commit fails.

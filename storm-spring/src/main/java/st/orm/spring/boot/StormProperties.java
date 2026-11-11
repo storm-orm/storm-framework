@@ -496,6 +496,8 @@ public class StormProperties {
      * Statement advice: what to change about a statement or an entity, reported under {@code st.orm.sql.advice}.
      *
      * <p>Mapped to the {@code storm.advice.*} namespace.</p>
+     *
+     * @since 1.16
      */
     public static class Advice {
 
@@ -537,6 +539,8 @@ public class StormProperties {
     /**
      * The design budget design advice checks entities against: what an entity's read may add beyond its own
      * columns. A read from half the budget is wide, which a slow read of it is advised on.
+     *
+     * @since 1.16
      */
     public static class EntityBudget {
 

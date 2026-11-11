@@ -487,7 +487,9 @@ public final class SlowStatementLog {
                 // The transaction the statement ran in, looked up without starting one: the statement has run, so
                 // a block that was to open a transaction has opened it by now. Credited when the statement closes.
                 var transactionContext = TransactionScope.peekContext(transactionTemplateProvider);
-                record = transactionContext == null ? null : transactionContext.transactionRecord();
+                record = transactionContext instanceof RecordingTransactionContext recording
+                        ? recording.transactionRecord()
+                        : null;
             }
             long threshold = thresholdNanos;
             if (threshold == 0) {

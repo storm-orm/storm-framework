@@ -13,7 +13,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package st.orm.core.spi;
+package st.orm.core.template.impl;
 
 import static st.orm.TransactionPropagation.REQUIRED;
 import static st.orm.TransactionPropagation.SUPPORTS;
@@ -30,6 +30,8 @@ import st.orm.IllegalTransactionStateException;
 import st.orm.TransactionOptions;
 import st.orm.TransactionTimedOutException;
 import st.orm.TransientPersistenceException;
+import st.orm.core.spi.TransactionRunner;
+import st.orm.core.spi.TransactionScope;
 
 /**
  * The rules of a transactional block that reruns on a transient failure, shared by the blocking flow of
