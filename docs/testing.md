@@ -97,13 +97,17 @@ The annotation accepts the following attributes:
 
 | Attribute  | Default                         | Description                                                                               |
 |------------|---------------------------------|-------------------------------------------------------------------------------------------|
-| `scripts`  | `{}`                            | Classpath SQL scripts to execute before tests run. Executed once per test class.           |
+| `scripts`  | `{}`                            | Classpath SQL scripts to execute before tests run. Executed once per test class; see [Scripts](#scripts). |
 | `database` | `H2`                            | The database to run on. Every value other than `H2` runs the tests in a Testcontainers-managed container of that database (see [Testing Against the Database You Deploy On](#testing-against-the-database-you-deploy-on)). |
 | `image`    | `""`                            | The Docker image for `database`, including its tag. Defaults to a pinned version per database. |
 | `url`      | `""`                            | JDBC URL. Defaults to an H2 in-memory database with a unique name derived from the class. Ignored when a static `dataSource()` factory method is present (see [DataSource Factory Method](#datasource-factory-method)). |
 | `username` | `"sa"`                          | Database username. Ignored when a static `dataSource()` factory method is present.        |
 | `password` | `""`                            | Database password. Ignored when a static `dataSource()` factory method is present.        |
 | `rollback` | `true`                          | Whether each test runs inside a transaction that is rolled back afterwards (see [Per-Test Rollback](#per-test-rollback)). |
+
+### Scripts
+
+A script is split into statements at each semicolon and the statements run in order. A semicolon inside a line comment, a block comment, a string literal, a quoted identifier or a dollar-quoted string, `$$ ... $$` or `$tag$ ... $tag$`, does not end a statement, so a `DO` block or a function body runs as one statement. A fragment of comments and whitespace alone is skipped.
 
 ### Parameter Injection
 

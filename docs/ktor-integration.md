@@ -254,6 +254,8 @@ The transaction binds to the first ORM template the handler touches, so nothing 
 
 One semantic difference from calling `transaction { }` manually: the handler, including `call.respond`, runs inside the transaction, and the commit happens after the handler completes. A commit failure can therefore not change a response that has already been sent. When that distinction matters, for example when the client must only see 201 Created after a guaranteed commit, call `transaction { }` inside the handler and respond after it returns.
 
+`transactional { }` takes no `retries`: a rerun would run the handler again after it may have responded. A route that reruns on a [transient failure](transactions.md#rerunning-a-transaction) keeps out of `transactional { }`, where its block would join the route's transaction and be refused, and calls `transaction(retries = 2) { }` in its handler, responding after the block returns.
+
 ### Nested Transactions and Propagation
 
 Storm supports the full set of Spring-style propagation modes. Nested transactions are useful when composing services that each define their own transactional requirements. For example, an audit log that should persist even if the main operation fails needs its own independent transaction.

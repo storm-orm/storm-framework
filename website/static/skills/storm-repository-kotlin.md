@@ -180,7 +180,7 @@ users.delete {
 
 Terminal operations: `.resultList`, `.singleResult`, `.optionalResult`, `.resultFlow`, `.resultStream`, `.windows(size)`, `.resultCount`, `.exists()`, `.page()`, `.scroll()`, `.executeUpdate()`
 
-**`find` returns nullable, `get` throws.** No result gives `null` from `find` and a `NoResultException` from `get`.
+**`find` returns nullable, `get` throws.** No result gives `null` from `find` and a `NoResultException` from `get`, which surfaces as `EmptyResultDataAccessException` under the Spring Boot starters.
 
 **A write expects one row per entity.** An `insert`, `update` or `remove` that affects another count throws `UnexpectedRowCountException` with both counts; a `@Version` update that affects none throws `OptimisticLockException`. Under the Spring Boot starters these surface as `IncorrectUpdateSemanticsDataAccessException` and `OptimisticLockingFailureException`, and every other statement failure as a `DataAccessException`.
 
