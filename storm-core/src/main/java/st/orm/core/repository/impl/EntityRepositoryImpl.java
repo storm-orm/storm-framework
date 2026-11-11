@@ -67,7 +67,6 @@ import st.orm.core.spi.EntityCache;
 import st.orm.core.spi.EntityCacheMetrics;
 import st.orm.core.spi.StormConfigHelper;
 import st.orm.core.spi.TransactionContext;
-import st.orm.core.spi.TransactionScope;
 import st.orm.core.template.Column;
 import st.orm.core.template.Model;
 import st.orm.core.template.ORMTemplate;
@@ -85,6 +84,7 @@ import st.orm.core.template.impl.JoinedEntityHelper;
 import st.orm.core.template.impl.LazySupplier;
 import st.orm.core.template.impl.SqlInterceptorManager;
 import st.orm.core.template.impl.SubtypeDiscriminator;
+import st.orm.core.template.impl.TransactionScope;
 
 /**
  * Default implementation of {@link EntityRepository}.

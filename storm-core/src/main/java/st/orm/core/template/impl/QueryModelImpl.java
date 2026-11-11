@@ -660,7 +660,8 @@ final class QueryModelImpl implements QueryModel {
      */
     private static String valueFunction(Model<Data, ?> model, Metamodel<?, ?> metamodel) throws SqlTemplateException {
         var columns = model.getColumns(metamodel);
-        return columns.size() == 1 ? columns.getFirst().function() : "";
+        var function = columns.size() == 1 ? columns.getFirst().function() : null;
+        return function == null ? "" : function;
     }
 
     /**

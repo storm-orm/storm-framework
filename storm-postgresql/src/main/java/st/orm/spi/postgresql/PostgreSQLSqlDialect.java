@@ -61,18 +61,8 @@ public class PostgreSQLSqlDialect extends DefaultSqlDialect {
     }
 
     /**
-     * A trigram index ({@code pg_trgm}) serves a substring match of three characters or more; a shorter term has no
-     * trigram to look up and reads every row.
-     *
-     * @since 1.16
-     */
-    @Override
-    protected int defaultMinimumSearchTermLength() {
-        return 3;
-    }
-
-    /**
-     * PostgreSQL's trigram index serves a match anywhere and at a word start over the lowered column.
+     * PostgreSQL's trigram index ({@code pg_trgm}) serves a match anywhere and at a word start over the lowered
+     * column, for a word of three characters or more.
      *
      * @since 1.16
      */

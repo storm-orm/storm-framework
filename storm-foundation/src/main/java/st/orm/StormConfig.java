@@ -84,14 +84,6 @@ public final class StormConfig {
     /** Whether to use ANSI escaping for identifiers. */
     @SqlShaping
     public static final String ANSI_ESCAPING = "storm.ansi_escaping";
-    /**
-     * Shortest search term, in characters, that the database's substring index serves. {@code search} matches a
-     * shorter term only against the rows its longer terms found, so it reads no table in full and finds the same
-     * rows. Defaults to the dialect's value: 3 on PostgreSQL, whose trigram index needs three characters, and 0
-     * elsewhere, where no index serves a substring and {@code search} treats every term alike.
-     */
-    @SqlShaping
-    public static final String SEARCH_MIN_TERM_LENGTH = "storm.search.min_term_length";
     /** Record validation mode. Values: fail, warn, none. */
     public static final String VALIDATION_RECORD_MODE = "storm.validation.record_mode";
     /** Schema validation mode. Values: none, load, warn, fail; load loads the schema without validating it. */

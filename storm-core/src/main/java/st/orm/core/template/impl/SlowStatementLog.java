@@ -33,7 +33,6 @@ import org.jspecify.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import st.orm.StormConfig;
-import st.orm.core.spi.TransactionScope;
 import st.orm.core.spi.TransactionTemplateProvider;
 import st.orm.core.template.SqlTemplate.Parameter;
 import st.orm.core.template.impl.StatementListener.Handle;

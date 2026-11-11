@@ -29,7 +29,6 @@ import static st.orm.core.template.SqlInterceptor.observe;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Map;
 import java.util.Set;
 import javax.sql.DataSource;
 import org.junit.jupiter.api.Test;
@@ -46,7 +45,6 @@ import st.orm.Metamodel;
 import st.orm.PK;
 import st.orm.PersistenceException;
 import st.orm.SqlFunction;
-import st.orm.StormConfig;
 import st.orm.core.model.Owner;
 import st.orm.core.model.Owner_;
 import st.orm.core.model.Pet;
@@ -60,7 +58,7 @@ import st.orm.core.template.impl.PredicateBuilderFactory;
 /**
  * A search matches every term in at least one of its fields, ignoring case and literally, over a relation as well,
  * each field in its match form: anywhere by default, at the start of a word for a suggestion, as a prefix of the
- * value or as the whole value where the call says so. The forms render the same SQL on every database.
+ * value or as the whole value where the call says so. The forms find the same rows on every database.
  */
 @ExtendWith(SpringExtension.class)
 @ContextConfiguration(classes = IntegrationConfig.class)
@@ -120,14 +118,14 @@ public class SearchIntegrationTest {
 
     @SafeVarargs
     private List<String> suggest(String input, Metamodel<Owner, String>... paths) {
-        return suggest(input, Set.of(), ORMTemplate.of(dataSource), paths);
+        return suggest(input, Set.of(), paths);
     }
 
     @SafeVarargs
-    private List<String> suggest(String input, Set<String> ignore, ORMTemplate orm, Metamodel<Owner, String>... paths) {
+    private List<String> suggest(String input, Set<String> ignore, Metamodel<Owner, String>... paths) {
         statements = new ArrayList<>();
         List<String> names = new ArrayList<>();
-        observe(sql -> statements.add(sql.statement()), () -> orm.entity(Owner.class).select()
+        observe(sql -> statements.add(sql.statement()), () -> ORMTemplate.of(dataSource).entity(Owner.class).select()
                 .where(it -> PredicateBuilderFactory.<Owner, Owner, Integer>suggest(input, ignore, paths))
                 .getResultList()
                 .forEach(owner -> names.add(owner.firstName())));
@@ -199,10 +197,8 @@ public class SearchIntegrationTest {
         assertEquals(List.of(), suggest("d", Owner_.lastName));
         assertEquals("1 <> 1", whereClause());
         assertEquals(List.of(), suggest("", Owner_.lastName));
-        // The same with a substring index configured: the form follows the function, not the dialect.
-        var trigramOrm = ORMTemplate.of(dataSource, StormConfig.of(Map.of(StormConfig.SEARCH_MIN_TERM_LENGTH, "3")));
-        assertEquals(List.of(), suggest("avis", Set.of(), trigramOrm, Owner_.lastName));
-        assertEquals(List.of("Betty", "Harold"), suggest("dav da", Set.of(), trigramOrm, Owner_.lastName));
+        // A short word next to one of three characters is tested on the rows the long word found.
+        assertEquals(List.of("Betty", "Harold"), suggest("dav da", Owner_.lastName));
     }
 
     @Test
@@ -356,18 +352,17 @@ public class SearchIntegrationTest {
     @Test
     public void suggestIgnoresTheWordsTheSearchBoxNames() {
         var ignore = Set.of("Davis", "the");
-        var orm = ORMTemplate.of(dataSource);
         // An ignored word takes no part, whatever its case; alone, it matches no rows.
         assertEquals(List.of("Betty", "Harold"), suggest("davis", Owner_.lastName));
-        assertEquals(List.of(), suggest("davis", ignore, orm, Owner_.lastName));
+        assertEquals(List.of(), suggest("davis", ignore, Owner_.lastName));
         assertEquals("1 <> 1", whereClause());
-        assertEquals(List.of(), suggest("DAVIS the", ignore, orm, Owner_.lastName));
+        assertEquals(List.of(), suggest("DAVIS the", ignore, Owner_.lastName));
         // The other words match as before, each over every path, at a word start on each.
-        assertEquals(List.of("Betty"), suggest("the davis betty", ignore, orm, Owner_.lastName, Owner_.firstName));
+        assertEquals(List.of("Betty"), suggest("the davis betty", ignore, Owner_.lastName, Owner_.firstName));
         assertEquals(2 * (1 + SqlDialect.WORD_SEPARATORS.length()), whereClause().split("LIKE LOWER\\(\\?\\) ESCAPE").length - 1);
         // A quoted word is an explicit request: it is never ignored.
-        assertEquals(List.of("Betty", "Harold"), suggest("\"Davis\"", ignore, orm, Owner_.lastName));
-        assertEquals(List.of("Betty", "Harold"), suggest("\"davis", ignore, orm, Owner_.lastName));
+        assertEquals(List.of("Betty", "Harold"), suggest("\"Davis\"", ignore, Owner_.lastName));
+        assertEquals(List.of("Betty", "Harold"), suggest("\"davis", ignore, Owner_.lastName));
         // Ignored in every form alike.
         assertEquals(List.of("upton"), names(true, "the upton", ignore, prefix(NAME_LOWER)));
         assertEquals(List.of(), names(true, "the", ignore, prefix(NAME_LOWER)));

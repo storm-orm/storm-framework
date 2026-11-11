@@ -29,7 +29,7 @@ import st.orm.TransactionPropagation;
  * transactional work has finished.
  *
  * <p>Transactions are opened and completed in two separate steps rather than around a callback. This enables lazy
- * binding: a {@link TransactionScope} is materialized by the first template that executes inside it, at which point
+ * binding: a {@code TransactionScope} is materialized by the first template that executes inside it, at which point
  * the transactional block is already running.</p>
  *
  * @since 1.5

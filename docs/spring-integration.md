@@ -529,8 +529,6 @@ storm:
   template-cache:
     size: 2048
   in-list: auto
-  search:
-    min-term-length: 3
   validation:
     record-mode: fail
     schema-mode: fail

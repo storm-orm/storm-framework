@@ -149,10 +149,10 @@ final class Repeats {
             this.upsert = context.upsert();
             this.type = type;
             this.shapeId = context.shapeId();
-            this.readsRecords = context.readsRecords();
-            this.call = context instanceof QueryImpl.QueryContextImpl impl ? impl.call() : null;
-            this.upsertTakesGeneratedKey = upsertTakesGeneratedKey(context);
             var impl = context instanceof QueryImpl.QueryContextImpl it ? it : null;
+            this.readsRecords = impl == null || impl.readsRecords();
+            this.call = impl == null ? null : impl.call();
+            this.upsertTakesGeneratedKey = upsertTakesGeneratedKey(context);
             this.indexUsage = impl == null ? null : impl.indexUsage();
             this.dataSource = impl == null ? null : impl.dataSource();
         }

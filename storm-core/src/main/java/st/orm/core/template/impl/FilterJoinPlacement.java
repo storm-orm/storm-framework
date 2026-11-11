@@ -261,7 +261,7 @@ final class FilterJoinPlacement {
                 // Which search terms a substring index serves depends on the dialect, so a search resolves its words
                 // here, after the tables it names are known.
                 collect(conjunct, searched);
-                conjunct = PredicateNode.resolve(conjunct, queryTemplate.dialect().minimumSearchTermLength());
+                conjunct = PredicateNode.resolve(conjunct);
             }
             // A condition naming a table the query filters by more than once could not tell the joins apart.
             filterJoinsNamed(null, conjunct);
@@ -656,7 +656,7 @@ final class FilterJoinPlacement {
         return switch (node) {
             case Term term -> namesAny(term, tables) ? null : term;
             case Scope(var inner, var ignore) -> withoutTables(inner, tables);
-            case Search search -> withoutTables(search.resolve(0), tables);
+            case Search search -> withoutTables(search.resolve(), tables);
             case Group(var and, var operands) -> {
                 var kept = new ArrayList<PredicateNode>(operands.size());
                 for (var operand : operands) {
@@ -777,7 +777,7 @@ final class FilterJoinPlacement {
                 yield !named.isEmpty() && tables.containsAll(named);
             }
             case Scope(var inner, var ignore) -> onlyNames(inner, tables);
-            case Search search -> onlyNames(search.resolve(0), tables);
+            case Search search -> onlyNames(search.resolve(), tables);
             case Group group -> group.operands().stream().allMatch(operand -> onlyNames(operand, tables));
         };
     }
@@ -888,7 +888,7 @@ final class FilterJoinPlacement {
         var anchor = target.table();
         var condition = target.condition();
         if (condition != null) {
-            condition = PredicateNode.resolve(condition, queryTemplate.dialect().minimumSearchTermLength());
+            condition = PredicateNode.resolve(condition);
         }
         if (target.sourceKey() != null || target.targetKey() != null) {
             return keyedFilterJoin(queryTemplate, fromType, resolved, type, table, anchor, target.sourceKey(), target.targetKey(), condition);

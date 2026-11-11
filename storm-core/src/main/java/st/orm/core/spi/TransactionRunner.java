@@ -15,37 +15,28 @@
  */
 package st.orm.core.spi;
 
-import java.sql.SQLException;
-import java.sql.SQLTimeoutException;
 import java.util.ArrayList;
-import java.util.Collections;
-import java.util.IdentityHashMap;
 import java.util.List;
-import java.util.Set;
 import java.util.function.Consumer;
 import org.jspecify.annotations.Nullable;
 import st.orm.IllegalTransactionStateException;
 import st.orm.Transaction;
 import st.orm.TransactionCallbackException;
 import st.orm.TransactionOptions;
-import st.orm.TransactionPropagation;
-import st.orm.TransactionTimedOutException;
-import st.orm.UnexpectedRollbackException;
 import st.orm.core.template.impl.TransactionRetries;
+import st.orm.core.template.impl.TransactionScope;
 
 /**
  * Executes transactional blocks on the pending-scope engine: the single source of the blocking transaction
  * orchestration, driven by the Java {@code Transactions} API and Kotlin's {@code transactionBlocking}.
  *
- * <p>Opening a block only records the requested options as a {@link TransactionScope}; the transaction binds to
+ * <p>Opening a block only records the requested options as a {@code TransactionScope}; the transaction binds to
  * the first ORM template that executes inside the block. A block that never touches a template completes as a
  * no-op, with deadline and inherited-rollback checks still enforced deterministically.</p>
  *
- * <p>The Kotlin suspend flow keeps its own coroutine-shaped orchestration, reusing
- * {@link #afterSuccessfulCompletion(TransactionScope)} and
- * {@link #completeAfterFailure(TransactionScope, Throwable)} and installing its callback holder in
- * {@link #callbacksHolder()} so blocking blocks nested inside suspend blocks defer their callbacks to the
- * owning physical transaction.</p>
+ * <p>The Kotlin suspend flow keeps its own coroutine-shaped orchestration, completing its scope as this class
+ * does and installing its callback holder in {@link #callbacksHolder()} so blocking blocks nested inside suspend
+ * blocks defer their callbacks to the owning physical transaction.</p>
  *
  * @since 1.13
  */
@@ -159,7 +150,7 @@ public final class TransactionRunner {
         var parentCallbacks = CURRENT_CALLBACKS.get();
         // A block joins the callbacks of the enclosing block only when it joins that block's transaction; a block
         // inside one that runs without a transaction starts a transaction of its own and settles its own callbacks.
-        if (isJoining(options.propagation()) && scope.parent() != null && scope.parent().runsInTransaction()
+        if (TransactionScope.joiningPropagation(options.propagation()) && scope.parent() != null && scope.parent().runsInTransaction()
                 && parentCallbacks != null) {
             // Joining an outer transaction block: delegate callbacks to the outer holder; do not fire here.
             R result;
@@ -167,14 +158,14 @@ public final class TransactionRunner {
                 result = block.execute(scopeTransaction(scope, parentCallbacks));
             } catch (Throwable e) {
                 try {
-                    throw sneakyThrow(completeAfterFailure(scope, e));
+                    throw sneakyThrow(scope.completeAfterFailure(e));
                 } finally {
                     scope.close();
                 }
             }
             try {
                 scope.complete(false);
-                afterSuccessfulCompletion(scope);
+                scope.afterSuccessfulCompletion();
             } finally {
                 scope.close();
             }
@@ -195,17 +186,17 @@ public final class TransactionRunner {
             value = block.execute(scopeTransaction(scope, callbacks));
             rollbackOnly = scope.isRollbackOnly();
             joinedExternal = scope.joinedExistingTransaction();
-            mayDefer = mayDeferToExternal(scope);
-            mayMark = mayMarkExternalRollbackOnly(scope);
+            mayDefer = scope.mayDeferToExternal();
+            mayMark = scope.mayMarkExternalRollbackOnly();
         } catch (Throwable e) {
             joinedExternal = scope.joinedExistingTransaction();
-            mayDefer = mayDeferToExternal(scope);
-            mayMark = mayMarkExternalRollbackOnly(scope);
+            mayDefer = scope.mayDeferToExternal();
+            mayMark = scope.mayMarkExternalRollbackOnly();
             // Restore and uninstall the scope before firing so callbacks see a clean state.
             restoreCallbacks(previousCallbacks);
             Throwable wrapped;
             try {
-                wrapped = completeAfterFailure(scope, e);
+                wrapped = scope.completeAfterFailure(e);
             } catch (Throwable completionException) {
                 wrapped = completionException;
             } finally {
@@ -226,7 +217,7 @@ public final class TransactionRunner {
         try {
             try {
                 scope.complete(false);
-                afterSuccessfulCompletion(scope);
+                scope.afterSuccessfulCompletion();
             } finally {
                 scope.close();
             }
@@ -243,81 +234,6 @@ public final class TransactionRunner {
         }
         complete(scope, callbacks, joinedExternal, mayDefer, rollbackOnly && mayMark, !rollbackOnly);
         return value;
-    }
-
-    /**
-     * Post-completion checks that mirror the semantics of eagerly entered transaction frames.
-     *
-     * <p>A scope that never touched a template still fails deterministically when its deadline has passed,
-     * marking a joined outer scope rollback-only. A scope whose rollback-only mark was inherited from a joined
-     * inner scope raises an {@link UnexpectedRollbackException} when its block attempts to commit; materialized
-     * frames raise this from the provider's commit path, this check covers marks that were propagated at the
-     * scope level.</p>
-     */
-    public static void afterSuccessfulCompletion(TransactionScope scope) {
-        if (!scope.isMaterialized() && scope.isDeadlineExpired()) {
-            var propagation = scope.options().propagation();
-            boolean joining = propagation == null
-                    || propagation == TransactionPropagation.REQUIRED
-                    || propagation == TransactionPropagation.SUPPORTS
-                    || propagation == TransactionPropagation.MANDATORY;
-            if (joining && scope.parent() != null) {
-                scope.parent().setRollbackOnly();
-            }
-            throw new TransactionTimedOutException("Did not complete within timeout.");
-        }
-        if (scope.isRollbackInherited()) {
-            throw new UnexpectedRollbackException("Transaction was marked rollback-only by a joined scope.");
-        }
-    }
-
-    /**
-     * Completes the scope after a failed block and returns the exception to throw: the original failure, or a
-     * {@link TransactionTimedOutException} when the failure was a statement timeout. A driver reports one as a
-     * {@link SQLTimeoutException}, or, where it cancels a timed-out statement as it cancels any other, as the
-     * failure of a cancelled statement; so a statement that failed once the frame's deadline had passed, in a
-     * transaction that was not cancelled, timed out whatever the driver says. Completion failures are suppressed
-     * onto the original failure.
-     */
-    public static Throwable completeAfterFailure(TransactionScope scope, Throwable e) {
-        String description;
-        boolean expired;
-        try {
-            var context = scope.materializedContext();
-            description = context == null ? null : context.describe().orElse(null);
-            expired = scope.isDeadlineExpired() || (context != null && context.isDeadlineExpired());
-        } catch (Throwable ignore) {
-            description = null;
-            expired = scope.isDeadlineExpired();
-        }
-        try {
-            scope.complete(true); // Suppresses rollback exceptions internally to surface the original error.
-        } catch (Throwable completionException) {
-            e.addSuppressed(completionException);
-        }
-        if (timedOut(e, expired && !scope.isCancelled())) {
-            var base = e.getMessage() == null ? "Did not complete within timeout." : e.getMessage();
-            return new TransactionTimedOutException(description != null ? base + " [" + description + "]" : base, e);
-        }
-        return e;
-    }
-
-    /**
-     * Returns whether a failure is a statement timeout: a {@link SQLTimeoutException} in its cause chain, or any
-     * database failure once the deadline has passed. Each cause is visited once, so a chain whose causes form a
-     * cycle ends.
-     */
-    private static boolean timedOut(Throwable e, boolean pastDeadline) {
-        Set<Throwable> visited = Collections.newSetFromMap(new IdentityHashMap<>());
-        for (Throwable cause = e; cause != null && visited.add(cause); cause = cause.getCause()) {
-            if (cause instanceof SQLTimeoutException) {
-                return true;
-            }
-            if (pastDeadline && cause instanceof SQLException) {
-                return true;
-            }
-        }
-        return false;
     }
 
     /**
@@ -365,49 +281,6 @@ public final class TransactionRunner {
     }
 
     /**
-     * Returns whether the block may sit inside an externally managed transaction it never bound to: its scope
-     * never materialized while its propagation joins whatever transaction surrounds it. Settlement then asks
-     * the {@link ExternalTransactionProvider external transaction providers} whether one is active.
-     *
-     * <p>Must be called before the scope completes, since completing releases the transaction state this
-     * reads.</p>
-     *
-     * @param scope the scope of the completed block.
-     * @return {@code true} if the block's callbacks may belong to an external transaction.
-     * @since 1.13
-     */
-    public static boolean mayDeferToExternal(TransactionScope scope) {
-        return !scope.isMaterialized() && isJoining(scope.options().propagation());
-    }
-
-    /**
-     * Returns whether a rollback demand of an unbound block must be pushed onto the surrounding external
-     * transaction.
-     *
-     * <p>Mirrors {@link TransactionScope}'s parent-mark propagation: {@code REQUIRED}, {@code SUPPORTS} and
-     * {@code MANDATORY} join the surrounding transaction outright, so their rollback dooms it, while
-     * {@code NESTED} bounds its rollback at a savepoint. A materialized scope delivers the mark through its
-     * own handle, and needs no push here.</p>
-     *
-     * <p>Must be called before the scope completes, since completing releases the transaction state this
-     * reads.</p>
-     *
-     * @param scope the scope of the completed block.
-     * @return {@code true} if a rollback of the block must mark the surrounding external transaction.
-     * @since 1.13
-     */
-    public static boolean mayMarkExternalRollbackOnly(TransactionScope scope) {
-        if (scope.isMaterialized()) {
-            return false;
-        }
-        var propagation = scope.options().propagation();
-        return propagation == null
-                || propagation == TransactionPropagation.REQUIRED
-                || propagation == TransactionPropagation.SUPPORTS
-                || propagation == TransactionPropagation.MANDATORY;
-    }
-
-    /**
      * Returns the handle of the externally managed transaction active on the current thread, asking each
      * external transaction provider in resolution order and taking the first that answers, or {@code null}
      * when there is none.
@@ -426,16 +299,6 @@ public final class TransactionRunner {
             }
         }
         return null;
-    }
-
-    private static boolean isJoining(@Nullable TransactionPropagation propagation) {
-        if (propagation == null) {
-            return true; // Provider default is REQUIRED.
-        }
-        return switch (propagation) {
-            case REQUIRED, SUPPORTS, MANDATORY, NESTED -> true;
-            case REQUIRES_NEW, NOT_SUPPORTED, NEVER -> false;
-        };
     }
 
     private static void restoreCallbacks(@Nullable TransactionCallbacks previous) {

@@ -147,10 +147,9 @@ public interface PredicateBuilderFactory {
      * its own, so on a semi-joined table the terms may match different related rows.
      *
      * <p>A field takes the terms in its form once one reaches its {@link Match#minLength() minLength}, and the whole
-     * input in its {@link Match#fallback() fallback} before; see {@link PredicateNode.Search#resolve(int)}. A term
-     * shorter than the length, or than the dialect's substring index serves
-     * ({@link st.orm.core.template.SqlDialect#minimumSearchTermLength()}), is tested only on the rows the longer terms
-     * found, so it reads no table in full, and the result is the same.</p>
+     * input in its {@link Match#fallback() fallback} before; see {@link PredicateNode.Search#resolve()}. A term
+     * shorter than the length is tested only on the rows the longer terms found, so it reads no table in full, and
+     * the result is the same.</p>
      *
      * @param input the search input, as a search box receives it.
      * @param fields the text columns to search with their match forms, at least one.

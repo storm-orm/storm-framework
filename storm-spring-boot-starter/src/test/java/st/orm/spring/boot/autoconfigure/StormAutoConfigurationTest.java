@@ -186,42 +186,34 @@ class StormAutoConfigurationTest {
     }
 
     @Test
-    void inListAndSearchPropertiesReachStormConfig() {
+    void inListPropertyReachesStormConfig() {
         contextRunner
                 .withPropertyValues(
                         "spring.datasource.url=jdbc:h2:mem:testdb;DB_CLOSE_DELAY=-1",
                         "spring.datasource.driver-class-name=org.h2.Driver",
-                        "storm.in-list=padded",
-                        "storm.search.min-term-length=4"
+                        "storm.in-list=padded"
                 )
                 .run(context -> {
                     assertThat(context).hasSingleBean(ORMTemplate.class);
                     StormConfig config = context.getBean(StormProperties.class).toStormConfig();
                     assertThat(config.getProperty(StormConfig.IN_LIST)).isEqualTo("padded");
-                    assertThat(config.getProperty(StormConfig.SEARCH_MIN_TERM_LENGTH)).isEqualTo("4");
                 });
     }
 
     @Test
-    void inListAndSearchPropertiesUnsetLeaveStormConfigDefaults() {
+    void inListPropertyUnsetLeavesStormConfigDefault() {
         StormProperties properties = new StormProperties();
         assertThat(properties.getInList()).isNull();
-        assertThat(properties.getSearch().getMinTermLength()).isNull();
         StormConfig config = properties.toStormConfig();
         assertThat(config.getProperty(StormConfig.IN_LIST)).isNull();
-        assertThat(config.getProperty(StormConfig.SEARCH_MIN_TERM_LENGTH)).isNull();
     }
 
     @Test
-    void inListAndSearchPropertiesSetProgrammaticallyReachStormConfig() {
+    void inListPropertySetProgrammaticallyReachesStormConfig() {
         StormProperties properties = new StormProperties();
-        StormProperties.Search search = new StormProperties.Search();
-        search.setMinTermLength(5);
-        properties.setSearch(search);
         properties.setInList(" exact ");
         StormConfig config = properties.toStormConfig();
         assertThat(config.getProperty(StormConfig.IN_LIST)).isEqualTo("exact");
-        assertThat(config.getProperty(StormConfig.SEARCH_MIN_TERM_LENGTH)).isEqualTo("5");
     }
 
     @Test

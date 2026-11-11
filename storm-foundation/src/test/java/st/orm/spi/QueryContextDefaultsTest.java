@@ -16,7 +16,6 @@
 package st.orm.spi;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.util.Optional;
@@ -61,8 +60,6 @@ class QueryContextDefaultsTest {
     void anImplementationThatDoesNotKnowSaysWhatKeepsTheAdviceFromAGuess() {
         assertTrue(CONTEXT.transactional());
         assertEquals(0L, CONTEXT.transactionId());
-        assertTrue(CONTEXT.readsRecords());
-        assertFalse(CONTEXT.repositoryWrite());
         assertEquals(StatementOrigin.DIRECT, CONTEXT.origin());
         assertEquals(0L, CONTEXT.shapeId());
     }

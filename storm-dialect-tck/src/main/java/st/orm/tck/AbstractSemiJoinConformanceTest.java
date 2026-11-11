@@ -24,7 +24,6 @@ import java.sql.Connection;
 import java.sql.SQLException;
 import java.sql.Statement;
 import java.util.List;
-import java.util.Map;
 import java.util.Set;
 import javax.sql.DataSource;
 import org.jspecify.annotations.Nullable;
@@ -38,7 +37,6 @@ import st.orm.Match;
 import st.orm.Metamodel;
 import st.orm.PK;
 import st.orm.Ref;
-import st.orm.StormConfig;
 import st.orm.core.template.ORMTemplate;
 import st.orm.core.template.PreparedStatementTemplate;
 import st.orm.core.template.QueryBuilder;
@@ -176,12 +174,11 @@ public abstract class AbstractSemiJoinConformanceTest {
     }
 
     /**
-     * Searches as a dialect whose substring index serves words of three characters, as a trigram index does, so the
-     * short words render as they do there, whatever the dialect under test.
+     * Searches the authors and their books in the default forms, which take a word of three characters and test a
+     * shorter one on the rows the longer words found.
      */
-    private List<String> trigramSearch(String input, boolean suggest) {
-        var trigramOrm = ORMTemplate.of(dataSource, StormConfig.of(Map.of(StormConfig.SEARCH_MIN_TERM_LENGTH, "3")));
-        return names(trigramOrm.entity(Author.class).select().semiJoin(Book.class).on(Author.class)
+    private List<String> defaultSearch(String input, boolean suggest) {
+        return names(orm.entity(Author.class).select().semiJoin(Book.class).on(Author.class)
                 .where(it -> suggest
                         ? PredicateBuilderFactory.<Data, Author, Integer>suggest(input, Set.of(), AUTHOR_NAME, BOOK_TITLE)
                         : PredicateBuilderFactory.<Data, Author, Integer>search(input, AUTHOR_NAME, BOOK_TITLE))
@@ -190,22 +187,22 @@ public abstract class AbstractSemiJoinConformanceTest {
 
     @Test
     public void shortWordIsTestedOnTheRowsTheLongerWordsFound() {
-        assertEquals(List.of("Tolkien"), trigramSearch("tolkien th", false));
-        assertEquals(List.of(), trigramSearch("austen th", false));
-        assertEquals(List.of("Orwell"), trigramSearch("or", false));
+        assertEquals(List.of("Tolkien"), defaultSearch("tolkien th", false));
+        assertEquals(List.of(), defaultSearch("austen th", false));
+        assertEquals(List.of("Orwell"), defaultSearch("or", false));
     }
 
     @Test
     public void suggestMatchesAShortWordAtTheStartOfAWord() {
-        assertEquals(List.of("Tolkien"), trigramSearch("tolkien th", true));
-        assertEquals(List.of(), trigramSearch("austen th", true));
+        assertEquals(List.of("Tolkien"), defaultSearch("tolkien th", true));
+        assertEquals(List.of(), defaultSearch("austen th", true));
         // Without a word of the minimum word length, the whole input matches the start of the value, here a title;
         // one character matches no rows.
-        assertEquals(List.of("Tolkien"), trigramSearch("th", true));
-        assertEquals(List.of("Tolkien"), trigramSearch("the s", true));
-        assertEquals(List.of(), trigramSearch("the e", true));
-        assertEquals(List.of(), trigramSearch("t", true));
-        assertEquals(List.of(), trigramSearch("", true));
+        assertEquals(List.of("Tolkien"), defaultSearch("th", true));
+        assertEquals(List.of("Tolkien"), defaultSearch("the s", true));
+        assertEquals(List.of(), defaultSearch("the e", true));
+        assertEquals(List.of(), defaultSearch("t", true));
+        assertEquals(List.of(), defaultSearch("", true));
     }
 
     @Test

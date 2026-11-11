@@ -24,8 +24,8 @@ import java.util.List;
 import org.junit.jupiter.api.Test;
 import st.orm.TransactionOptions;
 import st.orm.TransactionPropagation;
-import st.orm.core.spi.TransactionScope;
 import st.orm.core.template.ORMTemplate;
+import st.orm.core.template.impl.TransactionScope;
 
 /**
  * Tests for the {@code storm.transaction} observation: physical transactions are observed with their

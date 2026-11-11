@@ -45,8 +45,8 @@ import st.orm.TransactionPropagation.REQUIRES_NEW
 import st.orm.TransactionPropagation.SUPPORTS
 import st.orm.core.spi.ConnectionGuard
 import st.orm.core.spi.TransactionRunner
-import st.orm.core.spi.TransactionScope
 import st.orm.core.template.impl.TransactionRetries
+import st.orm.core.template.impl.TransactionScope
 import st.orm.template.impl.TransactionCallbacks
 import java.util.concurrent.atomic.AtomicReference
 import java.util.function.Consumer
@@ -278,10 +278,10 @@ private suspend fun <T> runAttempt(
                 cancelling(scope) { block(scopeTransaction(scope, parentCallbacks)) }
             }
         } catch (e: Throwable) {
-            throw cancellationOr(TransactionRunner.completeAfterFailure(scope, e))
+            throw cancellationOr(scope.completeAfterFailure(e))
         }
         scope.complete(false)
-        TransactionRunner.afterSuccessfulCompletion(scope)
+        scope.afterSuccessfulCompletion()
         return result
     }
     // Owner of the callback lifecycle: outermost block, REQUIRES_NEW / NOT_SUPPORTED, or no parent callbacks.
@@ -306,21 +306,21 @@ private suspend fun <T> runAttempt(
                     block(scopeTransaction(scope, callbacks))
                 } catch (e: Throwable) {
                     // Read while the scope still holds its transaction state, which completing releases.
-                    val mayDefer = TransactionRunner.mayDeferToExternal(scope)
-                    val mayMark = TransactionRunner.mayMarkExternalRollbackOnly(scope)
+                    val mayDefer = scope.mayDeferToExternal()
+                    val mayMark = scope.mayMarkExternalRollbackOnly()
                     val wrapped = try {
-                        TransactionRunner.completeAfterFailure(scope, e)
+                        scope.completeAfterFailure(e)
                     } catch (completionException: Throwable) {
                         completionException
                     }
                     return@cancelling TransactionOutcome<T>(null, false, mayDefer, mayMark, cancellationOr(wrapped))
                 }
                 val rollbackOnly = scope.isRollbackOnly
-                val mayDefer = TransactionRunner.mayDeferToExternal(scope)
-                val mayMark = TransactionRunner.mayMarkExternalRollbackOnly(scope)
+                val mayDefer = scope.mayDeferToExternal()
+                val mayMark = scope.mayMarkExternalRollbackOnly()
                 try {
                     scope.complete(false)
-                    TransactionRunner.afterSuccessfulCompletion(scope)
+                    scope.afterSuccessfulCompletion()
                 } catch (completionException: Throwable) {
                     return@cancelling TransactionOutcome<T>(null, rollbackOnly, mayDefer, mayMark, cancellationOr(completionException))
                 }
@@ -330,10 +330,10 @@ private suspend fun <T> runAttempt(
     } catch (e: Throwable) {
         // withContext itself failed before the block could complete the scope, as when the coroutine is cancelled
         // while entering the dispatcher; completing an untouched scope is a no-op.
-        val mayDefer = TransactionRunner.mayDeferToExternal(scope)
-        val mayMark = TransactionRunner.mayMarkExternalRollbackOnly(scope)
+        val mayDefer = scope.mayDeferToExternal()
+        val mayMark = scope.mayMarkExternalRollbackOnly()
         val wrapped = try {
-            TransactionRunner.completeAfterFailure(scope, e)
+            scope.completeAfterFailure(e)
         } catch (completionException: Throwable) {
             completionException
         }

@@ -104,13 +104,11 @@ public sealed interface PredicateNode {
          * takes every word in its form: an AND over the words, each matched in at least one of those fields. A field
          * that no word reaches takes the whole input in its fallback, where the input reaches the fallback's minimum
          * length, as an alternative to the words; a field without a fallback then takes no part. An input that no
-         * field takes matches no rows. A word shorter than the given length, or than the fields' minimum length, is
-         * residual next to one that reaches it, tested only on the rows the longer word found. An input without a
-         * term matches every row for {@code search} and no rows for {@code suggest}.
-         *
-         * @param minimumLength the shortest term the substring index serves, {@code 0} where no index serves one.
+         * field takes matches no rows. A word shorter than the fields' minimum length is residual next to one that
+         * reaches it, tested only on the rows the longer word found. An input without a term matches every row for
+         * {@code search} and no rows for {@code suggest}.
          */
-        PredicateNode resolve(int minimumLength) {
+        PredicateNode resolve() {
             if (terms.isEmpty()) {
                 return suggest ? NO_ROWS : new Term(TemplateString.of("1 = 1"), true);
             }
@@ -128,7 +126,7 @@ public sealed interface PredicateNode {
             }
             var alternatives = new ArrayList<PredicateNode>(2);
             if (!reached.isEmpty()) {
-                alternatives.add(words(reached, minimumLength));
+                alternatives.add(words(reached));
             }
             if (!fallbacks.isEmpty()) {
                 alternatives.add(or(fallbacks));
@@ -140,11 +138,11 @@ public sealed interface PredicateNode {
 
         /**
          * Returns the predicate matching every word in at least one of the fields a word reaches. A word shorter than
-         * the planning length is tested on the rows the long words found; alone, nothing narrows the rows for it.
+         * the shortest of the fields' minimum lengths is tested on the rows the long words found; alone, nothing
+         * narrows the rows for it.
          */
-        private PredicateNode words(List<Match<?>> reached, int minimumLength) {
-            int fieldLength = reached.stream().mapToInt(Match::minLength).min().orElse(0);
-            int length = Math.max(minimumLength, fieldLength);
+        private PredicateNode words(List<Match<?>> reached) {
+            int length = reached.stream().mapToInt(Match::minLength).min().orElse(0);
             boolean narrowed = terms.stream().anyMatch(term -> reaches(term, length));
             var scopes = new ArrayList<PredicateNode>(terms.size());
             terms.stream().filter(term -> reaches(term, length)).forEach(term -> scopes.add(new Scope(word(reached, term), false)));
@@ -178,26 +176,24 @@ public sealed interface PredicateNode {
     }
 
     /**
-     * Returns the predicate with each search in it resolved for a dialect whose substring index serves terms of the
-     * given length, or the predicate itself when it holds no search.
+     * Returns the predicate with each search in it resolved, or the predicate itself when it holds no search.
      *
      * @param node the predicate.
-     * @param minimumLength the shortest term the substring index serves, {@code 0} to treat every term alike.
      * @return the resolved predicate.
      */
-    static PredicateNode resolve(PredicateNode node, int minimumLength) {
+    static PredicateNode resolve(PredicateNode node) {
         return switch (node) {
             case Term term -> term;
-            case Search search -> search.resolve(minimumLength);
+            case Search search -> search.resolve();
             case Scope(var inner, var residual) -> {
-                var resolved = resolve(inner, minimumLength);
+                var resolved = resolve(inner);
                 yield resolved == inner ? node : new Scope(resolved, residual);
             }
             case Group(var and, var operands) -> {
                 var resolved = new ArrayList<PredicateNode>(operands.size());
                 boolean changed = false;
                 for (var operand : operands) {
-                    var r = resolve(operand, minimumLength);
+                    var r = resolve(operand);
                     changed |= r != operand;
                     resolved.add(r);
                 }
@@ -268,7 +264,7 @@ public sealed interface PredicateNode {
         return switch (this) {
             case Term term -> term.template();
             case Scope(var node, var ignore) -> node.toTemplate();
-            case Search search -> search.resolve(0).toTemplate();
+            case Search search -> search.resolve().toTemplate();
             case Group(var and, var operands) -> {
                 var parts = new ArrayList<TemplateString>(operands.size() * 2);
                 for (var operand : operands) {
@@ -290,7 +286,7 @@ public sealed interface PredicateNode {
         return switch (this) {
             case Term term -> !term.safe();
             case Scope(var node, var ignore) -> node.grouped();
-            case Search search -> search.resolve(0).grouped();
+            case Search search -> search.resolve().grouped();
             case Group ignore -> true;
         };
     }

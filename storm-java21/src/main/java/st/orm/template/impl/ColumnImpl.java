@@ -15,6 +15,7 @@
  */
 package st.orm.template.impl;
 
+import org.jspecify.annotations.Nullable;
 import st.orm.Data;
 import st.orm.GenerationStrategy;
 import st.orm.Metamodel;
@@ -52,7 +53,7 @@ public record ColumnImpl(
         boolean updatable,
         boolean version,
         boolean ref,
-        String function,
+        @Nullable String function,
         Metamodel<Data, ?> metamodel
 ) implements Column {
 

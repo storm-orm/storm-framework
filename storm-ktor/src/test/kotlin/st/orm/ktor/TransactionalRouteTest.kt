@@ -19,7 +19,7 @@ import org.junit.jupiter.api.Test
 import st.orm.NoResultException
 import st.orm.OptimisticLockException
 import st.orm.PersistenceException
-import st.orm.core.spi.TransactionScope
+import st.orm.core.template.impl.TransactionScope
 import st.orm.ktor.model.Pet
 import st.orm.ktor.model.PetRepository
 import st.orm.ktor.model.PetType

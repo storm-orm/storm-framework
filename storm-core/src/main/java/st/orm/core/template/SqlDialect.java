@@ -432,38 +432,17 @@ public interface SqlDialect {
     }
 
     /**
-     * Returns the shortest search term, in characters, that the database's substring index serves.
-     *
-     * <p>A search term matches anywhere in a column, ignoring case: {@code LOWER(column) LIKE LOWER('%term%')}. An
-     * index built for substring matching, such as a trigram index, serves that comparison for terms of a minimum
-     * length, and reads every row for a shorter one. {@code search} therefore matches a shorter term only against the
-     * rows its longer terms found, which keeps the result and leaves the short term no table to read in full. A
-     * search of short terms alone still reads every row. The length changes no result.</p>
-     *
-     * <p>The default is {@code 0}: no index of the database serves a substring, and {@code search} treats every term
-     * alike. The search advice reads it as whether the database has an index for substring matching to name.
-     * {@link st.orm.StormConfig#SEARCH_MIN_TERM_LENGTH} overrides the dialect's value.</p>
-     *
-     * @return the shortest term the substring index serves, or {@code 0} to treat every term alike.
-     * @since 1.16
-     */
-    default int minimumSearchTermLength() {
-        return 0;
-    }
-
-    /**
      * Returns the kind of index the database has for substring matching, as the search advice names it, such as
      * {@code a trigram index}, or {@code null} where the database has none. Such an index serves a match anywhere
      * and at a word start over the lowered column; without one, the advice points to a word-suffix table.
      *
-     * <p>The default follows {@link #minimumSearchTermLength()}: a dialect that states the length its substring
-     * index serves has one, and names it in general terms. A dialect names its own index.</p>
+     * <p>The default is {@code null}: no index of the database serves a substring.</p>
      *
      * @return the kind of index, or {@code null}.
      * @since 1.16
      */
     default @Nullable String substringIndex() {
-        return minimumSearchTermLength() > 0 ? "an index for substring matching" : null;
+        return null;
     }
 
     /**

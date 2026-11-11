@@ -31,7 +31,6 @@ import st.orm.TransactionOptions;
 import st.orm.TransactionTimedOutException;
 import st.orm.TransientPersistenceException;
 import st.orm.core.spi.TransactionRunner;
-import st.orm.core.spi.TransactionScope;
 
 /**
  * The rules of a transactional block that reruns on a transient failure, shared by the blocking flow of

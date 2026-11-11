@@ -29,7 +29,6 @@ import static st.orm.core.template.Templates.column;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Map;
 import java.util.Set;
 import java.util.function.Supplier;
 import javax.sql.DataSource;
@@ -46,7 +45,6 @@ import st.orm.Match;
 import st.orm.Metamodel;
 import st.orm.PK;
 import st.orm.PersistenceException;
-import st.orm.StormConfig;
 import st.orm.core.model.Address;
 import st.orm.core.model.Owner;
 import st.orm.core.model.OwnerPrimaryPet;
@@ -121,11 +119,6 @@ public class SemiJoinIntegrationTest {
         return orm.entity(Owner.class).select().semiJoin(Pet.class).on(Owner.class);
     }
 
-    /** A template whose dialect's substring index serves words of three characters, as a trigram index does. */
-    private ORMTemplate trigramOrm() {
-        return ORMTemplate.of(dataSource, StormConfig.of(Map.of(StormConfig.SEARCH_MIN_TERM_LENGTH, "3")));
-    }
-
     @SafeVarargs
     private static PredicateBuilder<Data, Owner, Integer> suggest(String input, st.orm.Metamodel<? extends Data, String>... paths) {
         return PredicateBuilderFactory.suggest(input, Set.of(), paths);
@@ -176,7 +169,7 @@ public class SemiJoinIntegrationTest {
 
     @Test
     public void shortWordIsTestedOnTheRowsTheLongerWordsFound() {
-        var owners = capture(() -> ownersWithPets(trigramOrm())
+        var owners = capture(() -> ownersWithPets(orm())
                 .where(it -> search("davis le", Owner_.lastName, Pet_.name))
                 .getResultList());
         assertEquals(List.of("Betty"), firstNames(owners));
@@ -201,7 +194,7 @@ public class SemiJoinIntegrationTest {
     @Test
     public void searchOfShortWordsAloneMatchesTheWholeInputInTheFallback() {
         // Le starts the name of pet Leo; Coleman holds it inside a word, which the fallback, a word start, skips.
-        var owners = capture(() -> ownersWithPets(trigramOrm())
+        var owners = capture(() -> ownersWithPets(orm())
                 .where(it -> search("le", Owner_.lastName, Pet_.name))
                 .getResultList());
         assertEquals(List.of("Betty"), firstNames(owners));
@@ -290,7 +283,7 @@ public class SemiJoinIntegrationTest {
         assertEquals(List.of("Jean"), firstNames(maxOnly
                 .where(it -> search("coleman", Owner_.lastName, Pet_.name)).getResultList()));
         // The short word is tested on the rows the long one found, with the same limit.
-        var trigramMaxOnly = trigramOrm().entity(Owner.class).select()
+        var trigramMaxOnly = orm().entity(Owner.class).select()
                 .semiJoin(Pet.class).on(Owner.class, it -> it.where(Pet_.name, EQUALS, "Max"));
         assertEquals(List.of(), firstNames(capture(() -> trigramMaxOnly
                 .where(it -> search("coleman sa", Owner_.lastName, Pet_.name)).getResultList())));
@@ -308,13 +301,13 @@ public class SemiJoinIntegrationTest {
                 .getResultList());
         assertEquals(List.of("Betty"), firstNames(owners));
         assertTrue(statement().contains("EXISTS"), statement());
-        assertEquals(List.of("Betty"), firstNames(ownersWithPets(trigramOrm())
+        assertEquals(List.of("Betty"), firstNames(ownersWithPets(orm())
                 .where(it -> suggest("davis le", Owner_.lastName, Pet_.name))
                 .getResultList()));
-        assertEquals(List.of("Betty"), firstNames(ownersWithPets(trigramOrm())
+        assertEquals(List.of("Betty"), firstNames(ownersWithPets(orm())
                 .where(it -> suggest("le", Owner_.lastName, Pet_.name))
                 .getResultList()));
-        assertEquals(List.of("Betty"), firstNames(ownersWithPets(trigramOrm())
+        assertEquals(List.of("Betty"), firstNames(ownersWithPets(orm())
                 .where(it -> search("le", Owner_.lastName, Pet_.name))
                 .getResultList()));
     }
@@ -331,7 +324,7 @@ public class SemiJoinIntegrationTest {
 
     @Test
     public void suggestOfAnEmptyInputMatchesNoRows() {
-        assertEquals(List.of(), firstNames(ownersWithPets(trigramOrm())
+        assertEquals(List.of(), firstNames(ownersWithPets(orm())
                 .where(it -> suggest("  ", Owner_.lastName, Pet_.name))
                 .getResultList()));
         assertEquals(List.of(), firstNames(ownersWithPets()

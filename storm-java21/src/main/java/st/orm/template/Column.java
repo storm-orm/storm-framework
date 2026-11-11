@@ -15,6 +15,7 @@
  */
 package st.orm.template;
 
+import org.jspecify.annotations.Nullable;
 import st.orm.Data;
 import st.orm.GenerationStrategy;
 import st.orm.Metamodel;
@@ -119,13 +120,13 @@ public interface Column {
 
     /**
      * Returns the SQL function whose result a query column stores, which a value compared with the column passes
-     * through on the value side: {@code title_folded = fold_accents(?)}. Empty for a column compared with a value as
+     * through on the value side: {@code title_folded = fold_accents(?)}. Null for a column compared with a value as
      * it is, which every column a field maps is.
      *
-     * @return the function's name, or an empty string.
+     * @return the function's name, or {@code null}.
      * @since 1.16
      */
-    String function();
+    @Nullable String function();
 
     /**
      * Gets the metamodel of the column.

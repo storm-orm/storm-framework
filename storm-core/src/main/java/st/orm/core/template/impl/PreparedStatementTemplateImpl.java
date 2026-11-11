@@ -61,7 +61,6 @@ import st.orm.core.spi.RefFactory;
 import st.orm.core.spi.RefFactoryImpl;
 import st.orm.core.spi.SqlDialectProvider;
 import st.orm.core.spi.TransactionContext;
-import st.orm.core.spi.TransactionScope;
 import st.orm.core.spi.TransactionTemplateProvider;
 import st.orm.core.template.ORMTemplate;
 import st.orm.core.template.PreparedStatementTemplate;

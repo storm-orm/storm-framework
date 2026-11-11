@@ -1,5 +1,6 @@
 package st.orm.ktor
 
+import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.shouldNotBe
 import io.ktor.server.application.install
@@ -9,7 +10,6 @@ import org.junit.jupiter.api.Test
 import st.orm.StormConfig
 import st.orm.StormConfig.ENTITY_CACHE_RETENTION
 import st.orm.StormConfig.IN_LIST
-import st.orm.StormConfig.SEARCH_MIN_TERM_LENGTH
 import st.orm.StormConfig.UPDATE_DEFAULT_MODE
 import st.orm.StormConfig.UPDATE_DIRTY_CHECK
 
@@ -47,23 +47,15 @@ internal class StormConfigReaderTest {
     }
 
     @Test
-    fun `reads in-list and search config in camelCase`() {
-        val config = readConfigFromMap(
-            "storm.inList" to "padded",
-            "storm.search.minTermLength" to "4",
-        )
+    fun `reads in-list config in camelCase`() {
+        val config = readConfigFromMap("storm.inList" to "padded")
         config.getProperty(IN_LIST) shouldBe "padded"
-        config.getProperty(SEARCH_MIN_TERM_LENGTH) shouldBe "4"
     }
 
     @Test
-    fun `reads in-list and search config in snake_case`() {
-        val config = readConfigFromMap(
-            "storm.in_list" to "exact",
-            "storm.search.min_term_length" to "2",
-        )
+    fun `reads in-list config in snake_case`() {
+        val config = readConfigFromMap("storm.in_list" to "exact")
         config.getProperty(IN_LIST) shouldBe "exact"
-        config.getProperty(SEARCH_MIN_TERM_LENGTH) shouldBe "2"
     }
 
     @Test
@@ -130,11 +122,45 @@ internal class StormConfigReaderTest {
         }
     }
 
+    @Test
+    fun `plugin in-list is read on top of the HOCON config`() {
+        val config = readConfigFromMap("storm.inList" to "padded", overrides = mapOf(IN_LIST to "exact"))
+        config.getProperty(IN_LIST) shouldBe "exact"
+    }
+
+    @Test
+    fun `plugin in-list reaches the plugin's config`() = testApplication {
+        environment {
+            config = MapApplicationConfig("storm.inList" to "padded")
+        }
+        application {
+            pluginStormConfig(this, StormPluginConfig().apply { inList = "exact" }).getProperty(IN_LIST) shouldBe "exact"
+            pluginStormConfig(this, StormPluginConfig()).getProperty(IN_LIST) shouldBe "padded"
+        }
+    }
+
+    @Test
+    fun `plugin in-list is refused beside a config`() = testApplication {
+        application {
+            val given = StormConfig.of(mapOf(IN_LIST to "padded"))
+            pluginStormConfig(this, StormPluginConfig().apply { config = given }).getProperty(IN_LIST) shouldBe "padded"
+            shouldThrow<IllegalArgumentException> {
+                pluginStormConfig(
+                    this,
+                    StormPluginConfig().apply {
+                        config = given
+                        inList = "exact"
+                    },
+                )
+            }
+        }
+    }
+
     /**
      * Helper that creates a StormConfig by feeding key-value pairs through the same
      * HOCON-reading logic the plugin uses.
      */
-    private fun readConfigFromMap(vararg pairs: Pair<String, String>): StormConfig {
+    private fun readConfigFromMap(vararg pairs: Pair<String, String>, overrides: Map<String, String> = emptyMap()): StormConfig {
         var result: StormConfig? = null
         kotlinx.coroutines.runBlocking {
             io.ktor.server.testing.testApplication {
@@ -142,7 +168,7 @@ internal class StormConfigReaderTest {
                     config = MapApplicationConfig(*pairs)
                 }
                 application {
-                    result = st.orm.ktor.readStormConfig(this)
+                    result = st.orm.ktor.readStormConfig(this, overrides = overrides)
                 }
             }
         }
