@@ -81,7 +81,7 @@ Schema validation compares your entity and projection definitions against the ac
 | Numeric cross-category conversions (e.g., `Integer` mapped to `DECIMAL`) | `TYPE_NARROWING` | Warning |
 | Non-nullable entity field mapped to a nullable database column | `NULLABILITY_MISMATCH` | Warning |
 | Entity declares `@PK` but the database has no primary key constraint | `PRIMARY_KEY_MISSING` | Warning |
-| `@UK` field has a matching unique constraint in the database | `UNIQUE_KEY_MISSING` | Warning |
+| `@UK` field has a matching unique constraint or unique index in the database | `UNIQUE_KEY_MISSING` | Warning |
 | `@FK` field has a matching foreign key constraint in the database | `FOREIGN_KEY_MISSING` | Warning |
 | A `NOT NULL` column without a default that no field maps, and that the database does not generate; a [query column](entities.md#query-columns) of an entity counts, since every insert leaves it out | `UNMAPPED_COLUMN` | Warning |
 
@@ -102,7 +102,7 @@ Schema validation checks that the database has the constraints your entity model
 However, database constraints serve as a safety net that the application layer cannot replace:
 
 - **Primary key constraints** ensure row uniqueness at the database level. Without one, duplicate primary key values could be inserted by other applications or direct SQL.
-- **Unique constraints** protect against application bugs and concurrent modifications that could insert duplicate values. Without a database-level unique constraint, a `@UK` field might contain duplicates that go undetected until a `findBy` call unexpectedly returns multiple results.
+- **Unique constraints** protect against application bugs and concurrent modifications that could insert duplicate values. Without a database-level unique constraint or unique index, a `@UK` field might contain duplicates that go undetected until a `findBy` call unexpectedly returns multiple results.
 - **Foreign key constraints** protect referential integrity. Without a database-level foreign key constraint, orphaned rows can accumulate when referenced rows are deleted.
 
 ##### Suppressing Constraint Warnings

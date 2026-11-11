@@ -143,7 +143,7 @@ users.select().where(User_.city, EQUALS, city)
 
 Terminal operations: `.getResultList()`, `.getSingleResult()`, `.getOptionalResult()`, `.getResultStream()`, `.windows(size)`, `.getResultCount()`, `.exists()`, `.page()`, `.scroll()`, `.executeUpdate()`
 
-**`find` returns `Optional`, `get` throws.** No result gives an empty `Optional` from `find` and a `NoResultException` from `get`.
+**`find` returns `Optional`, `get` throws.** No result gives an empty `Optional` from `find` and a `NoResultException` from `get`, which surfaces as `EmptyResultDataAccessException` under the Spring Boot starters.
 
 **A write expects one row per entity.** An `insert`, `update` or `remove` that affects another count throws `UnexpectedRowCountException` with both counts; a `@Version` update that affects none throws `OptimisticLockException`. Under the Spring Boot starters these surface as `IncorrectUpdateSemanticsDataAccessException` and `OptimisticLockingFailureException`, and every other statement failure as a `DataAccessException`.
 

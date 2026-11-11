@@ -73,6 +73,8 @@ orm.entity(User.class).update(updatedUsers);
 </TabItem>
 </Tabs>
 
+Each entity's update expects one row. A driver may answer a batch entry with `Statement.SUCCESS_NO_INFO`, a success whose row count it does not report, which a plain update accepts. A `@Version` update, and the update of a Joined Table subtype's extension row, need the count, since zero rows marks a conflict or a changed subtype: such a batch fails with a `PersistenceException` saying the check cannot be verified.
+
 ### Batch Remove
 
 Batch removes delete multiple entities in a single round-trip. Storm generates a batched DELETE using each entity's primary key. Like `remove(entity)`, a batch remove is strict: holding an entity implies that its row exists, so an entity whose row is gone fails the batch with an `UnexpectedRowCountException`.

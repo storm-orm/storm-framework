@@ -667,14 +667,16 @@ A cancellation states no further interest in the block's work, not an outcome: a
 
 The handle a block receives cancels the transaction the same way with `cancel()`, from any thread or coroutine, which is how a blocking block is cancelled and how a suspending block is cancelled by a party that holds no reference to its coroutine, such as a watchdog or a stop action. The block hands its handle out and fails at the statement the cancellation stops, or at its next one, with a `PersistenceException`:
 
-```java
-var handle = new CompletableFuture<Transaction>();
-executor.submit(() -> transaction(tx -> {
-    handle.complete(tx);
-    return reports.select().where(...).getResultList();
-}));
+```kotlin
+val handle = CompletableFuture<Transaction>()
+executor.submit {
+    transactionBlocking {
+        handle.complete(this)
+        orm.selectFrom<Visit>().where(...).resultList
+    }
+}
 // Once the result is no longer wanted:
-handle.join().cancel();
+handle.join().cancel()
 ```
 
 A blocking block whose thread is interrupted is refused its next statement as well. The interrupt does not reach a statement that is already running, since a driver does not observe it, and on a virtual thread it closes the connection instead, so a running statement is stopped through the handle.
@@ -1350,7 +1352,10 @@ Statements inside `@Transactional` need none of this. The Spring connection prov
 
 In Ktor, the [`transactional { }` route DSL](ktor-integration.md#route-scoped-transactions) wraps a group of routes so that
 every call to a route inside it runs in its own transaction, opened before the handler and committed when it returns.
-It takes the same options as `transaction { }` and leaves the handlers free of transaction code.
+It takes the same options as `transaction { }` except `retries`, and leaves the handlers free of transaction code. A
+rerun would run the handler again after it may have responded, so a route that reruns on a transient failure calls
+`transaction(retries = ...) { }` in its handler, outside `transactional { }`, where the block would join the route's
+transaction and be refused.
 
 </TabItem>
 <TabItem value="java" label="Java">
@@ -1446,6 +1451,22 @@ transaction(TransactionOptions.defaults().withIsolation(SERIALIZABLE), 2, tx -> 
 `transaction(2, tx -> ...)` and `transaction(REQUIRES_NEW, 2, tx -> ...)` take the count with the default options or a propagation. The count is not part of `TransactionOptions`, so it is never inherited from thread or global defaults. The rerun decides on Storm's classification of the failure, not on the exception's type, so it holds under Spring's exception translation and any other mapper. Each attempt is a transaction of its own with its own timeout and callbacks; between attempts the thread sleeps for a short, jittered pause that grows per attempt, and an interrupt stops the reruns. When the last attempt fails, its exception leaves the block with the earlier attempts' failures as suppressed. A block that joins an active transaction, including a Spring-managed one, or runs without one is refused at its start with `IllegalTransactionStateException`.
 
 A block that may be rerun touches nothing outside the database except through `tx.onCommit`, and a side effect that must not be lost goes into an outbox row written in the transaction. The Kotlin tab's [Rerunning a Transaction](#rerunning-a-transaction) covers what `onCommit` does not: it runs at most once, captured state the block mutates and writes outside the database repeat per attempt. See [Deadlocks and Serialization Failures](error-handling.md#deadlocks-and-serialization-failures).
+
+### Cancelling a Transaction
+
+The handle a block receives cancels its transaction with `cancel()`, from any thread, which is how a party that decides the result is no longer wanted, such as a watchdog or a stop action, stops a running query. The statement the block is running is stopped through the driver, which asks the database to abandon it, no further statement runs, and the block fails at that statement, or at its next one, with a `PersistenceException`, so the transaction rolls back and releases its connection. A block whose statements all completed before the cancellation commits as usual. The block hands its handle out:
+
+```java
+var handle = new CompletableFuture<Transaction>();
+executor.submit(() -> transaction(tx -> {
+    handle.complete(tx);
+    return reports.select().where(...).getResultList();
+}));
+// Once the result is no longer wanted:
+handle.join().cancel();
+```
+
+A block whose thread is interrupted is refused its next statement as well. The interrupt does not reach a statement that is already running, since a driver does not observe it, and on a virtual thread it closes the connection instead, so a running statement is stopped through the handle.
 
 ### Registering from Nested Code
 
