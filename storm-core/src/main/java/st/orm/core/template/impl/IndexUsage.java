@@ -494,7 +494,8 @@ final class IndexUsage {
                         : "index: " + findOption + "\nor: " + inOrderOption;
             }
         }
-        return Advice.MISSING_INDEX.format(table, "starts with " + String.join(" or ", asked), cost, options);
+        String which = "starts with the column " + String.join(" or ", asked);
+        return Advice.MISSING_INDEX.format(table, which, cost, options);
     }
 
     /**
@@ -508,9 +509,10 @@ final class IndexUsage {
                                     List<String> inOrder) {
         String table = qualified(usage.schema(), usage.table());
         boolean groups = !usage.group().isEmpty();
-        String which = keys.isEmpty()
-                ? "starts with " + String.join(", ", inOrder)
-                : "continues %s with %s".formatted(String.join(", ", keys), String.join(", ", inOrder));
+        var prefix = new ArrayList<String>(keys);
+        addAbsent(prefix, inOrder);
+        String which = (prefix.size() == 1 ? "starts with the column " : "starts with the columns ")
+                + String.join(", ", prefix);
         String cost = groups
                 ? "so the database sorts the matching rows into groups"
                 : "so the database sorts every matching row before it returns the first ones";

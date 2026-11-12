@@ -61,7 +61,7 @@ enum Advice {
      */
     UNINDEXED_FOREIGN_KEY("unindexed-foreign-key", Category.PERFORMANCE, true,
             "every row deleted from %1$s is checked against the foreign key %2$s(%3$s), and no index on %2$s "
-                    + "starts with %4$s, so the database reads %2$s in full for each deleted row.\n"
+                    + "starts with the column %4$s, so the database reads %2$s in full for each deleted row.\n"
                     + "fix: an index on %2$s(%3$s) serves the check."),
 
     /**

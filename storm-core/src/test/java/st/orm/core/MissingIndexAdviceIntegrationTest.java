@@ -259,9 +259,9 @@ public class MissingIndexAdviceIntegrationTest {
         var advice = missingIndexAdvice(() -> orm.entity(Customer.class).select()
                 .where(LAST_NAME, EQUALS, "Davis").getResultList());
         assertEquals(1, advice.size(), advice.toString());
-        assertTrue(advice.getFirst().contains("no index on customer starts with last_name, so the database reads the "
-                + "table in full to find the matching rows.\nindex: customer(last_name) finds them directly where the "
-                + "condition selects few of them."),
+        assertTrue(advice.getFirst().contains("no index on customer starts with the column last_name, so the database "
+                + "reads the table in full to find the matching rows.\nindex: customer(last_name) finds them directly "
+                + "where the condition selects few of them."),
                 advice.getFirst());
     }
 
@@ -291,8 +291,8 @@ public class MissingIndexAdviceIntegrationTest {
         orm.loadSchema();
         var advice = missingIndexAdvice(() -> orm.entity(Customer.class).select().distinct()
                 .innerJoin(Purchase.class).on(Customer.class).getResultList());
-        assertTrue(advice.stream().anyMatch(line -> line.contains("no index on purchase starts with customer_id, so the "
-                + "database reads the table in full to find the joined rows")), advice.toString());
+        assertTrue(advice.stream().anyMatch(line -> line.contains("no index on purchase starts with the column "
+                + "customer_id, so the database reads the table in full to find the joined rows")), advice.toString());
     }
 
     @Test
@@ -343,7 +343,8 @@ public class MissingIndexAdviceIntegrationTest {
         var advice = missingIndexAdvice(() -> orm.entity(Customer.class).select().where(LAST_NAME, EQUALS, "Davis")
                 .orderBy(JOINED_ON, EMAIL).limit(10).getResultList());
         assertEquals(1, advice.size(), advice.toString());
-        assertTrue(advice.getFirst().contains("no index on customer continues last_name with joined_on, email"),
+        assertTrue(advice.getFirst().contains("no index on customer starts with the columns last_name, joined_on, "
+                + "email"),
                 advice.getFirst());
         assertTrue(advice.getFirst().contains("\nindex: customer(last_name, joined_on, email), extending "
                 + "CUSTOMER_LAST_NAME, reads the matching rows in order and stops at the limit"), advice.getFirst());
@@ -381,9 +382,9 @@ public class MissingIndexAdviceIntegrationTest {
         var sorted = missingIndexAdvice(() -> orm.entity(Customer.class).select()
                 .orderBy(JOINED_ON).limit(10).getResultList());
         assertEquals(1, sorted.size(), sorted.toString());
-        assertTrue(sorted.getFirst().contains("no index on customer starts with joined_on, so the database sorts every "
-                + "row before it returns the first ones.\nindex: customer(joined_on) reads the rows in order and stops "
-                + "at the limit."), sorted.getFirst());
+        assertTrue(sorted.getFirst().contains("no index on customer starts with the column joined_on, so the database "
+                + "sorts every row before it returns the first ones.\nindex: customer(joined_on) reads the rows in "
+                + "order and stops at the limit."), sorted.getFirst());
     }
 
     @Test
@@ -405,7 +406,7 @@ public class MissingIndexAdviceIntegrationTest {
                 .where(JOINED_ON, GREATER_THAN, LocalDate.of(2020, 1, 1))
                 .where(LAST_NAME, EQUALS, "Davis").getResultList());
         assertEquals(1, advice.size(), advice.toString());
-        assertTrue(advice.getFirst().contains("starts with last_name or joined_on"), advice.getFirst());
+        assertTrue(advice.getFirst().contains("starts with the column last_name or joined_on"), advice.getFirst());
         assertTrue(advice.getFirst().contains("\nindex: customer(last_name, joined_on)"), advice.getFirst());
     }
 

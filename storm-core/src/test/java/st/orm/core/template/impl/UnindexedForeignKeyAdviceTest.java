@@ -137,8 +137,9 @@ public class UnindexedForeignKeyAdviceTest {
         assertEquals(List.of(Advice.UNINDEXED_FOREIGN_KEY.format("customer", "PURCHASE", "CUSTOMER_ID", "CUSTOMER_ID")),
                 advice);
         assertTrue(advice.getFirst().startsWith("every row deleted from customer is checked against the foreign key "
-                + "PURCHASE(CUSTOMER_ID), and no index on PURCHASE starts with CUSTOMER_ID, so the database reads "
-                + "PURCHASE in full for each deleted row.\nfix: an index on PURCHASE(CUSTOMER_ID) serves the check."),
+                + "PURCHASE(CUSTOMER_ID), and no index on PURCHASE starts with the column CUSTOMER_ID, so the "
+                + "database reads PURCHASE in full for each deleted row.\nfix: an index on PURCHASE(CUSTOMER_ID) "
+                + "serves the check."),
                 advice.getFirst());
     }
 
@@ -163,7 +164,7 @@ public class UnindexedForeignKeyAdviceTest {
         var advice = deleteAdvice("orders", catalog(orderId, orderVersion));
         assertEquals(1, advice.size(), advice::toString);
         assertTrue(advice.getFirst().contains("the foreign key LINE_ITEM(ORDER_ID, ORDER_VERSION), and no index on "
-                + "LINE_ITEM starts with ORDER_ID or ORDER_VERSION"), advice.getFirst());
+                + "LINE_ITEM starts with the column ORDER_ID or ORDER_VERSION"), advice.getFirst());
         try (var connection = dataSource.getConnection(); var statement = connection.createStatement()) {
             statement.execute("CREATE INDEX line_item_version ON line_item (order_version)");
         }

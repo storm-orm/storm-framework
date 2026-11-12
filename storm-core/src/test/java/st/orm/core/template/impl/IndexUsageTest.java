@@ -160,7 +160,7 @@ public class IndexUsageTest {
         assert usage != null;
         var advice = usage.advise(catalog());
         assertEquals(1, advice.size(), advice.toString());
-        assertTrue(advice.getFirst().contains("starts with last_name, so"), advice.getFirst());
+        assertTrue(advice.getFirst().contains("starts with the column last_name, so"), advice.getFirst());
         assertTrue(advice.getFirst().contains("\nindex: customer(last_name) finds"), advice.getFirst());
     }
 
@@ -198,8 +198,8 @@ public class IndexUsageTest {
     public void aGroupedReadOnAnEnumIsAdvisedTheIndexThatReadsInGroupOrderFirst() throws SQLException {
         var advice = adviceOf(usageOf("owner", "source", Kind.EQUALITY, "city", Kind.GROUP, "last_name",
                 Kind.GROUP));
-        assertEquals("no index on owner starts with source, so the database reads the table in full and sorts the "
-                + "matching rows into groups.\n"
+        assertEquals("no index on owner starts with the column source, so the database reads the table in full and "
+                + "sorts the matching rows into groups.\n"
                 + "index: owner(source, city, last_name) finds the matching rows and reads them already grouped, "
                 + "without a temporary table or sort\n"
                 + "covering: it reads the index alone when it also holds the columns the select reads\n"
@@ -256,9 +256,9 @@ public class IndexUsageTest {
     @Test
     public void aGroupedReadWithoutAFilterIsAdvisedTheIndexThatReadsInGroupOrder() throws SQLException {
         var advice = adviceOf(usageOf("owner", "city", Kind.GROUP, "last_name", Kind.GROUP));
-        assertTrue(advice.startsWith("no index on owner starts with city or last_name, so the database sorts every row "
-                + "into groups.\nindex: owner(city, last_name) reads the rows already grouped, without a temporary "
-                + "table or sort"), advice);
+        assertTrue(advice.startsWith("no index on owner starts with the column city or last_name, so the database "
+                + "sorts every row into groups.\nindex: owner(city, last_name) reads the rows already grouped, "
+                + "without a temporary table or sort"), advice);
     }
 
     @Test
@@ -299,10 +299,10 @@ public class IndexUsageTest {
         index("CREATE INDEX owner_source ON owner (source)");
         var advice = adviceOf(usageOf("owner", "source", Kind.EQUALITY, "city", Kind.GROUP, "last_name",
                 Kind.GROUP));
-        assertEquals("no index on owner continues source with city, last_name, so the database sorts the matching rows "
-                + "into groups.\nindex: owner(source, city, last_name), extending OWNER_SOURCE, finds the matching rows "
-                + "and reads them already grouped, without a temporary table or sort\ncovering: it reads the index "
-                + "alone when it also holds the columns the select reads.\nsee: "
+        assertEquals("no index on owner starts with the columns source, city, last_name, so the database sorts the "
+                + "matching rows into groups.\nindex: owner(source, city, last_name), extending OWNER_SOURCE, finds "
+                + "the matching rows and reads them already grouped, without a temporary table or sort\ncovering: it "
+                + "reads the index alone when it also holds the columns the select reads.\nsee: "
                 + "https://orm.st/docs/advice#missing-index", advice);
     }
 
@@ -318,9 +318,9 @@ public class IndexUsageTest {
         index("CREATE INDEX pet_type ON pet (type_id)");
         var advice = adviceOf(usageOf("pet", "type_id", Kind.EQUALITY, "name", Kind.ORDER, "birth_date",
                 Kind.ORDER));
-        assertTrue(advice.startsWith("no index on pet continues type_id with name, birth_date, so the database sorts "
-                + "every matching row before it returns the first ones.\nindex: pet(type_id, name, birth_date), "
-                + "extending PET_TYPE, reads the matching rows in order and stops at the limit."), advice);
+        assertTrue(advice.startsWith("no index on pet starts with the columns type_id, name, birth_date, so the "
+                + "database sorts every matching row before it returns the first ones.\nindex: pet(type_id, name, "
+                + "birth_date), extending PET_TYPE, reads the matching rows in order and stops at the limit."), advice);
         index("CREATE INDEX pet_type_reversed ON pet (type_id, birth_date, name)");
         assertEquals(1, usageOf("pet", "type_id", Kind.EQUALITY, "name", Kind.ORDER, "birth_date", Kind.ORDER)
                 .advise(catalog()).size());
@@ -339,8 +339,8 @@ public class IndexUsageTest {
     @Test
     public void aJoinOnTheTableIsNamedAsOne() throws SQLException {
         var advice = adviceOf(usageOf("pet", "type_id", Kind.JOIN));
-        assertTrue(advice.startsWith("no index on pet starts with type_id, so the database reads the table in full to "
-                + "find the joined rows.\nindex: pet(type_id)"), advice);
+        assertTrue(advice.startsWith("no index on pet starts with the column type_id, so the database reads the table "
+                + "in full to find the joined rows.\nindex: pet(type_id)"), advice);
         var both = adviceOf(usageOf("pet", "type_id", Kind.JOIN, "name", Kind.EQUALITY));
         assertTrue(both.contains("so the database reads the table in full to find the matching rows"), both);
     }

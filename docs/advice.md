@@ -195,7 +195,7 @@ The advice is given for a `distinct` select of the query's own table over an inn
 ## A missing index {#missing-index}
 
 ```text
-no index on customer starts with last_name, so the database reads the table in full to find the matching rows.
+no index on customer starts with the column last_name, so the database reads the table in full to find the matching rows.
 index: customer(last_name) finds them directly where the condition selects few of them.
 ```
 
@@ -206,7 +206,7 @@ Storm records which columns a statement filters, joins, groups and sorts by, whe
 Where finding the matching rows and reading them in the order the statement needs differ, no single index is right for every table, so the advice names both, with when each wins:
 
 ```text
-no index on owner starts with source, so the database reads the table in full and sorts the matching rows into groups.
+no index on owner starts with the column source, so the database reads the table in full and sorts the matching rows into groups.
 index: owner(source, city, last_name) finds the matching rows and reads them already grouped, without a temporary table or sort
 covering: with first_name, address appended it reads the index alone, since it then holds every column the select reads
 or: owner(source) finds them directly where the condition selects few of them; source is an ENUM, with few distinct values, so an index on it alone is often not chosen.
@@ -235,7 +235,7 @@ Storm stays quiet where it cannot tell:
 ## An unindexed foreign key behind a delete {#unindexed-foreign-key}
 
 ```text
-every row deleted from owner is checked against the foreign key pet(owner_id), and no index on pet starts with owner_id, so the database reads pet in full for each deleted row.
+every row deleted from owner is checked against the foreign key pet(owner_id), and no index on pet starts with the column owner_id, so the database reads pet in full for each deleted row.
 fix: an index on pet(owner_id) serves the check.
 ```
 
