@@ -33,6 +33,7 @@ import st.orm.core.model.City;
 import st.orm.core.model.City_;
 import st.orm.core.template.ORMTemplate;
 import st.orm.core.template.PredicateBuilder;
+import st.orm.core.template.TemplateString;
 import st.orm.core.template.WhereBuilder;
 
 /**
@@ -49,9 +50,19 @@ public class PredicateGroupingIntegrationTest {
 
     /** Returns the WHERE clause of the select the predicate builds, with its columns as {@code n}. */
     private String where(Function<WhereBuilder<City, City, Integer>, PredicateBuilder<City, ?, ?>> predicate) {
+        return where(List.of(predicate));
+    }
+
+    /** Returns the WHERE clause of the select with a where call per condition, with its columns as {@code n}. */
+    private String where(List<Function<WhereBuilder<City, City, Integer>, PredicateBuilder<City, ?, ?>>> conditions) {
         var orm = ORMTemplate.of(dataSource);
+        var query = orm.entity(City.class).select();
+        for (var condition : conditions) {
+            query = query.where(condition);
+        }
+        var select = query;
         List<String> statements = new ArrayList<>();
-        observe(sql -> statements.add(sql.statement()), () -> orm.entity(City.class).select().where(predicate).getResultList());
+        observe(sql -> statements.add(sql.statement()), () -> select.getResultList());
         String statement = statements.getFirst().replaceAll("\\s+", " ");
         return statement.substring(statement.indexOf("WHERE ") + 6).replaceAll("[a-z]\\.name", "n").trim();
     }
@@ -72,6 +83,14 @@ public class PredicateGroupingIntegrationTest {
         assertEquals("(n = ? OR n = ?) AND n = ?", where(it -> name(it, "a").or(name(it, "b")).and(name(it, "c"))));
         assertEquals("n = ? AND (n = ? OR n = ?)", where(it -> name(it, "a").and(name(it, "b").or(name(it, "c")))));
         assertEquals("(n = ? AND n = ?) OR n = ?", where(it -> name(it, "a").and(name(it, "b")).or(name(it, "c"))));
+    }
+
+    @Test
+    public void whereCallsAreParenthesizedOnlyWhereTheyJoinTermsByOr() {
+        assertEquals("n = ? AND n = ?", where(List.of(it -> name(it, "a"), it -> name(it, "b"))));
+        assertEquals("n = ? AND n = ? AND n = ?", where(List.of(it -> name(it, "a").and(name(it, "b")), it -> name(it, "c"))));
+        assertEquals("(n = ? OR n = ?) AND n = ?", where(List.of(it -> name(it, "a").or(name(it, "b")), it -> name(it, "c"))));
+        assertEquals("(1 = 1) AND n = ?", where(List.of(it -> it.where(TemplateString.of("1 = 1")), it -> name(it, "c"))));
     }
 
     @Test
