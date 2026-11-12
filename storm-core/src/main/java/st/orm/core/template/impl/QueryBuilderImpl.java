@@ -488,7 +488,7 @@ abstract class QueryBuilderImpl<T extends Data, R, ID> extends QueryBuilder<T, R
 
     /**
      * Appends the registered joins and the WHERE clause, with multiple where-conditions AND-ed together, to the
-     * given template.
+     * given template. A condition is in parentheses only where it may join terms by OR.
      */
     protected final TemplateString appendJoinsAndWhere(TemplateString template) {
         var filterJoins = join.stream().filter(FilterJoinPlacement::isFilterJoin).toList();
@@ -525,7 +525,10 @@ abstract class QueryBuilderImpl<T extends Data, R, ID> extends QueryBuilder<T, R
                 template = TemplateString.combine(template, TemplateString.of("\nWHERE "), wrap(where.getFirst()));
             } else {
                 TemplateString whereClause = where.stream()
-                        .map(w -> TemplateString.combine(TemplateString.of("("), wrap(w), TemplateString.of(")")))
+                        .map(w -> w.expression() instanceof TemplateExpression(var ignore, var predicate)
+                                && predicate.grouped(true)
+                                ? TemplateString.combine(TemplateString.of("("), wrap(w), TemplateString.of(")"))
+                                : wrap(w))
                         .reduce((a, b) -> TemplateString.combine(a, TemplateString.of("\n  AND "), b))
                         .orElseThrow();
                 template = TemplateString.combine(template, TemplateString.of("\nWHERE "), whereClause);

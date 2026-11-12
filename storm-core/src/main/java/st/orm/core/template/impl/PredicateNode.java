@@ -271,7 +271,7 @@ public sealed interface PredicateNode {
                     if (!parts.isEmpty()) {
                         parts.add(TemplateString.of(and ? " AND " : " OR "));
                     }
-                    parts.add(operand.grouped() ? TemplateString.combine(TemplateString.of("("), operand.toTemplate(), TemplateString.of(")")) : operand.toTemplate());
+                    parts.add(operand.grouped(and) ? TemplateString.combine(TemplateString.of("("), operand.toTemplate(), TemplateString.of(")")) : operand.toTemplate());
                 }
                 yield TemplateString.combine(parts);
             }
@@ -279,15 +279,17 @@ public sealed interface PredicateNode {
     }
 
     /**
-     * Returns whether the predicate needs parentheses as an operand of a group: a group, which is always joined by the
-     * other operator once flattened, or a template that may hold several terms.
+     * Returns whether the predicate needs parentheses as an operand joined by the given operator: a group joined by
+     * the other operator, or a template that may hold several terms.
+     *
+     * @param and {@code true} for an operand joined by AND, {@code false} for OR.
      */
-    private boolean grouped() {
+    default boolean grouped(boolean and) {
         return switch (this) {
             case Term term -> !term.safe();
-            case Scope(var node, var ignore) -> node.grouped();
-            case Search search -> search.resolve().grouped();
-            case Group ignore -> true;
+            case Scope(var node, var ignore) -> node.grouped(and);
+            case Search search -> search.resolve().grouped(and);
+            case Group group -> group.and() != and;
         };
     }
 }
