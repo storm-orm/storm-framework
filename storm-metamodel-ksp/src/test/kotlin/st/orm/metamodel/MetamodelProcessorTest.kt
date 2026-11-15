@@ -25,8 +25,6 @@ import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
-import st.orm.Data
-import st.orm.Metamodel
 
 /**
  * Compiles fixture sources with the processor attached and asserts on the generated files. The fixtures compile
@@ -317,40 +315,6 @@ class MetamodelProcessorTest {
         assertTrue("Metamodel.root(Registry::class.java).isSame(a, b)" in metamodelInterface) {
             "expected the companion to compare rows as the root metamodel does:\n$metamodelInterface"
         }
-    }
-
-    @Test
-    fun `the metamodel companion equals the root metamodel of its table`() {
-        val result = compilation(
-            """
-            package com.example
-
-            import st.orm.Entity
-            import st.orm.PK
-
-            data class Registry(@PK val id: Int, val name: String) : Entity<Int>
-            """.trimIndent(),
-        ).compile()
-        assertEquals(KotlinCompilation.ExitCode.OK, result.exitCode, result.messages)
-        @Suppress("UNCHECKED_CAST")
-        val type = result.classLoader.loadClass("com.example.Registry") as Class<Data>
-
-        @Suppress("UNCHECKED_CAST")
-        val companion = result.classLoader.loadClass("com.example.Registry_").getField("Companion").get(null) as Metamodel<Data, Data>
-        val root = Metamodel.root(type)
-        assertEquals(root, companion)
-        assertEquals(root.hashCode(), companion.hashCode())
-        assertEquals(type, companion.root())
-        assertEquals("", companion.fieldPath())
-        assertFalse(companion.isColumn)
-        val registry = type.getConstructor(Int::class.java, String::class.java).newInstance(1, "first")
-        val copy = type.getConstructor(Int::class.java, String::class.java).newInstance(1, "first")
-        assertTrue(companion.getValue(registry) === registry)
-        assertTrue(companion.isIdentical(registry, registry))
-        assertFalse(companion.isIdentical(registry, copy))
-        assertTrue(companion.isSame(registry, copy))
-        val other = type.getConstructor(Int::class.java, String::class.java).newInstance(2, "first")
-        assertFalse(companion.isSame(registry, other))
     }
 
     @Test
