@@ -183,6 +183,7 @@ public final class Elements {
     public record Set(@Nullable Data record, @Nullable BindVars bindVars, Collection<Metamodel<?, ?>> fields) implements Element {
         public Set {
             fields = java.util.Set.copyOf(fields);
+            fields.forEach(field -> OuterPaths.refuse(field, "sets"));
         }
     }
 
@@ -205,6 +206,9 @@ public final class Elements {
         public ObjectExpression {
             requireNonNull(object, "object");
             requireNonNull(operator, "operator");
+            if (metamodel != null) {
+                OuterPaths.refuse(metamodel, "compares a value with");
+            }
         }
     }
 
@@ -249,6 +253,7 @@ public final class Elements {
         public SearchExpression {
             requireNonNull(match, "match");
             requireNonNull(word, "word");
+            OuterPaths.refuse(match.path(), "searches");
         }
     }
 
@@ -415,11 +420,18 @@ public final class Elements {
      *
      * <p>A path that resolves to more than one column is rejected: this placeholder may sit in arbitrary SQL, where
      * splicing in a column list would produce broken statements. List contexts use {@link Columns} instead.</p>
+     *
+     * <p>A path named in the enclosing query through {@code Metamodel.outer} resolves there,
+     * whatever scope it is given.</p>
      */
     public record Column(Metamodel<?, ?> field, ResolveScope scope) implements Element {
         public Column {
             requireNonNull(field, "field");
             requireNonNull(scope, "scope");
+            if (Metamodel.isOuter(field)) {
+                field = OuterPaths.strip(field);
+                scope = ResolveScope.OUTER;
+            }
         }
     }
 
@@ -448,6 +460,7 @@ public final class Elements {
             if (fields.isEmpty()) {
                 throw new IllegalArgumentException("Columns requires at least one path.");
             }
+            fields.forEach(field -> OuterPaths.refuse(field, "orders and groups by"));
             requireNonNull(scope, "scope");
             requireNonNull(clause, "clause");
         }

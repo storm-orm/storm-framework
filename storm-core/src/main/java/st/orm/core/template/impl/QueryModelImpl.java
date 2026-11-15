@@ -262,7 +262,7 @@ final class QueryModelImpl implements QueryModel {
                 case ObjectExpression it -> compileObjectExpression(it, true, false, compiler);
                 case RankingExpression(var it) -> compileObjectExpression(it, false, false, compiler);
                 case PositionExpression(var it) -> compileObjectExpression(it, true, true, compiler);
-                case PathExpression it -> compilePathExpression(it.path(), it.operator(), it.other());
+                case PathExpression it -> compilePathExpression(it.path(), it.operator(), it.other(), compiler);
                 case SearchExpression it -> compileSearchExpression(it, compiler);
             };
         } catch (SqlTemplateException e) {
@@ -303,14 +303,17 @@ final class QueryModelImpl implements QueryModel {
      * @param path the path on the left of the operator.
      * @param operator the operator.
      * @param other the path on the right of the operator.
+     * @param compiler the compiler, which resolves a path named in an enclosing query.
      * @return the compiled SQL fragment.
      * @throws SqlTemplateException if a path is not part of the query, or the paths resolve to a different number of
      *                              columns.
      */
-    private String compilePathExpression(Metamodel<?, ?> path, Operator operator, Metamodel<?, ?> other)
-            throws SqlTemplateException {
-        var columns = qualifiedColumns(path);
-        var otherColumns = qualifiedColumns(other);
+    private String compilePathExpression(Metamodel<?, ?> path,
+                                         Operator operator,
+                                         Metamodel<?, ?> other,
+                                         TemplateCompiler compiler) throws SqlTemplateException {
+        var columns = qualifiedColumns(path, compiler);
+        var otherColumns = qualifiedColumns(other, compiler);
         if (columns.size() != otherColumns.size()) {
             throw new SqlTemplateException("Cannot compare %s with %s: %s resolves to %d column(s), %s to %d. Compare a key with a key of the same table, or a column with a column.".formatted(
                     path, other, path, columns.size(), other, otherColumns.size()));
@@ -326,15 +329,34 @@ final class QueryModelImpl implements QueryModel {
     }
 
     /**
-     * Returns the qualified columns of the path, resolved at the occurrence the path reaches.
+     * Returns the qualified columns of the path, resolved at the occurrence the path reaches: in this query, or, for
+     * a path named through {@link Metamodel#outer(Navigable)}, in the nearest enclosing query that holds its
+     * table. A {@code SqlFunction} call renders around the single column it is applied to.
      */
-    private List<String> qualifiedColumns(Metamodel<?, ?> metamodel) throws SqlTemplateException {
-        var resolved = MetamodelFactory.canonical(metamodel);
-        var model = getModel(resolved);
-        Metamodel<?, ?> navigated = isOwnModel(resolved) ? null : resolved;
+    private List<String> qualifiedColumns(Metamodel<?, ?> metamodel, TemplateCompiler compiler)
+            throws SqlTemplateException {
+        var path = OuterPaths.strip(metamodel);
+        var field = FunctionCalls.column(path);
+        var resolved = MetamodelFactory.canonical(field);
         List<String> columns = new ArrayList<>();
-        for (var column : model.getColumns(metamodel)) {
-            columns.add(toFullyQualifiedColumn(column, navigated));
+        if (Metamodel.isOuter(metamodel)) {
+            String prefix = ColumnProcessor.aliasPrefix(resolved, OUTER, compiler);
+            for (var column : ColumnsProcessor.resolve(resolved, compiler)) {
+                columns.add(prefix + column.qualifiedName(template.dialect()));
+            }
+        } else {
+            var model = getModel(resolved);
+            Metamodel<?, ?> navigated = isOwnModel(resolved) ? null : resolved;
+            for (var column : model.getColumns(field)) {
+                columns.add(toFullyQualifiedColumn(column, navigated));
+            }
+        }
+        if (path != field) {
+            if (columns.size() != 1) {
+                throw new SqlTemplateException("%s applies a SQL function to %s, which spans %d columns. Name one of its fields instead."
+                        .formatted(path, field.fieldPath(), columns.size()));
+            }
+            return List.of(FunctionCalls.render(path, columns.getFirst()));
         }
         return columns;
     }

@@ -11,6 +11,7 @@ import static st.orm.Match.anywhere;
 import static st.orm.Match.exact;
 import static st.orm.Match.prefix;
 import static st.orm.Match.wordStart;
+import static st.orm.Metamodel.outer;
 import static st.orm.Operator.EQUALS;
 import static st.orm.Operator.GREATER_THAN;
 import static st.orm.Operator.GREATER_THAN_OR_EQUAL;
@@ -630,6 +631,37 @@ public class QueryBuilderTest {
         assertFalse(viaLambda.isEmpty());
         // data.sql: pet 13 has no visit, so the correlation must exclude at least one pet.
         assertTrue(viaLambda.size() < orm.entity(Pet.class).count());
+    }
+
+    @Test
+    public void testOuterNamesTheColumnOfTheEnclosingQuery() {
+        // data.sql: pets 1 to 8 have visits. A comparison with outer(Pet_.id) names the pet of the enclosing query, in
+        // the builder and in a template alike.
+        List<Pet> typed = orm.entity(Pet.class).select()
+                .whereExists(orm.subquery(Visit.class).where(it -> it.where(Visit_.pet.id, EQUALS, outer(Pet_.id))))
+                .getResultList();
+        assertEquals(8, typed.size());
+        List<Pet> template = orm.entity(Pet.class).select()
+                .whereExists(orm.subquery(Visit.class)
+                        .where(RAW."\{column(Visit_.pet, INNER)} = \{outer(Pet_.id)}"))
+                .getResultList();
+        assertEquals(typed, template);
+        // Without outer, the path names the pet the subquery joins, so every pet matches.
+        List<Pet> uncorrelated = orm.entity(Pet.class).select()
+                .whereExists(orm.subquery(Visit.class).where(it -> it.where(Visit_.pet.id, EQUALS, Pet_.id)))
+                .getResultList();
+        assertEquals(13, uncorrelated.size());
+    }
+
+    @Test
+    public void testAntiJoinOnATableTheQueryJoins() {
+        // The owners with their pets, leaving out the owners who keep a pet named Rosy: Eduardo keeps Rosy and Jewel.
+        List<Owner> owners = orm.entity(Owner.class).select()
+                .innerJoin(Pet.class).on(Owner.class)
+                .antiJoin(Pet.class).on(Owner.class, it -> it.where(Pet_.name, EQUALS, "Rosy"))
+                .where(Pet_.name, IN, "Jewel", "Leo")
+                .getResultList();
+        assertEquals(List.of("Betty"), owners.stream().map(Owner::firstName).toList());
     }
 
     @Test

@@ -19,6 +19,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static st.orm.Metamodel.outer;
 import static st.orm.Operator.EQUALS;
 import static st.orm.Operator.NOT_EQUALS;
 import static st.orm.ResolveScope.INNER;
@@ -1162,5 +1163,118 @@ public class SemiJoinIntegrationTest {
         var owners = ownersWithPets().orderBy(Owner_.lastName).getResultList();
         assertEquals(10, owners.size());
         assertEquals(owners.stream().map(Owner::lastName).sorted().toList(), owners.stream().map(Owner::lastName).toList());
+    }
+
+    @Test
+    public void antiJoinOnATableTheQueryJoinsTakesItsConditionOnTheJoin() {
+        // data.sql: Peter keeps the snake George, which had 2 of the 14 visits; five other owners have a visited pet.
+        var counts = capture(() -> orm().selectFrom(Owner.class, Long.class, raw("COUNT(*)"))
+                .innerJoin(Pet.class).on(Owner.class)
+                .innerJoin(Visit.class).on(Pet.class)
+                .antiJoin(Pet.class).on(Owner.class, it -> it.where(Pet_.type.name, EQUALS, "snake"))
+                .groupBy(Owner_.id)
+                .getResultList());
+        assertEquals(5, counts.size());
+        assertEquals(12L, counts.stream().mapToLong(Long::longValue).sum());
+        // The condition on the join names the rows of the subquery, which reads the table under an alias of its own.
+        assertTrue(statement().contains("INNER JOIN pet p ON p.owner_id = o.id INNER JOIN visit v ON v.pet_id = p.id"), statement());
+        assertTrue(statement().contains("NOT EXISTS (SELECT 1 FROM pet p1 INNER JOIN pet_type pt ON p1.type_id = pt.id WHERE p1.owner_id = o.id AND pt.name = ?)"), statement());
+    }
+
+    @Test
+    public void conditionsAndClausesNameTheJoinedRowsOfATableTheQueryAlsoFiltersBy() {
+        // The owners of a dog, leaving out the owners who keep a pet named Rosy: Eduardo keeps the dogs Rosy and Jewel.
+        var owners = capture(() -> orm().entity(Owner.class).select()
+                .antiJoin(Pet.class).on(Owner.class, it -> it.where(Pet_.name, EQUALS, "Rosy"))
+                .innerJoin(Pet.class).on(Owner.class)
+                .where(Pet_.type.name, EQUALS, "dog")
+                .orderBy(Pet_.name)
+                .getResultList());
+        assertEquals(List.of("Carlos", "Maria"), firstNames(owners));
+        assertTrue(statement().contains("WHERE pt.name = ? AND NOT EXISTS (SELECT 1 FROM pet p1 WHERE p1.owner_id = o.id AND p1.name = ?) ORDER BY p.name"), statement());
+    }
+
+    @Test
+    public void semiJoinOnATableTheQueryJoinsTakesItsConditionOnTheJoin() {
+        // The owners with their pets, for the owners who keep a pet named Max: Jean keeps Samantha and Max.
+        var owners = capture(() -> orm().entity(Owner.class).select()
+                .innerJoin(Pet.class).on(Owner.class)
+                .semiJoin(Pet.class).on(Owner.class, it -> it.where(Pet_.name, EQUALS, "Max"))
+                .where(Pet_.name, NOT_EQUALS, "Max")
+                .getResultList());
+        assertEquals(List.of("Jean"), firstNames(owners));
+        assertTrue(statement().contains("WHERE p.name <> ? AND EXISTS (SELECT 1 FROM pet p1 WHERE p1.owner_id = o.id AND p1.name = ?)"), statement());
+    }
+
+    @Test
+    public void twoFilterJoinsOnATableTheQueryJoinsLeaveTheTableToTheJoin() {
+        var owners = capture(() -> orm().entity(Owner.class).select()
+                .innerJoin(Pet.class).on(Owner.class)
+                .semiJoin(Pet.class).on(Owner.class, it -> it.where(Pet_.name, EQUALS, "Max"))
+                .antiJoin(Pet.class).on(Owner.class, it -> it.where(Pet_.name, EQUALS, "Rosy"))
+                .where(Pet_.name, EQUALS, "Samantha")
+                .getResultList());
+        assertEquals(List.of("Jean"), firstNames(owners));
+    }
+
+    @Test
+    public void semiJoinWithoutAConditionOnATableTheQueryJoinsIsRefused() {
+        var joinedFirst = assertThrows(PersistenceException.class, () -> orm().entity(Owner.class).select()
+                .innerJoin(Pet.class).on(Owner.class)
+                .semiJoin(Pet.class).on(Owner.class));
+        assertTrue(joinedFirst.getMessage().contains("semiJoin(Pet): the query also joins Pet"), joinedFirst.getMessage());
+        assertTrue(joinedFirst.getMessage().contains("semiJoin(Pet).on(Owner, condition)"), joinedFirst.getMessage());
+        var filteredFirst = assertThrows(PersistenceException.class, () -> orm().entity(Owner.class).select()
+                .semiJoin(Pet.class).on(Owner.class)
+                .innerJoin(Pet.class).on(Owner.class));
+        assertTrue(filteredFirst.getMessage().contains("semiJoin(Pet): the query also joins Pet"), filteredFirst.getMessage());
+    }
+
+    @Test
+    public void filterJoinOnATableTheQueryJoinsAndFiltersByIsJoinedOnTheJoinedRows() {
+        // The owners with their visited pets, leaving out the owners who keep a pet named Leo: the semi-join on Pet
+        // names the joined pet, not the pets the anti-join looks for.
+        var owners = capture(() -> orm().entity(Owner.class).select()
+                .innerJoin(Pet.class).on(Owner.class)
+                .antiJoin(Pet.class).on(Owner.class, it -> it.where(Pet_.name, EQUALS, "Leo"))
+                .semiJoin(Visit.class).on(Pet.class)
+                .getResultList());
+        assertEquals(7, owners.size());
+        assertTrue(statement().contains("NOT EXISTS (SELECT 1 FROM pet p1 WHERE p1.owner_id = o.id AND p1.name = ?) AND EXISTS (SELECT 1 FROM visit v WHERE v.pet_id = p.id)"), statement());
+        // Named by its key, the join is placed the same way.
+        var keyed = capture(() -> orm().entity(Owner.class).select()
+                .innerJoin(Pet.class).on(Owner.class)
+                .antiJoin(Pet.class).on(Owner.class, it -> it.where(Pet_.name, EQUALS, "Leo"))
+                .semiJoin(Visit.class).on(it -> it.where(Visit_.pet.id, EQUALS, Pet_.id))
+                .getResultList());
+        assertEquals(7, keyed.size());
+        assertTrue(statement().contains("AND EXISTS (SELECT 1 FROM visit v WHERE v.pet_id = p.id)"), statement());
+    }
+
+    @Test
+    public void joinsOfOtherTablesAndOfSubqueriesLeaveAFilterJoinAsItIs() {
+        // A join of a subquery names no table, and a join of another table than the filtered one names another:
+        // neither changes what a condition naming the filtered table means.
+        var pets = capture(() -> orm().entity(Pet.class).select()
+                .semiJoin(Visit.class).on(Pet.class)
+                .innerJoin(raw("SELECT id FROM owner"), "owners").on(raw("owners.id = \0", Pet_.owner))
+                .innerJoin(PetType.class).on(Pet.class)
+                .where(Visit_.description, EQUALS, "neutered")
+                .getResultList());
+        assertEquals(List.of("Basil", "Jewel", "Max"), petNames(pets));
+        assertTrue(statement().contains("EXISTS (SELECT 1 FROM visit v WHERE v.pet_id = p.id AND v.description = ?)"), statement());
+    }
+
+    @Test
+    public void conditionOnAFilterJoinNamesTheJoinedRowsThroughOuter() {
+        // The owners with their pets, leaving out the pets whose owner keeps another pet: inside the condition a
+        // path names the subquery's pet, and outer names the joined one.
+        var owners = capture(() -> orm().entity(Owner.class).select()
+                .innerJoin(Pet.class).on(Owner.class)
+                .antiJoin(Pet.class).on(Owner.class, it -> it.where(Pet_.id, NOT_EQUALS, outer(Pet_.id)))
+                .getResultList());
+        // data.sql: Eduardo and Jean keep two pets each, the other eight owners one.
+        assertEquals(8, owners.size());
+        assertTrue(statement().contains("NOT EXISTS (SELECT 1 FROM pet p1 WHERE p1.owner_id = o.id AND p1.id <> p.id)"), statement());
     }
 }

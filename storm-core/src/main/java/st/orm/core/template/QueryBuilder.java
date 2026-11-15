@@ -292,6 +292,15 @@ public abstract class QueryBuilder<T extends Data, R, ID> {
      * two tables hold for the same outer related row. A table referenced through a foreign key, such as the table a link
      * row points at, is related through that foreign key's columns, without reading the table itself.</p>
      *
+     * <p>The table may be the query's own, or a table the query joins. On the query's own table, the semi-join finds
+     * the rows that reference the same row as the query's row, and {@code on} names the table both reference:
+     * {@code semiJoin(Visit.class).on(Pet.class, condition)} from a query of visits. On a table the query joins, it
+     * filters by other rows of that table than the joined ones:
+     * {@code innerJoin(Pet.class).on(Owner.class)} followed by {@code semiJoin(Pet.class).on(Owner.class, condition)}.
+     * In both cases the condition is stated on the join and names the rows the semi-join looks for; every other
+     * condition and clause that names the table names the query's rows, so on a table the query joins a semi-join
+     * without a condition on the join is refused.</p>
+     *
      * @param relation the table to filter by.
      * @return the join builder.
      * @since 1.16
@@ -306,6 +315,12 @@ public abstract class QueryBuilder<T extends Data, R, ID> {
      * <p>As for a semi-join, {@code on} may name a semi-joined or anti-joined table, which nests the anti-join in that
      * table's subquery: {@code semiJoin(Pet.class).on(Owner.class)} followed by
      * {@code antiJoin(Visit.class).on(Pet.class)} keeps the owners with a pet that never had a visit.</p>
+     *
+     * <p>The table may be the query's own, or a table the query joins, as for a semi-join:
+     * {@code innerJoin(Pet.class).on(Owner.class)} followed by {@code antiJoin(Pet.class).on(Owner.class, condition)}
+     * keeps the owners, with their pets, who have no pet matching the condition. The condition on the join names the
+     * rows the anti-join looks for, and every other condition and clause that names the table names the joined
+     * rows.</p>
      *
      * @param relation the table to filter by.
      * @return the join builder.

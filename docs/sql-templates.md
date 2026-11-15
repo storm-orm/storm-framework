@@ -389,6 +389,8 @@ var pets = orm.entity(Pet.class).select()
 
 The `column()` function with a metamodel reference resolves to the fully qualified column name (e.g., `v.pet_id` and `p.id`). `INNER` tells Storm to resolve `Visit_.pet` from the subquery, while `OUTER` resolves `Pet_.id` from the main query.
 
+In a comparison built without a template, `outer(Pet_.id)` names the column of the main query: `subquery<Visit>().where(Visit_.pet.id eq outer(Pet_.id))`. See [Correlated Subqueries](queries.md#correlated-subqueries).
+
 In most cases the default `CASCADE` scope is correct, because it ensures that each alias resolves to exactly one table. Use `INNER` or `OUTER` when writing correlated subqueries where you need to control whether a reference resolves to the inner query's tables or the outer query's tables.
 
 ---

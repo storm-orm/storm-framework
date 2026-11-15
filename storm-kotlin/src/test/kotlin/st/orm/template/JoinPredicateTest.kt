@@ -22,6 +22,7 @@ import st.orm.test.StormTest
 internal class JoinPredicateTest {
 
     private val petId = Metamodel.of<Pet, Int>(Pet::class.java, "id")
+    private val petName = Metamodel.of<Pet, String>(Pet::class.java, "name")
     private val petOwnerId = Metamodel.of<Pet, Int>(Pet::class.java, "owner.id")
     private val ownerId = Metamodel.of<Owner, Int>(Owner::class.java, "id")
     private val ownerLastName = Metamodel.of<Owner, String>(Owner::class.java, "lastName")
@@ -133,5 +134,46 @@ internal class JoinPredicateTest {
         }
         pets shouldHaveSize 14
         capture.sql() shouldContain "INNER JOIN visit v ON v.pet_id = p.id"
+    }
+
+    @Test
+    fun `an anti-join on a table the query joins takes its condition on the join`(orm: ORMTemplate, capture: SqlCapture) {
+        // The visits per owner, leaving out the owner of the pet named George, which had 2 of the 14 visits.
+        val counts = capture.execute {
+            orm.entity(Owner::class).select(Long::class) { "COUNT(*)" }
+                .innerJoin<Pet>().on<Owner>()
+                .innerJoin<Visit>().on<Pet>()
+                .antiJoin<Pet>().on(Owner::class, petName eq "George")
+                .groupBy(ownerId)
+                .resultList
+        }
+        counts shouldHaveSize 5
+        counts.sum() shouldBe 12
+        capture.sql() shouldContain "INNER JOIN pet p ON p.owner_id = o.id INNER JOIN visit v ON v.pet_id = p.id"
+        capture.sql() shouldContain "NOT EXISTS ( SELECT 1 FROM pet p1 WHERE p1.owner_id = o.id AND p1.name = ? )"
+    }
+
+    @Test
+    fun `a semi-join on a table the query joins leaves a where condition to the joined rows`(orm: ORMTemplate, capture: SqlCapture) {
+        // The owners with their pets, for the owners who keep a pet named Max: Jean keeps Samantha and Max.
+        val owners = capture.execute {
+            orm.entity(Owner::class).select()
+                .innerJoin<Pet>().on<Owner>()
+                .semiJoin<Pet>().on(Owner::class, petName eq "Max")
+                .where(petName neq "Max")
+                .resultList
+        }
+        owners.map { it.firstName } shouldBe listOf("Jean")
+        capture.sql() shouldContain "WHERE p.name <> ? AND EXISTS ( SELECT 1 FROM pet p1 WHERE p1.owner_id = o.id AND p1.name = ? )"
+    }
+
+    @Test
+    fun `a semi-join without a condition on a table the query joins is refused`(orm: ORMTemplate) {
+        val exception = shouldThrow<PersistenceException> {
+            orm.entity(Owner::class).select()
+                .innerJoin<Pet>().on<Owner>()
+                .semiJoin<Pet>().on<Owner>()
+        }
+        exception.message shouldContain "semiJoin(Pet).on(Owner, condition)"
     }
 }

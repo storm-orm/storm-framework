@@ -14,6 +14,7 @@ import st.orm.template.QueryBuilder;              // Query builder
 import st.orm.Operator;                           // EQUALS, NOT_EQUALS, LIKE, IN, IS_NULL, etc.
 import static st.orm.Operator.*;                  // Static import for operator constants
 import st.orm.Metamodel;                          // Generated metamodel fields (User_, City_, etc.)
+import static st.orm.Metamodel.outer;             // outer(City_.id): a column of the enclosing query in a subquery
 import st.orm.Ref;                                // Lazy-loaded reference
 import st.orm.Page;                               // Offset-based pagination result
 import st.orm.Pageable;                           // Pagination request
@@ -535,6 +536,7 @@ Pick the form by the direction of the relation and by whether the related rows b
 - `semiJoin` and `antiJoin` are complements: on the same table with the same condition on the join, the one keeps the rows the other drops. Without a condition, `semiJoin` keeps the rows with any related row and `antiJoin` the rows without one.
 - Two semi-joins or anti-joins on one table are two subqueries, each with its own condition on the join: `antiJoin(Visit.class).on(Pet.class, it -> it.where(Visit_.description, EQUALS, "rabies shot")).semiJoin(Visit.class).on(Pet.class)` finds the pets with a visit but no rabies shot, and two `semiJoin`s with different conditions match a related row each. A `where` naming the table is then refused: each condition goes on its join.
 - A semi-join or anti-join on the query's own table finds the rows referencing the same row as the query's row: `visits.select().semiJoin(Visit.class).on(Pet.class, it -> it.where(Visit_.description, EQUALS, "rabies shot")).where(Visit_.visitDate, GREATER_THAN_OR_EQUAL, date)` finds the visits since the date of the pets that had a rabies shot. The condition on the join names the other row, `where` the query's row. `on` names a table the query's table references; `on(Visit.class)` is refused.
+- A table the query joins may be anti-joined or semi-joined as well, with the condition on the join: `.innerJoin(Pet.class).on(Owner.class).antiJoin(Pet.class).on(Owner.class, it -> it.where(Pet_.type.name, EQUALS, "snake"))` gives the owners with their pets, leaving out the owners who keep a snake. The condition on the join names the rows the filter looks for; `where`, `orderBy`, `groupBy`, the select and a later join's `on` name the joined rows. A `semiJoin` without a condition on such a table is refused. Inside the condition, `outer(...)` names the joined row: `.antiJoin(Pet.class).on(Owner.class, it -> it.where(Pet_.id, NOT_EQUALS, outer(Pet_.id)))` keeps the pets whose owner has no other pet.
 - Keep `whereExists` for a subquery a foreign key does not express.
 
 **Through two to-many relations, chain the semi-joins.** `on` names a semi-joined table, so `.semiJoin(Pet.class).on(Owner.class).semiJoin(Visit.class).on(Pet.class).where(Visit_.visitDate, GREATER_THAN_OR_EQUAL, date)` finds the owners with a pet that had a visit since the date, each once.
@@ -599,21 +601,21 @@ pets.select()
 
 ## Subqueries (EXISTS / NOT EXISTS)
 
-**Use `whereExists(subquery)` / `whereNotExists(subquery)` for an EXISTS condition a foreign key does not express.** Inside the where-lambda, `WhereBuilder.exists(subquery)` / `notExists(subquery)` combine it with other conditions. Build the subquery with `orm.selectFrom(...)`. The subquery is not correlated by itself: `whereExists(orm.selectFrom(User.class))` holds for every city once any user exists. Correlate it in its condition, naming the subquery's column with `column(..., INNER)` and the outer query's with `column(..., OUTER)`. For "the rows with (or without) a related row", use `semiJoin` / `antiJoin` instead, which correlate through the foreign key (see **Filtering by Related Rows**).
+**Use `whereExists(subquery)` / `whereNotExists(subquery)` for an EXISTS condition a foreign key does not express.** Inside the where-lambda, `WhereBuilder.exists(subquery)` / `notExists(subquery)` combine it with other conditions. Build the subquery with `orm.selectFrom(...)`. The subquery is not correlated by itself: `whereExists(orm.selectFrom(User.class))` holds for every city once any user exists. Correlate it in its condition by comparing a column of the subquery with `Metamodel.outer(...)`, which names a column of the enclosing query. A path without `outer` names the subquery's own tables, the ones it joins included, so `where(User_.city.id, EQUALS, City_.id)` compares the user's city with itself. In a template, `outer(City_.id)` renders the outer column, as `column(City_.id, OUTER)` does. `outer(...)` is the other side of a comparison only, optionally inside a `SqlFunction`: every other method that takes a path refuses it when the query is built. For "the rows with (or without) a related row", use `semiJoin` / `antiJoin` instead, which correlate through the foreign key (see **Filtering by Related Rows**).
 
 ```java
 // WHERE EXISTS, correlated in the condition: the cities with a user
 List<City> citiesWithUsers = orm.entity(City.class)
     .select()
     .whereExists(orm.selectFrom(User.class)
-        .where(raw("\0 = \0", column(User_.city, INNER), column(City_.id, OUTER))))
+        .where(it -> it.where(User_.city.id, EQUALS, outer(City_.id))))
     .getResultList();
 
 // WHERE NOT EXISTS, combined with another condition
 List<City> citiesWithoutUsers = orm.entity(City.class)
     .select()
     .where(it -> it.notExists(orm.selectFrom(User.class)
-            .where(raw("\0 = \0", column(User_.city, INNER), column(City_.id, OUTER))))
+            .where(user -> user.where(User_.city.id, EQUALS, outer(City_.id))))
         .and(it.where(City_.name, LIKE, "M%")))
     .getResultList();
 ```

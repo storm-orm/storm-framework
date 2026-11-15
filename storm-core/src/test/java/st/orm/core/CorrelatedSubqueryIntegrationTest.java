@@ -17,8 +17,11 @@ package st.orm.core;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static st.orm.Metamodel.outer;
 import static st.orm.Operator.EQUALS;
+import static st.orm.Operator.NOT_EQUALS;
 import static st.orm.ResolveScope.INNER;
 import static st.orm.ResolveScope.OUTER;
 import static st.orm.core.template.SqlInterceptor.observe;
@@ -37,6 +40,10 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.jdbc.JdbcTest;
 import org.springframework.test.context.ContextConfiguration;
 import org.springframework.test.context.junit.jupiter.SpringExtension;
+import st.orm.Metamodel;
+import st.orm.PersistenceException;
+import st.orm.SqlFunction;
+import st.orm.core.model.Address;
 import st.orm.core.model.Owner;
 import st.orm.core.model.Owner_;
 import st.orm.core.model.Pet;
@@ -45,6 +52,7 @@ import st.orm.core.model.Visit;
 import st.orm.core.model.Visit_;
 import st.orm.core.template.ORMTemplate;
 import st.orm.core.template.TemplateString;
+import st.orm.core.template.impl.PredicateBuilderFactory;
 
 /**
  * A subquery correlates with the enclosing query through {@code column(..., OUTER)}, which names the outer query's
@@ -139,5 +147,225 @@ public class CorrelatedSubqueryIntegrationTest {
                 .getResultList());
         assertEquals(10, owners.size());
         assertTrue(statement().contains("WHERE EXISTS ( SELECT p.id FROM pet p WHERE p.owner_id = o.id )"), statement());
+    }
+
+    @Test
+    public void comparisonWithoutOuterNamesTheSubqueryOwnTables() {
+        // The subquery joins the visit's pet, which the path names: every pet has a visit by this reading.
+        var pets = capture(() -> orm().entity(Pet.class).select()
+                .whereExists(orm().selectFrom(Visit.class).where(it -> it.where(Visit_.pet.id, EQUALS, Pet_.id)))
+                .getResultList());
+        assertEquals(13, pets.size());
+        assertTrue(statement().contains("WHERE v.pet_id = p1.id"), statement());
+    }
+
+    @Test
+    public void outerNamesTheColumnOfTheEnclosingQueryInAComparison() {
+        // data.sql: pets 1 to 8 have visits.
+        var pets = capture(() -> orm().entity(Pet.class).select()
+                .whereExists(orm().selectFrom(Visit.class).where(it -> it.where(Visit_.pet.id, EQUALS, outer(Pet_.id))))
+                .getResultList());
+        assertEquals(8, pets.size());
+        assertTrue(statement().contains("WHERE EXISTS ( SELECT 1 FROM visit v WHERE v.pet_id = p.id )"), statement());
+    }
+
+    @Test
+    public void outerNamesTheEnclosingRowOfTheTableTheSubqueryIsRootedAt() {
+        // The pets whose owner keeps another pet: Rosy and Jewel, Samantha and Max.
+        var pets = capture(() -> orm().entity(Pet.class).select()
+                .whereExists(orm().selectFrom(Pet.class).where(it -> it.where(Pet_.owner.id, EQUALS, outer(Pet_.owner.id))
+                        .and(it.where(Pet_.id, NOT_EQUALS, outer(Pet_.id)))))
+                .getResultList());
+        assertEquals(Set.of("Rosy", "Jewel", "Samantha", "Max"), pets.stream().map(Pet::name).collect(Collectors.toSet()));
+        assertTrue(statement().contains("FROM pet p1 WHERE p1.owner_id = p.owner_id AND p1.id <> p.id"), statement());
+    }
+
+    @Test
+    public void outerOnTheLeftOfAComparisonNamesTheEnclosingQuery() {
+        var pets = capture(() -> orm().entity(Pet.class).select()
+                .whereExists(orm().selectFrom(Pet.class).where(it -> it.where(outer(Pet_.owner.id), EQUALS, Pet_.owner.id)
+                        .and(it.where(Pet_.id, NOT_EQUALS, outer(Pet_.id)))))
+                .getResultList());
+        assertEquals(4, pets.size());
+        assertTrue(statement().contains("FROM pet p1 WHERE p.owner_id = p1.owner_id AND p1.id <> p.id"), statement());
+    }
+
+    @Test
+    public void outerReachesATableTheEnclosingQueryJoins() {
+        // The visits for which another pet's owner shares the first name of the visited pet's owner: none does, so
+        // the subquery finds the visited pet's own row.
+        var visits = capture(() -> orm().entity(Visit.class).select()
+                .whereExists(orm().selectFrom(Pet.class)
+                        .where(it -> it.where(Pet_.owner.firstName, EQUALS, outer(Visit_.pet.owner.firstName))))
+                .getResultList());
+        assertEquals(14, visits.size());
+        assertTrue(statement().contains("FROM pet p1 LEFT JOIN owner o1 ON p1.owner_id = o1.id WHERE o1.first_name = o.first_name"), statement());
+    }
+
+    @Test
+    public void outerInATemplateRendersTheColumnOfTheEnclosingQuery() {
+        var owners = capture(() -> orm().entity(Owner.class).select()
+                .whereExists(orm().selectFrom(Pet.class).where(raw("\0 = \0", column(Pet_.owner, INNER), outer(Owner_.id))))
+                .getResultList());
+        assertEquals(10, owners.size());
+        assertTrue(statement().contains("WHERE EXISTS ( SELECT 1 FROM pet p WHERE p.owner_id = o.id )"), statement());
+    }
+
+    @Test
+    public void outerCountsTheRelatedRowsOfTheEnclosingRow() {
+        // data.sql: pets 1, 2, 4, 6, 7 and 8 had two visits, the other visited pets one.
+        var pets = capture(() -> orm().entity(Pet.class).select()
+                .whereExists(orm().selectFrom(Visit.class)
+                        .where(it -> it.where(Visit_.pet.id, EQUALS, outer(Pet_.id)))
+                        .having(raw("COUNT(*) >= \0", 2)))
+                .getResultList());
+        assertEquals(Set.of("Leo", "Basil", "Jewel", "George", "Samantha", "Max"), pets.stream().map(Pet::name).collect(Collectors.toSet()));
+        assertTrue(statement().contains("FROM visit v WHERE v.pet_id = p.id HAVING COUNT(*) >= ?"), statement());
+    }
+
+    @Test
+    public void outerIsNoColumnToCompareAValueWith() {
+        var e = assertThrows(PersistenceException.class, () -> orm().selectFrom(Pet.class)
+                .where(it -> it.where(outer(Pet_.name), EQUALS, "Leo")));
+        assertTrue(e.getMessage().contains("outer(Pet_.name) names a column of the enclosing query"), e.getMessage());
+    }
+
+    @Test
+    public void outerIsNoKeyOfAJoin() {
+        // A semi-join relates its table to a table of the query through a key of each; a column of the enclosing
+        // query is neither.
+        var e = assertThrows(PersistenceException.class, () -> orm().entity(Pet.class).select()
+                .semiJoin(Visit.class).on(it -> it.where(Visit_.pet.id, EQUALS, outer(Pet_.id))));
+        assertTrue(e.getMessage().contains("the predicate equates no key of Visit"), e.getMessage());
+    }
+
+    @Test
+    public void outerInASubqueryWithASemiJoinStaysTheEnclosingQuerys() {
+        // The owners who keep a visited pet other than the pet the enclosing row is: the subquery's semi-join places
+        // its own conditions, and the comparison with the enclosing row stays with the subquery's rows.
+        var pets = capture(() -> orm().entity(Pet.class).select()
+                .whereExists(orm().selectFrom(Pet.class)
+                        .semiJoin(Visit.class).on(Pet.class)
+                        .where(it -> it.where(Pet_.owner.id, EQUALS, outer(Pet_.owner.id))
+                                .and(it.where(Pet_.id, NOT_EQUALS, outer(Pet_.id)))))
+                .getResultList());
+        assertEquals(Set.of("Rosy", "Jewel", "Samantha", "Max"), pets.stream().map(Pet::name).collect(Collectors.toSet()));
+        assertTrue(statement().contains("p1.owner_id = p.owner_id AND p1.id <> p.id AND EXISTS ( SELECT 1 FROM visit v WHERE v.pet_id = p1.id )"), statement());
+    }
+
+    @Test
+    public void outerInATemplateNamesAColumn() {
+        var e = assertThrows(PersistenceException.class, () -> orm().entity(Owner.class).select()
+                .whereExists(orm().selectFrom(Pet.class).where(raw("\0 IS NOT NULL", outer(Metamodel.root(Owner.class)))))
+                .getResultList());
+        assertTrue(e.getMessage().contains("Path does not reference a column"), e.getMessage());
+    }
+
+    @Test
+    public void outerInATemplatePredicateRendersTheColumnOfTheEnclosingQuery() {
+        var owners = capture(() -> orm().entity(Owner.class).select()
+                .whereExists(orm().selectFrom(Pet.class)
+                        .where(it -> it.where(raw("\0 = \0", column(Pet_.owner, INNER), outer(Owner_.id)))
+                                .and(it.where(Pet_.name, NOT_EQUALS, "Leo"))))
+                .getResultList());
+        // data.sql: Betty keeps Leo alone.
+        assertEquals(9, owners.size());
+        assertTrue(statement().contains("FROM pet p WHERE (p.owner_id = o.id) AND p.name <> ?"), statement());
+    }
+
+    @Test
+    public void outerInATemplatePredicateNamesAColumn() {
+        var e = assertThrows(PersistenceException.class, () -> orm().entity(Owner.class).select()
+                .whereExists(orm().selectFrom(Pet.class)
+                        .where(it -> it.where(raw("\0 IS NOT NULL", outer(Metamodel.root(Owner.class))))
+                                .and(it.where(Pet_.name, NOT_EQUALS, "Leo"))))
+                .getResultList());
+        assertTrue(e.getMessage().contains("Path does not reference a column"), e.getMessage());
+    }
+
+    @Test
+    public void outerInAColumnElementNamesTheEnclosingQuery() {
+        var owners = capture(() -> orm().entity(Owner.class).select()
+                .whereExists(orm().selectFrom(Pet.class).where(raw("\0 = \0", column(Pet_.owner, INNER), column(outer(Owner_.id)))))
+                .getResultList());
+        assertEquals(10, owners.size());
+        assertTrue(statement().contains("WHERE EXISTS ( SELECT 1 FROM pet p WHERE p.owner_id = o.id )"), statement());
+    }
+
+    @Test
+    public void outerIsNoColumnToOrderOrGroupBy() {
+        var ordered = assertThrows(PersistenceException.class, () -> orm().selectFrom(Pet.class).orderBy(outer(Pet_.name)));
+        assertTrue(ordered.getMessage().contains("outer(Pet_.name) names a column of the enclosing query"), ordered.getMessage());
+        var grouped = assertThrows(PersistenceException.class, () -> orm().selectFrom(Pet.class).groupBy(outer(Pet_.name)));
+        assertTrue(grouped.getMessage().contains("A query orders and groups by its own columns"), grouped.getMessage());
+    }
+
+    @Test
+    public void outerOutsideASubqueryFindsNoEnclosingQuery() {
+        var e = assertThrows(PersistenceException.class, () -> orm().entity(Pet.class).select()
+                .where(it -> it.where(Pet_.owner.id, EQUALS, outer(Owner_.id)))
+                .getResultList());
+        assertTrue(e.getMessage().contains("Owner is not part of this query"), e.getMessage());
+    }
+
+    @Test
+    public void outerIsRefusedWhereAQueryTakesItsOwnPaths() {
+        // Whatever takes a path of the query refuses a column of the enclosing one where it is given: a search, a
+        // function call compared with a value, a reference to resolve, a column to set.
+        var message = "names a column of the enclosing query";
+        var searched = assertThrows(PersistenceException.class, () -> orm().selectFrom(Pet.class)
+                .where(it -> PredicateBuilderFactory.search("leo", outer(Pet_.name)))
+                .getResultList());
+        assertTrue(searched.getMessage().contains("outer(Pet_.name) " + message), searched.getMessage());
+        assertTrue(searched.getMessage().contains("A query searches its own columns."), searched.getMessage());
+        var called = assertThrows(PersistenceException.class, () -> orm().selectFrom(Pet.class)
+                .where(it -> it.where(SqlFunction.<String>of("upper").apply(outer(Pet_.name)), EQUALS, "LEO")));
+        assertTrue(called.getMessage().contains("upper(outer(Pet_.name)) " + message), called.getMessage());
+        var fetched = assertThrows(PersistenceException.class, () -> orm().entity(Pet.class).select()
+                .fetch(outer(Pet_.type)));
+        assertTrue(fetched.getMessage().contains("outer(Pet_.type) " + message), fetched.getMessage());
+        var set = assertThrows(PersistenceException.class, () -> orm().entity(Owner.class).update()
+                .set(outer(Owner_.firstName), "Leo")
+                .where(Owner_.id, EQUALS, 1)
+                .executeUpdate());
+        assertTrue(set.getMessage().contains("A query sets its own columns."), set.getMessage());
+    }
+
+    @Test
+    public void functionAppliesToAnOuterColumn() {
+        // The pets named as their owner, whatever the case: none in data.sql, so the statement is what counts.
+        var upper = SqlFunction.<String>of("upper");
+        var owners = capture(() -> orm().entity(Owner.class).select()
+                .whereExists(orm().selectFrom(Pet.class).where(it -> it.where(Pet_.owner.id, EQUALS, outer(Owner_.id))
+                        .and(it.where(upper.apply(Pet_.name), EQUALS, upper.apply(outer(Owner_.firstName))))))
+                .getResultList());
+        assertEquals(0, owners.size());
+        assertTrue(statement().contains("FROM pet p WHERE p.owner_id = o.id AND upper(p.name) = upper(o.first_name)"), statement());
+        // The call may be named in the enclosing query as a whole, and in a template.
+        capture(() -> orm().entity(Owner.class).select()
+                .whereExists(orm().selectFrom(Pet.class)
+                        .where(it -> it.where(Pet_.name, EQUALS, outer(upper.apply(Owner_.firstName)))))
+                .getResultList());
+        assertTrue(statement().contains("FROM pet p WHERE p.name = upper(o.first_name)"), statement());
+        capture(() -> orm().entity(Owner.class).select()
+                .whereExists(orm().selectFrom(Pet.class)
+                        .where(raw("\0 = \0", Pet_.name, upper.apply(outer(Owner_.firstName)))))
+                .getResultList());
+        assertTrue(statement().contains("FROM pet p WHERE p.name = upper(o.first_name)"), statement());
+    }
+
+    @Test
+    public void functionAppliesToEitherSideOfAColumnComparison() {
+        var upper = SqlFunction.<String>of("upper");
+        var owners = capture(() -> orm().entity(Owner.class).select()
+                .where(it -> it.where(upper.apply(Owner_.firstName), EQUALS, upper.apply(Owner_.lastName)))
+                .getResultList());
+        assertEquals(0, owners.size());
+        assertTrue(statement().contains("WHERE upper(o.first_name) = upper(o.last_name)"), statement());
+        // A function takes one column, and an address spans two.
+        var e = assertThrows(PersistenceException.class, () -> orm().entity(Owner.class).select()
+                .where(it -> it.where(Owner_.address, EQUALS, SqlFunction.<Address>of("upper").apply(Owner_.address)))
+                .getResultList());
+        assertTrue(e.getMessage().contains("applies a SQL function"), e.getMessage());
     }
 }

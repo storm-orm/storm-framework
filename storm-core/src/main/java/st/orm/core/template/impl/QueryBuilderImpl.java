@@ -593,17 +593,7 @@ abstract class QueryBuilderImpl<T extends Data, R, ID> extends QueryBuilder<T, R
      */
     @SuppressWarnings("unchecked")
     private QueryBuilder<Data, R, ID> addJoin(Join join) {
-        if (FilterJoinPlacement.isFilterJoin(join)) {
-            FilterJoinPlacement.verify(queryTemplate, fromType, this.join, join);
-        } else if (join.source() instanceof TableSource(var table)) {
-            for (var existing : this.join) {
-                if (FilterJoinPlacement.isFilterJoin(existing)
-                        && existing.source() instanceof TableSource(var existingTable) && existingTable == table) {
-                    throw new PersistenceException("The query already filters by %s through a %s, so a condition naming it could not tell the joins apart."
-                            .formatted(table.getSimpleName(), ((FilterJoinType) existing.type()).method()));
-                }
-            }
-        }
+        FilterJoinPlacement.verify(queryTemplate, fromType, this.join, join);
         List<Join> copy = new ArrayList<>(this.join);
         copy.add(join);
         return (QueryBuilder<Data, R, ID>) copyWith(queryTemplate, fromType, copy, where, groupBy, having, orderBy, hints, orderFirstKeys);

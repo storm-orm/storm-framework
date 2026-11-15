@@ -231,6 +231,7 @@ public class SelectBuilderImpl<T extends Data, R, ID> extends QueryBuilderImpl<T
         var selectDataType = (Class<? extends Data>) selectType;
         var combined = new ArrayList<>(fetchPaths);
         for (var path : paths) {
+            OuterPaths.refuse(path.asMetamodel(), "resolves the references of");
             String fieldPath = path.fieldPath();
             RecordValidation.validateFetchPath(selectDataType, fieldPath);
             if (!combined.contains(fieldPath)) {
