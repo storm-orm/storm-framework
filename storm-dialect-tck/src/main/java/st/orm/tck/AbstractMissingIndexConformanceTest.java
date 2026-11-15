@@ -87,7 +87,7 @@ public abstract class AbstractMissingIndexConformanceTest {
     private static final int TYPES = 4_000;
 
     private static final Pattern ADVISED_INDEX = Pattern.compile("advice_pet\\(([a-z_, ]+)\\)", Pattern.CASE_INSENSITIVE);
-    private static final Pattern KEY_LIMIT = Pattern.compile("passes the (\\d+) bytes the database allows a key");
+    private static final Pattern KEY_LIMIT = Pattern.compile("the database's key limit of (\\d+) bytes");
 
     private DataSource dataSource;
     private ORMTemplate orm;

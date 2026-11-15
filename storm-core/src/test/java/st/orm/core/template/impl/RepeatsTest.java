@@ -199,7 +199,7 @@ class RepeatsTest {
         }
         var text = repeats.advisories(true).getFirst().text();
         assertTrue(text.startsWith("upsert of Owner ran 10 times, "), text);
-        assertTrue(text.contains("avoids the writes, and the generated key value each upsert takes even where it "
+        assertTrue(text.contains("skips the needless writes and the generated key each upsert draws even when it "
                 + "updates\nor: the overloads that take a list send the rows as one batch."), text);
     }
 
@@ -219,7 +219,7 @@ class RepeatsTest {
         var advisories = perTransaction(update, Advice.STATEMENT_COST_NANOS, true).advisories(false);
         assertEquals(1, advisories.size(), advisories.toString());
         var text = advisories.getFirst().text();
-        assertTrue(text.contains("\ncost: at 10 ms each the statement itself costs more than its round trip, and it runs once per transaction, so look at the statement."),
+        assertTrue(text.contains("\ncost: at 10 ms each the statement itself is the cost, not the round trip, and it runs once per transaction, so look at the statement."),
                 text);
         assertFalse(text.contains("as one batch"), text);
     }

@@ -205,8 +205,9 @@ public class MissingIndexAdviceIntegrationTest {
                 .getResultList());
         assertEquals(1, advice.size(), advice.toString());
         assertTrue(advice.getFirst().startsWith("no index on customer serves anywhere(last_name), so the database "
-                + "reads customer in full to match it.\nfix: no index of the database serves the anywhere form; a "
-                + "word-suffix table, matched as a prefix, takes an ordinary index."), advice.getFirst());
+                + "reads customer in full to match it.\nfix: this database has no index for matching inside a value; "
+                + "store the column's word suffixes in a table of their own and match them with prefix(...), which a "
+                + "plain index serves."), advice.getFirst());
         advice = searchAdvice(() -> orm.entity(Customer.class).select()
                 .where(it -> PredicateBuilderFactory.<Customer, Customer, Integer>search("dav", prefix(LAST_NAME)))
                 .getResultList());
@@ -219,8 +220,8 @@ public class MissingIndexAdviceIntegrationTest {
                 .where(it -> PredicateBuilderFactory.<Customer, Customer, Integer>search("DAV", prefix(upper.apply(LAST_NAME))))
                 .getResultList());
         assertTrue(advice.getFirst().startsWith("no index on customer serves prefix(UPPER(last_name)), so the "
-                + "database reads customer in full to match it.\nfix: an index on UPPER(last_name) serves it where "
-                + "the database indexes an expression"), advice.getFirst());
+                + "database reads customer in full to match it.\nfix: an index on UPPER(last_name) serves it if "
+                + "the database supports indexes on expressions"), advice.getFirst());
         // A dialect with an index for substring matching is pointed to it: the dialect the schema was loaded with.
         // The filter applies to every kind of provider, so only the dialect providers are narrowed.
         var substringIndexOrm = ORMTemplate.of(dataSource, template -> ((PreparedStatementTemplate) template)
@@ -244,7 +245,7 @@ public class MissingIndexAdviceIntegrationTest {
                 .getResultList());
         assertEquals(1, advice.size(), advice.toString());
         assertTrue(advice.getFirst().startsWith("no index on customer serves wordStart(email), so the database reads "
-                + "customer in full to match it.\nfix: no index of the database serves the wordStart form"),
+                + "customer in full to match it.\nfix: this database has no index for matching inside a value"),
                 advice.getFirst());
         // The decision is made once per shape and catalog.
         assertEquals(advice, searchAdvice(() -> orm.entity(Customer.class).select()
@@ -261,7 +262,7 @@ public class MissingIndexAdviceIntegrationTest {
         assertEquals(1, advice.size(), advice.toString());
         assertTrue(advice.getFirst().contains("no index on customer starts with the column last_name, so the database "
                 + "reads the table in full to find the matching rows.\nindex: customer(last_name) finds them directly "
-                + "where the condition selects few of them."),
+                + "when the condition selects few of them."),
                 advice.getFirst());
     }
 
@@ -317,7 +318,7 @@ public class MissingIndexAdviceIntegrationTest {
                 .where(JOINED_ON, EQUALS, LocalDate.of(2024, 1, 1)).groupBy(LAST_NAME).getResultList());
         assertEquals(1, advice.size(), advice.toString());
         assertTrue(advice.getFirst().contains("customer(joined_on, last_name) finds the matching rows and reads them "
-                + "already grouped, without a temporary table or sort\ncovering: it reads the index alone where the "
+                + "already grouped, without a temporary table or sort\ncovering: it reads the index alone if the "
                 + "select reads no other columns"), advice.getFirst());
     }
 
@@ -406,7 +407,7 @@ public class MissingIndexAdviceIntegrationTest {
                 .where(JOINED_ON, GREATER_THAN, LocalDate.of(2020, 1, 1))
                 .where(LAST_NAME, EQUALS, "Davis").getResultList());
         assertEquals(1, advice.size(), advice.toString());
-        assertTrue(advice.getFirst().contains("starts with the column last_name or joined_on"), advice.getFirst());
+        assertTrue(advice.getFirst().contains("starts with any of the columns last_name, joined_on"), advice.getFirst());
         assertTrue(advice.getFirst().contains("\nindex: customer(last_name, joined_on)"), advice.getFirst());
     }
 

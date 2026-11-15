@@ -152,7 +152,7 @@ class IdleTransactionSpringTest {
         var lines = capture(orders::placeOrder);
         assertEquals(1, lines.size(), lines.toString());
         var line = lines.getFirst();
-        assertTrue(line.startsWith("SQL slow (transaction): held its connection "), line);
+        assertTrue(line.startsWith("SQL slow (transaction): held its connection for "), line);
         assertTrue(line.contains(" from its first statement, "), line);
         assertTrue(line.contains(" ms in its statement, read only, "), line);
         assertTrue(line.contains("#idle-transaction"), line);

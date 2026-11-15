@@ -203,7 +203,7 @@ public class IndexUsageTest {
                 + "index: owner(source, city, last_name) finds the matching rows and reads them already grouped, "
                 + "without a temporary table or sort\n"
                 + "covering: it reads the index alone when it also holds the columns the select reads\n"
-                + "or: owner(source) finds them directly where the condition selects few of them; source is an ENUM, "
+                + "or: owner(source) finds them directly when the condition selects few of them; source is an ENUM, "
                 + "with few distinct values, so an index on it alone is often not chosen.\nsee: "
                 + "https://orm.st/docs/advice#missing-index", advice);
     }
@@ -233,7 +233,7 @@ public class IndexUsageTest {
         var limited = usage.advise(catalog(3_072)).getFirst();
         assertTrue(limited.matches("(?s).*note\\(pet_id, title\\) finds the matching rows and reads them already "
                 + "grouped, without a temporary table or sort\ncovering: with body appended it would read the index "
-                + "alone, but a key of about \\d+ bytes passes the 3072 bytes the database allows a key\n"
+                + "alone, but its key of about \\d+ bytes would exceed the database's key limit of 3072 bytes\n"
                 + "or: note\\(pet_id\\).*"), limited);
     }
 
@@ -242,9 +242,10 @@ public class IndexUsageTest {
         var usage = usageOf("note", "pet_id", Kind.EQUALITY, "title", Kind.GROUP, "body", Kind.GROUP);
         var limited = usage.advise(catalog(3_072)).getFirst();
         assertTrue(limited.matches("(?s).*note\\(pet_id, title, body\\) finds the matching rows and reads them already "
-                + "grouped, without a temporary table or sort, though its key of about \\d+ bytes passes the 3072 bytes "
-                + "the database allows a key, so a column must be shortened or left out\nor: note\\(pet_id\\).*"), limited);
-        assertFalse(usage.advise(catalog(0)).getFirst().contains("passes"));
+                + "grouped, without a temporary table or sort, though its key of about \\d+ bytes exceeds the "
+                + "database's key limit of 3072 bytes, so a column must be shortened or left out\nor: "
+                + "note\\(pet_id\\).*"), limited);
+        assertFalse(usage.advise(catalog(0)).getFirst().contains("key limit"));
     }
 
     @Test
@@ -256,7 +257,7 @@ public class IndexUsageTest {
     @Test
     public void aGroupedReadWithoutAFilterIsAdvisedTheIndexThatReadsInGroupOrder() throws SQLException {
         var advice = adviceOf(usageOf("owner", "city", Kind.GROUP, "last_name", Kind.GROUP));
-        assertTrue(advice.startsWith("no index on owner starts with the column city or last_name, so the database "
+        assertTrue(advice.startsWith("no index on owner starts with any of the columns city, last_name, so the database "
                 + "sorts every row into groups.\nindex: owner(city, last_name) reads the rows already grouped, "
                 + "without a temporary table or sort"), advice);
     }
@@ -266,16 +267,16 @@ public class IndexUsageTest {
         var advice = adviceOf(usageOf("pet", "type_id", Kind.EQUALITY, "birth_date", Kind.RANGE, "name",
                 Kind.ORDER));
         assertTrue(advice.contains("\nindex: pet(type_id, birth_date) finds the matching rows directly, then sorts "
-                + "them, which is best where the range selects few of them\nor: pet(type_id, name) reads the rows in "
+                + "them, which is best when the range selects few of them\nor: pet(type_id, name) reads the rows in "
                 + "name order, "
-                + "checks the range on each and stops at the limit, which is best where the range selects many of "
+                + "checks the range on each and stops at the limit, which is best when the range selects many of "
                 + "them.\nsee:"), advice);
     }
 
     @Test
     public void aBooleanConditionAloneSaysAnIndexOnItIsOftenNotChosen() throws SQLException {
         var advice = adviceOf(usageOf("owner", "active", Kind.EQUALITY));
-        assertTrue(advice.contains("\nindex: owner(active) finds them directly where the condition selects few of "
+        assertTrue(advice.contains("\nindex: owner(active) finds them directly when the condition selects few of "
                 + "them; active is a BOOLEAN, with few distinct values, so an index on it alone is often not chosen."),
                 advice);
     }
@@ -352,6 +353,6 @@ public class IndexUsageTest {
                 "first_name", Kind.SELECT));
         assertTrue(advice.contains("owner(source, city) finds the matching rows and reads them already grouped and in "
                 + "the order the ORDER BY names, without a temporary table or sort\ncovering: with first_name appended "
-                + "it reads the index alone where the select reads no other columns"), advice);
+                + "it reads the index alone if the select reads no other columns"), advice);
     }
 }

@@ -50,7 +50,7 @@ final class InListShapes {
     private static final ConcurrentHashMap<Long, Lengths> SHAPES = new ConcurrentHashMap<>();
 
     /** The advice every shape past the threshold carries; its text names the pattern, not the count. */
-    private static final String ADVISORY = Advice.IN_LIST_SHAPES.format();
+    private static final String ADVISORY = Advice.IN_LIST_SHAPES.format(Advice.IN_LIST_LENGTHS);
 
     /** The lengths one shape has rendered with, as bits, recorded without a lock. */
     private static final class Lengths {
