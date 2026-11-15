@@ -106,7 +106,6 @@ public final class Elements {
     public record Cursor(List<Metamodel<?, ?>> fields, List<TemplateString> expressions) implements Element {
         public Cursor {
             fields = List.copyOf(requireNonNull(fields, "fields"));
-            fields.forEach(field -> OuterPaths.refuse(field, "scrolls by"));
             expressions = List.copyOf(requireNonNull(expressions, "expressions"));
             if (fields.isEmpty() && expressions.isEmpty()) {
                 throw new IllegalArgumentException("A cursor names at least one field.");
