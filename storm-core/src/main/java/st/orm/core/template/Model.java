@@ -150,7 +150,8 @@ public interface Model<E extends Data, ID> {
     Optional<Metamodel<E, ID>> getPrimaryKeyMetamodel();
 
     /**
-     * Resolves all columns associated with the given metamodel.
+     * Resolves all columns associated with the given metamodel. The root metamodel names the row itself and resolves
+     * to the primary key columns.
      *
      * @param metamodel the metamodel identifying one or more columns.
      * @return the resolved columns.

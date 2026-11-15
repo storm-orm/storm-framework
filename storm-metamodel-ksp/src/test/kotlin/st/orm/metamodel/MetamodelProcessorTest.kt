@@ -25,6 +25,8 @@ import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
+import st.orm.Data
+import st.orm.Metamodel
 
 /**
  * Compiles fixture sources with the processor attached and asserts on the generated files. The fixtures compile
@@ -290,6 +292,94 @@ class MetamodelProcessorTest {
         assertTrue("ra.`object` == rb.`object`" in metamodel) {
             "expected the primary key backticked in isSame:\n$metamodel"
         }
+    }
+
+    @Test
+    fun `the metamodel companion is the root metamodel`() {
+        val compilation = compile(
+            """
+            package com.example
+
+            import st.orm.Entity
+            import st.orm.Metamodel
+            import st.orm.PK
+
+            data class Registry(@PK val id: Int, val name: String) : Entity<Int>
+
+            val root: Metamodel<Registry, Registry> = Registry_
+            val name = Registry_.name
+            """.trimIndent(),
+        )
+        val metamodelInterface = compilation.generatedSource("Registry_.kt")
+        assertTrue("companion object : AbstractMetamodel<Registry, Registry, Registry>(Registry::class.java)" in metamodelInterface) {
+            "expected the companion to extend the root metamodel:\n$metamodelInterface"
+        }
+        assertTrue("Metamodel.root(Registry::class.java).isSame(a, b)" in metamodelInterface) {
+            "expected the companion to compare rows as the root metamodel does:\n$metamodelInterface"
+        }
+    }
+
+    @Test
+    fun `the metamodel companion equals the root metamodel of its table`() {
+        val result = compilation(
+            """
+            package com.example
+
+            import st.orm.Entity
+            import st.orm.PK
+
+            data class Registry(@PK val id: Int, val name: String) : Entity<Int>
+            """.trimIndent(),
+        ).compile()
+        assertEquals(KotlinCompilation.ExitCode.OK, result.exitCode, result.messages)
+        @Suppress("UNCHECKED_CAST")
+        val type = result.classLoader.loadClass("com.example.Registry") as Class<Data>
+
+        @Suppress("UNCHECKED_CAST")
+        val companion = result.classLoader.loadClass("com.example.Registry_").getField("Companion").get(null) as Metamodel<Data, Data>
+        val root = Metamodel.root(type)
+        assertEquals(root, companion)
+        assertEquals(root.hashCode(), companion.hashCode())
+        assertEquals(type, companion.root())
+        assertEquals("", companion.fieldPath())
+        assertFalse(companion.isColumn)
+        val registry = type.getConstructor(Int::class.java, String::class.java).newInstance(1, "first")
+        val copy = type.getConstructor(Int::class.java, String::class.java).newInstance(1, "first")
+        assertTrue(companion.getValue(registry) === registry)
+        assertTrue(companion.isIdentical(registry, registry))
+        assertFalse(companion.isIdentical(registry, copy))
+        assertTrue(companion.isSame(registry, copy))
+        val other = type.getConstructor(Int::class.java, String::class.java).newInstance(2, "first")
+        assertFalse(companion.isSame(registry, other))
+    }
+
+    @Test
+    fun `properties named after metamodel members stay fields of the companion`() {
+        compile(
+            """
+            package com.example
+
+            import st.orm.AbstractMetamodel
+            import st.orm.Entity
+            import st.orm.PK
+
+            data class Node(
+                @PK val id: Int,
+                val root: String,
+                val path: String,
+                val field: String,
+                val table: String,
+                val fieldType: String,
+                val parent: String,
+                val inline: Boolean,
+            ) : Entity<Int>
+
+            val fields: List<AbstractMetamodel<Node, *, *>> = listOf(
+                Node_.root, Node_.path, Node_.field, Node_.table, Node_.fieldType, Node_.parent, Node_.inline,
+            )
+            val table: Class<Node> = Node_.root()
+            """.trimIndent(),
+        )
     }
 
     @Test

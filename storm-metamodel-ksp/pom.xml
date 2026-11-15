@@ -204,6 +204,20 @@
             <scope>test</scope>
         </dependency>
         <dependency>
+            <!-- The generated metamodels resolve their root through the core at runtime. -->
+            <groupId>st.orm</groupId>
+            <artifactId>storm-core</artifactId>
+            <version>${project.version}</version>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <!-- Reads the Kotlin classes the core resolves the root of. -->
+            <groupId>st.orm</groupId>
+            <artifactId>storm-kotlin</artifactId>
+            <version>${project.version}</version>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
             <groupId>org.junit.jupiter</groupId>
             <artifactId>junit-jupiter</artifactId>
             <scope>test</scope>

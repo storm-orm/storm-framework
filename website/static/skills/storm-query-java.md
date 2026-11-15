@@ -274,6 +274,15 @@ COUNT(DISTINCT \{User_.city.id})    // ❌ same column, longer
 .where(User_.city.id, IN, cityRefs.stream().map(Ref::entityId).toList())  // ❌ unwraps refs to reach the column they already name
 ```
 
+**Compare the row itself through `Metamodel.root(User.class)`.** The root metamodel compares the primary key, as `User_.city` compares the foreign key. `where(records)` covers `IN`; the root gives `NOT_IN`, `NOT_EQUALS` and comparisons with a path.
+
+```java
+.where(it -> it.where(User_.city, IN, cities).and(it.where(Metamodel.root(User.class), NOT_IN, shown)))  // ✅ by primary key
+.where(User_.id, NOT_IN, shown.stream().map(User::id).toList())                                         // ❌ unwraps the rows
+```
+
+`orderBy(Metamodel.root(User.class))` and `groupBy(...)` use the primary key. A table without a primary key refuses a comparison on its root.
+
 **A compound foreign key is several columns, and templates take only one.** A foreign key to an entity whose `@PK` is an inline record is a multi-column foreign key: Storm matches its columns to the target's primary key columns one for one. Code-first operators expand it. A template placeholder stands for a single column, so interpolating one throws `SqlTemplateException: Expected exactly one column for metamodel: …` before any SQL reaches the database.
 
 ```java

@@ -59,6 +59,8 @@ public abstract class AbstractInListConformanceTest {
 
     private static final Metamodel<Probe, Integer> ID = Metamodel.of(Probe.class, "id");
     private static final Metamodel<Probe, String> CODE = Metamodel.of(Probe.class, "code");
+    private static final Metamodel<Probe, Probe> PROBE = Metamodel.root(Probe.class);
+    private static final Metamodel<Pair, Pair> PAIR = Metamodel.root(Pair.class);
 
     @DbTable("in_probe")
     public record Probe(@PK(generation = NONE) Integer id, String code) implements Entity<Integer> {}
@@ -203,6 +205,41 @@ public abstract class AbstractInListConformanceTest {
                 subset.forEach(key -> expected.add(key.a() + "-" + key.b()));
                 assertEquals(expected, selected, mode + " of " + length);
             }
+        }
+    }
+
+    @Test
+    public void testAListOfRowsComparesTheirPrimaryKeysInEveryMode() {
+        for (var mode : MODES) {
+            var orm = template(mode);
+            var probes = orm.entity(Probe.class);
+            for (int length : List.of(0, 1, 3, 5, 12)) {
+                var ids = ids(length);
+                var rows = probes.findAllById(ids);
+                for (var operator : List.of(IN, NOT_IN)) {
+                    var selected = new TreeSet<Integer>();
+                    probes.select().where(PROBE, operator, rows).getResultList()
+                            .forEach(probe -> selected.add(probe.id()));
+                    assertEquals(expected(operator, ids), selected,
+                            mode + " " + (operator == IN ? "IN" : "NOT IN") + " rows of " + length);
+                }
+            }
+        }
+    }
+
+    @Test
+    public void testAListOfRowsWithACompoundKeyComparesTheKeysInEveryMode() {
+        var keys = List.of(new PairId(1, 1), new PairId(2, 3), new PairId(3, 2));
+        for (var mode : MODES) {
+            var orm = template(mode);
+            var pairs = orm.entity(Pair.class);
+            var rows = pairs.findAllById(keys);
+            var in = new TreeSet<String>();
+            pairs.select().where(PAIR, IN, rows).getResultList().forEach(pair -> in.add(pair.code()));
+            assertEquals(new TreeSet<>(List.of("1-1", "2-3", "3-2")), in, mode + " IN");
+            var notIn = new TreeSet<String>();
+            pairs.select().where(PAIR, NOT_IN, rows).getResultList().forEach(pair -> notIn.add(pair.code()));
+            assertEquals(new TreeSet<>(List.of("1-2", "1-3", "2-1", "2-2", "3-1", "3-3")), notIn, mode + " NOT IN");
         }
     }
 }
