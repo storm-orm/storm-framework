@@ -241,6 +241,95 @@ public interface Metamodel<T extends Data, E> extends Navigable<T, E> {
     }
 
     /**
+     * Names the column at the given path in the query that encloses the subquery being built, as the other side of a
+     * comparison of two columns: {@code where(Visit_.pet.id, EQUALS, outer(Pet_.id))} keeps the visits of the
+     * enclosing query's pet. A path without it names the subquery's own tables, also where the subquery holds the
+     * table the enclosing query holds: the visit's own pet, which the subquery joins.
+     *
+     * <p>The path resolves in the nearest enclosing query that holds its table, never in the subquery itself. In a
+     * template, the path renders as its column at that occurrence.</p>
+     *
+     * @param path the path to the column, or columns, of the enclosing query.
+     * @return the path, named in the enclosing query.
+     * @param <T> the root table type.
+     * @param <E> the field type.
+     * @since 1.16
+     */
+    static <T extends Data, E> Metamodel<T, E> outer(Navigable<T, E> path) {
+        requireNonNull(path, "path");
+        return path instanceof Outer<T, E> outer ? outer : new Outer<>(path.asMetamodel());
+    }
+
+    /**
+     * Returns whether the path names a column of an enclosing query: a path made by {@link #outer(Navigable)}, a
+     * {@link SqlFunction} call on one, or a key view of one.
+     *
+     * @param path the path to inspect.
+     * @return {@code true} if the path resolves in an enclosing query, {@code false} otherwise.
+     * @since 1.16
+     */
+    static boolean isOuter(Navigable<?, ?> path) {
+        return switch (path) {
+            case Outer<?, ?> ignore -> true;
+            case SqlFunction.Call<?, ?> call -> isOuter(call.argument());
+            case KeyDelegate<?, ?> key -> isOuter(key.delegate());
+            default -> false;
+        };
+    }
+
+    /**
+     * A path named in the query that encloses the subquery it is used in, see {@link #outer(Navigable)}. It describes
+     * the column it wraps, and never equals it: the wrapped path names the subquery's own tables.
+     *
+     * <p>The column belongs to a row of the enclosing query, so a record of the subquery holds no value for it.</p>
+     *
+     * @param column the path to the column, or columns, of the enclosing query.
+     * @param <T> the root table type.
+     * @param <E> the field type.
+     * @since 1.16
+     */
+    record Outer<T extends Data, E>(Metamodel<T, E> column) implements Metamodel<T, E> {
+
+        public Outer {
+            requireNonNull(column, "column");
+        }
+
+        @Override public boolean isColumn()                   { return column.isColumn(); }
+        @Override public boolean isInline()                   { return column.isInline(); }
+        @Override public Class<T> root()                      { return column.root(); }
+        @Override public Metamodel<T, ? extends Data> table() { return column.table(); }
+        @Override public String path()                        { return column.path(); }
+        @Override public Class<E> fieldType()                 { return column.fieldType(); }
+        @Override public String field()                       { return column.field(); }
+        @Override public List<Metamodel<T, ?>> flatten()      { return List.of(this); }
+
+        @Override
+        public @Nullable Object getValue(T record) {
+            throw new UnsupportedOperationException(
+                    "%s is a column of the enclosing query; a record holds no value for it.".formatted(this));
+        }
+
+        @Override
+        public boolean isIdentical(T a, T b) {
+            throw new UnsupportedOperationException(
+                    "%s is a column of the enclosing query; records are not compared by it.".formatted(this));
+        }
+
+        @Override
+        public boolean isSame(T a, T b) {
+            throw new UnsupportedOperationException(
+                    "%s is a column of the enclosing query; records are not compared by it.".formatted(this));
+        }
+
+        @Override
+        public String toString() {
+            return column instanceof SqlFunction.Call<?, ?>
+                    ? "outer(%s)".formatted(column)
+                    : "outer(%s_.%s)".formatted(column.root().getSimpleName(), column.fieldPath());
+        }
+    }
+
+    /**
      * Delegating wrapper that adds the {@link Key} marker to an existing {@link Metamodel} instance.
      *
      * <p>Equality and hash code are delegated to the wrapped metamodel. Because {@link AbstractMetamodel#equals}

@@ -1130,7 +1130,7 @@ orm.selectFrom<Owner>()
     .antiJoin<Transfer>().on(Transfer_.to.id eq Owner_.id)
 ```
 
-Two semi-joins keep the rows both keys refer to, the owners who sent a pet and received one. The rows either key refers to are a correlated subquery, whose condition names the query's own table through the outer scope, since the transfer's own owners would make `Owner_.id` ambiguous inside it: `whereExists { subquery(Transfer::class).where { "${column(Transfer_.from, INNER)} = ${column(Owner_.id, OUTER)} OR ${column(Transfer_.to, INNER)} = ${column(Owner_.id, OUTER)}" } }`. See [ResolveScope](sql-templates.md#resolvescope).
+Two semi-joins keep the rows both keys refer to, the owners who sent a pet and received one. The rows either key refers to are a correlated subquery, whose condition names the query's own table through `outer`, since `Owner_.id` inside the subquery names the transfer's own owners: `whereExists { subquery<Transfer>().where((Transfer_.from.id eq outer(Owner_.id)) or (Transfer_.to.id eq outer(Owner_.id))) }`. See [Correlated Subqueries](#correlated-subqueries).
 
 ### Filtering by Related Rows
 
@@ -1214,6 +1214,94 @@ WHERE NOT EXISTS (SELECT 1 FROM visit v WHERE v.pet_id = p.id AND v.description 
 `NOT EXISTS`, unlike `NOT IN`, keeps its meaning when a related row's foreign key is null. A condition in `where` that names the anti-joined table is refused when the query is built, pointing at the join's condition.
 
 Two semi-joins or anti-joins on one table are two subqueries, each with its own condition on the join. `antiJoin<Visit>().on(Pet::class, Visit_.description eq "rabies shot")` followed by `semiJoin<Visit>().on<Pet>()` finds the pets that had a visit but never a rabies shot, and two semi-joins with different conditions find the rows with a related row matching each, where one semi-join with both conditions asks for a single related row matching both. A condition in `where` that names the table could not tell the joins apart and is refused; each condition goes on its join.
+
+A table the query joins may be filtered by as well. The owners with their pets, leaving out the owners who keep a snake:
+
+<Tabs groupId="language">
+<TabItem value="kotlin" label="Kotlin" default>
+
+```kotlin
+val owners = orm.entity(Owner::class)
+    .select()
+    .innerJoin<Pet>().on<Owner>()
+    .antiJoin<Pet>().on(Owner::class, Pet_.type.name eq "snake")
+    .orderBy(Pet_.name)
+    .resultList
+```
+
+</TabItem>
+<TabItem value="java" label="Java">
+
+```java
+List<Owner> owners = orm.entity(Owner.class)
+    .select()
+    .innerJoin(Pet.class).on(Owner.class)
+    .antiJoin(Pet.class).on(Owner.class, it -> it.where(Pet_.type.name, EQUALS, "snake"))
+    .orderBy(Pet_.name)
+    .getResultList();
+```
+
+</TabItem>
+</Tabs>
+
+```sql
+SELECT ...
+FROM owner o
+INNER JOIN pet p ON p.owner_id = o.id
+WHERE NOT EXISTS (
+    SELECT 1 FROM pet p1 INNER JOIN pet_type pt ON p1.type_id = pt.id
+    WHERE p1.owner_id = o.id AND pt.name = ?)
+ORDER BY p.name
+```
+
+The condition on the anti-join names the pets its subquery looks for. Everything else that names the table names the joined pets: a condition in `where`, `orderBy`, `groupBy`, the select, and the `on` of a later join. A `semiJoin` on a table the query joins states its condition on the join for the same reason, and is refused without one. Inside the condition, [`outer`](#correlated-subqueries) names the joined row: `antiJoin<Pet>().on(Owner::class, Pet_.id neq outer(Pet_.id))` keeps the pets whose owner has no other pet.
+
+### Correlated Subqueries
+
+`whereExists` and `whereNotExists` take a subquery for a condition a foreign key does not express. The subquery is correlated in its condition: `outer` names a column of the enclosing query, and a comparison relates a column of the subquery to it. The owners with a pet that had at least a given number of visits:
+
+<Tabs groupId="language">
+<TabItem value="kotlin" label="Kotlin" default>
+
+```kotlin
+val owners = orm.entity(Owner::class)
+    .select()
+    .whereExists {
+        subquery<Visit>()
+            .where(Visit_.pet.owner.id eq outer(Owner_.id))
+            .groupBy(Visit_.pet)
+            .having { "COUNT(*) >= $minimum" }
+    }
+    .resultList
+```
+
+</TabItem>
+<TabItem value="java" label="Java">
+
+```java
+List<Owner> owners = orm.entity(Owner.class)
+    .select()
+    .whereExists(orm.subquery(Visit.class)
+        .where(it -> it.where(Visit_.pet.owner.id, EQUALS, outer(Owner_.id)))
+        .groupBy(Visit_.pet)
+        .having(RAW."COUNT(*) >= \{minimum}"))
+    .getResultList();
+```
+
+</TabItem>
+</Tabs>
+
+```sql
+SELECT ...
+FROM owner o
+WHERE EXISTS (
+    SELECT 1 FROM visit v INNER JOIN pet p ON v.pet_id = p.id
+    WHERE p.owner_id = o.id
+    GROUP BY v.pet_id
+    HAVING COUNT(*) >= ?)
+```
+
+A path without `outer` names the subquery's own tables, the tables it joins included: `Visit_.pet.owner.id eq Owner_.id` compares the owner of the visit's pet with itself and correlates nothing. `outer` names the nearest enclosing query that holds the table, also where the subquery reads the same table as the enclosing query, `Pet_.owner.id eq outer(Pet_.owner.id)` for the other pets of a pet's owner. In Java, `outer` is `Metamodel.outer`. It is the other side of a comparison only, with or without a [`SqlFunction`](#sql-functions) applied to it, `upper.apply(outer(Owner_.firstName))`. Everything else that takes a path of the query refuses it when the query is built: a comparison with a value, `orderBy`, `groupBy`, `search`, `fetch`, `set`, a scroll. In a template, `outer(Owner_.id)` renders the outer column; see [ResolveScope](sql-templates.md#resolvescope).
 
 ### Filtering Through Two Relations
 

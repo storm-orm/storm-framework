@@ -41,6 +41,9 @@ internal class CorrelatedSubqueryTest {
     private val petOwner = Metamodel.of<Pet, Owner>(Pet::class.java, "owner")
     private val ownerId = Metamodel.of<Owner, Int>(Owner::class.java, "id")
     private val visitDescription = Metamodel.of<Visit, String>(Visit::class.java, "description")
+    private val visitPet = Metamodel.of<Visit, Pet>(Visit::class.java, "pet")
+    private val visitPetId = Metamodel.of<Visit, Int>(Visit::class.java, "pet.id")
+    private val visitPetOwnerId = Metamodel.of<Visit, Int>(Visit::class.java, "pet.owner.id")
 
     private fun SqlCapture.sql(): String = statements().single().statement().replace(Regex("\\s+"), " ")
 
@@ -128,5 +131,57 @@ internal class CorrelatedSubqueryTest {
         }
         owners shouldHaveSize 10
         capture.sql() shouldContain "WHERE EXISTS ( SELECT p.id FROM pet p WHERE"
+    }
+
+    @Test
+    fun `outer names the column of the enclosing query in a comparison`(orm: ORMTemplate, capture: SqlCapture) {
+        // data.sql: pets 1 to 8 have visits.
+        val pets = capture.execute {
+            orm.entity(Pet::class).select()
+                .whereExists { subquery<Visit>().where(visitPetId eq outer(petId)) }
+                .resultList
+        }
+        pets shouldHaveSize 8
+        capture.sql() shouldContain "WHERE EXISTS ( SELECT 1 FROM visit v WHERE v.pet_id = p.id )"
+    }
+
+    @Test
+    fun `a comparison without outer names the subquery's own tables`(orm: ORMTemplate, capture: SqlCapture) {
+        val pets = capture.execute {
+            orm.entity(Pet::class).select()
+                .whereExists { subquery<Visit>().where(visitPetId eq petId) }
+                .resultList
+        }
+        pets shouldHaveSize 13
+        capture.sql() shouldContain "WHERE v.pet_id = p1.id"
+    }
+
+    @Test
+    fun `outer correlates a subquery that counts its rows`(orm: ORMTemplate, capture: SqlCapture) {
+        // The owners with a pet that had at least two visits.
+        val minimum = 2
+        val owners = capture.execute {
+            orm.entity(Owner::class).select()
+                .whereExists {
+                    subquery<Visit>()
+                        .where(visitPetOwnerId eq outer(ownerId))
+                        .groupBy(visitPet)
+                        .having { "COUNT(*) >= ${t(minimum)}" }
+                }
+                .resultList
+        }
+        owners.map { it.firstName }.toSet() shouldBe setOf("Betty", "George", "Eduardo", "Peter", "Jean")
+        capture.sql() shouldContain "FROM visit v INNER JOIN pet p ON v.pet_id = p.id WHERE p.owner_id = o.id GROUP BY v.pet_id HAVING COUNT(*) >= ?"
+    }
+
+    @Test
+    fun `outer in a template renders the column of the enclosing query`(orm: ORMTemplate, capture: SqlCapture) {
+        val owners = capture.execute {
+            orm.entity(Owner::class).select()
+                .whereExists { subquery<Pet>().where { "${t(Templates.column(petOwner, INNER))} = ${t(outer(ownerId))}" } }
+                .resultList
+        }
+        owners shouldHaveSize 10
+        capture.sql() shouldContain "WHERE EXISTS ( SELECT 1 FROM pet p WHERE p.owner_id = o.id )"
     }
 }

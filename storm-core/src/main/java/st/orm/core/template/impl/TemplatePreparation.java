@@ -1839,8 +1839,8 @@ class TemplatePreparation {
     private void addReferencedTablePath(Class<? extends Data> rootTable,
                                         Metamodel<?, ?> metamodel,
                                         Set<String> paths) {
-        if (metamodel.root() != rootTable) {
-            return;
+        if (Metamodel.isOuter(metamodel) || metamodel.root() != rootTable) {
+            return;     // A path named in an enclosing query takes no join in this one.
         }
         String path = metamodel.path();
         if (!path.isEmpty()) {

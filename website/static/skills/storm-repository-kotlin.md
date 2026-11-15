@@ -101,7 +101,8 @@ val userRepository = orm.repository<UserRepository>()  // import st.orm.reposito
 // ⚠️ Repository interfaces MUST import the predicate operators: they are Kotlin extension functions.
 // import st.orm.template.eq   (and neq, like, greater, less, etc.), or simply import st.orm.template.*
 // Without the import, `eq` etc. will not resolve in the interface file.
-// (`and`/`or` are member functions on PredicateBuilder: they need no import.)
+// (`and`/`or` between two predicates are extensions in the same package: import st.orm.template.* brings them in.
+// Without it, `and` fails with an argument type mismatch rather than an unresolved reference.)
 
 interface UserRepository : EntityRepository<User, Int> {
     fun findByEmail(email: String): User? = find(User_.email eq email)

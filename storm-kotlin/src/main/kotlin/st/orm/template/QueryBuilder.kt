@@ -411,6 +411,14 @@ public abstract class QueryBuilder<T : Data, R : Any, ID : Any> {
      * row. A table referenced through a foreign key, such as the table a link row points at, is related through that
      * foreign key's columns, without reading the table itself.
      *
+     * The table may be the query's own, or a table the query joins. On the query's own table, the semi-join finds the
+     * rows that reference the same row as the query's row, and `on` names the table both reference:
+     * `semiJoin<Visit>().on(Pet::class, condition)` from a query of visits. On a table the query joins, it filters by
+     * other rows of that table than the joined ones: `innerJoin<Pet>().on<Owner>()` followed by
+     * `semiJoin<Pet>().on(Owner::class, condition)`. In both cases the condition is stated on the join and names the
+     * rows the semi-join looks for; every other condition and clause that names the table names the query's rows, so
+     * on a table the query joins a semi-join without a condition on the join is refused.
+     *
      * ```kotlin
      * val found = owners
      *     .select()
@@ -442,6 +450,11 @@ public abstract class QueryBuilder<T : Data, R : Any, ID : Any> {
      * As for a semi-join, `on` may name a semi-joined or anti-joined table, which nests the anti-join in that table's
      * subquery: `semiJoin<Pet>().on<Owner>()` followed by `antiJoin<Visit>().on<Pet>()` keeps the owners with a pet
      * that never had a visit.
+     *
+     * The table may be the query's own, or a table the query joins, as for a semi-join: `innerJoin<Pet>().on<Owner>()`
+     * followed by `antiJoin<Pet>().on(Owner::class, condition)` keeps the owners, with their pets, who have no pet
+     * matching the condition. The condition on the join names the rows the anti-join looks for, and every other
+     * condition and clause that names the table names the joined rows.
      *
      * ```kotlin
      * val petsWithoutRabiesShot = pets
@@ -2059,6 +2072,21 @@ public infix fun <T : Data, V : Any> Navigable<T, V>.greaterEq(value: V): Predic
  * Infix functions to create a predicate to check if a field is less than or equal to a value.
  */
 public infix fun <T : Data, V : Any> Navigable<T, V>.lessEq(value: V): PredicateBuilder<T, T, *> = create(this.asMetamodel(), LESS_THAN_OR_EQUAL, listOf(value))
+
+/**
+ * Names the column at the given path in the query that encloses the subquery being built, as the other side of a
+ * comparison of two columns: `subquery<Visit>().where(Visit_.pet.id eq outer(Pet_.id))` keeps the visits of the
+ * enclosing query's pet. A path without it names the subquery's own tables, also where the subquery holds the table
+ * the enclosing query holds: the visit's own pet, which the subquery joins.
+ *
+ * The path resolves in the nearest enclosing query that holds its table, never in the subquery itself. In a
+ * template, the path renders as its column at that occurrence.
+ *
+ * @param path the path to the column, or columns, of the enclosing query.
+ * @return the path, named in the enclosing query.
+ * @since 1.16
+ */
+public fun <T : Data, V> outer(path: Navigable<T, V>): Metamodel<T, V> = Metamodel.outer(path)
 
 /**
  * Infix function to create a predicate comparing a field with another field of the query for equality, such as a

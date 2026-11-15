@@ -26,6 +26,7 @@ import java.util.List;
 import org.jspecify.annotations.Nullable;
 import st.orm.Data;
 import st.orm.FK;
+import st.orm.Metamodel;
 import st.orm.Navigable;
 import st.orm.PersistenceException;
 import st.orm.Ref;
@@ -182,6 +183,9 @@ final class JoinKeys {
      * foreign key a path beyond it ends in, {@code Pet_.owner.id}. Returns {@code null} for any other column.
      */
     private static @Nullable Key key(Navigable<?, ?> path) throws SqlTemplateException {
+        if (Metamodel.isOuter(path)) {
+            return null;    // A column of an enclosing query is no key of a table the join relates.
+        }
         if (!path.isColumn() || path.isInline()) {
             return null;
         }

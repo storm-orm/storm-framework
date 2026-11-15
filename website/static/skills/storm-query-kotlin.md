@@ -24,7 +24,8 @@ import org.junit.jupiter.api.Assertions.*        // assertEquals, assertTrue, as
 **Import both packages with wildcards: `st.orm.template.*` and `st.orm.repository.*`.** Naming them individually is how one ends up missing.
 - `st.orm.template.*` brings all infix operators and the `ref()` / `orm` extensions. The infix predicate operators (`eq`, `neq`, `like`, `contains`, `startsWith`, `endsWith`, `eqIgnoreCase`, `containsIgnoreCase`, `greater`, `less`, `inList`, `isNull`, `isNotNull`, `isTrue`, `isFalse`, `between`, etc.) are extension functions on `Metamodel<T, V>` defined in `st.orm.template` (in QueryBuilder.kt).
 - Repository operations are top-level extensions in `st.orm.repository`, so `import st.orm.template.*` alone does not bring them in.
-- The `select { }` / `update { }` / `delete { }` block DSL and the `and` / `or` combinators are member functions, so they need no import.
+- The `select { }` / `update { }` / `delete { }` block DSL is member functions, so it needs no import.
+- `and` / `or` between two predicates, `(User_.city eq city) and (User_.email like "%@example.com")`, are extension functions in `st.orm.template`, as the operators are. Only `and { }` / `or { }` taking a template are members. Without the import the compiler reports an argument type mismatch on `and`, not an unresolved reference.
 
 **Read a compiler crash on a call with `_` placeholders as a missing import.** A call that uses `_` type-argument placeholders punishes a missing import hardest. On Kotlin 2.0.x the compiler crashes while reporting the resolution failure rather than naming the missing import:
 
@@ -624,6 +625,7 @@ Pick the form by the direction of the relation and by whether the related rows b
 - `semiJoin` and `antiJoin` are complements: on the same table with the same condition on the join, the one keeps the rows the other drops. Without a condition, `semiJoin` keeps the rows with any related row and `antiJoin` the rows without one.
 - Two semi-joins or anti-joins on one table are two subqueries, each with its own condition on the join: `antiJoin<Visit>().on(Pet::class, Visit_.description eq "rabies shot").semiJoin<Visit>().on<Pet>()` finds the pets with a visit but no rabies shot, and two `semiJoin`s with different conditions match a related row each. A `where` naming the table is then refused: each condition goes on its join.
 - A semi-join or anti-join on the query's own table finds the rows referencing the same row as the query's row: `visits.select().semiJoin<Visit>().on(Pet::class, Visit_.description eq "rabies shot").where(Visit_.visitDate greaterEq date)` finds the visits since the date of the pets that had a rabies shot. The condition on the join names the other row, `where` the query's row. `on` names a table the query's table references; `on<Visit>` is refused.
+- A table the query joins may be anti-joined or semi-joined as well, with the condition on the join: `.innerJoin<Pet>().on<Owner>().antiJoin<Pet>().on(Owner::class, Pet_.type.name eq "snake")` gives the owners with their pets, leaving out the owners who keep a snake. The condition on the join names the rows the filter looks for; `where`, `orderBy`, `groupBy`, the select and a later join's `on` name the joined rows. A `semiJoin` without a condition on such a table is refused. Inside the condition, `outer(...)` names the joined row: `.antiJoin<Pet>().on(Owner::class, Pet_.id neq outer(Pet_.id))` keeps the pets whose owner has no other pet.
 - Keep `whereExists` for a subquery a foreign key does not express.
 
 **Through two to-many relations, chain the semi-joins.** `on` names a semi-joined table, so `.semiJoin<Pet>().on<Owner>().semiJoin<Visit>().on<Pet>().where(Visit_.visitDate greaterEq date)` finds the owners with a pet that had a visit since the date, each once.
@@ -688,19 +690,25 @@ pets.select()
 
 ## Subqueries (EXISTS / NOT EXISTS)
 
-**Use `whereExists { }` / `whereNotExists { }` for an EXISTS condition a foreign key does not express.** The lambdas receive a `SubqueryTemplate` that provides the `subquery()` method. The subquery is not correlated by itself: `whereExists { subquery<User>() }` holds for every city once any user exists. Correlate it in its condition, naming the subquery's column with `column(..., INNER)` and the outer query's with `column(..., OUTER)`. For "the rows with (or without) a related row", use `semiJoin` / `antiJoin` instead, which correlate through the foreign key (see **Filtering by Related Rows**).
+**Use `whereExists { }` / `whereNotExists { }` for an EXISTS condition a foreign key does not express.** The lambdas receive a `SubqueryTemplate` that provides the `subquery()` method. The subquery is not correlated by itself: `whereExists { subquery<User>() }` holds for every city once any user exists. Correlate it in its condition by comparing a column of the subquery with `outer(...)`, which names a column of the enclosing query. A path without `outer` names the subquery's own tables, the ones it joins included, so `User_.city.id eq City_.id` compares the user's city with itself. In a template, `outer(City_.id)` renders the outer column, as `column(City_.id, OUTER)` does. `outer(...)` is the other side of a comparison only, optionally inside a `SqlFunction`: every other method that takes a path refuses it when the query is built. For "the rows with (or without) a related row", use `semiJoin` / `antiJoin` instead, which correlate through the foreign key (see **Filtering by Related Rows**).
 
 ```kotlin
 // WHERE EXISTS, correlated in the condition: the cities with a user
 val citiesWithUsers = orm.entity(City::class)
     .select()
-    .whereExists { subquery<User>().where { "${column(User_.city, INNER)} = ${column(City_.id, OUTER)}" } }
+    .whereExists { subquery<User>().where(User_.city.id eq outer(City_.id)) }
     .resultList
 
 // WHERE NOT EXISTS
 val citiesWithoutUsers = orm.entity(City::class)
     .select()
-    .whereNotExists { subquery<User>().where { "${column(User_.city, INNER)} = ${column(City_.id, OUTER)}" } }
+    .whereNotExists { subquery<User>().where(User_.city.id eq outer(City_.id)) }
+
+// A subquery that counts its rows: the cities with at least minUsers users
+val busyCities = orm.entity(City::class)
+    .select()
+    .whereExists { subquery<User>().where(User_.city.id eq outer(City_.id)).having { "COUNT(*) >= $minUsers" } }
+    .resultList
     .resultList
 ```
 

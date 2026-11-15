@@ -121,7 +121,7 @@ Critical rules:
 
 Advanced patterns:
 - Subqueries: use `table()` for inner FROM, `column()` for inner columns
-- Correlated subqueries: use `column(field, INNER)` / `column(field, OUTER)` for alias scoping
+- Correlated subqueries: use `column(field, INNER)` / `column(field, OUTER)` for alias scoping; a builder comparison takes `outer(field)` for the enclosing query's column
 - CTEs: write a standard WITH clause, reference types normally
 - UNION: combine multiple query blocks
 
