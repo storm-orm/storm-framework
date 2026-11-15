@@ -600,6 +600,9 @@ public final class ModelImpl<E extends Data, ID> implements Model<E, ID> {
 
     @Override
     public List<Column> getColumns(Metamodel<?, ?> metamodel) throws SqlTemplateException {
+        if (metamodel.fieldPath().isEmpty()) {
+            return getColumns(rowKey(metamodel));
+        }
         var columns = columnMap.get(metamodel.canonical());
         if (columns == null) {
             if (metamodel.isInline()) {
@@ -625,6 +628,23 @@ public final class ModelImpl<E extends Data, ID> implements Model<E, ID> {
             }
         }
         return columns;
+    }
+
+    /**
+     * Returns the primary key metamodel the root metamodel resolves to. The root names the row itself, which its
+     * primary key identifies, as a foreign key path names the row it references by that row's key.
+     *
+     * @param root the root metamodel of this model's table.
+     * @return the primary key metamodel.
+     * @throws SqlTemplateException if the table has no primary key.
+     */
+    @SuppressWarnings("unchecked")
+    private <T extends Data> Metamodel<T, ?> rowKey(Metamodel<?, ?> root) throws SqlTemplateException {
+        if (primaryKeyMetamodel == null) {
+            throw new SqlTemplateException("Cannot compare %s itself: it declares no primary key to compare by. Name a field instead."
+                    .formatted(root.root().getSimpleName()));
+        }
+        return (Metamodel<T, ?>) primaryKeyMetamodel;
     }
 
     /**
@@ -711,12 +731,13 @@ public final class ModelImpl<E extends Data, ID> implements Model<E, ID> {
     public void forEachValue(Metamodel<E, ?> metamodel,
                              Object object,
                              BiConsumer<Column, Object> consumer) throws SqlTemplateException {
+        if (metamodel.fieldPath().isEmpty()) {
+            forEachValue(rowKey(metamodel), object, consumer);
+            return;
+        }
         boolean resolvedViaInline = false;
         List<Column> columns;
-        if (discriminatorColumnIndex > 0 && metamodel.fieldPath().isEmpty()) {
-            // The root of a sealed entity names the entity itself, which its primary key identifies.
-            columns = declaredColumns.stream().filter(Column::primaryKey).toList();
-        } else if (metamodel.isInline() && columnMap.get(metamodel.canonical()) == null) {
+        if (metamodel.isInline() && columnMap.get(metamodel.canonical()) == null) {
             // Inline record not directly in column map (e.g., Address). Fall back to inline resolution.
             columns = getInlineColumns(metamodel);
             resolvedViaInline = true;

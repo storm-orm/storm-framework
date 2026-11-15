@@ -293,6 +293,60 @@ class MetamodelProcessorTest {
     }
 
     @Test
+    fun `the metamodel companion is the root metamodel`() {
+        val compilation = compile(
+            """
+            package com.example
+
+            import st.orm.Entity
+            import st.orm.Metamodel
+            import st.orm.PK
+
+            data class Registry(@PK val id: Int, val name: String) : Entity<Int>
+
+            val root: Metamodel<Registry, Registry> = Registry_
+            val name = Registry_.name
+            """.trimIndent(),
+        )
+        val metamodelInterface = compilation.generatedSource("Registry_.kt")
+        assertTrue("companion object : AbstractMetamodel<Registry, Registry, Registry>(Registry::class.java)" in metamodelInterface) {
+            "expected the companion to extend the root metamodel:\n$metamodelInterface"
+        }
+        assertTrue("Metamodel.root(Registry::class.java).isSame(a, b)" in metamodelInterface) {
+            "expected the companion to compare rows as the root metamodel does:\n$metamodelInterface"
+        }
+    }
+
+    @Test
+    fun `properties named after metamodel members stay fields of the companion`() {
+        compile(
+            """
+            package com.example
+
+            import st.orm.AbstractMetamodel
+            import st.orm.Entity
+            import st.orm.PK
+
+            data class Node(
+                @PK val id: Int,
+                val root: String,
+                val path: String,
+                val field: String,
+                val table: String,
+                val fieldType: String,
+                val parent: String,
+                val inline: Boolean,
+            ) : Entity<Int>
+
+            val fields: List<AbstractMetamodel<Node, *, *>> = listOf(
+                Node_.root, Node_.path, Node_.field, Node_.table, Node_.fieldType, Node_.parent, Node_.inline,
+            )
+            val table: Class<Node> = Node_.root()
+            """.trimIndent(),
+        )
+    }
+
+    @Test
     fun `rejects non-Ref foreign key cycle between entities`() {
         val messages = compileExpectingError(
             """

@@ -349,6 +349,16 @@ User_.city inRefs cityRefs                            // ✅ IN over refs
 User_.city.id inList cityRefs.map { it.entityId() }   // ❌ unwraps refs to reach the column they already name
 ```
 
+**Compare the row itself through `User_`.** The generated `User_` companion is the root metamodel: it compares the primary key, as `User_.city` compares the foreign key. It takes entities or refs and combines with `and` / `or`.
+
+```kotlin
+(User_.city inList cities) and (User_ notInList shown)   // ✅ leaves out the rows by primary key
+User_.id notInList shown.map { it.id }                    // ❌ unwraps the rows to reach the key the row names
+User_ neq outer(User_)                                    // in a subquery: a row other than the enclosing one
+```
+
+`orderBy(User_)` and `groupBy(User_)` use the primary key. A table without a primary key refuses a comparison on its root.
+
 **A compound foreign key is several columns, and templates take only one.** A foreign key to an entity whose `@PK` is an inline record is a multi-column foreign key: Storm matches its columns to the target's primary key columns one for one. Code-first operators expand it. A template placeholder stands for a single column, so interpolating one throws `SqlTemplateException: Expected exactly one column for metamodel: …` before any SQL reaches the database.
 
 ```kotlin

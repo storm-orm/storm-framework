@@ -1697,7 +1697,18 @@ class MetamodelProcessor(
                 |@Suppress("ClassName")
                 |@Generated("${this::class.java.name}")
                 |interface $metaInterfaceName : Metamodel<$className, $className> {
-                |    companion object {
+                |    /**
+                |     * The root metamodel of $className, which names the row itself: a comparison on it compares the
+                |     * primary key, as a comparison on a foreign key path compares the foreign key.
+                |     */
+                |    companion object : AbstractMetamodel<$className, $className, $className>($className::class.java) {
+                |        override fun getValue(record: $className): $className = record
+                |
+                |        override fun isIdentical(a: $className, b: $className): Boolean = a === b
+                |
+                |        override fun isSame(a: $className, b: $className): Boolean =
+                |            Metamodel.root($className::class.java).isSame(a, b)
+                |
                 |${buildInterfaceFields(classDeclaration, packageName, resolver)}
                 |    }
                 |}

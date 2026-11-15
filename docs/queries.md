@@ -354,6 +354,41 @@ FROM visit v
 LEFT JOIN invoice i ON i.pet_id = v.pet_id AND (i.vet_id = v.vet_id)
 ```
 
+### Comparing the Row Itself
+
+A foreign key path compares by key and takes the entity: `Pet_.owner inList owners` needs no ids. The root metamodel names the row itself and compares it the same way, by its primary key. In Kotlin the generated `Pet_` is the root metamodel; in Java it is `Metamodel.root(Pet.class)`. The pets of the given owners, leaving out the pets the caller already shows:
+
+<Tabs groupId="language">
+<TabItem value="kotlin" label="Kotlin" default>
+
+```kotlin
+val pets = orm.entity(Pet::class)
+    .select()
+    .where((Pet_.owner inList owners) and (Pet_ notInList shown))
+    .resultList
+```
+
+</TabItem>
+<TabItem value="java" label="Java">
+
+```java
+List<Pet> pets = orm.entity(Pet.class)
+    .select()
+    .where(it -> it.where(Pet_.owner, IN, owners).and(it.where(Metamodel.root(Pet.class), NOT_IN, shown)))
+    .getResultList();
+```
+
+</TabItem>
+</Tabs>
+
+```sql
+SELECT ...
+FROM pet p
+WHERE p.owner_id IN (?, ?) AND p.id NOT IN (?, ?)
+```
+
+`eq`, `neq`, `inList` and `notInList` take entities, `inRefs` and `notInRefs` take refs; in Java, `EQUALS`, `NOT_EQUALS`, `IN` and `NOT_IN` take entities, and `where(path, ref)` and `whereRef(path, refs)` take refs. The row compares with a path to the same table as a foreign key does: `Pet_ neq outer(Pet_)` in a subquery names a pet other than the enclosing one, and `Visit_.pet eq Pet_` in a join predicate is a key match. `orderBy(Pet_)` and `groupBy(Pet_)` order and group by the primary key. A compound primary key compares column by column. `where(records)` matches the same rows as `Pet_ inList records`. A table without a primary key has nothing to compare the row by, and a comparison on its root is refused with an error naming the table.
+
 ### IN Lists {#in-lists}
 
 An `IN` list, from `inList` and `IN`, `findAllById` or `whereId`, binds as one array parameter on PostgreSQL, `id = ANY(?)`: one statement for every length of the list, so the database parses, plans and caches one statement for a lookup that takes a varying number of keys rather than one per length, and a long list binds one parameter rather than one per value, which is also faster. Measured on a lookup of 1 to 200 ids in turn, the array form ran 13% faster than a placeholder per value. Elsewhere the list renders a placeholder per value. A list compared through a [SQL function](search.md#ignoring-accents) renders placeholders on every database, since the function is applied to each value.

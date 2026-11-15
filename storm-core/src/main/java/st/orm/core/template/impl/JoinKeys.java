@@ -180,11 +180,17 @@ final class JoinKeys {
 
     /**
      * Returns the key a path names: a foreign key of the table holding it, the primary key of that table, or the
-     * foreign key a path beyond it ends in, {@code Pet_.owner.id}. Returns {@code null} for any other column.
+     * foreign key a path beyond it ends in, {@code Pet_.owner.id}. The root names the primary key of its table.
+     * Returns {@code null} for any other column.
      */
     private static @Nullable Key key(Navigable<?, ?> path) throws SqlTemplateException {
         if (Metamodel.isOuter(path)) {
             return null;    // A column of an enclosing query is no key of a table the join relates.
+        }
+        if (path.fieldPath().isEmpty()) {
+            // The root names the row, which its primary key identifies.
+            var primaryKey = findPkField(path.tableType());
+            return primaryKey.isPresent() ? key(Metamodel.of(path.tableType(), primaryKey.get().name())) : null;
         }
         if (!path.isColumn() || path.isInline()) {
             return null;
