@@ -327,7 +327,7 @@ public class SqlLogRendererTest {
         var summary = repeated(SqlOperation.SELECT, City.class, StatementOrigin.FETCH, 10, 1, true);
         assertEquals(1, SqlLogRenderer.advisories(summary).size());
         String rendered = SqlLogRenderer.render(summary);
-        assertTrue(rendered.contains(NL + "\tadvice: 10 statements each fetched one City, 10 ms, 1.0 ms each." + NL + "\t\tfix: an inline foreign key joins it"), rendered);
+        assertTrue(rendered.contains(NL + "\tadvice: 10 statements each fetched one City through a Ref, 10 ms, 1.0 ms each." + NL + "\t\tfix: declare the field as City instead of Ref<City>"), rendered);
         assertTrue(rendered.endsWith("\t\tsee: https://orm.st/docs/advice#repeated-fetch"), rendered);
     }
 
@@ -353,8 +353,8 @@ public class SqlLogRendererTest {
         var fetches = repeated(SqlOperation.SELECT, City.class, StatementOrigin.FETCH, 10, 1, true, 2,
                 "OwnerView.kt:31", execution -> UNKNOWN);
         var fetched = SqlLogRenderer.advisories(new Summary("call", fetches, 10, 0, 20));
-        assertTrue(fetched.getFirst().startsWith("10 statements each fetched one City, 20 ms, 2.0 ms each.\nat: OwnerView.kt:31\n"
-                + "fix: an inline foreign key"), fetched.getFirst());
+        assertTrue(fetched.getFirst().startsWith("10 statements each fetched one City through a Ref, 20 ms, 2.0 ms each.\nat: OwnerView.kt:31\n"
+                + "fix: declare the field as City instead of Ref<City>"), fetched.getFirst());
     }
 
     @Test
@@ -379,8 +379,8 @@ public class SqlLogRendererTest {
         var advisories = SqlLogRenderer.advisories(new Summary("call", statements, 12, 0, 2040));
         assertEquals(1, advisories.size(), advisories.toString());
         assertTrue(advisories.getFirst().startsWith("the same SELECT of Owner ran 12 times, 2040 ms, 170 ms each, one "
-                + "row each.\ncost: at 170 ms each the statement itself costs more than its round trips, so look at it "
-                + "first\nfix: one query for all of them"), advisories.getFirst());
+                + "row each.\ncost: at 170 ms each the statement itself is the cost, not the round trip, so "
+                + "look at it first\nfix: one query for all of them"), advisories.getFirst());
         // Below ten milliseconds per execution the round trips are the cost, so the advice goes straight to them.
         var cheap = SqlLogRenderer.advisories(repeated(SqlOperation.SELECT, Owner.class, StatementOrigin.DIRECT,
                 12, 1, true));
@@ -402,7 +402,7 @@ public class SqlLogRendererTest {
         assertEquals(4, advisories.size(), advisories.toString());
         assertTrue(advisories.get(0).startsWith("the unit of work wrote Owner and then Pet"), advisories.get(0));
         assertTrue(advisories.get(1).startsWith("the same INSERT of City ran 10 times, 50 ms"), advisories.get(1));
-        assertTrue(advisories.get(2).startsWith("10 statements each fetched one Pet, 30 ms"), advisories.get(2));
+        assertTrue(advisories.get(2).startsWith("10 statements each fetched one Pet through a Ref, 30 ms"), advisories.get(2));
         assertTrue(advisories.get(3).startsWith("the same SELECT of Owner ran 10 times, 10 ms"), advisories.get(3));
     }
 
@@ -505,7 +505,7 @@ public class SqlLogRendererTest {
         assertEquals(1, advisories.size(), advisories.toString());
         assertTrue(advisories.getFirst().startsWith("the same SELECT of Owner ran 29 times, 725 ms over 25 ms elapsed, "
                 + "25 ms each, one row each, in 29 transactions of their own.\ncost: at 25 ms each the statement itself "
-                + "costs more than its round trips, so look at it first\nfix: one query"), advisories.getFirst());
+                + "is the cost, not the round trip, so look at it first\nfix: one query"), advisories.getFirst());
         // Executions that ran one after another cost what they add up to, so the line states the sum alone.
         var sequential = SqlLogRenderer.advisories(repeated(SqlOperation.SELECT, Owner.class, StatementOrigin.DIRECT,
                 12, 1, true));

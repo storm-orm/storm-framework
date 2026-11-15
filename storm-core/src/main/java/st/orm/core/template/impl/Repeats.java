@@ -492,9 +492,9 @@ final class Repeats {
         if (costly(counted)) {
             lines.append("\ncost: at ").append(SlowStatementLog.millis(mean))
                     .append(unitsOfWork
-                            ? " each the statement itself costs more than its round trip, and it runs once per "
+                            ? " each the statement itself is the cost, not the round trip, and it runs once per "
                                     + "transaction, so look at the statement"
-                            : " each the statement itself costs more than its round trips, so look at it first");
+                            : " each the statement itself is the cost, not the round trip, so look at it first");
         }
         String type = repeat.type.getSimpleName();
         return switch (repeat.advice) {
@@ -519,8 +519,8 @@ final class Repeats {
         return repeat.readsRecords
                 ? "one query for all of them, such as findAllById or a where with IN, reads the rows in one round "
                         + "trip"
-                : "one query for all of them, with a where with IN over what the loop varies, selects the keys that "
-                        + "exist in one round trip, with a GROUP BY on it where the counts themselves are used";
+                : "one query with a where with IN over the values the loop varies selects the ones that exist in one "
+                        + "round trip\nor: if the loop uses the counts, group that query by the same column";
     }
 
     /**
@@ -542,10 +542,10 @@ final class Repeats {
         if (!upsert) {
             return batch;
         }
-        return "where the rows mostly exist and rarely change, read them first and write only the new or changed "
-                + "ones, which avoids the writes"
-                + (repeat.upsertTakesGeneratedKey ? ", and the generated key value each upsert takes even where it "
-                        + "updates" : "")
+        return "if the rows mostly exist and rarely change, read them first and write only the new or changed "
+                + "ones, which skips the needless writes"
+                + (repeat.upsertTakesGeneratedKey ? " and the generated key each upsert draws even when it updates"
+                        : "")
                 + "\nor: " + batch;
     }
 

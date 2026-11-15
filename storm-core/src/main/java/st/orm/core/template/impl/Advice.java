@@ -61,7 +61,7 @@ enum Advice {
      */
     UNINDEXED_FOREIGN_KEY("unindexed-foreign-key", Category.PERFORMANCE, true,
             "every row deleted from %1$s is checked against the foreign key %2$s(%3$s), and no index on %2$s "
-                    + "starts with the column %4$s, so the database reads %2$s in full for each deleted row.\n"
+                    + "starts with %4$s, so the database reads %2$s in full for each deleted row.\n"
                     + "fix: an index on %2$s(%3$s) serves the check."),
 
     /**
@@ -71,12 +71,12 @@ enum Advice {
      * statement, between the statements or after the last, decides the remedy.
      */
     IDLE_TRANSACTION("idle-transaction", Category.PERFORMANCE, true,
-            "the transaction held its connection %1$s, %2$s of it idle%3$s%4$s.%5$s\nfix: %6$s."),
+            "the transaction held its connection for %1$s, %2$s of it idle%3$s%4$s.%5$s\nfix: %6$s."),
 
     /** The count query behind a page, a deliberate choice of page over slice, so advised only when slow. */
     PAGE_COUNT("page-count", Category.PERFORMANCE, true,
-            "page counts every matching row to report the total.\n"
-                    + "fix: slice reads the same page without the count, and says whether a next page exists."),
+            "page(...) runs a count of every matching row to report the total.\n"
+                    + "fix: slice(...) reads the same page without the count, and says whether a next page exists."),
 
     /** A limit or offset without an ORDER BY. */
     UNORDERED_LIMIT("unordered-limit", Category.CORRECTNESS, false,
@@ -86,17 +86,19 @@ enum Advice {
 
     /** An offset of at least {@link #DEEP_OFFSET_ROWS} rows. */
     DEEP_OFFSET("deep-offset", Category.PERFORMANCE, false,
-            "the database reads and throws away the %d rows the offset skips before it returns the first.\n"
-                    + "fix: scroll continues from the last row read, at the same cost for every window."),
+            "the database reads and discards the %d rows the offset skips before it returns any.\n"
+                    + "fix: scroll(...) continues from the last row read (keyset pagination), so every page costs "
+                    + "what the first one does."),
 
     /**
      * An {@code IN} list rendered with a placeholder per value in {@link #IN_LIST_LENGTHS} distinct lengths, each a
      * statement of its own to the database, where padding would render them as a few.
      */
     IN_LIST_SHAPES("in-list-shapes", Category.PERFORMANCE, false,
-            "the IN list runs in many lengths, and each length is a separate statement to the database and its plan "
-                    + "cache.\nfix: storm.in_list=padded pads each list to the next power of two by repeating its last "
-                    + "value, which changes no result and keeps the statements to a few."),
+            "the IN list has run with %d or more different lengths, and the database parses, plans and caches each "
+                    + "length as a separate statement.\nfix: storm.in_list=padded pads every list the template "
+                    + "renders to the next power of two by repeating its last value, which changes no result and keeps "
+                    + "the statements to a few."),
 
     /**
      * References of one type fetched one statement at a time, in one transaction or across the transactions of one
@@ -104,9 +106,9 @@ enum Advice {
      * spanned several, and the call site of the fetch where it is known.
      */
     REPEATED_FETCH("repeated-fetch", Category.DESIGN, false,
-            "%1$d statements each fetched one %2$s%3$s.%4$s\nfix: an inline foreign key joins it into every read of "
-                    + "the rows\nor: a query that fetches the references, such as select().fetch(...), resolves them in "
-                    + "the statement that reads them."),
+            "%1$d statements each fetched one %2$s through a Ref%3$s.%4$s\nfix: declare the field as %2$s instead of "
+                    + "Ref<%2$s>, so every read joins it in\nor: keep the Ref and fetch it in the query that reads the "
+                    + "rows, such as select().fetch(...), so one statement reads both."),
 
     /** An entity whose read exceeds the design budget. */
     ENTITY_BUDGET("entity-budget", Category.DESIGN, false,
@@ -116,7 +118,7 @@ enum Advice {
     /** A slow read of an entity whose read is at least half the design budget. */
     WIDE_ENTITY_READ("wide-entity-read", Category.DESIGN, true,
             "every read of %1$s joins %2$d tables and selects %3$d columns beyond its own.\n"
-                    + "fix, where that width makes the read slow: %4$s."),
+                    + "fix: if the width is what makes the read slow, %4$s."),
 
     /**
      * The same single-row read repeated, in one transaction or across the transactions of one unit of work. The

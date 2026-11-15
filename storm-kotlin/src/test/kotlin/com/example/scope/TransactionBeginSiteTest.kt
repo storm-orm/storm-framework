@@ -172,7 +172,7 @@ internal open class TransactionBeginSiteTest(
                 }
             }
             lines shouldHaveSize 1
-            lines.first() shouldStartWith "SQL slow (transaction): held its connection "
+            lines.first() shouldStartWith "SQL slow (transaction): held its connection for "
             lines.first() shouldContain ", TransactionBeginSiteTest.kt:"
             lines.first() shouldContain "last statement: the SELECT of PetOwnerRef"
         } finally {

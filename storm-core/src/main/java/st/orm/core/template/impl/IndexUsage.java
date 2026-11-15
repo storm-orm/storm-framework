@@ -290,8 +290,7 @@ final class IndexUsage {
                 for (var reference : indexes.unindexedReferences()) {
                     String referencing = qualified(deleted.schema(), reference.table());
                     advice.add(Advice.UNINDEXED_FOREIGN_KEY.format(qualified(deleted.schema(), deleted.table()),
-                            referencing, String.join(", ", reference.columns()),
-                            String.join(" or ", reference.columns())));
+                            referencing, String.join(", ", reference.columns()), anyOf(reference.columns())));
                 }
             }
         }
@@ -382,13 +381,14 @@ final class IndexUsage {
         if (search.form().substring()) {
             fix = substringIndex != null
                     ? "%s on %s serves it".formatted(substringIndex, search.expression())
-                    : ("no index of the database serves the %s form; a word-suffix table, matched as a prefix, takes "
-                            + "an ordinary index").formatted(search.form().factory());
+                    : "this database has no index for matching inside a value; store the column's word suffixes in "
+                            + "a table of their own and match them with prefix(...), which a plain index serves";
         } else if (search.bare()) {
             fix = "an index on %s(%s) serves it".formatted(table, search.column());
         } else {
-            fix = ("an index on %s serves it where the database indexes an expression, and a stored column holding "
-                    + "it, declared as a query column, takes an ordinary index").formatted(search.expression());
+            fix = ("an index on %s serves it if the database supports indexes on expressions; otherwise store the "
+                    + "value in a column of its own, declared as a query column, and index that")
+                    .formatted(search.expression());
         }
         return Advice.UNINDEXED_SEARCH.format("no index on %s serves %s".formatted(table, search.match()), table, fix);
     }
@@ -414,7 +414,7 @@ final class IndexUsage {
         /** Says that the key of the index passes the limit, or nothing where it fits. */
         String limit(List<String> columns) {
             return passes(columns)
-                    ? (", though its key of about %d bytes passes the %d bytes the database allows a key, so a column "
+                    ? (", though its key of about %d bytes exceeds the database's key limit of %d bytes, so a column "
                             + "must be shortened or left out").formatted(keyBytes(columns), maxKeyBytes)
                     : "";
         }
@@ -468,14 +468,14 @@ final class IndexUsage {
             var single = suggested(keys, range, order);
             options = "index: %s(%s) %s%s%s".formatted(table, String.join(", ", single),
                     !filters ? "reads the rows in order and stops at the limit"
-                            : "finds them directly where the condition selects few of them", sizing.limit(single),
+                            : "finds them directly when the condition selects few of them", sizing.limit(single),
                     fewValued == null ? "" : fewValued);
         } else {
             var ordered = inOrderIndex(usage, keys, inOrder);
             String readInOrder = groups
                     ? groupedRead(usage, sizing, ordered, filters)
                     : ("reads the rows in %s order, checks the range on each and stops at the limit, which is best "
-                            + "where the range selects many of them").formatted(String.join(", ", inOrder))
+                            + "when the range selects many of them").formatted(String.join(", ", inOrder))
                             + sizing.limit(ordered);
             String inOrderOption = "%s(%s) %s".formatted(table, String.join(", ", ordered), readInOrder);
             if (!filters) {
@@ -486,15 +486,15 @@ final class IndexUsage {
                     addAbsent(find, List.of(range.getFirst()));
                 }
                 String findOption = "%s(%s) %s%s".formatted(table, String.join(", ", find), groups
-                        ? "finds them directly where the condition selects few of them"
-                        : "finds the matching rows directly, then sorts them, which is best where the range selects "
+                        ? "finds them directly when the condition selects few of them"
+                        : "finds the matching rows directly, then sorts them, which is best when the range selects "
                                 + "few of them", sizing.limit(find)) + (fewValued == null ? "" : fewValued);
                 options = fewValued != null || groups
                         ? "index: " + inOrderOption + "\nor: " + findOption
                         : "index: " + findOption + "\nor: " + inOrderOption;
             }
         }
-        String which = "starts with the column " + String.join(" or ", asked);
+        String which = "starts with " + anyOf(asked);
         return Advice.MISSING_INDEX.format(table, which, cost, options);
     }
 
@@ -582,19 +582,19 @@ final class IndexUsage {
         if (appended.isEmpty()) {
             return "\ncovering: it reads the index alone" + (selectKnown
                     ? ", since it holds every column the select reads"
-                    : " where the select reads no other columns");
+                    : " if the select reads no other columns");
         }
         var widened = new ArrayList<String>(index);
         widened.addAll(appended);
         if (sizing.passes(widened)) {
-            return ("\ncovering: with %s appended it would read the index alone, but a key of about %d bytes passes "
-                    + "the %d bytes the database allows a key").formatted(String.join(", ", appended),
+            return ("\ncovering: with %s appended it would read the index alone, but its key of about %d bytes "
+                    + "would exceed the database's key limit of %d bytes").formatted(String.join(", ", appended),
                     sizing.keyBytes(widened), sizing.maxKeyBytes());
         }
         return "\ncovering: with %s appended it reads the index alone%s".formatted(String.join(", ", appended),
                 selectKnown
                         ? ", since it then holds every column the select reads"
-                        : " where the select reads no other columns");
+                        : " if the select reads no other columns");
     }
 
     /**
@@ -636,6 +636,13 @@ final class IndexUsage {
             addAbsent(columns, order);
         }
         return columns;
+    }
+
+    /** Names the columns an index may start with: the one column, or any of several. */
+    private static String anyOf(List<String> columns) {
+        return columns.size() == 1
+                ? "the column " + columns.getFirst()
+                : "any of the columns " + String.join(", ", columns);
     }
 
     private static List<String> without(List<String> columns, List<String> removed) {

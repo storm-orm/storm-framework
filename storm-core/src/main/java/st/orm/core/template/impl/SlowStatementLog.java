@@ -777,12 +777,12 @@ public final class SlowStatementLog {
         if (gaps.betweenNanos() <= gaps.beforeNanos() + gaps.afterNanos()) {
             remedy = edgeRemedy(gaps);
         } else if (wrote) {
-            remedy = "where the writes need not see the reads of this transaction, do the reads and that work first, "
-                    + "then write in a short transaction of its own";
+            remedy = "if the writes need not see this transaction's reads, do the reads and the work between them "
+                    + "first, then write in a short transaction of its own";
         } else if (gaps.betweenNanos() / Math.max(1, gaps.statements() - 1) >= BORROW_WORTH_NANOS) {
-            remedy = "read what the work needs inside the transaction and do the work after it returns; where the "
-                    + "reads need not see one state of the database, reading without the transaction holds a "
-                    + "connection only while each statement runs";
+            remedy = "read what the work needs inside the transaction and do the work after it returns; if the "
+                    + "reads need not see one consistent state of the database, read without a transaction, which "
+                    + "holds a connection only while each statement runs";
         } else {
             remedy = "read what the work needs inside the transaction and do the work after it returns";
         }
@@ -877,13 +877,14 @@ public final class SlowStatementLog {
         }
         String before = end(gaps.longestBefore(), gaps.longestBeforeSite());
         String after = end(gaps.longestAfter(), gaps.longestSite());
-        String range = "after " + before + ", before " + (after.equals(before) ? "another of the same" : after);
+        String range = "after " + before + ", before "
+                + (after.equals(before) ? "the next run of the same statement" : after);
         if (gaps.gaps() == 1) {
             return "longest idle: " + millis(gaps.longestNanos()) + ", " + range + ", the only gap of " + floor
                     + " or more";
         }
-        return "longest idle: " + millis(gaps.longestNanos()) + ", " + range + ", of " + gaps.gaps() + " gaps of "
-                + floor + " or more";
+        return "longest idle: " + millis(gaps.longestNanos()) + ", " + range + "; " + gaps.gaps() + " gaps of "
+                + floor + " or more in all";
     }
 
     /**
@@ -921,13 +922,14 @@ public final class SlowStatementLog {
                                     TransactionRecord.Gaps gaps,
                                     @Nullable String callSite,
                                     int suppressed) {
-        var rendered = new StringBuilder("SQL slow (transaction): held its connection ").append(millis(heldNanos));
+        var rendered = new StringBuilder("SQL slow (transaction): held its connection for ")
+                .append(millis(heldNanos));
         if (fromFirstStatement) {
             rendered.append(" from its first statement");
         }
         rendered.append(", ").append(millis(busyNanos)).append(" in its ")
                 .append(statements == 1 ? "statement" : statements + " statements")
-                .append(", ").append(wrote ? "wrote" : "read only");
+                .append(", ").append(wrote ? "with writes" : "read only");
         if (callSite != null) {
             rendered.append(", ").append(callSite);
         }

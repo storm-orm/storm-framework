@@ -321,7 +321,7 @@ class TransactionAdviceTest {
         assertEquals(1, alone.size(), lines(alone).toString());
         var line = alone.getFirst().getFormattedMessage();
         assertTrue(line.startsWith("SQL advice (transaction)"), line);
-        assertTrue(line.contains("\tadvice: the transaction held its connection "), line);
+        assertTrue(line.contains("\tadvice: the transaction held its connection for "), line);
         assertTrue(line.contains("#idle-transaction"), line);
         // Every statement is walked while the repeats are recorded, so the last one carries its site and the fix
         // names the line.
@@ -351,7 +351,7 @@ class TransactionAdviceTest {
         var line = events.getFirst().getFormattedMessage();
         // Both ends name the repository method, which names the entity too, and the second is the same call.
         assertTrue(Pattern.compile("longest idle: [0-9.]+ ms, after ReminderService\\.java:\\d+ -> "
-                + "CustomerRepository\\.lookUp, before another of the same, the only gap of 1\\.0 ms or more")
+                + "CustomerRepository\\.lookUp, before the next run of the same statement, the only gap of 1\\.0 ms or more")
                 .matcher(line).find(), line);
     }
 
@@ -648,8 +648,8 @@ class TransactionAdviceTest {
             }
         });
         assertTrue(line.startsWith("the same UPSERT of Customer ran 10 times, "), line);
-        assertTrue(line.contains("\nfix: where the rows mostly exist and rarely change, read them first and write only "
-                + "the new or changed ones, which avoids the writes\nor: the overloads that take a list send the rows "
+        assertTrue(line.contains("\nfix: if the rows mostly exist and rarely change, read them first and write only "
+                + "the new or changed ones, which skips the needless writes\nor: the overloads that take a list send the rows "
                 + "as one batch.\nsee:"), line);
     }
 
@@ -662,9 +662,9 @@ class TransactionAdviceTest {
             }
         });
         assertTrue(line.startsWith("the same SELECT of Customer ran 10 times, "), line);
-        assertTrue(line.contains("\nfix: one query for all of them, with a where with IN over what the loop varies, "
-                + "selects the keys that exist in one round trip, with a GROUP BY on it where the counts themselves "
-                + "are used.\nsee:"), line);
+        assertTrue(line.contains("\nfix: one query with a where with IN over the values the loop varies selects the "
+                + "ones that exist in one round trip\nor: if the loop uses the counts, group that query by the same "
+                + "column.\nsee:"), line);
         assertFalse(line.contains("findAllById"), line);
     }
 
@@ -678,7 +678,7 @@ class TransactionAdviceTest {
         // existsById reads through the query builder, yet the advice names the call the application made.
         assertTrue(line.startsWith("existsById of Customer ran 10 times, "), line);
         assertTrue(line.contains("\nfix: findAllById over the keys reads the ones that exist in one round trip.\nsee:"), line);
-        assertFalse(line.contains("GROUP BY"), line);
+        assertFalse(line.contains("group that query"), line);
     }
 
     @Test

@@ -128,13 +128,13 @@ Summed database time exceeds elapsed time whenever statements run concurrently, 
 A summary closes with advice where the unit of work repeated across its transactions what it could have done once, counted from every execution, past the table's recording limit too, so a repeat in a long task is advised on with its full count and time even where the table lists only its first statements: ten or more fetches of one type, or the same single-row read or write run ten or more times. A repeat inside one transaction is reported by the transaction when it completes, in the [advice log](#the-advice-log), and the summary leaves the executions a transaction advised on to it, so it counts the part no single transaction saw, such as a loop that opens a transaction per item, and says how many transactions they ran in; a shape whose executions were all advised per transaction drops out of the summary's advice, while its row stays in the table. It also says where related writes each committed on their own: a write outside any transaction to an entity that references an entity an earlier untransacted write wrote, such as an owner and then its pet, which leaves the owner behind when the pet fails.
 
 ```
-SQL (GET /owners): 31 statements, 24 fetches, 41 ms in database, 96 ms total
-	28 ms  24 rows  24x  City  fetch  OwnerView.kt:31  SELECT c.id, c.name FROM city c WHERE c.id = ?
+SQL (GET /owners): 31 statements, 24 fetches, 77 ms in database, 132 ms total
+	64 ms  24 rows  24x  City  fetch  OwnerView.kt:31  SELECT c.id, c.name FROM city c WHERE c.id = ?
 	13 ms  70 rows   7x  Pet          PetService.kt:52  SELECT p.id, p.name FROM pet p WHERE p.owner_id = ?
-	advice: 24 statements each fetched one City, 28 ms, 1.2 ms each, in 24 transactions of their own.
+	advice: 24 statements each fetched one City through a Ref, 64 ms, 2.7 ms each, in 24 transactions of their own.
 		at: OwnerView.kt:31
-		fix: an inline foreign key joins it into every read of the rows
-		or: a query that fetches the references, such as select().fetch(...), resolves them in the statement that reads them.
+		fix: declare the field as City instead of Ref<City>, so every read joins it in
+		or: keep the Ref and fetch it in the query that reads the rows, such as select().fetch(...), so one statement reads both.
 		see: https://orm.st/docs/advice#repeated-fetch
 ```
 
@@ -328,7 +328,7 @@ Reading the line, headline first:
 - **`parameters: 32 (typically 3)`** is the parameter profile, safe to print in production: the count this execution bound against what the shape typically binds, shown when they differ by half or double. It names an oversized `IN` list, the commonest way a fast shape turns slow, without printing a value.
 - **`lengths: 5`** is the number of lengths the shape's `IN` list has rendered with so far, shown when it is more than one. Each length is a different statement to the database; from eight lengths the line carries [advice](advice.md#in-list-shapes) on it.
 - **`comment: traceparent='…'`** is the SQL comment the statement carried, when a [`SqlCommenter`](spring-integration.md#observability) is configured. It is the key that joins this line to the database's own record of the same execution; see below.
-- **`advice: …`** follows on a line of its own where the statement's own shape says why it reads more than it needs to: a searched column no index serves, a `distinct` over a join that repeats rows, the count behind a page, or a deep offset. The first line says what is wrong, and each line below it, indented one level deeper, holds one more part: `fix:` the remedy, `or:` an alternative, and facts such as `at:` the call site, `cost:` what each execution costs, `index:` and `covering:` for an index, `longest idle:` for a transaction. The last line, `see:`, links to its section of [Statement Advice](advice.md), which says what the advice means and what to use instead.
+- **`advice: …`** follows on a line of its own where the statement's own shape says why it reads more than it needs to: a searched column no index serves, a `distinct` over a join that repeats rows, the count behind a page, or a deep offset. The first line says what is wrong, and each line below it, indented one level deeper, holds one more part: `fix:` the remedy, `or:` an alternative, and facts such as `at:` the call site, `cost:` what each execution costs, `index:` and `covering:` for an index, `longest idle:` for a transaction. The last line, `see:`, links to its section of [Statement Advice](advice.md), which says what the advice means and what to use instead. See [Reading an Advice Line](advice.md#reading-an-advice-line) for every label.
 
 The values themselves render while the logger is at `TRACE`, inlined into the statement so it can be pasted into a console, under the rule every Storm SQL logger follows; the line stays at `WARN`, since a slow execution is one whatever detail it is reported with. `st.orm.sql.slow` is a child of `st.orm.sql`, so raising that to `TRACE` for statement logging raises the slow log with it, and no other level shows a value.
 
@@ -370,8 +370,8 @@ Or from `application.conf`, under `storm.sqlLog.slow.transaction`.
 </Tabs>
 
 ```
-SQL slow (transaction): held its connection 2300 ms, 120 ms in its 3 statements, wrote, OrderService.java:42
-	advice: the transaction held its connection 2300 ms, 2180 ms of it idle after its last statement, with its row locks held for 2100 ms of that.
+SQL slow (transaction): held its connection for 2300 ms, 120 ms in its 3 statements, with writes, OrderService.java:42
+	advice: the transaction held its connection for 2300 ms, 2180 ms of it idle after its last statement, with its row locks held for 2100 ms of that.
 		last statement: the UPDATE of Order
 		fix: the work after the UPDATE of Order can run after the commit; an onCommit callback runs it there.
 		see: https://orm.st/docs/advice#idle-transaction

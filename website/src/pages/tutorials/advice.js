@@ -87,7 +87,7 @@ const LOG_FK = [
   P('SQL slow (DELETE Owner): 2840 ms in database, 1 rows, OwnerService.kt:77\n'),
   M('	DELETE FROM owner WHERE id = ?\n'),
   M('	shape: 3f0a6c1d92be4471  parameters: 1\n'),
-  P('	'), K('advice:'), P(' every row deleted from owner is checked against the foreign key pet(owner_id), and no index on pet starts with owner_id, so the database reads pet in full for each deleted row.\n'),
+  P('	'), K('advice:'), P(' every row deleted from owner is checked against the foreign key pet(owner_id), and no index on pet starts with the column owner_id, so the database reads pet in full for each deleted row.\n'),
   P('		'), K('fix:'), P(' an index on pet(owner_id) serves the check.\n'),
   P('		'), K('see:'), P(' https://orm.st/docs/advice#unindexed-foreign-key'),
 ].join('');
@@ -100,8 +100,8 @@ const CODE_IDLE = [
 ].join('');
 
 const LOG_IDLE = [
-  P('SQL slow (transaction): held its connection 2300 ms, 4.0 ms in its statement, wrote, VisitService.kt:42\n'),
-  P('	'), K('advice:'), P(' the transaction held its connection 2300 ms, 2290 ms of it idle after its last statement, with its row locks held for 2290 ms of that.\n'),
+  P('SQL slow (transaction): held its connection for 2300 ms, 4.0 ms in its statement, with writes, VisitService.kt:42\n'),
+  P('	'), K('advice:'), P(' the transaction held its connection for 2300 ms, 2290 ms of it idle after its last statement, with its row locks held for 2290 ms of that.\n'),
   P('		'), K('last statement:'), P(' the INSERT of Visit\n'),
   P('		'), K('fix:'), P(' the work after the INSERT of Visit can run after the commit; an onCommit callback runs it there.\n'),
   P('		'), K('see:'), P(' https://orm.st/docs/advice#idle-transaction'),
@@ -124,8 +124,8 @@ const LOG_BUDGET = [
 
 const CODE_ACCEPT = [
   K('interface '), T('OwnerRepository'), P(' : '), T('EntityRepository'), P('<'), T('Owner'), P(', '), T('Int'), P('> {\n\n'),
-  P('    '), C('// The admin screen shows "page 3 of 120", so it needs the total.\n'),
-  P('    '), A('@AcceptAdvice'), P('('), S('"page-count"'), P(')\n'),
+  P('    '), C('// The admin screen jumps to any page, so it keeps the offset.\n'),
+  P('    '), A('@AcceptAdvice'), P('('), S('"deep-offset"'), P(')\n'),
   P('    '), K('fun '), F('adminList'), P('(pageable: '), T('Pageable'), P('): '), T('Page'), P('<'), T('Owner'), P('> = '), F('select'), P('().'), F('page'), P('(pageable)\n'),
   P('}'),
 ].join('');

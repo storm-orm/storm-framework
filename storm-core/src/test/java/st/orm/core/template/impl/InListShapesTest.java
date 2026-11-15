@@ -42,7 +42,7 @@ class InListShapesTest {
         }
         var advisory = InListShapes.observe(7, 8);
         assertNotNull(advisory);
-        assertTrue(advisory.startsWith("the IN list runs in many lengths"), advisory);
+        assertTrue(advisory.startsWith("the IN list has run with 8 or more different lengths"), advisory);
         assertTrue(advisory.endsWith("\nsee: " + Advice.PAGE + "#in-list-shapes"), advisory);
         assertEquals(8, InListShapes.lengths(7));
     }

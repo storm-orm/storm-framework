@@ -80,7 +80,7 @@ public class EntityGraphTest {
         var advice = EntityGraph.wideReadAdvice(Chain0.class);
         assertNotNull(advice);
         // Below half the budget takes seven joins off; the deepest edge that does is the one into Chain5.
-        assertTrue(advice.contains("\nfix, where that width makes the read slow: a Ref for Chain4.next removes 7 "
+        assertTrue(advice.contains("\nfix: if the width is what makes the read slow, a Ref for Chain4.next removes 7 "
                 + "joins and 13 columns."), advice);
         assertNull(EntityGraph.wideReadAdvice(Visit.class));
         assertNull(EntityGraph.wideReadAdvice(Pet.class));
