@@ -231,7 +231,10 @@ public class SelectBuilderImpl<T extends Data, R, ID> extends QueryBuilderImpl<T
         var selectDataType = (Class<? extends Data>) selectType;
         var combined = new ArrayList<>(fetchPaths);
         for (var path : paths) {
-            OuterPaths.refuse(path.asMetamodel(), "resolves the references of");
+            if (Metamodel.isOuter(path.asMetamodel())) {
+                // A fetch names its path as a field path, which resolves no columns that would refuse it.
+                throw new PersistenceException(OuterPaths.message(path.asMetamodel()));
+            }
             String fieldPath = path.fieldPath();
             RecordValidation.validateFetchPath(selectDataType, fieldPath);
             if (!combined.contains(fieldPath)) {

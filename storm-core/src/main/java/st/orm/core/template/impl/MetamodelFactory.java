@@ -155,6 +155,9 @@ public final class MetamodelFactory {
      */
     @SuppressWarnings({"unchecked", "rawtypes"})
     public static Metamodel<?, ?> canonical(Metamodel<?, ?> metamodel) {
+        if (Metamodel.isOuter(metamodel)) {
+            return metamodel;   // Rewriting it would drop the marking that keeps it out of this query's columns.
+        }
         try {
             Class<? extends Data> rootTable = metamodel.root();
             String foreignKeyPath = primaryKeyThroughForeignKeyPath(fieldResolutionClass(rootTable), metamodel.fieldPath());

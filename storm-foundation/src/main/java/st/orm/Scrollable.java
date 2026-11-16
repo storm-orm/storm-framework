@@ -67,10 +67,6 @@ public record Scrollable<T extends Data>(
             throw new IllegalArgumentException(
                     "A scroll orders by values the cursor carries, and a SqlFunction call is computed by the database; scroll by a column instead.");
         }
-        if (Metamodel.isOuter(key) || sort.stream().anyMatch(order -> Metamodel.isOuter(order.field()))) {
-            throw new IllegalArgumentException(
-                    "A scroll orders by values the cursor carries, and a record holds no value for a column of the enclosing query; scroll by a column of the query instead.");
-        }
         if (size <= 0) {
             throw new IllegalArgumentException("size must be positive.");
         }

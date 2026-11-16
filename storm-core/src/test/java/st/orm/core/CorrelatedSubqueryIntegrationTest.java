@@ -36,12 +36,14 @@ import java.util.stream.Collectors;
 import javax.sql.DataSource;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.junit.jupiter.api.function.Executable;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.jdbc.JdbcTest;
 import org.springframework.test.context.ContextConfiguration;
 import org.springframework.test.context.junit.jupiter.SpringExtension;
 import st.orm.Metamodel;
 import st.orm.PersistenceException;
+import st.orm.Scrollable;
 import st.orm.SqlFunction;
 import st.orm.core.model.Address;
 import st.orm.core.model.Owner;
@@ -224,10 +226,26 @@ public class CorrelatedSubqueryIntegrationTest {
     }
 
     @Test
-    public void outerIsNoColumnToCompareAValueWith() {
-        var e = assertThrows(PersistenceException.class, () -> orm().selectFrom(Pet.class)
-                .where(it -> it.where(outer(Pet_.name), EQUALS, "Leo")));
-        assertTrue(e.getMessage().contains("outer(Pet_.name) names a column of the enclosing query"), e.getMessage());
+    public void outerIsRefusedWhereTheQueryResolvesItsOwnColumns() {
+        // Every use other than a comparison of two columns resolves the path as a column of the query, and that
+        // resolution refuses it, whatever the use: a value comparison, through a foreign key and a function call as
+        // well, ordering, grouping, a search, a scroll and a column to set. A fetch resolves no columns and refuses it
+        // where it is given.
+        var upper = SqlFunction.<String>of("upper");
+        List<Executable> uses = List.of(
+                () -> orm().selectFrom(Pet.class).where(it -> it.where(outer(Pet_.name), EQUALS, "Leo")).getResultList(),
+                () -> orm().selectFrom(Pet.class).where(it -> it.where(outer(Pet_.owner.id), EQUALS, 1)).getResultList(),
+                () -> orm().selectFrom(Pet.class).where(it -> it.where(upper.apply(outer(Pet_.name)), EQUALS, "LEO")).getResultList(),
+                () -> orm().selectFrom(Pet.class).orderBy(outer(Pet_.name)).getResultList(),
+                () -> orm().selectFrom(Pet.class).groupBy(outer(Pet_.name)).getResultList(),
+                () -> orm().selectFrom(Pet.class).where(it -> PredicateBuilderFactory.search("leo", outer(Pet_.name))).getResultList(),
+                () -> orm().entity(Pet.class).select().scroll(Scrollable.of(Metamodel.key(outer(Pet_.id)), 10)),
+                () -> orm().entity(Owner.class).update().set(outer(Owner_.firstName), "Leo").where(Owner_.id, EQUALS, 1).executeUpdate(),
+                () -> orm().entity(Pet.class).select().fetch(outer(Pet_.type)));
+        for (var use : uses) {
+            var e = assertThrows(PersistenceException.class, use);
+            assertTrue(e.getMessage().contains("is a column of the enclosing query; only a comparison of two columns takes it"), e.getMessage());
+        }
     }
 
     @Test
@@ -293,42 +311,11 @@ public class CorrelatedSubqueryIntegrationTest {
     }
 
     @Test
-    public void outerIsNoColumnToOrderOrGroupBy() {
-        var ordered = assertThrows(PersistenceException.class, () -> orm().selectFrom(Pet.class).orderBy(outer(Pet_.name)));
-        assertTrue(ordered.getMessage().contains("outer(Pet_.name) names a column of the enclosing query"), ordered.getMessage());
-        var grouped = assertThrows(PersistenceException.class, () -> orm().selectFrom(Pet.class).groupBy(outer(Pet_.name)));
-        assertTrue(grouped.getMessage().contains("A query orders and groups by its own columns"), grouped.getMessage());
-    }
-
-    @Test
     public void outerOutsideASubqueryFindsNoEnclosingQuery() {
         var e = assertThrows(PersistenceException.class, () -> orm().entity(Pet.class).select()
                 .where(it -> it.where(Pet_.owner.id, EQUALS, outer(Owner_.id)))
                 .getResultList());
         assertTrue(e.getMessage().contains("Owner is not part of this query"), e.getMessage());
-    }
-
-    @Test
-    public void outerIsRefusedWhereAQueryTakesItsOwnPaths() {
-        // Whatever takes a path of the query refuses a column of the enclosing one where it is given: a search, a
-        // function call compared with a value, a reference to resolve, a column to set.
-        var message = "names a column of the enclosing query";
-        var searched = assertThrows(PersistenceException.class, () -> orm().selectFrom(Pet.class)
-                .where(it -> PredicateBuilderFactory.search("leo", outer(Pet_.name)))
-                .getResultList());
-        assertTrue(searched.getMessage().contains("outer(Pet_.name) " + message), searched.getMessage());
-        assertTrue(searched.getMessage().contains("A query searches its own columns."), searched.getMessage());
-        var called = assertThrows(PersistenceException.class, () -> orm().selectFrom(Pet.class)
-                .where(it -> it.where(SqlFunction.<String>of("upper").apply(outer(Pet_.name)), EQUALS, "LEO")));
-        assertTrue(called.getMessage().contains("upper(outer(Pet_.name)) " + message), called.getMessage());
-        var fetched = assertThrows(PersistenceException.class, () -> orm().entity(Pet.class).select()
-                .fetch(outer(Pet_.type)));
-        assertTrue(fetched.getMessage().contains("outer(Pet_.type) " + message), fetched.getMessage());
-        var set = assertThrows(PersistenceException.class, () -> orm().entity(Owner.class).update()
-                .set(outer(Owner_.firstName), "Leo")
-                .where(Owner_.id, EQUALS, 1)
-                .executeUpdate());
-        assertTrue(set.getMessage().contains("A query sets its own columns."), set.getMessage());
     }
 
     @Test

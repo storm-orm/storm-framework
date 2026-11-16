@@ -600,6 +600,7 @@ public final class ModelImpl<E extends Data, ID> implements Model<E, ID> {
 
     @Override
     public List<Column> getColumns(Metamodel<?, ?> metamodel) throws SqlTemplateException {
+        OuterPaths.refuse(metamodel);
         if (metamodel.fieldPath().isEmpty()) {
             return getColumns(rowKey(metamodel));
         }
@@ -731,6 +732,7 @@ public final class ModelImpl<E extends Data, ID> implements Model<E, ID> {
     public void forEachValue(Metamodel<E, ?> metamodel,
                              Object object,
                              BiConsumer<Column, Object> consumer) throws SqlTemplateException {
+        OuterPaths.refuse(metamodel);
         if (metamodel.fieldPath().isEmpty()) {
             forEachValue(rowKey(metamodel), object, consumer);
             return;
