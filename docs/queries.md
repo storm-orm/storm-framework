@@ -1250,7 +1250,7 @@ WHERE NOT EXISTS (SELECT 1 FROM visit v WHERE v.pet_id = p.id AND v.description 
 
 Two semi-joins or anti-joins on one table are two subqueries, each with its own condition on the join. `antiJoin<Visit>().on(Pet::class, Visit_.description eq "rabies shot")` followed by `semiJoin<Visit>().on<Pet>()` finds the pets that had a visit but never a rabies shot, and two semi-joins with different conditions find the rows with a related row matching each, where one semi-join with both conditions asks for a single related row matching both. A condition in `where` that names the table could not tell the joins apart and is refused; each condition goes on its join.
 
-A table the query joins may be filtered by as well. The owners with their pets, leaving out the owners who keep a snake:
+A path that names a table resolves without the semi-joins and anti-joins first. A table the query reaches itself, as its own table, a table it joins or a table its own foreign keys join, names the query's rows wherever a path is written: in `where`, `orderBy`, `groupBy`, the select and the `on` of a later join. A path names a semi-joined table only where the query reaches the table no other way, and then names the one semi-join on it. A semi-join or anti-join therefore never changes what a path to a table of the query means, and a table may be joined and filtered by. The owners with their pets, leaving out the owners who keep a snake:
 
 <Tabs groupId="language">
 <TabItem value="kotlin" label="Kotlin" default>
@@ -1289,7 +1289,7 @@ WHERE NOT EXISTS (
 ORDER BY p.name
 ```
 
-The condition on the anti-join names the pets its subquery looks for. Everything else that names the table names the joined pets: a condition in `where`, `orderBy`, `groupBy`, the select, and the `on` of a later join. A `semiJoin` on a table the query joins states its condition on the join for the same reason, and is refused without one. Inside the condition, [`outer`](#correlated-subqueries) names the joined row: `antiJoin<Pet>().on(Owner::class, Pet_.id neq outer(Pet_.id))` keeps the pets whose owner has no other pet.
+The condition on the anti-join names the pets its subquery looks for, and `orderBy(Pet_.name)` the joined pets. A semi-join or anti-join on a table the query reaches itself states its condition on the join, since a path elsewhere names the query's rows; without a condition, such a semi-join keeps the rows with any related row. The same holds for a table the query's own foreign keys join: on a query of pets, `semiJoin<Owner>().on(Pet::class, Owner_.lastName eq "Davis")` filters by its own condition, and `where(Owner_.firstName eq "Betty")` beside it names the owner the pet's foreign key joins. Inside the condition, [`outer`](#correlated-subqueries) names the joined row: `antiJoin<Pet>().on(Owner::class, Pet_.id neq outer(Pet_.id))` keeps the pets whose owner has no other pet.
 
 ### Correlated Subqueries
 

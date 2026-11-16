@@ -411,13 +411,16 @@ public abstract class QueryBuilder<T : Data, R : Any, ID : Any> {
      * row. A table referenced through a foreign key, such as the table a link row points at, is related through that
      * foreign key's columns, without reading the table itself.
      *
-     * The table may be the query's own, or a table the query joins. On the query's own table, the semi-join finds the
-     * rows that reference the same row as the query's row, and `on` names the table both reference:
-     * `semiJoin<Visit>().on(Pet::class, condition)` from a query of visits. On a table the query joins, it filters by
-     * other rows of that table than the joined ones: `innerJoin<Pet>().on<Owner>()` followed by
-     * `semiJoin<Pet>().on(Owner::class, condition)`. In both cases the condition is stated on the join and names the
-     * rows the semi-join looks for; every other condition and clause that names the table names the query's rows, so
-     * on a table the query joins a semi-join without a condition on the join is refused.
+     * A path that names a table resolves without the semi-joins and anti-joins first: the query's own table, a table it
+     * joins and a table its own foreign keys join name the query's rows, in conditions and in the clauses that order,
+     * group and select. A path names a semi-joined table only where the query reaches the table no other way, and then
+     * names the one semi-join on it; where several filter by the table, each condition goes on its join.
+     *
+     * A semi-join on a table the query reaches itself filters by other rows of that table, and states its condition on
+     * the join. On the query's own table, it finds the rows that reference the same row as the query's row, and `on`
+     * names the table both reference: `semiJoin<Visit>().on(Pet::class, condition)` from a query of visits. On a table
+     * the query joins: `innerJoin<Pet>().on<Owner>()` followed by `semiJoin<Pet>().on(Owner::class, condition)` keeps
+     * the owners, with their pets, who have a pet matching the condition.
      *
      * ```kotlin
      * val found = owners

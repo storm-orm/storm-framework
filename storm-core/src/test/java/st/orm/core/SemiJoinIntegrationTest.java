@@ -373,11 +373,13 @@ public class SemiJoinIntegrationTest {
     @Test
     public void semiJoinOnTheReferencedSide() {
         // Pet holds the key to Owner: the pets whose owner is named Davis.
-        var pets = orm().entity(Pet.class).select()
+        var pets = capture(() -> orm().entity(Pet.class).select()
                 .semiJoin(Owner.class).on(Pet.class)
                 .where(it -> it.where(Owner_.lastName, EQUALS, "Davis"))
-                .getResultList();
+                .getResultList());
         assertEquals(List.of("Iggy", "Leo"), petNames(pets));
+        // The pet's own foreign key joins the owner, so the condition names that owner, not the semi-join's.
+        assertTrue(statement().contains("WHERE o.last_name = ? AND EXISTS (SELECT 1 FROM owner o1 WHERE o1.id = p.owner_id)"), statement());
     }
 
     @Test
@@ -461,13 +463,6 @@ public class SemiJoinIntegrationTest {
     public void semiJoinRefusesATemplateCondition() {
         assertThrows(PersistenceException.class, () -> orm().entity(Owner.class).select()
                 .semiJoin(Pet.class).on(TemplateString.of("1 = 1")));
-    }
-
-    @Test
-    public void semiJoinRefusesATableTheQueryJoins() {
-        assertThrows(PersistenceException.class, () -> orm().entity(Owner.class).select()
-                .innerJoin(Pet.class).on(Owner.class)
-                .semiJoin(Pet.class).on(Owner.class));
     }
 
     @Test
@@ -1218,16 +1213,40 @@ public class SemiJoinIntegrationTest {
     }
 
     @Test
-    public void semiJoinWithoutAConditionOnATableTheQueryJoinsIsRefused() {
-        var joinedFirst = assertThrows(PersistenceException.class, () -> orm().entity(Owner.class).select()
+    public void semiJoinWithoutAConditionOnATableTheQueryJoinsKeepsTheRowsWithARelatedRow() {
+        // Every owner the join returns has a pet, so the semi-join filters nothing, in either order; a where
+        // condition naming the table names the joined pets.
+        var joinedFirst = capture(() -> orm().entity(Owner.class).select()
                 .innerJoin(Pet.class).on(Owner.class)
-                .semiJoin(Pet.class).on(Owner.class));
-        assertTrue(joinedFirst.getMessage().contains("semiJoin(Pet): the query also joins Pet"), joinedFirst.getMessage());
-        assertTrue(joinedFirst.getMessage().contains("semiJoin(Pet).on(Owner, condition)"), joinedFirst.getMessage());
-        var filteredFirst = assertThrows(PersistenceException.class, () -> orm().entity(Owner.class).select()
                 .semiJoin(Pet.class).on(Owner.class)
-                .innerJoin(Pet.class).on(Owner.class));
-        assertTrue(filteredFirst.getMessage().contains("semiJoin(Pet): the query also joins Pet"), filteredFirst.getMessage());
+                .where(Pet_.name, EQUALS, "Max")
+                .getResultList());
+        assertEquals(List.of("Jean"), firstNames(joinedFirst));
+        assertTrue(statement().contains("WHERE p.name = ? AND EXISTS (SELECT 1 FROM pet p1 WHERE p1.owner_id = o.id)"), statement());
+        var filteredFirst = orm().entity(Owner.class).select()
+                .semiJoin(Pet.class).on(Owner.class)
+                .innerJoin(Pet.class).on(Owner.class)
+                .where(Pet_.name, EQUALS, "Max")
+                .getResultList();
+        assertEquals(List.of("Jean"), firstNames(filteredFirst));
+    }
+
+    @Test
+    public void pathToATableTheQueryForeignKeysJoinNamesTheJoinedRows() {
+        // Pet joins its owner through its own foreign key, so a where condition naming Owner names that owner, and
+        // the semi-join on Owner takes its condition on the join: the pets of a Davis named Betty.
+        var pets = capture(() -> orm().entity(Pet.class).select()
+                .semiJoin(Owner.class).on(Pet.class, it -> it.where(Owner_.lastName, EQUALS, "Davis"))
+                .where(Owner_.firstName, EQUALS, "Betty")
+                .getResultList());
+        assertEquals(List.of("Leo"), petNames(pets));
+        assertTrue(statement().contains("WHERE o.first_name = ? AND EXISTS (SELECT 1 FROM owner o1 WHERE o1.id = p.owner_id AND o1.last_name = ?)"), statement());
+        // Ordering by the table orders by the joined rows as well.
+        var ordered = orm().entity(Pet.class).select()
+                .semiJoin(Owner.class).on(Pet.class, it -> it.where(Owner_.lastName, EQUALS, "Davis"))
+                .orderBy(Owner_.firstName)
+                .getResultList();
+        assertEquals(List.of("Leo", "Iggy"), ordered.stream().map(Pet::name).toList());
     }
 
     @Test

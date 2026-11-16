@@ -28,6 +28,7 @@ import static st.orm.core.template.impl.RecordReflection.isTableJoinCandidate;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
@@ -100,11 +101,12 @@ import st.orm.mapping.RecordField;
  * <p>A table filtered inside an anti-join's subquery decides which related rows exclude a row, so, like the anti-joined
  * table, it takes its condition on the join and not in the WHERE clause.</p>
  *
- * <p>A table the query joins may be filtered by as well: the owners with their pets, leaving out the owners who keep a
- * snake. The condition on the semi-join or anti-join names the rows of its subquery, and everything else that names
- * the table, a WHERE condition, a clause that orders, groups or selects, and the table a later semi-join or anti-join
- * is joined on, names the joined rows. A semi-join takes its condition in the WHERE clause otherwise, so on a table
- * the query joins it states one on the join.</p>
+ * <p>A path naming a table resolves without the semi-joins and anti-joins first: a table the query reaches itself, as
+ * its own table, a table it joins or a table its own foreign keys join, names the query's rows in a WHERE condition, a
+ * clause that orders, groups or selects, and the table a later semi-join or anti-join is joined on. A semi-join or
+ * anti-join on such a table filters by other rows of it, the owners with their pets, leaving out the owners who keep a
+ * snake, and states its condition on the join. A path names a filtered table only where the query reaches the table
+ * no other way, and then names the one semi-join or anti-join on it.</p>
  *
  * @since 1.16
  */
@@ -180,6 +182,8 @@ final class FilterJoinPlacement {
      * filters by the table, which takes its condition on the join.
      */
     private final Set<Class<? extends Data>> joined;
+    /** Whether the query's own foreign keys join a table, per table asked. */
+    private final Map<Class<? extends Data>, Boolean> foreignKeyJoined = new HashMap<>();
     /**
      * Every semi-join and anti-join in the order they were added, a join before the joins its subquery holds. A table
      * may be filtered by more than one join, each a subquery of its own with its own condition on the join.
@@ -225,11 +229,20 @@ final class FilterJoinPlacement {
     }
 
     /**
-     * Returns whether a condition naming the table names the query's own rows: the query's table, or a table it joins.
-     * A semi-join or anti-join on such a table takes its condition on the join.
+     * Returns whether the query reaches the table without its semi-joins and anti-joins: as its own table, a table it
+     * joins, or a table its own foreign keys join. A path naming such a table names the query's rows, and a semi-join
+     * or anti-join on the table takes its condition on the join; a path names a filtered table only where the query
+     * reaches the table no other way.
      */
-    private boolean isOwn(Class<? extends Data> table) {
-        return table == fromType || joined.contains(table);
+    private boolean reaches(Class<? extends Data> table) {
+        return table == fromType || joinedByQuery(table);
+    }
+
+    /**
+     * Returns whether the query joins the table, explicitly or through its own foreign keys.
+     */
+    private boolean joinedByQuery(Class<? extends Data> table) {
+        return joined.contains(table) || foreignKeyJoined.computeIfAbsent(table, it -> joinedThroughForeignKeys(fromType, it));
     }
 
     /**
@@ -240,9 +253,8 @@ final class FilterJoinPlacement {
     }
 
     /**
-     * Verifies that a join can be added to a query that already holds the given joins: that the table of a semi-join
-     * or anti-join relates to the table it is joined on, and that a semi-join on a table the query also joins states
-     * its condition on the join, as a condition in the WHERE clause names the joined rows.
+     * Verifies that a semi-join or anti-join can be added to a query that already holds the given joins: that its
+     * table relates to the table it is joined on.
      *
      * @param queryTemplate the template the query belongs to.
      * @param fromType the query's table.
@@ -251,36 +263,12 @@ final class FilterJoinPlacement {
      * @throws PersistenceException if the join cannot be added.
      */
     static void verify(QueryTemplate queryTemplate, Class<? extends Data> fromType, List<Join> joins, Join join) {
-        if (!(join.source() instanceof TableSource(var table))) {
-            return;
-        }
         if (!isFilterJoin(join)) {
-            for (var existing : joins) {
-                if (isFilterJoin(existing) && ((TableSource) existing.source()).table() == table) {
-                    requireConditionOnJoin(existing);
-                }
-            }
             return;
-        }
-        if (joined(joins).contains(table)) {
-            requireConditionOnJoin(join);
         }
         var withJoin = new ArrayList<>(joins);
         withJoin.add(join);
         resolve(queryTemplate, fromType, withJoin);
-    }
-
-    /**
-     * Refuses a semi-join without a condition on the join on a table the query also joins. An anti-join takes its
-     * condition on the join anywhere.
-     */
-    private static void requireConditionOnJoin(Join filterJoin) {
-        var target = (TableTarget) filterJoin.target();
-        if (filterJoin.type() == FilterJoinType.SEMI && target.condition() == null) {
-            var table = ((TableSource) filterJoin.source()).table().getSimpleName();
-            throw new PersistenceException("semiJoin(%1$s): the query also joins %1$s, so a where condition naming %1$s names the joined rows, not the rows the semi-join looks for. State the condition of the semi-join on the join: semiJoin(%1$s).on(%2$s, condition)."
-                    .formatted(table, target.table().getSimpleName()));
-        }
     }
 
     /**
@@ -324,7 +312,7 @@ final class FilterJoinPlacement {
         unused.addAll(searched);
         for (var filterJoin : filterJoins) {
             var antiJoin = antiJoinHolding(filterJoin);
-            if (antiJoin == null || isOwn(filterJoin.table())) {
+            if (antiJoin == null || reaches(filterJoin.table())) {
                 continue;
             }
             for (var conjunct : conjuncts) {
@@ -404,7 +392,7 @@ final class FilterJoinPlacement {
             collect(clause, tables);
             for (var table : tables) {
                 var named = filterJoinsOf(filterJoins, table);
-                if (!named.isEmpty() && !isOwn(table)) {
+                if (!named.isEmpty() && !reaches(table)) {
                     throw new PersistenceException("%1$s is %2$s: it filters the query but adds no columns to it, so the query cannot order, group or select by its columns. Join %1$s to use its columns."
                             .formatted(table.getSimpleName(), named.getFirst().type() == FilterJoinType.SEMI ? "semi-joined" : "anti-joined"));
                 }
@@ -681,14 +669,14 @@ final class FilterJoinPlacement {
     }
 
     /**
-     * Returns the filtered table and the tables filtered inside its subquery, at any depth. The query's own table and
-     * the tables it joins are not among them: a condition naming one names the query's rows, and a join on the table
-     * takes its condition on the join.
+     * Returns the filtered table and the tables filtered inside its subquery, at any depth. A table the query reaches
+     * itself is not among them: a condition naming it names the query's rows, and a join on the table takes its
+     * condition on the join.
      */
     private Set<Class<? extends Data>> tablesOf(FilterJoin filterJoin) {
         var tables = new LinkedHashSet<Class<? extends Data>>();
         for (var candidate : filterJoins) {
-            if (isOwn(candidate.table())) {
+            if (reaches(candidate.table())) {
                 continue;
             }
             for (FilterJoin join = candidate; join != null; join = join.parent()) {
@@ -760,8 +748,8 @@ final class FilterJoinPlacement {
     private Set<FilterJoin> filterJoinsNamed(@Nullable FilterJoin level, PredicateNode node) {
         var named = new LinkedHashSet<FilterJoin>();
         for (var table : references(node)) {
-            if (table == fromType ? level == null : joined.contains(table)) {
-                continue;   // The condition names the query's rows; a join on the table takes its condition on the join.
+            if (table == fromType ? level == null : joinedByQuery(table)) {
+                continue;   // The query reaches the table itself, so the condition names the query's rows.
             }
             var candidates = new ArrayList<FilterJoin>(1);
             for (var candidate : filterJoinsOf(filterJoins, table)) {

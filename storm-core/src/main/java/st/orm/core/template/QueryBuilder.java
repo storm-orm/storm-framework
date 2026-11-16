@@ -292,14 +292,17 @@ public abstract class QueryBuilder<T extends Data, R, ID> {
      * two tables hold for the same outer related row. A table referenced through a foreign key, such as the table a link
      * row points at, is related through that foreign key's columns, without reading the table itself.</p>
      *
-     * <p>The table may be the query's own, or a table the query joins. On the query's own table, the semi-join finds
-     * the rows that reference the same row as the query's row, and {@code on} names the table both reference:
-     * {@code semiJoin(Visit.class).on(Pet.class, condition)} from a query of visits. On a table the query joins, it
-     * filters by other rows of that table than the joined ones:
-     * {@code innerJoin(Pet.class).on(Owner.class)} followed by {@code semiJoin(Pet.class).on(Owner.class, condition)}.
-     * In both cases the condition is stated on the join and names the rows the semi-join looks for; every other
-     * condition and clause that names the table names the query's rows, so on a table the query joins a semi-join
-     * without a condition on the join is refused.</p>
+     * <p>A path that names a table resolves without the semi-joins and anti-joins first: the query's own table, a table
+     * it joins and a table its own foreign keys join name the query's rows, in conditions and in the clauses that
+     * order, group and select. A path names a semi-joined table only where the query reaches the table no other way,
+     * and then names the one semi-join on it; where several filter by the table, each condition goes on its join.</p>
+     *
+     * <p>A semi-join on a table the query reaches itself filters by other rows of that table, and states its condition
+     * on the join. On the query's own table, it finds the rows that reference the same row as the query's row, and
+     * {@code on} names the table both reference: {@code semiJoin(Visit.class).on(Pet.class, condition)} from a query of
+     * visits. On a table the query joins: {@code innerJoin(Pet.class).on(Owner.class)} followed by
+     * {@code semiJoin(Pet.class).on(Owner.class, condition)} keeps the owners, with their pets, who have a pet
+     * matching the condition.</p>
      *
      * @param relation the table to filter by.
      * @return the join builder.
