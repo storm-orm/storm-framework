@@ -61,16 +61,6 @@ class OuterMetamodelTest {
     }
 
     @Test
-    void aScrollTakesNoOuterColumn() {
-        var e = assertThrows(IllegalArgumentException.class,
-                () -> new Scrollable<>(Metamodel.key(Metamodel.outer(id)), false, List.of(), 10, null));
-        assertTrue(e.getMessage().contains("a column of the enclosing query"), e.getMessage());
-        var sorted = assertThrows(IllegalArgumentException.class,
-                () -> Scrollable.of(Metamodel.key(id), 10).sortBy(Metamodel.outer(id)));
-        assertTrue(sorted.getMessage().contains("a column of the enclosing query"), sorted.getMessage());
-    }
-
-    @Test
     void outerNeverEqualsTheColumnItWraps() {
         Metamodel<TestData, Integer> outer = Metamodel.outer(id);
         assertNotEquals(id, outer);

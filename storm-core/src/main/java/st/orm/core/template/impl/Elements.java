@@ -183,7 +183,6 @@ public final class Elements {
     public record Set(@Nullable Data record, @Nullable BindVars bindVars, Collection<Metamodel<?, ?>> fields) implements Element {
         public Set {
             fields = java.util.Set.copyOf(fields);
-            fields.forEach(field -> OuterPaths.refuse(field, "sets"));
         }
     }
 
@@ -206,9 +205,6 @@ public final class Elements {
         public ObjectExpression {
             requireNonNull(object, "object");
             requireNonNull(operator, "operator");
-            if (metamodel != null) {
-                OuterPaths.refuse(metamodel, "compares a value with");
-            }
         }
     }
 
@@ -253,7 +249,6 @@ public final class Elements {
         public SearchExpression {
             requireNonNull(match, "match");
             requireNonNull(word, "word");
-            OuterPaths.refuse(match.path(), "searches");
         }
     }
 
@@ -460,7 +455,6 @@ public final class Elements {
             if (fields.isEmpty()) {
                 throw new IllegalArgumentException("Columns requires at least one path.");
             }
-            fields.forEach(field -> OuterPaths.refuse(field, "orders and groups by"));
             requireNonNull(scope, "scope");
             requireNonNull(clause, "clause");
         }

@@ -16,13 +16,14 @@
 package st.orm.core.template.impl;
 
 import st.orm.Metamodel;
-import st.orm.PersistenceException;
 import st.orm.SqlFunction;
+import st.orm.SqlTemplateException;
 
 /**
  * Paths named in the query that encloses a subquery, made by {@code Metamodel.outer}. Such a path is
- * the other side of a comparison of two columns, or a column of a template; every other element of a query takes the
- * query's own paths and refuses it where the element is built.
+ * the other side of a comparison of two columns, or a column of a template, and both strip it before they resolve its
+ * columns in the enclosing query. Column resolution in a model refuses a path that still carries the marking, so every
+ * other use of it fails where its columns are resolved, rather than resolving to a column of the subquery.
  *
  * @since 1.16
  */
@@ -45,16 +46,23 @@ final class OuterPaths {
     }
 
     /**
-     * Refuses a path named in the enclosing query where an element takes a path of the query itself.
+     * Refuses a path named in the enclosing query where its columns are resolved as columns of the query itself.
      *
-     * @param path the path the element was given.
-     * @param use what the element does with its paths, completing "A query ... its own columns."
-     * @throws PersistenceException if the path names a column of an enclosing query.
+     * @param path the path to resolve.
+     * @throws SqlTemplateException if the path names a column of an enclosing query.
      */
-    static void refuse(Metamodel<?, ?> path, String use) {
+    static void refuse(Metamodel<?, ?> path) throws SqlTemplateException {
         if (Metamodel.isOuter(path)) {
-            throw new PersistenceException("%1$s names a column of the enclosing query, which a subquery compares a column of its own with: where(<path>, <operator>, %1$s). A query %2$s its own columns."
-                    .formatted(path, use));
+            throw new SqlTemplateException(message(path));
         }
+    }
+
+    /**
+     * Returns the message that refuses a path named in the enclosing query where a path of the query itself is
+     * expected.
+     */
+    static String message(Metamodel<?, ?> path) {
+        return "%1$s is a column of the enclosing query; only a comparison of two columns takes it: where(<path>, <operator>, %1$s)."
+                .formatted(path);
     }
 }

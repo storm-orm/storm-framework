@@ -206,7 +206,6 @@ public class UpdateBuilderImpl<T extends Data, ID> extends QueryBuilderImpl<T, O
      */
     private List<Column> columnsOf(Metamodel<? extends T, ?> field) {
         requireNonNull(field, "field");
-        OuterPaths.refuse(field, "sets");
         if (SqlFunction.isCall(field)) {
             throw new PersistenceException("Cannot set %s: an UPDATE sets a column, not a function of one.".formatted(field));
         }

@@ -2086,7 +2086,7 @@ public infix fun <T : Data, V : Any> Navigable<T, V>.lessEq(value: V): Predicate
  * @return the path, named in the enclosing query.
  * @since 1.16
  */
-public fun <T : Data, V> outer(path: Navigable<T, V>): Metamodel<T, V> = Metamodel.outer(path)
+public fun <T : Data, V : Any> outer(path: Navigable<T, V>): Metamodel<T, V> = Metamodel.outer(path)
 
 /**
  * Infix function to create a predicate comparing a field with another field of the query for equality, such as a
