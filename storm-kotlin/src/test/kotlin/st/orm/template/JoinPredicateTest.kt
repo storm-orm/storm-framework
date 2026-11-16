@@ -26,6 +26,7 @@ internal class JoinPredicateTest {
     private val petOwnerId = Metamodel.of<Pet, Int>(Pet::class.java, "owner.id")
     private val ownerId = Metamodel.of<Owner, Int>(Owner::class.java, "id")
     private val ownerLastName = Metamodel.of<Owner, String>(Owner::class.java, "lastName")
+    private val ownerFirstName = Metamodel.of<Owner, String>(Owner::class.java, "firstName")
     private val visitId = Metamodel.of<Visit, Int>(Visit::class.java, "id")
     private val visitPetId = Metamodel.of<Visit, Int>(Visit::class.java, "pet.id")
     private val visitDescription = Metamodel.of<Visit, String>(Visit::class.java, "description")
@@ -168,12 +169,29 @@ internal class JoinPredicateTest {
     }
 
     @Test
-    fun `a semi-join without a condition on a table the query joins is refused`(orm: ORMTemplate) {
-        val exception = shouldThrow<PersistenceException> {
+    fun `a semi-join without a condition on a table the query joins keeps the rows with a related row`(orm: ORMTemplate, capture: SqlCapture) {
+        // Every owner the join returns has a pet, so the semi-join filters nothing; where names the joined pets.
+        val owners = capture.execute {
             orm.entity(Owner::class).select()
                 .innerJoin<Pet>().on<Owner>()
                 .semiJoin<Pet>().on<Owner>()
+                .where(petName eq "Max")
+                .resultList
         }
-        exception.message shouldContain "semiJoin(Pet).on(Owner, condition)"
+        owners.map { it.firstName } shouldBe listOf("Jean")
+        capture.sql() shouldContain "WHERE p.name = ? AND EXISTS ( SELECT 1 FROM pet p1 WHERE p1.owner_id = o.id )"
+    }
+
+    @Test
+    fun `a path to a table the query's foreign keys join names the joined rows`(orm: ORMTemplate, capture: SqlCapture) {
+        // Pet joins its owner through its own foreign key: where names that owner, the join's condition the semi-join's.
+        val pets = capture.execute {
+            orm.entity(Pet::class).select()
+                .semiJoin<Owner>().on(Pet::class, ownerLastName eq "Davis")
+                .where(ownerFirstName eq "Betty")
+                .resultList
+        }
+        pets.map { it.name } shouldBe listOf("Leo")
+        capture.sql() shouldContain "WHERE o.first_name = ? AND EXISTS ( SELECT 1 FROM owner o1 WHERE o1.id = p.owner_id AND o1.last_name = ? )"
     }
 }
