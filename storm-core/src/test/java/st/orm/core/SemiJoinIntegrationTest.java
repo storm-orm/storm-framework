@@ -49,6 +49,7 @@ import st.orm.PersistenceException;
 import st.orm.core.model.Address;
 import st.orm.core.model.Owner;
 import st.orm.core.model.OwnerPrimaryPet;
+import st.orm.core.model.OwnerPrimaryPet_;
 import st.orm.core.model.Owner_;
 import st.orm.core.model.Pet;
 import st.orm.core.model.PetExtension;
@@ -726,6 +727,23 @@ public class SemiJoinIntegrationTest {
                 .semiJoin(OwnerPrimaryPet.class).on(Owner.class)
                 .antiJoin(Visit.class).on(Pet.class, it -> it.where(Visit_.description, EQUALS, "neutered"))
                 .getResultList()));
+    }
+
+    @Test
+    public void pathThroughASemiJoinedTablesForeignKeyJoinsTheReferencedTableInTheSubquery() {
+        var primaryPets = orm().entity(OwnerPrimaryPet.class);
+        var pets = orm().entity(Pet.class);
+        var owners = orm().entity(Owner.class);
+        // Leo is Betty's primary pet, Jewel is Eduardo's.
+        primaryPets.insert(new OwnerPrimaryPet(owners.getById(1), pets.getById(1)));
+        primaryPets.insert(new OwnerPrimaryPet(owners.getById(3), pets.getById(4)));
+        var withLeo = capture(() -> owners.select()
+                .semiJoin(OwnerPrimaryPet.class).on(Owner.class)
+                .where(OwnerPrimaryPet_.pet.name, EQUALS, "Leo")
+                .getResultList());
+        assertEquals(List.of("Betty"), firstNames(withLeo));
+        // The pet is a to-one relation of the link row, so it is joined in the link's subquery.
+        assertTrue(statement().contains("WHERE EXISTS (SELECT 1 FROM owner_primary_pet opp INNER JOIN pet p ON opp.pet_id = p.id WHERE opp.owner_id = o.id AND p.name = ?)"), statement());
     }
 
     @Test

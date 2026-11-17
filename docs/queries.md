@@ -1389,6 +1389,15 @@ WHERE EXISTS (
       AND EXISTS (SELECT 1 FROM visit v WHERE v.pet_id = ps.pet_id))
 ```
 
+The second semi-join is for a to-many relation beyond the link, the pet's visits. A condition on the row the link points at, the pet itself, takes no second semi-join. It is a path through the link's foreign key, as a to-one relation is from the root: `semiJoin<PetSitting>().on<Owner>()` with `where(PetSitting_.pet.name eq "Leo")` finds the owners who sat a pet named Leo, and the pet is joined inside the link's subquery:
+
+```sql
+WHERE EXISTS (
+    SELECT 1 FROM pet_sitting ps
+    INNER JOIN pet p ON ps.pet_id = p.id
+    WHERE ps.sitter_id = o.id AND p.name = ?)
+```
+
 A table the query reaches itself, as its own table, a joined table or a table its foreign keys join, stays the query's.
 
 `on` also names a table that neither references nor is referenced by the semi-joined table, when both hold a foreign key to the same table. With `PetNickname(pet: Pet, nickname: String)` and `Vaccination(pet: Pet, vaccine: String)`, the pets found by their own name, or by a nickname when the pet is vaccinated:
