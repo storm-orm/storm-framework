@@ -1393,8 +1393,8 @@ class QueryImpl implements Query, KeyedQuery {
             case Class<?> c when c == Time.class          -> (rs, i, cal) -> rs.getTime(i);
             // java.time using vendor-safe approach.
             case Class<?> c when c == LocalDateTime.class -> (rs, i, cal) -> {
-                Timestamp ts = rs.getTimestamp(i);
-                return ts != null ? ts.toLocalDateTime() : null;
+                Timestamp ts = rs.getTimestamp(i, cal.get());
+                return ts != null ? LocalDateTime.ofInstant(ts.toInstant(), ZoneOffset.UTC) : null;
             };
             case Class<?> c when c == LocalDate.class -> (rs, i, cal) -> {
                 java.sql.Date d = rs.getDate(i);
@@ -1402,7 +1402,8 @@ class QueryImpl implements Query, KeyedQuery {
             };
             case Class<?> c when c == LocalTime.class -> (rs, i, cal) -> {
                 Time t = rs.getTime(i);
-                return t != null ? t.toLocalTime() : null;
+                // Time.toLocalTime keeps whole seconds only, so the milliseconds are added to it.
+                return t != null ? t.toLocalTime().plusNanos(Math.floorMod(t.getTime(), 1000) * 1_000_000L) : null;
             };
             case Class<?> c when c == Instant.class -> (rs, i, cal) -> {
                 Timestamp ts = rs.getTimestamp(i, cal.get());

@@ -22,7 +22,14 @@ Storm natively supports many field types beyond the basic JDBC ones:
 - **Legacy date/time**: `java.util.Date`, `Calendar`, `Timestamp`, `java.sql.Date`, `Time`
 - **java.time**: `LocalDate`, `LocalTime`, `LocalDateTime`, `Instant`, `OffsetDateTime`, `ZonedDateTime`
 
-**Timezone handling**: Storm uses UTC for reading and writing timestamp values.
+**Time zone handling**: what a temporal field stores depends on whether its type names a point in time.
+
+| Field type | Stored as |
+|------------|-----------|
+| `Instant`, `OffsetDateTime`, `ZonedDateTime`, `java.util.Date`, `Calendar`, `Timestamp` | The UTC date and time of the point in time. `OffsetDateTime`, `ZonedDateTime` and `Calendar` are read back at UTC, so the offset or zone they were written with is not kept. |
+| `LocalDateTime`, `LocalDate`, `LocalTime`, `java.sql.Date`, `Time` | The date and time as written, with no conversion. |
+
+Neither depends on the JVM's default time zone, so an application reads the same values wherever it runs. `LocalTime` keeps its fraction of a second to the millisecond.
 
 For types not in this list, use a [custom converter](#custom-type-converters).
 

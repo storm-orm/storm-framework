@@ -5,13 +5,18 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static st.orm.GenerationStrategy.NONE;
+import static st.orm.Operator.EQUALS;
+import static st.orm.core.template.SqlInterceptor.observe;
 import static st.orm.core.template.TemplateString.raw;
 import static st.orm.core.template.Templates.param;
 
 import java.math.BigDecimal;
 import java.nio.ByteBuffer;
 import java.sql.Connection;
+import java.sql.Date;
 import java.sql.Time;
+import java.sql.Timestamp;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
@@ -19,6 +24,9 @@ import java.time.LocalTime;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
 import java.time.ZonedDateTime;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.TimeZone;
 import javax.sql.DataSource;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -26,8 +34,13 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.jdbc.JdbcTest;
 import org.springframework.test.context.ContextConfiguration;
 import org.springframework.test.context.junit.jupiter.SpringExtension;
+import st.orm.DbTable;
+import st.orm.Entity;
+import st.orm.PK;
 import st.orm.PersistenceException;
 import st.orm.core.IntegrationConfig;
+import st.orm.core.model.Appointment;
+import st.orm.core.model.Appointment_;
 import st.orm.core.template.ORMTemplate;
 import st.orm.core.template.PreparedStatementTemplate;
 
@@ -137,6 +150,57 @@ public class PreparedStatementParameterTest {
             LocalDateTime result = stream.findFirst().orElseThrow().value();
             assertEquals(2023, result.getYear());
             assertEquals(6, result.getMonthValue());
+        }
+    }
+
+    record StoredText(String value) {}
+
+    @Test
+    public void testLocalDateTimeIsStoredAsWrittenInAnyDefaultTimeZone() {
+        var orm = ORMTemplate.of(dataSource);
+        var appointments = orm.entity(Appointment.class);
+        var written = LocalDateTime.of(2026, 6, 15, 12, 0);
+        var defaultTimeZone = TimeZone.getDefault();
+        for (String zone : List.of("UTC", "America/New_York", "Asia/Tokyo")) {
+            TimeZone.setDefault(TimeZone.getTimeZone(zone));
+            try {
+                var id = appointments.insertAndFetchId(new Appointment(null, zone, written));
+                assertEquals(written, appointments.getById(id).scheduledAt(), zone);
+                assertEquals(1, appointments.select().where(Appointment_.scheduledAt, EQUALS, written)
+                        .where(Appointment_.description, EQUALS, zone).getResultCount(), zone);
+                try (var query = orm.query(raw("SELECT CAST(scheduled_at AS VARCHAR) FROM appointment WHERE id = \0", param(id))).prepare();
+                     var stream = query.getResultStream(StoredText.class)) {
+                    assertEquals("2026-06-15 12:00:00", stream.findFirst().orElseThrow().value(), zone);
+                }
+            } finally {
+                TimeZone.setDefault(defaultTimeZone);
+            }
+        }
+    }
+
+    @DbTable("sql_temporal")
+    record SqlTemporal(@PK(generation = NONE) Integer id, Date sqlDate, Time sqlTime, Timestamp sqlTimestamp,
+                       LocalTime localTime) implements Entity<Integer> {}
+
+    @Test
+    public void testSqlDateAndTimeFieldsAreBoundAsTheyAre() {
+        var orm = ORMTemplate.of(dataSource);
+        orm.query(raw("CREATE TABLE sql_temporal (id integer PRIMARY KEY, sql_date date, sql_time time, sql_timestamp timestamp(9), local_time time(3))")).executeUpdate();
+        try {
+            var timestamp = Timestamp.valueOf("2026-06-15 23:34:56.123456789");
+            var written = new SqlTemporal(1, Date.valueOf("2026-06-15"), Time.valueOf("23:34:56"), timestamp,
+                    LocalTime.of(23, 34, 56, 789_000_000));
+            var bound = new ArrayList<Object>();
+            observe(sql -> sql.parameters().forEach(parameter -> bound.add(parameter.dbValue())),
+                    () -> orm.entity(SqlTemporal.class).insert(written));
+            // A date or a time bound as a timestamp would be stored as the UTC date and time of its instant.
+            assertEquals(List.of(1, written.sqlDate(), written.sqlTime(), timestamp, written.localTime()), bound);
+            assertEquals(Date.class, bound.get(1).getClass());
+            assertEquals(Time.class, bound.get(2).getClass());
+            assertEquals(123456789, ((Timestamp) bound.get(3)).getNanos());
+            assertEquals(written, orm.entity(SqlTemporal.class).getById(1));
+        } finally {
+            orm.query(raw("DROP TABLE sql_temporal")).executeUpdate();
         }
     }
 

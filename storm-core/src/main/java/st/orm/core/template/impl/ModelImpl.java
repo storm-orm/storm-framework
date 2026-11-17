@@ -37,8 +37,6 @@ import java.sql.Time;
 import java.sql.Timestamp;
 import java.time.Instant;
 import java.time.LocalDate;
-import java.time.LocalDateTime;
-import java.time.LocalTime;
 import java.time.OffsetDateTime;
 import java.util.ArrayList;
 import java.util.Calendar;
@@ -1050,11 +1048,13 @@ public final class ModelImpl<E extends Data, ID> implements Model<E, ID> {
     private Object map(Column column, @Nullable Object value) {
         return switch (value) {
             case Instant it -> Timestamp.from(it);
-            case LocalDateTime it -> Timestamp.valueOf(it);
             case OffsetDateTime it -> Timestamp.from(it.toInstant());
             case LocalDate it -> Date.valueOf(it);
-            case LocalTime it -> Time.valueOf(it);
             case Calendar it -> new Timestamp(it.getTimeInMillis());
+            // The java.sql types are bound as they are; only a plain java.util.Date is a point in time to convert.
+            case Date it -> it;
+            case Time it -> it;
+            case Timestamp it -> it;
             case java.util.Date it -> new Timestamp(it.getTime());
             case Enum<?> it -> switch (ofNullable(fields.get(column.index() - 1).getAnnotation(DbEnum.class))
                     .map(DbEnum::value)

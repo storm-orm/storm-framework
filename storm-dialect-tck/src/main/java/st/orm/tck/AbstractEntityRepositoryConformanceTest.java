@@ -17,6 +17,8 @@ import java.sql.Connection;
 import java.sql.SQLException;
 import java.time.Instant;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
@@ -34,6 +36,7 @@ import st.orm.core.template.Sql;
 import st.orm.tck.model.Address;
 import st.orm.tck.model.ApiKey;
 import st.orm.tck.model.CycleA;
+import st.orm.tck.model.LocalSpecialtyNote;
 import st.orm.tck.model.NonAutoGenEntity;
 import st.orm.tck.model.Owner;
 import st.orm.tck.model.Pet;
@@ -1560,6 +1563,23 @@ public abstract class AbstractEntityRepositoryConformanceTest {
             }
         });
         assertFalse(sql.versionAware());
+    }
+
+    @Test
+    public void testLocalDateTimeIsStoredAsWritten() {
+        var orm = PreparedStatementTemplate.ORM(dataSource);
+        var specialty = orm.entity(Specialty.class).getById(1);
+        var localNotes = orm.entity(LocalSpecialtyNote.class);
+        // 02:30 on the day the clocks go forward does not exist in the zones that skip that hour.
+        var written = LocalDateTime.of(2026, 3, 29, 2, 30);
+        localNotes.insert(LocalSpecialtyNote.builder().specialty(specialty).note("local").updatedAt(written).build());
+        assertEquals(written, localNotes.getById(specialty).updatedAt());
+        // An Instant is stored as its UTC date and time, so the same column read as one shows the stored fields.
+        assertEquals(written.toInstant(ZoneOffset.UTC), orm.entity(SpecialtyNote.class).getById(specialty).updatedAt());
+        var updated = written.plusDays(1);
+        localNotes.update(LocalSpecialtyNote.builder().specialty(specialty).note("local").updatedAt(updated).build());
+        assertEquals(updated, localNotes.getById(specialty).updatedAt());
+        assertEquals(1, localNotes.select().where(Metamodel.of(LocalSpecialtyNote.class, "updatedAt"), EQUALS, updated).getResultCount());
     }
 
     @Test
