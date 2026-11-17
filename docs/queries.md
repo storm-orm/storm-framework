@@ -1209,6 +1209,13 @@ WHERE EXISTS (SELECT 1 FROM pet p WHERE p.owner_id = o.id AND p.name = ?)
 - An `or` across two semi-joined tables holds where either side holds, each answered by a related row of its own table: with `semiJoin<Visit>().on<Pet>()` and `semiJoin<PetExtension>().on<Pet>()`, `(Visit_.description eq "neutered") or (PetExtension_.notes eq "Indoor cat")` finds the pets with either, as one `IN` over a `UNION` with a branch per table. Where the database runs an `IN` over a `UNION` once per outer row rather than once (`SqlDialect.flattensInOverUnion()`), the `or` renders as an `EXISTS` per table instead, each correlated through its foreign key. A term comparing columns of two semi-joined tables is refused, since no row of either answers it.
 - `search` matches each word on its own, so its words may match different related rows, of one semi-joined table or of several; see [Searching Related Rows](search.md#searching-related-rows).
 
+The condition may also be stated on the join, as `semiJoin<Pet>().on(Owner::class, Pet_.name eq "Leo")` in Kotlin and `semiJoin(Pet.class).on(Owner.class, it -> it.where(Pet_.name, EQUALS, "Leo"))` in Java, which finds the same owners. Both forms are supported, and which one to write is a matter of what reads best:
+
+- With one semi-join, the condition in `where` reads well, as in the example above.
+- With several semi-joins or anti-joins, a condition on its join sits with the relation it filters.
+- A condition over the row and its related rows goes in `where`, since no single join states it: the `or` with `Owner_.lastName` above, or a `search` or `suggest` across `Owner_.lastName` and `Pet_.name`.
+- Some conditions go on the join only, because a path in `where` cannot name the table: an [anti-join](#excluding-by-related-rows), two semi-joins or anti-joins on one table, and a table the query reaches itself.
+
 The semi-joined table filters the query but adds no columns to it: ordering, grouping or selecting by its columns is refused when the query is built. Without a condition that names its table, a semi-join keeps the rows that have any related row: `semiJoin<Pet>().on<Owner>()` finds the owners with a pet, the complement of `antiJoin<Pet>().on<Owner>()`. A condition stated on the join keeps that symmetry, so a semi-join and an anti-join with the same condition on the join split the rows between them. It also states which related rows count at all: every condition that names the table, each word of a search included, is answered by a related row that matches it.
 
 ### Excluding by Related Rows
