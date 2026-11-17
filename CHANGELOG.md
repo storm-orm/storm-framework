@@ -102,6 +102,8 @@ Failures are typed and recoverable: a refused constraint throws `IntegrityViolat
 ### Fixed
 
 - Fixed `column(field, OUTER)` in a correlated subquery resolving to the subquery's own alias, which made the correlation a tautology (#842).
+- Fixed a `LocalDateTime`, `java.sql.Date` or `java.sql.Time` field being written shifted by the JVM default time zone's offset from UTC (#902). The value is stored and read as written in any zone, a time the zone's clock skips included. Upgrade note: rows written by an application whose JVM does not run in UTC hold the shifted value and need correcting once.
+- Fixed a `LocalTime` field losing its fraction of a second, which is now kept to the millisecond, and a `java.sql.Timestamp` field being bound to the millisecond.
 - Fixed a `null` value in a template condition failing with `NullPointerException` instead of binding as SQL `NULL`.
 - Fixed a `where` condition on a converted field binding the value without its converter (#760).
 - Fixed the converter of a `@Json` field depending on classpath order with kotlinx.serialization and Jackson both present: kotlinx.serialization converts the types it has a serializer for, Jackson the rest (#764).

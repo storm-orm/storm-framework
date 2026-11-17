@@ -627,8 +627,11 @@ public final class PreparedStatementTemplateImpl implements PreparedStatementTem
                                 preparedStatement.getConnection().createArrayOf(a.elementType(), a.toArray()));
                         // java.time using vendor-safe approach.
                         case LocalDate ld      -> preparedStatement.setDate(idx, java.sql.Date.valueOf(ld));
-                        case LocalTime lt      -> preparedStatement.setTime(idx, java.sql.Time.valueOf(lt));
-                        case LocalDateTime ldt -> preparedStatement.setTimestamp(idx, Timestamp.valueOf(ldt));
+                        // Time.valueOf keeps whole seconds only, so the milliseconds are added to it.
+                        case LocalTime lt      -> preparedStatement.setTime(idx, new Time(Time.valueOf(lt).getTime() + lt.getNano() / 1_000_000));
+                        // A local date-time has no zone: bound through the calendar's zone, the driver renders the
+                        // fields it carries, whatever the JVM's default zone.
+                        case LocalDateTime ldt -> dialect.setParameter(preparedStatement, idx, Timestamp.from(ldt.toInstant(ZoneOffset.UTC)), calendarSupplier.get());
                         case OffsetDateTime odt-> dialect.setParameter(preparedStatement, idx, Timestamp.from(odt.toInstant()), calendarSupplier.get());
                         case ZonedDateTime zdt -> dialect.setParameter(preparedStatement, idx, Timestamp.from(zdt.toInstant()), calendarSupplier.get());
                         case Instant inst      -> dialect.setParameter(preparedStatement, idx, Timestamp.from(inst), calendarSupplier.get());
