@@ -8,6 +8,29 @@ immutable data classes and records instead of proxied entities.
 method or a query, check all of it against them, not only the lines the edit is about, and fix what breaks one in the
 same change.
 
+### Load the Skill Before Writing Storm Code
+
+The rules below are the ones that hold everywhere. The API itself is in the skills: the methods a repository inherits
+(`find`, `findBy`, `getBy`, `findAll`, `exists`), the forms of a query, the annotations of an entity. **Before writing
+or changing Storm code, load the skill for that kind of code and write from it.** Do this on your own, without being
+asked, each time a task first touches that kind of code, also for a one-line method. Do not write Storm code from
+memory or by copying the nearest code in the project: both miss the shorter form the skill names.
+
+| Before you write or change | Load |
+|---|---|
+| An entity, a projection or a field of one | /storm-entity-kotlin or /storm-entity-java |
+| A repository, a repository method, a transaction or an entity callback | /storm-repository-kotlin or /storm-repository-java |
+| A query: joins, predicates, ordering, paging, scrolling | /storm-query-kotlin or /storm-query-java |
+| A SQL template, where the QueryBuilder cannot express the query | /storm-sql-kotlin or /storm-sql-java |
+| A JSON column or JSON aggregation | /storm-json-kotlin or /storm-json-java |
+| Serialization of entities for an API, a cache or a message | /storm-serialization-kotlin or /storm-serialization-java |
+| A Flyway or Liquibase migration | /storm-migration |
+| Build configuration, or a project with no Storm dependencies yet | /storm-setup |
+| Anything the skills above leave open | /storm-docs, the full documentation |
+
+A task that touches several kinds loads each: a new table is the migration, the entity and the repository skill. When
+the user asks about a Storm topic, answer from the skill and name it.
+
 ### Storm Annotations and API
 
 Storm can run on top of JPA, but when generating code, always use Storm's own annotations and JDBC-based API:
@@ -31,7 +54,7 @@ Detect the framework from the build file and existing dependencies before sugges
 - **Ktor**: build file contains `storm-ktor`, `ktor-server-core`, or `io.ktor` dependencies.
 - **Standalone**: neither Spring Boot nor Ktor detected. The project uses Storm directly with `ORMTemplate.of(dataSource)`.
 
-The setup and repository skills listed below carry the per-framework entry points, transaction placement, and configuration.
+The setup and repository skills named above carry the per-framework entry points, transaction placement, and configuration.
 
 ### References, Not Ids
 
@@ -114,18 +137,3 @@ Every rule has one authority and is checked there, once.
   - `resultFlow` / `getResultStream()` is one open statement. Inside a transaction, a query, a `Ref.fetch()` or a write from the loop throws, on every database. So does a batched write fed by that flow or stream once a batch runs while rows remain.
   - A loop that needs the database iterates with `windows(size)`: keyset windows over the primary key, one closed statement per window, the connection free in between, one batched write per window. Row by row, use `windows(size).rows()` in Kotlin and `windows(size).flatMap(Slice::stream)` in Java.
   - A Kotlin `resultFlow` is cold: building it runs nothing, so flows may be built ahead and collected in turn, and each collection runs the query again.
-
-Use /storm-setup when the project has no Storm dependencies in its build file yet.
-
-Available Storm skills:
-- /storm-setup - Help configure Maven/Gradle dependencies
-- /storm-docs - Load full Storm documentation
-- /storm-entity-kotlin or /storm-entity-java - Create entities
-- /storm-repository-kotlin or /storm-repository-java - Write repositories
-- /storm-query-kotlin or /storm-query-java - Write queries with the QueryBuilder
-- /storm-sql-kotlin or /storm-sql-java - Write SQL Templates
-- /storm-json-kotlin or /storm-json-java - JSON columns and JSON aggregation
-- /storm-serialization-kotlin or /storm-serialization-java - Entity serialization for REST APIs
-- /storm-migration - Write Flyway/Liquibase migration SQL
-
-When the user asks about Storm topics, suggest the relevant skill if they need detailed guidance.
