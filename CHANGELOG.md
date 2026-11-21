@@ -91,6 +91,7 @@ Failures are typed and recoverable: a refused constraint throws `IntegrityViolat
 - The Kotlin API takes a type argument where the call needs no `_` placeholder and a class literal where it would, such as `orm.selectFrom<Pet>()` and `orm.entity(User::class)` (#719). Ktor gains `entity(...)` and `projection(...)`.
 - Removed `orm.entity<User>()` and `orm.projection<OwnerView>()`, including their Ktor forms, which lost the primary key type (#721).
 - Upgrade note: replace `orm.entity<User>()` with `orm.entity(User::class)` and `orm.projection<OwnerView>()` with `orm.projection(OwnerView::class)`.
+- `eq`, `neq`, `inRefs` and `notInRefs` compare a path beyond a `Ref` with a ref, as they compare a foreign key field: `Visit_.pet.owner eq ownerRef` (#917).
 
 ### Runtime and native images
 
@@ -122,6 +123,9 @@ Failures are typed and recoverable: a refused constraint throws `IntegrityViolat
 - Fixed `SqlCapture` dropping a statement that binds a `NULL` value (#752); `CapturedSql.parameters` holds `null` for it and is typed `List<@Nullable Object>`.
 - Fixed a `@StormTest` script splitting a dollar-quoted string, so a `DO` block or function body with semicolons runs as one statement (#887).
 - Fixed a converter error naming the field's type instead of the record that declares the field.
+- Fixed a sealed entity ignoring the template's `TableNameResolver`, and the `SchemaResolver` being asked for a Single-Table subtype instead of its sealed entity (#915). The resolver receives the sealed interface as a `RecordType` with the fields of its subtypes and no constructor, and a `ForeignKeyResolver` receives the same for a foreign key to a sealed entity, where it received the first subtype.
+- `RecordType.constructor()`, `RecordType.getAnnotation`, `RecordField.getAnnotation` and `RecordField.method()` are declared nullable, as a sealed entity has no constructor, an absent annotation is `null` and a query column has no accessor.
+- Fixed a path beyond a `Ref` failing with `Column not found for metamodel` in a query on a sealed entity, and matching no rows when rooted at one of its subtypes (#916). The referenced table is joined on demand, as from any other entity.
 
 ## [1.15.0] - 2026-10-15
 

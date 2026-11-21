@@ -10,8 +10,10 @@ import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.test.context.ContextConfiguration
 import org.springframework.test.context.jdbc.Sql
 import org.springframework.test.context.junit.jupiter.SpringExtension
+import st.orm.AbstractNavigableMetamodel
 import st.orm.Data
 import st.orm.Metamodel
+import st.orm.Navigable
 import st.orm.Operator.*
 import st.orm.Ref
 import st.orm.Scrollable
@@ -235,6 +237,32 @@ internal open class RefsAndKeysTest(
         val outsideCities = repo.select().where(cityPath notInRefs cityRefs).resultList
         outsideCities shouldHaveSize 5
         (inCities.map { it.id } + outsideCities.map { it.id }).toSet() shouldBe repo.findAll().map { it.id }.toSet()
+    }
+
+    // The city of the owner a pet refers to: a path beyond the owner reference, which is navigation-only.
+    private val ownerCity: Navigable<PetOwnerRef, City> = run {
+        val owner = object : AbstractNavigableMetamodel<PetOwnerRef, Owner>(Owner::class.java, "", "owner", false, Metamodel.root(PetOwnerRef::class.java)) {}
+        object : AbstractNavigableMetamodel<PetOwnerRef, City>(City::class.java, "owner", "address.city", false, owner) {}
+    }
+
+    @Test
+    fun `eq and neq with Ref should filter on a foreign key beyond a reference`() {
+        // data.sql: city 1 has one owner (Betty), who owns Leo; eleven other pets have an owner, one has none.
+        val pets = orm.entity(PetOwnerRef::class)
+        val cityRef: Ref<City> = Ref.of(City::class.java, 1)
+        pets.select().where(ownerCity eq cityRef).resultList.map { it.name } shouldBe listOf("Leo")
+        pets.select().where(ownerCity neq cityRef).resultList shouldHaveSize 11
+        pets.select().where(ownerCity, cityRef).resultList.map { it.name } shouldBe listOf("Leo")
+    }
+
+    @Test
+    fun `inRefs and notInRefs should filter on a foreign key beyond a reference`() {
+        // data.sql: the five owners of cities 1 and 2 own five pets; the other owners own seven.
+        val pets = orm.entity(PetOwnerRef::class)
+        val cityRefs = listOf(Ref.of(City::class.java, 1), Ref.of(City::class.java, 2))
+        pets.select().where(ownerCity inRefs cityRefs).resultList shouldHaveSize 5
+        pets.select().where(ownerCity notInRefs cityRefs).resultList shouldHaveSize 7
+        pets.select().whereRef(ownerCity, cityRefs).resultList shouldHaveSize 5
     }
 
     @Test

@@ -43,6 +43,7 @@ import static st.orm.core.template.impl.RecordReflection.getRefDataType;
 import static st.orm.core.template.impl.RecordReflection.getSealedFields;
 import static st.orm.core.template.impl.RecordReflection.isJoinedEntity;
 import static st.orm.core.template.impl.RecordReflection.isRecord;
+import static st.orm.core.template.impl.RecordReflection.isRootedAt;
 import static st.orm.core.template.impl.RecordReflection.isSealedEntity;
 import static st.orm.core.template.impl.RecordReflection.isTypePresent;
 import static st.orm.core.template.impl.RecordReflection.isTypeSelected;
@@ -1839,7 +1840,7 @@ class TemplatePreparation {
     private void addReferencedTablePath(Class<? extends Data> rootTable,
                                         Metamodel<?, ?> metamodel,
                                         Set<String> paths) {
-        if (Metamodel.isOuter(metamodel) || metamodel.root() != rootTable) {
+        if (Metamodel.isOuter(metamodel) || !isRootedAt(rootTable, metamodel.root())) {
             return;     // A path named in an enclosing query takes no join in this one.
         }
         String path = metamodel.path();

@@ -21,6 +21,7 @@ import java.lang.annotation.Annotation;
 import java.lang.reflect.Method;
 import java.lang.reflect.Type;
 import java.util.List;
+import org.jspecify.annotations.Nullable;
 import st.orm.Data;
 import st.orm.PersistenceException;
 
@@ -37,7 +38,8 @@ import st.orm.PersistenceException;
  * @param genericType the generic type of the field, preserving type parameters.
  * @param nullable whether the field value can be null.
  * @param mutable whether the field value can be modified.
- * @param method the accessor method for this field.
+ * @param method the accessor method for this field, or {@code null} for a field no record component carries, such
+ *               as a query column.
  * @param annotations all annotations present on this field.
  * @since 1.7
  */
@@ -47,13 +49,13 @@ public record RecordField(Class<?> declaringType,
                           Type genericType,
                           boolean nullable,
                           boolean mutable,
-                          Method method,
+                          @Nullable Method method,
                           List<Annotation> annotations) {
     public RecordField {
         requireNonNull(declaringType, "declaringType must not be null");
         requireNonNull(name, "name must not be null");
         requireNonNull(type, "type must not be null");
-        requireNonNull(type, "genericType must not be null");
+        requireNonNull(genericType, "genericType must not be null");
         annotations = List.copyOf(annotations);
     }
 
@@ -120,7 +122,7 @@ public record RecordField(Class<?> declaringType,
      * @param annotationType the annotation type to retrieve
      * @return the annotation if exactly one instance is present, otherwise {@code null}
      */
-    public <A extends Annotation> A getAnnotation(Class<A> annotationType) {
+    public <A extends Annotation> @Nullable A getAnnotation(Class<A> annotationType) {
         return Annotations.getAnnotation(annotations, annotationType);
     }
 }

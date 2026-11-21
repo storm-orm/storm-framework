@@ -719,6 +719,16 @@ final class RecordReflection {
     }
 
     /**
+     * Returns the record type a name resolver names a table by: the record's own, or for a sealed entity, which is
+     * no record, the sealed interface with the fields of its subtypes and no constructor.
+     */
+    private static RecordType getTableType(Class<?> table) {
+        return isSealedEntity(table)
+                ? new RecordType(table, null, List.of(table.getAnnotations()), getTableFields(table))
+                : REFLECTION.getRecordType(table);
+    }
+
+    /**
      * Returns the table name for the specified record type taking the table name resolver and the schema resolver
      * into account. This is the name a statement addresses; the declared name of
      * {@link #getTableName(Class, TableNameResolver)} serves to compare tables with each other.
@@ -732,6 +742,11 @@ final class RecordReflection {
     static TableName getTableName(Class<? extends Data> table,
                                   TableNameResolver tableNameResolver,
                                   SchemaResolver schemaResolver) throws SqlTemplateException {
+        // A subtype of a single-table hierarchy lives in the sealed type's table.
+        var singleTableParent = findSingleTableSealedParent(table);
+        if (singleTableParent.isPresent()) {
+            return getTableName(singleTableParent.get(), tableNameResolver, schemaResolver);
+        }
         var tableName = getTableName(table, tableNameResolver);
         var schema = schemaResolver.resolveSchema(table, tableName.schema());
         if (schema == null) {
@@ -756,31 +771,7 @@ final class RecordReflection {
         if (singleTableParent.isPresent()) {
             return getTableName(singleTableParent.get(), tableNameResolver);
         }
-        // For sealed entity interfaces, resolve table name from the @DbTable annotation on the
-        // interface itself, or fall back to camelCase-to-snake_case conversion (sealed interfaces
-        // aren't records and don't have a RecordType).
-        if (table.isSealed() && isSealedEntity(table)) {
-            DbTable dbTable = table.getAnnotation(DbTable.class);
-            if (dbTable != null) {
-                var tableNames = Stream.of(dbTable.name(), dbTable.value())
-                        .filter(not(String::isEmpty))
-                        .distinct()
-                        .toList();
-                if (tableNames.size() > 1) {
-                    throw new PersistenceException("Multiple table names found for %s.".formatted(table.getSimpleName()));
-                }
-                String tableName = tableNames.isEmpty()
-                        ? camelCaseToSnakeCase(table.getSimpleName())
-                        : tableNames.getFirst();
-                if (!dbTable.schema().isEmpty()) {
-                    return new TableName(tableName, dbTable.schema(), dbTable.escape());
-                }
-                return new TableName(tableName, "", dbTable.escape());
-            }
-            // No @DbTable: use camelCase-to-snake_case conversion.
-            return new TableName(camelCaseToSnakeCase(table.getSimpleName()), "", false);
-        }
-        RecordType type = REFLECTION.getRecordType(table);
+        RecordType type = getTableType(table);
         String tableName = null;
         DbTable dbTable = type.getAnnotation(DbTable.class);
         if (dbTable != null) {
@@ -798,13 +789,9 @@ final class RecordReflection {
         if (tableName == null) {
             tableName = tableNameResolver.resolveTableName(type);
         }
-        if (dbTable != null) {
-            if (!dbTable.schema().isEmpty()) {
-                return new TableName(tableName, dbTable.schema(), dbTable.escape());
-            }
-            return new TableName(tableName, "", dbTable.escape());
-        }
-        return new TableName(tableName, "", false);
+        return dbTable != null
+                ? new TableName(tableName, dbTable.schema(), dbTable.escape())
+                : new TableName(tableName, "", false);
     }
 
     /**
@@ -1039,21 +1026,16 @@ final class RecordReflection {
                     new ColumnName(fkCol, false)
             );
         }
-        // For sealed entity types (Single-Table/Joined), resolve PK from first permitted subclass.
-        if (fkType.isSealed() && isSealedEntity(fkType)) {
-            Class<?>[] permitted = fkType.getPermittedSubclasses();
-            if (permitted != null && permitted.length > 0) {
-                fkType = permitted[0];
-            }
-        }
+        // The subtypes of a sealed entity share its primary key, so the first one stands for the key.
+        Class<?> keyType = isSealedEntity(fkType) ? fkType.getPermittedSubclasses()[0] : fkType;
         DbColumn[] dbColumns = field.getAnnotations(DbColumn.class);
-        List<KeyLeaf> leaves = getPkLeaves(fkType);
+        List<KeyLeaf> leaves = getPkLeaves(keyType);
         if (leaves.size() == 1) {
             // If the key resolves to a single column, use the column name of the FK component.
             DbColumn dbColumn = dbColumns.length > 0
                     ? dbColumns[0]
                     : leaves.getFirst().field().getAnnotation(DbColumn.class);
-            String name = foreignKeyResolver.resolveColumnName(field, REFLECTION.getRecordType(fkType));
+            String name = foreignKeyResolver.resolveColumnName(field, getTableType(fkType));
             return List.of(new ColumnName(name, dbColumn != null && dbColumn.escape()));
         }
         columnNames = new ArrayList<>(leaves.size());
@@ -1145,6 +1127,14 @@ final class RecordReflection {
         return detectSealedPattern(type)
                 .map(p -> p == SealedPattern.SINGLE_TABLE || p == SealedPattern.JOINED)
                 .orElse(false);
+    }
+
+    /**
+     * Returns whether a path rooted at {@code root} starts at {@code table}: at the table's own type, or at a subtype
+     * of the sealed entity the table is of, whose fields are columns of that entity.
+     */
+    static boolean isRootedAt(Class<?> table, Class<?> root) {
+        return table == root || (isSealedEntity(table) && table.isAssignableFrom(root));
     }
 
     /**
