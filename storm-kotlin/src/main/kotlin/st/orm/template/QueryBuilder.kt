@@ -1655,7 +1655,7 @@ public infix fun <T : Data, V : Any> Navigable<T, V>.inList(value: Iterable<V>):
 /**
  * Infix function to create a predicate to check if a field is in a list of references.
  */
-public infix fun <T : Data, V : Data> Metamodel<T, V>.inRefs(value: Iterable<Ref<V>>): PredicateBuilder<T, T, *> = createRef(this, IN, value)
+public infix fun <T : Data, V : Data> Navigable<T, V>.inRefs(value: Iterable<Ref<V>>): PredicateBuilder<T, T, *> = createRef(this.asMetamodel(), IN, value)
 
 /**
  * Infix function to create a predicate to check if a field is not in a list of values.
@@ -1665,7 +1665,7 @@ public infix fun <T : Data, V : Any> Navigable<T, V>.notInList(value: Iterable<V
 /**
  * Infix function to create a predicate to check if a field is not in a list of references.
  */
-public infix fun <T : Data, V : Data> Metamodel<T, V>.notInRefs(value: Iterable<Ref<V>>): PredicateBuilder<T, T, *> = createRef(this, NOT_IN, value)
+public infix fun <T : Data, V : Data> Navigable<T, V>.notInRefs(value: Iterable<Ref<V>>): PredicateBuilder<T, T, *> = createRef(this.asMetamodel(), NOT_IN, value)
 
 /**
  * Infix functions to create a predicate to check if a field is equal to a value.
@@ -1675,7 +1675,7 @@ public infix fun <T : Data, V : Any> Navigable<T, V>.eq(value: V): PredicateBuil
 /**
  * Infix functions to create a predicate to check if a field is equal to a reference.
  */
-public infix fun <T : Data, V : Data> Metamodel<T, V>.eq(value: Ref<V>): PredicateBuilder<T, T, *> = createRef(this, EQUALS, listOf(value))
+public infix fun <T : Data, V : Data> Navigable<T, V>.eq(value: Ref<V>): PredicateBuilder<T, T, *> = createRef(this.asMetamodel(), EQUALS, listOf(value))
 
 /**
  * Infix functions to create a predicate to check if a field is not equal to a value.
@@ -1685,7 +1685,7 @@ public infix fun <T : Data, V : Any> Navigable<T, V>.neq(value: V): PredicateBui
 /**
  * Infix functions to create a predicate to check if a field is not equal to a reference.
  */
-public infix fun <T : Data, V : Data> Metamodel<T, V>.neq(value: Ref<V>): PredicateBuilder<T, T, *> = createRef(this, NOT_EQUALS, listOf(value))
+public infix fun <T : Data, V : Data> Navigable<T, V>.neq(value: Ref<V>): PredicateBuilder<T, T, *> = createRef(this.asMetamodel(), NOT_EQUALS, listOf(value))
 
 /**
  * Infix functions to create a predicate to check if a field is like a value.

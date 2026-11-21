@@ -20,6 +20,10 @@ class RecordTypeTest {
 
     record NonData(int value) {}
 
+    sealed interface Shape extends Data permits Circle {}
+
+    record Circle(int radius) implements Shape {}
+
     private RecordType createRecordType(Class<?> type) throws NoSuchMethodException {
         Constructor<?> constructor = type.getDeclaredConstructors()[0];
         constructor.setAccessible(true);
@@ -116,9 +120,11 @@ class RecordTypeTest {
     }
 
     @Test
-    void constructorRejectsNullConstructor() {
-        assertThrows(NullPointerException.class, () ->
-                new RecordType(TestData.class, null, List.of(), List.of()));
+    void newInstanceOfATypeWithoutConstructorIsRefused() {
+        RecordType recordType = new RecordType(Shape.class, null, List.of(), List.of());
+        PersistenceException exception = assertThrows(PersistenceException.class,
+                () -> recordType.newInstance(new Object[0]));
+        assertTrue(exception.getMessage().contains("sealed entity"), exception.getMessage());
     }
 
     @Test

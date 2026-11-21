@@ -577,6 +577,44 @@ public class SealedForeignKeyIntegrationTest {
 
     record BrokenKind(@PK Integer id) implements BrokenHierarchy {}
 
+    @Test
+    public void whereOnSealedMetamodelBeyondRefJoinsTheReferencedTable() {
+        var ofCats = capture(() -> orm().entity(Treatment.class).select()
+                .where(Treatment_.pet.type.name, EQUALS, "cat")
+                .getResultList());
+        assertTrue(statement().contains("JOIN pet_type"), statement());
+        assertEquals(2, ofCats.size());
+        assertTrue(ofCats.stream().allMatch(it -> it.pet().name().equals("Leo")));
+        Metamodel<Treatment, String> typeName = Metamodel.of(Treatment.class, "pet.type.name");
+        assertEquals(1, orm().entity(Treatment.class).select().where(typeName, EQUALS, "dog").getResultList().size());
+    }
+
+    @Test
+    public void whereOnSubtypeMetamodelBeyondRefJoinsTheReferencedTable() {
+        var byVet = capture(() -> orm().entity(Treatment.class).select()
+                .where(Checkup_.vet.lastName, EQUALS, "Carter")
+                .getResultList());
+        assertTrue(statement().contains("JOIN vet"), statement());
+        assertEquals(1, byVet.size());
+        assertEquals("Healthy", assertInstanceOf(Checkup.class, byVet.getFirst()).notes());
+        var checkups = orm().entity(Checkup.class).select()
+                .where(Checkup_.vet.lastName, EQUALS, "Carter")
+                .getResultList();
+        assertEquals(1, checkups.size());
+        assertEquals(1, orm().entity(Surgery.class).select()
+                .where(Surgery_.pet.type.name, EQUALS, "dog")
+                .getResultList().size());
+    }
+
+    @Test
+    public void whereOnJoinedMetamodelBeyondRefJoinsTheReferencedTable() {
+        var ofDogs = orm().entity(JoinedTreatment.class).select()
+                .where(JoinedTreatment_.pet.type.name, EQUALS, "dog")
+                .getResultList();
+        assertEquals(1, ofDogs.size());
+        assertInstanceOf(JoinedSurgery.class, ofDogs.getFirst());
+    }
+
     record OtherBrokenKind(@PK(generation = NONE) Integer id) implements BrokenHierarchy {}
 
     // Joined Table.

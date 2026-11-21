@@ -26,6 +26,7 @@ import st.orm.Ref;
 import st.orm.SqlTemplateException;
 import st.orm.Version;
 import st.orm.mapping.RecordField;
+import st.orm.mapping.TableNameResolver;
 
 /**
  * Tests for {@link RecordReflection} utility methods covering field lookup, PK/FK/Version
@@ -548,13 +549,15 @@ class RecordReflectionTest {
         assertEquals("my_schema", tableName.schema());
     }
 
-    // Sealed entity: getTableName without @DbTable (L398)
+    // Sealed entity: getTableName without @DbTable takes the name of the resolver.
 
     @Test
     void testGetTableNameSealedEntityWithoutDbTable() throws SqlTemplateException {
-        var tableName = RecordReflection.getTableName(SealedNoDbTable.class, type -> type.type().getSimpleName());
+        var tableName = RecordReflection.getTableName(SealedNoDbTable.class, TableNameResolver.DEFAULT);
         assertEquals("sealed_no_db_table", tableName.name());
         assertEquals("", tableName.schema());
+        var resolved = RecordReflection.getTableName(SealedNoDbTable.class, type -> type.type().getSimpleName());
+        assertEquals("SealedNoDbTable", resolved.name());
     }
 
     // Ref to sealed entity: getRefPkType resolves PK from first permitted subclass (L301-308)
@@ -611,7 +614,7 @@ class RecordReflectionTest {
                 RecordReflection.getTableName(MultiTableNameEntity.class, type -> type.type().getSimpleName()));
     }
 
-    // Sealed entity: @DbTable with empty name/value falls back to camelCase (L389-390)
+    // Sealed entity: @DbTable with empty name/value takes the name of the resolver.
 
     @DbTable
     @Discriminator
@@ -619,8 +622,8 @@ class RecordReflectionTest {
     record SealedEmptyDbTableSub(@PK Integer id) implements SealedEmptyDbTable {}
 
     @Test
-    void testGetTableNameSealedEntityEmptyDbTableFallsBackToCamelCase() throws SqlTemplateException {
-        var tableName = RecordReflection.getTableName(SealedEmptyDbTable.class, type -> type.type().getSimpleName());
+    void testGetTableNameSealedEntityEmptyDbTableFallsBackToTheResolver() throws SqlTemplateException {
+        var tableName = RecordReflection.getTableName(SealedEmptyDbTable.class, TableNameResolver.DEFAULT);
         assertEquals("sealed_empty_db_table", tableName.name());
     }
 
@@ -958,7 +961,7 @@ class RecordReflectionTest {
     @Test
     void testGetTableNameSealedNoDbTableWithDigits() throws SqlTemplateException {
         // "NameWithDigits2Test" has "ts2T" pattern, testing digit-preceded-by-lowercase path.
-        var tableName = RecordReflection.getTableName(NameWithDigits2Test.class, type -> type.type().getSimpleName());
+        var tableName = RecordReflection.getTableName(NameWithDigits2Test.class, TableNameResolver.DEFAULT);
         assertNotNull(tableName);
         // Should contain underscores from camelCase conversion.
         assertTrue(tableName.name().contains("_"));
@@ -1052,6 +1055,17 @@ class RecordReflectionTest {
         // Sealed entity FK should resolve to a single FK column.
         assertEquals(1, foreignKeys.size());
         assertEquals("animal_id", foreignKeys.getFirst().name());
+    }
+
+    @Test
+    void testGetForeignKeysNamesASealedTargetAsItsSealedInterface() throws SqlTemplateException {
+        RecordField fkField = RecordReflection.getRecordField(EntityWithSealedFk.class, "animal");
+        List<ColumnName> foreignKeys = RecordReflection.getForeignKeys(
+                fkField,
+                (field, type) -> type.type().getSimpleName() + "_id",
+                field -> field.name()
+        );
+        assertEquals(List.of("SealedAnimal_id"), foreignKeys.stream().map(ColumnName::name).toList());
     }
 
     sealed interface SealedTarget extends Data permits TargetPost, TargetPhoto {}

@@ -21,6 +21,7 @@ import java.lang.annotation.Annotation;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.InvocationTargetException;
 import java.util.List;
+import org.jspecify.annotations.Nullable;
 import st.orm.Data;
 import st.orm.PersistenceException;
 
@@ -31,19 +32,21 @@ import st.orm.PersistenceException;
  * annotations, and field components. It provides convenient methods for working with annotations and for instantiating
  * new record instances.</p>
  *
- * @param type the data record class.
- * @param constructor the canonical constructor for this data record type.
- * @param annotations all annotations present on the record class.
+ * <p>A sealed entity is described by its sealed interface: it has the annotations of the interface and the fields of
+ * its record subtypes, and no constructor, since a row is constructed as one of the subtypes.</p>
+ *
+ * @param type the data record class, or the sealed interface of a sealed entity.
+ * @param constructor the canonical constructor for this data record type, or {@code null} for a sealed entity.
+ * @param annotations all annotations present on the type.
  * @param fields metadata for all record components, in declaration order.
  * @since 1.7
  */
 public record RecordType(Class<?> type,
-                         Constructor<?> constructor,
+                         @Nullable Constructor<?> constructor,
                          List<Annotation> annotations,
                          List<RecordField> fields) {
     public RecordType {
         requireNonNull(type, "type must not be null");
-        requireNonNull(constructor, "constructor must not be null");
         annotations = List.copyOf(annotations);
         fields = List.copyOf(fields);
     }
@@ -111,7 +114,7 @@ public record RecordType(Class<?> type,
      * @param annotationType the annotation type to retrieve
      * @return the annotation if exactly one instance is present, otherwise {@code null}
      */
-    public <A extends Annotation> A getAnnotation(Class<A> annotationType) {
+    public <A extends Annotation> @Nullable A getAnnotation(Class<A> annotationType) {
         return Annotations.getAnnotation(annotations, annotationType);
     }
 
@@ -125,9 +128,12 @@ public record RecordType(Class<?> type,
      * @param args the constructor arguments, one for each record component in declaration order
      * @return a new instance of this record type
      * @throws PersistenceException if instantiation fails, if the number of arguments is incorrect,
-     *         if argument types don't match, or if the constructor throws an exception
+     *         if argument types don't match, if the constructor throws an exception, or if this is a sealed entity
      */
     public Object newInstance(Object[] args) {
+        if (constructor == null) {
+            throw new PersistenceException("%s is a sealed entity; instantiate one of its subtypes.".formatted(type.getName()));
+        }
         try {
             try {
                 // Constructor is expected to be accessible.

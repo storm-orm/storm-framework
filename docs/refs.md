@@ -407,6 +407,8 @@ orm.entity(Visit::class).select().where(Visit_.pet.name eq "Leo").resultList
 
 This is the same column the reference itself resolves to, so `Visit_.pet.id eq 42` and `Visit_.pet eq refById<Pet>(42)` produce identical SQL. It is also the same column an entity foreign key resolves its primary key to, so a path means the same thing whether the relationship is declared as an entity or as a `Ref`.
 
+A foreign key beyond a reference compares with a ref as well: `Visit_.pet.owner eq ownerRef` joins `pet` and compares its `owner_id` with the key the ref carries, and `inRefs` takes a list of them. In Java, `where(Visit_.pet.owner, ownerRef)` and `whereRef(Visit_.pet.owner, ownerRefs)` do the same.
+
 Because the key is read from the row, a match does not require the referenced row to exist. Express that requirement explicitly with a join or an exists clause when you need it.
 
 ### Naming the Referenced Table by Type

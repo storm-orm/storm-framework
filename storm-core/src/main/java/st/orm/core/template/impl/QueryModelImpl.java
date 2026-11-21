@@ -26,7 +26,7 @@ import static st.orm.core.template.impl.RecordReflection.getRecordField;
 import static st.orm.core.template.impl.RecordReflection.hasDiscriminator;
 import static st.orm.core.template.impl.RecordReflection.isCommonField;
 import static st.orm.core.template.impl.RecordReflection.isJoinedEntity;
-import static st.orm.core.template.impl.RecordReflection.isSealedEntity;
+import static st.orm.core.template.impl.RecordReflection.isRootedAt;
 
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -900,16 +900,13 @@ final class QueryModelImpl implements QueryModel {
     }
 
     /**
-     * Returns whether the metamodel's columns are those of the query's own model: a metamodel rooted at the model's
-     * type that crosses no reference, or rooted at a permitted subtype of the sealed entity the model is of (the
+     * Returns whether the metamodel's columns are those of the query's own model: a metamodel that crosses no
+     * reference and is rooted at the model's type, or at a permitted subtype of the sealed entity the model is of (the
      * metamodel root may be the first permitted subclass, such as Car, while the model is of the sealed interface,
      * such as Vehicle). Any other metamodel is looked up in the model of the table its columns belong to.
      */
     private boolean isOwnModel(Metamodel<?, ?> metamodel) {
-        if (model.type() == metamodel.root() && !crossesReference(metamodel)) {
-            return true;
-        }
-        return model.type().isSealed() && isSealedEntity(model.type()) && model.type().isAssignableFrom(metamodel.root());
+        return isRootedAt(model.type(), metamodel.root()) && !crossesReference(metamodel);
     }
 
     /**
@@ -972,7 +969,7 @@ final class QueryModelImpl implements QueryModel {
             var metamodel = column.metamodel();
             String alias = null;
             if (navigated != null) {
-                if (navigated.root() != model.type()) {
+                if (!isRootedAt(model.type(), navigated.root())) {
                     alias = aliasMapper.findAlias(navigated.root(), navigated.tableType(), navigated.path()).orElse(null);
                     if (alias == null) {
                         alias = aliasMapper.findAlias(navigated.root(), navigated.tableType(), navigated.path(), OUTER).orElse(null);
@@ -986,8 +983,7 @@ final class QueryModelImpl implements QueryModel {
                 }
             }
             boolean isRootTable = metamodel.root() == model.type();
-            if (!isRootTable && model.type().isSealed() && isSealedEntity(model.type())
-                    && isPermittedSubtype(model.type(), metamodel.root())) {
+            if (!isRootTable && isRootedAt(model.type(), metamodel.root())) {
                 // A column of a sealed entity is rooted at the subtype declaring its field. In a single-table
                 // hierarchy it is a column of the root table. In a joined hierarchy a field only some subtypes
                 // declare lives in the declaring subtype's extension table, so its own columns resolve to that
@@ -1030,18 +1026,6 @@ final class QueryModelImpl implements QueryModel {
         } catch (SqlTemplateException e) {
             throw new UncheckedSqlTemplateException(e);
         }
-    }
-
-    private static boolean isPermittedSubtype(Class<?> sealedType, Class<?> type) {
-        Class<?>[] permitted = sealedType.getPermittedSubclasses();
-        if (permitted != null) {
-            for (Class<?> subtype : permitted) {
-                if (subtype == type) {
-                    return true;
-                }
-            }
-        }
-        return false;
     }
 
     /**

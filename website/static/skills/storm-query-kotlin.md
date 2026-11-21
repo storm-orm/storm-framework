@@ -347,6 +347,7 @@ COUNT(DISTINCT ${User_.city.id})    // ❌ same column, longer
 ```kotlin
 User_.city inRefs cityRefs                            // ✅ IN over refs
 User_.city.id inList cityRefs.map { it.entityId() }   // ❌ unwraps refs to reach the column they already name
+Visit_.pet.owner eq ownerRef                          // ✅ a foreign key beyond a Ref takes a ref too; eq, neq, inRefs, notInRefs
 ```
 
 **Compare the row itself through `User_`.** The generated `User_` companion is the root metamodel: it compares the primary key, as `User_.city` compares the foreign key. It takes entities or refs and combines with `and` / `or`.

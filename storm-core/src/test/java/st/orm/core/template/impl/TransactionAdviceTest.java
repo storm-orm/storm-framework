@@ -119,6 +119,20 @@ class TransactionAdviceTest {
         }
     }
 
+    /**
+     * The fact a pause between the executions of a write adds: they take microseconds each here, so a pause of a few
+     * milliseconds counts as work outside the database between them.
+     */
+    private static final String SPREAD = "(, spread over [0-9.]+ ms with work outside the database between them)?";
+
+    /** The batch remedy of a repeated write, as it reads for executions that ran together and for ones spread out. */
+    private static final String BATCH = "(the overloads that take a list send the rows|collect the rows and write them "
+            + "after the loop through the overloads that take a list, which sends them) as one batch";
+
+    private static void assertFinds(String regex, String line) {
+        assertTrue(Pattern.compile(regex).matcher(line).find(), line);
+    }
+
     private static void transaction(TransactionOptions options, Runnable block) {
         TransactionRunner.<Void, RuntimeException>execute(options, transaction -> {
             block.run();
@@ -189,10 +203,9 @@ class TransactionAdviceTest {
         assertEquals(1, events.size(), lines(events).toString());
         var line = events.getFirst().getFormattedMessage();
         assertTrue(line.contains("\tadvice: insert of Customer ran 10 times, "), line);
-        assertTrue(line.contains("one row each." + System.lineSeparator() + "\t\tat: "), line);
+        assertFinds("one row each" + SPREAD + "\\.\\R\t\tat: ", line);
         // Within one transaction a batch changes nothing about what commits, so the advice does not say it does.
-        assertTrue(line.endsWith("send the rows as one batch." + System.lineSeparator()
-                + "\t\tsee: https://orm.st/docs/advice#repeated-write"), line);
+        assertFinds(BATCH + "\\.\\R\t\tsee: https://orm\\.st/docs/advice#repeated-write\\z", line);
     }
 
     @Test
@@ -616,7 +629,7 @@ class TransactionAdviceTest {
             }
         });
         assertTrue(line.startsWith("the same DELETE of Customer ran 10 times, "), line);
-        assertTrue(Pattern.compile(", [0-9.]+ ms each, no rows\\.\nat: ").matcher(line).find(), line);
+        assertFinds(", [0-9.]+ ms each, no rows" + SPREAD + "\\.\nat: ", line);
         assertTrue(line.contains("\nfix: one statement whose condition covers all of them, such as a where with IN over "
                 + "what the loop varies, writes them in one round trip.\nsee:"), line);
         assertFalse(line.contains("overloads that take a list"), line);
@@ -630,8 +643,8 @@ class TransactionAdviceTest {
             }
         });
         assertTrue(line.startsWith("update of Customer ran 10 times, "), line);
-        assertTrue(line.contains(", one row each.\nat: "), line);
-        assertTrue(line.contains("\nfix: the overloads that take a list send the rows as one batch.\nsee:"), line);
+        assertFinds(", one row each" + SPREAD + "\\.\nat: ", line);
+        assertFinds("\nfix: " + BATCH + "\\.\nsee:", line);
     }
 
     @Test
@@ -648,9 +661,8 @@ class TransactionAdviceTest {
             }
         });
         assertTrue(line.startsWith("the same UPSERT of Customer ran 10 times, "), line);
-        assertTrue(line.contains("\nfix: if the rows mostly exist and rarely change, read them first and write only "
-                + "the new or changed ones, which skips the needless writes\nor: the overloads that take a list send the rows "
-                + "as one batch.\nsee:"), line);
+        assertFinds("\nfix: if the rows mostly exist and rarely change, read them first and write only "
+                + "the new or changed ones, which skips the needless writes\nor: " + BATCH + "\\.\nsee:", line);
     }
 
     @Test

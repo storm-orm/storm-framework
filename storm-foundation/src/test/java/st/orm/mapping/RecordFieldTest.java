@@ -113,4 +113,17 @@ class RecordFieldTest {
         assertThrows(NullPointerException.class, () ->
                 new RecordField(TestData.class, "id", null, int.class, false, false, method, List.of()));
     }
+
+    @Test
+    void constructorRejectsNullGenericType() throws NoSuchMethodException {
+        Method method = TestData.class.getMethod("id");
+        assertThrows(NullPointerException.class, () ->
+                new RecordField(TestData.class, "id", int.class, null, false, false, method, List.of()));
+    }
+
+    @Test
+    void aFieldWithoutAccessorIsAccepted() {
+        RecordField field = new RecordField(TestData.class, "keywords", String.class, String.class, true, false, null, List.of());
+        assertNull(field.method());
+    }
 }

@@ -213,6 +213,8 @@ Storm splits name resolution into three independent concerns. Each resolver is a
 
 The separation means you can, for example, use uppercase table names while keeping lowercase column names, or apply a custom foreign key naming pattern without affecting regular columns.
 
+A sealed entity is named as its sealed interface: the `RecordType` carries the interface as its `type()`, the annotations of the interface, the fields of its subtypes and no constructor. A Single-Table subtype lives in that table, so it takes the same name and schema. A `ForeignKeyResolver` receives the same `RecordType` for a foreign key to a sealed entity.
+
 ### Default Conversion: CamelCase to Snake_Case
 
 Out of the box, Storm converts camelCase identifiers to snake_case by inserting underscores before uppercase letters and lowercasing the result. This matches the most common convention in relational databases.
