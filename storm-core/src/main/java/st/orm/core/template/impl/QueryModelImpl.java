@@ -574,7 +574,8 @@ final class QueryModelImpl implements QueryModel {
      * value comparison, joined on demand where a path reaches it, and the comparison wraps it in the function calls
      * of the path. A match anywhere, a prefix and an exact match render through the operator the form names, with
      * the text the form compares bound as the operator binds it; a word start renders through the dialect, which
-     * binds each pattern as it renders it. The column and its form are recorded for the search advice.
+     * binds each pattern as it renders it. The column and its form are recorded for the search advice, unless the
+     * word ranks the rows, which no index serves.
      */
     private String compileSearchExpression(SearchExpression expression, TemplateCompiler compiler)
             throws SqlTemplateException {
@@ -587,7 +588,9 @@ final class QueryModelImpl implements QueryModel {
         Metamodel<?, ?> navigated = isOwnModel(resolved) ? null : resolved;
         Column column = model.getSingleColumn(metamodel);
         String field = FunctionCalls.render(path, column.name());
-        ColumnUsage.recordSearchUse(column, form, field, form.lowered() ? "LOWER(" + field + ")" : field, compiler);
+        if (!expression.ranking()) {
+            ColumnUsage.recordSearchUse(column, form, field, form.lowered() ? "LOWER(" + field + ")" : field, compiler);
+        }
         String rendered = FunctionCalls.render(path, toFullyQualifiedColumn(column, navigated));
         String valueFunction = valueFunction(model, metamodel);
         var operator = form.operator();

@@ -211,6 +211,7 @@ public final class Elements {
     /**
      * A value comparison that ranks the rows rather than selecting them, such as the condition an {@code orderFirst}
      * orders by. It compiles as the comparison does, but an index on its column spares no read, so it asks for none.
+     * A word of a search that ranks the rows states so itself; see {@link SearchExpression#ranking()}.
      *
      * @param comparison the comparison.
      * @since 1.16
@@ -243,12 +244,25 @@ public final class Elements {
      *
      * @param match the column with its match form.
      * @param word the typed word, as the input holds it.
+     * @param ranking {@code true} for a word that ranks the rows the query found, as the condition an
+     *                {@code orderFirst} orders by does. An index on its column spares no read, so the search advice
+     *                asks for none.
      * @since 1.16
      */
-    public record SearchExpression(Match<?> match, String word) implements Expression {
+    public record SearchExpression(Match<?> match, String word, boolean ranking) implements Expression {
         public SearchExpression {
             requireNonNull(match, "match");
             requireNonNull(word, "word");
+        }
+
+        /**
+         * A word that selects rows.
+         *
+         * @param match the column with its match form.
+         * @param word the typed word, as the input holds it.
+         */
+        public SearchExpression(Match<?> match, String word) {
+            this(match, word, false);
         }
     }
 

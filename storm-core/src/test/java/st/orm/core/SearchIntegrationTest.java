@@ -30,6 +30,7 @@ import static st.orm.core.template.SqlInterceptor.observe;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
+import java.util.function.Supplier;
 import javax.sql.DataSource;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -44,7 +45,9 @@ import st.orm.Match;
 import st.orm.Metamodel;
 import st.orm.PK;
 import st.orm.PersistenceException;
+import st.orm.Scrollable;
 import st.orm.SqlFunction;
+import st.orm.Window;
 import st.orm.core.model.Owner;
 import st.orm.core.model.Owner_;
 import st.orm.core.model.Pet;
@@ -52,6 +55,8 @@ import st.orm.core.model.Pet_;
 import st.orm.core.model.Visit;
 import st.orm.core.model.Visit_;
 import st.orm.core.template.ORMTemplate;
+import st.orm.core.template.PredicateBuilder;
+import st.orm.core.template.QueryBuilder;
 import st.orm.core.template.SqlDialect;
 import st.orm.core.template.impl.PredicateBuilderFactory;
 
@@ -321,12 +326,107 @@ public class SearchIntegrationTest {
         assertEquals(List.of("dave", "davis"), searchNames("av", anywhere(NAME_LOWER).withFallback(anywhere(NAME_LOWER, 2))));
     }
 
+    /** Returns the first names of the owners in the order the ranked query returns them, ordered by id within a rank. */
+    private List<String> ranked(PredicateBuilder<Owner, ?, ?> rank) {
+        statements = new ArrayList<>();
+        List<String> names = new ArrayList<>();
+        observe(sql -> statements.add(sql.statement()), () -> ORMTemplate.of(dataSource).entity(Owner.class).select()
+                .orderFirst(rank)
+                .orderBy(Owner_.id)
+                .getResultList()
+                .forEach(owner -> names.add(owner.firstName())));
+        return names;
+    }
+
+    private String orderByClause() {
+        String statement = statements.getFirst().replaceAll("\\s+", " ");
+        return statement.substring(statement.indexOf("ORDER BY ") + 9).trim();
+    }
+
+    @Test
+    public void orderFirstRanksTheRowsFoundThroughTheColumnsItsSearchNames() {
+        var orm = ORMTemplate.of(dataSource);
+        // The owners found by their own name or by a pet's, the ones found by their own name first.
+        var owners = orm.entity(Owner.class).select()
+                .semiJoin(Pet.class).on(Owner.class)
+                .where(it -> PredicateBuilderFactory.<Data, Owner, Integer>suggest("geo", Set.of(), Owner_.firstName, Pet_.name))
+                .orderFirst(PredicateBuilderFactory.<Owner, Owner, Integer>suggest("geo", Set.of(), Owner_.firstName))
+                .orderByDescending(Owner_.id)
+                .getResultList();
+        assertEquals(List.of("George", "Peter"), owners.stream().map(Owner::firstName).toList());
+        // A word start ranks as it filters, in the dialect's rendering, inside the key's CASE expression.
+        assertEquals(List.of("Betty", "Harold", "George", "Eduardo", "Peter", "Jean", "Jeff", "Maria", "David", "Carlos"),
+                ranked(PredicateBuilderFactory.suggest("dav", Set.of(), Owner_.lastName)));
+        assertTrue(orderByClause().startsWith("CASE WHEN LOWER(o.last_name) LIKE LOWER(?) ESCAPE '!' OR "), orderByClause());
+        assertTrue(orderByClause().endsWith("THEN 0 ELSE 1 END, o.id"), orderByClause());
+        assertEquals(1 + SqlDialect.WORD_SEPARATORS.length(), orderByClause().split("LIKE LOWER\\(\\?\\) ESCAPE").length - 1, orderByClause());
+        // Every word must match, each in any of the columns, as in a WHERE clause.
+        assertEquals(List.of("Harold", "Betty", "George", "Eduardo", "Peter", "Jean", "Jeff", "Maria", "David", "Carlos"),
+                ranked(PredicateBuilderFactory.suggest("har dav", Set.of(), Owner_.lastName, Owner_.firstName)));
+        // An ignored word takes no part, and a search matches anywhere in the value.
+        assertEquals(List.of("Betty", "Harold", "Peter", "George", "Eduardo", "Jean", "Jeff", "Maria", "David", "Carlos"),
+                ranked(PredicateBuilderFactory.search("van avis", Set.of("van"), Owner_.lastName)));
+        // Each field ranks in its stated form.
+        assertEquals(List.of("David", "Betty", "George", "Eduardo", "Harold", "Peter", "Jean", "Jeff", "Maria", "Carlos"),
+                ranked(PredicateBuilderFactory.search("david", Set.of(), exactIgnoreCase(Owner_.firstName))));
+        assertEquals("CASE WHEN LOWER(o.first_name) = LOWER(?) THEN 0 ELSE 1 END, o.id", orderByClause());
+    }
+
+    @Test
+    public void orderFirstRanksAShortInputInTheFallbackAndAnInputWithoutWordsNotAtAll() {
+        // Without a word of three characters, the input ranks the rows whose value starts with it.
+        assertEquals(List.of("Maria", "Carlos", "Betty", "George", "Eduardo", "Harold", "Peter", "Jean", "Jeff", "David"),
+                ranked(PredicateBuilderFactory.suggest("es", Set.of(), Owner_.lastName)));
+        assertEquals("CASE WHEN LOWER(o.last_name) LIKE LOWER(?) ESCAPE '!' THEN 0 ELSE 1 END, o.id", orderByClause());
+        // An empty suggestion ranks no row first and an empty search every row, so the keys after it decide.
+        var byId = List.of("Betty", "George", "Eduardo", "Harold", "Peter", "Jean", "Jeff", "Maria", "David", "Carlos");
+        assertEquals(byId, ranked(PredicateBuilderFactory.suggest("", Set.of(), Owner_.lastName)));
+        assertEquals("CASE WHEN 1 <> 1 THEN 0 ELSE 1 END, o.id", orderByClause());
+        assertEquals(byId, ranked(PredicateBuilderFactory.search("", Owner_.lastName)));
+        assertEquals("CASE WHEN 1 = 1 THEN 0 ELSE 1 END, o.id", orderByClause());
+    }
+
+    @Test
+    public void orderFirstRefusesASearchOnASemiJoinedTable() {
+        var orm = ORMTemplate.of(dataSource);
+        // A semi-joined table adds no columns to the query, so a search on its column ranks no row of the query.
+        var exception = assertThrows(PersistenceException.class, () -> orm.entity(Owner.class).select()
+                .semiJoin(Pet.class).on(Owner.class)
+                .orderFirst(PredicateBuilderFactory.<Owner, Owner, Integer>suggest("leo", Set.of(), Pet_.name))
+                .getResultList());
+        assertTrue(exception.getMessage().startsWith("Pet is semi-joined"), exception.getMessage());
+    }
+
+    @Test
+    public void scrollFollowsARankingSearchThroughEveryWindowInBothDirections() {
+        var orm = ORMTemplate.of(dataSource);
+        Supplier<QueryBuilder<Owner, Owner, Integer>> query = () -> orm.entity(Owner.class).select()
+                .orderFirst(PredicateBuilderFactory.<Owner, Owner, Integer>suggest("dav", Set.of(), Owner_.lastName, Owner_.firstName));
+        var expected = List.of("Betty", "Harold", "David", "George", "Eduardo", "Peter", "Jean", "Jeff", "Maria", "Carlos");
+        var forward = new ArrayList<String>();
+        Window<Owner> window = query.get().scroll(Scrollable.of(Owner_.id, 4));
+        while (true) {
+            window.content().forEach(owner -> forward.add(owner.firstName()));
+            if (!window.hasNext()) {
+                break;
+            }
+            window = query.get().scroll(Scrollable.of(Owner_.id, 4).from(window.nextCursor()));
+        }
+        assertEquals(expected, forward);
+        var backward = new ArrayList<String>();
+        while (true) {
+            backward.addAll(0, window.content().stream().map(Owner::firstName).toList());
+            if (!window.hasPrevious()) {
+                break;
+            }
+            window = query.get().scroll(window.previous());
+        }
+        assertEquals(expected, backward);
+    }
+
     @Test
     public void aSearchFiltersRowsOnlyInWhereAndInASemiJoinCondition() {
         var orm = ORMTemplate.of(dataSource);
-        var orderFirst = assertThrows(PersistenceException.class, () -> orm.entity(Owner.class).select()
-                .orderFirst(PredicateBuilderFactory.<Owner, Owner, Integer>search("davis", Owner_.lastName)));
-        assertTrue(orderFirst.getMessage().startsWith("orderFirst takes no search or suggest"), orderFirst.getMessage());
         var having = assertThrows(PersistenceException.class, () -> orm.entity(Owner.class).select()
                 .having(PredicateBuilderFactory.<Owner, Owner, Integer>suggest("davis", Set.of(), Owner_.lastName)));
         assertTrue(having.getMessage().startsWith("having takes no search or suggest"), having.getMessage());

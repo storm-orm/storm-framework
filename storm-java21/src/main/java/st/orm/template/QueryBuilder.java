@@ -885,6 +885,11 @@ public abstract class QueryBuilder<T extends Data, R, ID> {
      * row the query finds and sorts them all, even with a limit; after a selective condition, such as a search, that
      * is what any ordering of the matches costs.</p>
      *
+     * <p>A {@code search} or {@code suggest} ranks the rows as it filters them: the rows it matches on the columns it
+     * names come first, by the words, the lengths and the fallbacks a WHERE clause takes them by. A query that finds
+     * rows through several columns lists the rows found through one of them first with a search on that column alone,
+     * {@code orderFirst(it -> it.suggest(input, Owner_.lastName))} for the owners found by their own name.</p>
+     *
      * <p>A keyset {@code scroll} follows it: the keys {@code orderFirst} added lead the ordering, before the sort
      * fields and the key of the {@code Scrollable}, and each window carries the rank of its first and last rows in its
      * position, so the next window continues from it. A {@code distinct} query cannot be ranked, since the database

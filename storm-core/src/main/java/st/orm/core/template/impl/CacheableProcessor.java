@@ -86,8 +86,9 @@ final class CacheableProcessor implements ElementProcessor<Cacheable> {
             // from the plain comparison.
             case RankingExpression(var it) -> keyOf(RankingExpression.class, comparisonKey(it, ignoreArity));
             case PositionExpression(var it) -> keyOf(PositionExpression.class, comparisonKey(it, ignoreArity));
-            // A search word compiles the same for every word: the column and its match form are the shape.
-            case SearchExpression(var match, var ignore) -> List.of(match);
+            // A search word compiles the same for every word: the column and its match form are the shape. A word
+            // that ranks the rows asks no index, so it compiles apart from one that selects them.
+            case SearchExpression(var match, var ignore, var ranking) -> List.of(match, ranking);
         };
     }
 

@@ -1087,6 +1087,11 @@ public abstract class QueryBuilder<T : Data, R : Any, ID : Any> {
      * the query finds and sorts them all, even with a limit; after a selective condition, such as a search, that is
      * what any ordering of the matches costs.
      *
+     * A [search] or [suggest] ranks the rows as it filters them: the rows it matches on the columns it names come
+     * first, by the words, the lengths and the fallbacks a WHERE clause takes them by. A query that finds rows through
+     * several columns lists the rows found through one of them first with a search on that column alone,
+     * `orderFirst(suggest(input, Owner_.lastName))` for the owners found by their own name.
+     *
      * A keyset `scroll` follows it: the keys `orderFirst` added lead the ordering, before the sort fields and the key
      * of the `Scrollable`, and each window carries the rank of its first and last rows in its position, so the next
      * window continues from it. A `distinct` query cannot be ranked, since the database orders a distinct result only
