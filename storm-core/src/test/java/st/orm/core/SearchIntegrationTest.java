@@ -378,6 +378,16 @@ public class SearchIntegrationTest {
         assertEquals(List.of("David", "Betty", "George", "Eduardo", "Harold", "Peter", "Jean", "Jeff", "Maria", "Carlos"),
                 ranked(PredicateBuilderFactory.search("david", Set.of(), exactIgnoreCase(Owner_.firstName))));
         assertEquals("CASE WHEN LOWER(o.first_name) = LOWER(?) THEN 0 ELSE 1 END, o.id", orderByClause());
+        // A search ranks next to a comparison in one predicate.
+        assertEquals(List.of("Betty", "Harold", "David", "George", "Eduardo", "Peter", "Jean", "Jeff", "Maria", "Carlos"),
+                ranked(it -> it.where(Owner_.lastName, EQUALS, "Davis")
+                        .or(PredicateBuilderFactory.<Owner, Owner, Integer>suggest("dav", Set.of(), Owner_.firstName))));
+        // A column reached through a foreign key ranks the rows of the query by the row it refers to.
+        assertEquals(List.of("Leo", "Iggy", "Basil"), orm.entity(Pet.class).select()
+                .orderFirst(PredicateBuilderFactory.<Pet, Pet, Integer>suggest("dav", Set.of(), Pet_.owner.lastName))
+                .orderBy(Pet_.id)
+                .limit(3)
+                .getResultList().stream().map(Pet::name).toList());
     }
 
     @Test
