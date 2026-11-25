@@ -25,11 +25,13 @@ import static st.orm.Match.exact;
 import static st.orm.Match.exactIgnoreCase;
 import static st.orm.Match.prefix;
 import static st.orm.Match.wordStart;
+import static st.orm.Operator.EQUALS;
 import static st.orm.core.template.SqlInterceptor.observe;
 
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
+import java.util.function.Function;
 import java.util.function.Supplier;
 import javax.sql.DataSource;
 import org.junit.jupiter.api.Test;
@@ -58,6 +60,7 @@ import st.orm.core.template.ORMTemplate;
 import st.orm.core.template.PredicateBuilder;
 import st.orm.core.template.QueryBuilder;
 import st.orm.core.template.SqlDialect;
+import st.orm.core.template.WhereBuilder;
 import st.orm.core.template.impl.PredicateBuilderFactory;
 
 /**
@@ -328,6 +331,11 @@ public class SearchIntegrationTest {
 
     /** Returns the first names of the owners in the order the ranked query returns them, ordered by id within a rank. */
     private List<String> ranked(PredicateBuilder<Owner, ?, ?> rank) {
+        return ranked(it -> rank);
+    }
+
+    /** Returns the first names of the owners in the order the ranked query returns them, ordered by id within a rank. */
+    private List<String> ranked(Function<WhereBuilder<Owner, Owner, Integer>, PredicateBuilder<Owner, ?, ?>> rank) {
         statements = new ArrayList<>();
         List<String> names = new ArrayList<>();
         observe(sql -> statements.add(sql.statement()), () -> ORMTemplate.of(dataSource).entity(Owner.class).select()
@@ -373,17 +381,51 @@ public class SearchIntegrationTest {
     }
 
     @Test
-    public void orderFirstRanksAShortInputInTheFallbackAndAnInputWithoutWordsNotAtAll() {
+    public void orderFirstRanksAShortInputInTheFallback() {
         // Without a word of three characters, the input ranks the rows whose value starts with it.
         assertEquals(List.of("Maria", "Carlos", "Betty", "George", "Eduardo", "Harold", "Peter", "Jean", "Jeff", "David"),
                 ranked(PredicateBuilderFactory.suggest("es", Set.of(), Owner_.lastName)));
         assertEquals("CASE WHEN LOWER(o.last_name) LIKE LOWER(?) ESCAPE '!' THEN 0 ELSE 1 END, o.id", orderByClause());
-        // An empty suggestion ranks no row first and an empty search every row, so the keys after it decide.
+    }
+
+    @Test
+    public void orderFirstAddsNoKeyForASearchWithoutAWordToMatch() {
+        // An empty suggestion holds for no row and an empty search for every row, so neither tells a row from
+        // another: the keys after it order the rows, and the ORDER BY clause holds no constant.
         var byId = List.of("Betty", "George", "Eduardo", "Harold", "Peter", "Jean", "Jeff", "Maria", "David", "Carlos");
         assertEquals(byId, ranked(PredicateBuilderFactory.suggest("", Set.of(), Owner_.lastName)));
-        assertEquals("CASE WHEN 1 <> 1 THEN 0 ELSE 1 END, o.id", orderByClause());
+        assertEquals("o.id", orderByClause());
         assertEquals(byId, ranked(PredicateBuilderFactory.search("", Owner_.lastName)));
-        assertEquals("CASE WHEN 1 = 1 THEN 0 ELSE 1 END, o.id", orderByClause());
+        assertEquals("o.id", orderByClause());
+        // An input no column takes matches no row either.
+        assertEquals(byId, ranked(PredicateBuilderFactory.suggest("es", Set.of(), wordStart(Owner_.lastName).withoutFallback())));
+        assertEquals("o.id", orderByClause());
+        // No rows decides a conjunction and every row a disjunction, whatever the comparison next to it holds.
+        assertEquals(byId, ranked(it -> it.where(Owner_.lastName, EQUALS, "Davis")
+                .and(PredicateBuilderFactory.<Owner, Owner, Integer>suggest("", Set.of(), Owner_.lastName))));
+        assertEquals("o.id", orderByClause());
+        assertEquals(byId, ranked(it -> it.where(Owner_.lastName, EQUALS, "Davis")
+                .or(PredicateBuilderFactory.<Owner, Owner, Integer>search("", Owner_.lastName))));
+        assertEquals("o.id", orderByClause());
+        assertEquals(byId, ranked(PredicateBuilderFactory.<Owner, Owner, Integer>search("", Owner_.lastName)
+                .and(PredicateBuilderFactory.<Owner, Owner, Integer>search("", Owner_.firstName))));
+        assertEquals("o.id", orderByClause());
+        assertEquals(byId, ranked(PredicateBuilderFactory.<Owner, Owner, Integer>suggest("", Set.of(), Owner_.lastName)
+                .or(PredicateBuilderFactory.<Owner, Owner, Integer>suggest("", Set.of(), Owner_.firstName))));
+        assertEquals("o.id", orderByClause());
+        // Where the comparison next to it decides, the key ranks by the comparison.
+        var davisFirst = List.of("Betty", "Harold", "George", "Eduardo", "Peter", "Jean", "Jeff", "Maria", "David", "Carlos");
+        assertEquals(davisFirst, ranked(it -> it.where(Owner_.lastName, EQUALS, "Davis")
+                .and(PredicateBuilderFactory.<Owner, Owner, Integer>search("", Owner_.lastName))));
+        assertTrue(orderByClause().startsWith("CASE WHEN o.last_name = ?"), orderByClause());
+        assertEquals(davisFirst, ranked(it -> it.where(Owner_.lastName, EQUALS, "Davis")
+                .or(PredicateBuilderFactory.<Owner, Owner, Integer>suggest("", Set.of(), Owner_.lastName))));
+        assertTrue(orderByClause().startsWith("CASE WHEN o.last_name = ?"), orderByClause());
+        // A scroll reads no rank for it.
+        var window = ORMTemplate.of(dataSource).entity(Owner.class).select()
+                .orderFirst(PredicateBuilderFactory.<Owner, Owner, Integer>suggest("", Set.of(), Owner_.lastName))
+                .scroll(Scrollable.of(Owner_.id, 4));
+        assertEquals(byId.subList(0, 4), window.content().stream().map(Owner::firstName).toList());
     }
 
     @Test

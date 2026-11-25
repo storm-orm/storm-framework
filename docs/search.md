@@ -438,6 +438,7 @@ List<Owner> suggestions = orm.entity(Owner.class)
 - Each column ranks in its match form, which may differ from the form it filters in. A box that matches `anywhere(Owner_.lastName)` and ranks with `wordStart(Owner_.lastName)` lists "De Leon" above "Napoleon". The words that start a word are Storm's to decide, in the ranking as in the filter.
 - The search names columns the query can order by, those of the queried table and of joined tables, as any `orderFirst` does.
 - A ranking is evaluated on the rows the query found, so its columns need no index for it.
+- An input without a word to match, such as an empty box, tells no row from another. The search then adds no key, and the keys after it order the list.
 
 ## Indexing a Search
 

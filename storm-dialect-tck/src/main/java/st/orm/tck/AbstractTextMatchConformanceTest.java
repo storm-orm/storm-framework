@@ -322,6 +322,21 @@ public abstract class AbstractTextMatchConformanceTest {
     }
 
     @Test
+    public void orderFirstOrdersByTheKeysAfterItForASearchWithoutAWordToMatch() {
+        // An empty search box tells no row from another, so the ranking adds no key and the ORDER BY clause holds no
+        // constant, which not every database accepts there.
+        var contents = new ArrayList<String>();
+        orm.entity(Phrase.class).select()
+                .orderFirst(PredicateBuilderFactory.<Phrase, Phrase, Integer>suggest("", Set.of(), CONTENT))
+                .orderFirst(PredicateBuilderFactory.<Phrase, Phrase, Integer>search("", Match.anywhere(CONTENT)))
+                .orderBy(ID)
+                .limit(3)
+                .getResultList()
+                .forEach(phrase -> contents.add(phrase.content()));
+        assertEquals(List.of("50%", "50 dollars", "a_b"), contents);
+    }
+
+    @Test
     public void scrollFollowsOrderFirstAcrossTheRankInBothDirections() {
         // The rank each window reads from its last row is the database's own number type, which the position carries
         // and the next window compares; the rows starting with "a" come first, by id, then the rest.

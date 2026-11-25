@@ -802,7 +802,7 @@ public abstract class QueryBuilder<T extends Data, R, ID> {
      * <p>A {@code search} or {@code suggest} ranks the rows as it filters them: the rows it matches on the columns it
      * names come first, by the words, the lengths and the fallbacks a WHERE clause takes them by. A query that finds
      * rows through several columns lists the rows found through one of them first with a search on that column
-     * alone.</p>
+     * alone. A search without a word to match, as an empty input gives one, adds no key.</p>
      *
      * <p>A keyset {@code scroll} follows it: the keys {@code orderFirst} added lead the ordering, before the sort
      * fields and the key of the {@code Scrollable}, and each window carries the rank of its first and last rows in its
@@ -831,7 +831,7 @@ public abstract class QueryBuilder<T extends Data, R, ID> {
      * <p>A {@code search} or {@code suggest} ranks the rows as it filters them: the rows it matches on the columns it
      * names come first, by the words, the lengths and the fallbacks a WHERE clause takes them by. A query that finds
      * rows through several columns lists the rows found through one of them first with a search on that column
-     * alone.</p>
+     * alone. A search without a word to match, as an empty input gives one, adds no key.</p>
      *
      * <p>A keyset {@code scroll} follows it: the keys {@code orderFirst} added lead the ordering, before the sort
      * fields and the key of the {@code Scrollable}, and each window carries the rank of its first and last rows in its
