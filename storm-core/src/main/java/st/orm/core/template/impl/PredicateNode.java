@@ -22,7 +22,9 @@ import java.util.ArrayList;
 import java.util.List;
 import org.jspecify.annotations.Nullable;
 import st.orm.Match;
+import st.orm.Operator;
 import st.orm.core.template.TemplateString;
+import st.orm.core.template.impl.Elements.ObjectExpression;
 import st.orm.core.template.impl.Elements.SearchExpression;
 
 /**
@@ -207,9 +209,10 @@ public sealed interface PredicateNode {
 
     /**
      * Returns what the predicate holds to whatever a row holds, or {@code null} when it depends on the row. A search
-     * without a word to match holds for every row or for none, and decides a conjunction or a disjunction it is part
-     * of the way a database folds the constant: no rows decides an AND, every row an OR. A predicate that is decided
-     * tells no row from another, so it ranks none.
+     * without a word to match holds for every row or for none, as a list without values holds for no row and its
+     * negation for every row. Either decides a conjunction or a disjunction it is part of the way a database folds the
+     * constant: no rows decides an AND, every row an OR. A predicate that is decided tells no row from another, so it
+     * ranks none.
      *
      * @param node the predicate.
      * @return {@code true} if the predicate holds for every row, {@code false} if it holds for none, {@code null} if
@@ -217,7 +220,9 @@ public sealed interface PredicateNode {
      */
     static @Nullable Boolean constant(PredicateNode node) {
         return switch (node) {
-            case Term term -> term == Search.EVERY_ROW ? Boolean.TRUE : term == Search.NO_ROWS ? Boolean.FALSE : null;
+            case Term term -> term == Search.EVERY_ROW ? Boolean.TRUE
+                    : term == Search.NO_ROWS ? Boolean.FALSE
+                    : constant(term.template());
             case Search search -> constant(search.resolve());
             case Scope(var inner, var ignore) -> constant(inner);
             case Group(var and, var operands) -> {
@@ -234,6 +239,29 @@ public sealed interface PredicateNode {
                 yield decided ? and : null;
             }
         };
+    }
+
+    /**
+     * Returns what a term holds to whatever a row holds: a single comparison with a list without values holds for no
+     * row, and its negation for every row. Any other term depends on the row.
+     */
+    private static @Nullable Boolean constant(TemplateString template) {
+        if (template.values().size() == 1
+                && template.values().getFirst() instanceof ObjectExpression(var ignore, var operator, var object)
+                && (operator == Operator.IN || operator == Operator.NOT_IN)
+                && holdsNoValue(object)) {
+            return operator == Operator.NOT_IN;
+        }
+        return null;
+    }
+
+    /**
+     * Returns whether the object a comparison takes its values from, an array or an iterable, holds none.
+     */
+    private static boolean holdsNoValue(Object object) {
+        return object instanceof Object[] array
+                ? array.length == 0
+                : object instanceof Iterable<?> iterable && !iterable.iterator().hasNext();
     }
 
     /**

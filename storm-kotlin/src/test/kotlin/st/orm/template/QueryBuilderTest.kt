@@ -2362,6 +2362,11 @@ internal open class QueryBuilderTest(
             .orderBy(id)
             .resultList.map { it.firstName } shouldBe
             listOf("Betty", "Harold", "Maria", "Carlos", "George", "Eduardo", "Peter", "Jean", "Jeff", "David")
+        // A list without values ranks no row before another, so the keys after it order the rows.
+        ownerRepo.select()
+            .orderFirst(id inList emptyList())
+            .orderBy(id)
+            .resultList.map { it.firstName }.take(3) shouldBe listOf("Betty", "George", "Eduardo")
     }
 
     @Test

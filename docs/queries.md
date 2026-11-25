@@ -645,7 +645,7 @@ List<User> users = orm.entity(User.class)
 </TabItem>
 </Tabs>
 
-`orderFirst` renders `CASE WHEN <predicate> THEN 0 ELSE 1 END`, the same on every database. A keyset `scroll` follows it, its keys leading the `Scrollable`'s (see [Ranking Before the Sort Fields](pagination-and-scrolling.md#ranking-before-the-sort-fields)); a `distinct` query cannot be ranked. The predicate may be a `search` or `suggest`, which puts the rows found through the columns it names first. See [Ranking the Matches](search.md#ranking-the-matches) for ranking search results.
+`orderFirst` renders `CASE WHEN <predicate> THEN 0 ELSE 1 END`, the same on every database. A keyset `scroll` follows it, its keys leading the `Scrollable`'s (see [Ranking Before the Sort Fields](pagination-and-scrolling.md#ranking-before-the-sort-fields)); a `distinct` query cannot be ranked. The predicate may be a `search` or `suggest`, which puts the rows found through the columns it names first. A predicate that holds for every row or for none, such as a list without values or a search without a word to match, tells no row from another and adds no key. See [Ranking the Matches](search.md#ranking-the-matches) for ranking search results.
 
 ### Ordering by Related Rows
 

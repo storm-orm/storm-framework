@@ -659,9 +659,9 @@ abstract class QueryBuilderImpl<T extends Data, R, ID> extends QueryBuilder<T, R
     @Override
     public QueryBuilder<T, R, ID> orderFirst(PredicateBuilder<? extends T, ?, ?> predicate) {
         requireNonNull(predicate, "predicate");
-        // A search without a word to match, as an empty search box gives one, tells no row from another, so a
-        // predicate it decides adds no key: the keys around it order the rows, and the ORDER BY clause holds no
-        // constant, which not every database accepts there.
+        // A search without a word to match, as an empty search box gives one, and a list without values tell no row
+        // from another, so a predicate either decides adds no key: the keys around it order the rows, and the
+        // ORDER BY clause holds no constant, which not every database accepts there.
         if (PredicateNode.constant(((PredicateBuilderImpl<?, ?, ?>) predicate).node()) != null) {
             return this;
         }

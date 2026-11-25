@@ -1090,8 +1090,10 @@ public abstract class QueryBuilder<T : Data, R : Any, ID : Any> {
      * A [search] or [suggest] ranks the rows as it filters them: the rows it matches on the columns it names come
      * first, by the words, the lengths and the fallbacks a WHERE clause takes them by. A query that finds rows through
      * several columns lists the rows found through one of them first with a search on that column alone,
-     * `orderFirst(suggest(input, Owner_.lastName))` for the owners found by their own name. A search without a word
-     * to match, as an empty input gives one, adds no key.
+     * `orderFirst(suggest(input, Owner_.lastName))` for the owners found by their own name.
+     *
+     * A predicate that holds for every row or for none tells no row from another and adds no key: a search without a
+     * word to match, as an empty input gives one, or a list without values.
      *
      * A keyset `scroll` follows it: the keys `orderFirst` added lead the ordering, before the sort fields and the key
      * of the `Scrollable`, and each window carries the rank of its first and last rows in its position, so the next
