@@ -2362,6 +2362,40 @@ internal open class QueryBuilderTest(
             .orderBy(id)
             .resultList.map { it.firstName } shouldBe
             listOf("Betty", "Harold", "Maria", "Carlos", "George", "Eduardo", "Peter", "Jean", "Jeff", "David")
+        // A list without values ranks no row before another, so the keys after it order the rows.
+        ownerRepo.select()
+            .orderFirst(id inList emptyList())
+            .orderBy(id)
+            .resultList.map { it.firstName }.take(3) shouldBe listOf("Betty", "George", "Eduardo")
+    }
+
+    @Test
+    fun `orderFirst should rank the rows a suggest or search matches first`() {
+        val ownerRepo = orm.entity(Owner::class)
+        val firstName = metamodel<Owner, String>(ownerRepo.model, "first_name")
+        val lastName = metamodel<Owner, String>(ownerRepo.model, "last_name")
+        val id = metamodel<Owner, Int>(ownerRepo.model, "id")
+        val petName = metamodel<Pet, String>(orm.entity(Pet::class).model, "name")
+        // data.sql: George Franklin is found by his own name, Peter McTavish by his pet George.
+        ownerRepo.select()
+            .semiJoin<Pet>().on<Owner>()
+            .where(suggest("geo", firstName, petName))
+            .orderFirst(suggest("geo", wordStart(firstName)))
+            .orderByDescending(id)
+            .resultList.map { it.firstName } shouldBe listOf("George", "Peter")
+        ownerRepo.select()
+            .orderFirst(search("tavi", lastName))
+            .orderBy(id)
+            .resultList.first().firstName shouldBe "Peter"
+        // The block DSL takes the same predicate.
+        ownerRepo.select {
+            orderFirst(suggest("har dav", lastName, firstName))
+            orderBy(id)
+        }.resultList.first().firstName shouldBe "Harold"
+        // A column of the semi-joined table ranks no row of the query.
+        assertThrows<PersistenceException> {
+            ownerRepo.select().semiJoin<Pet>().on<Owner>().orderFirst(suggest("geo", petName)).resultList
+        }.message!! shouldContain "semi-joined"
     }
 
     @Test

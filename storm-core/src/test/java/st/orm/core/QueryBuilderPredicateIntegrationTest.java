@@ -10,8 +10,10 @@ import static st.orm.Operator.EQUALS;
 import static st.orm.Operator.GREATER_THAN;
 import static st.orm.Operator.IN;
 import static st.orm.Operator.LESS_THAN;
+import static st.orm.Operator.NOT_IN;
 import static st.orm.core.template.TemplateString.raw;
 
+import java.util.ArrayList;
 import java.util.List;
 import javax.sql.DataSource;
 import org.junit.jupiter.api.Test;
@@ -36,6 +38,7 @@ import st.orm.core.model.Visit;
 import st.orm.core.model.Visit_;
 import st.orm.core.template.ORMTemplate;
 import st.orm.core.template.PredicateBuilder;
+import st.orm.core.template.SqlInterceptor;
 import st.orm.core.template.impl.PredicateBuilderFactory;
 
 /**
@@ -388,6 +391,28 @@ public class QueryBuilderPredicateIntegrationTest {
                 .slice(0, 3);
         assertEquals(3, window.content().size());
         assertTrue(window.hasNext(), "Expected hasNext=true since there are 6 cities");
+    }
+
+    @Test
+    public void testOrderFirstAddsNoKeyForAListWithoutValues() {
+        var orm = ORMTemplate.of(dataSource);
+        // A list without values holds for no row and its negation for every row, so neither ranks a row before
+        // another: the keys after it order the rows, and the ORDER BY clause holds no constant.
+        var statements = new ArrayList<String>();
+        for (var operator : List.of(IN, NOT_IN)) {
+            var cities = SqlInterceptor.observe(sql -> statements.add(sql.statement().replaceAll("\\s+", " ")),
+                    () -> orm.selectFrom(City.class)
+                            .orderFirst(it -> it.where(City_.id, operator, List.<Integer>of()))
+                            .orderBy(City_.id)
+                            .getResultList());
+            assertEquals(List.of(1, 2, 3, 4, 5, 6), cities.stream().map(City::id).toList());
+            assertTrue(statements.getLast().endsWith("ORDER BY c.id"), statements.getLast());
+        }
+        // A list with a value ranks its rows first.
+        assertEquals(List.of(3, 1, 2, 4, 5, 6), orm.selectFrom(City.class)
+                .orderFirst(it -> it.where(City_.id, IN, List.of(3)))
+                .orderBy(City_.id)
+                .getResultList().stream().map(City::id).toList());
     }
 
     // Scrolling: scrollBefore (cursorless, descending)

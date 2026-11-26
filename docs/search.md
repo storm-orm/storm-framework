@@ -303,7 +303,7 @@ A word typed into that box matches the start of a word of a name, or a whole tel
 - **`prefixIgnoreCase` and `exactIgnoreCase`** lower the column too, so they match any column as stored, served by an index over `LOWER(col)`: the substring index of `anywhere` and `wordStart`, or an ordinary index over the expression. They are `prefix` and `exact` for a column that compares case-sensitively, as `startsWithIgnoreCase` and `eqIgnoreCase` are to `startsWith` and `eq`.
 - **A match composes with a [`SqlFunction`](#ignoring-accents)**: `wordStart(foldAccents(Owner_.lastName))` in Kotlin, `wordStart(foldAccents.apply(Owner_.lastName))` in Java, matches the folded name, and the index is built over the same expression.
 - **A match also states the shortest word its column takes in its form**, `minLength`, three for `anywhere` and `wordStart` and two for the others by default, and how its column takes a shorter input, its fallback; see [Short Words](#short-words).
-- **A match is not a path**, so only `search` and `suggest` take it; `orderFirst` and the operators take the column.
+- **A match is not a path**, so only `search` and `suggest` take it; an operator takes the column. `orderFirst` takes either: an operator on the column, or a `search` or `suggest` with its matches; see [Ranking by What Matched](#ranking-by-what-matched).
 
 ## Searching Related Rows
 
@@ -339,7 +339,7 @@ List<Owner> owners = orm.entity(Owner.class)
 - The columns may come from several semi-joined tables. With `semiJoin<Pet>().on<Owner>()` and `semiJoin<Visit>().on<Pet>()`, `search(input, Owner_.lastName, Pet_.name, Visit_.description)` finds an owner by their name, by a pet's name or by what a visit was about, so `vaccination` finds the owners whose pets came in for one although no name says so. Each word matches a row of any of the tables, and renders as one `IN` over a `UNION` with a branch per table, so each table is read through its own indexes.
 - Whether a semi-join filters the rows or supplies matches is decided by the query as written. A semi-join whose column the search names supplies matches: an owner without pets is still found through their own name, for every input. A related column usually takes no fallback, since its matches rank below the row's own and cost the most to read: `anywhere(Pet_.name).withoutFallback()` keeps `le` from adding every owner of a pet whose name starts with it to the owners named "Le", and the pets join in from `leo`. The length applies per column, for `search` as for `suggest`; see [Short Words](#short-words).
 - A condition on the join limits which related rows a word may match. `semiJoin<Visit>().on(Pet::class, Visit_.visitDate greaterEq lastYear)` with `search(input, Owner_.lastName, Visit_.description)` matches a word against the names and the visits of the past year, and an index limited to those rows serves it.
-- `search` and `suggest` filter rows, so they go in `where` or in the condition of a `semiJoin` or `antiJoin`. `orderFirst`, `having` and the condition of a join that adds rows refuse them: rank with `startsWithIgnoreCase` or `equalsIgnoreCase` instead.
+- `search` and `suggest` filter rows in `where` and in the condition of a `semiJoin` or `antiJoin`, and rank the rows found in `orderFirst`; see [Ranking by What Matched](#ranking-by-what-matched). `having` and the condition of a join that adds rows refuse them.
 
 See [Filtering by Related Rows](queries.md#filtering-by-related-rows) for how semi-joins answer conditions in general.
 
@@ -387,9 +387,58 @@ ORDER BY CASE WHEN LOWER(o.last_name) = LOWER(?) THEN 0 ELSE 1 END,
 The operators match the input as they do in a WHERE clause: ignoring case, and literally, so `%` and `_` in the input are not wildcards. Combine predicates with `or` to rank by several columns, such as a last name and a first name. The input is compared whole, as typed; trim it, or collapse its spaces, where the box may hold more than one between words.
 
 - No index serves the sort: the database evaluates each key for every row the query finds and sorts them all, even with a limit. After a search, which finds few rows, that costs what any ordering of the matches costs.
-- Rank by the columns of the queried table and of joined tables. A semi-joined table adds no columns to the query, so its columns, such as the name of a pet an owner was found by, cannot rank it; Storm refuses them.
+- Rank by the columns of the queried table and of joined tables. A semi-joined table adds no columns to the query, so its columns, such as the name of a pet an owner was found by, cannot rank it; Storm refuses them. To order by a value of the related rows, such as the latest visit of an owner's pets, see [Ordering by Related Rows](queries.md#ordering-by-related-rows).
 - A keyset `scroll` follows `orderFirst`, so search results can be read a window at a time; see [Ranking Before the Sort Fields](pagination-and-scrolling.md#ranking-before-the-sort-fields).
 - A `distinct` query cannot be ranked, since the database orders a distinct result only by the columns it selects. A search over related rows uses a semi-join, which needs no `distinct`.
+
+### Ranking by What Matched
+
+A search over several columns finds a row through any of them, and the list usually wants the rows found through the main column first: the owners whose own name matches before the owners found through a pet. `orderFirst` takes a `search` or `suggest` for that, naming the columns whose matches come first:
+
+<Tabs groupId="language">
+<TabItem value="kotlin" label="Kotlin" default>
+
+```kotlin
+val suggestions = orm.entity(Owner::class)
+    .select()
+    .semiJoin<Pet>().on<Owner>()
+    .where(suggest(input, Owner_.lastName, Pet_.name))
+    .orderFirst(Owner_.lastName eqIgnoreCase input)
+    .orderFirst(suggest(input, Owner_.lastName))
+    .orderBy(Owner_.lastName, Owner_.id)
+    .limit(8)
+    .resultList
+```
+
+</TabItem>
+<TabItem value="java" label="Java">
+
+```java
+List<Owner> suggestions = orm.entity(Owner.class)
+    .select()
+    .semiJoin(Pet.class).on(Owner.class)
+    .where(it -> it.suggest(input, Owner_.lastName, Pet_.name))
+    .orderFirst(it -> it.where(Owner_.lastName, EQUALS_IGNORE_CASE, input))
+    .orderFirst(it -> it.suggest(input, Owner_.lastName))
+    .orderBy(Owner_.lastName, Owner_.id)
+    .limit(8)
+    .getResultList();
+```
+
+</TabItem>
+</Tabs>
+
+| Owner, for the input `leon` | Found through | Listed |
+|-----------------------------|---------------|--------|
+| Leon | their own name, whole | first |
+| De Leon, Leonard | their own name, at the start of a word | next |
+| Davis, owner of a pet named Leon | the pet | last |
+
+- The search ranks as it filters: by the same words, words to ignore, lengths and fallbacks. The ranking therefore agrees with what the WHERE clause found for every input, `van b` and a single `le` included, where an operator compares the input whole.
+- Each column ranks in its match form, which may differ from the form it filters in. A box that matches `anywhere(Owner_.lastName)` and ranks with `wordStart(Owner_.lastName)` lists "De Leon" above "Napoleon". The words that start a word are Storm's to decide, in the ranking as in the filter.
+- The search names columns the query can order by, those of the queried table and of joined tables, as any `orderFirst` does.
+- A ranking is evaluated on the rows the query found, so its columns need no index for it.
+- An input without a word to match, such as an empty box, tells no row from another. The search then adds no key, and the keys after it order the list.
 
 ## Indexing a Search
 

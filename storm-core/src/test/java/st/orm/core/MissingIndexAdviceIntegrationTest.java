@@ -237,6 +237,27 @@ public class MissingIndexAdviceIntegrationTest {
     }
 
     @Test
+    public void aSearchThatRanksTheRowsIsNotAdvised() {
+        var orm = ORMTemplate.of(dataSource);
+        orm.loadSchema();
+        // The key of an orderFirst is evaluated for the rows the query found, so no index on its column spares a
+        // read: neither the search advice nor the missing-index advice names it.
+        Supplier<?> ranked = () -> orm.entity(Customer.class).select()
+                .orderFirst(PredicateBuilderFactory.<Customer, Customer, Integer>search("davis", anywhere(LAST_NAME)))
+                .limit(10)
+                .getResultList();
+        assertEquals(List.of(), searchAdvice(ranked));
+        assertEquals(List.of(), missingIndexAdvice(ranked));
+        // The same match is advised where it filters the rows, next to the ranking that is not.
+        var advice = searchAdvice(() -> orm.entity(Customer.class).select()
+                .where(it -> PredicateBuilderFactory.<Customer, Customer, Integer>search("davis", anywhere(LAST_NAME)))
+                .orderFirst(PredicateBuilderFactory.<Customer, Customer, Integer>search("davis", anywhere(LAST_NAME)))
+                .getResultList());
+        assertEquals(1, advice.size(), advice.toString());
+        assertTrue(advice.getFirst().startsWith("no index on customer serves anywhere(last_name)"), advice.getFirst());
+    }
+
+    @Test
     public void anIndexOnTheBareColumnServesNoMatchOfTheLoweredColumn() {
         var orm = ORMTemplate.of(dataSource);
         orm.loadSchema();

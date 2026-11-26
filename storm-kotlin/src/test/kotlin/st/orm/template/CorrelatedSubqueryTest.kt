@@ -28,6 +28,7 @@ import st.orm.template.model.Pet
 import st.orm.template.model.Visit
 import st.orm.test.SqlCapture
 import st.orm.test.StormTest
+import java.time.LocalDate
 
 /**
  * A subquery correlates with the enclosing query through `column(..., OUTER)`, which names the outer query's table
@@ -61,6 +62,40 @@ internal class CorrelatedSubqueryTest {
         }
         count shouldBe 7
         capture.sql() shouldContain "INNER JOIN pet p ON v.pet_id = p.id"
+    }
+
+    internal data class OwnerLastVisit(val owner: Owner, val lastVisit: LocalDate?)
+
+    @Test
+    fun `a correlated subquery is a sort key and a selected value`(orm: ORMTemplate, capture: SqlCapture) {
+        val ownerLastName = Metamodel.of<Owner, String>(Owner::class.java, "lastName")
+        val visitDate = Metamodel.of<Visit, LocalDate>(Visit::class.java, "visitDate")
+        // The owners by the latest visit of their pets: the semi-join decides which owners are listed, the subquery
+        // only orders them.
+        val lastVisit = orm.subquery(Visit::class) { "MAX(${t(visitDate)})" }
+            .where(visitPetOwnerId eq outer(ownerId))
+        val owners = capture.execute {
+            orm.entity(Owner::class).select()
+                .semiJoin(Pet::class).on(Owner::class)
+                .orderByDescending { "(${t(lastVisit)})" }
+                .orderBy(ownerLastName, ownerId)
+                .limit(4)
+                .resultList
+        }
+        owners.map { it.lastName } shouldBe listOf("Coleman", "McTavish", "Davis", "Rodriquez")
+        capture.sql() shouldContain "ORDER BY ( SELECT MAX(v.visit_date) FROM visit v INNER JOIN pet p ON v.pet_id = p.id " +
+            "WHERE p.owner_id = o.id ) DESC, o.last_name, o.id"
+        // A result type carries the value the rows are ordered by.
+        orm.entity(Owner::class)
+            .select(OwnerLastVisit::class) { "${t(Owner::class)}, (${t(lastVisit)})" }
+            .orderByDescending { "(${t(lastVisit)})" }
+            .orderBy(ownerLastName, ownerId)
+            .limit(3)
+            .resultList.map { it.owner.lastName to it.lastVisit } shouldBe listOf(
+            "Coleman" to LocalDate.of(2023, 1, 13),
+            "McTavish" to LocalDate.of(2023, 1, 13),
+            "Davis" to LocalDate.of(2023, 1, 12),
+        )
     }
 
     @Test

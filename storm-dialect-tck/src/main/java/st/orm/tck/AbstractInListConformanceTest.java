@@ -160,6 +160,26 @@ public abstract class AbstractInListConformanceTest {
     }
 
     @Test
+    public void testAnEmptyListRanksNoRowFirstInEveryMode() {
+        // An empty list holds for no row and its negation for every row, so neither tells a row from another: the
+        // rows come in the order of the keys after it, and the ORDER BY clause holds no constant, which not every
+        // database accepts there.
+        for (var mode : MODES) {
+            var orm = template(mode);
+            for (var operator : List.of(IN, NOT_IN)) {
+                var ranked = new ArrayList<Integer>();
+                orm.entity(Probe.class).select()
+                        .orderFirst(it -> it.where(ID, operator, List.<Integer>of()))
+                        .orderBy(ID)
+                        .limit(3)
+                        .getResultList()
+                        .forEach(probe -> ranked.add(probe.id()));
+                assertEquals(List.of(1, 2, 3), ranked, mode + " " + (operator == IN ? "IN" : "NOT IN"));
+            }
+        }
+    }
+
+    @Test
     public void testALongListReturnsTheSameRowsInEveryMode() {
         // Past every power of two a padded list could reach within the dialect's limits.
         var ids = ids(1_001);

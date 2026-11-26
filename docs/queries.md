@@ -645,7 +645,58 @@ List<User> users = orm.entity(User.class)
 </TabItem>
 </Tabs>
 
-`orderFirst` renders `CASE WHEN <predicate> THEN 0 ELSE 1 END`, the same on every database. A keyset `scroll` follows it, its keys leading the `Scrollable`'s (see [Ranking Before the Sort Fields](pagination-and-scrolling.md#ranking-before-the-sort-fields)); a `distinct` query cannot be ranked. See [Ranking the Matches](search.md#ranking-the-matches) for ranking search results.
+`orderFirst` renders `CASE WHEN <predicate> THEN 0 ELSE 1 END`, the same on every database. A keyset `scroll` follows it, its keys leading the `Scrollable`'s (see [Ranking Before the Sort Fields](pagination-and-scrolling.md#ranking-before-the-sort-fields)); a `distinct` query cannot be ranked. The predicate may be a `search` or `suggest`, which puts the rows found through the columns it names first. A predicate that holds for every row or for none, such as a list without values or a search without a word to match, tells no row from another and adds no key. See [Ranking the Matches](search.md#ranking-the-matches) for ranking search results.
+
+### Ordering by Related Rows
+
+A sort key may be a value of the rows related to each row, such as the latest visit of an owner's pets. A subquery computes it per row: it selects the value in a template, relates its rows to the query's row with [`outer`](#correlated-subqueries), and goes into the sort key in parentheses. The owners with a pet, those whose pets were seen most recently first:
+
+<Tabs groupId="language">
+<TabItem value="kotlin" label="Kotlin" default>
+
+```kotlin
+val lastVisit = orm.subquery<Visit> { "MAX(${Visit_.visitDate})" }
+    .where(Visit_.pet.owner.id eq outer(Owner_.id))
+
+val owners = orm.entity(Owner::class)
+    .select()
+    .semiJoin<Pet>().on<Owner>()
+    .orderByDescending { "($lastVisit)" }
+    .orderBy(Owner_.lastName, Owner_.id)
+    .resultList
+```
+
+</TabItem>
+<TabItem value="java" label="Java">
+
+```java
+var lastVisit = orm.subquery(Visit.class, RAW."MAX(\{Visit_.visitDate})")
+    .where(it -> it.where(Visit_.pet.owner.id, EQUALS, outer(Owner_.id)));
+
+List<Owner> owners = orm.entity(Owner.class)
+    .select()
+    .semiJoin(Pet.class).on(Owner.class)
+    .orderByDescending(RAW."(\{lastVisit})")
+    .orderBy(Owner_.lastName, Owner_.id)
+    .getResultList();
+```
+
+</TabItem>
+</Tabs>
+
+```sql
+SELECT ...
+FROM owner o
+WHERE EXISTS (SELECT 1 FROM pet p WHERE p.owner_id = o.id)
+ORDER BY (SELECT MAX(v.visit_date) FROM visit v INNER JOIN pet p ON v.pet_id = p.id WHERE p.owner_id = o.id) DESC,
+         o.last_name, o.id
+```
+
+- The subquery only orders the rows. The semi-join, and every condition of the query, keeps deciding which rows come back, which a join grouped by the owner does not: a condition on the joined table then holds per joined row.
+- The same subquery carries the value into a result type through the select template, so a list can show the date it is ordered by: `select(OwnerLastVisit::class) { "${Owner::class}, ($lastVisit)" }` in Kotlin, `select(OwnerLastVisit.class, RAW."\{Owner.class}, (\{lastVisit})")` in Java.
+- A row without related rows sorts by NULL, and databases place NULL at different ends of an ordering. Where such rows are part of the result, give them a value with `COALESCE` around the aggregate, so they sort alike on every database.
+- The database runs the subquery for every row the query finds, so it wants an index on the key it is correlated on, here `visit.pet_id`.
+- A keyset `scroll` orders by columns a row holds, so it does not take a computed key; read such a list with `limit`.
 
 ## Aggregation
 

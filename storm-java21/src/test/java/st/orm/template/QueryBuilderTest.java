@@ -28,6 +28,7 @@ import static st.orm.ResolveScope.INNER;
 import static st.orm.ResolveScope.OUTER;
 import static st.orm.template.Templates.column;
 
+import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
@@ -56,6 +57,7 @@ import st.orm.core.template.SqlInterceptor;
 import st.orm.template.model.City;
 import st.orm.template.model.City_;
 import st.orm.template.model.Owner;
+import st.orm.template.model.OwnerLastVisit;
 import st.orm.template.model.Owner_;
 import st.orm.template.model.Pet;
 import st.orm.template.model.PetType;
@@ -634,6 +636,29 @@ public class QueryBuilderTest {
     }
 
     @Test
+    public void testACorrelatedSubqueryIsASortKeyAndASelectedValue() {
+        // data.sql: the pets of Jean Coleman and Peter McTavish were last seen on 2023-01-13, Harold Davis' pet a day
+        // before. The semi-join decides which owners are listed, the subquery only orders them.
+        var lastVisit = orm.subquery(Visit.class, RAW."MAX(\{Visit_.visitDate})")
+                .where(it -> it.where(Visit_.pet.owner.id, EQUALS, outer(Owner_.id)));
+        assertEquals(List.of("Jean", "Peter", "Harold"), orm.entity(Owner.class).select()
+                .semiJoin(Pet.class).on(Owner.class)
+                .orderByDescending(RAW."(\{lastVisit})")
+                .orderBy(Owner_.lastName, Owner_.id)
+                .limit(3)
+                .getResultList().stream().map(Owner::firstName).toList());
+        // A result type carries the value the rows are ordered by.
+        var first = orm.entity(Owner.class)
+                .select(OwnerLastVisit.class, RAW."\{Owner.class}, (\{lastVisit})")
+                .orderByDescending(RAW."(\{lastVisit})")
+                .orderBy(Owner_.lastName, Owner_.id)
+                .limit(1)
+                .getSingleResult();
+        assertEquals("Jean", first.owner().firstName());
+        assertEquals(LocalDate.of(2023, 1, 13), first.lastVisit());
+    }
+
+    @Test
     public void testOuterNamesTheColumnOfTheEnclosingQuery() {
         // data.sql: pets 1 to 8 have visits. A comparison with outer(Pet_.id) names the pet of the enclosing query, in
         // the builder and in a template alike.
@@ -867,6 +892,26 @@ public class QueryBuilderTest {
                 .semiJoin(Pet.class).on(Owner.class)
                 .where(it -> it.suggest("davis le", wordStart(Owner_.lastName), wordStart(Pet_.name)))
                 .getResultList().stream().map(Owner::firstName).toList());
+    }
+
+    @Test
+    public void testOrderFirstRanksTheRowsASuggestionMatches() {
+        // data.sql: George Franklin is found by his own name, Peter McTavish by his pet George.
+        assertEquals(List.of("George", "Peter"), orm.entity(Owner.class).select()
+                .semiJoin(Pet.class).on(Owner.class)
+                .where(it -> it.suggest("geo", Owner_.firstName, Pet_.name))
+                .orderFirst(it -> it.suggest("geo", wordStart(Owner_.firstName)))
+                .orderByDescending(Owner_.id)
+                .getResultList().stream().map(Owner::firstName).toList());
+        // A search ranks as a suggestion does, and a column of the semi-joined table ranks no row of the query.
+        assertEquals("Peter", orm.entity(Owner.class).select()
+                .orderFirst(it -> it.search("tavi", Owner_.lastName))
+                .orderBy(Owner_.id)
+                .getResultList().getFirst().firstName());
+        assertThrows(PersistenceException.class, () -> orm.entity(Owner.class).select()
+                .semiJoin(Pet.class).on(Owner.class)
+                .orderFirst(it -> it.suggest("geo", Pet_.name))
+                .getResultList());
     }
 
     @Test

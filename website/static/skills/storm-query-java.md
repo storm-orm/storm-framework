@@ -192,7 +192,7 @@ Operators (static constants of `st.orm.Operator`): `EQUALS`, `NOT_EQUALS`, `LESS
 - Every word matches at the start of a word: the start of the value, or the text after a space, a hyphen, an apostrophe, an opening parenthesis, a slash, a colon, a period or a comma. `marie` suggests "Anne-Marie"; `son` does not suggest "Davidson", which `search` finds.
 - Each column states its `minLength`: three for `anywhere` and `wordStart`, two for `prefix`, `exact` and their `IgnoreCase` forms, which are narrow on their own. Until a word reaches it, the column matches the whole input as one word in its fallback, by default as the start of the value, ignoring case: `de va` suggests "De Vaal", `up` suggests "Upton" but not "Van Upton". Once a word reaches it, the column takes every word, a shorter one narrowing the rows the longer word found. An empty or one-character input matches no rows, so the box never fetches a whole table on the first keystroke. `search` follows the same rules, except that an empty input matches every row. Never pad, drop or filter short words or the empty input in application code: `suggest` does it.
 - A related column takes no fallback, since its matches rank below the row's own and cost the most to read: `wordStart(Pet_.name).withoutFallback()`. Until a word reaches its length, the column and the semi-join declared for it leave the statement, so a row is still found through its own columns for every input. Columns reach their length apart, and a row matches through the words on one or the fallback on another. Input no column takes matches no rows.
-- `search` and `suggest` go in `where` or a `semiJoin`/`antiJoin` condition only; `orderFirst`, `having` and other join conditions refuse them. Rank with `startsWithIgnoreCase`.
+- `search` and `suggest` filter in `where` or a `semiJoin`/`antiJoin` condition and rank in `orderFirst`; `having` and other join conditions refuse them.
 - The search page the box leads to keeps `search`, which matches every word anywhere.
 - A query the client may abort, as a box that fetches on every keystroke does, runs inside `transaction(tx -> ...)`, and the block hands `tx` to whoever decides the result is no longer wanted: `tx.cancel()`, from any thread, stops the statement on the database and releases the connection.
 
@@ -210,7 +210,8 @@ Operators (static constants of `st.orm.Operator`): `EQUALS`, `NOT_EQUALS`, `LESS
 .orderBy(Owner_.lastName)
 ```
 - The operators match the input literally and ignoring case, as in `where`. Combine columns with `.or(...)`.
-- Rank only by columns of the queried or joined tables. A semi-joined table adds no columns, so its columns are refused.
+- **Rank the rows found through a column with `orderFirst(it -> it.suggest(input, column))`, never with operators chained over word separators.** It ranks by the words, ignored words, lengths and fallbacks the filter uses: `.orderFirst(it -> it.suggest(input, Owner_.lastName))` after `.where(it -> it.suggest(input, Owner_.lastName, Pet_.name))` lists the owners found by their own name before those found by a pet. A match states another form to rank by, `wordStart(Owner_.lastName)` under an `anywhere` filter. `search` ranks the same way. An input without a word to match, such as an empty box, adds no key.
+- Rank only by columns of the queried or joined tables. A semi-joined table adds no columns, so its columns are refused, inside a `suggest` as well. Order by a value of its rows with a correlated subquery (see **Subqueries**).
 - A keyset `scroll` follows `orderFirst`: its keys lead the `Scrollable`'s sort fields and key, and the cursor carries the ranks. A `Scrollable` may sort by a field of a joined table, such as the votes of a joined rating.
 - `orderFirst` cannot order a `distinct` query.
 - No index serves the sort, which is fine after a search's few matches.
@@ -631,6 +632,25 @@ List<City> citiesWithoutUsers = orm.entity(City.class)
         .and(it.where(City_.name, LIKE, "M%")))
     .getResultList();
 ```
+
+**Order by a value of related rows with a correlated subquery in the sort key, never by turning a `semiJoin` into a join with `groupBy`.** The join would change which rows the query's conditions match. A subquery builder interpolated into a template renders as a correlated subquery; put it in parentheses. `orm.subquery(type, template)` selects the value.
+
+```java
+// The owners with a pet, those whose pets were seen most recently first
+var lastVisit = orm.subquery(Visit.class, RAW."MAX(\{Visit_.visitDate})")
+    .where(it -> it.where(Visit_.pet.owner.id, EQUALS, outer(Owner_.id)));
+
+List<Owner> owners = orm.entity(Owner.class)
+    .select()
+    .semiJoin(Pet.class).on(Owner.class)
+    .orderByDescending(RAW."(\{lastVisit})")
+    .orderBy(Owner_.lastName, Owner_.id)
+    .getResultList();
+```
+
+- The same `(\{lastVisit})` in the select template carries the value into a result type: `select(OwnerLastVisit.class, RAW."\{Owner.class}, (\{lastVisit})")`.
+- A row without related rows sorts by NULL, which databases place at different ends: wrap the aggregate in `COALESCE` where such rows are listed.
+- A keyset `scroll` takes no computed key; page such a list with `limit`.
 
 ## Compound Predicates (where with WhereBuilder)
 

@@ -61,6 +61,7 @@ import st.orm.core.template.impl.Elements.PathExpression;
 import st.orm.core.template.impl.Elements.PositionExpression;
 import st.orm.core.template.impl.Elements.PredicateTarget;
 import st.orm.core.template.impl.Elements.RankingExpression;
+import st.orm.core.template.impl.Elements.SearchExpression;
 import st.orm.core.template.impl.Elements.Subquery;
 import st.orm.core.template.impl.Elements.TableSource;
 import st.orm.core.template.impl.Elements.TableTarget;
@@ -658,16 +659,20 @@ abstract class QueryBuilderImpl<T extends Data, R, ID> extends QueryBuilder<T, R
     @Override
     public QueryBuilder<T, R, ID> orderFirst(PredicateBuilder<? extends T, ?, ?> predicate) {
         requireNonNull(predicate, "predicate");
-        refuseSearch(((PredicateBuilderImpl<?, ?, ?>) predicate).node(), "orderFirst",
-                "Filter with where(search(...)), and rank with startsWithIgnoreCase or equalsIgnoreCase.");
+        // A search without a word to match, as an empty search box gives one, and a list without values tell no row
+        // from another, so a predicate either decides adds no key: the keys around it order the rows, and the
+        // ORDER BY clause holds no constant, which not every database accepts there.
+        if (PredicateNode.constant(((PredicateBuilderImpl<?, ?, ?>) predicate).node()) != null) {
+            return this;
+        }
         return orderFirstKey(TemplateString.combine(TemplateString.of("CASE WHEN "),
                 ranking(((PredicateBuilderImpl<?, ?, ?>) predicate).asTemplate()), TemplateString.of(" THEN 0 ELSE 1 END")));
     }
 
     /**
-     * Refuses a predicate that holds a search or a suggestion where the query does not filter its rows by it. A search
-     * resolves its words by the dialect's substring index and the lengths its columns state, which only a condition
-     * that filters rows applies: {@code where}, and the condition of a semi-join or anti-join.
+     * Refuses a predicate that holds a search or a suggestion where the query neither filters nor ranks its rows by
+     * it. A search is what a user typed to find rows: {@code where} and the condition of a semi-join or anti-join
+     * filter the rows by it, and {@code orderFirst} ranks the rows found.
      */
     private static void refuseSearch(PredicateNode node, String clause, String fix) {
         if (PredicateNode.holdsSearch(node)) {
@@ -685,12 +690,18 @@ abstract class QueryBuilderImpl<T extends Data, R, ID> extends QueryBuilder<T, R
         var ranked = new ArrayList<Object>(values.size());
         boolean changed = false;
         for (var value : values) {
-            // A predicate carries its comparisons as object expressions; the rest of its values render as they are.
-            if (value instanceof ObjectExpression expression) {
-                ranked.add(new RankingExpression(expression));
-                changed = true;
-            } else {
-                ranked.add(value);
+            // A predicate carries its comparisons as object expressions and the words of a search as search
+            // expressions; the rest of its values render as they are.
+            switch (value) {
+                case ObjectExpression expression -> {
+                    ranked.add(new RankingExpression(expression));
+                    changed = true;
+                }
+                case SearchExpression(var match, var word, var ignore) -> {
+                    ranked.add(new SearchExpression(match, word, true));
+                    changed = true;
+                }
+                case null, default -> ranked.add(value);
             }
         }
         return changed ? TemplateString.of(condition.fragments(), ranked) : condition;

@@ -42,7 +42,7 @@ Failures are typed and recoverable: a refused constraint throws `IntegrityViolat
 - A match has a `minLength`, three for `anywhere` and `wordStart`, two for the others. While no word reaches it, the column takes the whole input as its fallback, `prefixIgnoreCase` for `anywhere` and `wordStart`; once one does, shorter words are tested only on the rows the longer words found. `withFallback(...)` states another fallback, `withoutFallback()` leaves the column out until a word is long enough.
 - `search` and `suggest` take a set of words to ignore, `search(input, setOf("van", "de"), Owner_.lastName)`; an input of ignored words alone matches as an empty input (#741).
 - A quote opens a phrase that runs to the next quote or the end of the input, so `"van der b` matches while typed; a quoted word is never ignored (#856).
-- `search` and `suggest` go in `where` and in the condition of a semi-join or anti-join only; `having`, `orderFirst` and the condition of a join that adds rows refuse them.
+- `search` and `suggest` filter in `where` and in the condition of a semi-join or anti-join, and rank in `orderFirst`: `orderFirst(suggest(input, Owner_.lastName))` lists the rows found through their own name first (#919). `having` and the condition of a join that adds rows refuse them.
 - Upgrade note: `search` matches short words by the new rules: an input of words shorter than three characters, such as `va`, matches the start of the value, and one character matches no rows; in 1.15 they matched anywhere. `anywhere(column, 0)` restores matching every word anywhere. An unclosed quote, an ordinary character in 1.15, now opens a phrase. A `search` in `having` now fails with a message naming `where`.
 
 ### Integrity and validation
